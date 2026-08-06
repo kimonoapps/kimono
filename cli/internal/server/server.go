@@ -333,6 +333,9 @@ func (m *Manager) repair() error {
 	if err := m.reloadHeadscalePolicy(); err != nil {
 		return err
 	}
+	if err := m.reloadCaddy(); err != nil {
+		return err
+	}
 	return m.bootstrapBlueprint()
 }
 
@@ -361,7 +364,10 @@ func (m *Manager) update() error {
 	if err := m.compose("up", "-d", "--remove-orphans"); err != nil {
 		return err
 	}
-	return m.reloadHeadscalePolicy()
+	if err := m.reloadHeadscalePolicy(); err != nil {
+		return err
+	}
+	return m.reloadCaddy()
 }
 
 func (m *Manager) reloadHeadscalePolicy() error {
@@ -372,6 +378,14 @@ func (m *Manager) reloadHeadscalePolicy() error {
 		return fmt.Errorf("reload Headscale access policy: %w", err)
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Headscale access policy reloaded.")
+	return nil
+}
+
+func (m *Manager) reloadCaddy() error {
+	if err := m.Runner.Run("docker", "exec", "kimono-server-caddy-1", "caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"); err != nil {
+		return fmt.Errorf("reload Caddy routes: %w", err)
+	}
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "Caddy routes reloaded.")
 	return nil
 }
 
