@@ -112,7 +112,14 @@ pnpm server:logs
 
 ## Enroll an application VM
 
-Install the same Kimono binary on the application VM, then run:
+Mint a short-lived, single-use key on the Kimono server:
+
+```bash
+sudo kimono server enrollment create
+```
+
+Install the same Kimono binary on the application VM, then run and paste the
+key when prompted:
 
 ```bash
 sudo kimono node install \
@@ -121,28 +128,44 @@ sudo kimono node install \
   --name kitchen
 ```
 
-The command installs Docker, Tailscale, and cloudflared. Its first browser URL
-redirects through Kimono SSO and registers the node under the authenticated
-user. Its second browser URL authorizes the Cloudflare account for this VM's
-own tunnel. The node reconnects after reboots without asking for a password.
+Paste that key into `kimono node install` when prompted. The command installs
+Docker, Tailscale, and cloudflared. The browser URL authorizes the Cloudflare
+account for this VM's own tunnel. The node reconnects after reboots without
+storing the enrollment key.
 
-For unattended provisioning, create a single-use, short-lived key:
+For unattended provisioning, provide the key only to the provisioning process
+and ensure the command is not recorded in shell history or process logs:
 
 ```bash
-docker compose --env-file infra/compose/server/.env \
-  -f infra/compose/server/compose.yml exec headscale \
-  headscale preauthkeys create --user <USER_ID> --expiration 1h
+sudo kimono server enrollment create --expiration 10m
+sudo kimono node install --auth-key '<ONE_TIME_KEY>' \
+  --server https://mesh.example.com --domain apps.example.com --name kitchen
 ```
 
-Then enroll with `tailscale up --login-server ... --auth-key ...`. Treat the key
-as a secret and never put it in shell history or logs.
+Treat the key as a secret. It expires quickly, works once, and is redacted from
+Kimono command errors and dry-run output.
 
 ## Access policy
 
-The initial policy in `headscale/policy.hujson` lets authenticated household
-members reach all enrolled devices. This is deliberately simple for the first
-household deployment. Introduce tags and narrower rules before using the mesh
-with partially trusted users.
+The initial policy in `headscale/policy.hujson` is default-deny. Application VMs
+join with `tag:kimono-node`; they cannot initiate connections to sibling VMs or
+administrator devices. Cloudflare Tunnels continue to work because they use
+outbound internet connections rather than peer mesh access.
+
+To enroll a trusted management machine, mint an administrator key:
+
+```bash
+sudo kimono server enrollment create --role admin
+```
+
+A device enrolled with `tag:kimono-admin` may initiate connections to Kimono
+nodes. Only the server-side command can mint these privileged keys. Return
+traffic for administrator-initiated connections is allowed, but ordinary nodes
+receive no rule permitting them to initiate lateral traffic.
+
+Existing VMs enrolled through OIDC are personal nodes. After upgrading to this
+policy they are isolated, but should be migrated to a service identity by
+running `sudo kimono node login` and entering a fresh node enrollment key.
 
 `HEADSCALE_NODE_EXPIRY` defaults to `180d`. Set it to `0` if nodes should never
 require browser reauthentication; owners can still revoke a device immediately.
@@ -158,4 +181,4 @@ Back up these named volumes:
 
 Pin updates by changing `AUTHENTIK_TAG`, `HEADSCALE_TAG`, or `CADDY_TAG` in
 `.env`. Read upstream migration notes before updating Headscale across releases,
-and test both OIDC enrollment and peer connectivity after every update.
+and test service enrollment and peer isolation after every update.

@@ -1,12 +1,21 @@
 {
-  // Household-first default: authenticated members may reach every enrolled
-  // device. Tighten this with tags and groups before using Kimono for a larger
-  // or partially trusted organization.
+  // Kimono application VMs are service identities. They cannot initiate mesh
+  // connections to sibling VMs or administrator devices. Enrollment keys are
+  // minted by the Kimono server, so untrusted nodes cannot choose these tags.
+  "groups": {
+    // Reserved policy principal. Kimono never creates this as a login; trusted
+    // administrator tags are assigned only by server-minted enrollment keys.
+    "group:kimono-control-plane": ["kimono-control-plane@"],
+  },
+  "tagOwners": {
+    "tag:kimono-node": ["tag:kimono-admin"],
+    "tag:kimono-admin": ["group:kimono-control-plane"],
+  },
   "acls": [
     {
       "action": "accept",
-      "src": ["*"],
-      "dst": ["*:*"],
+      "src": ["tag:kimono-admin"],
+      "dst": ["tag:kimono-node:*"],
     },
   ],
 }

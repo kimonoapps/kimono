@@ -23,6 +23,8 @@ jobs:
         run: scripts/build-cli.sh
       - name: Test
         run: go test ./...
+      - name: Validate Headscale isolation policy
+        run: docker run --rm -v "$PWD/infra/compose/server/headscale/policy.hujson:/policy.hujson:ro" docker.io/headscale/headscale:0.28.0 policy check --file /policy.hujson
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

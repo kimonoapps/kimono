@@ -58,3 +58,14 @@ func TestValidHostname(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateEnrollmentKey(t *testing.T) {
+	if err := validateEnrollmentKey("hskey-auth-example-prefix-example-secret"); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"", "not-a-key", "hskey-auth-short"} {
+		if err := validateEnrollmentKey(value); err == nil {
+			t.Fatalf("expected %q to be rejected", value)
+		}
+	}
+}

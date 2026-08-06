@@ -40,6 +40,24 @@ func (r *Runner) Run(name string, args ...string) error {
 	return nil
 }
 
+// RunSensitive executes a command without rendering its arguments in dry-run
+// output or errors. Use it for short-lived credentials such as mesh enrollment
+// keys, which must never be copied into logs.
+func (r *Runner) RunSensitive(name string, args ...string) error {
+	if r.DryRun {
+		_, _ = fmt.Fprintf(r.Stdout, "+ %s <sensitive arguments omitted>\n", name)
+		return nil
+	}
+	cmd := exec.Command(name, args...)
+	cmd.Stdin = r.Stdin
+	cmd.Stdout = r.Stdout
+	cmd.Stderr = r.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s failed: %w", name, err)
+	}
+	return nil
+}
+
 func (r *Runner) Output(name string, args ...string) ([]byte, error) {
 	if r.DryRun {
 		_, _ = fmt.Fprintf(r.Stdout, "+ %s\n", shellLine(name, args))

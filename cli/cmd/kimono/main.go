@@ -61,6 +61,7 @@ Server commands:
   status    Show appliance service health
   doctor    Verify public DNS and show appliance health
   repair    Restore embedded files and container-readable permissions
+  enrollment create  Mint a single-use key for an isolated node or admin device
   cloudflare-ddns  Keep server DNS pointed at a dynamic public IP
   logs      Follow appliance logs
   update    Pull pinned service updates and recreate the appliance
@@ -68,7 +69,7 @@ Server commands:
 
 Node commands:
   install   Install dependencies, join the mesh, and create a Cloudflare tunnel
-  login     Reauthenticate this machine through Kimono SSO
+  login     Re-enroll this service VM with a new single-use key
   logout    Remove this machine's current mesh login
   expose    Publish a container or host HTTP port
   unexpose  Stop routing an application

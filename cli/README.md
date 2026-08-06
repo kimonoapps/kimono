@@ -64,8 +64,9 @@ sudo kimono server status
 ```
 
 Open `https://accounts.example.com/if/flow/initial-setup/` once to create the
-owner. The branded Authentik flow then handles Kimono user passwords, MFA, and
-machine enrollment. Server operations are:
+owner. The branded Authentik flow then handles Kimono user passwords and MFA.
+Application VMs use short-lived service enrollment keys rather than personal
+OIDC identities. Server operations are:
 
 ```bash
 sudo kimono server logs
@@ -114,7 +115,14 @@ directly in command arguments or shell history.
 
 ## Application VM
 
-Run the same binary on a fresh Ubuntu/Debian VM:
+First mint a single-use key on the main Kimono VM:
+
+```bash
+sudo kimono server enrollment create
+```
+
+Then run the same binary on a fresh Ubuntu/Debian VM and paste the key when
+prompted:
 
 ```bash
 sudo kimono node install \
@@ -123,10 +131,16 @@ sudo kimono node install \
   --name kitchen
 ```
 
-The installer sets up Docker, Tailscale, and cloudflared. Tailscale prints a
-browser URL for Kimono SSO; cloudflared prints another browser URL so the owner
-can authorize that VM's domain. No Cloudflare API token is copied from the main
+The installer sets up Docker, Tailscale, and cloudflared. The VM joins as an
+isolated `tag:kimono-node` service identity; it cannot initiate connections to
+other application VMs. cloudflared prints a browser URL so the owner can
+authorize that VM's domain. No Cloudflare API token is copied from the main
 server.
+
+For a trusted management device, create an administrator key with `sudo kimono
+server enrollment create --role admin`. Administrator devices may initiate
+connections to application nodes; nodes cannot initiate connections to each
+other or to administrators.
 
 Expose a Docker container or a host port:
 

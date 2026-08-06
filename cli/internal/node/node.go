@@ -61,7 +61,7 @@ func (m *Manager) Execute(args []string) error {
 	case "install":
 		return m.install(args[1:])
 	case "login":
-		return m.login()
+		return m.login(args[1:])
 	case "logout":
 		return m.Runner.Run("tailscale", "logout")
 	case "expose":
@@ -83,13 +83,25 @@ func (m *Manager) Execute(args []string) error {
 	}
 }
 
-func (m *Manager) login() error {
+func (m *Manager) login(args []string) error {
 	config, err := m.load()
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintln(m.Runner.Stdout, "Open the URL printed by Tailscale and sign in with your Kimono account.")
-	return m.Runner.Run("tailscale", "up", "--login-server", config.ServerURL, "--hostname", config.Machine, "--accept-dns=true", "--force-reauth")
+	flags := flag.NewFlagSet("node login", flag.ContinueOnError)
+	authKey := flags.String("auth-key", "", "single-use key from `kimono server enrollment create`")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	key := strings.TrimSpace(*authKey)
+	if key == "" {
+		key = prompt(bufio.NewReader(m.Runner.Stdin), m.Runner.Stdout, "Single-use Kimono enrollment key", "")
+	}
+	if err := validateEnrollmentKey(key); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "Re-enrolling this VM as an isolated Kimono service node.")
+	return m.Runner.RunSensitive("tailscale", "up", "--login-server", config.ServerURL, "--hostname", config.Machine, "--accept-dns=true", "--auth-key", key, "--force-reauth")
 }
 
 func (m *Manager) install(args []string) error {
@@ -100,6 +112,7 @@ func (m *Manager) install(args []string) error {
 	serverURL := flags.String("server", "", "Kimono Headscale URL")
 	domain := flags.String("domain", "", "Cloudflare-managed application domain")
 	machine := flags.String("name", "", "machine name used in public hostnames")
+	authKey := flags.String("auth-key", "", "single-use key from `kimono server enrollment create`")
 	skipPackages := flags.Bool("skip-packages", false, "do not install Docker, Tailscale, or cloudflared")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -124,6 +137,14 @@ func (m *Manager) install(args []string) error {
 	if *domain == "" || *machine == "" {
 		return errors.New("domain and machine name are required")
 	}
+	key := strings.TrimSpace(*authKey)
+	if key == "" {
+		_, _ = fmt.Fprintln(m.Runner.Stdout, "On the Kimono server, run: sudo kimono server enrollment create")
+		key = prompt(reader, m.Runner.Stdout, "Single-use Kimono enrollment key", "")
+	}
+	if err := validateEnrollmentKey(key); err != nil {
+		return err
+	}
 
 	if !*skipPackages {
 		if err := m.ensurePackages(); err != nil {
@@ -134,9 +155,9 @@ func (m *Manager) install(args []string) error {
 		return err
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout)
-	_, _ = fmt.Fprintln(m.Runner.Stdout, "Joining the Kimono private mesh. Open the URL printed by Tailscale and continue with Kimono SSO.")
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "Joining the Kimono private mesh as an isolated service node.")
 	_, _ = fmt.Fprintln(m.Runner.Stdout)
-	if err := m.Runner.Run("tailscale", "up", "--login-server", *serverURL, "--hostname", *machine, "--accept-dns=true"); err != nil {
+	if err := m.Runner.RunSensitive("tailscale", "up", "--login-server", *serverURL, "--hostname", *machine, "--accept-dns=true", "--auth-key", key); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout)
@@ -184,6 +205,13 @@ func (m *Manager) install(args []string) error {
 	_, _ = fmt.Fprintf(m.Runner.Stdout, "Private mesh: %s\n", config.ServerURL)
 	_, _ = fmt.Fprintf(m.Runner.Stdout, "Public domain: %s\n", config.Domain)
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Try: kimono expose <container>:<port>")
+	return nil
+}
+
+func validateEnrollmentKey(key string) error {
+	if !strings.HasPrefix(key, "hskey-auth-") || len(key) < 24 {
+		return errors.New("invalid Kimono enrollment key; create a new one with `sudo kimono server enrollment create`")
+	}
 	return nil
 }
 

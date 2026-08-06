@@ -26,7 +26,7 @@ func New(runner *system.Runner) *Manager {
 
 func (m *Manager) Execute(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: kimono server <install|start|stop|status|doctor|cloudflare-ddns|logs|update|backup>")
+		return errors.New("usage: kimono server <install|start|stop|status|doctor|enrollment|cloudflare-ddns|logs|update|backup>")
 	}
 	switch args[0] {
 	case "install":
@@ -41,6 +41,8 @@ func (m *Manager) Execute(args []string) error {
 		return m.doctor()
 	case "repair":
 		return m.repair()
+	case "enrollment":
+		return m.enrollment(args[1:])
 	case "cloudflare-ddns":
 		return m.cloudflareDDNS(args[1:])
 	case "logs":
@@ -51,6 +53,45 @@ func (m *Manager) Execute(args []string) error {
 		return m.backup(args[1:])
 	default:
 		return fmt.Errorf("unknown server command %q", args[0])
+	}
+}
+
+func (m *Manager) enrollment(args []string) error {
+	if err := system.RequireRoot(); err != nil {
+		return err
+	}
+	if len(args) == 0 || args[0] != "create" {
+		return errors.New("usage: kimono server enrollment create [--role node|admin] [--expiration 10m]")
+	}
+	flags := flag.NewFlagSet("server enrollment create", flag.ContinueOnError)
+	role := flags.String("role", "node", "enrollment role: node or admin")
+	expiration := flags.String("expiration", "10m", "how long the single-use key remains valid")
+	if err := flags.Parse(args[1:]); err != nil {
+		return err
+	}
+	tag, err := enrollmentTag(*role)
+	if err != nil {
+		return err
+	}
+	if _, err := time.ParseDuration(*expiration); err != nil {
+		return fmt.Errorf("invalid enrollment expiration %q: %w", *expiration, err)
+	}
+	_, _ = fmt.Fprintf(m.Runner.Stdout, "Creating a single-use %s enrollment key valid for %s.\n", *role, *expiration)
+	if err := m.Runner.Run("docker", "exec", "kimono-server-headscale-1", "headscale", "preauthkeys", "create", "--expiration", *expiration, "--tags", tag); err != nil {
+		return fmt.Errorf("create Headscale enrollment key: %w", err)
+	}
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "Use the printed key once; Kimono will not be able to display it again.")
+	return nil
+}
+
+func enrollmentTag(role string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "node":
+		return "tag:kimono-node", nil
+	case "admin":
+		return "tag:kimono-admin", nil
+	default:
+		return "", fmt.Errorf("invalid enrollment role %q; use node or admin", role)
 	}
 }
 
@@ -289,6 +330,9 @@ func (m *Manager) repair() error {
 	if err := m.compose("up", "-d", "--remove-orphans"); err != nil {
 		return err
 	}
+	if err := m.reloadHeadscalePolicy(); err != nil {
+		return err
+	}
 	return m.bootstrapBlueprint()
 }
 
@@ -314,7 +358,21 @@ func (m *Manager) update() error {
 	if err := m.compose("pull"); err != nil {
 		return err
 	}
-	return m.compose("up", "-d", "--remove-orphans")
+	if err := m.compose("up", "-d", "--remove-orphans"); err != nil {
+		return err
+	}
+	return m.reloadHeadscalePolicy()
+}
+
+func (m *Manager) reloadHeadscalePolicy() error {
+	if err := m.compose("run", "--rm", "headscale-config"); err != nil {
+		return fmt.Errorf("render Headscale access policy: %w", err)
+	}
+	if err := m.Runner.Run("docker", "kill", "--signal", "HUP", "kimono-server-headscale-1"); err != nil {
+		return fmt.Errorf("reload Headscale access policy: %w", err)
+	}
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "Headscale access policy reloaded.")
+	return nil
 }
 
 func (m *Manager) backup(args []string) error {

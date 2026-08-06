@@ -34,3 +34,18 @@ func TestPreservedOrRandom(t *testing.T) {
 		t.Fatalf("value=%q called=%v err=%v", value, called, err)
 	}
 }
+
+func TestEnrollmentTag(t *testing.T) {
+	for role, expected := range map[string]string{
+		"node":  "tag:kimono-node",
+		"ADMIN": "tag:kimono-admin",
+	} {
+		got, err := enrollmentTag(role)
+		if err != nil || got != expected {
+			t.Fatalf("enrollmentTag(%q) = %q, %v; expected %q", role, got, err, expected)
+		}
+	}
+	if _, err := enrollmentTag("owner"); err == nil {
+		t.Fatal("expected unsupported enrollment role to fail")
+	}
+}
