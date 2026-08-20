@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repository="${KIMONO_REPOSITORY:-akramboussanni/kimono}"
+repository="${KIMONO_REPOSITORY:-kimonoapps/kimono}"
 download_base="${KIMONO_DOWNLOAD_BASE:-https://github.com/${repository}/releases/latest/download}"
 install_path="${KIMONO_INSTALL_PATH:-/usr/local/bin/kimono}"
 
