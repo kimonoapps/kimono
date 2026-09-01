@@ -183,6 +183,28 @@ Mobile apps sign in through the same provider. Kimono registers
 `app.immich:///oauth-callback` alongside the two web redirect URIs, so the iOS
 and Android clients can use **Sign in with Kimono** without further setup.
 
+## Publishing without a tunnel
+
+An app can be published on the server's own address instead of through a
+tunnel. Choose **Direct (Dynamic DNS)** as its connection in the Admin portal
+and Kimono creates a CNAME from the app's hostname to the address the Portal
+already answers on, which Dynamic DNS keeps current. Caddy terminates TLS and
+proxies straight to the app container over the shared edge network.
+
+The CNAME target is read from the Portal's own hostname rather than assumed, so
+it follows whatever that hostname is — a subdomain, `www`, or the apex.
+
+Two consequences are worth weighing against a tunnel:
+
+- The record is **DNS-only**. Caddy needs ACME to reach the hostname directly,
+  so the record cannot be proxied, and the server's public address is visible.
+- Nothing sits between the internet and the appliance. Ports 80 and 443 must be
+  reachable, and requests are not filtered the way a tunnel filters them.
+
+In exchange there is no proxy in the path, so uploads are not subject to the
+request-size limit a proxied tunnel imposes — which is what makes it the better
+choice for Kimono Photos on a free Cloudflare plan.
+
 ## Cloudflare Tunnel connection
 
 Sign in as an owner or Kimono administrator, then open **Admin → Infrastructure

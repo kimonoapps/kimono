@@ -15,6 +15,13 @@ export type CloudflareTunnelToken = {
 
 const installedProviders: TunnelProvider[] = [
   {
+    id: "direct",
+    name: "Direct (Dynamic DNS)",
+    connectorImage: "",
+    description: "Publishes on this server's own address. Hostnames follow the record Dynamic DNS keeps current.",
+    modes: ["cname"],
+  },
+  {
     id: "cloudflare",
     name: "Cloudflare Tunnel",
     connectorImage: "cloudflare/cloudflared:2026.8.0",
@@ -25,6 +32,9 @@ const installedProviders: TunnelProvider[] = [
 ];
 
 export function listTunnelProviders() { return installedProviders; }
+
+/** A provider with no connector image is served by the appliance's own proxy. */
+export function providerRunsConnector(id: string) { return Boolean(getTunnelProvider(id)?.connectorImage); }
 export function getTunnelProvider(id: string) { return installedProviders.find((provider) => provider.id === id); }
 
 function commandToken(value: string) {

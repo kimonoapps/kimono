@@ -28,6 +28,7 @@ func (m *Manager) reconcilePaths() reconcile.Paths {
 	}
 	return reconcile.Paths{
 		DeploymentDir:         filepath.Join(state, "deployment"),
+		CloudDNSConfig:        m.cloudflareConfigPath(),
 		BlueprintContainerDir: os.Getenv("KIMONO_BLUEPRINT_CONTAINER_DIR"),
 		Layout: reconcile.Layout{
 			ProjectDir:   filepath.Join(m.Home, "apps"),

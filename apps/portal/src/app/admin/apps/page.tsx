@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { accentOf } from "@/lib/apps";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { scanAppDefinitions } from "@/lib/definitions";
-import { getPlatformSettings } from "@/lib/settings";
+import { getPlatformSettings, tunnelIsReady } from "@/lib/settings";
 import { redirect } from "next/navigation";
 import { AppsCatalog, type CatalogApp } from "./apps-catalog";
 
@@ -18,7 +18,7 @@ export default async function AdminAppsPage({ searchParams }: { searchParams: Pr
   const apps: CatalogApp[] = scan.definitions.filter((definition) => definition.metadata.id !== "kimono-portal").map((definition) => {
     const instance = settings.apps[definition.metadata.id];
     const tunnel = instance?.tunnelId ? settings.tunnels[instance.tunnelId] : undefined;
-    const tunnelConnected = Boolean(tunnel?.enabled && (tunnel.configuration.TUNNEL_TOKEN || (tunnel.configuration.TUNNEL_ID && tunnel.configuration.CREDENTIALS_FILE)));
+    const tunnelConnected = tunnelIsReady(tunnel);
     const endpoint = definition.spec.services.some((service) => service.endpoint);
     const route = instance ? Object.values(settings.routes).find((candidate) => candidate.appId === instance.id && candidate.tunnelId === instance.tunnelId) : undefined;
     let state: CatalogApp["state"] = "available";

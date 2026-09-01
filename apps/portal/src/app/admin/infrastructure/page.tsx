@@ -5,8 +5,8 @@ import { AppShell } from "@/components/app-shell";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { renderDeploymentPlan } from "@/lib/deployment";
 import { planDigest, readReconcilerStatus } from "@/lib/desired-state";
-import { getPlatformSettings, saveTunnel } from "@/lib/settings";
-import { listTunnelProviders } from "@/lib/tunnel-providers";
+import { createDirectTunnel, getPlatformSettings, saveTunnel, tunnelIsReady } from "@/lib/settings";
+import { getTunnelProvider, listTunnelProviders } from "@/lib/tunnel-providers";
 import Image from "next/image";
 import { RunJoint } from "@/components/run-joint";
 import { redirect } from "next/navigation";
@@ -28,6 +28,15 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
   const deploymentMessage = deploymentState === "pending"
     ? "Your latest changes are being rolled out to the server."
     : deployment?.message || "";
+
+  async function addDirect() {
+    "use server";
+    const current = await auth();
+    if (!current?.user || (current.user.role !== "owner" && current.user.role !== "admin")) redirect("/");
+    try { await createDirectTunnel("Direct"); }
+    catch (error) { redirect(`/admin/infrastructure?error=${encodeURIComponent(error instanceof Error ? error.message : "Connection could not be created")}`); }
+    redirect("/admin/infrastructure?saved=1");
+  }
 
   async function updateTunnel(form: FormData) {
     "use server";
@@ -66,12 +75,12 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
         </header>
 
         {tunnels.length ? <Tray className="connection-tray">{tunnels.map((tunnel) => {
-          const connected = Boolean(tunnel.configuration.TUNNEL_TOKEN || (tunnel.configuration.TUNNEL_ID && tunnel.configuration.CREDENTIALS_FILE));
+          const connected = tunnelIsReady({ ...tunnel, enabled: true });
           const assignedApps = Object.values(settings.apps).filter((app) => app.tunnelId === tunnel.id);
           /* A connection that still needs your hands wants the tab. Nothing else does. */
           const state = connected && tunnel.enabled ? "running" as const : connected ? "private" as const : "wants" as const;
           const stateLabel = connected && tunnel.enabled ? "Connected" : connected ? "Paused" : "Setup needed";
-          return <Compartment key={tunnel.id} label={tunnel.provider === "cloudflare" ? "Cloudflare" : tunnel.provider} wants={!connected}>
+          return <Compartment key={tunnel.id} label={getTunnelProvider(tunnel.provider)?.name || tunnel.provider} wants={!connected}>
             <div className="connection-body">
               <div className="connection-body-copy">
                 <span className="connection-name"><h3>{tunnel.name}</h3><StatedSeal state={state}>{stateLabel}</StatedSeal></span>
@@ -87,7 +96,12 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
         <details className="admin-technical-details">
           <summary><span><strong>Technical settings</strong><small>Credentials, additional connections, and deployment output</small></span></summary>
           <div className="technical-details-body">
-            <div className="technical-section-heading"><h3>Connections</h3><SealLink href="/admin/infrastructure/cloudflare" tone="quiet">Connect Cloudflare</SealLink></div>
+            <div className="technical-section-heading"><h3>Connections</h3>
+              <span className="technical-section-actions">
+                <form action={addDirect}><Seal type="submit" tone="quiet">Add direct connection</Seal></form>
+                <SealLink href="/admin/infrastructure/cloudflare" tone="quiet">Connect Cloudflare</SealLink>
+              </span>
+            </div>
             <div className="resource-list">{tunnels.map((tunnel) => <details key={tunnel.id}>
               <summary><span><strong>{tunnel.name}</strong><code>{tunnel.id}</code></span><span>{tunnel.provider}</span></summary>
               <form action={updateTunnel} className="compact-resource-form">

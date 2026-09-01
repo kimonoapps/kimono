@@ -22,6 +22,11 @@ const (
 	// AppPrefix marks generated files an app reads directly. They carry the same
 	// client secrets blueprints do, so they are written with the same care.
 	AppPrefix = "apps/"
+	// ProxySitePrefix marks a site file the appliance's own proxy serves.
+	ProxySitePrefix = "generated/caddy-"
+	// EdgeNetwork joins published apps to the appliance's proxy and connectors.
+	// The appliance creates it; this project attaches to it by name.
+	EdgeNetwork = "kimono-edge"
 )
 
 type Service struct {
@@ -48,6 +53,9 @@ type ProviderAction struct {
 	Hostname          string `json:"hostname"`
 	Path              string `json:"path"`
 	Target            string `json:"target"`
+	// CNAME is the name a directly published hostname points at. It is the
+	// address the appliance already answers on, kept current by Dynamic DNS.
+	CNAME string `json:"cname"`
 }
 
 type Plan struct {
@@ -150,11 +158,20 @@ func (p Plan) Validate() error {
 		}
 	}
 	for _, action := range p.ProviderActions {
-		if action.Provider != "cloudflare" {
+		if action.Provider != "cloudflare" && action.Provider != "direct" {
 			return fmt.Errorf("unsupported provider %q", action.Provider)
 		}
 		if !hostnamePattern.MatchString(action.Hostname) {
 			return fmt.Errorf("invalid route hostname %q", action.Hostname)
+		}
+		if action.Mode == "cname" {
+			// A record pointing at itself would be a resolution loop.
+			if !hostnamePattern.MatchString(action.CNAME) {
+				return fmt.Errorf("%s: invalid CNAME target %q", action.Hostname, action.CNAME)
+			}
+			if action.CNAME == action.Hostname {
+				return fmt.Errorf("%s: cannot point at itself", action.Hostname)
+			}
 		}
 		if action.Mode == "credentials" {
 			if !uuidPattern.MatchString(action.TunnelUUID) {

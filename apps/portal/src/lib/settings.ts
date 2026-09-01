@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import type { AppDefinition } from "./definitions";
 import { publishDesiredState } from "./desired-state";
 import { legacySettingsPath, settingsPath } from "./state";
-import { getTunnelProvider, parseCloudflareTunnelToken } from "./tunnel-providers";
+import { getTunnelProvider, parseCloudflareTunnelToken, providerRunsConnector } from "./tunnel-providers";
 
 export type CloudflareZone = { id: string; name: string };
 
@@ -181,6 +181,17 @@ export function appHostname(domain: string, baseDomain: string) {
   return value.includes(".") ? value : `${value}.${baseDomain}`;
 }
 
+/**
+ * Whether an exposure can carry traffic. A connector-based provider needs its
+ * credentials; one served by the appliance's own proxy needs nothing beyond
+ * being switched on, because the address it publishes is the server's own.
+ */
+export function tunnelIsReady(tunnel: TunnelInstance | undefined): boolean {
+  if (!tunnel?.enabled) return false;
+  if (!providerRunsConnector(tunnel.provider)) return true;
+  return Boolean(tunnel.configuration.TUNNEL_TOKEN || (tunnel.configuration.TUNNEL_ID && tunnel.configuration.CREDENTIALS_FILE));
+}
+
 export function tunnelZones(tunnel: TunnelInstance | undefined): CloudflareZone[] {
   try {
     const zones = JSON.parse(tunnel?.configuration.ZONES?.value || "[]") as unknown;
@@ -309,6 +320,20 @@ export async function saveAppNetwork(definition: AppDefinition, form: FormData) 
   await persist(settings);
 }
 
+/**
+ * Creates an exposure served by the appliance itself. There is nothing to
+ * authenticate, so it is ready the moment it exists.
+ */
+export async function createDirectTunnel(name: string) {
+  const settings = await getPlatformSettings();
+  const label = name.trim() || "Direct";
+  let id = "direct";
+  for (let suffix = 2; settings.tunnels[id]; suffix += 1) id = `direct-${suffix}`;
+  settings.tunnels[id] = { id, name: label, provider: "direct", enabled: true, configuration: {} };
+  await persist(settings);
+  return id;
+}
+
 export async function saveTunnel(form: FormData) {
   const settings = await getPlatformSettings();
   const id = String(form.get("id") || "").trim().toLowerCase();
@@ -325,7 +350,12 @@ export async function saveTunnel(form: FormData) {
     if (value) configuration[key] = { value, secret };
     else delete configuration[key];
   }
-  if (!configuration.TUNNEL_TOKEN && !(configuration.TUNNEL_ID && configuration.CREDENTIALS_FILE)) throw new Error("Provide a tunnel token, or a tunnel ID and credentials file");
+  // A provider with no connector has nothing to authenticate: it publishes on
+  // the server's own address, so demanding tunnel credentials would make it
+  // impossible to save.
+  if (providerRunsConnector(provider) && !configuration.TUNNEL_TOKEN && !(configuration.TUNNEL_ID && configuration.CREDENTIALS_FILE)) {
+    throw new Error("Provide a tunnel token, or a tunnel ID and credentials file");
+  }
   settings.tunnels[id] = { id, name, provider, enabled: form.get("enabled") === "on", configuration };
   await persist(settings);
 }

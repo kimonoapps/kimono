@@ -59,3 +59,7 @@ http://{$MESH_DOMAIN} {
 		header_up X-Real-IP {remote_host}
 	}
 }
+
+# Hostnames published without a tunnel. The Portal writes one file per exposure
+# and the reconciler reloads Caddy; a glob that matches nothing is not an error.
+import /etc/caddy/sites/caddy-*.caddy

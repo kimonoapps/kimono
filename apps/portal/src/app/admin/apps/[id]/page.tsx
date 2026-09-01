@@ -8,6 +8,7 @@ import {
   saveAppEnvironment,
   saveAppSetup,
   savePlatformBrand,
+  tunnelIsReady,
   tunnelZones,
 } from "@/lib/settings";
 import { Compartment } from "@kimono/ui";
@@ -125,7 +126,7 @@ export default async function AppManagementPage({
   const settingsFields = matching.filter((field) => field.target === "settings");
   const groups = Map.groupBy(fields, (field) => field.group);
   const settingsGroups = Map.groupBy(settingsFields, (field) => field.group);
-  const availableTunnels = Object.values(settings.tunnels).filter((tunnel) => tunnel.enabled && Boolean(tunnel.configuration.TUNNEL_TOKEN || (tunnel.configuration.TUNNEL_ID && tunnel.configuration.CREDENTIALS_FILE)));
+  const availableTunnels = Object.values(settings.tunnels).filter((tunnel) => tunnelIsReady(tunnel));
   const hasSelectedTunnel = availableTunnels.some((tunnel) => tunnel.id === instance?.tunnelId);
   const publishedHost = instance && hasSelectedTunnel ? appHostname(instance.domain, settings.baseDomain) : null;
 

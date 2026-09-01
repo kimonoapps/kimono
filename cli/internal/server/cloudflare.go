@@ -2,60 +2,17 @@ package server
 
 import (
 	"bufio"
-	"bytes"
-	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/kimonoapps/kimono/cli/internal/clouddns"
 	"github.com/kimonoapps/kimono/cli/internal/system"
 )
-
-const cloudflareAPI = "https://api.cloudflare.com/client/v4"
-
-type cloudflareConfig struct {
-	Token     string   `json:"token"`
-	AccountID string   `json:"account_id,omitempty"`
-	ZoneID    string   `json:"zone_id"`
-	ZoneName  string   `json:"zone_name"`
-	Records   []string `json:"records"`
-}
-
-type cloudflareClient struct {
-	token   string
-	baseURL string
-	http    *http.Client
-}
-
-type cloudflareResponse[T any] struct {
-	Success bool `json:"success"`
-	Result  T    `json:"result"`
-	Errors  []struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"errors"`
-}
-
-type cloudflareZone struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-type cloudflareRecord struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Content string `json:"content"`
-	Proxied bool   `json:"proxied"`
-}
 
 func (m *Manager) cloudflareDDNS(args []string) error {
 	if len(args) == 0 {
@@ -116,15 +73,15 @@ func (m *Manager) setupCloudflareDDNS(args []string) error {
 	if accountID != "" && !validCloudflareID(accountID) {
 		return errors.New("Cloudflare account ID must be exactly 32 hexadecimal characters")
 	}
-	client := newCloudflareClient(token)
-	if err := client.verifyToken(accountID); err != nil {
+	client := clouddns.NewClient(token)
+	if err := client.VerifyToken(accountID); err != nil {
 		return fmt.Errorf("verify Cloudflare token: %w", err)
 	}
-	zone, err := client.findZone(identityDomain, *zoneFlag, accountID)
+	zone, err := client.FindZone(identityDomain, *zoneFlag, accountID)
 	if err != nil {
 		return err
 	}
-	config := cloudflareConfig{Token: token, AccountID: accountID, ZoneID: zone.ID, ZoneName: zone.Name, Records: []string{identityDomain, meshDomain, portalDomain}}
+	config := clouddns.Config{Token: token, AccountID: accountID, ZoneID: zone.ID, ZoneName: zone.Name, Records: []string{identityDomain, meshDomain, portalDomain}}
 	if err := system.WriteJSON(m.cloudflareConfigPath(), config, 0600); err != nil {
 		return err
 	}
@@ -140,21 +97,21 @@ func (m *Manager) setupCloudflareDDNS(args []string) error {
 }
 
 func (m *Manager) runCloudflareDDNS() error {
-	var config cloudflareConfig
+	var config clouddns.Config
 	if err := system.ReadJSON(m.cloudflareConfigPath(), &config); err != nil {
 		return fmt.Errorf("Cloudflare DDNS is not configured: %w", err)
 	}
 	return m.updateCloudflareRecords(config)
 }
 
-func (m *Manager) updateCloudflareRecords(config cloudflareConfig) error {
+func (m *Manager) updateCloudflareRecords(config clouddns.Config) error {
 	publicIP, err := discoverPublicIPv4()
 	if err != nil {
 		return err
 	}
-	client := newCloudflareClient(config.Token)
+	client := clouddns.NewClient(config.Token)
 	for _, record := range config.Records {
-		changed, updateErr := client.upsertARecord(config.ZoneID, record, publicIP)
+		changed, updateErr := client.UpsertA(config.ZoneID, record, publicIP)
 		if updateErr != nil {
 			return updateErr
 		}
@@ -236,118 +193,6 @@ func (m *Manager) removeCloudflareDDNS() error {
 		return err
 	}
 	return m.Runner.Run("systemctl", "daemon-reload")
-}
-
-func newCloudflareClient(token string) *cloudflareClient {
-	return &cloudflareClient{token: token, baseURL: cloudflareAPI, http: &http.Client{Timeout: 20 * time.Second}}
-}
-
-func (c *cloudflareClient) verifyToken(accountID string) error {
-	var result struct {
-		Status string `json:"status"`
-	}
-	path := "/user/tokens/verify"
-	if accountID != "" {
-		path = "/accounts/" + url.PathEscape(accountID) + "/tokens/verify"
-	}
-	if err := c.request(http.MethodGet, path, nil, &result); err != nil {
-		return err
-	}
-	if result.Status != "active" {
-		return fmt.Errorf("token status is %q", result.Status)
-	}
-	return nil
-}
-
-func (c *cloudflareClient) findZone(hostname, requested, accountID string) (cloudflareZone, error) {
-	candidates := []string{}
-	if requested != "" {
-		candidates = append(candidates, strings.Trim(requested, "."))
-	} else {
-		labels := strings.Split(strings.Trim(hostname, "."), ".")
-		for index := 1; index < len(labels)-1; index++ {
-			candidates = append(candidates, strings.Join(labels[index:], "."))
-		}
-	}
-	for _, candidate := range candidates {
-		var zones []cloudflareZone
-		query := url.Values{"name": []string{candidate}}
-		if accountID != "" {
-			query.Set("account.id", accountID)
-		}
-		if err := c.request(http.MethodGet, "/zones?"+query.Encode(), nil, &zones); err != nil {
-			return cloudflareZone{}, err
-		}
-		if len(zones) == 1 {
-			return zones[0], nil
-		}
-	}
-	return cloudflareZone{}, errors.New("could not find the Cloudflare zone; ensure the token has Zone:Read and use --zone if needed")
-}
-
-func (c *cloudflareClient) upsertARecord(zoneID, name, address string) (bool, error) {
-	path := fmt.Sprintf("/zones/%s/dns_records?type=A&name=%s", url.PathEscape(zoneID), url.QueryEscape(name))
-	var records []cloudflareRecord
-	if err := c.request(http.MethodGet, path, nil, &records); err != nil {
-		return false, err
-	}
-	body := map[string]any{"type": "A", "name": name, "content": address, "ttl": 1, "proxied": false, "comment": "Managed by Kimono Dynamic DNS"}
-	if len(records) == 0 {
-		var created cloudflareRecord
-		return true, c.request(http.MethodPost, fmt.Sprintf("/zones/%s/dns_records", url.PathEscape(zoneID)), body, &created)
-	}
-	record := records[0]
-	if record.Content == address && !record.Proxied {
-		return false, nil
-	}
-	var updated cloudflareRecord
-	path = fmt.Sprintf("/zones/%s/dns_records/%s", url.PathEscape(zoneID), url.PathEscape(record.ID))
-	return true, c.request(http.MethodPatch, path, body, &updated)
-}
-
-func (c *cloudflareClient) request(method, path string, body any, result any) error {
-	var reader io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		reader = bytes.NewReader(data)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reader)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", "application/json")
-	response, err := c.http.Do(req)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
-	if err != nil {
-		return err
-	}
-	var envelope cloudflareResponse[json.RawMessage]
-	if err := json.Unmarshal(data, &envelope); err != nil {
-		return fmt.Errorf("Cloudflare returned %s: %w", response.Status, err)
-	}
-	if !envelope.Success || response.StatusCode < 200 || response.StatusCode >= 300 {
-		messages := make([]string, 0, len(envelope.Errors))
-		for _, apiErr := range envelope.Errors {
-			messages = append(messages, fmt.Sprintf("%d: %s", apiErr.Code, apiErr.Message))
-		}
-		return fmt.Errorf("Cloudflare API %s: %s", response.Status, strings.Join(messages, "; "))
-	}
-	if result != nil {
-		if err := json.Unmarshal(envelope.Result, result); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func readSecretFromTTY(label string) (string, error) {

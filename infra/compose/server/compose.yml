@@ -196,13 +196,27 @@ services:
       - "443:443/udp"
     security_opt:
       - no-new-privileges:true
+    networks:
+      - default
+      # Reaches app containers directly for hostnames published without a
+      # tunnel. The reconciler's project joins this same network by name.
+      - kimono-edge
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Site files the Portal generates for directly published hostnames.
+      - ${KIMONO_STATE_PATH:-/var/lib/kimono}/apps/generated:/etc/caddy/sites:ro
       # One directory rather than a mount per file, so a new brand asset is
       # available to Authentik without editing Compose.
       - ${KIMONO_BRAND_ASSET_PATH:-../../../apps/portal/public/brand}:/srv/kimono-brand:ro
       - caddy_data:/data
       - caddy_config:/config
+
+networks:
+  default:
+  # Created here so the appliance's proxy can start before any app exists; the
+  # generated apps project attaches to it by name rather than creating its own.
+  kimono-edge:
+    name: kimono-edge
 
 volumes:
   authentik_database:

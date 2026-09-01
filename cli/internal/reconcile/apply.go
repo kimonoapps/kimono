@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kimonoapps/kimono/cli/internal/clouddns"
 	"github.com/kimonoapps/kimono/cli/internal/system"
 )
 
@@ -23,7 +24,10 @@ const DefaultBlueprintContainerDir = "/blueprints/kimono"
 // reconciler owns.
 type Paths struct {
 	DeploymentDir string
-	Layout        Layout
+	// CloudDNSConfig holds the Dynamic DNS credentials the appliance already
+	// stores, reused to point directly published hostnames at it.
+	CloudDNSConfig string
+	Layout         Layout
 	// BlueprintContainerDir is where BlueprintDir appears inside Authentik.
 	// Blueprints are applied by path, so the reconciler needs the path the
 	// worker sees rather than the one on the host.
@@ -101,7 +105,21 @@ func (r *Reconciler) Apply() error {
 	if err := r.composeUp(); err != nil {
 		return r.fail(plan.Digest, fmt.Errorf("docker compose: %w", err))
 	}
-	failed := r.runProviderActions(plan)
+	// Compose only recreates a container when its definition changes, and a
+	// bind-mounted file is not part of that definition. A connector or an app
+	// that reads its configuration at startup would otherwise serve the old
+	// copy until something unrelated restarted it.
+	failed := r.restartStaleServices(plan, rendered.ChangedFiles)
+	// Sites served by the appliance's own proxy live outside this Compose
+	// project, so a changed site file is reloaded rather than restarted.
+	if changedProxySites(rendered.ChangedFiles) {
+		if err := r.reloadProxy(); err != nil {
+			failed = append(failed, fmt.Sprintf("published sites: %s", err))
+		} else {
+			_, _ = fmt.Fprintln(r.Runner.Stdout, "Reloaded the published sites.")
+		}
+	}
+	failed = append(failed, r.runProviderActions(plan)...)
 	// Applied on every pass rather than only when a blueprint changed: the apply
 	// is idempotent, and reconciling unconditionally restores providers that
 	// were removed inside Authentik. Failures are reported because sign-in
@@ -123,19 +141,111 @@ func (r *Reconciler) Apply() error {
 	return nil
 }
 
-func (r *Reconciler) composeUp() error {
-	return r.Runner.Run("docker", "compose",
+// servicesMountingChangedFiles reports which services bind-mount a generated
+// file this pass rewrote, deterministically so a repeat apply is quiet.
+func changedProxySites(changed []string) bool {
+	for _, file := range changed {
+		if strings.HasPrefix(file, ProxySitePrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *Reconciler) reloadProxy() error {
+	return r.Runner.Run("docker", "exec", "kimono-server-caddy-1",
+		"caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile")
+}
+
+// publishDirectNames points every directly published hostname at the address
+// the appliance answers on. One client is built for the whole pass so a zone
+// with several apps is not re-authenticated per name.
+func (r *Reconciler) publishDirectNames(plan Plan) []string {
+	var wanted []ProviderAction
+	for _, action := range plan.ProviderActions {
+		if action.Mode == "cname" {
+			wanted = append(wanted, action)
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	config, err := clouddns.LoadConfig(r.Paths.CloudDNSConfig)
+	if err != nil {
+		// Without credentials the names cannot be created, and an app published
+		// this way is unreachable until they exist. That is worth reporting.
+		return []string{fmt.Sprintf("direct publishing: %s", err)}
+	}
+	client := clouddns.NewClient(config.Token)
+	var failed []string
+	for _, action := range wanted {
+		changed, err := client.UpsertCNAME(config.ZoneID, action.Hostname, action.CNAME)
+		if err != nil {
+			failed = append(failed, fmt.Sprintf("%s: %s", action.Hostname, err))
+			continue
+		}
+		if changed {
+			_, _ = fmt.Fprintf(r.Runner.Stdout, "Pointed %s at %s\n", action.Hostname, action.CNAME)
+		}
+	}
+	return failed
+}
+
+func servicesMountingChangedFiles(plan Plan, changed []string) []string {
+	if len(changed) == 0 {
+		return nil
+	}
+	stale := map[string]bool{}
+	for _, name := range sortedKeys(plan.Compose.Services) {
+		for _, mount := range plan.Compose.Services[name].Volumes {
+			source, _, found := strings.Cut(mount, ":")
+			if !found || !strings.HasPrefix(source, "./") {
+				continue
+			}
+			for _, file := range changed {
+				if strings.TrimPrefix(source, "./") == file {
+					stale[name] = true
+				}
+			}
+		}
+	}
+	names := make([]string, 0, len(stale))
+	for _, name := range sortedKeys(plan.Compose.Services) {
+		if stale[name] {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+func (r *Reconciler) restartStaleServices(plan Plan, changed []string) []string {
+	var failed []string
+	for _, name := range servicesMountingChangedFiles(plan, changed) {
+		if err := r.compose("restart", name); err != nil {
+			failed = append(failed, fmt.Sprintf("%s: %s", name, err))
+			continue
+		}
+		_, _ = fmt.Fprintf(r.Runner.Stdout, "Restarted %s to pick up its new configuration\n", name)
+	}
+	return failed
+}
+
+func (r *Reconciler) compose(args ...string) error {
+	return r.Runner.Run("docker", append([]string{"compose",
 		"--project-name", ProjectName,
 		"--project-directory", r.Paths.Layout.ProjectDir,
 		"--env-file", r.Paths.Layout.EnvironmentPath(),
-		"-f", r.Paths.Layout.ComposePath(),
-		"up", "-d", "--remove-orphans")
+		"-f", r.Paths.Layout.ComposePath()}, args...)...)
+}
+
+func (r *Reconciler) composeUp() error {
+	return r.compose("up", "-d", "--remove-orphans")
 }
 
 // runProviderActions creates the DNS records that point each hostname at its
 // tunnel. Cloudflare rejects duplicates, which is the expected steady state.
 func (r *Reconciler) runProviderActions(plan Plan) []string {
-	var failed []string
+	failed := r.publishDirectNames(plan)
 	for _, action := range plan.ProviderActions {
 		if action.Mode != "credentials" {
 			continue

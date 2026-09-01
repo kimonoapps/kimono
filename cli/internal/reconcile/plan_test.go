@@ -271,3 +271,73 @@ func TestRenderReportsGeneratedBlueprintNames(t *testing.T) {
 		t.Fatalf("expected the name on an unchanged run too, got %v", repeat.Blueprints)
 	}
 }
+
+// Compose does not recreate a container when a file it bind-mounts changes, so
+// a connector kept serving the ingress it started with and a newly published
+// app answered 404 until something unrelated restarted it.
+func TestServicesMountingChangedFilesFindsEveryStaleReader(t *testing.T) {
+	plan := validPlan()
+	plan.Compose.Services["tunnel-main"] = Service{
+		Image: "cloudflare/cloudflared:2026.8.0", Restart: "unless-stopped",
+		Volumes:  []string{"./generated/cloudflare-main.yml:/etc/cloudflared/config.yml:ro"},
+		Networks: []string{"kimono-edge"},
+	}
+	plan.Compose.Services["immich-server"] = Service{
+		Image: "ghcr.io/immich-app/immich-server:v3.1.0", Restart: "unless-stopped",
+		Volumes:  []string{"immich-library:/data", "./apps/immich-settings.json:/etc/immich/config.json:ro"},
+		Networks: []string{"kimono-edge"},
+	}
+	plan.Compose.Volumes["immich-library"] = struct{}{}
+
+	got := servicesMountingChangedFiles(plan, []string{"apps/immich-settings.json", "generated/cloudflare-main.yml"})
+	want := []string{"immich-server", "tunnel-main"}
+	if len(got) != len(want) {
+		t.Fatalf("stale services = %v, expected %v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("stale services = %v, expected %v", got, want)
+		}
+	}
+	if names := servicesMountingChangedFiles(plan, nil); len(names) != 0 {
+		t.Fatalf("an unchanged pass restarted %v", names)
+	}
+	// A named volume is not a generated file and must never trigger a restart.
+	if names := servicesMountingChangedFiles(plan, []string{"immich-library"}); len(names) != 0 {
+		t.Fatalf("a named volume was mistaken for a generated file: %v", names)
+	}
+}
+
+// A hostname published without a tunnel is a CNAME at the address the appliance
+// already answers on. Pointing a name at itself would never resolve.
+func TestValidateRejectsUnusableCNAMETargets(t *testing.T) {
+	for name, action := range map[string]ProviderAction{
+		"empty target":   {Provider: "direct", Mode: "cname", Hostname: "photos.example.com", CNAME: ""},
+		"not a hostname": {Provider: "direct", Mode: "cname", Hostname: "photos.example.com", CNAME: "not a host"},
+		"points at self": {Provider: "direct", Mode: "cname", Hostname: "photos.example.com", CNAME: "photos.example.com"},
+	} {
+		plan := validPlan()
+		plan.ProviderActions = []ProviderAction{action}
+		if err := plan.Validate(); err == nil {
+			t.Fatalf("%s: expected the plan to be refused", name)
+		}
+	}
+	plan := validPlan()
+	plan.ProviderActions = []ProviderAction{{Provider: "direct", Mode: "cname", Hostname: "photos.example.com", CNAME: "www.example.com"}}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("a usable direct route was refused: %v", err)
+	}
+}
+
+// The appliance owns the edge network so its proxy can reach a published app,
+// and this project must attach to that one rather than create a second.
+func TestRenderComposeAttachesToTheApplianceEdgeNetwork(t *testing.T) {
+	plan := validPlan()
+	document := RenderCompose(plan)
+	if !strings.Contains(document, "  kimono-edge:\n    name: kimono-edge\n    external: true\n") {
+		t.Fatalf("edge network is not attached as external:\n%s", document)
+	}
+	if strings.Contains(document, "  kimono-edge: {}") {
+		t.Fatal("the edge network is still being created by this project")
+	}
+}

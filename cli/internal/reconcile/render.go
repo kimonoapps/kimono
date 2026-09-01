@@ -77,6 +77,12 @@ func RenderCompose(plan Plan) string {
 	}
 	builder.WriteString("\nnetworks:\n")
 	for _, name := range sortedKeys(plan.Compose.Networks) {
+		// The appliance owns the edge network so its proxy can serve a hostname
+		// published without a tunnel. This project attaches rather than creates.
+		if name == EdgeNetwork {
+			fmt.Fprintf(&builder, "  %s:\n    name: %s\n    external: true\n", name, name)
+			continue
+		}
 		if plan.Compose.Networks[name].Internal {
 			fmt.Fprintf(&builder, "  %s:\n    internal: true\n", name)
 			continue
@@ -123,6 +129,10 @@ type RenderResult struct {
 	// Blueprints lists every generated blueprint by file name so the caller can
 	// hand them to Authentik directly. Discovery does not reach this directory.
 	Blueprints []string
+	// ChangedFiles lists the generated files a container mounts that this pass
+	// rewrote, by plan-relative path. A process reads its configuration once at
+	// startup, so whoever mounts one of these is serving a stale copy.
+	ChangedFiles []string
 }
 
 // Render materializes the Compose file, the environment file, and every
@@ -172,11 +182,14 @@ func Render(plan Plan, secrets map[string]string, layout Layout) (RenderResult, 
 		if err != nil {
 			return result, err
 		}
-		if changed && strings.HasPrefix(file, BlueprintPrefix) {
+		switch {
+		case !changed:
+		case strings.HasPrefix(file, BlueprintPrefix):
 			result.BlueprintsChanged = true
-		}
-		if changed && strings.HasPrefix(file, MeshPrefix) {
+		case strings.HasPrefix(file, MeshPrefix):
 			result.MeshChanged = true
+		default:
+			result.ChangedFiles = append(result.ChangedFiles, file)
 		}
 	}
 	removed, err := pruneBlueprints(layout.BlueprintDir, known)
