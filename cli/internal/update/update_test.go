@@ -85,3 +85,25 @@ func TestReplaceBinarySkipsAnIdenticalRelease(t *testing.T) {
 		t.Fatal("expected an unchanged release to report no replacement")
 	}
 }
+
+// The gate that decides whether to update the appliance once looked for
+// server/server.env, a path the installer never writes, so `kimono update`
+// quietly refused to update every server it ran on. It must agree with the
+// server manager's envPath, and must follow a relocated KIMONO_HOME.
+func TestApplianceEnvironmentPathMatchesTheInstalledLayout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("KIMONO_HOME", home)
+	expected := filepath.Join(home, "server.env")
+	if got := applianceEnvironmentPath(); got != expected {
+		t.Fatalf("appliance environment path = %q, expected %q", got, expected)
+	}
+	if _, err := os.Stat(applianceEnvironmentPath()); !os.IsNotExist(err) {
+		t.Fatal("expected no appliance before one is configured")
+	}
+	if err := os.WriteFile(expected, []byte("KIMONO_BASE_DOMAIN=example.com\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(applianceEnvironmentPath()); err != nil {
+		t.Fatalf("a configured appliance was not detected: %v", err)
+	}
+}

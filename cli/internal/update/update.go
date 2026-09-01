@@ -88,11 +88,20 @@ func (m *Manager) Run(args []string) error {
 	if *skipServer {
 		return nil
 	}
-	if _, err := os.Stat("/var/lib/kimono/server/server.env"); err != nil {
+	// The appliance's environment file, which is what every other server
+	// command opens. Asking system.Home() keeps a relocated KIMONO_HOME
+	// working; hardcoding the path once made this gate refuse every install.
+	if _, err := os.Stat(applianceEnvironmentPath()); err != nil {
 		_, _ = fmt.Fprintln(m.Runner.Stdout, "No appliance is installed here; the binary is up to date.")
 		return nil
 	}
 	return m.Runner.Run(executable, "server", "update")
+}
+
+// applianceEnvironmentPath mirrors the server manager's envPath, which is the
+// only file that proves an appliance was configured on this machine.
+func applianceEnvironmentPath() string {
+	return filepath.Join(system.Home(), "server.env")
 }
 
 // replaceBinary downloads the published binary, verifies it against the
