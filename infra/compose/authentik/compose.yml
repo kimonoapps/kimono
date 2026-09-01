@@ -55,6 +55,7 @@ services:
       - authentik_data:/data
       - ./blueprints:/blueprints/kimono
       - ../server/authentik/blueprints/kimono.css:/blueprints/kimono/kimono.css:ro
+      - ../server/authentik/blueprints/kimono-enrollment.yaml:/blueprints/kimono/kimono-enrollment.yaml:ro
       - ./certs:/certs
       - ./custom-templates:/templates
 

@@ -8,3 +8,8 @@ dist/
 .env.local
 *.tsbuildinfo
 pnpm-debug.log*
+
+# Docker creates this mount point for the enrollment blueprint the dev stack
+# borrows from the server appliance. The real file lives under
+# infra/compose/server/authentik/blueprints/.
+infra/compose/authentik/blueprints/kimono-enrollment.yaml

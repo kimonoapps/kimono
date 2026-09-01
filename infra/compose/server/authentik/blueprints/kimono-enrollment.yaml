@@ -1,0 +1,171 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+version: 1
+metadata:
+  name: Kimono Enrollment
+  labels:
+    blueprints.goauthentik.io/description: Invitation-only enrollment flow for new Kimono accounts
+    blueprints.goauthentik.io/instantiate: "true"
+
+# Authentik ships no enrollment flow at all, so the invitation screen has
+# nothing to offer in its Flow field and an invitation created there redeems
+# into nowhere. Kimono needs exactly one: an invited person opens a link, tells
+# us who they are, chooses a password, and is signed in. Nobody reaches this
+# flow without a token, so the household stays invite-only.
+entries:
+  - id: kimono-enrollment-flow
+    model: authentik_flows.flow
+    state: present
+    identifiers:
+      slug: kimono-invitation-enrollment
+    attrs:
+      name: Kimono - Invitation enrollment
+      title: Welcome to Kimono
+      designation: enrollment
+      # Somebody already signed in has no business creating a second account.
+      authentication: require_unauthenticated
+
+  # First stage, so the token in the link is spent before anything is asked.
+  # Without an invitation the flow stops here rather than opening the household
+  # up to anyone who guesses the URL.
+  - id: kimono-enrollment-invitation
+    model: authentik_stages_invitation.invitationstage
+    state: present
+    identifiers:
+      name: kimono-enrollment-invitation
+    attrs:
+      continue_flow_without_invitation: false
+
+  # The fields Kimono itself reads: the Portal shows a name, correlates the
+  # account by username, and writes to the email address. An invitation may
+  # pre-fill any of them through its "Custom attributes", which land in the
+  # flow context under the same keys.
+  - id: kimono-enrollment-prompt-name
+    model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: kimono-enrollment-field-name
+    attrs:
+      field_key: name
+      label: Name
+      type: text
+      placeholder: Your name
+      required: true
+      order: 100
+
+  - id: kimono-enrollment-prompt-username
+    model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: kimono-enrollment-field-username
+    attrs:
+      field_key: username
+      label: Username
+      type: username
+      placeholder: Username
+      required: true
+      order: 200
+
+  - id: kimono-enrollment-prompt-email
+    model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: kimono-enrollment-field-email
+    attrs:
+      field_key: email
+      label: Email
+      type: email
+      placeholder: you@example.com
+      required: true
+      order: 300
+
+  # Two password fields in one prompt stage are compared by Authentik itself,
+  # so the mismatch is caught before an account exists.
+  - id: kimono-enrollment-prompt-password
+    model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: kimono-enrollment-field-password
+    attrs:
+      field_key: password
+      label: Password
+      type: password
+      placeholder: Password
+      required: true
+      order: 400
+
+  - id: kimono-enrollment-prompt-password-repeat
+    model: authentik_stages_prompt.prompt
+    state: present
+    identifiers:
+      name: kimono-enrollment-field-password-repeat
+    attrs:
+      field_key: password_repeat
+      label: Password (again)
+      type: password
+      placeholder: Password (again)
+      required: true
+      order: 500
+
+  - id: kimono-enrollment-details
+    model: authentik_stages_prompt.promptstage
+    state: present
+    identifiers:
+      name: kimono-enrollment-details
+    attrs:
+      fields:
+        - !KeyOf kimono-enrollment-prompt-name
+        - !KeyOf kimono-enrollment-prompt-username
+        - !KeyOf kimono-enrollment-prompt-email
+        - !KeyOf kimono-enrollment-prompt-password
+        - !KeyOf kimono-enrollment-prompt-password-repeat
+      validation_policies: []
+
+  - id: kimono-enrollment-write
+    model: authentik_stages_user_write.userwritestage
+    state: present
+    identifiers:
+      name: kimono-enrollment-write
+    attrs:
+      user_creation_mode: always_create
+      create_users_as_inactive: false
+      user_type: internal
+      # Kimono VPN is granted per person from the Portal, so a new account
+      # joins no group here. It signs in everywhere and reaches nothing yet.
+
+  # Straight into Kimono rather than back to a sign-in screen the person has
+  # no muscle memory for yet.
+  - id: kimono-enrollment-login
+    model: authentik_stages_user_login.userloginstage
+    state: present
+    identifiers:
+      name: kimono-enrollment-login
+    attrs:
+      session_duration: seconds=0
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf kimono-enrollment-flow
+      stage: !KeyOf kimono-enrollment-invitation
+      order: 10
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf kimono-enrollment-flow
+      stage: !KeyOf kimono-enrollment-details
+      order: 20
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf kimono-enrollment-flow
+      stage: !KeyOf kimono-enrollment-write
+      order: 30
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf kimono-enrollment-flow
+      stage: !KeyOf kimono-enrollment-login
+      order: 40

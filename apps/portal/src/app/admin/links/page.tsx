@@ -19,7 +19,7 @@ function identityDestinations(identityDomain: string): Destination[] {
   return [
     {
       name: "Invite someone",
-      description: "Create an invitation link. Whoever opens it sets their own password and can then sign in to every app you have published.",
+      description: "Create an invitation, choosing the Kimono invitation enrollment flow, then send the link it gives you. Whoever opens it picks a username and password and can then sign in to every app you have published.",
       href: `${admin}/flow/stages/invitations`,
       action: "Create invite",
     },

@@ -70,6 +70,24 @@ discovered `issuer` exactly matches `AUTHENTIK_ISSUER`, including its trailing
 slash. Kimono still correlates users across applications through Authentik's
 immutable user UUID subject.
 
+## Invite someone
+
+The stack also mounts the `Kimono Enrollment` blueprint, which supplies the
+`Kimono - Invitation enrollment` flow. Authentik has no enrollment flow of its
+own, so without it Authentik's invitation screen has no flow to offer.
+
+Create an invitation at
+`http://localhost:9000/if/admin/#/flow/stages/invitations` with **Flow** set to
+`Kimono - Invitation enrollment`, then open the link it shows:
+
+```text
+http://localhost:9000/if/flow/kimono-invitation-enrollment/?itoken=<token>
+```
+
+Name, username, email, and a password are asked for, the account is created,
+and the browser lands signed in. The flow refuses to run without a valid
+invitation.
+
 ## Production notes
 
 - Replace every development URL with the final HTTPS domain.
