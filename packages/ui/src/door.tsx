@@ -1,6 +1,6 @@
 "use client";
 
-import { type MouseEvent, type ReactNode } from "react";
+import { type FocusEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { cx } from "./cx";
 
 /* ═══════════════════════════════════════════════════════════════
@@ -25,6 +25,9 @@ type DoorProps = {
   here?: boolean;
   className?: string;
   onClick?: (event: MouseEvent<HTMLElement>) => void;
+  /** Reaching for a door is already an intention: chrome warms what it opens. */
+  onPointerEnter?: (event: PointerEvent<HTMLElement>) => void;
+  onFocus?: (event: FocusEvent<HTMLElement>) => void;
 };
 
 export function Door({ href, label, here = false, children, className, ...rest }: DoorProps & { children?: ReactNode }) {

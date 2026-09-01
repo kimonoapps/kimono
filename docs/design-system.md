@@ -88,12 +88,23 @@ Easings are `--k-ease-in` for arriving and `--k-ease-out` for leaving.
 **A place change must cover completely before it swaps.** Half-covered swaps are
 visible, and a visible swap is the thing transitions exist to hide.
 
-> Two CSS traps this system has already hit, both worth knowing. A timing
+**The press starts the load; the cover decides when it is seen.** Reaching for a
+door warms its destination and pressing it begins the fetch, so the crossing is
+spent on a page already on its way rather than on a wait that has not started.
+The page changes hands at full cover. If it is not there yet the crossing holds
+exactly there — covered, motionless — and plays out its second half only once
+the page is standing. A duration is how long a crossing takes when the page is
+ready, never a promise that it will be. The screen waits for the page; the page
+never arrives behind an open screen.
+
+> Three CSS traps this system has already hit, all worth knowing. A timing
 > function on the `animation` shorthand is re-applied *between every pair of
 > keyframes*, so multi-stop animations need per-keyframe
-> `animation-timing-function` or they lurch. And a keyframe that sets only
+> `animation-timing-function` or they lurch. A keyframe that sets only
 > `opacity` still splits the `transform` timeline — animate the two as separate
-> animations.
+> animations. And the `animation` shorthand carries `animation-play-state`, so
+> it resets a longhand `paused` set elsewhere: the rule that holds a crossing
+> at full cover has to be marked `!important` to survive it.
 
 ## 動 Dō — what may move, and why
 

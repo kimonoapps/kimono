@@ -50,6 +50,12 @@
 @keyframes k-blind { 0% { height: 0 } 44%, 56% { height: 100% } 100% { height: 0 } }
 @keyframes k-rod { 0% { transform: translateY(-16px) } 44%, 56% { transform: translateY(calc(100vh - 13px)) } 100% { transform: translateY(-16px) } }
 
+/* Shut, with the next page not yet standing: everything holds exactly where
+   it is. A crossing opens on a room that is ready, or it does not open.
+   Marked, because every crossing above sets the animation shorthand, which
+   carries its own play-state and would otherwise keep running. */
+.k-crossing[data-held] * { animation-play-state: paused !important; }
+
 @media (prefers-reduced-motion: reduce) {
   .k-crossing * { animation-duration: 1ms !important; }
 }

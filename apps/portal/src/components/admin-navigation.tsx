@@ -1,7 +1,7 @@
 "use client";
 
 import { Door } from "@kimono/ui";
-import { useCrossTo } from "@/components/crossing";
+import { useCrossTo, useWarm } from "@/components/crossing";
 
 /**
  * The admin surfaces. These are places, not tabs, so they are doors —
@@ -9,6 +9,7 @@ import { useCrossTo } from "@/components/crossing";
  */
 export function AdminNavigation({ active }: { active: "apps" | "infrastructure" | "links" | "vpn" }) {
   const crossTo = useCrossTo();
+  const warm = useWarm();
   const rooms = [
     { href: "/admin/apps", label: "Applications", here: active === "apps" },
     { href: "/admin/infrastructure", label: "Connectivity", here: active === "infrastructure" },
@@ -20,6 +21,8 @@ export function AdminNavigation({ active }: { active: "apps" | "infrastructure" 
       key={room.href}
       label={room.label}
       here={room.here}
+      onPointerEnter={room.here ? undefined : warm(room.href)}
+      onFocus={room.here ? undefined : warm(room.href)}
       onClick={() => { if (!room.here) crossTo("kakejiku", room.href); }}
     >{room.label}</Door>)}
   </nav>;
