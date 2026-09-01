@@ -104,6 +104,9 @@ entries:
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       client_type: confidential
+      # Without a signing key Authentik signs the ID token HS256 with the client
+      # secret and publishes an empty JWKS, which every RS256 client rejects.
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
       client_secret: \${${secretName(app.id, "OIDC_CLIENT_SECRET")}}
       grant_types:
         - authorization_code
