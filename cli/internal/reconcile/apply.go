@@ -102,6 +102,12 @@ func (r *Reconciler) Apply() error {
 	for _, warning := range plan.Warnings {
 		_, _ = fmt.Fprintf(r.Runner.Stdout, "warning: %s\n", warning)
 	}
+	// The appliance owns the edge network so its proxy can reach a published
+	// app. Creating it here instead would give it no Compose label and the
+	// appliance's own stack would then refuse to start, so this only reports.
+	if err := r.requireEdgeNetwork(plan); err != nil {
+		return r.fail(plan.Digest, err)
+	}
 	if err := r.composeUp(); err != nil {
 		return r.fail(plan.Digest, fmt.Errorf("docker compose: %w", err))
 	}
@@ -143,6 +149,16 @@ func (r *Reconciler) Apply() error {
 
 // servicesMountingChangedFiles reports which services bind-mount a generated
 // file this pass rewrote, deterministically so a repeat apply is quiet.
+func (r *Reconciler) requireEdgeNetwork(plan Plan) error {
+	if _, declared := plan.Compose.Networks[EdgeNetwork]; !declared {
+		return nil
+	}
+	if _, err := r.Runner.OutputCombined("docker", "network", "inspect", EdgeNetwork); err != nil {
+		return fmt.Errorf("the %s network does not exist yet; update the appliance with `sudo kimono update` so it can create it", EdgeNetwork)
+	}
+	return nil
+}
+
 func changedProxySites(changed []string) bool {
 	for _, file := range changed {
 		if strings.HasPrefix(file, ProxySitePrefix) {
