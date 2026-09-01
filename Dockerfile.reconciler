@@ -10,6 +10,10 @@ COPY cli cli
 RUN CGO_ENABLED=0 go build -o /out/kimono ./cli/cmd/kimono
 
 FROM docker:28-cli
+
+# Links this image to its repository, which is what grants the repository's
+# own Actions token permission to publish it.
+LABEL org.opencontainers.image.source=https://github.com/kimonoapps/kimono
 # The reconciler applies the Portal's deployment plan with the host Docker
 # engine. It serves no traffic and reads no request input.
 COPY --from=build /out/kimono /usr/local/bin/kimono

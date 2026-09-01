@@ -15,6 +15,10 @@ RUN pnpm --filter @kimono/portal build
 
 FROM node:24-alpine
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
+
+# Links this image to its repository, which is what grants the repository's
+# own Actions token permission to publish it.
+LABEL org.opencontainers.image.source=https://github.com/kimonoapps/kimono
 WORKDIR /app
 COPY --from=build /app/apps/portal/.next/standalone ./
 COPY --from=build /app/apps/portal/.next/static ./apps/portal/.next/static
