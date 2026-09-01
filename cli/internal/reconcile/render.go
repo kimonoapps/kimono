@@ -161,10 +161,11 @@ func Render(plan Plan, secrets map[string]string, layout Layout) (RenderResult, 
 			}
 			destination = filepath.Join(layout.MeshDir, strings.TrimPrefix(file, MeshPrefix))
 		}
-		// Blueprints carry client secrets and are read by a root container.
-		// Connector configuration is hostnames only and is read as nonroot.
+		// Blueprints and app identity files carry client secrets and are read by
+		// root containers. Connector configuration is hostnames only and is read
+		// as nonroot.
 		mode := os.FileMode(0644)
-		if strings.HasPrefix(file, BlueprintPrefix) {
+		if strings.HasPrefix(file, BlueprintPrefix) || strings.HasPrefix(file, AppPrefix) {
 			mode = 0600
 		}
 		changed, err := writeFileIfChanged(destination, contents, mode)

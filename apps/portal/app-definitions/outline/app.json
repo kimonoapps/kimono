@@ -29,6 +29,9 @@
       { "id": "redis", "service": "redis", "path": "/data", "backup": true },
       { "id": "uploads", "service": "web", "path": "/var/lib/outline/data", "backup": true }
     ],
+    "identity": {
+      "redirectUris": ["https://{{hostname}}/auth/oidc.callback"]
+    },
     "configuration": [
       { "key": "DEFAULT_LANGUAGE", "label": "Language", "kind": "text", "group": "general", "default": "en_US", "description": "Default language for new users." },
       { "key": "FILE_STORAGE_UPLOAD_MAX_SIZE", "label": "Maximum upload size", "kind": "bytes", "group": "storage", "default": "262144000", "description": "Largest attachment users may upload." },

@@ -5,6 +5,7 @@ This Compose project runs the private-network control plane for Kimono:
 - Authentik provides Kimono SSO.
 - Kimono Portal provides the household application home screen.
 - Kimono Notes provides shared notes through Outline with Kimono SSO.
+- Kimono Photos provides the household photo library through Immich with Kimono SSO.
 - Headscale coordinates the WireGuard mesh and enrolls devices through OIDC.
 - Headscale's embedded DERP/STUN service relays encrypted traffic when peers
   cannot connect directly.
@@ -104,6 +105,40 @@ The wordmark and botanical background are reusable SVG assets served directly
 by Caddy from the Portal brand directory. Authentik reapplies the blueprint
 automatically when the YAML or CSS changes.
 
+## Invite someone
+
+Authentik ships no enrollment flow of its own, so the mounted `Kimono
+Enrollment` blueprint provides one: `Kimono - Invitation enrollment`. Without
+it the invitation screen has no flow to offer and the invitation it creates
+redeems into nothing.
+
+An appliance installed before this blueprint existed picks it up with:
+
+```bash
+sudo kimono update
+```
+
+In the Portal, **Admin → Useful links → Invite someone**, or directly:
+
+```text
+https://<AUTHENTIK_DOMAIN>/if/admin/#/flow/stages/invitations
+```
+
+Create the invitation with **Flow** set to `Kimono - Invitation enrollment`,
+then send the person the link it shows:
+
+```text
+https://<AUTHENTIK_DOMAIN>/if/flow/kimono-invitation-enrollment/?itoken=<token>
+```
+
+They give a name, username, email, and a password of their own, and land signed
+in. Custom attributes on the invitation named `name`, `username`, or `email`
+pre-fill those fields.
+
+The flow refuses to run without a valid invitation, and the brand deliberately
+sets no enrollment flow, so the sign-in page offers no self-signup. A new
+account joins no group: grant Kimono VPN per person from the Portal.
+
 ## Kimono Notes
 
 Kimono Notes is Outline, deployed as a connected Kimono application from the
@@ -123,6 +158,30 @@ under the configured base domain; complete hostnames remain unchanged.
 On first launch, choose **Continue with Kimono**. The first authenticated user
 creates the Outline workspace and becomes its administrator. Outline remains
 responsible for note permissions and workspace administration.
+
+## Kimono Photos
+
+Kimono Photos is Immich, deployed as a connected Kimono application the same way
+Kimono Notes is. Enabling it in `/admin` starts its server, machine-learning
+worker, PostgreSQL database, Valkey instance, and library volume in the
+`kimono-apps` project.
+
+Immich reads neither single sign-on nor its other settings from the environment.
+It takes one JSON document instead, so Kimono renders that document from the
+deployment plan and mounts it read-only at `/etc/immich/config.json`. Its OIDC
+provider, external domain, and machine-learning address are derived and follow
+the app's hostname; everything a household would want to change lives under
+**Admin → Photos → Settings**: sign-in behaviour, the trash window, machine
+learning, video conversion, preview quality, and SMTP.
+
+Because Immich treats that document as the whole of its system configuration,
+its own **Administration → Settings** screens are read-only. The Kimono page is
+the editor. Anything neither page sets stays at the Immich default, and adding a
+knob means adding a field to the app definition rather than changing code.
+
+Mobile apps sign in through the same provider. Kimono registers
+`app.immich:///oauth-callback` alongside the two web redirect URIs, so the iOS
+and Android clients can use **Sign in with Kimono** without further setup.
 
 ## Cloudflare Tunnel connection
 

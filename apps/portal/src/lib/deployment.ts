@@ -1,4 +1,4 @@
-import type { AppDefinition } from "./definitions";
+import type { AppDefinition, ConfigurationField } from "./definitions";
 import { appHostname, type AppRoute, type PlatformSettings } from "./settings";
 import { tunnelCredentialsPath } from "./state";
 import { renderMeshPolicy } from "./mesh-policy";
@@ -35,15 +35,56 @@ function serviceName(appId: string, serviceId: string) { return `${appId}-${serv
 function secretName(appId: string, key: string) { return `KIMONO_SECRET_${appId}_${key}`.toUpperCase().replaceAll("-", "_"); }
 function secretReference(appId: string, key: string) { return `\${${secretName(appId, key)}}`; }
 
-function resolveTemplate(template: string, context: { appId: string; hostname: string; configuration: Record<string, string>; services: Set<string> }) {
-  return template.replace(/\{\{(hostname|config\.[A-Z0-9_]+|secret\.[A-Z0-9_]+|service\.[a-z0-9-]+)\}\}/g, (_, token: string) => {
+type TemplateContext = {
+  appId: string;
+  hostname: string;
+  configuration: Record<string, string>;
+  fields: Map<string, ConfigurationField>;
+  services: Set<string>;
+  oidc?: Record<string, string>;
+};
+
+const tokenPattern = /\{\{(hostname|config\.[A-Z0-9_]+|secret\.[A-Z0-9_]+|service\.[a-z0-9-]+|oidc\.[a-zA-Z]+)\}\}/g;
+
+function resolveTemplate(template: string, context: TemplateContext) {
+  return template.replace(tokenPattern, (_, token: string) => {
     if (token === "hostname") return context.hostname;
     const [kind, key] = token.split(".");
     if (kind === "config") return context.configuration[key] ?? "";
     if (kind === "secret") return secretReference(context.appId, key);
     if (kind === "service" && context.services.has(key)) return serviceName(context.appId, key);
+    if (kind === "oidc") return context.oidc?.[key] ?? "";
     return "";
   });
+}
+
+/**
+ * A settings document is typed JSON, not text: a value that is nothing but one
+ * token takes the token's own type, so a toggle becomes true and a number
+ * becomes a number. Anything else is substituted as text.
+ */
+function resolveValue(value: string, context: TemplateContext): unknown {
+  const single = /^\{\{([^{}]+)\}\}$/.exec(value);
+  const token = single?.[1];
+  if (!token) return resolveTemplate(value, context);
+  if (token === "oidc.configured") return Boolean(context.oidc);
+  const [kind, key] = token.split(".");
+  if (kind !== "config") return resolveTemplate(value, context);
+  const field = context.fields.get(key);
+  const raw = context.configuration[key] ?? "";
+  // A secret keeps travelling by reference, so no plan ever carries its value.
+  if (field?.kind === "secret") return raw ? secretReference(context.appId, key) : "";
+  if (field?.kind === "toggle") return raw === "on";
+  if (field?.kind === "number" || field?.kind === "bytes") return raw === "" ? null : Number(raw);
+  return raw;
+}
+
+/** Resolves every string leaf of a definition-supplied document. */
+function resolveDocument(value: unknown, context: TemplateContext): unknown {
+  if (typeof value === "string") return resolveValue(value, context);
+  if (Array.isArray(value)) return value.map((item) => resolveDocument(item, context));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, resolveDocument(item, context)]));
+  return value;
 }
 
 function endpointFor(route: AppRoute, definition: AppDefinition) {
@@ -62,20 +103,39 @@ function cloudflareIngress(tunnelId: string, credentialFile: string, routes: Arr
   return { contents: lines.join("\n"), credentialFile };
 }
 
-function oidcEnvironment(appId: string, identityDomain: string, hostname: string) {
-  const issuer = `https://${identityDomain}/application/o`;
+/**
+ * Everything Kimono knows about an app's provider, as `{{oidc.*}}` tokens. The
+ * provider is issued per app, so its issuer carries the app's own slug.
+ */
+function oidcValues(appId: string, identityDomain: string, hostname: string) {
+  const clientId = `kimono-${appId}`;
+  const endpoint = `https://${identityDomain}/application/o`;
   return {
-    OIDC_CLIENT_ID: `kimono-${appId}`,
-    OIDC_CLIENT_SECRET: secretReference(appId, "OIDC_CLIENT_SECRET"),
-    OIDC_AUTH_URI: `${issuer}/authorize/`,
-    OIDC_TOKEN_URI: `${issuer}/token/`,
-    OIDC_USERINFO_URI: `${issuer}/userinfo/`,
-    OIDC_LOGOUT_URI: `${issuer}/kimono-${appId}/end-session/`,
+    clientId,
+    clientSecret: secretReference(appId, "OIDC_CLIENT_SECRET"),
+    issuer: `${endpoint}/${clientId}/`,
+    authorize: `${endpoint}/authorize/`,
+    token: `${endpoint}/token/`,
+    userinfo: `${endpoint}/userinfo/`,
+    endSession: `${endpoint}/${clientId}/end-session/`,
+    url: `https://${hostname}`,
+  } satisfies Record<string, string>;
+}
+
+/** The variable names Outline established, used by any app that does not name its own. */
+function oidcEnvironment(oidc: ReturnType<typeof oidcValues>) {
+  return {
+    OIDC_CLIENT_ID: oidc.clientId,
+    OIDC_CLIENT_SECRET: oidc.clientSecret,
+    OIDC_AUTH_URI: oidc.authorize,
+    OIDC_TOKEN_URI: oidc.token,
+    OIDC_USERINFO_URI: oidc.userinfo,
+    OIDC_LOGOUT_URI: oidc.endSession,
     OIDC_USERNAME_CLAIM: "preferred_username",
     OIDC_DISPLAY_NAME: "Kimono",
     OIDC_SCOPES: "openid profile email",
     FORCE_HTTPS: "true",
-    URL: `https://${hostname}`,
+    URL: oidc.url,
   } satisfies Record<string, string>;
 }
 
@@ -83,8 +143,9 @@ function oidcEnvironment(appId: string, identityDomain: string, hostname: string
  * Authentik reads blueprints from a mounted directory. The reconciler expands the
  * secret placeholder when it writes the file so that the plan carries no values.
  */
-function authentikBlueprint(app: { id: string; name: string }, hostname: string, colors: readonly string[]) {
+function authentikBlueprint(app: { id: string; name: string }, hostname: string, colors: readonly string[], redirectUris: readonly string[]) {
   const slug = `kimono-${app.id}`;
+  const redirects = redirectUris.map((uri) => `        - url: ${uri}\n          matching_mode: strict`).join("\n");
   return `# Generated by Kimono. Do not edit; change the app in the Admin portal.
 version: 1
 metadata:
@@ -119,8 +180,7 @@ entries:
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
       redirect_uris:
-        - url: https://${hostname}/auth/oidc.callback
-          matching_mode: strict
+${redirects}
 
   - model: authentik_core.application
     state: present
@@ -156,6 +216,10 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
     const configuration = Object.fromEntries(definition.spec.configuration.map((field) => [field.key, app.environment[field.key]?.value ?? field.default ?? ""]));
     const services = new Set(definition.spec.services.map((service) => service.id));
     const hostname = appHostname(app.domain, settings.baseDomain);
+    const fields = new Map(definition.spec.configuration.map((field) => [field.key, field]));
+    const identity = definition.spec.identity;
+    const oidc = settings.identityDomain ? oidcValues(app.id, settings.identityDomain, hostname) : null;
+    const context: TemplateContext = { appId: app.id, hostname, configuration, fields, services, ...(oidc ? { oidc } : {}) };
 
     for (const service of definition.spec.services) {
       const name = serviceName(app.id, service.id);
@@ -164,17 +228,34 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
         plan.compose.volumes[volumeName] = {};
         return `${volumeName}:${volume.path}`;
       });
-      const environment = Object.fromEntries(Object.entries(service.environment || {}).map(([key, value]) => [key, resolveTemplate(value, { appId: app.id, hostname, configuration, services })]));
+      const environment = Object.fromEntries(Object.entries(service.environment || {}).map(([key, value]) => [key, resolveTemplate(value, context)]));
       if (service.endpoint) {
         for (const field of definition.spec.configuration) {
+          if (field.target === "settings") continue;
           const override = app.environment[field.key];
           const value = override?.value ?? field.default;
           if (value && !(field.key in environment)) environment[field.key] = override?.secret ? secretReference(app.id, field.key) : value;
         }
       }
       if (service.endpoint && routedServices.has(service.id) && definition.spec.integration === "connected") {
-        if (settings.identityDomain) Object.assign(environment, oidcEnvironment(app.id, settings.identityDomain, hostname));
-        else plan.warnings.push(`${app.name}: identity domain is unknown, so single sign-on was not configured`);
+        if (!oidc) plan.warnings.push(`${app.name}: identity domain is unknown, so single sign-on was not configured`);
+        // An app that names its own variables gets those; an app that reads
+        // identity from its settings document gets none here; everyone else
+        // gets the variable names Outline established.
+        else if (identity?.delivery !== "settings") {
+          Object.assign(environment, identity?.environment
+            ? Object.fromEntries(Object.entries(identity.environment).map(([key, value]) => [key, resolveTemplate(value, context)]))
+            : oidcEnvironment(oidc));
+        }
+      }
+      // An app that keeps its configuration in a file gets one rendered beside
+      // the Compose project and mounted read-only. It is desired state like
+      // every environment variable: the Admin portal remains the only editor.
+      const settingsFile = definition.spec.settingsFile;
+      if (settingsFile && settingsFile.service === service.id) {
+        const path = `apps/${app.id}-settings.json`;
+        plan.files[path] = `${JSON.stringify(resolveDocument(settingsFile.document, context), null, 2)}\n`;
+        volumes.push(`./${path}:${settingsFile.path}:ro`);
       }
       plan.compose.services[name] = {
         image: service.image,
@@ -187,8 +268,9 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
       };
     }
 
-    if (definition.spec.integration === "connected" && settings.identityDomain && routedServices.size) {
-      plan.files[`authentik/kimono-${app.id}.yaml`] = authentikBlueprint(app, hostname, app.colors);
+    if (definition.spec.integration === "connected" && oidc && routedServices.size) {
+      const redirectUris = (identity?.redirectUris || []).map((uri) => resolveTemplate(uri, context));
+      plan.files[`authentik/kimono-${app.id}.yaml`] = authentikBlueprint(app, hostname, app.colors, redirectUris);
     }
   }
 

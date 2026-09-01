@@ -5,12 +5,39 @@ import type { Palette } from "./settings";
 export type ConfigurationField = {
   key: string;
   label: string;
-  kind: "text" | "number" | "bytes" | "email" | "secret" | "select";
+  kind: "text" | "number" | "bytes" | "email" | "secret" | "select" | "toggle";
   group: "general" | "storage" | "email" | "diagnostics" | string;
+  /**
+   * Where the administrator's answer lands. Environment fields become variables
+   * on the app's routed service; settings fields are written into the settings
+   * document the app reads instead.
+   */
+  target?: "environment" | "settings";
   default?: string;
   description?: string;
   options?: string[];
   advanced?: boolean;
+};
+
+/**
+ * Apps that keep their own configuration in a file rather than the environment.
+ * Kimono renders the document beside the Compose project and mounts it read-only,
+ * so the Admin portal stays the one place a household changes an app.
+ */
+export type SettingsFile = { service: string; path: string; document: unknown };
+
+/**
+ * How a connected app receives single sign-on. Outline reads OIDC settings from
+ * its environment; other apps expect a configuration file, and every app owns
+ * the paths its identity provider is allowed to return to.
+ */
+export type IdentityIntegration = {
+  /** Redirect URIs registered with the provider. `{{hostname}}` is resolved. */
+  redirectUris: string[];
+  /** Where the app expects its provider: its environment, or its settings document. */
+  delivery?: "environment" | "settings";
+  /** Replaces Kimono's default OIDC_* variables when the app names them differently. */
+  environment?: Record<string, string>;
 };
 
 export type AppDefinition = {
@@ -37,6 +64,8 @@ export type AppDefinition = {
       environment?: Record<string, string>;
     }>;
     volumes: Array<{ id: string; service: string; path: string; backup: boolean }>;
+    identity?: IdentityIntegration;
+    settingsFile?: SettingsFile;
     configuration: ConfigurationField[];
     managedEnvironment: string[];
     defaultNetworkPolicy: { internetAccess: boolean; allowedApps: string[] };
@@ -64,8 +93,39 @@ function parseDefinition(value: unknown, directory: string, source: AppDefinitio
   if (!Array.isArray(definition.metadata.colors) || definition.metadata.colors.length !== 3 || !definition.metadata.colors.every((color) => colorPattern.test(color))) throw new Error("metadata.colors must contain three hex colors");
   if (basename(definition.metadata.icon) !== definition.metadata.icon || !definition.metadata.icon.endsWith(".svg")) throw new Error("metadata.icon must name an SVG in the definition directory");
   if (!Array.isArray(definition.spec?.services) || !Array.isArray(definition.spec?.configuration)) throw new Error("spec.services and spec.configuration are required");
+  if (definition.spec.integration === "connected") validateIdentity(definition.spec.identity);
+  validateSettings(definition.spec.settingsFile, definition.spec.configuration, definition.spec.services);
   const iconPath = join(directory, definition.metadata.icon);
   return { ...definition, source, iconPath, iconUrl: `/api/app-definitions/${definition.metadata.id}/icon` };
+}
+
+/**
+ * A connected app is only as safe as the redirect URIs Kimono registers for it,
+ * so they are declared rather than guessed from the integration kind.
+ */
+function validateIdentity(identity: IdentityIntegration | undefined) {
+  if (!identity || !Array.isArray(identity.redirectUris) || identity.redirectUris.length === 0) throw new Error("a connected app must declare spec.identity.redirectUris");
+  if (!identity.redirectUris.every((uri) => typeof uri === "string" && uri.trim().length > 0)) throw new Error("spec.identity.redirectUris must contain non-empty strings");
+  if (identity.environment && Object.keys(identity.environment).some((key) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))) throw new Error("spec.identity.environment names must be environment variables");
+  if (identity.delivery && identity.delivery !== "environment" && identity.delivery !== "settings") throw new Error("spec.identity.delivery must be environment or settings");
+}
+
+/**
+ * A settings document only makes sense with somewhere to mount it, and a field
+ * that targets one would silently vanish without it.
+ */
+function validateSettings(file: SettingsFile | undefined, configuration: ConfigurationField[], services: AppDefinition["spec"]["services"]) {
+  const targeted = configuration.filter((field) => field.target === "settings");
+  if (!file) {
+    if (targeted.length) throw new Error(`${targeted[0].key} targets settings, but spec.settingsFile is missing`);
+    return;
+  }
+  if (!services.some((service) => service.id === file.service)) throw new Error(`spec.settingsFile names unknown service ${file.service}`);
+  if (typeof file.path !== "string" || !file.path.startsWith("/") || file.path.includes("..") || file.path.includes(":")) throw new Error("spec.settingsFile.path must be an absolute container path");
+  if (!file.document || typeof file.document !== "object") throw new Error("spec.settingsFile.document must be an object");
+  for (const field of configuration) {
+    if (field.kind === "toggle" && field.default && field.default !== "on" && field.default !== "off") throw new Error(`${field.key} is a toggle, so its default must be on or off`);
+  }
 }
 
 async function scanRoot(root: string, source: AppDefinition["source"], errors: string[]) {

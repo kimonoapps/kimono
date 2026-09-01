@@ -21,9 +21,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-type View = "setup" | "environment" | "storage";
+type View = "setup" | "settings" | "environment" | "storage";
 const views: Array<{ id: View; label: string }> = [
   { id: "setup", label: "Setup" },
+  { id: "settings", label: "Settings" },
   { id: "environment", label: "Advanced" },
   { id: "storage", label: "Storage" },
 ];
@@ -40,6 +41,7 @@ function EnvironmentInput({ field, value, configured }: { field: ConfigurationFi
     defaultValue: field.kind === "secret" ? "" : value,
     placeholder: field.kind === "secret" && configured ? "Configured — leave blank to keep" : field.default,
   };
+  if (field.kind === "toggle") return <input id={common.id} name={common.name} type="checkbox" defaultChecked={(value || field.default || "off") === "on"} />;
   if (field.kind === "select") return <select {...common}>{field.options?.map((option) => <option key={option}>{option}</option>)}</select>;
   return <input {...common} type={field.kind === "secret" ? "password" : field.kind === "number" || field.kind === "bytes" ? "number" : field.kind === "email" ? "email" : "text"} />;
 }
@@ -59,10 +61,14 @@ export default async function AppManagementPage({
   const [definition, settings] = await Promise.all([getAppDefinition(id), getPlatformSettings()]);
   if (!definition) notFound();
   const instance = settings.apps[id];
-  const selectedView = views.some((item) => item.id === query.view) ? query.view as View : "setup";
+  // An app that keeps its own settings document earns a Settings view; the
+  // Advanced view stays what it has always been, this stack's variables.
+  const availableViews = views.filter((item) => item.id !== "settings" || definition.spec.configuration.some((field) => field.target === "settings"));
+  const selectedView = availableViews.some((item) => item.id === query.view) ? query.view as View : "setup";
   const viewHref = (view: View) => `/admin/apps/${id}?view=${view}`;
   const setupHref = `/admin/apps/${id}?view=setup`;
   const environmentHref = `/admin/apps/${id}?view=environment`;
+  const settingsHref = `/admin/apps/${id}?view=settings`;
 
   async function install() {
     "use server";
@@ -101,9 +107,24 @@ export default async function AppManagementPage({
     redirect(`${environmentHref}&saved=1`);
   }
 
+  async function saveSettings(form: FormData) {
+    "use server";
+    await requireAdmin();
+    try {
+      const currentDefinition = await getAppDefinition(id);
+      if (!currentDefinition) throw new Error("App definition no longer exists");
+      await saveAppEnvironment(currentDefinition, form);
+    }
+    catch (error) { redirect(`${settingsHref}&error=${encodeURIComponent(error instanceof Error ? error.message : "Settings could not be saved")}`); }
+    redirect(`${settingsHref}&saved=1`);
+  }
+
   const fieldQuery = query.q?.trim().toLowerCase() || "";
-  const fields = definition.spec.configuration.filter((field) => !fieldQuery || [field.key, field.label, field.group, field.description || ""].some((value) => value.toLowerCase().includes(fieldQuery)));
+  const matching = definition.spec.configuration.filter((field) => !fieldQuery || [field.key, field.label, field.group, field.description || ""].some((value) => value.toLowerCase().includes(fieldQuery)));
+  const fields = matching.filter((field) => field.target !== "settings");
+  const settingsFields = matching.filter((field) => field.target === "settings");
   const groups = Map.groupBy(fields, (field) => field.group);
+  const settingsGroups = Map.groupBy(settingsFields, (field) => field.group);
   const availableTunnels = Object.values(settings.tunnels).filter((tunnel) => tunnel.enabled && Boolean(tunnel.configuration.TUNNEL_TOKEN || (tunnel.configuration.TUNNEL_ID && tunnel.configuration.CREDENTIALS_FILE)));
   const hasSelectedTunnel = availableTunnels.some((tunnel) => tunnel.id === instance?.tunnelId);
   const publishedHost = instance && hasSelectedTunnel ? appHostname(instance.domain, settings.baseDomain) : null;
@@ -132,7 +153,7 @@ export default async function AppManagementPage({
             </p>
             {instance ? (
               <nav className="rail-nav" aria-label="Application management">
-                {views.map((item) => <Link key={item.id} href={viewHref(item.id)} aria-current={selectedView === item.id ? "page" : undefined}>{item.label}</Link>)}
+                {availableViews.map((item) => <Link key={item.id} href={viewHref(item.id)} aria-current={selectedView === item.id ? "page" : undefined}>{item.label}</Link>)}
               </nav>
             ) : null}
           </aside>
@@ -174,12 +195,38 @@ export default async function AppManagementPage({
                 </form>
               ) : null}
 
+              {selectedView === "settings" ? (
+                <>
+                  <header className="panel-heading"><div><h2>Settings</h2><p>How {instance.name} behaves. Kimono holds these, so this page is the only place they change.</p></div>
+                    <form className="panel-search"><input name="q" defaultValue={query.q} placeholder="Filter settings" /><input type="hidden" name="view" value="settings" /><button type="submit">Search</button></form>
+                  </header>
+                  <form action={saveSettings} className="management-form env-form">
+                    <input type="hidden" name="target" value="settings" />
+                    {[...settingsGroups.entries()].map(([group, groupFields]) => (
+                      <section className="environment-group" key={group}>
+                        <h3>{group}</h3>
+                        {groupFields.map((field) => {
+                          const override = instance.environment[field.key];
+                          return <label className="environment-field" key={field.key} htmlFor={`env-${field.key}`}>
+                            <span><strong>{field.label}</strong>{field.description ? <small>{field.description}</small> : null}</span>
+                            <EnvironmentInput field={field} value={override?.value || field.default || ""} configured={Boolean(override)} />
+                          </label>;
+                        })}
+                      </section>
+                    ))}
+                    {!settingsFields.length ? <p className="catalog-empty">No settings match this filter.</p> : null}
+                    <footer><Seal type="submit">Save settings</Seal></footer>
+                  </form>
+                </>
+              ) : null}
+
               {selectedView === "environment" ? (
                 <>
                   <header className="panel-heading"><div><h2>Environment</h2><p>Variables exposed by this app’s file-backed definition.</p></div>
                     <form className="panel-search"><input name="q" defaultValue={query.q} placeholder="Filter variables" /><input type="hidden" name="view" value="environment" /><button type="submit">Search</button></form>
                   </header>
                   <form action={saveEnvironment} className="management-form env-form">
+                    <input type="hidden" name="target" value="environment" />
                     {[...groups.entries()].map(([group, groupFields]) => (
                       <section className="environment-group" key={group}>
                         <h3>{group}</h3>

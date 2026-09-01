@@ -1,0 +1,507 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "immich",
+    "name": "Kimono Photos",
+    "shortName": "Photos",
+    "description": "The household photo and video library",
+    "category": "Media",
+    "version": "3.1.0",
+    "icon": "icon.svg",
+    "colors": [
+      "#8d7fb5",
+      "#3b3357",
+      "#e2dcf0"
+    ]
+  },
+  "spec": {
+    "integration": "connected",
+    "services": [
+      {
+        "id": "server",
+        "image": "ghcr.io/immich-app/immich-server:v3.1.0",
+        "dependsOn": [
+          "database",
+          "redis",
+          "machine-learning"
+        ],
+        "endpoint": {
+          "id": "web",
+          "port": 2283,
+          "protocol": "http"
+        },
+        "environment": {
+          "IMMICH_PORT": "2283",
+          "IMMICH_CONFIG_FILE": "/etc/immich/config.json",
+          "IMMICH_MEDIA_LOCATION": "/data",
+          "DB_HOSTNAME": "{{service.database}}",
+          "DB_PORT": "5432",
+          "DB_DATABASE_NAME": "immich",
+          "DB_USERNAME": "immich",
+          "DB_PASSWORD": "{{secret.DATABASE_PASSWORD}}",
+          "REDIS_HOSTNAME": "{{service.redis}}",
+          "REDIS_PORT": "6379"
+        }
+      },
+      {
+        "id": "machine-learning",
+        "image": "ghcr.io/immich-app/immich-machine-learning:v3.1.0",
+        "internal": true,
+        "environment": {
+          "MACHINE_LEARNING_WORKERS": "1"
+        }
+      },
+      {
+        "id": "database",
+        "image": "ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0",
+        "internal": true,
+        "environment": {
+          "POSTGRES_DB": "immich",
+          "POSTGRES_USER": "immich",
+          "POSTGRES_PASSWORD": "{{secret.DATABASE_PASSWORD}}",
+          "POSTGRES_INITDB_ARGS": "--data-checksums"
+        }
+      },
+      {
+        "id": "redis",
+        "image": "docker.io/valkey/valkey:9",
+        "internal": true
+      }
+    ],
+    "volumes": [
+      {
+        "id": "library",
+        "service": "server",
+        "path": "/data",
+        "backup": true
+      },
+      {
+        "id": "database",
+        "service": "database",
+        "path": "/var/lib/postgresql/data",
+        "backup": true
+      },
+      {
+        "id": "model-cache",
+        "service": "machine-learning",
+        "path": "/cache",
+        "backup": false
+      }
+    ],
+    "identity": {
+      "redirectUris": [
+        "https://{{hostname}}/auth/login",
+        "https://{{hostname}}/user-settings",
+        "app.immich:///oauth-callback"
+      ],
+      "delivery": "settings"
+    },
+    "settingsFile": {
+      "service": "server",
+      "path": "/etc/immich/config.json",
+      "document": {
+        "server": {
+          "externalDomain": "https://{{hostname}}",
+          "loginPageMessage": "{{config.LOGIN_MESSAGE}}",
+          "publicUsers": "{{config.PUBLIC_USERS}}"
+        },
+        "newVersionCheck": {
+          "enabled": "{{config.UPDATE_CHECK}}"
+        },
+        "map": {
+          "enabled": "{{config.SHOW_ON_MAP}}"
+        },
+        "reverseGeocoding": {
+          "enabled": "{{config.REVERSE_GEOCODING}}"
+        },
+        "passwordLogin": {
+          "enabled": "{{config.PASSWORD_SIGN_IN}}"
+        },
+        "oauth": {
+          "enabled": "{{oidc.configured}}",
+          "autoLaunch": "{{config.SKIP_SIGN_IN_PAGE}}",
+          "autoRegister": "{{config.CREATE_ACCOUNTS}}",
+          "buttonText": "{{config.SIGN_IN_BUTTON}}",
+          "clientId": "{{oidc.clientId}}",
+          "clientSecret": "{{oidc.clientSecret}}",
+          "issuerUrl": "{{oidc.issuer}}",
+          "endSessionEndpoint": "{{oidc.endSession}}",
+          "scope": "openid email profile",
+          "signingAlgorithm": "RS256",
+          "storageLabelClaim": "preferred_username",
+          "tokenEndpointAuthMethod": "client_secret_post"
+        },
+        "storageTemplate": {
+          "enabled": "{{config.STORAGE_TEMPLATE_ENABLED}}",
+          "template": "{{config.STORAGE_TEMPLATE}}"
+        },
+        "trash": {
+          "enabled": "{{config.TRASH_ENABLED}}",
+          "days": "{{config.TRASH_DAYS}}"
+        },
+        "user": {
+          "deleteDelay": "{{config.DELETE_DELAY_DAYS}}"
+        },
+        "machineLearning": {
+          "enabled": "{{config.MACHINE_LEARNING}}",
+          "urls": [
+            "http://{{service.machine-learning}}:3003"
+          ],
+          "clip": {
+            "enabled": "{{config.SMART_SEARCH}}"
+          },
+          "facialRecognition": {
+            "enabled": "{{config.FACE_RECOGNITION}}"
+          },
+          "duplicateDetection": {
+            "enabled": "{{config.DUPLICATE_DETECTION}}"
+          }
+        },
+        "ffmpeg": {
+          "transcode": "{{config.VIDEO_TRANSCODE}}",
+          "targetResolution": "{{config.VIDEO_RESOLUTION}}"
+        },
+        "image": {
+          "preview": {
+            "quality": "{{config.IMAGE_QUALITY}}"
+          },
+          "thumbnail": {
+            "quality": "{{config.IMAGE_QUALITY}}"
+          }
+        },
+        "library": {
+          "scan": {
+            "enabled": "{{config.LIBRARY_SCAN}}"
+          }
+        },
+        "logging": {
+          "enabled": true,
+          "level": "{{config.LOG_LEVEL}}"
+        },
+        "notifications": {
+          "smtp": {
+            "enabled": "{{config.SMTP_ENABLED}}",
+            "from": "{{config.SMTP_FROM}}",
+            "transport": {
+              "host": "{{config.SMTP_HOST}}",
+              "port": "{{config.SMTP_PORT}}",
+              "username": "{{config.SMTP_USERNAME}}",
+              "password": "{{config.SMTP_PASSWORD}}"
+            }
+          }
+        }
+      }
+    },
+    "configuration": [
+      {
+        "key": "PUBLIC_USERS",
+        "label": "Household directory",
+        "kind": "toggle",
+        "group": "general",
+        "target": "settings",
+        "default": "on",
+        "description": "Let everyone in the household see the other members by name."
+      },
+      {
+        "key": "SHOW_ON_MAP",
+        "label": "Places map",
+        "kind": "toggle",
+        "group": "general",
+        "target": "settings",
+        "default": "on",
+        "description": "Plot photos that carry a location on a map."
+      },
+      {
+        "key": "REVERSE_GEOCODING",
+        "label": "Place names",
+        "kind": "toggle",
+        "group": "general",
+        "target": "settings",
+        "default": "on",
+        "description": "Look up city and country names for photo locations."
+      },
+      {
+        "key": "LOGIN_MESSAGE",
+        "label": "Sign-in page message",
+        "kind": "text",
+        "group": "general",
+        "target": "settings",
+        "default": "",
+        "description": "Shown above the sign-in form. Leave empty for none."
+      },
+      {
+        "key": "UPDATE_CHECK",
+        "label": "Check for new releases",
+        "kind": "toggle",
+        "group": "general",
+        "target": "settings",
+        "default": "off",
+        "description": "Kimono updates this app, so the reminder is usually noise.",
+        "advanced": true
+      },
+      {
+        "key": "SIGN_IN_BUTTON",
+        "label": "Sign-in button",
+        "kind": "text",
+        "group": "sign-in",
+        "target": "settings",
+        "default": "Sign in with Kimono",
+        "description": "Wording of the Kimono single sign-on button."
+      },
+      {
+        "key": "SKIP_SIGN_IN_PAGE",
+        "label": "Go straight to Kimono",
+        "kind": "toggle",
+        "group": "sign-in",
+        "target": "settings",
+        "default": "on",
+        "description": "Send people to Kimono sign-in without showing the Immich form first."
+      },
+      {
+        "key": "CREATE_ACCOUNTS",
+        "label": "Create accounts on first sign-in",
+        "kind": "toggle",
+        "group": "sign-in",
+        "target": "settings",
+        "default": "on",
+        "description": "Give every household member a library the first time they arrive."
+      },
+      {
+        "key": "PASSWORD_SIGN_IN",
+        "label": "Keep password sign-in",
+        "kind": "toggle",
+        "group": "sign-in",
+        "target": "settings",
+        "default": "on",
+        "description": "A way back in if Kimono sign-in is ever unavailable. Turning this off makes Kimono the only door."
+      },
+      {
+        "key": "STORAGE_TEMPLATE_ENABLED",
+        "label": "Organize files on disk",
+        "kind": "toggle",
+        "group": "storage",
+        "target": "settings",
+        "default": "off",
+        "description": "Rename stored originals to follow the pattern below."
+      },
+      {
+        "key": "STORAGE_TEMPLATE",
+        "label": "Folder pattern",
+        "kind": "text",
+        "group": "storage",
+        "target": "settings",
+        "default": "{{y}}/{{y}}-{{MM}}-{{dd}}/{{filename}}",
+        "description": "Immich placeholders such as {{y}}, {{MM}}, and {{filename}}.",
+        "advanced": true
+      },
+      {
+        "key": "TRASH_ENABLED",
+        "label": "Use the trash",
+        "kind": "toggle",
+        "group": "storage",
+        "target": "settings",
+        "default": "on",
+        "description": "Deleted photos wait in the trash instead of leaving immediately."
+      },
+      {
+        "key": "TRASH_DAYS",
+        "label": "Days in the trash",
+        "kind": "number",
+        "group": "storage",
+        "target": "settings",
+        "default": "30",
+        "description": "How long a deleted photo can still be recovered."
+      },
+      {
+        "key": "DELETE_DELAY_DAYS",
+        "label": "Days before a removed member is erased",
+        "kind": "number",
+        "group": "storage",
+        "target": "settings",
+        "default": "7",
+        "description": "Grace period between removing someone and deleting their library.",
+        "advanced": true
+      },
+      {
+        "key": "LIBRARY_SCAN",
+        "label": "Scan external libraries",
+        "kind": "toggle",
+        "group": "storage",
+        "target": "settings",
+        "default": "on",
+        "description": "Watch mounted external libraries for new files.",
+        "advanced": true
+      },
+      {
+        "key": "MACHINE_LEARNING",
+        "label": "Machine learning",
+        "kind": "toggle",
+        "group": "machine learning",
+        "target": "settings",
+        "default": "on",
+        "description": "Turning this off stops search, faces, and duplicate detection."
+      },
+      {
+        "key": "SMART_SEARCH",
+        "label": "Search by what is in a photo",
+        "kind": "toggle",
+        "group": "machine learning",
+        "target": "settings",
+        "default": "on"
+      },
+      {
+        "key": "FACE_RECOGNITION",
+        "label": "Recognize faces",
+        "kind": "toggle",
+        "group": "machine learning",
+        "target": "settings",
+        "default": "on"
+      },
+      {
+        "key": "DUPLICATE_DETECTION",
+        "label": "Find duplicates",
+        "kind": "toggle",
+        "group": "machine learning",
+        "target": "settings",
+        "default": "on"
+      },
+      {
+        "key": "VIDEO_TRANSCODE",
+        "label": "Convert videos",
+        "kind": "select",
+        "group": "media",
+        "target": "settings",
+        "default": "required",
+        "description": "When to re-encode a video for playback in a browser.",
+        "options": [
+          "all",
+          "required",
+          "optimal",
+          "bitrate",
+          "disabled"
+        ]
+      },
+      {
+        "key": "VIDEO_RESOLUTION",
+        "label": "Converted video size",
+        "kind": "select",
+        "group": "media",
+        "target": "settings",
+        "default": "720",
+        "options": [
+          "original",
+          "2160",
+          "1440",
+          "1080",
+          "720",
+          "480"
+        ]
+      },
+      {
+        "key": "IMAGE_QUALITY",
+        "label": "Preview quality",
+        "kind": "number",
+        "group": "media",
+        "target": "settings",
+        "default": "80",
+        "description": "Quality of generated previews and thumbnails, from 1 to 100."
+      },
+      {
+        "key": "SMTP_ENABLED",
+        "label": "Send email",
+        "kind": "toggle",
+        "group": "email",
+        "target": "settings",
+        "default": "off",
+        "description": "Album invitations and welcome messages.",
+        "advanced": true
+      },
+      {
+        "key": "SMTP_FROM",
+        "label": "From address",
+        "kind": "email",
+        "group": "email",
+        "target": "settings",
+        "default": "",
+        "advanced": true
+      },
+      {
+        "key": "SMTP_HOST",
+        "label": "SMTP host",
+        "kind": "text",
+        "group": "email",
+        "target": "settings",
+        "default": "",
+        "advanced": true
+      },
+      {
+        "key": "SMTP_PORT",
+        "label": "SMTP port",
+        "kind": "number",
+        "group": "email",
+        "target": "settings",
+        "default": "587",
+        "advanced": true
+      },
+      {
+        "key": "SMTP_USERNAME",
+        "label": "SMTP username",
+        "kind": "text",
+        "group": "email",
+        "target": "settings",
+        "default": "",
+        "advanced": true
+      },
+      {
+        "key": "SMTP_PASSWORD",
+        "label": "SMTP password",
+        "kind": "secret",
+        "group": "email",
+        "target": "settings",
+        "advanced": true
+      },
+      {
+        "key": "LOG_LEVEL",
+        "label": "Log level",
+        "kind": "select",
+        "group": "diagnostics",
+        "target": "settings",
+        "default": "log",
+        "options": [
+          "error",
+          "warn",
+          "log",
+          "debug",
+          "verbose"
+        ],
+        "advanced": true
+      },
+      {
+        "key": "TZ",
+        "label": "Time zone",
+        "kind": "text",
+        "group": "general",
+        "target": "environment",
+        "default": "UTC",
+        "description": "Used when a photo carries no time zone of its own."
+      }
+    ],
+    "managedEnvironment": [
+      "IMMICH_PORT",
+      "IMMICH_CONFIG_FILE",
+      "IMMICH_MEDIA_LOCATION",
+      "DB_HOSTNAME",
+      "DB_PORT",
+      "DB_DATABASE_NAME",
+      "DB_USERNAME",
+      "DB_PASSWORD",
+      "REDIS_HOSTNAME",
+      "REDIS_PORT"
+    ],
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    }
+  }
+}

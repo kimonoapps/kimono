@@ -262,8 +262,18 @@ export async function saveAppEnvironment(definition: AppDefinition, form: FormDa
   const settings = await getPlatformSettings();
   const current = settings.apps[definition.metadata.id];
   if (!current) throw new Error("Install this app before configuring it");
+  // Each form posts one target, so saving app settings never disturbs the
+  // environment view's answers, and an unticked box still means "off".
+  const target = String(form.get("target") || "environment") === "settings" ? "settings" : "environment";
   const environment = { ...current.environment };
   for (const field of definition.spec.configuration) {
+    if ((field.target || "environment") !== target) continue;
+    if (field.kind === "toggle") {
+      const value = form.get(`env.${field.key}`) === null ? "off" : "on";
+      if (value === (field.default || "off")) delete environment[field.key];
+      else environment[field.key] = { value, secret: false };
+      continue;
+    }
     const submitted = form.get(`env.${field.key}`);
     if (submitted === null || field.kind === "secret" && submitted === "") continue;
     const value = String(submitted);

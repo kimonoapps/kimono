@@ -699,6 +699,7 @@ button, input { color: inherit; font: inherit; }
 .environment-field > span code { margin-top: 4px; color: var(--muted); font-size: 9px; }
 .environment-field > span small { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.35; }
 .environment-field > input, .environment-field > select { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid var(--hair); border-radius: 0; background: var(--paper-light); }
+.environment-field > input[type="checkbox"] { width: 19px; min-height: 0; height: 19px; justify-self: start; padding: 0; accent-color: var(--plum); }
 .managed-environment { margin: 24px 27px 0; padding: 13px 15px; border: 1px solid var(--hair); color: var(--sumi-soft); font-size: 11px; }
 .managed-environment summary { cursor: pointer; font-weight: 700; }
 .managed-environment p { color: var(--muted); line-height: 1.5; }

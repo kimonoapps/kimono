@@ -19,6 +19,9 @@ const (
 	BlueprintPrefix = "authentik/"
 	// MeshPrefix marks the generated Headscale access policy.
 	MeshPrefix = "mesh/"
+	// AppPrefix marks generated files an app reads directly. They carry the same
+	// client secrets blueprints do, so they are written with the same care.
+	AppPrefix = "apps/"
 )
 
 type Service struct {
