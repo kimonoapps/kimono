@@ -28,7 +28,14 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --generate-notes dist/kimono_linux_amd64 dist/kimono_linux_arm64 dist/SHA256SUMS
+        # Re-running a partly failed release must not die here on a release that
+        # already exists, or the later steps can never be retried.
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            gh release upload "${{ github.ref_name }}" --clobber dist/kimono_linux_amd64 dist/kimono_linux_arm64 dist/SHA256SUMS
+          else
+            gh release create "${{ github.ref_name }}" --generate-notes dist/kimono_linux_amd64 dist/kimono_linux_arm64 dist/SHA256SUMS
+          fi
       # Images live under the kimonoapps organisation, which GITHUB_TOKEN cannot
       # write to — its scope is this repository's owner. Publishing there needs
       # a personal access token with write:packages, stored as GHCR_TOKEN.
