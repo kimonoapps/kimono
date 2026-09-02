@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,8 +80,17 @@ func (m *Manager) enrollment(args []string) error {
 	if _, err := time.ParseDuration(*expiration); err != nil {
 		return fmt.Errorf("invalid enrollment expiration %q: %w", *expiration, err)
 	}
+	// A preauthkey belongs to a user. Minting it against the control-plane user
+	// keeps the appliance's own nodes out of whichever account a person signs
+	// in with, so a policy that names a person cannot accidentally cover them.
+	owner, err := m.ensureControlPlaneUser()
+	if err != nil {
+		return err
+	}
 	_, _ = fmt.Fprintf(m.Runner.Stdout, "Creating a single-use %s enrollment key valid for %s.\n", *role, *expiration)
-	if err := m.Runner.Run("docker", "exec", "kimono-server-headscale-1", "headscale", "preauthkeys", "create", "--expiration", *expiration, "--tags", tag); err != nil {
+	if err := m.Runner.Run("docker", "exec", "kimono-server-headscale-1", "headscale",
+		"preauthkeys", "create", "--user", strconv.FormatUint(owner, 10),
+		"--expiration", *expiration, "--tags", tag); err != nil {
 		return fmt.Errorf("create Headscale enrollment key: %w", err)
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Use the printed key once; Kimono will not be able to display it again.")
@@ -278,7 +288,9 @@ func (m *Manager) doctor() error {
 	if err := m.checkDNS(identityDomain, meshDomain, portalDomain); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintln(m.Runner.Stdout, "\nDNS is ready. Checking containers…")
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "\nDNS is ready. Checking Kimono VPN…")
+	m.reportDuplicateMeshUsers()
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "\nChecking containers…")
 	return m.compose("ps")
 }
 
