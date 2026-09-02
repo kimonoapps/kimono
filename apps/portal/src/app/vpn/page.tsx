@@ -1,4 +1,4 @@
-import { Seal, SealLink, StatedSeal } from "@kimono/ui";
+import { Reveal, Rows, Seal, SealLink, StatedSeal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { VpnRooms } from "@/components/app-rooms";
@@ -69,33 +69,32 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
                 ? <PanelEmpty title="Not connected to the mesh">{mesh.reason}</PanelEmpty>
                 : devices.length
                   ? <Panels>
-                      {devices.map((device) => {
-                        const expiry = describeExpiry(device.expiry);
-                        return <Panel
-                          key={device.id}
-                          label={device.online ? "Online" : "Offline"}
-                          title={device.name}
-                          state={<StatedSeal state={device.online ? "running" : "quiet"}>{device.online ? "Connected" : "Offline"}</StatedSeal>}
-                          action={<div className="device-actions">
-                            <form action={act}>
-                              <input type="hidden" name="device" value={device.id} />
-                              <input type="hidden" name="intent" value="disconnect" />
-                              <Seal tone="quiet" type="submit">Sign out</Seal>
-                            </form>
-                            <form action={act}>
-                              <input type="hidden" name="device" value={device.id} />
-                              <input type="hidden" name="intent" value="remove" />
-                              <Seal tone="danger" type="submit">Remove</Seal>
-                            </form>
-                          </div>}
-                        >
-                          <dl className="device-facts">
-                            <div><dt>Seen</dt><dd>{describeLastSeen(device)}</dd></div>
-                            {device.addresses.length ? <div><dt>Address</dt><dd>{device.addresses.map((address) => <code key={address}>{address}</code>)}</dd></div> : null}
-                            {expiry ? <div><dt>Sign-in</dt><dd>{expiry}</dd></div> : null}
-                          </dl>
-                        </Panel>;
-                      })}
+                      {devices.map((device) => <Panel
+                        key={device.id}
+                        label={device.online ? "Online" : "Offline"}
+                        title={device.name}
+                        state={<StatedSeal state={device.online ? "running" : "quiet"}>{device.online ? "Connected" : "Offline"}</StatedSeal>}
+                        action={device.addresses.length ? <span className="device-addresses">{device.addresses.map((address) => <code key={address}>{address}</code>)}</span> : undefined}
+                      >
+                        <p>{describeLastSeen(device)}{describeExpiry(device.expiry) ? ` · ${describeExpiry(device.expiry)}` : ""}</p>
+                        <Rows>
+                          <Reveal title="Stop using this device" summary="Sign it out, or forget it entirely">
+                            <p>Signing out leaves the device its address and its place here; it comes back when someone signs in on it again. Removing forgets it, and joining once more is a new device.</p>
+                            <div className="device-actions">
+                              <form action={act}>
+                                <input type="hidden" name="device" value={device.id} />
+                                <input type="hidden" name="intent" value="disconnect" />
+                                <Seal tone="quiet" type="submit">Sign out</Seal>
+                              </form>
+                              <form action={act}>
+                                <input type="hidden" name="device" value={device.id} />
+                                <input type="hidden" name="intent" value="remove" />
+                                <Seal tone="danger" type="submit">Remove</Seal>
+                              </form>
+                            </div>
+                          </Reveal>
+                        </Rows>
+                      </Panel>)}
                     </Panels>
                   : <PanelEmpty title="No devices yet" action={<SealLink href="/vpn/connect">Connect a device</SealLink>}>
                       Nothing of yours has joined this mesh. Adding one takes about a minute.
