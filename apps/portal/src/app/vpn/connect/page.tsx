@@ -89,7 +89,9 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
           >
             {query.key
               ? <>
-                  <p>It works once and expires in thirty minutes. Take it to the machine you are adding.</p>
+                  <p>It works once and expires in thirty minutes. Run this on the machine you are adding:</p>
+                  <Command>{`tailscale up --login-server https://${mesh} --authkey ${query.key}`}</Command>
+                  <p>The key on its own, if the machine wants it separately:</p>
                   <Command>{query.key}</Command>
                 </>
               : <p>Most devices never need this. A server without a browser does.</p>}
@@ -97,6 +99,13 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
           <Panel label="Server" title="Joining a server">
             <p>Install Kimono on it, then join with the key above:</p>
             <Command>{`curl -fsSL https://${settings.baseDomain}/install.sh | sudo sh\nsudo kimono node install`}</Command>
+          </Panel>
+          <Panel label="Care" title="A key is not a sign-in">
+            <p>
+              A machine joined with a key is not signed in as you — it belongs to your mesh account
+              without ever meeting the identity provider. Use one only where a browser cannot open, and
+              sign in normally everywhere else, so every device answers to the same account.
+            </p>
           </Panel>
         </Panels>
       </Workspace>

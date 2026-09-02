@@ -73,8 +73,10 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
     <div className={cx("app-frame", app && "in-app")} style={app ? appPalette(app) : undefined}>
       <header className="top-header">
         <div className="header-inner">
+          {/* The lockup is where people reach for the way out, so it is the way
+              out. The blossom in the account menu remains the ceremonial one. */}
           {app
-            ? <span className="brand-link in-app-brand"><AppLockup identity={app} /></span>
+            ? <Link href="/" className="brand-link in-app-brand" aria-label="Back to Kimono"><AppLockup identity={app} /></Link>
             : <Link href="/" className="brand-link"><KimonoMark /></Link>}
           {app ? <span className="main-nav" /> : <nav className="main-nav" aria-label="Main navigation">
             <NavDoor href="/" label="Home" here={active === "home"} />

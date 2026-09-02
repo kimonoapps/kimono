@@ -103,7 +103,7 @@ button, input { color: inherit; font: inherit; }
 }
 
 /* 間 In an app, the shell wears the app's lockup instead of Kimono's mark. */
-.in-app-brand { cursor: default; }
+.in-app-brand { cursor: pointer; }
 /* The way out of an app, in the account menu beside the way out of Kimono. */
 .return-charm { text-decoration: none; }
 .return-charm .charm-copy strong { color: var(--k-app-accent, var(--vermillion)); }
@@ -701,6 +701,12 @@ button, input { color: inherit; font: inherit; }
 .environment-field > input, .environment-field > select { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid var(--hair); border-radius: 0; background: var(--paper-light); }
 .environment-field > input[type="checkbox"] { width: 19px; min-height: 0; height: 19px; justify-self: start; padding: 0; accent-color: var(--plum); }
 .technical-section-actions { display: flex; align-items: center; gap: 10px; }
+.device-actions { display: flex; align-items: center; gap: 8px; }
+.device-facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 6px 0 0; }
+.device-facts div { display: contents; }
+.device-facts dt { color: var(--sumi-soft); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.device-facts dd { margin: 0; color: var(--sumi); font-size: 13px; }
+.device-facts dd code { margin-right: 8px; font-size: 12px; }
 .managed-environment { margin: 24px 27px 0; padding: 13px 15px; border: 1px solid var(--hair); color: var(--sumi-soft); font-size: 11px; }
 .managed-environment summary { cursor: pointer; font-weight: 700; }
 .managed-environment p { color: var(--muted); line-height: 1.5; }
@@ -1096,7 +1102,7 @@ button, input { color: inherit; font: inherit; }
   .top-header { height: 68px; }
   .header-inner { height: 65px; padding-inline: 16px; gap: 12px; }
   /* 間 In an app, the shell wears the app's lockup instead of Kimono's mark. */
-.in-app-brand { cursor: default; }
+.in-app-brand { cursor: pointer; }
 /* The way out of an app, in the account menu beside the way out of Kimono. */
 .return-charm { text-decoration: none; }
 .return-charm .charm-copy strong { color: var(--k-app-accent, var(--vermillion)); }

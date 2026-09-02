@@ -157,16 +157,20 @@ export async function createEnrolmentKey(person: { username: string; email?: str
 > {
   const owner = person.username.toLowerCase();
   try {
-    /* Headscale creates a user at first sign-in; a person adding their first
-       device may not have one yet. */
+    /* Never create the user. Headscale identifies a person who signs in by the
+       provider's subject, not by name, so a user minted here is not the one a
+       later sign-in adopts — it becomes a second account with the same name,
+       and the access policy, which addresses people by name, then covers only
+       one of them. Whichever devices land on the other simply stop being
+       visible, with nothing logged. Signing in once has to come first. */
     const listed = await meshRequest(`/api/v1/user?name=${encodeURIComponent(owner)}`);
     const users = (listed.users as Array<{ id?: string; name?: string }> | undefined) || [];
-    let id = users.find((user) => user.name === owner)?.id;
-    if (!id) {
-      const created = await meshRequest("/api/v1/user", { method: "POST", body: JSON.stringify({ name: owner }) });
-      id = (created.user as { id?: string } | undefined)?.id;
+    const matching = users.filter((user) => user.name === owner);
+    if (matching.length > 1) {
+      return { error: `The mesh has ${matching.length} accounts named ${owner}, so a key would be ambiguous. Ask an administrator to run \`kimono server doctor\`.` };
     }
-    if (!id) return { error: "The mesh has no account for you yet. Sign in on a device once, then try again." };
+    const id = matching[0]?.id;
+    if (!id) return { error: "The mesh has no account for you yet. Sign in from a device with a browser once, then come back for a key." };
 
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     /* The key is addressed to the user's id — Headscale stopped accepting a
@@ -181,4 +185,31 @@ export async function createEnrolmentKey(person: { username: string; email?: str
   } catch (error) {
     return { error: error instanceof Error ? error.message : "The key could not be created." };
   }
+}
+
+/** A person's own device, or nothing. Ownership is checked before every change. */
+async function ownDevice(person: { username: string; email?: string | null }, id: string) {
+  const mesh = await readMesh();
+  if (!mesh.available) throw new Error(mesh.reason);
+  const device = devicesFor(mesh.devices, person).find((candidate) => candidate.id === id);
+  if (!device) throw new Error("That device is not one of yours.");
+  return device;
+}
+
+/**
+ * Signs a device out of the mesh without forgetting it. The device keeps its
+ * address and reappears when someone signs in on it again, which is what you
+ * want for a laptop that has been lost sight of rather than replaced.
+ */
+export async function disconnectDevice(person: { username: string; email?: string | null }, id: string) {
+  const device = await ownDevice(person, id);
+  await meshRequest(`/api/v1/node/${encodeURIComponent(device.id)}/expire`, { method: "POST" });
+  return device;
+}
+
+/** Forgets a device entirely. Its address is released and rejoining is a new enrolment. */
+export async function removeDevice(person: { username: string; email?: string | null }, id: string) {
+  const device = await ownDevice(person, id);
+  await meshRequest(`/api/v1/node/${encodeURIComponent(device.id)}`, { method: "DELETE" });
+  return device;
 }
