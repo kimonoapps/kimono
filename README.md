@@ -152,3 +152,8 @@ flower palette, environment overrides, tunnel selection, and network policy.
 canvas. It must not include the flower. Kimono composes the glyph into the
 shared bloom and applies the instance's three configurable colors. Scripts,
 event handlers, foreign objects, and external references are rejected.
+
+## Kimono Hosting nodes
+
+See the short [hosting node setup guide](docs/hosting-node-setup.md) to connect
+a Wings machine and configure its HTTPS certificate with the Kimono CLI.

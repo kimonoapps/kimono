@@ -56,7 +56,7 @@ func printHelp() {
 Usage:
   kimono update             Update Kimono itself, then the appliance
   kimono server <command>   Manage the main Kimono control-plane VM
-  kimono node <command>     Manage a client connected to the Kimono mesh
+  kimono node <command>     Manage a Kimono client or hosting node
 
 Server commands:
   install   Configure and start Authentik, Headscale, DERP, and HTTPS
@@ -76,7 +76,7 @@ Node commands:
   install   Install Tailscale and join the Kimono private mesh
   login     Re-enroll this client with a new single-use key
   logout    Remove this machine's current mesh login
-  hosting tls  Obtain and renew HTTPS certificates for a manual Wings node
+  hosting tls  Obtain and renew HTTPS for Wings; mesh enrollment is optional
   expose    Optionally publish a local container or HTTP port
   unexpose  Stop one optional local exposure
   list      List optional local exposures

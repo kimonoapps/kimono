@@ -136,13 +136,14 @@ The installer sets up Tailscale and joins the client to Headscale. It does not
 install Docker or cloudflared. Application stacks, databases, tunnel
 connectors, and route reconciliation remain on the Kimono server.
 
-### Pelican Wings TLS
+## Pelican Wings TLS
 
 Pelican node creation remains manual: create the node in Kimono Hosting first,
 choose HTTPS and its public port (normally `8080`), then install the Wings
 configuration Pelican generates. Kimono can prepare and renew the trusted
 certificate on the node without using port 443. Point the node hostname at its
-public IP with a DNS-only record before setup.
+public IP with a DNS-only record before setup. A hosting node does not need to
+join the Kimono private mesh; install the Kimono CLI by choosing **CLI only**.
 
 When TCP port 80 reaches the node, use Let's Encrypt's HTTP challenge:
 

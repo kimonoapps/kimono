@@ -1,11 +1,14 @@
 package node
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/kimonoapps/kimono/cli/internal/system"
 )
 
 func TestParseConvenienceTargets(t *testing.T) {
@@ -94,5 +97,41 @@ func TestWriteCloudflareCredentialsProtectsToken(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0600 {
 		t.Fatalf("credentials mode = %o, expected 600", info.Mode().Perm())
+	}
+}
+
+func TestHostingNodeDoesNotRequireMeshEnrollment(t *testing.T) {
+	home := t.TempDir()
+	stdout := &bytes.Buffer{}
+	manager := &Manager{
+		Home: home,
+		Runner: &system.Runner{
+			DryRun: true,
+			Stdin:  strings.NewReader(""),
+			Stdout: stdout,
+			Stderr: &bytes.Buffer{},
+		},
+	}
+	config, err := manager.loadOptional()
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.Hosting = &HostingConfig{
+		Hostname:  "node2.example.com",
+		Port:      8080,
+		Challenge: "cloudflare",
+	}
+	if err := manager.save(config); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.status(); err != nil {
+		t.Fatal(err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "Hosting node: https://node2.example.com:8080") {
+		t.Fatalf("hosting status missing from %q", output)
+	}
+	if strings.Contains(output, "tailscale") || strings.Contains(output, "Mesh:") {
+		t.Fatalf("standalone hosting node unexpectedly requires mesh: %q", output)
 	}
 }

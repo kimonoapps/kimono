@@ -56,7 +56,7 @@ func (m *Manager) hostingTLS(args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	config, err := m.load()
+	config, err := m.loadOptional()
 	if err != nil {
 		return err
 	}

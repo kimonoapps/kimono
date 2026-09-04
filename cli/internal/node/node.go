@@ -130,7 +130,13 @@ func (m *Manager) install(args []string) error {
 	if err := m.Runner.RunSensitive("tailscale", "up", "--login-server", *serverURL, "--hostname", *machine, "--accept-dns=true", "--auth-key", key); err != nil {
 		return err
 	}
-	config := Config{Version: 4, ServerURL: *serverURL, Machine: *machine}
+	config, err := m.loadOptional()
+	if err != nil {
+		return err
+	}
+	config.Version = 4
+	config.ServerURL = *serverURL
+	config.Machine = *machine
 	if err := m.save(config); err != nil {
 		return err
 	}
@@ -169,9 +175,11 @@ func (m *Manager) status() error {
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(m.Runner.Stdout, "Kimono client: %s\nMesh: %s\n\n", config.Machine, config.ServerURL)
-	if err := m.Runner.Run("tailscale", "status"); err != nil {
-		return err
+	if config.ServerURL != "" && config.Machine != "" {
+		_, _ = fmt.Fprintf(m.Runner.Stdout, "Kimono client: %s\nMesh: %s\n\n", config.Machine, config.ServerURL)
+		if err := m.Runner.Run("tailscale", "status"); err != nil {
+			return err
+		}
 	}
 	if config.Exposure != nil {
 		_, _ = fmt.Fprintf(m.Runner.Stdout, "Convenience exposures: %d via %s\n", len(config.Exposure.Items), config.Exposure.Provider)
@@ -192,14 +200,16 @@ func (m *Manager) doctor() error {
 		}
 		_, _ = fmt.Fprintf(m.Runner.Stdout, "%s %s\n", mark, message)
 	}
-	check(m.Runner.Exists("tailscale"), "Tailscale installed")
-	_, configErr := m.load()
-	check(configErr == nil, "Kimono client configured")
-	if m.Runner.Exists("tailscale") {
-		_, err := m.Runner.Output("tailscale", "status", "--json")
-		check(err == nil, "private mesh reachable")
+	config, configErr := m.load()
+	check(configErr == nil, "Kimono node configured")
+	if configErr == nil && config.ServerURL != "" && config.Machine != "" {
+		check(m.Runner.Exists("tailscale"), "Tailscale installed")
+		if m.Runner.Exists("tailscale") {
+			_, err := m.Runner.Output("tailscale", "status", "--json")
+			check(err == nil, "private mesh reachable")
+		}
 	}
-	if config, err := m.load(); err == nil && config.Hosting != nil {
+	if configErr == nil && config.Hosting != nil {
 		check(fileExists(config.Hosting.Certificate), "hosting certificate present")
 		check(fileExists(config.Hosting.PrivateKey), "hosting certificate key present")
 	}
@@ -213,6 +223,17 @@ func (m *Manager) load() (Config, error) {
 	var config Config
 	if err := system.ReadJSON(m.configPath(), &config); err != nil {
 		return config, fmt.Errorf("Kimono client is not installed; run `sudo kimono node install`: %w", err)
+	}
+	return config, nil
+}
+
+func (m *Manager) loadOptional() (Config, error) {
+	var config Config
+	if err := system.ReadJSON(m.configPath(), &config); err != nil {
+		if os.IsNotExist(err) {
+			return Config{Version: 4}, nil
+		}
+		return config, fmt.Errorf("read Kimono node configuration: %w", err)
 	}
 	return config, nil
 }
