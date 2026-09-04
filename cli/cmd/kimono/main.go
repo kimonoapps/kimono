@@ -76,6 +76,7 @@ Node commands:
   install   Install Tailscale and join the Kimono private mesh
   login     Re-enroll this client with a new single-use key
   logout    Remove this machine's current mesh login
+  hosting tls  Obtain and renew HTTPS certificates for a manual Wings node
   expose    Optionally publish a local container or HTTP port
   unexpose  Stop one optional local exposure
   list      List optional local exposures

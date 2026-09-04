@@ -136,6 +136,43 @@ The installer sets up Tailscale and joins the client to Headscale. It does not
 install Docker or cloudflared. Application stacks, databases, tunnel
 connectors, and route reconciliation remain on the Kimono server.
 
+### Pelican Wings TLS
+
+Pelican node creation remains manual: create the node in Kimono Hosting first,
+choose HTTPS and its public port (normally `8080`), then install the Wings
+configuration Pelican generates. Kimono can prepare and renew the trusted
+certificate on the node without using port 443. Point the node hostname at its
+public IP with a DNS-only record before setup.
+
+When TCP port 80 reaches the node, use Let's Encrypt's HTTP challenge:
+
+```bash
+sudo kimono node hosting tls \
+  --hostname node1.example.com \
+  --email you@example.com
+```
+
+Keep port 80 reachable for renewals and forward the configured Wings port
+(normally TCP 8080). The resulting endpoint is
+`https://node1.example.com:8080`; port 443 is not used.
+
+If port 80 cannot reach the node, create a Cloudflare API token restricted to
+DNS edits for the zone and put only its value in a root-readable file:
+
+```bash
+sudo install -m 0600 /dev/null /root/cloudflare-dns-token
+sudo nano /root/cloudflare-dns-token
+sudo kimono node hosting tls \
+  --hostname node1.example.com \
+  --email you@example.com \
+  --challenge cloudflare \
+  --cloudflare-token-file /root/cloudflare-dns-token
+```
+
+DNS validation requires no inbound validation port. Both modes install a
+Certbot deployment hook that restarts Wings after a successful renewal. The
+command prints the `fullchain.pem` and `privkey.pem` paths expected by Wings.
+
 As a separate convenience, a client may publish something local. The first
 `node expose` lazily installs Docker/cloudflared, asks for a Cloudflare domain,
 and creates a client-owned convenience tunnel:

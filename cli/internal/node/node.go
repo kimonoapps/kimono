@@ -18,6 +18,7 @@ type Config struct {
 	ServerURL string          `json:"server_url"`
 	Machine   string          `json:"machine"`
 	Exposure  *ExposureConfig `json:"exposure,omitempty"`
+	Hosting   *HostingConfig  `json:"hosting,omitempty"`
 }
 
 type Manager struct {
@@ -31,7 +32,7 @@ func New(runner *system.Runner) *Manager {
 
 func (m *Manager) Execute(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: kimono node <install|login|logout|status|doctor|expose|unexpose|list|inspect|logs>")
+		return errors.New("usage: kimono node <install|login|logout|status|doctor|hosting|expose|unexpose|list|inspect|logs>")
 	}
 	switch args[0] {
 	case "install":
@@ -44,6 +45,8 @@ func (m *Manager) Execute(args []string) error {
 		return m.status()
 	case "doctor":
 		return m.doctor()
+	case "hosting":
+		return m.hosting(args[1:])
 	case "expose":
 		return m.expose(args[1:])
 	case "unexpose":
@@ -127,7 +130,7 @@ func (m *Manager) install(args []string) error {
 	if err := m.Runner.RunSensitive("tailscale", "up", "--login-server", *serverURL, "--hostname", *machine, "--accept-dns=true", "--auth-key", key); err != nil {
 		return err
 	}
-	config := Config{Version: 3, ServerURL: *serverURL, Machine: *machine}
+	config := Config{Version: 4, ServerURL: *serverURL, Machine: *machine}
 	if err := m.save(config); err != nil {
 		return err
 	}
@@ -173,6 +176,9 @@ func (m *Manager) status() error {
 	if config.Exposure != nil {
 		_, _ = fmt.Fprintf(m.Runner.Stdout, "Convenience exposures: %d via %s\n", len(config.Exposure.Items), config.Exposure.Provider)
 	}
+	if config.Hosting != nil {
+		_, _ = fmt.Fprintf(m.Runner.Stdout, "Hosting node: https://%s:%d (%s certificate)\n", config.Hosting.Hostname, config.Hosting.Port, config.Hosting.Challenge)
+	}
 	return nil
 }
 
@@ -193,6 +199,10 @@ func (m *Manager) doctor() error {
 		_, err := m.Runner.Output("tailscale", "status", "--json")
 		check(err == nil, "private mesh reachable")
 	}
+	if config, err := m.load(); err == nil && config.Hosting != nil {
+		check(fileExists(config.Hosting.Certificate), "hosting certificate present")
+		check(fileExists(config.Hosting.PrivateKey), "hosting certificate key present")
+	}
 	if failures > 0 {
 		return fmt.Errorf("doctor found %d problem(s)", failures)
 	}
@@ -209,6 +219,11 @@ func (m *Manager) load() (Config, error) {
 
 func (m *Manager) save(config Config) error { return system.WriteJSON(m.configPath(), config, 0600) }
 func (m *Manager) configPath() string       { return filepath.Join(m.Home, "node.json") }
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
 
 func validateEnrollmentKey(key string) error {
 	if !strings.HasPrefix(key, "hskey-auth-") || len(key) < 24 {
