@@ -192,6 +192,14 @@ export default async function AppManagementPage({
                     <fieldset className="palette-field"><legend className="sr-only">Application colors</legend><div className="palette-editor"><AppBloom identity={{ id, name: definition.metadata.shortName, accent: accentOf((id === "kimono-portal" ? settings.brand.colors : instance?.colors) || definition.metadata.colors) }} glyphHref={definition.iconUrl} /><div className="color-row">{(id === "kimono-portal" ? settings.brand.colors : instance.colors).map((color, index) => <label key={index}><input type="color" name={`color${index}`} defaultValue={color} /><span>{color}</span></label>)}</div></div></fieldset>
                   </details>
                   {id !== "kimono-portal" ? <details className="setup-advanced"><summary>Advanced connectivity</summary><label className="settings-toggle"><input type="checkbox" name="internetAccess" defaultChecked={instance.networkPolicy.internetAccess} /><span>Allow this app to make outbound internet connections</span></label></details> : null}
+                  {definition.spec.manualSetup ? (
+                    <Compartment label={definition.spec.manualSetup.title} className="setup-section">
+                      <div className="manual-setup">
+                        <p>{definition.spec.manualSetup.description}</p>
+                        <ol>{definition.spec.manualSetup.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+                      </div>
+                    </Compartment>
+                  ) : null}
                   <footer><Seal type="submit">Save app setup</Seal></footer>
                 </form>
               ) : null}

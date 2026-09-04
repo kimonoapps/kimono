@@ -986,6 +986,10 @@ button, input { color: inherit; font: inherit; }
 .app-panel .setup-section { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: stretch; gap: 0; margin: 0; padding: 0; border: 0; border-bottom: var(--tray-line); border-radius: 0; background: transparent; }
 .app-panel .setup-section > div:first-child p { display: none; }
 .app-panel .setup-section > .k-body { padding: var(--ma-5) var(--panel-inset); }
+.manual-setup { display: grid; gap: var(--ma-3); }
+.manual-setup > p { margin: 0; color: var(--sumi-soft); font-size: 13px; line-height: 1.65; }
+.manual-setup ol { display: grid; gap: var(--ma-2); margin: 0; padding-left: 20px; color: var(--sumi); font-size: 13px; line-height: 1.6; }
+.manual-setup li::marker { color: var(--vermillion); font-weight: 750; }
 .app-panel .setup-address { border-left: 0; background: transparent; }
 .app-panel .setup-address.needs-tunnel > .k-body { background: color-mix(in srgb, var(--sakura) 13%, var(--paper-light)); }
 

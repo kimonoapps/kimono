@@ -24,7 +24,7 @@ and the closest safe branding or navigation hook that upstream supports.
 
 The registry records two separate ideas:
 
-- `kind`: `native`, `fork`, or `connected`
+- `kind`: `native`, `fork`, `connected`, or `hosted`
 - `presentation`: `standalone` or `embedded`
 - `brand.colors`: three app-owned colors rendered by the shared bloom mark
 
@@ -40,6 +40,8 @@ permissions policy, and document its authentication and navigation behavior.
   make navigation coherent without forcing every app into one browser document.
 - Forks must integrate the Kimono shell directly to claim a native experience.
 - Apps that cannot support the contract remain honestly labeled as connected.
+- Hosted applications keep their upstream UI and account model while Kimono
+  owns their lifecycle, storage, routing, and launcher identity.
 - Kimono Notes is the first connected application: Outline owns the notes UI
   and storage while Kimono provides deployment, OIDC SSO, branding, and launch.
 - A future cross-app bridge may use a versioned `postMessage` protocol, but it

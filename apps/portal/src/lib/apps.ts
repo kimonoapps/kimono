@@ -11,7 +11,7 @@ export type KimonoApp = {
   description: string;
   href: string;
   iconUrl: string;
-  integration: "native" | "headless" | "fork" | "connected";
+  integration: "native" | "headless" | "fork" | "connected" | "hosted";
   /** The one colour the app owns. Its bloom and lockup derive from this. */
   accent: string;
   /** Kimono's own apps draw a glyph; hosted apps ship an icon file. */

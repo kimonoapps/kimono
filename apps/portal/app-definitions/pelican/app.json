@@ -1,0 +1,59 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "pelican",
+    "name": "Kimono Hosting",
+    "shortName": "Hosting",
+    "description": "Game servers and their players, managed with Pelican",
+    "category": "Games",
+    "version": "1.0.0-beta38",
+    "icon": "icon.svg",
+    "colors": ["#4f7794", "#294458", "#d8e4e9"]
+  },
+  "spec": {
+    "integration": "hosted",
+    "services": [
+      {
+        "id": "panel",
+        "image": "ghcr.io/pelican/panel:v1.0.0-beta38",
+        "endpoint": { "id": "web", "port": 80, "protocol": "http" },
+        "environment": {
+          "APP_URL": "https://{{hostname}}",
+          "APP_ENV": "production",
+          "APP_DEBUG": "false",
+          "BEHIND_PROXY": "true",
+          "XDG_DATA_HOME": "/pelican-data",
+          "MAIL_DRIVER": "log"
+        }
+      }
+    ],
+    "volumes": [
+      { "id": "data", "service": "panel", "path": "/pelican-data", "backup": true },
+      { "id": "plugins", "service": "panel", "path": "/var/www/html/plugins", "backup": true },
+      { "id": "logs", "service": "panel", "path": "/var/www/html/storage/logs", "backup": false }
+    ],
+    "configuration": [
+      {
+        "key": "TRUSTED_PROXIES",
+        "label": "Trusted proxy networks",
+        "kind": "text",
+        "group": "network",
+        "default": "172.16.0.0/12",
+        "description": "Docker network ranges allowed to supply forwarded HTTPS and client-address headers.",
+        "advanced": true
+      }
+    ],
+    "managedEnvironment": ["APP_URL", "APP_ENV", "APP_DEBUG", "BEHIND_PROXY", "XDG_DATA_HOME", "MAIL_DRIVER"],
+    "manualSetup": {
+      "title": "Finish in Pelican",
+      "description": "Kimono runs and publishes the unmodified Pelican panel. Pelican keeps its own installer, users, server templates, and node credentials.",
+      "steps": [
+        "After the panel starts, open its /installer path and create the first administrator.",
+        "Keep a separate protected copy of the APP_KEY stored in Pelican's persistent data.",
+        "Create each node in Pelican, then install Wings on that machine with the configuration Pelican provides. Kimono does not provision or manage Wings nodes."
+      ]
+    },
+    "defaultNetworkPolicy": { "internetAccess": true, "allowedApps": [] }
+  }
+}

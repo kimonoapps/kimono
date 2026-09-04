@@ -54,7 +54,7 @@ export type AppDefinition = {
     colors: Palette;
   };
   spec: {
-    integration: "native" | "headless" | "fork" | "connected";
+    integration: "native" | "headless" | "fork" | "connected" | "hosted";
     services: Array<{
       id: string;
       image: string;
@@ -66,6 +66,12 @@ export type AppDefinition = {
     volumes: Array<{ id: string; service: string; path: string; backup: boolean }>;
     identity?: IdentityIntegration;
     settingsFile?: SettingsFile;
+    /** Work the upstream application deliberately leaves to its own UI or tooling. */
+    manualSetup?: {
+      title: string;
+      description: string;
+      steps: string[];
+    };
     configuration: ConfigurationField[];
     managedEnvironment: string[];
     defaultNetworkPolicy: { internetAccess: boolean; allowedApps: string[] };
@@ -94,9 +100,18 @@ function parseDefinition(value: unknown, directory: string, source: AppDefinitio
   if (basename(definition.metadata.icon) !== definition.metadata.icon || !definition.metadata.icon.endsWith(".svg")) throw new Error("metadata.icon must name an SVG in the definition directory");
   if (!Array.isArray(definition.spec?.services) || !Array.isArray(definition.spec?.configuration)) throw new Error("spec.services and spec.configuration are required");
   if (definition.spec.integration === "connected") validateIdentity(definition.spec.identity);
+  validateManualSetup(definition.spec.manualSetup);
   validateSettings(definition.spec.settingsFile, definition.spec.configuration, definition.spec.services);
   const iconPath = join(directory, definition.metadata.icon);
   return { ...definition, source, iconPath, iconUrl: `/api/app-definitions/${definition.metadata.id}/icon` };
+}
+
+function validateManualSetup(manualSetup: AppDefinition["spec"]["manualSetup"]) {
+  if (!manualSetup) return;
+  if (!manualSetup.title?.trim() || !manualSetup.description?.trim()) throw new Error("spec.manualSetup requires a title and description");
+  if (!Array.isArray(manualSetup.steps) || manualSetup.steps.length === 0 || !manualSetup.steps.every((step) => typeof step === "string" && step.trim())) {
+    throw new Error("spec.manualSetup.steps must contain non-empty strings");
+  }
 }
 
 /**

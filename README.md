@@ -1,8 +1,9 @@
 # Kimono
 
 Kimono is a lightweight, self-hosted household application platform. It gives
-first-party apps, maintained forks, and connected services one calm interface,
-one account, and one administration surface.
+first-party apps, maintained forks, connected services, and hosted upstream
+software one calm launcher and administration surface, with shared identity
+where the application supports it.
 
 ## Workspace
 
@@ -143,9 +144,9 @@ my-app/
 
 `app.json` owns the complex stack contract: container images, internal
 services, endpoints, persistent volumes, declared environment fields, managed
-environment, and default network policy. The management panel owns only an
-installed instance: name, enabled state, domain, flower palette, environment
-overrides, tunnel selection, and network policy.
+environment, optional manual setup steps, and default network policy. The
+management panel owns only an installed instance: name, enabled state, domain,
+flower palette, environment overrides, tunnel selection, and network policy.
 
 `icon.svg` is the app's white center glyph on a transparent `0 0 100 100`
 canvas. It must not include the flower. Kimono composes the glyph into the
