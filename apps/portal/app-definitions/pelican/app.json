@@ -12,7 +12,7 @@
     "colors": ["#4f7794", "#294458", "#d8e4e9"]
   },
   "spec": {
-    "integration": "hosted",
+    "integration": "connected",
     "services": [
       {
         "id": "panel",
@@ -33,6 +33,20 @@
       { "id": "plugins", "service": "panel", "path": "/var/www/html/plugins", "backup": true },
       { "id": "logs", "service": "panel", "path": "/var/www/html/storage/logs", "backup": false }
     ],
+    "identity": {
+      "redirectUris": ["https://{{hostname}}/auth/oauth/callback/authentik"],
+      "environment": {
+        "OAUTH_AUTHENTIK_ENABLED": "true",
+        "OAUTH_AUTHENTIK_CLIENT_ID": "{{oidc.clientId}}",
+        "OAUTH_AUTHENTIK_CLIENT_SECRET": "{{oidc.clientSecret}}",
+        "OAUTH_AUTHENTIK_BASE_URL": "{{oidc.baseUrl}}",
+        "OAUTH_AUTHENTIK_DISPLAY_NAME": "Kimono",
+        "OAUTH_AUTHENTIK_DISPLAY_COLOR": "#4f7794",
+        "OAUTH_AUTHENTIK_SHOULD_CREATE_MISSING_USERS": "true",
+        "OAUTH_AUTHENTIK_SHOULD_LINK_MISSING_USERS": "true",
+        "AUTH_DISABLE_PASSWORD_LOGIN": "false"
+      }
+    },
     "configuration": [
       {
         "key": "TRUSTED_PROXIES",
@@ -44,12 +58,12 @@
         "advanced": true
       }
     ],
-    "managedEnvironment": ["APP_URL", "APP_ENV", "APP_DEBUG", "BEHIND_PROXY", "XDG_DATA_HOME", "MAIL_DRIVER"],
+    "managedEnvironment": ["APP_URL", "APP_ENV", "APP_DEBUG", "BEHIND_PROXY", "XDG_DATA_HOME", "MAIL_DRIVER", "OAUTH_AUTHENTIK_ENABLED", "OAUTH_AUTHENTIK_CLIENT_ID", "OAUTH_AUTHENTIK_CLIENT_SECRET", "OAUTH_AUTHENTIK_BASE_URL", "OAUTH_AUTHENTIK_DISPLAY_NAME", "OAUTH_AUTHENTIK_DISPLAY_COLOR", "OAUTH_AUTHENTIK_SHOULD_CREATE_MISSING_USERS", "OAUTH_AUTHENTIK_SHOULD_LINK_MISSING_USERS", "AUTH_DISABLE_PASSWORD_LOGIN"],
     "manualSetup": {
       "title": "Finish in Pelican",
-      "description": "Kimono runs and publishes the unmodified Pelican panel. Pelican keeps its own installer, users, server templates, and node credentials.",
+      "description": "Kimono runs and publishes the unmodified Pelican panel and configures Sign in with Kimono automatically. Pelican keeps its own installer, server templates, permissions, and node credentials.",
       "steps": [
-        "After the panel starts, open its /installer path and create the first administrator.",
+        "After the panel starts, open its /installer path and create the first local administrator. Keep that login as a recovery path for identity outages.",
         "Keep a separate protected copy of the APP_KEY stored in Pelican's persistent data.",
         "Create each node in Pelican, then install Wings on that machine with the configuration Pelican provides. Kimono does not provision or manage Wings nodes."
       ]

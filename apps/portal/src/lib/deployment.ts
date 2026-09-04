@@ -125,6 +125,7 @@ function oidcValues(appId: string, identityDomain: string, hostname: string) {
   return {
     clientId,
     clientSecret: secretReference(appId, "OIDC_CLIENT_SECRET"),
+    baseUrl: `https://${identityDomain}`,
     issuer: `${endpoint}/${clientId}/`,
     authorize: `${endpoint}/authorize/`,
     token: `${endpoint}/token/`,
