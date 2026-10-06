@@ -12,7 +12,7 @@ function load(path) {
   return module.exports;
 }
 const { sanitizePicturePng, pictureMaxBytes } = load('../src/lib/picture-png.ts');
-const { parseProfileInput, initialOf } = load('../src/lib/account-input.ts');
+const { parseProfileInput, initialOf, parsePasswordChange, passwordRules } = load('../src/lib/account-input.ts');
 
 const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
 const crc = (bytes) => { let c = 0xffffffff; for (const b of bytes) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
@@ -51,4 +51,17 @@ test('the initial comes from the name, then the username', () => {
   assert.equal(initialOf('', 'sora'), 'S');
   assert.equal(initialOf('  ', ''), '?');
   assert.equal(initialOf('桜子', 'sakurako'), '桜');
+});
+
+test('a new password must be long, not the person, typed twice, and new', () => {
+  const me = { username: 'kimono-test', name: 'Mina Sato' };
+  assert.deepEqual(parsePasswordChange({ current: 'old-password-1', next: 'paper-lantern-river-77', confirm: 'paper-lantern-river-77' }, me), { current: 'old-password-1', next: 'paper-lantern-river-77', signOutOthers: true });
+  assert.equal(parsePasswordChange({ current: 'a', next: 'paper-lantern-river-77', signOutOthers: false }, me).signOutOthers, false);
+  assert.throws(() => parsePasswordChange({ current: '', next: 'paper-lantern-river-77' }, me), /current password/);
+  assert.throws(() => parsePasswordChange({ current: 'a', next: 'short' }, me), /12 characters/);
+  assert.throws(() => parsePasswordChange({ current: 'a', next: 'i-am-kimono-test-ok' }, me), /name or username/);
+  assert.throws(() => parsePasswordChange({ current: 'a', next: 'hello-mina-from-here' }, me), /name or username/);
+  assert.throws(() => parsePasswordChange({ current: 'a', next: 'paper-lantern-river-77', confirm: 'paper-lantern-river-7' }, me), /don't match/);
+  assert.throws(() => parsePasswordChange({ current: 'same-password-123', next: 'same-password-123' }, me), /haven't been using/);
+  assert.deepEqual(passwordRules('', me), { long: false, notName: true });
 });
