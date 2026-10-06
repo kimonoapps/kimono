@@ -25,8 +25,10 @@ entries:
       title: Welcome to Kimono
 
   # The Portal lists accounts so an administrator can grant Kimono VPN to a real
-  # person. It gets a service account that may read the directory and nothing
-  # else — the Portal should never hold more privilege than the job needs.
+  # person, and lets each person edit their own name, email and picture and end
+  # their own sign-ins from /account. It gets a service account with exactly
+  # those permissions — the Portal should never hold more privilege than the
+  # job needs, and it checks the signed-in person before every call.
   - id: kimono-portal-service
     model: authentik_core.user
     state: present
@@ -48,6 +50,8 @@ entries:
         - authentik_core.change_user
         - authentik_core.view_group
         - authentik_core.change_group
+        - authentik_core.view_authenticatedsession
+        - authentik_core.delete_authenticatedsession
 
   - model: authentik_core.group
     state: present

@@ -12,7 +12,7 @@ function roleFromGroups(groups: unknown) {
   return "member";
 }
 
-export const { auth, handlers, signIn, signOut } = NextAuth({
+export const { auth, handlers, signIn, signOut, unstable_update: updateSession } = NextAuth({
   providers: [
     Authentik({
       issuer: authentikIssuer,
@@ -30,7 +30,13 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
     signIn: "/login",
   },
   callbacks: {
-    jwt({ token, profile }) {
+    jwt({ token, profile, trigger, session }) {
+      /* An account edit refreshes the name and email the session carries, so
+         the header changes at once rather than at the next sign-in. */
+      if (trigger === "update" && session?.user) {
+        if (typeof session.user.name === "string") token.name = session.user.name;
+        if (typeof session.user.email === "string") token.email = session.user.email;
+      }
       if (profile) {
         token.identityId = profile.sub;
         token.username = profile.preferred_username;

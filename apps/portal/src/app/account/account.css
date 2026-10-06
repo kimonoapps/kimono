@@ -1,0 +1,38 @@
+/* ─────────────────────────────────────────────────────────────
+   己 Your account — layout only. The rail and panel are the app
+   settings composition; every colour, edge and measure is Kata.
+   ───────────────────────────────────────────────────────────── */
+
+.account-identity { display: grid; justify-items: start; gap: var(--k-space-2); }
+.account-identity .portrait { margin-bottom: var(--k-space-2); }
+.account-identity h1 { margin: 0; }
+
+.account-heading { padding: var(--k-space-6) var(--k-space-6) var(--k-space-5); background: var(--k-ground); }
+.account-heading h2 { margin: 0; font: 600 32px/1.15 var(--k-display); letter-spacing: -.015em; color: var(--k-plum); }
+.account-heading p { margin: var(--k-space-2) 0 0; font-size: 14px; color: var(--k-ink-soft); }
+
+.account-fixed { min-height: var(--k-control); max-width: 420px; display: flex; align-items: center; padding: 0 var(--k-space-4); border: var(--k-hairline) dashed var(--k-hair-deep); border-radius: var(--k-r-2); font: 500 14px/1 var(--k-mono); color: var(--k-ink-soft); }
+.account-actions { margin-top: var(--k-space-4); }
+
+/* the picture */
+.picture-current { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-space-4) var(--k-space-5); }
+.picture-crop { display: flex; flex-wrap: wrap; gap: var(--k-space-6); align-items: flex-start; }
+.picture-stage {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: var(--k-r-3);
+  background: var(--k-urushi);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.picture-stage:active { cursor: grabbing; }
+.picture-stage:focus-visible { outline: var(--k-rule) solid var(--k-accent); outline-offset: 3px; }
+.picture-stage img { position: absolute; top: 50%; left: 50%; max-width: none; pointer-events: none; }
+/* Everything outside the circle is dimmed: what stays lit is what is kept. */
+.picture-mask { position: absolute; top: 50%; left: 50%; translate: -50% -50%; border-radius: 50%; box-shadow: 0 0 0 400px rgba(42, 29, 34, .58), inset 0 0 0 2px var(--k-lift); pointer-events: none; }
+.picture-zoom { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--k-space-3); margin-top: var(--k-space-3); font: 600 12px/1.4 var(--k-sans); color: var(--k-ink-soft); max-width: 288px; }
+.picture-zoom input { width: 100%; accent-color: var(--k-accent); }
+.picture-crop-actions { align-self: flex-end; }
+.picture-error { margin: var(--k-space-4) 0 0; }

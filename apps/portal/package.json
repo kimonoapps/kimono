@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test:tools": "node --test scripts/test-tools.mjs",
     "test:mobile-app": "node --test scripts/test-mobile-app.mjs",
-    "test:tunnels": "node --test scripts/test-tunnel-settings.mjs"
+    "test:tunnels": "node --test scripts/test-tunnel-settings.mjs",
+    "test:account": "node --test scripts/test-account.mjs"
   },
   "dependencies": {
     "@kimono/app-sdk": "workspace:*",

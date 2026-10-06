@@ -213,6 +213,101 @@ export async function recordAccount(input: { username: string; name?: string | n
   await rename(temporary, directoryPath);
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   One person's own account: what they see on /account and through
+   /api/v1/me. Every call names the signed-in person; nothing here
+   lets one account read or change another.
+   ═══════════════════════════════════════════════════════════════ */
+
+/** The attribute the identity provider can be told to read pictures from. */
+export const avatarAttribute = "avatar";
+
+export type IdentityProfile = { username: string; name: string; email: string };
+
+export async function readIdentityProfile(username: string): Promise<IdentityProfile> {
+  const user = await findUser(username);
+  return { username: (user.username as string).toLowerCase(), name: user.name?.trim() || "", email: user.email?.trim() || "" };
+}
+
+export async function updateIdentityProfile(username: string, change: { name?: string; email?: string; avatar?: string | null }) {
+  const user = await findUser(username);
+  const body: Record<string, unknown> = {};
+  if (change.name !== undefined) body.name = change.name;
+  if (change.email !== undefined) body.email = change.email;
+  if (change.avatar !== undefined) {
+    const attributes = { ...(user.attributes || {}) };
+    if (change.avatar) attributes[avatarAttribute] = change.avatar;
+    else delete attributes[avatarAttribute];
+    body.attributes = attributes;
+  }
+  await identityRequest(`/api/v3/core/users/${user.pk}/`, { method: "PATCH", body: JSON.stringify(body) });
+  await recordAccount({ username, name: change.name, email: change.email });
+}
+
+type IdentitySession = {
+  uuid?: string;
+  user?: number;
+  last_ip?: string;
+  last_used?: string;
+  expires?: string | null;
+  user_agent?: {
+    device?: { family?: string; brand?: string | null; model?: string | null };
+    os?: { family?: string };
+    user_agent?: { family?: string };
+  };
+  geo_ip?: { city?: string | null; country?: string | null } | null;
+};
+
+export type IdentitySessionSummary = {
+  id: string;
+  browser: string;
+  os: string;
+  device: string;
+  ip: string;
+  lastUsed: string | null;
+  place: string | null;
+};
+
+async function sessionsOf(username: string): Promise<IdentitySession[]> {
+  const user = await findUser(username);
+  const response = await identityRequest(`/api/v3/core/authenticated_sessions/?user__username=${encodeURIComponent(user.username as string)}&page_size=100`);
+  const payload = await response.json() as { results?: IdentitySession[] };
+  /* Checked again here, so a filter the provider ignores can never leak someone else's sessions. */
+  return (payload.results || []).filter((session) => session.user === user.pk && typeof session.uuid === "string");
+}
+
+const known = (value: string | null | undefined) => value && value !== "Other" ? value : "";
+
+export async function listIdentitySessions(username: string): Promise<IdentitySessionSummary[]> {
+  return (await sessionsOf(username))
+    .map((session) => ({
+      id: session.uuid as string,
+      browser: known(session.user_agent?.user_agent?.family) || "A browser",
+      os: known(session.user_agent?.os?.family),
+      device: [known(session.user_agent?.device?.brand), known(session.user_agent?.device?.model)].filter(Boolean).join(" ") || known(session.user_agent?.device?.family),
+      ip: session.last_ip || "",
+      lastUsed: session.last_used || null,
+      place: [session.geo_ip?.city, session.geo_ip?.country].filter(Boolean).join(", ") || null,
+    }))
+    .sort((a, b) => (b.lastUsed || "").localeCompare(a.lastUsed || ""));
+}
+
+/** Ends one of this person's sign-ins. Returns false when it was not theirs. */
+export async function endIdentitySession(username: string, id: string): Promise<boolean> {
+  const session = (await sessionsOf(username)).find((item) => item.uuid === id);
+  if (!session) return false;
+  await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(id)}/`, { method: "DELETE" });
+  return true;
+}
+
+export async function endAllIdentitySessions(username: string): Promise<number> {
+  const sessions = await sessionsOf(username);
+  for (const session of sessions) {
+    await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(session.uuid as string)}/`, { method: "DELETE" });
+  }
+  return sessions.length;
+}
+
 /** Whether an account carries Kimono VPN, without pulling the whole mesh. */
 export async function holdsMeshAccess(username: string): Promise<boolean> {
   try {
