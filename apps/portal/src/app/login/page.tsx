@@ -1,4 +1,4 @@
-import { KimonoMark, Seal } from "@kimono/ui";
+import { KimonoMark, SakuraMon, Seal } from "@kimono/ui";
 import { auth, signIn } from "@/auth";
 import { redirect } from "next/navigation";
 
@@ -21,10 +21,9 @@ export default async function LoginPage() {
           <Seal className="login-button" type="submit">Continue to Kimono <span aria-hidden="true">→</span></Seal>
         </form>
       </section>
+      {/* One blossom on a rose field. The house colours, and nothing else. */}
       <aside className="login-art" aria-hidden="true">
-        <span className="sun-disc" />
-        <span className="vertical-word">KIMONO · HOME</span>
-        <div className="color-folds"><i /><i /><i /><i /></div>
+        <SakuraMon className="login-bloom" />
       </aside>
     </main>
   );

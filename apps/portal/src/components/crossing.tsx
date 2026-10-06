@@ -1,6 +1,6 @@
 "use client";
 
-import { CrossingProvider as CrossingLayer, useCrossing, type CrossingKind } from "@kimono/ui";
+import { CrossingProvider as CrossingLayer, useCrossing, cx, type SealTone, type CrossingKind } from "@kimono/ui";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useTransition, type MouseEvent, type ReactNode } from "react";
 
@@ -56,7 +56,7 @@ export function useCrossTo() {
   const navigate = useContext(Arrival);
   const router = useRouter();
 
-  return (kind: CrossingKind, href: string, external = false) => {
+  return useCallback((kind: CrossingKind, href: string, external = false) => {
     if (!external) router.prefetch(href);
     cross(kind, () => {
       if (external) {
@@ -68,7 +68,7 @@ export function useCrossTo() {
       }
       return navigate(href);
     });
-  };
+  }, [cross, navigate, router]);
 }
 
 /**
@@ -104,10 +104,23 @@ export function Crossing({ href, kind, external = false, children, className, ..
     onPointerEnter={warm}
     onFocus={warm}
     onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0 || rest.target === "_blank" || rest.download !== undefined) return;
       event.preventDefault();
       crossTo(kind, href, external);
     }}
     {...rest}
   >{children}</a>;
+}
+
+/** Destination seals always cross. Downloads and new tabs retain browser behavior. */
+export function CrossingSeal({ tone = "primary", kind = "kakejiku", compact = false, className, href, ...props }: {
+  tone?: SealTone;
+  kind?: CrossingKind;
+  /** 36px tall, still a 44px target — the same as Seal's compact. */
+  compact?: boolean;
+  href: string;
+  children: ReactNode;
+} & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href">) {
+  return <Crossing kind={kind} href={href} external={/^https?:\/\//.test(href)}
+    className={cx("k-seal", tone !== "primary" && `k-tone-${tone}`, compact && "k-compact", className)} {...props} />;
 }

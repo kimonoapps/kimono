@@ -1,44 +1,56 @@
 /* ─────────────────────────────────────────────────────────────
-   組 Kumi — composition. One frame per region; frames never nest;
-   edges are shared, never doubled; a hairline never touches a frame.
+   組 Kumi — composition. A sheet is a step up in paper, not a drawn box:
+   a hair edge, a plum-tinted shadow, grain at three percent. Compartments
+   share one sheet and meet on hairlines. Nothing here is outlined in ink.
    ───────────────────────────────────────────────────────────── */
 
-.k-tray {
-  border: var(--k-frame) solid var(--k-ink);
-  background: var(--k-sheet);
-  box-shadow: 6px 6px 0 rgba(36, 34, 31, .12);
+.k-tray, .k-sheet {
+  border: var(--k-hairline) solid var(--k-hair);
+  border-radius: var(--k-r-3);
+  background-color: var(--k-sheet);
+  background-image: var(--k-grain);
+  box-shadow: var(--k-shadow-sheet);
 }
+.k-tray { overflow: clip; }
+.k-tray > * + * { border-top: var(--k-hairline) solid var(--k-hair); }
 
-.k-tray > * + * { border-top: var(--k-rule) solid var(--k-ink); }
-
+/* A compartment: its label down the left, its body on the right. */
 .k-compartment {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  align-items: stretch;
+  grid-template-columns: 160px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--k-space-4) var(--k-space-6);
+  padding: var(--k-space-5) var(--k-space-6);
 }
-
-.k-compartment > .k-tab {
-  display: grid;
-  place-items: center;
-  padding: var(--k-ma-5) 0;
-  border-right: var(--k-rule) solid var(--k-ink);
-  background: var(--k-wood-pale);
-}
-
+.k-compartment > .k-tab { min-width: 0; padding-top: 2px; }
 .k-compartment > .k-tab > * {
   margin: 0;
-  color: var(--k-ink);
-  font: 600 15px/1 var(--k-display);
-  letter-spacing: .34em;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  font: 600 12px/1.4 var(--k-sans);
+  letter-spacing: .01em;
+  text-transform: none;
+  color: var(--k-ink-soft);
 }
+/* A compartment that wants something from you says so in the house colour,
+   with a mark beside the word. Nothing else earns the accent. */
+.k-compartment.k-wants > .k-tab > * { color: var(--k-suo-deep); }
+.k-compartment.k-wants > .k-tab > *::before { content: ""; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--k-suo); }
+.k-compartment > .k-body { min-width: 0; }
 
-/* A compartment that wants something from you, and only then. */
-.k-compartment.k-wants > .k-tab { background: var(--k-accent); }
-.k-compartment.k-wants > .k-tab > * { color: var(--k-sheet); }
+/* On its own, a compartment is its own sheet. */
+.k-compartment:not(.k-tray > *) {
+  border: var(--k-hairline) solid var(--k-hair);
+  border-radius: var(--k-r-3);
+  background-color: var(--k-sheet);
+  background-image: var(--k-grain);
+  box-shadow: var(--k-shadow-sheet);
+}
+.k-compartment:not(.k-tray > *) + .k-compartment:not(.k-tray > *) { margin-top: var(--k-space-4); }
 
-.k-compartment > .k-body { padding: var(--k-ma-4) var(--k-ma-5); }
-
-.k-sheet { border: var(--k-hairline) solid var(--k-hair); background: var(--k-sheet); }
 .k-divide + .k-divide { border-top: var(--k-hairline) solid var(--k-hair); }
+
+@media (max-width: 900px) {
+  .k-compartment { grid-template-columns: 1fr; gap: var(--k-space-3); padding: var(--k-space-4); }
+}

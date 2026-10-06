@@ -1,26 +1,27 @@
 /* ─────────────────────────────────────────────────────────────
    銘 Mei — an app's lockup and header.
 
-   Kimono's mark and wordmark are in ink; only the app's own name carries its
-   accent. That way the accent means "this app" and nothing else, and a page
-   never has two things competing to be the brand.
+   The wordmark is plum, the one Mincho weight; only the app's own name
+   carries its accent. That way the accent means "this app" and nothing
+   else, and a page never has two things competing to be the brand.
    ───────────────────────────────────────────────────────────── */
 
-.k-app-lockup { display: inline-flex; align-items: center; gap: var(--k-ma-2); }
+.k-app-lockup { display: inline-flex; align-items: center; gap: var(--k-space-2); }
 
 .k-app-lockup-mark { width: 40px; height: 40px; align-self: center; flex: none; }
-.k-app-lockup-mark > svg { width: 100%; height: 100%; display: block; }
+.k-app-lockup-mark > svg, .k-app-lockup-mark > .k-app-bloom { width: 100%; height: 100%; display: block; }
 .k-app-mark { display: block; }
-.k-app-lockup-word { font: 600 27px/1.15 var(--k-display); letter-spacing: .005em; color: var(--k-ink); }
-/* The app's name is set as letterspaced caps: one deliberate treatment that
-   works for an initialism and a word alike, and reads as a product name rather
-   than a second wordmark competing with Kimono's. */
+.k-app-bloom { position: relative; display: block; width: 100%; height: 100%; aspect-ratio: 1; }
+.k-app-bloom > .k-app-bloom-flower { display: block; width: 100%; height: 100%; }
+.k-app-bloom > .k-app-bloom-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: block; object-fit: contain; pointer-events: none; }
+.k-app-lockup-word, .k-app-lockup-name { position: relative; top: -2px; }
+.k-app-lockup-word { font: 600 26px/1.15 var(--k-display); letter-spacing: .005em; color: var(--k-plum); }
+/* Equal type metrics keep both names aligned at the centre of the bloom. */
 .k-app-lockup-name {
-  font: 600 19px/1.15 var(--k-display);
-  letter-spacing: .16em;
-  text-transform: uppercase;
-  padding-left: .1em;
-  color: var(--k-app-accent, var(--k-accent));
+  font: 600 26px/1.15 var(--k-display);
+  letter-spacing: .005em;
+  text-transform: lowercase;
+  color: var(--k-app-accent);
 }
 
 .k-app-header {
@@ -28,19 +29,47 @@
   align-items: flex-end;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--k-ma-4);
-  padding: var(--k-ma-6) 0 var(--k-ma-4);
-  border-bottom: var(--k-rule) solid var(--k-ink);
+  gap: var(--k-space-5);
+  padding: var(--k-space-7) 0 var(--k-space-5);
+  border-bottom: var(--k-hairline) solid var(--k-hair);
 }
-.k-app-header-identity { display: grid; gap: var(--k-ma-2); min-width: 0; }
-.k-app-header-identity > p { margin: 0; max-width: 68ch; font: 14px/1.55 var(--k-sans); color: var(--k-ink-soft); }
-.k-app-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-ma-3); }
+.k-app-header-identity { display: grid; gap: var(--k-space-2); min-width: 0; }
+.k-app-header-identity > p { margin: 0; max-width: 68ch; font: 16px/1.5 var(--k-sans); color: var(--k-ink-soft); }
+.k-app-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-space-3); }
 
 @media (max-width: 720px) {
-  .k-app-lockup-word { font-size: 21px; }
-  .k-app-lockup-name { font-size: 15px; }
-  .k-app-lockup-mark { width: 28px; height: 28px; }
+  .k-app-lockup-word, .k-app-lockup-name { font-size: 21px; }
+  .k-app-lockup-mark { width: 30px; height: 30px; }
 }
 
 /* An app's rooms sit under its lockup, in the app's own chrome. */
-.k-app-rooms { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-ma-2); padding: var(--k-ma-5) 0 var(--k-ma-2); }
+.k-app-rooms { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-space-2); padding: var(--k-space-6) 0 var(--k-space-2); }
+
+/* ─────────────────────────────────────────────────────────────
+   紋 The bloom and the house mark — one renderer, every size.
+   ───────────────────────────────────────────────────────────── */
+.app-bloom-vein { fill: none; stroke: rgba(255, 255, 255, .32); stroke-width: 1; stroke-linecap: round; }
+.app-bloom-centre-shadow { opacity: .9; transform: translateY(2px); }
+.app-bloom-centre { stroke: rgba(255, 255, 255, .38); stroke-width: 1.4; }
+.app-bloom-glyph { fill: #fffaf2; stroke: #fffaf2; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.app-bloom-detail { fill: none; stroke: #fffaf2; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* A bloom that has gone quiet: hair-grey petals, and a word beside it. */
+.k-bloom-quiet { filter: grayscale(1) opacity(.72); }
+/* A bloom being born — the completion mark when a key is created. Scale
+   and opacity together, opacity finished first. The one scale in the system. */
+@keyframes k-bloom-born { from { opacity: 0; scale: .4; } 40% { opacity: 1; } to { opacity: 1; scale: 1; } }
+.k-bloom-born { transform-origin: 50% 50%; animation: k-bloom-born var(--k-t-seat) var(--k-ease-seat) both; }
+
+.sakura-mon { width: 100%; height: 100%; overflow: visible; }
+.sakura-mon-petal-shadow { fill: color-mix(in srgb, var(--k-sakura) 56%, var(--k-ink)); opacity: .42; }
+.sakura-mon-petal { fill: var(--k-sakura-wash); stroke: var(--k-sakura); stroke-width: 1.25; }
+.sakura-mon-vein { fill: none; stroke: color-mix(in srgb, var(--k-sakura) 70%, var(--k-ink)); stroke-width: .8; stroke-linecap: round; opacity: .7; }
+.sakura-mon-centre { fill: var(--k-plum); }
+.sakura-mon-collar { fill: var(--k-lift); stroke: var(--k-lift); stroke-width: 1.5; stroke-linejoin: round; }
+.sakura-mon-dot { fill: var(--k-suo); }
+
+.kimono-mark { display: inline-flex; align-items: center; gap: 10px; }
+.kimono-mark-symbol { width: 40px; height: 40px; display: grid; place-items: center; color: var(--k-plum); }
+.kimono-mark-symbol img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.kimono-branch { width: 100%; height: 100%; display: block; }
+.kimono-mark-word { color: var(--k-plum); font: 600 26px/1 var(--k-display); letter-spacing: .005em; }

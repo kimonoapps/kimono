@@ -13,7 +13,8 @@
       "#4f7794",
       "#294458",
       "#d8e4e9"
-    ]
+    ],
+    "glyph": "server"
   },
   "spec": {
     "integration": "connected",

@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { AppLauncher } from "@/components/app-card";
-import { getApps, ownApps } from "@/lib/apps";
+import { appRegistry, launcherApps } from "@/lib/apps";
 import { getPlatformSettings } from "@/lib/settings";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { auth } from "@/auth";
@@ -23,10 +23,9 @@ export default async function HomePage() {
             <h1>Welcome home, <strong>{displayName}.</strong></h1>
           </div>
         </header>
-        <AppLauncher apps={[
-          ...getApps(settings, catalog.definitions),
-          ...ownApps({ mesh: await holdsMeshAccess(session.user.username) }),
-        ]} />
+        <AppLauncher apps={launcherApps(appRegistry(settings, catalog.definitions), {
+          mesh: await holdsMeshAccess(session.user.username),
+        })} />
       </div>
     </AppShell>
   );

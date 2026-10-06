@@ -53,8 +53,8 @@ export function createBloomIdentity(input: BloomIdentityInput): BloomIdentity {
   return {
     seed,
     rotation,
-    centre: "#282522",
-    centreShadow: "#171513",
+    centre: "var(--k-plum, #4e2b37)",
+    centreShadow: "var(--k-plum, #4e2b37)",
     textureSeed: 1 + seed % 97,
     textureScale: .42 + random() * .32,
     petals,

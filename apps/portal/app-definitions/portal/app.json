@@ -9,7 +9,12 @@
     "category": "System",
     "version": "0.1.0",
     "icon": "icon.svg",
-    "colors": ["#d77b8c", "#5f3441", "#f2cbd2"]
+    "colors": [
+      "#d77b8c",
+      "#5f3441",
+      "#f2cbd2"
+    ],
+    "glyph": "bloom"
   },
   "spec": {
     "integration": "native",
@@ -17,6 +22,9 @@
     "volumes": [],
     "configuration": [],
     "managedEnvironment": [],
-    "defaultNetworkPolicy": { "internetAccess": true, "allowedApps": [] }
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    }
   }
 }

@@ -1,6 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Palette } from "./settings";
+import type { GlyphName } from "@kimono/ui";
+import { apiConfiguration, validateApiCollection, type ToolApi } from "./tool-apis/catalog";
+import { validateApiAdapters } from "./tool-apis/adapters";
 
 export type ConfigurationField = {
   key: string;
@@ -65,10 +68,16 @@ export type AppDefinition = {
     category: string;
     version: string;
     icon: string;
+    glyph?: GlyphName;
     colors: Palette;
   };
   spec: {
     integration: "native" | "headless" | "fork" | "connected" | "hosted";
+    /** Native apps use the same configuration system, with an internal destination. */
+    portalPath?: string;
+    /** False while the app configuration contract is still being implemented. */
+    setupReady?: boolean;
+    apiCollection?: ToolApi[];
     services: Array<{
       id: string;
       image: string;
@@ -114,6 +123,15 @@ function parseDefinition(value: unknown, directory: string, source: AppDefinitio
   if (!Array.isArray(definition.metadata.colors) || definition.metadata.colors.length !== 3 || !definition.metadata.colors.every((color) => colorPattern.test(color))) throw new Error("metadata.colors must contain three hex colors");
   if (basename(definition.metadata.icon) !== definition.metadata.icon || !definition.metadata.icon.endsWith(".svg")) throw new Error("metadata.icon must name an SVG in the definition directory");
   if (!Array.isArray(definition.spec?.services) || !Array.isArray(definition.spec?.configuration)) throw new Error("spec.services and spec.configuration are required");
+  if (definition.spec.setupReady !== undefined && typeof definition.spec.setupReady !== "boolean") throw new Error("spec.setupReady must be a boolean");
+  if (definition.spec.apiCollection !== undefined) {
+    validateApiCollection(definition.spec.apiCollection);
+    validateApiAdapters(definition.spec.apiCollection);
+    const generated = apiConfiguration(definition.spec.apiCollection);
+    if (generated.some((field) => definition.spec.configuration.some((existing) => existing.key === field.key))) throw new Error("API configuration keys conflict with app configuration");
+    definition.spec.configuration = [...definition.spec.configuration, ...generated];
+  }
+  if (definition.spec.portalPath !== undefined && (definition.spec.integration !== "native" || !/^\/(?!\/)[a-z0-9/-]+$/.test(definition.spec.portalPath))) throw new Error("spec.portalPath must be an internal native app path");
   if (definition.spec.integration === "connected") validateIdentity(definition.spec.identity);
   validateManualSetup(definition.spec.manualSetup);
   if (!Array.isArray(definition.spec.volumes)) throw new Error("spec.volumes is required");

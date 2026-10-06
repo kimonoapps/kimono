@@ -34,6 +34,9 @@ export type KimonoOwnApp = {
    */
   accent: string;
   glyph: GlyphName;
+  /** The mesh uses the existing appliance configuration. */
+  configuration: "mesh";
+  managementPath: string;
   /**
    * Whether this person may see it. Omit for an app everyone gets. The Portal
    * resolves these before building the launcher.
@@ -50,6 +53,8 @@ export const kimonoApps: readonly KimonoOwnApp[] = [
     path: "/vpn",
     accent: "#2f6b7a",
     glyph: "mesh",
+    configuration: "mesh",
+    managementPath: "/admin/vpn",
     requires: "mesh",
   },
 ];

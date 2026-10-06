@@ -8,9 +8,22 @@ import { type ReactNode } from "react";
  * between them. Strokes are round and even: these are read at 20px, where a
  * thin line and a sharp corner both disappear.
  */
-export type GlyphName = "mesh" | "notes" | "play" | "image" | "shield" | "bloom";
+export type GlyphName = "mesh" | "notes" | "play" | "image" | "shield" | "bloom" | "git" | "server" | "tools";
 
 const glyphs: Record<GlyphName, ReactNode> = {
+  git: <>
+    <path d="M40 40v20M60 40v3c0 10-20 5-20 14" />
+    <circle cx="40" cy="36" r="4" /><circle cx="60" cy="36" r="4" /><circle cx="40" cy="64" r="4" />
+  </>,
+  server: <>
+    <rect x="35" y="35" width="30" height="12" rx="2" />
+    <rect x="35" y="53" width="30" height="12" rx="2" />
+    <path d="M41 41h1M49 41h10M41 59h1M49 59h10" />
+  </>,
+  tools: <>
+    <path d="m38 62 15-15M52 35a10 10 0 0 0-9 14l8 8a10 10 0 0 0 14-9l-7 4-9-9Z" />
+    <path d="m38 54-5 5 8 8 5-5" />
+  </>,
   /* Three devices, each reaching the others directly — the mesh itself. */
   mesh: <>
     <path d="M50 38 L38 60 M50 38 L62 60 M38 60 L62 60" fill="none" strokeWidth="4.5" strokeLinecap="round" />
@@ -43,8 +56,11 @@ export function Glyph({ name = "bloom", scale = 1, color }: {
   color: string;
 }) {
   return <g
-    fill={color}
+    fill="none"
     stroke={color}
+    strokeWidth="4.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
     transform={scale === 1 ? undefined : `translate(50 50) scale(${scale}) translate(-50 -50)`}
   >
     {glyphs[name] ?? glyphs.bloom}

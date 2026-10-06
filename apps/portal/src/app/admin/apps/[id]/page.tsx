@@ -1,12 +1,12 @@
+import { CrossingSeal } from "@/components/crossing";
 import { auth } from "@/auth";
 import { appBackupSelection, readBackupConfig, readBackupStatus, saveAppBackups } from "@/lib/backups";
 import { backupCatalog } from "@/lib/backup-catalog";
 import { AppShell } from "@/components/app-shell";
 import { getAppDefinition, type ConfigurationField } from "@/lib/definitions";
 import {
-  appHostname,
   getPlatformSettings,
-  installDefinition,
+  configureDefinition,
   saveAppEnvironment,
   saveAppSetup,
   savePlatformBrand,
@@ -19,9 +19,8 @@ import { DoorBack } from "@/components/door-back";
 import { AppBloom } from "@kimono/ui";
 import { accentOf } from "@/lib/apps";
 import { RunJoint } from "@/components/run-joint";
-import { Door, Seal, SealLink, StatedSeal } from "@kimono/ui";
+import { Door, Seal, StatedSeal } from "@kimono/ui";
 import Image from "next/image";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 type View = "setup" | "settings" | "environment" | "backups";
@@ -76,13 +75,13 @@ export default async function AppManagementPage({
   const settingsHref = `/admin/apps/${id}?view=settings`;
   const backupsHref = `/admin/apps/${id}?view=backups`;
 
-  async function install() {
+  async function startSetup() {
     "use server";
     await requireAdmin();
     const currentDefinition = await getAppDefinition(id);
     if (!currentDefinition) throw new Error("App definition no longer exists");
-    await installDefinition(currentDefinition);
-    redirect(`/admin/apps/${id}?saved=installed`);
+    await configureDefinition(currentDefinition);
+    redirect(`/admin/apps/${id}?saved=configured`);
   }
 
   async function saveSetup(form: FormData) {
@@ -141,14 +140,13 @@ export default async function AppManagementPage({
   const settingsGroups = Map.groupBy(settingsFields, (field) => field.group);
   const availableTunnels = Object.values(settings.tunnels).filter((tunnel) => tunnelIsReady(tunnel));
   const hasSelectedTunnel = availableTunnels.some((tunnel) => tunnel.id === instance?.tunnelId);
-  const publishedHost = instance && hasSelectedTunnel ? appHostname(instance.domain, settings.baseDomain) : null;
 
   /* The rail states what the server is doing right now; the form below changes it. */
   const runState = !instance
-    ? { key: "uninstalled", label: "Not installed", detail: "No containers created yet", seal: "quiet" as const }
+    ? { key: "uninstalled", label: "Not configured", detail: "Setup has not started", seal: "quiet" as const }
     : instance.enabled
-      ? { key: "running", label: "Running", detail: publishedHost || "Only inside your home", seal: "running" as const }
-      : { key: "off", label: "Off", detail: "Installed, not running", seal: "private" as const };
+      ? { key: "running", label: "Enabled", detail: definition.spec.portalPath ? "Built into Kimono" : "Deployment requested", seal: "running" as const }
+      : { key: "off", label: "Off", detail: "Configured, switched off", seal: "private" as const };
 
   return (
     <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
@@ -157,7 +155,7 @@ export default async function AppManagementPage({
           <aside className="app-rail">
             <DoorBack href={query.intent === "publish" ? "/admin/apps?intent=publish" : "/admin/apps"} />
             <div className="rail-identity">
-              <AppBloom identity={{ id, name: definition.metadata.shortName, accent: accentOf(instance?.colors || definition.metadata.colors) }} glyphHref={definition.iconUrl} />
+              <AppBloom identity={{ id, name: definition.metadata.shortName, glyph: definition.metadata.glyph, accent: accentOf(instance?.colors || definition.metadata.colors) }} glyphHref={definition.iconUrl} />
               <h1>{instance?.name || definition.metadata.name}</h1>
               <p>{definition.metadata.description}</p>
             </div>
@@ -167,19 +165,23 @@ export default async function AppManagementPage({
             </p>
             {instance ? (
               <nav className="rail-nav" aria-label="Application management">
-                {availableViews.map((item) => <Link key={item.id} href={viewHref(item.id)} aria-current={selectedView === item.id ? "page" : undefined}>{item.label}</Link>)}
+                {availableViews.map((item) => <Crossing kind="kakejiku" key={item.id} href={viewHref(item.id)} aria-current={selectedView === item.id ? "page" : undefined}>{item.label}</Crossing>)}
               </nav>
             ) : null}
           </aside>
 
           <div className="app-panel">
-            {query.saved ? <p className="admin-notice success">{query.saved === "installed" ? "App installed. Turn it on when you have finished setting it up." : "Changes saved."}</p> : null}
+            {query.saved ? <p className="admin-notice success">{query.saved === "configured" ? "Setup started. Configure this app before turning it on." : "Changes saved."}</p> : null}
             {query.error ? <p className="admin-notice error">{query.error}</p> : null}
 
             {!instance ? (
               <section className="install-definition">
-                <div><h2>Install this app</h2><p>Nothing starts until you configure and turn it on.</p></div>
-                <form action={install}><Seal type="submit">Install app</Seal></form>
+                {definition.spec.setupReady === false ? (
+                  <div><h2>Configuration coming soon</h2><p>This app stays off until its configuration is available.</p></div>
+                ) : <>
+                  <div><h2>Set up this app</h2><p>Creates saved configuration. Turning on a hosted app asks your server to deploy it.</p></div>
+                  <form action={startSetup}><Seal type="submit">Start setup</Seal></form>
+                </>}
               </section>
             ) : (
               <div className="management-panel">
@@ -189,8 +191,8 @@ export default async function AppManagementPage({
                   {id === "kimono-portal" ? (
                     <label className="settings-field"><span>Base domain</span><input name="baseDomain" defaultValue={settings.baseDomain} required /><small>App short names are placed beneath this domain.</small></label>
                   ) : <>
-                    <Compartment label="General" className="setup-section setup-general"><div><RunJoint defaultChecked={instance.enabled} /><label className="settings-field"><span>Name</span><input name="name" defaultValue={instance.name} required /></label></div></Compartment>
-                    <Compartment label="Access" wants={!availableTunnels.length} className={`setup-section setup-address ${!availableTunnels.length ? "needs-tunnel" : ""}`}>{!availableTunnels.length ? <div className="tunnel-empty-state"><input type="hidden" name="tunnelId" value="none" /><h4>{query.intent === "publish" ? "Connect to publish" : "Private"}</h4><p>{query.intent === "publish" ? "Give this app a public address." : "Reachable only inside your home."}</p>{instance.tunnelId ? <p className="tunnel-missing-warning">Previous connection is gone.</p> : null}<div className="tunnel-empty-actions"><SealLink href={`/admin/infrastructure/cloudflare?app=${encodeURIComponent(id)}`}>Connect Cloudflare</SealLink></div></div> : <fieldset className="tunnel-picker"><legend><span>Availability</span><Link href={`/admin/infrastructure/cloudflare?app=${encodeURIComponent(id)}`}>New connection →</Link></legend>
+                    <Compartment label="General" className="setup-section setup-general"><div>{definition.spec.setupReady === false ? <><StatedSeal state="quiet">Disabled</StatedSeal><p>Configuration is not available yet.</p></> : <RunJoint defaultChecked={instance.enabled} />}<label className="settings-field"><span>Name</span><input name="name" defaultValue={instance.name} required /></label></div></Compartment>
+                    {!definition.spec.portalPath ? <Compartment label="Access" wants={!availableTunnels.length} className={`setup-section setup-address ${!availableTunnels.length ? "needs-tunnel" : ""}`}>{!availableTunnels.length ? <div className="tunnel-empty-state"><input type="hidden" name="tunnelId" value="none" /><h4>{query.intent === "publish" ? "Connect to publish" : "Private"}</h4><p>{query.intent === "publish" ? "Give this app a public address." : "Reachable only inside your home."}</p>{instance.tunnelId ? <p className="tunnel-missing-warning">Previous connection is gone.</p> : null}<div className="tunnel-empty-actions"><CrossingSeal href={`/admin/infrastructure/cloudflare?app=${encodeURIComponent(id)}`}>Connect Cloudflare</CrossingSeal></div></div> : <fieldset className="tunnel-picker"><legend><span>Availability</span><Crossing kind="kakejiku" href={`/admin/infrastructure/cloudflare?app=${encodeURIComponent(id)}`}>New connection →</Crossing></legend>
                       <article className="tunnel-choice private-choice"><label><input type="radio" name="tunnelId" value="none" defaultChecked={!hasSelectedTunnel} /><span className="provider-monogram">—</span><span><strong>Keep private</strong><small>Do not publish a public hostname</small></span></label></article>
                       {availableTunnels.map((tunnel) => {
                         const zones = tunnelZones(tunnel);
@@ -198,13 +200,13 @@ export default async function AppManagementPage({
                         const subdomain = matchedZone ? instance.domain === matchedZone.name ? "@" : instance.domain.slice(0, -(matchedZone.name.length + 1)) : definition.metadata.shortName.toLowerCase();
                         return <article className="tunnel-choice" key={tunnel.id}><label><input type="radio" name="tunnelId" value={tunnel.id} defaultChecked={instance.tunnelId === tunnel.id} /><span className="provider-monogram">{tunnel.provider === "cloudflare" ? "CF" : tunnel.provider.slice(0, 2).toUpperCase()}</span><span><strong>{tunnel.name}</strong><small>{tunnel.configuration.ACCOUNT_NAME?.value || tunnel.provider}</small></span></label>{tunnel.provider === "cloudflare" && zones.length ? <div className="tunnel-domain-fields"><label><span>Subdomain</span><input name={`subdomain.${tunnel.id}`} defaultValue={subdomain} /></label><span className="domain-dot">.</span><label><span>Domain</span><select name={`zone.${tunnel.id}`} defaultValue={matchedZone?.name || zones[0].name}>{zones.map((zone) => <option key={zone.id} value={zone.name}>{zone.name}</option>)}</select></label></div> : <div className="tunnel-domain-fields single-domain-field"><label><span>App name or complete hostname</span><input name={`domain.${tunnel.id}`} defaultValue={instance.domain} /></label></div>}</article>;
                       })}
-                    </fieldset>}</Compartment>
+                    </fieldset>}</Compartment> : null}
                   </>}
                   <details className="appearance-settings">
                     <summary><span><strong>Appearance</strong><small>App flower and colors</small></span></summary>
-                    <fieldset className="palette-field"><legend className="sr-only">Application colors</legend><div className="palette-editor"><AppBloom identity={{ id, name: definition.metadata.shortName, accent: accentOf((id === "kimono-portal" ? settings.brand.colors : instance?.colors) || definition.metadata.colors) }} glyphHref={definition.iconUrl} /><div className="color-row">{(id === "kimono-portal" ? settings.brand.colors : instance.colors).map((color, index) => <label key={index}><input type="color" name={`color${index}`} defaultValue={color} /><span>{color}</span></label>)}</div></div></fieldset>
+                    <fieldset className="palette-field"><legend className="sr-only">Application colors</legend><div className="palette-editor"><AppBloom identity={{ id, name: definition.metadata.shortName, glyph: definition.metadata.glyph, accent: accentOf((id === "kimono-portal" ? settings.brand.colors : instance?.colors) || definition.metadata.colors) }} glyphHref={definition.iconUrl} /><div className="color-row">{(id === "kimono-portal" ? settings.brand.colors : instance.colors).map((color, index) => <label key={index}><input type="color" name={`color${index}`} defaultValue={color} /><span>{color}</span></label>)}</div></div></fieldset>
                   </details>
-                  {id !== "kimono-portal" ? <details className="setup-advanced"><summary>Advanced connectivity</summary><label className="settings-toggle"><input type="checkbox" name="internetAccess" defaultChecked={instance.networkPolicy.internetAccess} /><span>Allow this app to make outbound internet connections</span></label></details> : null}
+                  {id !== "kimono-portal" && !definition.spec.portalPath ? <details className="setup-advanced"><summary>Advanced connectivity</summary><label className="settings-toggle"><input type="checkbox" name="internetAccess" defaultChecked={instance.networkPolicy.internetAccess} /><span>Allow this app to make outbound internet connections</span></label></details> : null}
                   {definition.spec.manualSetup ? (
                     <Compartment label={definition.spec.manualSetup.title} className="setup-section">
                       <div className="manual-setup">
@@ -272,7 +274,7 @@ export default async function AppManagementPage({
                 <form action={saveBackups} className="management-form app-backup-form k-tray">
                   <header><h2>Backups</h2></header>
                   {!backupConfig ? (
-                    <Compartment label="Keep" wants className="setup-section setup-address needs-tunnel"><div className="tunnel-empty-state"><h4>No storage yet</h4><p>Choose where backups go first, then pick what {instance.name} keeps here.</p><div className="tunnel-empty-actions"><SealLink href="/admin/backups">Set up backups</SealLink></div></div></Compartment>
+                    <Compartment label="Keep" wants className="setup-section backup-storage-empty"><div className="backup-empty-block"><h4>No storage yet</h4><p>Connect storage, then choose what to keep from {instance.name}.</p><div className="k-seal-group"><CrossingSeal href="/admin/backups">Set up backups</CrossingSeal><Crossing href="/admin/backups" kind="kakejiku" className="backup-empty-link">All backups <span aria-hidden="true">→</span></Crossing></div></div></Compartment>
                   ) : !backup.items.length ? (
                     <Compartment label="Keep" wants className="setup-section setup-address needs-tunnel"><div className="tunnel-empty-state"><h4>Unprotected</h4><p>This app declares nothing to back up, so its data is not kept.</p></div></Compartment>
                   ) : <>
@@ -285,7 +287,7 @@ export default async function AppManagementPage({
                     </Rows></Compartment>
                   </>}
                   {definition.spec.volumes.length ? <details className="setup-advanced"><summary>Volumes on disk</summary><div className="storage-table">{definition.spec.volumes.map((volume) => <div key={volume.id}><strong>{volume.backupLabel || volume.id}</strong><code>{volume.service}:{volume.path}</code><span>{volume.backupDescription || "Persistent app data"}</span></div>)}</div></details> : null}
-                  <footer>{backupConfig && backup.items.length ? <Seal type="submit">Save backups</Seal> : null}<SealLink href="/admin/backups" tone="quiet">All backups</SealLink></footer>
+                  {backupConfig && <footer>{backup.items.length ? <Seal type="submit">Save backups</Seal> : null}<CrossingSeal href="/admin/backups" tone="quiet">All backups</CrossingSeal></footer>}
                 </form>
               ) : null}
               </div>

@@ -1,48 +1,142 @@
 /* ─────────────────────────────────────────────────────────────
-   判 Seal — commits an action, or states a fact. One object, two uses.
+   判 Seal — the hanko. Commits an action.
+
+   A seal is a carved block, not a pill. Its corners are nearly square, it
+   stands on a 2px base, and the inked face carries the carved inner ring a
+   real hanko has — the one mark that is the object's own, so there is no
+   outline. Press it and the base collapses as the block goes into the paper;
+   let go and it leaves an impression that spreads and fades.
+
+   Three tones, one object. Primary is suō pigment with sheet lettering.
+   Quiet is the same block uninked: fold paper on a hair base, no ring, so a
+   row of quiet seals reads as a row of things you can press, not as chips.
+   Danger is the consequence in words on a rose wash, inked only once you
+   reach for it. Busy is said in the label. Disabled is the seal lifted off
+   its base: fold paper, faint text and a reason beside it — never opacity.
    ───────────────────────────────────────────────────────────── */
 
 .k-seal {
+  --k-seal-base: var(--k-suo-pad);
+  --k-seal-impression: color-mix(in srgb, var(--k-suo) 42%, transparent);
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
-  padding: 0 var(--k-ma-3);
-  border: var(--k-rule) solid var(--k-ink);
-  border-radius: 0;
-  color: var(--k-ink);
-  background: var(--k-accent-pale);
-  font: 700 12px/1 var(--k-sans);
-  letter-spacing: .1em;
+  gap: var(--k-space-2);
+  min-height: var(--k-control);
+  padding: 0 var(--k-space-5);
+  border: 0;
+  border-radius: var(--k-r-seal);
+  color: var(--k-lift);
+  background: var(--k-suo);
+  box-shadow: inset 0 -2px 0 var(--k-seal-base), 0 0 0 7px transparent;
+  font: 700 13px/1 var(--k-sans);
+  letter-spacing: .04em;
+  text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background-color var(--k-t-state) ease, transform var(--k-t-state) ease;
+  transition:
+    background-color var(--k-t-state) var(--k-ease-settle),
+    color var(--k-t-state) var(--k-ease-settle),
+    transform var(--k-t-tap) var(--k-ease-settle),
+    box-shadow var(--k-t-seat) var(--k-ease-settle);
 }
-
-.k-seal:hover { background: var(--k-accent); color: var(--k-sheet); }
-.k-seal.k-tone-quiet { background: var(--k-sheet); }
-.k-seal.k-tone-danger { border-color: var(--k-accent); color: var(--k-accent); background: transparent; }
-.k-seal.k-tone-danger:hover { background: var(--k-accent); color: var(--k-sheet); }
-.k-seal:active { transform: translateY(2px); }
-.k-seal:focus-visible { outline: var(--k-rule) solid var(--k-accent); outline-offset: 3px; }
-.k-seal[disabled] { opacity: .45; cursor: not-allowed; }
-
-/* Stated, not pressed: the same object marking a fact. */
-.k-seal.k-stated {
-  min-height: 0;
-  padding: 5px 10px;
-  border-color: var(--k-stamp, var(--k-hair));
-  color: var(--k-stamp-ink, var(--k-faint));
-  background: transparent;
-  cursor: default;
-  font-weight: 750;
-  text-transform: uppercase;
+/* The carved ring: cut into the face, 3px in from the edge. */
+.k-seal::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(255, 253, 248, .32);
+  border-radius: 1px;
+  pointer-events: none;
+  transition: inset var(--k-t-tap) var(--k-ease-settle), border-color var(--k-t-state) var(--k-ease-settle), opacity var(--k-t-state) var(--k-ease-settle);
 }
-.k-seal.k-stated:hover { background: transparent; color: var(--k-stamp-ink, var(--k-faint)); }
-.k-seal.k-running { --k-stamp: var(--k-moss); --k-stamp-ink: #3d5134; }
-.k-seal.k-private { --k-stamp: var(--k-accent); --k-stamp-ink: var(--k-accent); }
-.k-seal.k-wants { --k-stamp: var(--k-accent); --k-stamp-ink: var(--k-sheet); background: var(--k-accent); }
-
-@media (prefers-reduced-motion: reduce) {
-  .k-door > i, .k-joint .k-pc, .k-seal { transition-duration: 1ms; }
-  .k-joint.k-seating, .k-joint.k-seating .k-pc, .k-joint.k-parting .k-pc, .k-joint.k-seating .k-burst { animation-duration: 1ms; }
+.k-seal:hover { background: var(--k-suo-deep); }
+.k-seal:hover::before { border-color: rgba(255, 253, 248, .5); }
+/* Pressed: the block goes down, the base disappears under it, the ring
+   tightens, and the impression is laid at zero spread — instantly. */
+.k-seal:active {
+  transform: translateY(1px) scale(.985);
+  box-shadow: inset 0 0 0 var(--k-seal-base), 0 0 0 0 var(--k-seal-impression);
+  transition-duration: var(--k-t-state), var(--k-t-state), var(--k-t-tap), 0ms;
 }
+.k-seal:active::before { inset: 4px; }
+.k-seal:focus-visible { outline: var(--k-rule) solid var(--k-suo); outline-offset: 3px; }
+
+/* Quiet: the same block, uninked. Paper on a hair base; no ring, because
+   there is no pigment to carve into. Reaching for it inks the lettering plum. */
+.k-seal.k-tone-quiet {
+  --k-seal-base: var(--k-hair-deep);
+  --k-seal-impression: color-mix(in srgb, var(--k-ink) 22%, transparent);
+  color: var(--k-ink);
+  background: var(--k-fold);
+}
+.k-seal.k-tone-quiet::before { display: none; }
+.k-seal.k-tone-quiet:hover { color: var(--k-plum); background: color-mix(in srgb, var(--k-fold) 60%, var(--k-hair)); }
+
+/* Danger: the consequence in words and in suō, filled only once you reach for it. */
+.k-seal.k-tone-danger {
+  --k-seal-base: color-mix(in srgb, var(--k-suo) 28%, var(--k-suo-wash));
+  color: var(--k-suo-deep);
+  background: var(--k-suo-wash);
+}
+.k-seal.k-tone-danger::before { opacity: 0; }
+.k-seal.k-tone-danger:hover { --k-seal-base: var(--k-suo-pad); color: var(--k-lift); background: var(--k-suo-deep); }
+.k-seal.k-tone-danger:hover::before { opacity: 1; }
+
+/* Lifted off its base. */
+.k-seal[disabled], .k-seal[aria-disabled="true"] {
+  color: var(--k-faint);
+  background: var(--k-fold);
+  box-shadow: none;
+  transform: none;
+  cursor: not-allowed;
+}
+.k-seal[disabled]::before, .k-seal[aria-disabled="true"]::before { display: none; }
+
+/* Compact: 36px tall, padded out to a 44px hit area. */
+.k-seal.k-compact { min-height: var(--k-control-compact); padding: 0 var(--k-space-4); font-size: 12px; }
+.k-seal.k-compact::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
+
+/* ─────────────────────────────────────────────────────────────
+   A group of seals: one row, the primary first, 12px between blocks,
+   wrapping when the room runs out. Every page uses this one measure.
+   ───────────────────────────────────────────────────────────── */
+.k-seal-group, .k-form-actions, .k-page-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-space-3); }
+
+/* ─────────────────────────────────────────────────────────────
+   札 Chip — a stated fact. Fold paper and a word. Colour only where it
+   carries a consequence, and a word always sits beside it:
+     running / 2xx   moss
+     wants           suō
+     4xx             suō-deep on a rose wash
+     5xx             urushi
+   Everything else is ink on fold. Classification by hue is forbidden.
+   ───────────────────────────────────────────────────────────── */
+
+.k-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px var(--k-space-2);
+  border-radius: var(--k-r-1);
+  background: var(--k-fold);
+  color: var(--k-ink-soft);
+  font: 600 12px/1.4 var(--k-sans);
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.k-chip.k-private { color: var(--k-ink); }
+.k-chip.k-running, .k-chip.k-ok { background: var(--k-moss-wash); color: var(--k-moss-deep); }
+.k-chip.k-wants { background: var(--k-suo); color: var(--k-lift); }
+.k-chip.k-warn { background: var(--k-suo-wash); color: var(--k-suo-deep); }
+.k-chip.k-danger { background: var(--k-urushi); color: var(--k-urushi-text); }
+.k-chip.k-faint { color: var(--k-faint); }
+/* The one uppercase besides a label: an HTTP method, in mono. */
+.k-chip.k-method { font: 600 12px/1.4 var(--k-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--k-ink); }
+.k-chip.k-method.k-write { color: var(--k-suo-deep); }
+.k-chip.k-method.k-destroy { background: var(--k-suo); color: var(--k-lift); }
+.k-chip > code { font: 600 12px/1.4 var(--k-mono); color: inherit; }

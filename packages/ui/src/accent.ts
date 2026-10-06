@@ -73,7 +73,8 @@ export function accentRamp(accent: string): AccentRamp {
   return {
     accent,
     tint: toHex({ h: base.h, s: clamp(saturation * .7, .16, .55), l: .9 }),
-    soft: toHex({ h: base.h, s: clamp(saturation * .95, .3, .7), l: .68 }),
+    /* Pinned at .62 so warm hues keep their chroma instead of reading tan. */
+    soft: toHex({ h: base.h, s: clamp(saturation * .95, .3, .7), l: .62 }),
     deep: toHex({ h: (base.h + 6) % 360, s: clamp(saturation * 1.2, .42, .8), l: .32 }),
     contrast: base.l > .62 ? "#24221f" : "#fffdf8",
   };

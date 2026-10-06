@@ -51,3 +51,15 @@ has not been cut goes back to Stage 1 rather than being improvised inline.
 A device must do structural work, not just decorate. Vines that wrap the page
 *and* underline its links are a language; vines that only sit in the corners are
 wallpaper.
+
+## Surface and hierarchy revision — 2026-10-04 (rejected)
+
+A review of the Tools proof page proposed replacing Kata's materials with
+surface tiers, adding a semantic chip palette (indigo selection, gold caution,
+vermilion danger), thinning every edge to a toned pixel, and letting each app's
+colour wash its headings. It was rejected: it did not read as Kimono. The
+shared package stays on paper, ink and wood with depth as edge weight. What
+survived is narrower — Tools keeps its compact endpoint layout and is composed
+from the existing vocabulary with its hairlines inset, and the four places an
+app's colour may appear are now written into `docs/design-system.md`. The
+record, including why each part lost, is `decisions/0004-surface-hierarchy.md`.

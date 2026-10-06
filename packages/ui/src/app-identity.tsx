@@ -38,15 +38,19 @@ export function AppBloom({ identity, size = "tile", glyphHref, className }: {
   className?: string;
 }) {
   const roomy = size === "tile";
-  return <BloomMark
-    className={cx(roomy ? "k-app-tile" : "k-app-mark", className)}
-    identity={identity}
-    centre={roomy ? 20 : 15}
-  >
-    {glyphHref
-      ? <image width="100" height="100" href={glyphHref} />
-      : <Glyph name={identity.glyph} scale={roomy ? 1 : .62} color="#fffdf8" />}
-  </BloomMark>;
+  const glyphSize = roomy ? "30%" : "22%";
+  const externalGlyph = !identity.glyph && glyphHref;
+  return <span className={cx("k-app-bloom", roomy ? "k-app-tile" : "k-app-mark", className)}>
+    <BloomMark
+      className="k-app-bloom-flower"
+      identity={identity}
+      centre={roomy ? 20 : 15}
+    >
+      {!externalGlyph ? <Glyph name={identity.glyph} scale={roomy ? .72 : .5} color="#fffdf8" /> : null}
+    </BloomMark>
+    {externalGlyph ? <img className="k-app-bloom-icon" src={externalGlyph} alt="" aria-hidden="true" draggable={false}
+      style={{ width: glyphSize, height: glyphSize }} /> : null}
+  </span>;
 }
 
 /**

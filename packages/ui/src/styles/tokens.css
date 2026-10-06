@@ -1,62 +1,173 @@
 /*
- * 型 Kata — the Kimono design system.
+ * 型 Kata — the Kimono design system. Tokens.
  *
- * Three materials: paper, ink, wood. Signal colours are applied to them, never
- * used as materials. Depth is edge weight, never blur: paper stacks, it does
- * not glow. Three interaction primitives and no fourth — if a need does not fit
- * a door, a joint, or a seal, it is text and a seal.
+ * Paper stacks by value, not by stroke. The house hue lives in edges and at
+ * the top of the page, never as a tinted room. Pressable things are filled;
+ * readable things are not. Blossom is scarce and therefore means something.
+ * Motion is caused, bounded, and in the material's own plane.
  *
- * See docs/design-system.md for the rules this file enforces.
+ * Three layers: primitive (named pigments and papers), semantic (what a
+ * surface or a stroke is for), component (the few values a primitive owns).
+ * Pages read the semantic layer. Only this file names a hex.
+ *
+ * See docs/design-system.md for the contract these enforce.
  */
 
 :root {
-  /* ---- ink ---- */
+  /* ════════════ primitive ════════════ */
+
+  /* ink */
   --k-ink: #24221f;
   --k-ink-soft: #5b524d;
-  --k-faint: #8b6d67;
+  --k-faint: #6b605a;            /* passes 4.5:1 on fold */
 
-  /* ---- paper ---- */
-  --k-ground: #faf7f1;
-  --k-sheet: #fffdf8;
-  --k-hair: #ded0be;
+  /* pigments */
+  --k-plum: #4e2b37;             /* Mincho display text and the wordmark */
+  --k-suo: #a84d63;              /* the action colour: primary fill, focus, error text */
+  --k-suo-deep: #7e3448;
+  --k-suo-pad: #5f2535;          /* the ink pad a pressed seal sits on */
+  --k-suo-wash: #faeef0;
+  --k-sakura: #d77b8c;           /* cord strand, dark-pane keys */
+  --k-sakura-soft: #d59aa4;
+  --k-sakura-wash: #f2cbd2;      /* selection wash */
+  --k-moss: #5c7150;             /* running and 2xx, nothing else */
+  --k-moss-deep: #3e5236;
+  --k-moss-wash: #eef1ea;
 
-  /* ---- wood ---- */
-  --k-wood: #d8b77f;
-  --k-wood-pale: #ead2aa;
+  /* warm paper surfaces, from lifted sheet to folded paper */
+  --k-paper-lift: #fffdf8;       /* popover, drawer inset, lockup paper */
+  --k-paper-0: #fbf7ef;          /* sheet: cards, rows, reference body */
+  --k-paper-1: #f7f1e8;          /* ground: page, rail */
+  --k-paper-2: #ebe2d3;          /* fold: inputs at rest, chips, light code */
+  --k-hair: #ddd0bf;             /* hairlines, disabled petals */
+  --k-hair-deep: #cdbda7;        /* a hairline you are about to touch */
 
-  /* ---- signal ---- */
-  --k-accent: #a84d63;
-  --k-accent-pale: #f2cbd2;
-  --k-moss: #5c7150;
+  /* wood — the joint and the key drawer only. Flat planks, no sheen. */
+  --k-wood-flat: #dcc090;
+  --k-wood: var(--k-wood-flat);
+  --k-wood-seated: #c0a673;      /* the loose piece once it has gone home */
+  --k-wood-edge: #9c7544;
+  --k-wood-ink: #5a3f1f;         /* text on wood, 5:1 */
 
-  /* ---- edges: weight is touchability ---- */
+  /* urushi — the live response pane and the key reveal only */
+  --k-urushi: #2a1d22;
+  --k-urushi-text: #f3e9e0;
+  --k-urushi-comment: #a8969c;
+  --k-urushi-string: #e9c8a8;
+
+  /* ════════════ semantic ════════════ */
+
+  --k-sheet: var(--k-paper-0);
+  --k-ground: var(--k-paper-1);
+  --k-fold: var(--k-paper-2);
+  --k-lift: var(--k-paper-lift);
+  --k-hover: #f7efe1;                 /* always paired with a form change */
+  --k-selected: #f7e4e4;              /* sakura wash laid on sheet */
+
+  /* The house action colour. Stable in every app: an app's accent never
+     reaches a button. */
+  --k-accent: var(--k-suo);
+  --k-accent-deep: var(--k-suo-deep);
+  --k-accent-pale: var(--k-sakura-wash);
+
+  /* The app's own colour, injected by the shell. Permitted on the bloom, the
+     lockup name, the selection marker and an eight percent selection wash. */
+  --k-app-accent: var(--k-suo);
+
+  /* edges */
   --k-hairline: 1px;
-  --k-rule: 2px;
-  --k-frame: 3px;
+  --k-rule: 2px;                      /* survives only as a focus ring and a code rule */
+  --k-frame: 1px;                     /* the 3px frame is retired; kept as an alias */
 
-  /* ---- ma ---- */
-  --k-ma-1: 4px;
-  --k-ma-2: 8px;
-  --k-ma-3: 14px;
-  --k-ma-4: 22px;
-  --k-ma-5: 34px;
-  --k-ma-6: 56px;
+  /* radius: sheets, controls, chips. A seal is a carved block: 2px, nearly square. */
+  --k-r-3: 2px;
+  --k-r-2: 1px;
+  --k-r-1: 0px;
+  --k-r-seal: 2px;
+  --k-r-round: 999px;
 
-  /* ---- motion ---- */
+  /* depth: paper lifts by tone and a plum-tinted shadow, never by outline */
+  --k-shadow-sheet:
+    inset 0 1px 0 rgba(255, 255, 255, .55),
+    0 1px 0 rgba(78, 43, 55, .06),
+    0 14px 28px -20px rgba(78, 43, 55, .32);
+  --k-shadow-lift:
+    inset 0 1px 0 rgba(255, 255, 255, .6),
+    0 2px 0 rgba(36, 34, 31, .05),
+    0 28px 48px -24px rgba(78, 43, 55, .42);
+  --k-shadow-hanko: inset 0 -2px 0 var(--k-suo-pad);   /* the base a seal stands on */
+  /* a 3% paper grain, laid on sheets and the drawer only */
+  --k-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
+
+  /* space */
+  --k-space-1: 4px;
+  --k-space-2: 8px;
+  --k-space-3: 12px;
+  --k-space-4: 16px;
+  --k-space-5: 24px;
+  --k-space-6: 32px;
+  --k-space-7: 48px;
+  --k-space-8: 64px;
+  /* the old ma scale, aliased for anything not yet migrated */
+  --k-ma-1: var(--k-space-1);
+  --k-ma-2: var(--k-space-2);
+  --k-ma-3: var(--k-space-3);
+  --k-ma-4: var(--k-space-5);
+  --k-ma-5: var(--k-space-6);
+  --k-ma-6: var(--k-space-7);
+
+  /* controls */
+  --k-control: 44px;
+  --k-control-compact: 36px;
+
+  /* the shell: one measure for the header and every page */
+  --k-shell-gutter: clamp(16px, 4vw, 40px);
+  --k-shell-width: min(100%, calc(1280px + 2 * var(--k-shell-gutter)));
+
+  /* motion */
+  --k-t-tap: 120ms;
   --k-t-state: 180ms;
-  --k-t-element: 420ms;
-  --k-t-place: 900ms;
-  --k-ease-in: cubic-bezier(.2, .9, .25, 1);
-  --k-ease-out: cubic-bezier(.7, 0, .9, .36);
+  --k-t-fold: 240ms;
+  --k-t-seat: 400ms;
+  --k-t-cross: 900ms;
+  --k-ease-settle: cubic-bezier(.2, .9, .25, 1);
+  --k-ease-seat: cubic-bezier(.3, 1.35, .5, 1);     /* wood only */
+  --k-ease-leave: cubic-bezier(.7, 0, .9, .36);     /* departures, 180ms at most */
+  /* older names */
+  --k-t-element: var(--k-t-seat);
+  --k-t-place: var(--k-t-cross);
+  --k-ease-in: var(--k-ease-settle);
+  --k-ease-out: var(--k-ease-leave);
 
-  /* ---- type ---- */
+  /* type */
   --k-display: "Shippori Mincho Kimono", "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --k-sans: "Noto Sans Kimono", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --k-sans: "Zen Kaku Gothic Kimono", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
   --k-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* The one Mincho weight loaded is 600. Nothing may ask for another and get
+     a browser's faux bold. */
+  font-synthesis: none;
+  /* Lets a disclosure fold open to its natural height in browsers that can. */
+  interpolate-size: allow-keywords;
 }
 
-/* The package cannot assume the host page set a box model. Every primitive
-   sizes itself in border-box, or padding silently widens flex bases and the
-   joinery stops meeting. */
-.k-tray, .k-compartment, .k-door, .k-joint, .k-seal, .k-crossing, .k-joint-field,
-.k-tray *, .k-compartment *, .k-door *, .k-joint *, .k-crossing * { box-sizing: border-box; }
+/* The package cannot assume the host page set a box model. */
+.k-tray, .k-compartment, .k-door, .k-joint, .k-seal, .k-chip, .k-crossing, .k-joint-field, .k-field, .k-page-header,
+.k-tray *, .k-compartment *, .k-door *, .k-joint *, .k-crossing *, .k-field *, .k-page-header * { box-sizing: border-box; }
+
+/* ── type roles ── */
+.k-title { margin: 0; font: 600 40px/1.1 var(--k-display); letter-spacing: -.015em; color: var(--k-plum); }
+.k-heading { margin: 0; font: 600 28px/1.2 var(--k-display); letter-spacing: -.01em; color: var(--k-plum); }
+.k-label { font: 600 12px/1.4 var(--k-sans); letter-spacing: .01em; color: var(--k-ink-soft); }
+.k-caption { font: 500 12px/1.4 var(--k-sans); color: var(--k-ink-soft); }
+
+/* One block. Someone who asked for less motion gets the state, not the
+   ceremony — in every primitive and every page at once. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --k-t-tap: 0ms; --k-t-state: 0ms; --k-t-fold: 0ms; --k-t-seat: 0ms;
+  }
+  .k-seal, .k-seal::before, .k-chip, .k-door, .k-door > i, .k-door > .k-plate, .k-joint .k-pc, .k-field input, .k-field select, .k-field textarea,
+  .k-reveal-cue, .k-reveal::details-content, .k-tray, .k-sheet, .k-row { transition: none !important; }
+  .k-joint.k-seating .k-pc-b, .k-joint.k-parting .k-pc-b, .k-joint.k-seating .k-burst, .k-bloom-born, .k-arrive { animation: none !important; }
+}

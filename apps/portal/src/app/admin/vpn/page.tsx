@@ -1,4 +1,4 @@
-import { Compartment, Field, Form, FormActions, Note, Row, Rows, Seal } from "@kimono/ui";
+import { Compartment, Field, Form, FormActions, Note, PageHeader, Row, Rows, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { AppShell } from "@/components/app-shell";
@@ -52,12 +52,7 @@ export default async function AdminVpnPage({ searchParams }: { searchParams: Pro
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page">
       <AdminNavigation active="vpn" />
-      <header className="admin-workspace-header">
-        <div>
-          <h1>Kimono VPN</h1>
-          <p>Who may build a private mesh. Each member reaches only their own devices, and the ones they are invited to.</p>
-        </div>
-      </header>
+      <PageHeader title="Kimono VPN" description="Who may build a private mesh. Each member reaches only their own devices, and the ones they are invited to." />
 
       {query.error ? <p className="admin-notice error">{query.error}</p> : null}
       {!mesh.available ? <p className="admin-notice error">{mesh.reason}</p> : null}

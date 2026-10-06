@@ -1,11 +1,13 @@
 "use client";
 
 import { Seal } from "@kimono/ui";
+import { useCrossTo } from "@/components/crossing";
 import { useEffect, useState, type FormEvent } from "react";
 
 type LoginState = { sessionId?: string; status: "idle" | "starting" | "waiting" | "creating" | "error"; message?: string };
 
 export function CloudflareLoginWizard({ appId }: { appId?: string }) {
+  const crossTo = useCrossTo();
   const [state, setState] = useState<LoginState>({ status: "idle" });
 
   useEffect(() => {
@@ -19,13 +21,13 @@ export function CloudflareLoginWizard({ appId }: { appId?: string }) {
       } else if (result.status === "creating") setState((current) => ({ ...current, status: "creating" }));
       else if (result.status === "complete") {
         window.clearInterval(timer);
-        window.location.assign(appId
+        crossTo("kakejiku", appId
           ? `/admin/apps/${encodeURIComponent(appId)}?view=setup&saved=connected`
           : `/admin/infrastructure?saved=1`);
       }
     }, 1500);
     return () => window.clearInterval(timer);
-  }, [appId, state.sessionId, state.status]);
+  }, [appId, state.sessionId, state.status, crossTo]);
 
   async function begin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

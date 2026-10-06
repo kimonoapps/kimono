@@ -1,11 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════
    列 Retsu — rows inside a compartment.
 
-   A compartment's body is a list far more often than it is prose, and
-   hand-writing that list per page is what let cards drift: one page gets the
-   hairlines, another the padding, a third neither. These carry it once.
-
-   A row separates from its sibling with a hairline and never encloses itself.
+   A row separates from its sibling with a hairline and never encloses
+   itself. Its title is sans, not Mincho: Mincho names pages and APIs, rows
+   do the work.
    ═══════════════════════════════════════════════════════════════ */
 
 .k-rows { display: flex; flex-direction: column; }
@@ -15,79 +13,118 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--k-ma-3);
-  padding: var(--k-ma-3) 0;
+  gap: var(--k-space-3) var(--k-space-5);
+  padding: var(--k-space-4) 0;
   border-bottom: var(--k-hairline) solid var(--k-hair);
 }
 .k-row:first-child { padding-top: 0; }
 .k-row:last-child { padding-bottom: 0; border-bottom: 0; }
 
 .k-row-copy { min-width: 0; max-width: 62ch; }
-.k-row-copy > h3 { margin: 0 0 var(--k-ma-1); font: 600 21px/1.2 var(--k-display); letter-spacing: -.01em; color: var(--k-ink); }
-.k-row-copy > p { margin: 0; font: 12.5px/1.55 var(--k-sans); color: var(--k-ink-soft); }
-.k-row-lead { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-ma-3); }
+.k-row-copy > h3 { margin: 0 0 var(--k-space-1); font: 600 16px/1.4 var(--k-sans); letter-spacing: 0; color: var(--k-ink); }
+.k-row-copy > p { margin: 0; font: 14px/1.5 var(--k-sans); color: var(--k-ink-soft); }
+.k-row-lead { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-space-3); }
+.k-row-lead > h3 { margin: 0; }
 
-/* A muted aside inside a compartment. Never a row; it states, it does not list. */
-.k-note { margin: 0; max-width: 68ch; font: 12.5px/1.6 var(--k-sans); color: var(--k-ink-soft); }
-.k-note strong { color: var(--k-ink); font-weight: 700; }
-.k-note code, .k-inline-code { font: 11px/1.5 var(--k-mono); color: var(--k-ink); }
+/* A muted aside. Never a row; it states, it does not list. */
+.k-note { margin: 0; max-width: 68ch; font: 14px/1.55 var(--k-sans); color: var(--k-ink-soft); }
+.k-note strong { color: var(--k-ink); font-weight: 600; }
+.k-note code, .k-inline-code { padding: 1px 5px; border-radius: var(--k-r-1); background: var(--k-fold); font: 500 13px/1.5 var(--k-mono); color: var(--k-ink); }
 
 /* An address or a number, unadorned. */
-.k-mono { display: flex; flex-wrap: wrap; gap: var(--k-ma-1) var(--k-ma-3); font: 11px/1.6 var(--k-mono); color: var(--k-ink-soft); }
+.k-mono { display: flex; flex-wrap: wrap; gap: var(--k-space-1) var(--k-space-4); font: 500 13px/1.6 var(--k-mono); font-variant-numeric: tabular-nums; color: var(--k-ink-soft); }
 
-/* A command you are meant to copy. It keeps its frame because it is a thing
-   you act on, not a fact you read. */
-.k-command {
-  margin: var(--k-ma-3) 0 0;
-  padding: var(--k-ma-3) 0 var(--k-ma-3) var(--k-ma-3);
-  overflow-x: auto;
-  border-left: var(--k-rule) solid var(--k-hair);
-  background: color-mix(in srgb, var(--k-ground) 70%, transparent);
+/* ─── code panes ───
+   Documentation sits on fold with a 2px ink rule. Something that came back
+   from a request sits on urushi, so "this is a reply" is visibly different
+   from "this is documentation". Mono never drops below 13px. */
+.k-code, .k-command {
+  margin: 0;
+  padding: var(--k-space-3) var(--k-space-4);
+  overflow: auto;
+  border-left: var(--k-rule) solid var(--k-ink);
+  border-radius: 0 var(--k-r-2) var(--k-r-2) 0;
+  background: var(--k-fold);
+  color: var(--k-ink);
+  font: 500 13px/1.6 var(--k-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
-.k-command > code { font: 11px/1.7 var(--k-mono); color: var(--k-ink); white-space: pre; }
+.k-command { margin-top: var(--k-space-3); }
+.k-code > code, .k-command > code { font: inherit; color: inherit; white-space: inherit; }
+.k-code .k-key { color: var(--k-plum); }
+.k-code .k-str { color: var(--k-moss-deep); }
+.k-code .k-num { color: var(--k-suo-deep); }
+.k-code .k-lit { color: var(--k-ink-soft); }
+.k-code.k-urushi { border-left: 0; border-radius: var(--k-r-2); background: var(--k-urushi); color: var(--k-urushi-text); }
+.k-code.k-urushi .k-key { color: var(--k-sakura); }
+.k-code.k-urushi .k-str { color: var(--k-urushi-string); }
+.k-code.k-urushi .k-num { color: var(--k-lift); }
+.k-code.k-urushi .k-lit, .k-code.k-urushi .k-comment { color: var(--k-urushi-comment); }
 
 /* A sequence, where the order is the information. */
-.k-steps { display: flex; flex-direction: column; gap: var(--k-ma-4); margin: 0; padding: 0; list-style: none; counter-reset: k-step; }
-.k-steps > li { counter-increment: k-step; position: relative; padding-left: var(--k-ma-5); }
-.k-steps > li::before { content: counter(k-step); position: absolute; left: 0; top: 2px; font: 700 11px/1.4 var(--k-mono); color: var(--k-accent); }
-.k-steps > li > h3 { margin: 0 0 var(--k-ma-1); font: 600 21px/1.2 var(--k-display); letter-spacing: -.01em; color: var(--k-ink); }
-.k-steps > li > p { margin: 0; max-width: 68ch; font: 12.5px/1.55 var(--k-sans); color: var(--k-ink-soft); }
+.k-steps { display: flex; flex-direction: column; gap: var(--k-space-5); margin: 0; padding: 0; list-style: none; counter-reset: k-step; }
+.k-steps > li { counter-increment: k-step; position: relative; padding-left: var(--k-space-6); }
+.k-steps > li::before { content: counter(k-step); position: absolute; left: 0; top: 1px; font: 600 13px/1.5 var(--k-mono); color: var(--k-suo); }
+.k-steps > li > h3 { margin: 0 0 var(--k-space-1); font: 600 16px/1.4 var(--k-sans); color: var(--k-ink); }
+.k-steps > li > p { margin: 0; max-width: 68ch; font: 14px/1.55 var(--k-sans); color: var(--k-ink-soft); }
 
-/* 引 A row that opens. The cue is a mark that turns, not an icon that spins:
-   paper folds, it does not animate. */
+/* ─── 引 Reveal — a row that opens ───
+   The cue sits beside the title; the whole summary is the target. Opening
+   folds the body out over 240ms where the browser can animate a disclosure;
+   elsewhere it simply opens. */
 .k-reveal { border-bottom: var(--k-hairline) solid var(--k-hair); }
 .k-reveal:last-child { border-bottom: 0; }
 
 .k-reveal > summary {
   display: flex;
   align-items: center;
-  gap: var(--k-ma-3);
-  padding: var(--k-ma-3) 0;
+  gap: var(--k-space-3);
+  min-height: var(--k-control);
+  padding: var(--k-space-3) 0;
+  border-radius: var(--k-r-1);
   cursor: pointer;
   list-style: none;
+  transition: background-color var(--k-t-state) var(--k-ease-settle);
 }
 .k-reveal > summary::-webkit-details-marker { display: none; }
-.k-reveal > summary:focus-visible { outline: var(--k-rule) solid var(--k-accent); outline-offset: 3px; }
+.k-reveal > summary::marker { content: ""; }
+.k-reveal > summary:hover { color: var(--k-plum); }
+.k-reveal > summary:focus-visible { outline: var(--k-rule) solid var(--k-suo); outline-offset: 3px; }
 
 .k-reveal-copy { min-width: 0; max-width: 62ch; }
-.k-reveal-copy > h3 { margin: 0; font: 600 21px/1.2 var(--k-display); letter-spacing: -.01em; color: var(--k-ink); }
-.k-reveal-copy > p { margin: var(--k-ma-1) 0 0; font: 12.5px/1.55 var(--k-sans); color: var(--k-ink-soft); }
+.k-reveal-copy > h3 { margin: 0; font: 600 16px/1.4 var(--k-sans); letter-spacing: 0; color: var(--k-ink); }
+.k-reveal-copy > p { margin: var(--k-space-1) 0 0; font: 14px/1.5 var(--k-sans); color: var(--k-ink-soft); }
 
-/* The marker sits beside the title, never stranded at the far edge of a wide
-   row — a cue you have to look for is not a cue. */
-.k-reveal-cue {
-  width: 10px;
-  height: 10px;
+/* The cue: a chevron that turns from "right" to "down". */
+.k-reveal-cue, .k-cue {
+  width: 8px;
+  height: 8px;
   flex: none;
-  border-right: var(--k-rule) solid var(--k-ink);
-  border-bottom: var(--k-rule) solid var(--k-ink);
-  transform: rotate(-45deg);
-  transition: transform var(--k-t-state) var(--k-ease-in);
+  margin: 0 var(--k-space-1) 0 var(--k-space-1);
+  border-right: var(--k-rule) solid var(--k-ink-soft);
+  border-bottom: var(--k-rule) solid var(--k-ink-soft);
+  transform: translateY(-1px) rotate(-45deg);
+  transition: transform var(--k-t-fold) var(--k-ease-settle), border-color var(--k-t-state);
 }
-.k-reveal[open] > summary .k-reveal-cue { transform: rotate(45deg); }
+.k-reveal[open] > summary .k-reveal-cue, details[open] > summary .k-cue { transform: translateY(-3px) rotate(45deg); border-color: var(--k-suo); }
 
-.k-reveal-body { display: grid; gap: var(--k-ma-3); padding: 0 0 var(--k-ma-4) calc(10px + var(--k-ma-3)); }
+.k-reveal-body { display: grid; gap: var(--k-space-3); padding: 0 0 var(--k-space-5) calc(16px + var(--k-space-3)); }
 
-@media (prefers-reduced-motion: reduce) {
-  .k-reveal-cue { transition: none; }
+/* The unfold itself, where the browser can animate a disclosure. */
+.k-reveal::details-content, .k-fold::details-content {
+  height: 0;
+  overflow: clip;
+  transition: height var(--k-t-fold) var(--k-ease-settle), content-visibility var(--k-t-fold) allow-discrete;
+}
+.k-reveal[open]::details-content, .k-fold[open]::details-content { height: auto; }
+
+/* An arrival inside a surface: a short move with its opacity finished
+   before half the distance is covered. Never used after a crossing. */
+@keyframes k-arrive { from { opacity: 0; translate: 0 6px; } 40% { opacity: 1; } to { opacity: 1; translate: 0 0; } }
+.k-arrive { animation: k-arrive var(--k-t-fold) var(--k-ease-settle) both; }
+
+@media (max-width: 720px) {
+  .k-row { align-items: flex-start; flex-direction: column; }
 }

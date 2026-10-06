@@ -1,0 +1,112 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "kimono-tools",
+    "name": "Kimono Tools",
+    "shortName": "Tools",
+    "description": "A collection of APIs with endpoint access controls and live documentation.",
+    "category": "Tools",
+    "version": "0.1.0",
+    "icon": "icon.svg",
+    "colors": [
+      "#b8732c",
+      "#63491f",
+      "#ead2aa"
+    ],
+    "glyph": "tools"
+  },
+  "spec": {
+    "integration": "native",
+    "services": [],
+    "volumes": [],
+    "configuration": [],
+    "managedEnvironment": [],
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    },
+    "portalPath": "/tools",
+    "setupReady": true,
+    "apiCollection": [
+      {
+        "id": "mawaqit",
+        "name": "Mawaqit",
+        "description": "Find mosques and read their published prayer calendars.",
+        "source": "https://github.com/akramboussanni/mawaqit-gnome/tree/0e0a730b217b463b704f9c72e465e5124b78b5cf",
+        "upstreamAuth": "none",
+        "operations": [
+          {
+            "id": "search",
+            "name": "Search mosques",
+            "description": "Search by mosque or city name, or latitude and longitude. Closed mosques are excluded.",
+            "parameters": [
+              {
+                "name": "q",
+                "description": "Mosque or city name. Use q or both lat and lon.",
+                "example": "Paris",
+                "required": false
+              },
+              {
+                "name": "lat",
+                "description": "Latitude between -90 and 90.",
+                "example": "48.8566",
+                "required": false
+              },
+              {
+                "name": "lon",
+                "description": "Longitude between -180 and 180.",
+                "example": "2.3522",
+                "required": false
+              }
+            ],
+            "response": "JSON object with a mosques array. Each result has slug, name, and location.",
+            "example": {
+              "q": "Paris"
+            }
+          },
+          {
+            "id": "calendar",
+            "name": "Prayer calendar",
+            "description": "Read the full published calendar and its mosque timezone. Data comes from the mosque page, not an official authenticated calendar API.",
+            "parameters": [
+              {
+                "name": "mosque",
+                "description": "Mosque slug or https://mawaqit.net mosque URL.",
+                "example": "grande-mosquee-de-paris",
+                "required": true
+              }
+            ],
+            "response": "JSON object with mosque, timezone, calendar (12 monthly day maps), and fetchedAt. Times are local HH:mm values from the mosque.",
+            "example": {
+              "mosque": "grande-mosquee-de-paris"
+            }
+          },
+          {
+            "id": "prayer-times",
+            "name": "Prayer times",
+            "description": "Read six daily times for a date in the mosque timezone. Defaults to today at the mosque. No calculated prayer or night intervals.",
+            "parameters": [
+              {
+                "name": "mosque",
+                "description": "Mosque slug or https://mawaqit.net mosque URL.",
+                "example": "grande-mosquee-de-paris",
+                "required": true
+              },
+              {
+                "name": "date",
+                "description": "Optional YYYY-MM-DD date in the current published calendar year.",
+                "example": "2026-10-04",
+                "required": false
+              }
+            ],
+            "response": "JSON object with mosque, date, timezone, times (name and local time), and fetchedAt. Includes Fajr, Sunrise, Dhuhr, Asr, Maghrib, and Isha.",
+            "example": {
+              "mosque": "grande-mosquee-de-paris"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

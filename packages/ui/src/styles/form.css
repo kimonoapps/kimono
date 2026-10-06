@@ -1,32 +1,46 @@
 /* ─────────────────────────────────────────────────────────────
    組 Form — a labelled control and the seals that commit it.
+
+   An input at rest is a fold in the paper: a shade deeper than the sheet,
+   a hair edge, no ink. Reaching for it warms the edge; focusing lifts it to
+   the lightest paper and draws the suō ring. Disabled is dashed and faint,
+   never faded.
    ───────────────────────────────────────────────────────────── */
 
-/* A labelled control. The label is the only uppercase in the system. */
-.k-field { display: grid; gap: var(--k-ma-1); }
-.k-field > span { font: 700 10px/1.4 var(--k-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--k-ink-soft); }
-.k-field input, .k-field select {
-  min-height: 44px;
+.k-field { display: grid; gap: var(--k-space-2); }
+.k-field > span { font: 600 12px/1.4 var(--k-sans); letter-spacing: .01em; color: var(--k-ink-soft); }
+.k-field > span > em { margin-left: var(--k-space-2); font: 500 12px/1.4 var(--k-sans); color: var(--k-suo-deep); }
+.k-field > small { font: 13px/1.45 var(--k-sans); color: var(--k-ink-soft); }
+
+.k-field input, .k-field select, .k-field textarea,
+.k-input {
+  min-height: var(--k-control);
   width: 100%;
-  max-width: 360px;
-  padding: 0 11px;
-  border: var(--k-rule) solid var(--k-ink);
-  border-radius: 0;
-  background: var(--k-sheet);
+  max-width: 420px;
+  padding: 0 var(--k-space-4);
+  border: var(--k-hairline) solid var(--k-hair);
+  border-radius: var(--k-r-2);
+  background: var(--k-fold);
   color: var(--k-ink);
-  font: 12.5px/1.5 var(--k-sans);
+  font: 14px/1.5 var(--k-sans);
+  transition:
+    border-color var(--k-t-state) var(--k-ease-settle),
+    background-color var(--k-t-state) var(--k-ease-settle),
+    box-shadow var(--k-t-state) var(--k-ease-settle);
 }
-.k-field input:focus-visible, .k-field select:focus-visible {
-  border-color: var(--k-accent);
-  outline: var(--k-rule) solid color-mix(in srgb, var(--k-accent) 30%, transparent);
-  outline-offset: 1px;
+.k-field textarea { padding: var(--k-space-3) var(--k-space-4); resize: vertical; }
+.k-field input:hover, .k-field select:hover, .k-field textarea:hover, .k-input:hover { border-color: var(--k-hair-deep); }
+.k-field input:focus-visible, .k-field select:focus-visible, .k-field textarea:focus-visible, .k-input:focus-visible {
+  outline: 0;
+  border-color: var(--k-suo);
+  background: var(--k-lift);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-suo) 22%, transparent);
 }
+.k-field input::placeholder, .k-input::placeholder { color: var(--k-faint); }
+.k-field input:disabled, .k-field select:disabled, .k-input:disabled { color: var(--k-faint); background: transparent; border-style: dashed; cursor: not-allowed; }
+.k-field input[type="checkbox"], .k-field input[type="radio"] { width: 18px; min-height: 0; height: 18px; padding: 0; accent-color: var(--k-suo); }
 
 /* A form inside a compartment, separated from the list it follows. */
-.k-form { display: grid; gap: var(--k-ma-3); }
-.k-form.k-after-rows { margin-top: var(--k-ma-4); padding-top: var(--k-ma-4); border-top: var(--k-hairline) solid var(--k-hair); }
-.k-form-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-ma-3); }
-
-@media (max-width: 720px) {
-  .k-row { align-items: flex-start; flex-direction: column; }
-}
+.k-form { display: grid; gap: var(--k-space-4); }
+.k-form.k-after-rows { margin-top: var(--k-space-5); padding-top: var(--k-space-5); border-top: var(--k-hairline) solid var(--k-hair); }
+/* .k-form-actions is a seal group; its measure lives in seal.css. */

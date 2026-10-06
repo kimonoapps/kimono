@@ -18,7 +18,7 @@ const shoji = <><i /><i /></>;
  * Renders a button by default, or an anchor when given an href.
  */
 type DoorProps = {
-  /** Given an href the door is a link; without one it is a button. */
+  /** @deprecated Plain href navigation bypasses transitions. Use NavDoor or useCrossTo. */
   href?: string;
   label: string;
   /** The room you are already in: the screens stand open and the plate inks. */

@@ -3,7 +3,6 @@ import { Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { connectCloudflareTunnel, disconnectTunnel, getPlatformSettings } from "@/lib/settings";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CloudflareLoginWizard } from "./cloudflare-login-wizard";
 

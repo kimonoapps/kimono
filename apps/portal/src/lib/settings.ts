@@ -1,3 +1,4 @@
+import { callerKeyConfiguration, validateApiSettings } from "./tool-apis/catalog";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AppDefinition } from "./definitions";
@@ -71,7 +72,6 @@ function defaults(): PlatformSettings {
   const baseDomain = process.env.KIMONO_BASE_DOMAIN || "example.com";
   const identityDomain = process.env.KIMONO_IDENTITY_DOMAIN || hostnameFromUrl(process.env.AUTHENTIK_ISSUER) || "";
   const meshDomain = process.env.KIMONO_MESH_DOMAIN || "";
-  const notesColors: Palette = ["#b56d78", "#5f3441", "#ecd2b7"];
   return {
     version: 4,
     baseDomain,
@@ -84,20 +84,12 @@ function defaults(): PlatformSettings {
         domain: configuredPortalHostname() || "kimono", colors: ["#d77b8c", "#5f3441", "#f2cbd2"],
         tunnelId: "public", environment: {}, networkPolicy: { internetAccess: true, allowedApps: [] },
       },
-      // Applications start unpublished. An administrator enables Notes, picks its
-      // hostname, and assigns a connection in the Admin portal.
-      outline: {
-        id: "outline", definitionId: "outline", name: "Kimono Notes", enabled: false,
-        domain: "notes", colors: notesColors, tunnelId: null, environment: {},
-        networkPolicy: { internetAccess: true, allowedApps: [] },
-      },
+
     },
     tunnels: {
       public: { id: "public", name: "Public Cloudflare", provider: "cloudflare", enabled: true, configuration: {} },
     },
-    routes: {
-      "outline-web": { id: "outline-web", appId: "outline", endpointId: "web", hostname: `notes.${baseDomain}`, path: "/*", tunnelId: "public", enabled: false },
-    },
+    routes: {},
   };
 }
 
@@ -128,11 +120,20 @@ function normalize(value: unknown): PlatformSettings {
     if (legacy.apps?.notes) {
       fallback.baseDomain = legacy.baseDomain || fallback.baseDomain;
       fallback.brand.colors = validPalette(legacy.brand?.colors, fallback.brand.colors);
-      fallback.apps.outline.enabled = legacy.apps.notes.enabled ?? fallback.apps.outline.enabled;
-      fallback.apps.outline.domain = legacy.apps.notes.domain || fallback.apps.outline.domain;
-      fallback.apps.outline.colors = validPalette(legacy.apps.notes.colors, fallback.apps.outline.colors);
-      fallback.routes["outline-web"].hostname = appHostname(fallback.apps.outline.domain, fallback.baseDomain);
-      fallback.routes["outline-web"].enabled = fallback.apps.outline.enabled;
+      const notes: AppInstance = {
+        id: "outline", definitionId: "outline", name: "Kimono Notes",
+        enabled: legacy.apps.notes.enabled ?? false,
+        domain: legacy.apps.notes.domain || "notes",
+        colors: validPalette(legacy.apps.notes.colors, ["#b56d78", "#5f3441", "#ecd2b7"]),
+        tunnelId: null, environment: {},
+        networkPolicy: { internetAccess: true, allowedApps: [] },
+      };
+      fallback.apps.outline = notes;
+      fallback.routes["outline-web"] = {
+        id: "outline-web", appId: notes.id, endpointId: "web",
+        hostname: appHostname(notes.domain, fallback.baseDomain), path: "/*",
+        tunnelId: "public", enabled: notes.enabled,
+      };
     }
     return fallback;
   }
@@ -161,8 +162,12 @@ function normalize(value: unknown): PlatformSettings {
       if (idPattern.test(id) && route.appId && route.endpointId && route.hostname && route.tunnelId) routes[id] = { id, appId: route.appId, endpointId: route.endpointId, hostname: route.hostname, path: route.path || "/*", tunnelId: route.tunnelId, enabled: route.enabled !== false };
     }
   } else {
-    const outline = apps.outline || fallback.apps.outline;
-    routes["outline-web"] = { ...routes["outline-web"], hostname: appHostname(outline.domain, input.baseDomain || fallback.baseDomain), tunnelId: outline.tunnelId || "public", enabled: outline.enabled && Boolean(outline.tunnelId) };
+    const outline = apps.outline;
+    if (outline) routes["outline-web"] = {
+      id: "outline-web", appId: outline.id, endpointId: "web", path: "/*",
+      hostname: appHostname(outline.domain, input.baseDomain || fallback.baseDomain),
+      tunnelId: outline.tunnelId || "public", enabled: outline.enabled && Boolean(outline.tunnelId),
+    };
   }
   return { version: 4, baseDomain: input.baseDomain || fallback.baseDomain, identityDomain: input.identityDomain || fallback.identityDomain, meshDomain: fallback.meshDomain, brand: { colors: validPalette(input.brand?.colors, fallback.brand.colors) }, apps: { ...fallback.apps, ...apps }, tunnels, routes };
 }
@@ -206,8 +211,10 @@ export function tunnelZones(tunnel: TunnelInstance | undefined): CloudflareZone[
   } catch { return []; }
 }
 
-export async function installDefinition(definition: AppDefinition) {
+/** Creates saved configuration; deployment happens only after enablement. */
+export async function configureDefinition(definition: AppDefinition) {
   const settings = await getPlatformSettings();
+  if (definition.spec.setupReady === false) throw new Error("Configuration is not available for this app yet");
   const id = definition.metadata.id;
   if (!settings.apps[id]) {
     settings.apps[id] = {
@@ -219,9 +226,10 @@ export async function installDefinition(definition: AppDefinition) {
 }
 
 export async function saveAppOverview(definition: AppDefinition, form: FormData) {
+  if (definition.spec.setupReady === false && form.get("enabled") === "on") throw new Error("This app cannot be enabled until its configuration is available");
   const settings = await getPlatformSettings();
   const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Install this app before configuring it");
+  if (!current) throw new Error("Start setup before saving app configuration");
   const domain = String(form.get("domain") || "").trim().toLowerCase();
   if (!(labelPattern.test(domain) || domainPattern.test(domain))) throw new Error("Enter a short app name or full hostname");
   const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
@@ -234,12 +242,13 @@ export async function saveAppOverview(definition: AppDefinition, form: FormData)
 }
 
 export async function saveAppSetup(definition: AppDefinition, form: FormData) {
+  if (definition.spec.setupReady === false && form.get("enabled") === "on") throw new Error("This app cannot be enabled until its configuration is available");
   const settings = await getPlatformSettings();
   const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Install this app before configuring it");
+  if (!current) throw new Error("Start setup before saving app configuration");
   const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
   if (!colors.every((color) => colorPattern.test(color))) throw new Error("Every flower color must be a six-digit hex value");
-  const tunnelValue = String(form.get("tunnelId") || "none");
+  const tunnelValue = definition.spec.portalPath ? "none" : String(form.get("tunnelId") || "none");
   const tunnelId = tunnelValue === "none" ? null : tunnelValue;
   const tunnel = tunnelId ? settings.tunnels[tunnelId] : undefined;
   if (tunnelId && !tunnel) throw new Error("Select an existing tunnel");
@@ -279,7 +288,7 @@ export async function saveAppSetup(definition: AppDefinition, form: FormData) {
 export async function saveAppEnvironment(definition: AppDefinition, form: FormData) {
   const settings = await getPlatformSettings();
   const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Install this app before configuring it");
+  if (!current) throw new Error("Start setup before saving app configuration");
   // Each form posts one target, so saving app settings never disturbs the
   // environment view's answers, and an unticked box still means "off".
   const target = String(form.get("target") || "environment") === "settings" ? "settings" : "environment";
@@ -295,9 +304,11 @@ export async function saveAppEnvironment(definition: AppDefinition, form: FormDa
     const submitted = form.get(`env.${field.key}`);
     if (submitted === null || field.kind === "secret" && submitted === "") continue;
     const value = String(submitted);
+    if (field.kind === "select" && value && !field.options?.includes(value)) throw new Error(`Invalid selection for ${field.label}`);
     if (value === "" || value === field.default) delete environment[field.key];
     else environment[field.key] = { value, secret: field.kind === "secret" };
   }
+  validateApiSettings(definition.spec.apiCollection || [], environment);
   settings.apps[current.id] = { ...current, environment };
   await persist(settings);
 }
@@ -305,8 +316,8 @@ export async function saveAppEnvironment(definition: AppDefinition, form: FormDa
 export async function saveAppNetwork(definition: AppDefinition, form: FormData) {
   const settings = await getPlatformSettings();
   const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Install this app before configuring it");
-  const tunnelValue = String(form.get("tunnelId") || "none");
+  if (!current) throw new Error("Start setup before saving app configuration");
+  const tunnelValue = definition.spec.portalPath ? "none" : String(form.get("tunnelId") || "none");
   const tunnelId = tunnelValue === "none" ? null : tunnelValue;
   if (tunnelId && !settings.tunnels[tunnelId]) throw new Error("Select an existing tunnel");
   let domain = current.domain;
@@ -457,5 +468,18 @@ export async function savePlatformBrand(form: FormData) {
   settings.baseDomain = baseDomain;
   settings.brand.colors = colors as unknown as Palette;
   if (settings.apps["kimono-portal"]) settings.apps["kimono-portal"].colors = colors as unknown as Palette;
+  await persist(settings);
+}
+
+/** Key management writes the same configuration that the app management form edits. */
+export async function saveToolApiCallerKey(definition: AppDefinition, apiId: string, key: string | null) {
+  const api = definition.spec.apiCollection?.find(item => item.id === apiId);
+  if (!api) throw new Error("Unknown API");
+  const settings = await getPlatformSettings();
+  const instance = settings.apps[definition.metadata.id];
+  if (!instance) throw new Error("Start setup first");
+  const environment = callerKeyConfiguration(api, instance.environment, key);
+  validateApiSettings(definition.spec.apiCollection || [], environment);
+  settings.apps[instance.id] = { ...instance, environment };
   await persist(settings);
 }

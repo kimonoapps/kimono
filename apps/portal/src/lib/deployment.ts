@@ -225,6 +225,7 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
   for (const app of Object.values(settings.apps).filter((item) => item.enabled && item.definitionId !== "kimono-portal")) {
     const definition = definitionById.get(app.definitionId);
     if (!definition) { plan.warnings.push(`${app.name}: definition ${app.definitionId} is unavailable`); continue; }
+    if (definition.spec.portalPath) continue;
     const privateNetwork = `${app.id}-private`;
     plan.compose.networks[privateNetwork] = { internal: !app.networkPolicy.internetAccess };
     const appRoutes = Object.values(settings.routes).filter((route) => route.enabled && route.appId === app.id);

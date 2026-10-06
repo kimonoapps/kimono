@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { Crossing } from "@/components/crossing";
-import { AppBloom, StatedSeal } from "@kimono/ui";
+import { AppBloom, PageHeader, StatedSeal } from "@kimono/ui";
 import { accentOf } from "@/lib/apps";
 import { getPlatformSettings } from "@/lib/settings";
 import { scanAppDefinitions } from "@/lib/definitions";
@@ -69,10 +69,9 @@ export default async function BackupsPage({ searchParams }: { searchParams: Prom
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page backup-workspace">
       <AdminNavigation active="backups" />
-      <header className="admin-workspace-header">
-        <div><h1>Backups</h1><p>Each app decides what it keeps.</p></div>
+      <PageHeader title="Backups" description="Each app decides what it keeps.">
         <p className="backup-standing"><StatedSeal state={health.state}>{health.label}</StatedSeal><span>{health.line}</span></p>
-      </header>
+      </PageHeader>
       {query.error ? <p role="alert" className="admin-notice error">{query.error}</p> : null}
       {query.saved ? <p role="status" className="admin-notice success">Backup settings saved.</p> : null}
       {query.queued ? <p role="status" className="admin-notice">Queued. This page follows along.</p> : null}

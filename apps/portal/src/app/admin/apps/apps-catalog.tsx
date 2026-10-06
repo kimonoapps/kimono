@@ -1,26 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { AppBloom, StatedSeal, type SealState } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
+import type { RegisteredApp } from "@/lib/apps";
 import { useMemo, useState } from "react";
 
-export type CatalogApp = {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  version: string;
-  source: "embedded" | "filesystem";
-  iconUrl: string;
-  accent: string;
-  installed: boolean;
-  enabled: boolean;
-  state: "problem" | "disabled" | "private" | "public" | "system" | "available";
-  stateLabel: string;
-  stateDetail: string;
-  hostname?: string;
-};
+type CatalogApp = RegisteredApp;
 
 /* State is stamped, not tinted: every catalog card wears a 判 seal that says
    the same thing in words as the card says in material. */
@@ -58,9 +43,9 @@ export function AppsCatalog({ apps, intent }: { apps: CatalogApp[]; intent?: "pu
   function grid(items: CatalogApp[]) {
     return <div className="app-catalog-grid">
       {items.map((app) => (
-        <Crossing className={`catalog-app state-${app.state}`} kind="kakejiku" href={`/admin/apps/${app.id}${intent === "publish" ? "?intent=publish" : ""}`} key={app.id}>
+        <Crossing className={`catalog-app state-${app.state}`} kind="kakejiku" href={`${app.catalogHref}${intent === "publish" ? "?intent=publish" : ""}`} key={app.id}>
           <span className="catalog-card-top">
-            <span className="catalog-icon"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent }} glyphHref={app.iconUrl} /></span>
+            <span className="catalog-icon"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl} /></span>
             <StatedSeal state={sealStates[app.state]}>{app.stateLabel}</StatedSeal>
           </span>
           <span className="catalog-copy">

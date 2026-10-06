@@ -1,4 +1,5 @@
-import { Seal, SealLink } from "@kimono/ui";
+import { CrossingSeal } from "@/components/crossing";
+import { Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { VpnRooms } from "@/components/app-rooms";
@@ -112,7 +113,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
                 <p>@{host.username} invited you, so your devices reach theirs.</p>
               </Panel>)}
             </Panels>
-          : <PanelEmpty title="Nobody has invited you" action={<SealLink href="/vpn" tone="quiet">Your devices</SealLink>}>
+          : <PanelEmpty title="Nobody has invited you" action={<CrossingSeal href="/vpn" tone="quiet">Your devices</CrossingSeal>}>
               When someone invites you into their mesh, their devices become reachable from yours.
             </PanelEmpty>}
       </Workspace>

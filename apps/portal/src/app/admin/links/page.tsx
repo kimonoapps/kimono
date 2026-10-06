@@ -1,4 +1,5 @@
-import { Compartment, Note, Row, Rows, SealLink } from "@kimono/ui";
+import { CrossingSeal } from "@/components/crossing";
+import { Compartment, Note, PageHeader, Row, Rows } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { AppShell } from "@/components/app-shell";
@@ -40,12 +41,7 @@ export default async function LinksPage() {
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page">
       <AdminNavigation active="links" />
-      <header className="admin-workspace-header">
-        <div>
-          <h1>Useful links</h1>
-          <p>The places Kimono hands off to, so you are not hunting for an address.</p>
-        </div>
-      </header>
+      <PageHeader title="Useful links" description="The places Kimono hands off to, so you are not hunting for an address." />
 
       <Compartment label="People" wants={!settings.identityDomain}>
         {settings.identityDomain
@@ -60,7 +56,7 @@ export default async function LinksPage() {
 }
 
 function Destination({ name, description, href, action = "Open" }: Destination) {
-  return <Row title={name} action={<SealLink href={href} target="_blank" rel="noreferrer">{action}</SealLink>}>
+  return <Row title={name} action={<CrossingSeal href={href} target="_blank" rel="noreferrer">{action}</CrossingSeal>}>
     {description}
   </Row>;
 }

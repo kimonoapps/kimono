@@ -1,5 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" role="img" aria-labelledby="title">
   <title id="title">Git</title>
-  <path d="M50 8 92 50 50 92 8 50 50 8Z" fill="#8a6a4a" stroke="#3f3027" stroke-width="6"/>
-  <path d="m29 50 14 14 28-28" stroke="#ead9c4" stroke-width="8" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M30 29v42M70 29v10c0 15-40 10-40 26" stroke="#fffdf8" stroke-width="7" stroke-linecap="round"/>
+  <g fill="#282522" stroke="#fffdf8" stroke-width="7">
+    <circle cx="30" cy="20" r="9"/>
+    <circle cx="70" cy="20" r="9"/>
+    <circle cx="30" cy="80" r="9"/>
+  </g>
 </svg>

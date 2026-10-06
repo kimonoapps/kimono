@@ -16,7 +16,7 @@ export * from "./bloom";
 export * from "./glyphs";
 export * from "./app-identity";
 
-/* The three primitives. Everything interactive is one of these. */
+/* The three primitives, and the chip that states a fact. */
 export * from "./door";
 export * from "./joint";
 export * from "./seal";
@@ -25,9 +25,7 @@ export * from "./seal";
 export * from "./tray";
 export * from "./rows";
 export * from "./form";
+export * from "./page";
 
 /* Crossings — the press is the page change. */
 export * from "./crossing";
-
-/* Pre-system leftovers, kept until their callers are converted. */
-export * from "./surface";

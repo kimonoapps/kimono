@@ -1,5 +1,6 @@
+import { CrossingSeal } from "@/components/crossing";
 import { RunJoint } from "@/components/run-joint";
-import { Compartment, Field, Mono, Seal, SealLink } from "@kimono/ui";
+import { Compartment, Field, Mono, Seal } from "@kimono/ui";
 import type { BackupConfig, BackupStatus } from "@/lib/backups";
 import { BackupRefresh } from "./refresh";
 
@@ -41,7 +42,7 @@ export function BackupMachinery({ config, status, apps, save, run, queued }: {
           <Field label="Application key"><input name="applicationKey" type="password" autoComplete="new-password" placeholder={config ? "Kept — leave blank" : ""} /></Field>
         </div>
         {config ? <div className="backup-kit">
-          <SealLink href="/api/backups/recovery-kit" tone="quiet">Download recovery kit</SealLink>
+          <CrossingSeal download href="/api/backups/recovery-kit" tone="quiet">Download recovery kit</CrossingSeal>
           <label className="settings-toggle"><input name="recoverySaved" type="checkbox" defaultChecked={config.recoverySaved} /><span>Kit is stored off this server</span></label>
         </div> : null}
       </Compartment>

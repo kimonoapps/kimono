@@ -1,4 +1,5 @@
-import { Reveal, Rows, Seal, SealLink, StatedSeal } from "@kimono/ui";
+import { CrossingSeal } from "@/components/crossing";
+import { Reveal, Rows, Seal, StatedSeal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { VpnRooms } from "@/components/app-rooms";
@@ -56,7 +57,7 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
 
       <Workspace>
         {!member
-          ? <PanelEmpty title="Kimono VPN is not switched on" action={<SealLink href="/">Back to Kimono</SealLink>}>
+          ? <PanelEmpty title="Kimono VPN is not switched on" action={<CrossingSeal kind="hanafubuki" href="/">Back to Kimono</CrossingSeal>}>
               Ask whoever runs this Kimono to switch it on for @{session.user.username}, and your devices will appear here.
             </PanelEmpty>
           : <>
@@ -96,7 +97,7 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
                         </Rows>
                       </Panel>)}
                     </Panels>
-                  : <PanelEmpty title="No devices yet" action={<SealLink href="/vpn/connect">Connect a device</SealLink>}>
+                  : <PanelEmpty title="No devices yet" action={<CrossingSeal href="/vpn/connect">Connect a device</CrossingSeal>}>
                       Nothing of yours has joined this mesh. Adding one takes about a minute.
                     </PanelEmpty>}
 
@@ -108,11 +109,11 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
               {hosts.length
                 ? <Panels>
                     {hosts.map((host) => <Panel key={host.username} label="Host" title={host.displayName}
-                      action={<SealLink href="/vpn/people" tone="quiet">People</SealLink>}>
+                      action={<CrossingSeal href="/vpn/people" tone="quiet">People</CrossingSeal>}>
                       <p>@{host.username} invited you in.</p>
                     </Panel>)}
                   </Panels>
-                : <PanelEmpty title="Nobody has invited you" action={<SealLink href="/vpn/people" tone="quiet">Invite someone</SealLink>}>
+                : <PanelEmpty title="Nobody has invited you" action={<CrossingSeal href="/vpn/people" tone="quiet">Invite someone</CrossingSeal>}>
                     Your devices reach each other. Reaching someone else&rsquo;s takes an invitation.
                   </PanelEmpty>}
             </>}

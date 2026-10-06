@@ -1,4 +1,5 @@
-import { Compartment, Seal, SealLink, StatedSeal, Tray } from "@kimono/ui";
+import { CrossingSeal } from "@/components/crossing";
+import { Compartment, PageHeader, Seal, StatedSeal, Tray } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { AppShell } from "@/components/app-shell";
@@ -50,10 +51,9 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page">
       <AdminNavigation active="infrastructure" />
-      <header className="admin-workspace-header">
-        <div><h1>Connectivity</h1><p>Publish apps securely outside your home.</p></div>
-        <SealLink href="/admin/apps?intent=publish">Publish an app</SealLink>
-      </header>
+      <PageHeader title="Connectivity" description="Publish apps securely outside your home.">
+        <CrossingSeal href="/admin/apps?intent=publish">Publish an app</CrossingSeal>
+      </PageHeader>
 
       <Compartment label="Deployment" wants={deploymentState === "failed"}>
         <div className="connection-body">
@@ -88,10 +88,10 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
                   ? <ul className="connection-apps">{assignedApps.map((app) => <li key={app.id}><Image src={`/api/app-definitions/${app.id}/icon`} alt="" width={28} height={28} unoptimized />{app.name}</li>)}</ul>
                   : <p>Not used by an app yet</p>}
               </div>
-              {tunnel.provider === "cloudflare" ? <SealLink href={`/admin/infrastructure/cloudflare?id=${encodeURIComponent(tunnel.id)}`} tone={connected ? "quiet" : "primary"}>{connected ? "Manage" : "Finish setup"}</SealLink> : null}
+              {tunnel.provider === "cloudflare" ? <CrossingSeal href={`/admin/infrastructure/cloudflare?id=${encodeURIComponent(tunnel.id)}`} tone={connected ? "quiet" : "primary"}>{connected ? "Manage" : "Finish setup"}</CrossingSeal> : null}
             </div>
           </Compartment>;
-        })}</Tray> : <div className="connectivity-empty"><h2>No connections yet</h2><p>Start by choosing an app to publish. Kimono will guide you through the connection only when it is needed.</p><SealLink href="/admin/apps?intent=publish">Choose an app</SealLink></div>}
+        })}</Tray> : <div className="connectivity-empty"><h2>No connections yet</h2><p>Start by choosing an app to publish. Kimono will guide you through the connection only when it is needed.</p><CrossingSeal href="/admin/apps?intent=publish">Choose an app</CrossingSeal></div>}
 
         <details className="admin-technical-details">
           <summary><span><strong>Technical settings</strong><small>Credentials, additional connections, and deployment output</small></span></summary>
@@ -99,7 +99,7 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
             <div className="technical-section-heading"><h3>Connections</h3>
               <span className="technical-section-actions">
                 <form action={addDirect}><Seal type="submit" tone="quiet">Add direct connection</Seal></form>
-                <SealLink href="/admin/infrastructure/cloudflare" tone="quiet">Connect Cloudflare</SealLink>
+                <CrossingSeal href="/admin/infrastructure/cloudflare" tone="quiet">Connect Cloudflare</CrossingSeal>
               </span>
             </div>
             <div className="resource-list">{tunnels.map((tunnel) => <details key={tunnel.id}>
@@ -119,7 +119,7 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
             </details>)}</div>
             <details className="runtime-preview">
               <summary><span><strong>Server runtime</strong><small>{Object.keys(plan.compose.services).length} services · {plan.warnings.length} warnings</small></span><span>View output</span></summary>
-              <div className="plan-actions"><a className="k-seal k-tone-quiet" href="/api/deployment" target="_blank" rel="noreferrer">Open raw plan ↗</a></div>
+              <div className="plan-actions"><CrossingSeal href="/api/deployment" tone="quiet" target="_blank" rel="noreferrer">Open raw plan ↗</CrossingSeal></div>
               {plan.warnings.length ? <ul className="plan-warnings">{plan.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
               <pre>{JSON.stringify(plan, null, 2)}</pre>
             </details>

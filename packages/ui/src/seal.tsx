@@ -1,27 +1,50 @@
 "use client";
 
-import { type AnchorHTMLAttributes, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { type AnchorHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type Ref } from "react";
 import { cx } from "./cx";
 
 export type SealState = "running" | "private" | "wants" | "quiet";
 
 export type SealTone = "primary" | "quiet" | "danger";
 
-/** 判 Seal — commits an action. */
-export function Seal({ tone = "primary", className, ...props }: { tone?: SealTone } & ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button type="button" className={cx("k-seal", tone !== "primary" && `k-tone-${tone}`, className)} {...props} />;
+/**
+ * 判 Seal — the hanko. Commits an action. One colour in every app.
+ * `compact` is 36px tall and still a 44px target.
+ */
+export function Seal({ tone = "primary", compact = false, className, ...props }: {
+  tone?: SealTone;
+  compact?: boolean;
+  ref?: Ref<HTMLButtonElement>;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
+  return <button type="button" className={cx("k-seal", tone !== "primary" && `k-tone-${tone}`, compact && "k-compact", className)} {...props} />;
 }
 
-/** The same seal, when the action is a destination rather than a submit. */
+/** @deprecated Plain navigation bypasses transitions. Use the portal's CrossingSeal. */
 export function SealLink({ tone = "primary", className, ...props }: { tone?: SealTone } & AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
   return <a className={cx("k-seal", tone !== "primary" && `k-tone-${tone}`, className)} {...props} />;
 }
 
-/** The same seal, stamped rather than pressed: it states a fact. */
-export function StatedSeal({ state = "quiet", children, className }: { state?: SealState; children: ReactNode; className?: string }) {
-  return <span className={cx("k-seal", "k-stated", state !== "quiet" && `k-${state}`, className)}>{children}</span>;
+/**
+ * 札 Chip — a stated fact: fold paper and a word. Colour is permitted only
+ * where it carries a consequence, and a word always sits beside it.
+ */
+export type ChipTone = "quiet" | "private" | "running" | "wants" | "ok" | "warn" | "danger" | "faint";
+
+export function Chip({ tone = "quiet", children, className, ...props }: {
+  tone?: ChipTone;
+  children: ReactNode;
+  className?: string;
+} & Omit<HTMLAttributes<HTMLSpanElement>, "children">) {
+  return <span className={cx("k-chip", tone !== "quiet" && `k-${tone}`, className)} {...props}>{children}</span>;
 }
 
-/* ── 組 Kumi — composition. One frame per region; frames never nest. ── */
+/** An HTTP method, the one uppercase chip. Writes read in suō; deletes fill it. */
+export function MethodChip({ method, className }: { method: string; className?: string }) {
+  const verb = method.toUpperCase();
+  return <span className={cx("k-chip", "k-method", (verb === "POST" || verb === "PUT" || verb === "PATCH") && "k-write", verb === "DELETE" && "k-destroy", className)}>{verb}</span>;
+}
 
-/** The single framed boundary of a workspace. Never place one inside another. */
+/** The same chip, named by the state it states. Kept for existing callers. */
+export function StatedSeal({ state = "quiet", children, className }: { state?: SealState; children: ReactNode; className?: string }) {
+  return <Chip tone={state} className={className}>{children}</Chip>;
+}

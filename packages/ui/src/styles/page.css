@@ -1,0 +1,22 @@
+/* ─────────────────────────────────────────────────────────────
+   頁 Page header — the one plum moment at the top of a page.
+   Title in Mincho, one sentence under it, the page's actions on the right.
+   ───────────────────────────────────────────────────────────── */
+
+.k-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--k-space-4) var(--k-space-6);
+  padding: var(--k-space-7) 0 var(--k-space-5);
+}
+.k-page-header-copy { min-width: 0; max-width: 64ch; }
+.k-page-header-copy > h1 { margin: 0; font: 600 40px/1.1 var(--k-display); letter-spacing: -.015em; color: var(--k-plum); }
+.k-page-header-copy > p { margin: var(--k-space-3) 0 0; font: 16px/1.5 var(--k-sans); color: var(--k-ink-soft); }
+/* .k-page-header-actions is a seal group; its measure lives in seal.css. */
+
+@media (max-width: 720px) {
+  .k-page-header { padding-top: var(--k-space-6); }
+  .k-page-header-copy > h1 { font-size: 32px; }
+}

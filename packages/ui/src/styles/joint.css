@@ -1,21 +1,22 @@
 /* ─────────────────────────────────────────────────────────────
    継手 Joint — the only switch. Apart is off, seated is on.
    The labelled block never moves: it is the fixed member, and only the
-   loose piece travels. Its socket stops short of the label, so the joint
-   never closes over the word.
+   loose piece travels. Wood is the one material that may overshoot when
+   it seats, so this is where --k-ease-seat lives.
    ───────────────────────────────────────────────────────────── */
 
-.k-joint { position: relative; width: 160px; height: 44px; flex: 0 0 auto; display: flex;
-  align-items: stretch; padding: 0; border: 0; background: none; cursor: pointer; }
-.k-joint .k-pc { background: var(--k-wood); transition: transform 240ms var(--k-ease-in); }
+.k-joint { position: relative; width: 160px; height: var(--k-control); flex: 0 0 auto; display: flex;
+  align-items: stretch; padding: 0; border: 0; border-radius: var(--k-r-1); background: none; cursor: pointer; }
+.k-joint .k-pc { background: var(--k-wood); box-shadow: inset 0 1px 0 rgba(255, 250, 240, .45), inset 0 -1px 0 rgba(156, 117, 68, .35); transition: transform var(--k-t-fold) var(--k-ease-settle); }
 /* the fixed member — never transformed, so the label holds its place */
 .k-joint .k-pc-a { flex: 0 0 96px; display: flex; align-items: center; justify-content: flex-start;
-  padding-left: var(--k-ma-3); color: var(--k-ink); font: 750 12px/1 var(--k-sans); letter-spacing: .14em; }
+  padding-left: var(--k-space-4); color: var(--k-ink); font: 600 12px/1 var(--k-sans); letter-spacing: .08em; }
 /* the loose piece — the only thing that moves */
 .k-joint .k-pc-b { flex: 0 0 48px; transform: translateX(16px); }
+.k-joint[aria-checked="true"] .k-pc-b { background: var(--k-wood-seated); }
 .k-joint:not([aria-checked="true"]):not(.k-seating):hover .k-pc-b { transform: translateX(8px); }
 .k-joint[aria-checked="true"] .k-pc-b { transform: translateX(-12px); }
-.k-joint:focus-visible { outline: var(--k-rule) solid var(--k-accent); outline-offset: 4px; }
+.k-joint:focus-visible { outline: var(--k-rule) solid var(--k-suo); outline-offset: 4px; }
 
 /* Joint profiles. A tab on the fixed member, a socket in the loose one. */
 .k-joint.k-ari .k-pc-a { clip-path: polygon(0 0, 84px 0, 84px 31%, 96px 22%, 96px 78%, 84px 69%, 84px 100%, 0 100%); }
@@ -26,18 +27,19 @@
 .k-joint.k-aikaki .k-pc-b { clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 50%, 12px 50%); }
 
 /* Wind up, drive home, settle — all of it in the loose piece. */
-.k-joint.k-seating .k-pc-b { animation: k-seat 560ms both; }
-.k-joint.k-parting .k-pc-b { animation: k-part 380ms cubic-bezier(.3,1.5,.5,1) both; }
-@keyframes k-seat { 0%{transform:translateX(16px)} 20%{transform:translateX(28px)} 46%{transform:translateX(-19px)} 66%{transform:translateX(-9px)} 84%{transform:translateX(-13px)} 100%{transform:translateX(-12px)} }
-@keyframes k-part { 0%{transform:translateX(-12px)} 38%{transform:translateX(24px)} 100%{transform:translateX(16px)} }
+.k-joint.k-seating .k-pc-b { animation: k-seat var(--k-t-seat) var(--k-ease-seat) both; }
+.k-joint.k-parting .k-pc-b { animation: k-part var(--k-t-fold) var(--k-ease-seat) both; }
+@keyframes k-seat { 0%{transform:translateX(16px)} 30%{transform:translateX(26px)} 100%{transform:translateX(-12px)} }
+@keyframes k-part { 0%{transform:translateX(-12px)} 100%{transform:translateX(16px)} }
 
+/* The joint seats and the pin shows: a small suō burst where the pieces meet. */
 .k-joint .k-burst { position: absolute; top: 50%; left: 90px; width: 0; height: 0; opacity: 0; pointer-events: none; }
-.k-joint .k-burst i { position: absolute; width: 11px; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--k-ink); transform-origin: 0 50%; }
+.k-joint .k-burst i { position: absolute; width: 10px; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--k-suo); transform-origin: 0 50%; }
 .k-joint .k-burst i:nth-child(1){transform:rotate(12deg) translateX(8px)} .k-joint .k-burst i:nth-child(2){transform:rotate(64deg) translateX(8px)}
 .k-joint .k-burst i:nth-child(3){transform:rotate(128deg) translateX(8px)} .k-joint .k-burst i:nth-child(4){transform:rotate(190deg) translateX(8px)}
 .k-joint .k-burst i:nth-child(5){transform:rotate(248deg) translateX(8px)} .k-joint .k-burst i:nth-child(6){transform:rotate(304deg) translateX(8px)}
-.k-joint.k-seating .k-burst { animation: k-burst 340ms ease-out 220ms both; }
-@keyframes k-burst { 0%{opacity:0;transform:scale(.25)} 22%{opacity:.9} 100%{opacity:0;transform:scale(1.75)} }
+.k-joint.k-seating .k-burst { animation: k-burst 300ms ease-out 180ms both; }
+@keyframes k-burst { 0%{opacity:0;transform:scale(.25)} 30%{opacity:.9} 100%{opacity:0;transform:scale(1.6)} }
 
-.k-joint-field { display: flex; align-items: center; gap: var(--k-ma-3); }
-.k-joint-field > .k-label { font: 650 14px/1.3 var(--k-sans); white-space: nowrap; }
+.k-joint-field { display: flex; align-items: center; gap: var(--k-space-4); }
+.k-joint-field > .k-label { font: 600 14px/1.3 var(--k-sans); color: var(--k-ink); white-space: nowrap; }

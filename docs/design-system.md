@@ -35,6 +35,30 @@ Two rules that are not negotiable:
   reader, the accent is wrong.
 - **Moss means running**, and nothing else.
 
+There is no second palette. Selection, information, caution and failure are
+not colours here; they are ink of a different weight, a word, or a form that
+changes. A "semantic" set of chips — one tint for selected, one for warning,
+one for danger — was proposed and rejected (see
+`design/decisions/0004-surface-hierarchy.md`): it reads as a generic admin
+console, not as Kimono.
+
+### An app's colour
+
+Inside an app, `--k-accent` and `--k-accent-pale` are set to that app's own
+colour, and the colour is permitted in exactly four places:
+
+- the **bloom** — the app's mark, and the petals of the crossing that opens it;
+- the app's **name** in the lockup;
+- the **primary action** — a seal, the tab of a compartment that wants you,
+  a focus ring;
+- one **small selected marker** — a `3px` bar beside the thing that is chosen.
+
+Nothing else is recoloured. The paper stays paper, the ink stays ink, the wood
+stays wood, and Kimono's own chrome keeps its house colour. An app is
+recognised by its mark and by what it asks of you, never by a tinted room. An
+app with its own palette is a different product, and Kimono hosts apps rather
+than becoming them.
+
 ## Depth is edge weight
 
 Paper stacks; it does not glow. There are no blurred shadows anywhere in Kimono
@@ -61,6 +85,19 @@ thing you act on, like a command, marks itself further.
 - **A hairline never touches a frame.** If they would meet, drop the hairline.
 - **A grid of free-standing items is sheets with hairlines.** Six frames is a
   fence: each claims to be the outermost boundary, so none of them is.
+
+### Proof: the Tools reference
+
+A dense page is where this is tested, and the API reference in Tools is the
+densest. It is one tray: a frame around two compartments — the collections on
+the ground, the reference on a sheet — meeting on a single rule. The API's
+heading and the key drawer are compartments too, so they meet their neighbours
+on rules; the drawer is a thing pulled out of the tray, so it is wood. Every
+operation is one row separated by a hairline, and the list is inset from the
+frame so no hairline touches it. Method, access, version and status are stated
+seals: hair and faint ink, a word, no fill. Inputs are drawn in hair until a
+request can be tried, then in ink. The app's colour appears on the chosen
+collection's marker and on the seals, and nowhere else.
 
 ## Type
 
@@ -189,6 +226,16 @@ import { Seal, StatedSeal } from "@kimono/ui";
 One object, two uses. Pressed, it commits. Stamped, it labels a state:
 `running` · `private` · `wants` · `quiet`.
 
+The pressed seal is a carved block, not a pill: 2px corners, a 2px base it
+stands on, and on the inked face the carved inner ring a real hanko carries.
+Pressing collapses the base and tightens the ring; releasing leaves an
+impression that spreads and fades. Quiet is the same block uninked — fold
+paper on a hair base, no ring. Danger is the consequence on a rose wash, inked
+only on hover. Seals in a row sit in one group (`k-seal-group`, also
+`k-form-actions` and the page header's actions) with 12px between them, the
+primary first. No gradients anywhere in chrome: wood is a flat plank, the
+masthead a flat band, and blossom gradients live only inside the drawn mark.
+
 ## Identity
 
 Every app's mark is **generated, not drawn**. `BloomMark` builds a sakura from
@@ -224,3 +271,15 @@ objects doing work that panels, rules and seals already do. 暖簾 noren survive
 only as a transition skin, never as a card.
 
 Their *layouts* may return. The objects do not.
+
+So was a second palette: surface tiers in place of paper, a semantic family of
+chips (indigo selection, gold caution, vermilion danger), toned one-pixel edges
+in place of weight, and an app's colour spread across its room. See
+`design/decisions/0004-surface-hierarchy.md` for what was kept from that round
+and why the rest lost.
+
+## Home and corner geometry
+
+The home launcher uses the hanging ema plaques, cords, and tassels from the original design. Keep these authored objects; do not substitute a grid of product cards. App registration, availability, and blossom navigation still use the shared registry and Crossing.
+
+Shared surfaces have 2px corners, inputs and small controls 1px, and chips square corners. Hanko seals retain their intentional 2px cut. Circles remain for actual circular objects such as blossom hearts and portraits. Surface color washes remain solid; the launcher’s grain and braided cord are material details.

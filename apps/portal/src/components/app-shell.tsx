@@ -1,7 +1,5 @@
 import { NavDoor } from "@/components/nav-door";
 import { AppLockup, KimonoMark, accentRamp, type AppIdentity } from "@kimono/ui";
-import Link from "next/link";
-import Image from "next/image";
 import type { Palette } from "@/lib/settings";
 import { signOut } from "@/auth";
 import { cx } from "@kimono/ui";
@@ -39,20 +37,14 @@ function authentikAccountUrl() {
 }
 
 /**
- * Inside an app, the accent *is* the app's colour: seals, the tab of a
- * compartment that wants you, focus rings. Kimono's sakura is the house
- * colour, and a room should not be painted in it.
+ * Inside an app, its colour appears in exactly four places: the bloom, the
+ * name in the lockup, the marker beside the thing that is selected, and an
+ * eight percent wash behind it. The house action colour — every seal, every
+ * focus ring — stays suō in every app, so a button is the same button
+ * everywhere and an arbitrary accent can never fail the text on it.
  */
 function appPalette(app: AppIdentity): CSSProperties {
-  const ramp = accentRamp(app.accent);
-  return {
-    "--k-app-accent": ramp.deep,
-    "--k-accent": ramp.deep,
-    "--k-accent-pale": ramp.tint,
-    "--vermillion": ramp.deep,
-    "--sakura": ramp.soft,
-    "--sakura-pale": ramp.tint,
-  } as CSSProperties;
+  return { "--k-app-accent": accentRamp(app.accent).deep } as CSSProperties;
 }
 
 export async function AppShell({ children, user, active = "home", app }: Props) {
@@ -64,20 +56,14 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
   const avatarStyle = user.image
     ? { backgroundImage: `url(${JSON.stringify(user.image)})` }
     : undefined;
-  /* Only a real picture earns a portrait. There is no invented stand-in. */
-  const yokeContents = <>
-    <i /><i />
-    <strong>Kimono account</strong>
-  </>;
   return (
     <div className={cx("app-frame", app && "in-app")} style={app ? appPalette(app) : undefined}>
       <header className="top-header">
         <div className="header-inner">
-          {/* The lockup is where people reach for the way out, so it is the way
-              out. The blossom in the account menu remains the ceremonial one. */}
+          {/* The lockup is where people reach for the way out, so it is the way out. */}
           {app
-            ? <Link href="/" className="brand-link in-app-brand" aria-label="Back to Kimono"><AppLockup identity={app} /></Link>
-            : <Link href="/" className="brand-link"><KimonoMark /></Link>}
+            ? <Crossing kind="hanafubuki" href="/" className="brand-link in-app-brand" aria-label="Back to Kimono"><AppLockup identity={app} /></Crossing>
+            : <Crossing kind="kakejiku" href="/" className="brand-link"><KimonoMark /></Crossing>}
           {app ? <span className="main-nav" /> : <nav className="main-nav" aria-label="Main navigation">
             <NavDoor href="/" label="Home" here={active === "home"} />
             {user.role === "owner" || user.role === "admin"
@@ -86,27 +72,27 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
           </nav>}
           <details className="profile-menu">
             <summary className="profile-chip" aria-label="Open account menu">
+              {/* Only a real picture earns a portrait. There is no invented stand-in. */}
               {user.image ? <span className="avatar has-image" style={avatarStyle} /> : null}
-              <span className="profile-copy"><strong>{displayName}</strong><small>@{user.username} · {user.role}</small></span>
+              <span className="profile-copy"><strong>{displayName}</strong><small>{user.role}</small></span>
               <span className="profile-chevron" aria-hidden="true">⌄</span>
             </summary>
             <div className="profile-popover">
+              <div className="profile-identity"><strong>{displayName}</strong><small>@{user.username} · {user.role}</small></div>
               {/* Leaving an app is a blossom, the same crossing that brought
                   you in — it is the one motion that means "an app". */}
-              {app ? <Crossing className="signout-charm return-charm" kind="hanafubuki" href="/">
-                <span className="charm-copy"><strong>Kimono</strong><small>Back to your apps</small></span>
-                <span className="charm-arrow" aria-hidden="true">→</span>
+              {app ? <Crossing className="profile-item profile-return" kind="hanafubuki" href="/">
+                <span>Back to Kimono</span><small>All your apps</small>
               </Crossing> : null}
               {accountUrl
-                ? <a className="account-yoke" href={accountUrl} aria-label="Open your Kimono account">{yokeContents}</a>
-                : <div className="account-yoke" aria-hidden="true">{yokeContents}</div>}
+                ? <Crossing kind="hanafubuki" external className="profile-item" href={accountUrl}><span>Kimono account</span><small>Name, password and sign-in</small></Crossing>
+                : null}
               <form action={async () => {
                 "use server";
                 await signOut({ redirectTo: "/login" });
               }}>
-                <button className="signout-charm" type="submit">
-                  <span className="charm-copy"><strong>Sign out</strong><small>Close this session</small></span>
-                  <span className="charm-arrow" aria-hidden="true">→</span>
+                <button className="profile-item profile-signout" type="submit">
+                  <span>Sign out</span><small>Close this session</small>
                 </button>
               </form>
             </div>
