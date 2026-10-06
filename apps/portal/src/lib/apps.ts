@@ -1,3 +1,4 @@
+import type { MobileApp } from "./mobile-app";
 import type { AppIdentity, GlyphName } from "@kimono/ui";
 import { kimonoApps, type KimonoOwnApp } from "./kimono-apps";
 import { appHostname, tunnelIsReady, type PlatformSettings } from "./settings";
@@ -18,7 +19,7 @@ export type KimonoApp = {
   glyph?: GlyphName;
   /** Kimono's own surfaces open in place; hosted apps leave the Portal. */
   external: boolean;
-  mobileApp?: { name: string; guideUrl: string; steps: string[] };
+  mobileApp?: MobileApp;
 };
 
 /**

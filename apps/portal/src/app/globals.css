@@ -818,53 +818,17 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .backup-empty-link { color: var(--k-plum); font-weight: 700; padding: 10px 0; }
 .backup-empty-link:hover { text-decoration: underline; text-underline-offset: 4px; }
 
-/* A mobile app handoff keeps the tutorial and browser choice in reach. */
-.mobile-app-tutorial {
-  width: min(32rem, calc(100vw - 2rem));
-  max-height: calc(100vh - 2rem);
-  max-height: calc(100dvh - 2rem);
-  overflow-y: auto;
-  box-sizing: border-box;
-  padding: 1.5rem;
-  color: var(--k-ink, #302b29);
-  background: var(--k-paper, #faf7f2);
-  border: 1px solid var(--k-line, #d9cec3);
-  border-radius: 12px;
-}
-.mobile-app-tutorial::backdrop { background: rgb(0 0 0 / 45%); }
-.mobile-app-tutorial h2 { padding-right: 2rem; }
-.mobile-app-tutorial ol { padding-left: 1.5rem; }
-.mobile-app-tutorial li { margin-block: 1rem; line-height: 1.6; }
-.mobile-app-tutorial label { display: block; margin-block: 1rem .5rem; }
-.mobile-app-tutorial input { width: 100%; box-sizing: border-box; padding: .75rem; font-size: 16px; margin-bottom: .75rem; }
-.mobile-app-close { float: right; min-width: 44px; min-height: 44px; font-size: 1.5rem; cursor: pointer; }
-.mobile-app-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
-.mobile-app-actions .k-seal { min-height: 44px; white-space: normal; text-align: center; }
-@media (max-width: 480px) {
-  .mobile-app-actions { flex-direction: column; }
-  .mobile-app-actions .k-seal { width: 100%; }
-}
-
-.mobile-app-tutorial:not([open]) { display: none; }
-.mobile-app-tutorial[data-fallback="true"] {
-  display: block;
-  position: fixed;
-  inset: 1rem 0 auto;
-  margin-inline: auto;
-  z-index: 10000;
-
-}
-
-.mobile-app-backdrop { display: none; }
-.mobile-app-tutorial[data-fallback="true"] + .mobile-app-backdrop {
-  display: block;
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgb(0 0 0 / 45%);
-}
-
 /* Avoid a continuously recomposited blur behind mobile scrolling content. */
 @media (max-width: 940px), (pointer: coarse) {
   .top-header { background: var(--k-ground); backdrop-filter: none; }
 }
+
+.mobile-app-downloads { display: flex; flex-wrap: wrap; gap: .75rem; margin-block: 1rem; }
+.mobile-app-downloads .k-seal { min-height: 44px; white-space: normal; text-align: center; }
+@media (max-width: 480px) {
+  .mobile-app-downloads { flex-direction: column; }
+  .mobile-app-downloads .k-seal { width: 100%; }
+}
+
+.mobile-app-server { display: grid; gap: .75rem; }
+.mobile-app-server input { width: 100%; box-sizing: border-box; padding: .75rem; font-size: 16px; }

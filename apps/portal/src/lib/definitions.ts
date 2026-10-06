@@ -1,3 +1,4 @@
+import { validateMobileApp, type MobileApp } from "./mobile-app";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { Palette } from "./settings";
@@ -77,7 +78,7 @@ export type AppDefinition = {
     portalPath?: string;
     /** False while the app configuration contract is still being implemented. */
     setupReady?: boolean;
-    mobileApp?: { name: string; guideUrl: string; steps: string[] };
+    mobileApp?: MobileApp;
     apiCollection?: ToolApi[];
     services: Array<{
       id: string;
@@ -125,10 +126,7 @@ function parseDefinition(value: unknown, directory: string, source: AppDefinitio
   if (basename(definition.metadata.icon) !== definition.metadata.icon || !definition.metadata.icon.endsWith(".svg")) throw new Error("metadata.icon must name an SVG in the definition directory");
   if (!Array.isArray(definition.spec?.services) || !Array.isArray(definition.spec?.configuration)) throw new Error("spec.services and spec.configuration are required");
   if (definition.spec.setupReady !== undefined && typeof definition.spec.setupReady !== "boolean") throw new Error("spec.setupReady must be a boolean");
-  if (definition.spec.mobileApp !== undefined) {
-    const mobile = definition.spec.mobileApp;
-    if (!mobile || typeof mobile.name !== "string" || !mobile.name.trim() || typeof mobile.guideUrl !== "string" || !/^https:\/\//.test(mobile.guideUrl) || !Array.isArray(mobile.steps) || !mobile.steps.length || !mobile.steps.every((step) => typeof step === "string" && step.trim())) throw new Error("spec.mobileApp requires a name, HTTPS guide URL, and tutorial steps");
-  }
+  if (definition.spec.mobileApp !== undefined) validateMobileApp(definition.spec.mobileApp);
   if (definition.spec.apiCollection !== undefined) {
     validateApiCollection(definition.spec.apiCollection);
     validateApiAdapters(definition.spec.apiCollection);

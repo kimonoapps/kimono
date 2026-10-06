@@ -21,10 +21,27 @@
     "mobileApp": {
       "name": "Immich",
       "guideUrl": "https://docs.immich.app/features/mobile-app/",
+      "iosUrl": "https://apps.apple.com/app/immich/id1613945652",
+      "androidUrl": "https://play.google.com/store/apps/details?id=app.alextran.immich",
       "steps": [
-        "Install Immich from the Apple App Store or Google Play. The download guide below has links for both.",
-        "Open Immich and enter the server address below.",
-        "Choose the Kimono sign-in option and sign in with your Kimono account. You can then choose which albums to back up."
+        {
+          "id": "download",
+          "title": "Download Immich",
+          "description": "Install Immich on your phone, then return here to continue.",
+          "kind": "download"
+        },
+        {
+          "id": "connect",
+          "title": "Connect to your server",
+          "description": "Open Immich and enter this server address.",
+          "kind": "server"
+        },
+        {
+          "id": "sign-in",
+          "title": "Sign in with Kimono",
+          "description": "Choose the Kimono sign-in option and sign in with your Kimono account. Then choose which albums to back up.",
+          "kind": "instruction"
+        }
       ]
     },
     "services": [

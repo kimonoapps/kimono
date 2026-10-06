@@ -29,3 +29,6 @@ export * from "./page";
 
 /* Crossings — the press is the page change. */
 export * from "./crossing";
+
+/* Guided setup — reusable steps, navigation, and accessible dismissal. */
+export * from "./tutorial";

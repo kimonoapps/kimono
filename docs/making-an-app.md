@@ -81,3 +81,29 @@ is what stopped the cards drifting: every page that wrote its own row markup got
 a slightly different card.
 
 See [`design-system.md`](design-system.md) for the contract these implement.
+
+## Mobile app tutorials
+
+Add `spec.mobileApp` to an app definition to show a step-by-step tutorial when a mobile user opens the app:
+
+```json
+{
+  "mobileApp": {
+    "name": "Your mobile app",
+    "guideUrl": "https://example.com/setup",
+    "iosUrl": "https://apps.apple.com/app/example/id123456789",
+    "androidUrl": "https://play.google.com/store/apps/details?id=com.example.app",
+    "steps": [
+      { "id": "download", "kind": "download", "title": "Download the app", "description": "Install the app, then return here." },
+      { "id": "connect", "kind": "server", "title": "Connect to your server", "description": "Enter this address in the app." },
+      { "id": "sign-in", "kind": "instruction", "title": "Sign in", "description": "Choose Sign in with Kimono." }
+    ]
+  }
+}
+```
+
+Steps appear in manifest order. Each needs a unique `id`, a `title`, a `description`, and a `kind`: `download` shows OS-specific store buttons; `server` shows the current app address and a copy button; `instruction` shows the text alone. Store URLs are optional, but a download step requires at least one. All links must use HTTPS. iOS detection includes iPads using desktop mode; an unknown OS shows both available stores. Legacy string steps remain supported.
+
+Next and Back move between steps. Skip opens the app in the browser from any step; the final action also opens the browser. Closing returns to the launcher, and reopening starts at step one. Downloads and the setup guide open in another tab so the tutorial stays available.
+
+For other onboarding flows, import `Tutorial` and `TutorialStep` from `@kimono/ui`. Supply ordered steps (`id`, `title`, `description`, optional React `content`), `onClose`, `onSkip`, and `onComplete`. Optional `description`, `footer`, `skipLabel`, and `completeLabel` customize the flow. Mount it only while open, with a stable, nonempty steps array; use a React key to reset it when switching flows. The component owns progress, navigation, focus management, scroll locking, and the fallback for browsers without native dialog support.
