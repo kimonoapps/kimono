@@ -3,7 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { Crossing } from "@/components/crossing";
 import { AppBloom, PageHeader, StatedSeal } from "@kimono/ui";
-import { accentOf } from "@/lib/apps";
+import { appIdentity, appRegistry } from "@/lib/apps";
 import { getPlatformSettings } from "@/lib/settings";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { backupCatalog } from "@/lib/backup-catalog";
@@ -29,12 +29,19 @@ export default async function BackupsPage({ searchParams }: { searchParams: Prom
   const session = await requireAdmin();
   const [settings, scan, config, status, query] = await Promise.all([getPlatformSettings(), scanAppDefinitions(), readBackupConfig(), readBackupStatus(), searchParams]);
   const catalog = backupCatalog(settings, scan.definitions);
+  const registry = new Map(appRegistry(settings, scan.definitions).map(app => [app.id, app]));
   const health = backupHealth(config, status);
   const order = ["problem", "disabled", "private"];
 
   const cards = Object.values(settings.apps).filter((app) => app.definitionId !== "kimono-portal").map((app) => {
-    const definition = scan.definitions.find((item) => item.metadata.id === app.definitionId);
-    const base = { id: app.id, name: app.name, description: definition?.metadata.description || "", iconUrl: definition?.iconUrl, accent: accentOf(app.colors || definition?.metadata.colors || []) };
+    const registered = registry.get(app.id);
+    const base = {
+      id: app.id,
+      name: registered?.name || app.name,
+      description: registered?.description || "App definition is unavailable",
+      iconUrl: registered?.iconUrl,
+      identity: registered ? appIdentity(registered) : null,
+    };
     const selection = appBackupSelection(config, catalog, app.id);
     const count = `${selection.items.length} item${selection.items.length === 1 ? "" : "s"}`;
     const card = !selection.items.length
@@ -80,7 +87,7 @@ export default async function BackupsPage({ searchParams }: { searchParams: Prom
       <div className="app-catalog-grid">
         {cards.map((card) => <Crossing className={`catalog-app state-${card.state}`} kind="kakejiku" href={`/admin/apps/${card.id}?view=backups`} key={card.id}>
           <span className="catalog-card-top">
-            <span className="catalog-icon"><AppBloom identity={{ id: card.id, name: card.name, accent: card.accent }} glyphHref={card.iconUrl} /></span>
+            <span className="catalog-icon">{card.identity ? <AppBloom identity={card.identity} glyphHref={card.iconUrl || undefined} /> : <span aria-label="App definition unavailable">?</span>}</span>
             <StatedSeal state={card.seal}>{card.label}</StatedSeal>
           </span>
           <span className="catalog-copy">
