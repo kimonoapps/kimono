@@ -1,3 +1,4 @@
+import { renameTunnelSettings, deleteTunnelSettings } from "./tunnel-settings";
 import { callerKeyConfiguration, validateApiSettings } from "./tool-apis/catalog";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -427,6 +428,19 @@ export async function provisionLocalCloudflareTunnel(input: {
       ZONES: { value: JSON.stringify([{ id: input.domain, name: input.domain }]), secret: false },
     },
   };
+  await persist(settings);
+}
+
+export async function renameTunnel(id: string, name: string) {
+  const settings = await getPlatformSettings();
+  renameTunnelSettings(settings, id, name);
+  await persist(settings);
+}
+
+export async function deleteTunnel(id: string, confirmed: boolean) {
+  if (!confirmed) throw new Error("Confirm that you understand apps will lose this public connection");
+  const settings = await getPlatformSettings();
+  deleteTunnelSettings(settings, id);
   await persist(settings);
 }
 

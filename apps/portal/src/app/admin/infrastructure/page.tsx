@@ -1,3 +1,5 @@
+import { ConnectionManagement } from "@/components/connection-management";
+import { ProviderMark } from "@/components/provider-mark";
 import { CrossingSeal } from "@/components/crossing";
 import { Compartment, PageHeader, Seal, StatedSeal, Tray } from "@kimono/ui";
 import { auth } from "@/auth";
@@ -6,7 +8,7 @@ import { AppShell } from "@/components/app-shell";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { renderDeploymentPlan } from "@/lib/deployment";
 import { planDigest, readReconcilerStatus } from "@/lib/desired-state";
-import { createDirectTunnel, getPlatformSettings, saveTunnel, tunnelIsReady } from "@/lib/settings";
+import { createDirectTunnel, deleteTunnel, renameTunnel, getPlatformSettings, saveTunnel, tunnelIsReady } from "@/lib/settings";
 import { getTunnelProvider, listTunnelProviders } from "@/lib/tunnel-providers";
 import Image from "next/image";
 import { RunJoint } from "@/components/run-joint";
@@ -48,6 +50,19 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
     redirect("/admin/infrastructure?saved=1");
   }
 
+  async function manageTunnel(form: FormData) {
+    "use server";
+    const current = await auth();
+    if (!current?.user || !["owner", "admin"].includes(current.user.role)) redirect("/");
+    try {
+      const id = String(form.get("id") || "");
+      if (form.get("action") === "rename") await renameTunnel(id, String(form.get("name") || ""));
+      else if (form.get("action") === "delete") await deleteTunnel(id, form.get("confirmed") === "on");
+      else throw new Error("Unknown connection action");
+    } catch (error) { redirect(`/admin/infrastructure?error=${encodeURIComponent(error instanceof Error ? error.message : "Connection could not be changed")}`); }
+    redirect("/admin/infrastructure?saved=1");
+  }
+
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page">
       <AdminNavigation active="infrastructure" />
@@ -83,13 +98,14 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
           return <Compartment key={tunnel.id} label={getTunnelProvider(tunnel.provider)?.name || tunnel.provider} wants={!connected}>
             <div className="connection-body">
               <div className="connection-body-copy">
-                <span className="connection-name"><h3>{tunnel.name}</h3><StatedSeal state={state}>{stateLabel}</StatedSeal></span>
+                <span className="connection-name"><ProviderMark provider={tunnel.provider} /><h3>{tunnel.name}</h3><StatedSeal state={state}>{stateLabel}</StatedSeal></span>
                 {assignedApps.length
                   ? <ul className="connection-apps">{assignedApps.map((app) => <li key={app.id}><Image src={`/api/app-definitions/${app.id}/icon`} alt="" width={28} height={28} unoptimized />{app.name}</li>)}</ul>
                   : <p>Not used by an app yet</p>}
               </div>
               {tunnel.provider === "cloudflare" ? <CrossingSeal href={`/admin/infrastructure/cloudflare?id=${encodeURIComponent(tunnel.id)}`} tone={connected ? "quiet" : "primary"}>{connected ? "Manage" : "Finish setup"}</CrossingSeal> : null}
             </div>
+            <ConnectionManagement tunnel={tunnel} assignedApps={assignedApps} action={manageTunnel} />
           </Compartment>;
         })}</Tray> : <div className="connectivity-empty"><h2>No connections yet</h2><p>Start by choosing an app to publish. Kimono will guide you through the connection only when it is needed.</p><CrossingSeal href="/admin/apps?intent=publish">Choose an app</CrossingSeal></div>}
 
