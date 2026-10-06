@@ -95,17 +95,38 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
     return timer;
   }, []);
 
+  const cancel = useCallback(() => {
+    generation.current++;
+    timers.current.forEach(clearTimeout);
+    timers.current.clear();
+    busy.current = false;
+    setKind(null);
+    setHeld(false);
+    setPetals([]);
+    setColors(undefined);
+  }, []);
+
   useEffect(() => {
     mounted.current = true;
     const pendingTimers = timers.current;
+    // History navigation supersedes both a pending swap and a held arrival.
+    // Clear before leaving too: the back/forward cache can freeze this layer
+    // and its timers, then restore it exactly as it was.
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) cancel(); };
+    window.addEventListener("popstate", cancel);
+    window.addEventListener("pagehide", cancel);
+    window.addEventListener("pageshow", restore);
     return () => {
+      window.removeEventListener("popstate", cancel);
+      window.removeEventListener("pagehide", cancel);
+      window.removeEventListener("pageshow", restore);
       mounted.current = false;
       generation.current++;
       pendingTimers.forEach(clearTimeout);
       pendingTimers.clear();
       busy.current = false;
     };
-  }, []);
+  }, [cancel]);
 
   useLayoutEffect(() => {
     if (kind !== "hanafubuki") return;
@@ -125,9 +146,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
 
     const done = () => {
       if (!mounted.current || generation.current !== crossing) return;
-      timers.current.forEach(clearTimeout);
-      timers.current.clear();
-      setKind(null); setHeld(false); setPetals([]); busy.current = false;
+      cancel();
     };
     if (stillness()) { void swap(); done(); return; }
 
@@ -163,7 +182,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
       watchdog = later(open, HELD_AT_MOST);
       void Promise.resolve(arrived).then(open, open);
     }, covered);
-  }, [later]);
+  }, [later, cancel]);
 
   const layer = useMemo(() => {
     if (!kind) return null;

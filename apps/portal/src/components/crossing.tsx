@@ -30,6 +30,17 @@ function Arrivals({ children }: { children: ReactNode }) {
   useEffect(() => { if (!pending) arrived(); }, [pending, arrived]);
   useEffect(() => { arrived(); }, [pathname, arrived]);
 
+  useEffect(() => {
+    // Release the superseded navigation promise as well as its visual cover.
+    window.addEventListener("popstate", arrived);
+    window.addEventListener("pagehide", arrived);
+    return () => {
+      window.removeEventListener("popstate", arrived);
+      window.removeEventListener("pagehide", arrived);
+      arrived();
+    };
+  }, [arrived]);
+
   const navigate = useCallback((href: string) => new Promise<void>((resolve) => {
     waiting.current = resolve;
     startTransition(() => { router.push(href); });
