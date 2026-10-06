@@ -42,7 +42,9 @@ function stillness() {
 type Petal = { key: number; cls: string; style: Record<string, string> };
 
 function makePetals(): Petal[] {
-  return Array.from({ length: 64 }, (_, i) => {
+  // Keep the blossom on touch screens without creating 64 animated layers.
+  const count = window.matchMedia("(max-width: 940px), (pointer: coarse)").matches ? 24 : 64;
+  return Array.from({ length: count }, (_, i) => {
     const spin = (Math.random() < .5 ? -1 : 1) * (420 + Math.random() * 520);
     const tone = Math.random();
     return {
@@ -75,19 +77,43 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
   const [held, setHeld] = useState(false);
   const [petals, setPetals] = useState<Petal[]>([]);
   const busy = useRef(false);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  const mounted = useRef(false);
+  const generation = useRef(0);
 
   const later = useCallback((run: () => void, delay: number) => {
-    timers.current.push(setTimeout(run, delay));
+    if (!mounted.current) return;
+    const timer = setTimeout(() => {
+      timers.current.delete(timer);
+      if (mounted.current) run();
+    }, delay);
+    timers.current.add(timer);
+    return timer;
   }, []);
 
-  useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+  useEffect(() => {
+    mounted.current = true;
+    const pendingTimers = timers.current;
+    return () => {
+      mounted.current = false;
+      generation.current++;
+      pendingTimers.forEach(clearTimeout);
+      pendingTimers.clear();
+      busy.current = false;
+    };
+  }, []);
 
   const cross = useCallback((next: CrossingKind, swap: CrossingSwap) => {
-    if (busy.current) return;
+    if (busy.current || !mounted.current) return;
     busy.current = true;
+    const crossing = ++generation.current;
 
-    const done = () => { setKind(null); setHeld(false); setPetals([]); busy.current = false; };
+    const done = () => {
+      if (!mounted.current || generation.current !== crossing) return;
+      timers.current.forEach(clearTimeout);
+      timers.current.clear();
+      setKind(null); setHeld(false); setPetals([]); busy.current = false;
+    };
     if (stillness()) { void swap(); done(); return; }
 
     if (next === "hanafubuki") setPetals(makePetals());
@@ -98,9 +124,14 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
       // Fully covered. The page changes hands here, unseen, and the screen
       // stays shut until the new one is standing.
       let opened = false;
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
       const open = () => {
-        if (opened) return;
+        if (opened || !mounted.current || generation.current !== crossing) return;
         opened = true;
+        if (watchdog !== undefined) {
+          clearTimeout(watchdog);
+          timers.current.delete(watchdog);
+        }
         setHeld(false);
         later(done, total - covered);
       };
@@ -113,7 +144,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
       }
       if (!arrived) { open(); return; }
       setHeld(true);
-      later(open, HELD_AT_MOST);
+      watchdog = later(open, HELD_AT_MOST);
       void Promise.resolve(arrived).then(open, open);
     }, covered);
   }, [later]);

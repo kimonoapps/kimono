@@ -88,7 +88,7 @@ export function useWarm() {
   return (href: string, external = false) => () => { if (!external) router.prefetch(href); };
 }
 
-export function Crossing({ href, kind, external = false, children, className, ...rest }: {
+export function Crossing({ href, kind, external = false, children, className, onClick, ...rest }: {
   href: string;
   kind: CrossingKind;
   external?: boolean;
@@ -104,6 +104,7 @@ export function Crossing({ href, kind, external = false, children, className, ..
     onPointerEnter={warm}
     onFocus={warm}
     onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+      onClick?.(event);
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0 || rest.target === "_blank" || rest.download !== undefined) return;
       event.preventDefault();
       crossTo(kind, href, external);

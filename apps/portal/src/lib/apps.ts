@@ -18,6 +18,7 @@ export type KimonoApp = {
   glyph?: GlyphName;
   /** Kimono's own surfaces open in place; hosted apps leave the Portal. */
   external: boolean;
+  mobileApp?: { name: string; guideUrl: string; steps: string[] };
 };
 
 /**
@@ -80,6 +81,7 @@ export function appRegistry(settings: PlatformSettings, definitions: AppDefiniti
         integration: definition.spec.integration,
         glyph: definition.metadata.glyph,
         external: !nativePath,
+        mobileApp: definition.spec.mobileApp,
         href: nativePath || (instance ? `https://${appHostname(instance.domain, settings.baseDomain)}` : ""),
         catalogHref: `/admin/apps/${instance?.id || definition.metadata.id}`,
         launchable: enabled && Boolean(nativePath || instance?.tunnelId),

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Chip, MethodChip, Seal } from "@kimono/ui";
 import type { ToolApi } from "@/lib/tool-apis/catalog";
 
@@ -13,6 +13,8 @@ function statusTone(code: number) { return code >= 500 ? "danger" as const : cod
 
 /** Colours a JSON reply by building nodes, never markup: keys, strings, numbers, literals. */
 function highlightJson(source: string): ReactNode[] {
+  // Large replies stay complete, but avoid thousands of syntax-colouring nodes.
+  if (source.length > 32 * 1024) return [source];
   const pattern = /("(?:\\.|[^"\\])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
   const out: ReactNode[] = [];
   let last = 0; let index = 0; let match: RegExpExecArray | null;
@@ -38,6 +40,7 @@ export function ApiExplorer({ api, access, enabled, callerKey, onCallerKeyChange
  * visibly not documentation.
  */
 function Operation({ apiId, operation: op, access, enabled, callerKey, onCallerKeyChange, origin }: { apiId: string; operation: ToolApi["operations"][number]; access: Access; enabled: boolean; callerKey: string; onCallerKeyChange: (key: string) => void; origin: string }) {
+  const [expanded, setExpanded] = useState(false);
   const [values, setValues] = useState(op.example);
   const [trying, setTrying] = useState(false);
   const [tab, setTab] = useState<"request" | "response">("request");
@@ -46,6 +49,8 @@ function Operation({ apiId, operation: op, access, enabled, callerKey, onCallerK
   const [error, setError] = useState("");
   const [copiedRequest, setCopiedRequest] = useState<string | null>(null);
   const [copyError, setCopyError] = useState("");
+  const highlightedResult = useMemo(() => expanded && tab === "response" && result
+    ? highlightJson(result.body) : null, [expanded, tab, result]);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => { controller.current?.abort(); }, []);
   const path = `/api/tools/${apiId}/${op.id}`;
@@ -66,7 +71,7 @@ function Operation({ apiId, operation: op, access, enabled, callerKey, onCallerK
       if (!(failure instanceof Error && failure.name === "AbortError")) setError("Request failed. Check your connection and try again.");
     } finally { setBusy(false); }
   }
-  return <details className="tools-operation">
+  return <details className="tools-operation" onToggle={(event) => setExpanded(event.currentTarget.open)}>
     <summary className="tools-operation-summary">
       <span className="k-cue" aria-hidden="true" />
       <MethodChip method="GET" />
@@ -75,7 +80,7 @@ function Operation({ apiId, operation: op, access, enabled, callerKey, onCallerK
       <span className="tools-operation-required">{required.length ? <>Requires {required.map((parameter, index) => <Fragment key={parameter.name}>{index ? ", " : ""}<code>{parameter.name}</code></Fragment>)}</> : "No required parameters"}</span>
       <Chip tone={access === "disabled" ? "faint" : "private"} className="tools-access">{accessWords[access]}</Chip>
     </summary>
-    <div className="tools-operation-body">
+    {expanded && <div className="tools-operation-body">
       <p className="tools-operation-description">{op.description}</p>
       <div className="tools-operation-grid">
         <form className="tools-request" onSubmit={execute}>
@@ -124,13 +129,13 @@ function Operation({ apiId, operation: op, access, enabled, callerKey, onCallerK
               : error ? <p role="alert" className="tools-error">{error}</p>
               : result ? <>
                   <div className="tools-result-status"><Chip tone={statusTone(result.status)}>HTTP {result.status}</Chip><span>{result.status >= 400 ? "Request failed" : "Successful response"}</span></div>
-                  <pre className="k-code k-urushi"><code>{highlightJson(result.body)}</code></pre>
+                  <pre className="k-code k-urushi"><code>{highlightedResult}</code></pre>
                 </>
               : <div className="tools-response-empty"><span>No response yet</span><p>Try a request to inspect the status and JSON reply here.</p></div>}
           </div>
           <span className="tools-sr-only" role="status">{result ? `Request returned HTTP ${result.status}` : ""}</span>
         </section>
       </div>
-    </div>
+    </div>}
   </details>;
 }

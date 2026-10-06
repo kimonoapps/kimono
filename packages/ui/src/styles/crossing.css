@@ -41,13 +41,13 @@
 @keyframes k-shoji-r { 0% { transform: translateX(101%) } 34%, 48% { transform: translateX(0) } 100% { transform: translateX(101%) } }
 
 /* 掛軸 — the rod draws a blind down over the page, then lifts it off the next. */
-.k-blind { position: absolute; top: 0; right: 0; left: 0; height: 0; background: var(--k-sheet);
+.k-blind { position: absolute; top: 0; right: 0; left: 0; height: 100%; transform: scaleY(0); transform-origin: top; background: var(--k-sheet);
   border-bottom: var(--k-rule) solid var(--k-ink); }
 .k-rod { position: absolute; right: -8px; left: -8px; top: 0; height: 13px; border-radius: 3px;
   background: var(--k-wood); box-shadow: 0 0 0 2px var(--k-ink); transform: translateY(-16px); }
 .k-crossing[data-kind="kakejiku"] .k-blind { animation: k-blind 820ms cubic-bezier(.3,.9,.25,1) both; }
 .k-crossing[data-kind="kakejiku"] .k-rod { animation: k-rod 820ms cubic-bezier(.3,.9,.25,1) both; }
-@keyframes k-blind { 0% { height: 0 } 44%, 56% { height: 100% } 100% { height: 0 } }
+@keyframes k-blind { 0% { transform: scaleY(0) } 44%, 56% { transform: scaleY(1) } 100% { transform: scaleY(0) } }
 @keyframes k-rod { 0% { transform: translateY(-16px) } 44%, 56% { transform: translateY(calc(100vh - 13px)) } 100% { transform: translateY(-16px) } }
 
 /* Shut, with the next page not yet standing: everything holds exactly where
