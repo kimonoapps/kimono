@@ -41,7 +41,7 @@
 .k-door:hover, .k-door:focus-visible { border-color: var(--k-hair-deep); background: var(--k-hover); }
 .k-door:hover > i:nth-of-type(1), .k-door:focus-visible > i:nth-of-type(1) { transform: translateX(-30%); }
 .k-door:hover > i:nth-of-type(2), .k-door:focus-visible > i:nth-of-type(2) { transform: translateX(30%); }
-.k-door:focus-visible { outline: var(--k-rule) solid var(--k-suo); outline-offset: 3px; }
+.k-door:focus-visible { outline: var(--k-rule) solid var(--k-accent); outline-offset: 3px; }
 
 /* 表札 — the name is mounted on the door. */
 .k-door > .k-plate {
@@ -56,10 +56,10 @@
   box-shadow: 0 1px 0 var(--k-hair), 0 3px 8px -4px rgba(78, 43, 55, .3);
   transition: color var(--k-t-state) var(--k-ease-settle), box-shadow var(--k-t-state) var(--k-ease-settle);
 }
-.k-door:hover > .k-plate { color: var(--k-plum); }
+.k-door:hover > .k-plate { color: var(--k-accent-deep); }
 
 /* You are inside this room: the screens stand open and the plate is inked. */
-.k-door.k-here { cursor: default; background: var(--k-selected); border-color: color-mix(in srgb, var(--k-sakura-soft) 60%, var(--k-hair)); }
+.k-door.k-here { cursor: default; background: color-mix(in srgb, var(--k-accent-pale) 55%, var(--k-sheet)); border-color: color-mix(in srgb, var(--k-accent-pale) 60%, var(--k-hair)); }
 .k-door.k-here > i:nth-of-type(1) { transform: translateX(-72%); }
 .k-door.k-here > i:nth-of-type(2) { transform: translateX(72%); }
-.k-door.k-here > .k-plate { color: var(--k-plum); box-shadow: inset 0 0 0 1px var(--k-sakura-soft), 0 1px 0 var(--k-hair); }
+.k-door.k-here > .k-plate { color: var(--k-accent-deep); box-shadow: inset 0 0 0 1px var(--k-accent-pale), 0 1px 0 var(--k-hair); }

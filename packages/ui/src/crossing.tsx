@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cx } from "./cx";
 
 export type CrossingKind = "hanafubuki" | "shoji" | "kakejiku";
@@ -79,6 +79,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
   const [colors, setColors] = useState<CrossingColors | undefined>();
   const [held, setHeld] = useState(false);
   const [petals, setPetals] = useState<Petal[]>([]);
+  const layerRef = useRef<HTMLDivElement>(null);
   const busy = useRef(false);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   const mounted = useRef(false);
@@ -105,6 +106,17 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
       busy.current = false;
     };
   }, []);
+
+  useLayoutEffect(() => {
+    if (kind !== "hanafubuki") return;
+    // The opaque haze waits for arrival, while petals keep their current
+    // position and drift at eight percent speed. No animation is restarted.
+    layerRef.current?.querySelectorAll(".k-petal").forEach(petal => {
+      petal.getAnimations().forEach(animation => {
+        animation.updatePlaybackRate(held ? .08 : 1);
+      });
+    });
+  }, [kind, held]);
 
   const cross = useCallback((next: CrossingKind, swap: CrossingSwap, palette?: CrossingColors) => {
     if (busy.current || !mounted.current) return;
@@ -155,7 +167,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
 
   const layer = useMemo(() => {
     if (!kind) return null;
-    return <div className="k-crossing" style={colors ? {
+    return <div ref={layerRef} className="k-crossing" style={colors ? {
       "--k-cross-from": colors.from, "--k-cross-from-pale": colors.fromPale,
       "--k-cross-to": colors.to, "--k-cross-to-pale": colors.toPale,
     } as CSSProperties : undefined} data-kind={kind} data-held={held ? "" : undefined} aria-hidden="true">
