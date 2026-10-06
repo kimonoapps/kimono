@@ -21,10 +21,7 @@
 @font-face { font-family: "Zen Kaku Gothic Kimono"; font-weight: 700; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/zen-kaku-gothic-new-latin-700-normal.woff2") format("woff2"); }
 @font-face { font-family: "Shippori Mincho Kimono"; font-weight: 600; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/shippori-mincho-600-latin.woff2") format("woff2"); }
 
-:root,
-:host,
-html[data-theme="light"],
-html[data-theme="dark"] {
+html:has(ak-flow-executor) {
   /* Kata, as in packages/ui/src/styles/tokens.css */
   --k-ink: #24221f;
   --k-ink-soft: #5b524d;
@@ -80,8 +77,8 @@ html[data-theme="dark"] {
 }
 
 /* ─── the page: the sakura field, with the paper panel laid on its left ─── */
-html,
-body {
+html:has(ak-flow-executor),
+html:has(ak-flow-executor) body {
   min-height: 100%;
   margin: 0;
   color: var(--k-ink);
@@ -89,7 +86,7 @@ body {
   font-family: var(--k-sans);
   -webkit-font-smoothing: antialiased;
 }
-body::after {
+html:has(ak-flow-executor) body::after {
   position: fixed;
   z-index: 0;
   top: 0;
@@ -100,9 +97,9 @@ body::after {
   pointer-events: none;
   background: url("/static/kimono/kimono-sign-in-art.svg") center / min(40vw, 560px) no-repeat;
 }
-.pf-c-background-image,
-.pf-v5-c-background-image,
-.pf-v6-c-background-image { display: none !important; }
+html:has(ak-flow-executor) .pf-c-background-image,
+html:has(ak-flow-executor) .pf-v5-c-background-image,
+html:has(ak-flow-executor) .pf-v6-c-background-image { display: none !important; }
 
 ak-flow-executor.pf-c-login,
 ak-flow-executor {
@@ -128,19 +125,43 @@ ak-flow-executor::before,
 ak-flow-executor::after { display: none !important; content: none !important; }
 
 /* Inside the executor: one column, the form set in the middle of the panel. */
-.pf-c-login__header,
-ak-flow-inspector-button,
-ak-flow-inspector,
-.pf-c-login__footer,
-.pf-v5-c-login__footer,
-ak-brand-links,
-ak-powered-by,
-[class*="powered-by"],
-a[href*="goauthentik.io"] { display: none !important; }
+:host(ak-flow-executor) .pf-c-login__header,
+:host([part~="challenge"]) .pf-c-login__header,
+:host([part~="flow-card"]) .pf-c-login__header,
+:host(ak-flow-executor) ak-flow-inspector-button,
+:host([part~="challenge"]) ak-flow-inspector-button,
+:host([part~="flow-card"]) ak-flow-inspector-button,
+:host(ak-flow-executor) ak-flow-inspector,
+:host([part~="challenge"]) ak-flow-inspector,
+:host([part~="flow-card"]) ak-flow-inspector,
+:host(ak-flow-executor) .pf-c-login__footer,
+:host([part~="challenge"]) .pf-c-login__footer,
+:host([part~="flow-card"]) .pf-c-login__footer,
+:host(ak-flow-executor) .pf-v5-c-login__footer,
+:host([part~="challenge"]) .pf-v5-c-login__footer,
+:host([part~="flow-card"]) .pf-v5-c-login__footer,
+:host(ak-flow-executor) ak-brand-links,
+:host([part~="challenge"]) ak-brand-links,
+:host([part~="flow-card"]) ak-brand-links,
+:host(ak-flow-executor) ak-powered-by,
+:host([part~="challenge"]) ak-powered-by,
+:host([part~="flow-card"]) ak-powered-by,
+:host(ak-flow-executor) [class*="powered-by"],
+:host([part~="challenge"]) [class*="powered-by"],
+:host([part~="flow-card"]) [class*="powered-by"],
+:host(ak-flow-executor) a[href*="goauthentik.io"],
+:host([part~="challenge"]) a[href*="goauthentik.io"],
+:host([part~="flow-card"]) a[href*="goauthentik.io"] { display: none !important; }
 
-.pf-c-login__main,
-.pf-v5-c-login__main,
-.pf-v6-c-login__main {
+:host(ak-flow-executor) .pf-c-login__main,
+:host([part~="challenge"]) .pf-c-login__main,
+:host([part~="flow-card"]) .pf-c-login__main,
+:host(ak-flow-executor) .pf-v5-c-login__main,
+:host([part~="challenge"]) .pf-v5-c-login__main,
+:host([part~="flow-card"]) .pf-v5-c-login__main,
+:host(ak-flow-executor) .pf-v6-c-login__main,
+:host([part~="challenge"]) .pf-v6-c-login__main,
+:host([part~="flow-card"]) .pf-v6-c-login__main {
   display: flex !important;
   flex-direction: column;
   justify-content: flex-start !important;
@@ -158,8 +179,12 @@ a[href*="goauthentik.io"] { display: none !important; }
 }
 
 /* The mark: the ink branch and the word, as on Kimono's own sign-in page. */
-.pf-c-login__main-header.pf-c-brand,
-.pf-v5-c-login__main-header.pf-v5-c-brand {
+:host(ak-flow-executor) .pf-c-login__main-header.pf-c-brand,
+:host([part~="challenge"]) .pf-c-login__main-header.pf-c-brand,
+:host([part~="flow-card"]) .pf-c-login__main-header.pf-c-brand,
+:host(ak-flow-executor) .pf-v5-c-login__main-header.pf-v5-c-brand,
+:host([part~="challenge"]) .pf-v5-c-login__main-header.pf-v5-c-brand,
+:host([part~="flow-card"]) .pf-v5-c-login__main-header.pf-v5-c-brand {
   display: flex !important;
   align-items: center;
   justify-content: flex-start !important;
@@ -168,17 +193,27 @@ a[href*="goauthentik.io"] { display: none !important; }
   padding: 0 !important;
   border: 0 !important;
 }
-.pf-c-login__main-header.pf-c-brand img,
-.pf-v5-c-login__main-header.pf-v5-c-brand img,
-img.branding-logo {
+:host(ak-flow-executor) .pf-c-login__main-header.pf-c-brand img,
+:host([part~="challenge"]) .pf-c-login__main-header.pf-c-brand img,
+:host([part~="flow-card"]) .pf-c-login__main-header.pf-c-brand img,
+:host(ak-flow-executor) .pf-v5-c-login__main-header.pf-v5-c-brand img,
+:host([part~="challenge"]) .pf-v5-c-login__main-header.pf-v5-c-brand img,
+:host([part~="flow-card"]) .pf-v5-c-login__main-header.pf-v5-c-brand img,
+:host(ak-flow-executor) img.branding-logo,
+:host([part~="challenge"]) img.branding-logo,
+:host([part~="flow-card"]) img.branding-logo {
   content: url("/static/kimono/kimono-branch.svg");
   width: 56px !important;
   height: 56px !important;
   object-fit: contain;
   filter: none !important;
 }
-.pf-c-login__main-header.pf-c-brand::after,
-.pf-v5-c-login__main-header.pf-v5-c-brand::after {
+:host(ak-flow-executor) .pf-c-login__main-header.pf-c-brand::after,
+:host([part~="challenge"]) .pf-c-login__main-header.pf-c-brand::after,
+:host([part~="flow-card"]) .pf-c-login__main-header.pf-c-brand::after,
+:host(ak-flow-executor) .pf-v5-c-login__main-header.pf-v5-c-brand::after,
+:host([part~="challenge"]) .pf-v5-c-login__main-header.pf-v5-c-brand::after,
+:host([part~="flow-card"]) .pf-v5-c-login__main-header.pf-v5-c-brand::after {
   content: "kimono";
   color: var(--k-plum);
   font: 600 34px/1 var(--k-display);
@@ -186,24 +221,56 @@ img.branding-logo {
 }
 
 /* The stage sits in the middle of the remaining height, like /login's copy. */
-[part="challenge"] { display: block; margin: auto 0; padding: 56px 0; }
-ak-flow-card,
-.pf-c-login__main-header:not(.pf-c-brand),
-.pf-c-login__main-body,
-.pf-c-login__main-footer { background: transparent !important; box-shadow: none !important; }
-.pf-c-login__main-header:not(.pf-c-brand),
-.pf-v5-c-login__main-header:not(.pf-v5-c-brand) { margin: 0 !important; padding: 0 0 28px !important; border: 0 !important; }
-.pf-c-login__main-body,
-.pf-v5-c-login__main-body,
-.pf-c-login__main-footer,
-.pf-v5-c-login__main-footer { padding: 0 !important; }
+:host(ak-flow-executor) [part="challenge"],
+:host([part~="challenge"]) [part="challenge"],
+:host([part~="flow-card"]) [part="challenge"] { display: block; margin: auto 0; padding: 56px 0; }
+:host(ak-flow-executor) ak-flow-card,
+:host([part~="challenge"]) ak-flow-card,
+:host([part~="flow-card"]) ak-flow-card,
+:host(ak-flow-executor) .pf-c-login__main-header:not(.pf-c-brand),
+:host([part~="challenge"]) .pf-c-login__main-header:not(.pf-c-brand),
+:host([part~="flow-card"]) .pf-c-login__main-header:not(.pf-c-brand),
+:host(ak-flow-executor) .pf-c-login__main-body,
+:host([part~="challenge"]) .pf-c-login__main-body,
+:host([part~="flow-card"]) .pf-c-login__main-body,
+:host(ak-flow-executor) .pf-c-login__main-footer,
+:host([part~="challenge"]) .pf-c-login__main-footer,
+:host([part~="flow-card"]) .pf-c-login__main-footer { background: transparent !important; box-shadow: none !important; }
+:host(ak-flow-executor) .pf-c-login__main-header:not(.pf-c-brand),
+:host([part~="challenge"]) .pf-c-login__main-header:not(.pf-c-brand),
+:host([part~="flow-card"]) .pf-c-login__main-header:not(.pf-c-brand),
+:host(ak-flow-executor) .pf-v5-c-login__main-header:not(.pf-v5-c-brand),
+:host([part~="challenge"]) .pf-v5-c-login__main-header:not(.pf-v5-c-brand),
+:host([part~="flow-card"]) .pf-v5-c-login__main-header:not(.pf-v5-c-brand) { margin: 0 !important; padding: 0 0 28px !important; border: 0 !important; }
+:host(ak-flow-executor) .pf-c-login__main-body,
+:host([part~="challenge"]) .pf-c-login__main-body,
+:host([part~="flow-card"]) .pf-c-login__main-body,
+:host(ak-flow-executor) .pf-v5-c-login__main-body,
+:host([part~="challenge"]) .pf-v5-c-login__main-body,
+:host([part~="flow-card"]) .pf-v5-c-login__main-body,
+:host(ak-flow-executor) .pf-c-login__main-footer,
+:host([part~="challenge"]) .pf-c-login__main-footer,
+:host([part~="flow-card"]) .pf-c-login__main-footer,
+:host(ak-flow-executor) .pf-v5-c-login__main-footer,
+:host([part~="challenge"]) .pf-v5-c-login__main-footer,
+:host([part~="flow-card"]) .pf-v5-c-login__main-footer { padding: 0 !important; }
 
 /* ─── type ─── */
-.pf-c-title,
-.pf-v5-c-title,
-h1,
-h2,
-h3 {
+:host(ak-flow-executor) .pf-c-title,
+:host([part~="challenge"]) .pf-c-title,
+:host([part~="flow-card"]) .pf-c-title,
+:host(ak-flow-executor) .pf-v5-c-title,
+:host([part~="challenge"]) .pf-v5-c-title,
+:host([part~="flow-card"]) .pf-v5-c-title,
+:host(ak-flow-executor) h1,
+:host([part~="challenge"]) h1,
+:host([part~="flow-card"]) h1,
+:host(ak-flow-executor) h2,
+:host([part~="challenge"]) h2,
+:host([part~="flow-card"]) h2,
+:host(ak-flow-executor) h3,
+:host([part~="challenge"]) h3,
+:host([part~="flow-card"]) h3 {
   margin: 0;
   color: var(--k-plum) !important;
   font-family: var(--k-display) !important;
@@ -211,56 +278,108 @@ h3 {
   letter-spacing: -.02em;
   text-wrap: balance;
 }
-.pf-c-title.pf-m-3xl,
-.pf-v5-c-title.pf-m-3xl,
-.pf-c-title.ak-m-clamped {
+:host(ak-flow-executor) .pf-c-title.pf-m-3xl,
+:host([part~="challenge"]) .pf-c-title.pf-m-3xl,
+:host([part~="flow-card"]) .pf-c-title.pf-m-3xl,
+:host(ak-flow-executor) .pf-v5-c-title.pf-m-3xl,
+:host([part~="challenge"]) .pf-v5-c-title.pf-m-3xl,
+:host([part~="flow-card"]) .pf-v5-c-title.pf-m-3xl,
+:host(ak-flow-executor) .pf-c-title.ak-m-clamped,
+:host([part~="challenge"]) .pf-c-title.ak-m-clamped,
+:host([part~="flow-card"]) .pf-c-title.ak-m-clamped {
   font-size: clamp(40px, 4.4vw, 64px) !important;
   line-height: 1 !important;
   -webkit-line-clamp: unset !important;
   overflow: visible !important;
 }
-p,
-.pf-c-login__main-body,
-.pf-c-form__helper-text,
-.pf-v5-c-form__helper-text {
+:host(ak-flow-executor) p,
+:host([part~="challenge"]) p,
+:host([part~="flow-card"]) p,
+:host(ak-flow-executor) .pf-c-login__main-body,
+:host([part~="challenge"]) .pf-c-login__main-body,
+:host([part~="flow-card"]) .pf-c-login__main-body,
+:host(ak-flow-executor) .pf-c-form__helper-text,
+:host([part~="challenge"]) .pf-c-form__helper-text,
+:host([part~="flow-card"]) .pf-c-form__helper-text,
+:host(ak-flow-executor) .pf-v5-c-form__helper-text,
+:host([part~="challenge"]) .pf-v5-c-form__helper-text,
+:host([part~="flow-card"]) .pf-v5-c-form__helper-text {
   color: var(--k-ink-soft);
   font-family: var(--k-sans);
   font-size: 15px;
   line-height: 1.6;
 }
-a,
-.pf-c-button.pf-m-link,
-.pf-v5-c-button.pf-m-link {
+:host(ak-flow-executor) a,
+:host([part~="challenge"]) a,
+:host([part~="flow-card"]) a,
+:host(ak-flow-executor) .pf-c-button.pf-m-link,
+:host([part~="challenge"]) .pf-c-button.pf-m-link,
+:host([part~="flow-card"]) .pf-c-button.pf-m-link,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-link,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-link,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-link {
   color: var(--k-plum) !important;
   font-weight: 600;
   text-decoration: underline !important;
   text-decoration-color: var(--k-hair-deep) !important;
   text-underline-offset: 3px;
 }
-a:hover,
-.pf-c-button.pf-m-link:hover { color: var(--k-suo-deep) !important; }
+:host(ak-flow-executor) a:hover,
+:host([part~="challenge"]) a:hover,
+:host([part~="flow-card"]) a:hover,
+:host(ak-flow-executor) .pf-c-button.pf-m-link:hover,
+:host([part~="challenge"]) .pf-c-button.pf-m-link:hover,
+:host([part~="flow-card"]) .pf-c-button.pf-m-link:hover { color: var(--k-suo-deep) !important; }
 
 /* ─── form ─── */
-.pf-c-form,
-.pf-v5-c-form { display: grid; gap: 22px; }
-.pf-c-form__group,
-.pf-v5-c-form__group { display: grid; gap: 8px; }
-.pf-c-form__label,
-.pf-v5-c-form__label,
-label {
+:host(ak-flow-executor) .pf-c-form,
+:host([part~="challenge"]) .pf-c-form,
+:host([part~="flow-card"]) .pf-c-form,
+:host(ak-flow-executor) .pf-v5-c-form,
+:host([part~="challenge"]) .pf-v5-c-form,
+:host([part~="flow-card"]) .pf-v5-c-form { display: grid; gap: 22px; }
+:host(ak-flow-executor) .pf-c-form__group,
+:host([part~="challenge"]) .pf-c-form__group,
+:host([part~="flow-card"]) .pf-c-form__group,
+:host(ak-flow-executor) .pf-v5-c-form__group,
+:host([part~="challenge"]) .pf-v5-c-form__group,
+:host([part~="flow-card"]) .pf-v5-c-form__group { display: grid; gap: 8px; }
+:host(ak-flow-executor) .pf-c-form__label,
+:host([part~="challenge"]) .pf-c-form__label,
+:host([part~="flow-card"]) .pf-c-form__label,
+:host(ak-flow-executor) .pf-v5-c-form__label,
+:host([part~="challenge"]) .pf-v5-c-form__label,
+:host([part~="flow-card"]) .pf-v5-c-form__label,
+:host(ak-flow-executor) label,
+:host([part~="challenge"]) label,
+:host([part~="flow-card"]) label {
   color: var(--k-ink-soft) !important;
   font: 600 12px/1.4 var(--k-sans) !important;
   letter-spacing: .01em !important;
   text-transform: none !important;
 }
-.pf-c-form__label-required,
-.pf-v5-c-form__label-required { color: var(--k-suo) !important; }
+:host(ak-flow-executor) .pf-c-form__label-required,
+:host([part~="challenge"]) .pf-c-form__label-required,
+:host([part~="flow-card"]) .pf-c-form__label-required,
+:host(ak-flow-executor) .pf-v5-c-form__label-required,
+:host([part~="challenge"]) .pf-v5-c-form__label-required,
+:host([part~="flow-card"]) .pf-v5-c-form__label-required { color: var(--k-suo) !important; }
 
-.pf-c-form-control,
-.pf-v5-c-form-control,
-input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
-select,
-textarea {
+:host(ak-flow-executor) .pf-c-form-control,
+:host([part~="challenge"]) .pf-c-form-control,
+:host([part~="flow-card"]) .pf-c-form-control,
+:host(ak-flow-executor) .pf-v5-c-form-control,
+:host([part~="challenge"]) .pf-v5-c-form-control,
+:host([part~="flow-card"]) .pf-v5-c-form-control,
+:host(ak-flow-executor) input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+:host([part~="challenge"]) input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+:host([part~="flow-card"]) input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+:host(ak-flow-executor) select,
+:host([part~="challenge"]) select,
+:host([part~="flow-card"]) select,
+:host(ak-flow-executor) textarea,
+:host([part~="challenge"]) textarea,
+:host([part~="flow-card"]) textarea {
   box-sizing: border-box;
   min-height: 48px !important;
   padding: 0 16px !important;
@@ -272,33 +391,73 @@ textarea {
   box-shadow: none !important;
   transition: border-color 180ms, background-color 180ms, box-shadow 180ms;
 }
-.pf-c-form-control::placeholder,
-input::placeholder { color: var(--k-faint) !important; font-style: normal !important; }
-.pf-c-form-control:hover,
-input:not([type="checkbox"]):not([type="radio"]):hover { border-color: var(--k-hair-deep) !important; }
-.pf-c-form-control:focus,
-.pf-c-form-control:focus-visible,
-input:focus,
-select:focus,
-textarea:focus {
+:host(ak-flow-executor) .pf-c-form-control::placeholder,
+:host([part~="challenge"]) .pf-c-form-control::placeholder,
+:host([part~="flow-card"]) .pf-c-form-control::placeholder,
+:host(ak-flow-executor) input::placeholder,
+:host([part~="challenge"]) input::placeholder,
+:host([part~="flow-card"]) input::placeholder { color: var(--k-faint) !important; font-style: normal !important; }
+:host(ak-flow-executor) .pf-c-form-control:hover,
+:host([part~="challenge"]) .pf-c-form-control:hover,
+:host([part~="flow-card"]) .pf-c-form-control:hover,
+:host(ak-flow-executor) input:not([type="checkbox"]):not([type="radio"]):hover,
+:host([part~="challenge"]) input:not([type="checkbox"]):not([type="radio"]):hover,
+:host([part~="flow-card"]) input:not([type="checkbox"]):not([type="radio"]):hover { border-color: var(--k-hair-deep) !important; }
+:host(ak-flow-executor) .pf-c-form-control:focus,
+:host([part~="challenge"]) .pf-c-form-control:focus,
+:host([part~="flow-card"]) .pf-c-form-control:focus,
+:host(ak-flow-executor) .pf-c-form-control:focus-visible,
+:host([part~="challenge"]) .pf-c-form-control:focus-visible,
+:host([part~="flow-card"]) .pf-c-form-control:focus-visible,
+:host(ak-flow-executor) input:focus,
+:host([part~="challenge"]) input:focus,
+:host([part~="flow-card"]) input:focus,
+:host(ak-flow-executor) select:focus,
+:host([part~="challenge"]) select:focus,
+:host([part~="flow-card"]) select:focus,
+:host(ak-flow-executor) textarea:focus,
+:host([part~="challenge"]) textarea:focus,
+:host([part~="flow-card"]) textarea:focus {
   outline: 0 !important;
   border-color: var(--k-suo) !important;
   background: var(--k-lift) !important;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-suo) 22%, transparent) !important;
 }
-.pf-c-form-control[aria-invalid="true"],
-input[aria-invalid="true"] { border-color: var(--k-suo) !important; background: var(--k-suo-wash) !important; }
-.pf-c-form__helper-text.pf-m-error,
-.pf-m-error { color: var(--k-suo-deep) !important; }
-input[type="checkbox"],
-input[type="radio"],
-.pf-c-check__input { accent-color: var(--k-suo); }
+:host(ak-flow-executor) .pf-c-form-control[aria-invalid="true"],
+:host([part~="challenge"]) .pf-c-form-control[aria-invalid="true"],
+:host([part~="flow-card"]) .pf-c-form-control[aria-invalid="true"],
+:host(ak-flow-executor) input[aria-invalid="true"],
+:host([part~="challenge"]) input[aria-invalid="true"],
+:host([part~="flow-card"]) input[aria-invalid="true"] { border-color: var(--k-suo) !important; background: var(--k-suo-wash) !important; }
+:host(ak-flow-executor) .pf-c-form__helper-text.pf-m-error,
+:host([part~="challenge"]) .pf-c-form__helper-text.pf-m-error,
+:host([part~="flow-card"]) .pf-c-form__helper-text.pf-m-error,
+:host(ak-flow-executor) .pf-m-error,
+:host([part~="challenge"]) .pf-m-error,
+:host([part~="flow-card"]) .pf-m-error { color: var(--k-suo-deep) !important; }
+:host(ak-flow-executor) input[type="checkbox"],
+:host([part~="challenge"]) input[type="checkbox"],
+:host([part~="flow-card"]) input[type="checkbox"],
+:host(ak-flow-executor) input[type="radio"],
+:host([part~="challenge"]) input[type="radio"],
+:host([part~="flow-card"]) input[type="radio"],
+:host(ak-flow-executor) .pf-c-check__input,
+:host([part~="challenge"]) .pf-c-check__input,
+:host([part~="flow-card"]) .pf-c-check__input { accent-color: var(--k-suo); }
 
 /* ─── seals: the hanko from packages/ui/src/styles/seal.css ─── */
-.pf-c-button,
-.pf-v5-c-button { font-family: var(--k-sans) !important; }
-.pf-c-button.pf-m-primary,
-.pf-v5-c-button.pf-m-primary {
+:host(ak-flow-executor) .pf-c-button,
+:host([part~="challenge"]) .pf-c-button,
+:host([part~="flow-card"]) .pf-c-button,
+:host(ak-flow-executor) .pf-v5-c-button,
+:host([part~="challenge"]) .pf-v5-c-button,
+:host([part~="flow-card"]) .pf-v5-c-button { font-family: var(--k-sans) !important; }
+:host(ak-flow-executor) .pf-c-button.pf-m-primary,
+:host([part~="challenge"]) .pf-c-button.pf-m-primary,
+:host([part~="flow-card"]) .pf-c-button.pf-m-primary,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-primary,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-primary,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-primary {
   min-height: 52px !important;
   padding: 0 24px !important;
   border: 0 !important;
@@ -311,19 +470,39 @@ input[type="radio"],
   letter-spacing: .04em;
   transition: background-color 180ms, transform 120ms;
 }
-.pf-c-button.pf-m-primary:hover,
-.pf-v5-c-button.pf-m-primary:hover {
+:host(ak-flow-executor) .pf-c-button.pf-m-primary:hover,
+:host([part~="challenge"]) .pf-c-button.pf-m-primary:hover,
+:host([part~="flow-card"]) .pf-c-button.pf-m-primary:hover,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-primary:hover,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-primary:hover,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-primary:hover {
   background: var(--k-suo-deep) !important;
   box-shadow: inset 0 -2px 0 var(--k-suo-pad), inset 0 0 0 3px var(--k-suo-deep), inset 0 0 0 4px rgba(255, 253, 248, .5) !important;
 }
-.pf-c-button.pf-m-primary:active,
-.pf-v5-c-button.pf-m-primary:active { transform: translateY(1px); box-shadow: inset 0 0 0 4px var(--k-suo-deep), inset 0 0 0 5px rgba(255, 253, 248, .32) !important; }
-.pf-c-button.pf-m-secondary,
-.pf-v5-c-button.pf-m-secondary,
-.pf-c-button.pf-m-tertiary,
-.pf-v5-c-button.pf-m-tertiary,
-.pf-c-button.pf-m-plain,
-.pf-v5-c-button.pf-m-plain {
+:host(ak-flow-executor) .pf-c-button.pf-m-primary:active,
+:host([part~="challenge"]) .pf-c-button.pf-m-primary:active,
+:host([part~="flow-card"]) .pf-c-button.pf-m-primary:active,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-primary:active,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-primary:active,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-primary:active { transform: translateY(1px); box-shadow: inset 0 0 0 4px var(--k-suo-deep), inset 0 0 0 5px rgba(255, 253, 248, .32) !important; }
+:host(ak-flow-executor) .pf-c-button.pf-m-secondary,
+:host([part~="challenge"]) .pf-c-button.pf-m-secondary,
+:host([part~="flow-card"]) .pf-c-button.pf-m-secondary,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-secondary,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-secondary,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-secondary,
+:host(ak-flow-executor) .pf-c-button.pf-m-tertiary,
+:host([part~="challenge"]) .pf-c-button.pf-m-tertiary,
+:host([part~="flow-card"]) .pf-c-button.pf-m-tertiary,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-tertiary,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-tertiary,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-tertiary,
+:host(ak-flow-executor) .pf-c-button.pf-m-plain,
+:host([part~="challenge"]) .pf-c-button.pf-m-plain,
+:host([part~="flow-card"]) .pf-c-button.pf-m-plain,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-plain,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-plain,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-plain {
   min-height: 44px;
   border: 0 !important;
   border-radius: 2px !important;
@@ -332,21 +511,47 @@ input[type="radio"],
   box-shadow: inset 0 -2px 0 var(--k-hair-deep) !important;
   font-weight: 700 !important;
 }
-.pf-c-button.pf-m-secondary:hover,
-.pf-c-button.pf-m-tertiary:hover,
-.pf-c-button.pf-m-plain:hover { color: var(--k-plum) !important; background: color-mix(in srgb, var(--k-fold) 60%, var(--k-hair)) !important; }
-.pf-c-button::after,
-.pf-v5-c-button::after { border: 0 !important; }
-.pf-c-button:focus-visible,
-.pf-v5-c-button:focus-visible,
-a:focus-visible,
-[tabindex]:focus-visible { outline: 2px solid var(--k-suo) !important; outline-offset: 3px; }
-.pf-c-form__group.pf-m-action,
-.pf-v5-c-form__group.pf-m-action { margin-top: 6px; }
+:host(ak-flow-executor) .pf-c-button.pf-m-secondary:hover,
+:host([part~="challenge"]) .pf-c-button.pf-m-secondary:hover,
+:host([part~="flow-card"]) .pf-c-button.pf-m-secondary:hover,
+:host(ak-flow-executor) .pf-c-button.pf-m-tertiary:hover,
+:host([part~="challenge"]) .pf-c-button.pf-m-tertiary:hover,
+:host([part~="flow-card"]) .pf-c-button.pf-m-tertiary:hover,
+:host(ak-flow-executor) .pf-c-button.pf-m-plain:hover,
+:host([part~="challenge"]) .pf-c-button.pf-m-plain:hover,
+:host([part~="flow-card"]) .pf-c-button.pf-m-plain:hover { color: var(--k-plum) !important; background: color-mix(in srgb, var(--k-fold) 60%, var(--k-hair)) !important; }
+:host(ak-flow-executor) .pf-c-button::after,
+:host([part~="challenge"]) .pf-c-button::after,
+:host([part~="flow-card"]) .pf-c-button::after,
+:host(ak-flow-executor) .pf-v5-c-button::after,
+:host([part~="challenge"]) .pf-v5-c-button::after,
+:host([part~="flow-card"]) .pf-v5-c-button::after { border: 0 !important; }
+:host(ak-flow-executor) .pf-c-button:focus-visible,
+:host([part~="challenge"]) .pf-c-button:focus-visible,
+:host([part~="flow-card"]) .pf-c-button:focus-visible,
+:host(ak-flow-executor) .pf-v5-c-button:focus-visible,
+:host([part~="challenge"]) .pf-v5-c-button:focus-visible,
+:host([part~="flow-card"]) .pf-v5-c-button:focus-visible,
+:host(ak-flow-executor) a:focus-visible,
+:host([part~="challenge"]) a:focus-visible,
+:host([part~="flow-card"]) a:focus-visible,
+:host(ak-flow-executor) [tabindex]:focus-visible,
+:host([part~="challenge"]) [tabindex]:focus-visible,
+:host([part~="flow-card"]) [tabindex]:focus-visible { outline: 2px solid var(--k-suo) !important; outline-offset: 3px; }
+:host(ak-flow-executor) .pf-c-form__group.pf-m-action,
+:host([part~="challenge"]) .pf-c-form__group.pf-m-action,
+:host([part~="flow-card"]) .pf-c-form__group.pf-m-action,
+:host(ak-flow-executor) .pf-v5-c-form__group.pf-m-action,
+:host([part~="challenge"]) .pf-v5-c-form__group.pf-m-action,
+:host([part~="flow-card"]) .pf-v5-c-form__group.pf-m-action { margin-top: 6px; }
 
 /* ─── notices: what happened, in words, with a rule beside it ─── */
-.pf-c-alert,
-.pf-v5-c-alert {
+:host(ak-flow-executor) .pf-c-alert,
+:host([part~="challenge"]) .pf-c-alert,
+:host([part~="flow-card"]) .pf-c-alert,
+:host(ak-flow-executor) .pf-v5-c-alert,
+:host([part~="challenge"]) .pf-v5-c-alert,
+:host([part~="flow-card"]) .pf-v5-c-alert {
   border: 1px solid var(--k-hair) !important;
   border-left: 3px solid var(--k-ink-soft) !important;
   border-radius: 1px !important;
@@ -355,47 +560,106 @@ a:focus-visible,
   box-shadow: none !important;
   font-family: var(--k-sans);
 }
-.pf-c-alert.pf-m-danger,
-.pf-c-alert.pf-m-warning,
-.pf-v5-c-alert.pf-m-danger,
-.pf-v5-c-alert.pf-m-warning { border-left-color: var(--k-suo) !important; }
-.pf-c-alert.pf-m-success,
-.pf-v5-c-alert.pf-m-success { border-left-color: #5c7150 !important; }
-.pf-c-alert__title,
-.pf-v5-c-alert__title { color: inherit !important; font-family: var(--k-sans) !important; font-weight: 600 !important; }
-.pf-c-alert__icon,
-.pf-v5-c-alert__icon { color: var(--k-suo) !important; }
-.pf-c-alert-group.pf-m-toast { font-family: var(--k-sans); }
+:host(ak-flow-executor) .pf-c-alert.pf-m-danger,
+:host([part~="challenge"]) .pf-c-alert.pf-m-danger,
+:host([part~="flow-card"]) .pf-c-alert.pf-m-danger,
+:host(ak-flow-executor) .pf-c-alert.pf-m-warning,
+:host([part~="challenge"]) .pf-c-alert.pf-m-warning,
+:host([part~="flow-card"]) .pf-c-alert.pf-m-warning,
+:host(ak-flow-executor) .pf-v5-c-alert.pf-m-danger,
+:host([part~="challenge"]) .pf-v5-c-alert.pf-m-danger,
+:host([part~="flow-card"]) .pf-v5-c-alert.pf-m-danger,
+:host(ak-flow-executor) .pf-v5-c-alert.pf-m-warning,
+:host([part~="challenge"]) .pf-v5-c-alert.pf-m-warning,
+:host([part~="flow-card"]) .pf-v5-c-alert.pf-m-warning { border-left-color: var(--k-suo) !important; }
+:host(ak-flow-executor) .pf-c-alert.pf-m-success,
+:host([part~="challenge"]) .pf-c-alert.pf-m-success,
+:host([part~="flow-card"]) .pf-c-alert.pf-m-success,
+:host(ak-flow-executor) .pf-v5-c-alert.pf-m-success,
+:host([part~="challenge"]) .pf-v5-c-alert.pf-m-success,
+:host([part~="flow-card"]) .pf-v5-c-alert.pf-m-success { border-left-color: #5c7150 !important; }
+:host(ak-flow-executor) .pf-c-alert__title,
+:host([part~="challenge"]) .pf-c-alert__title,
+:host([part~="flow-card"]) .pf-c-alert__title,
+:host(ak-flow-executor) .pf-v5-c-alert__title,
+:host([part~="challenge"]) .pf-v5-c-alert__title,
+:host([part~="flow-card"]) .pf-v5-c-alert__title { color: inherit !important; font-family: var(--k-sans) !important; font-weight: 600 !important; }
+:host(ak-flow-executor) .pf-c-alert__icon,
+:host([part~="challenge"]) .pf-c-alert__icon,
+:host([part~="flow-card"]) .pf-c-alert__icon,
+:host(ak-flow-executor) .pf-v5-c-alert__icon,
+:host([part~="challenge"]) .pf-v5-c-alert__icon,
+:host([part~="flow-card"]) .pf-v5-c-alert__icon { color: var(--k-suo) !important; }
+:host(ak-flow-executor) .pf-c-alert-group.pf-m-toast,
+:host([part~="challenge"]) .pf-c-alert-group.pf-m-toast,
+:host([part~="flow-card"]) .pf-c-alert-group.pf-m-toast { font-family: var(--k-sans); }
 
 /* The signed-in person, on stages that show who they are. */
-.pf-c-avatar,
-.pf-v5-c-avatar,
-img[alt*="avatar" i] { border-radius: 50% !important; box-shadow: 0 0 0 2px var(--k-lift), 0 0 0 3px var(--k-hair) !important; }
+:host(ak-flow-executor) .pf-c-avatar,
+:host([part~="challenge"]) .pf-c-avatar,
+:host([part~="flow-card"]) .pf-c-avatar,
+:host(ak-flow-executor) .pf-v5-c-avatar,
+:host([part~="challenge"]) .pf-v5-c-avatar,
+:host([part~="flow-card"]) .pf-v5-c-avatar,
+:host(ak-flow-executor) img[alt*="avatar" i],
+:host([part~="challenge"]) img[alt*="avatar" i],
+:host([part~="flow-card"]) img[alt*="avatar" i] { border-radius: 50% !important; box-shadow: 0 0 0 2px var(--k-lift), 0 0 0 3px var(--k-hair) !important; }
 
-.pf-c-divider,
-.pf-v5-c-divider,
-hr { border-color: var(--k-hair) !important; }
-.pf-c-spinner,
-.pf-v5-c-spinner { --pf-c-spinner--Color: var(--k-suo); --pf-v5-c-spinner--Color: var(--k-suo); color: var(--k-suo); }
+:host(ak-flow-executor) .pf-c-divider,
+:host([part~="challenge"]) .pf-c-divider,
+:host([part~="flow-card"]) .pf-c-divider,
+:host(ak-flow-executor) .pf-v5-c-divider,
+:host([part~="challenge"]) .pf-v5-c-divider,
+:host([part~="flow-card"]) .pf-v5-c-divider,
+:host(ak-flow-executor) hr,
+:host([part~="challenge"]) hr,
+:host([part~="flow-card"]) hr { border-color: var(--k-hair) !important; }
+:host(ak-flow-executor) .pf-c-spinner,
+:host([part~="challenge"]) .pf-c-spinner,
+:host([part~="flow-card"]) .pf-c-spinner,
+:host(ak-flow-executor) .pf-v5-c-spinner,
+:host([part~="challenge"]) .pf-v5-c-spinner,
+:host([part~="flow-card"]) .pf-v5-c-spinner { --pf-c-spinner--Color: var(--k-suo); --pf-v5-c-spinner--Color: var(--k-suo); color: var(--k-suo); }
 
 /* Kimono speaks one language to its household; the picker is noise here. */
-ak-locale-select,
-[part="locale-select"] { display: none !important; }
+:host(ak-flow-executor) ak-locale-select,
+:host([part~="challenge"]) ak-locale-select,
+:host([part~="flow-card"]) ak-locale-select,
+:host(ak-flow-executor) [part="locale-select"],
+:host([part~="challenge"]) [part="locale-select"],
+:host([part~="flow-card"]) [part="locale-select"] { display: none !important; }
 
 /* ─── narrow screens: the panel is the page ─── */
 @media (max-width: 820px) {
-  :root { --kimono-panel: 100vw; }
-  body::after { display: none; }
+  html:has(ak-flow-executor) { --kimono-panel: 100vw; }
+  html:has(ak-flow-executor) body::after { display: none; }
   ak-flow-executor.pf-c-login,
   ak-flow-executor { width: 100% !important; padding: 28px 20px !important; box-shadow: none !important; }
-  [part="challenge"] { padding: 40px 0; }
-  .pf-c-login__main-header.pf-c-brand img,
-  img.branding-logo { width: 44px !important; height: 44px !important; }
-  .pf-c-login__main-header.pf-c-brand::after { font-size: 28px; }
+  :host(ak-flow-executor) [part="challenge"],
+:host([part~="challenge"]) [part="challenge"],
+:host([part~="flow-card"]) [part="challenge"] { padding: 40px 0; }
+  :host(ak-flow-executor) .pf-c-login__main-header.pf-c-brand img,
+:host([part~="challenge"]) .pf-c-login__main-header.pf-c-brand img,
+:host([part~="flow-card"]) .pf-c-login__main-header.pf-c-brand img,
+:host(ak-flow-executor) img.branding-logo,
+:host([part~="challenge"]) img.branding-logo,
+:host([part~="flow-card"]) img.branding-logo { width: 44px !important; height: 44px !important; }
+  :host(ak-flow-executor) .pf-c-login__main-header.pf-c-brand::after,
+:host([part~="challenge"]) .pf-c-login__main-header.pf-c-brand::after,
+:host([part~="flow-card"]) .pf-c-login__main-header.pf-c-brand::after { font-size: 28px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+  html:has(ak-flow-executor) *,
+html:has(ak-flow-executor) *::before,
+html:has(ak-flow-executor) *::after,
+:host(ak-flow-executor) *,
+:host([part~="challenge"]) *,
+:host([part~="flow-card"]) *,
+:host(ak-flow-executor) *::before,
+:host([part~="challenge"]) *::before,
+:host([part~="flow-card"]) *::before,
+:host(ak-flow-executor) *::after,
+:host([part~="challenge"]) *::after,
+:host([part~="flow-card"]) *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }

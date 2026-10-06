@@ -1,14 +1,17 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import {
   endAllIdentitySessions,
   endIdentitySession,
   listIdentitySessions,
   readIdentityProfile,
+  setIdentityPassword,
   updateIdentityProfile,
+  verifyIdentityPassword,
   type IdentitySessionSummary,
 } from "./directory";
-import { parseProfileInput } from "./account-input";
+import { parsePasswordChange, parseProfileInput } from "./account-input";
 import { picturePathFor, removePicture, storePicture } from "./pictures";
 
 /**
@@ -96,15 +99,33 @@ export const listSessions = (user: SessionUser) => reach("session list", () => l
 export const endSession = (user: SessionUser, id: string) => reach("sign-out", () => endIdentitySession(user.username, id));
 export const endAllSessions = (user: SessionUser) => reach("sign-out", () => endAllIdentitySessions(user.username));
 
-/** Authentik's own password-change flow, returning to the Portal when done. */
-export function passwordChangeUrl(): string | null {
-  const issuer = process.env.AUTHENTIK_ISSUER;
-  if (!issuer) return null;
+/**
+ * Whether a password appears in known breaches, asked of Have I Been Pwned's
+ * range API: only the first five characters of its SHA-1 leave the server.
+ * If the service can't be reached the check is skipped, never failed.
+ */
+async function breached(password: string): Promise<boolean> {
+  const hash = createHash("sha1").update(password).digest("hex").toUpperCase();
   try {
-    const url = new URL("/if/flow/default-password-change/", issuer);
-    url.searchParams.set("next", `${portalOrigin()}/account/password?changed=1`);
-    return url.toString();
+    const response = await fetch(`https://api.pwnedpasswords.com/range/${hash.slice(0, 5)}`, { headers: { "Add-Padding": "true" }, cache: "no-store", signal: AbortSignal.timeout(3000) });
+    if (!response.ok) return false;
+    const suffix = hash.slice(5);
+    return (await response.text()).split("\n").some((line) => {
+      const [candidate, count] = line.trim().split(":");
+      return candidate === suffix && Number(count) > 0;
+    });
   } catch {
-    return null;
+    return false;
   }
+}
+
+/** Changes the signed-in person's password. Returns how many other sign-ins were ended. */
+export async function changePassword(user: SessionUser, raw: unknown): Promise<{ ended: number }> {
+  const change = parsePasswordChange(raw, { username: user.username, name: user.name });
+  const correct = await reach("password check", () => verifyIdentityPassword(user.username, change.current));
+  if (!correct) throw new Error("Your current password isn't right.");
+  if (await breached(change.next)) throw new Error("That password has appeared in a data leak. Choose another.");
+  await reach("password change", () => setIdentityPassword(user.username, change.next));
+  const ended = change.signOutOthers ? await reach("sign-out", () => endAllIdentitySessions(user.username)) : 0;
+  return { ended };
 }

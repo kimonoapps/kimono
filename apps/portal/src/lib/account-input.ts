@@ -36,3 +36,33 @@ export function initialOf(name: string | null | undefined, username?: string | n
   const source = (name?.trim() || username?.trim() || "?");
   return Array.from(source)[0].toLocaleUpperCase();
 }
+
+export type PasswordChange = { current: string; next: string; signOutOthers: boolean };
+
+export const passwordMinLength = 12;
+
+/** The rules a new password must meet, as the form shows them while typing. */
+export function passwordRules(next: string, person: { username: string; name?: string | null }) {
+  const lower = next.toLowerCase();
+  const names = [person.username, ...(person.name || "").split(/\s+/)].map((part) => part.trim().toLowerCase()).filter((part) => part.length >= 3);
+  return {
+    long: Array.from(next).length >= passwordMinLength,
+    notName: !names.some((part) => lower.includes(part)),
+  };
+}
+
+export function parsePasswordChange(raw: unknown, person: { username: string; name?: string | null }): PasswordChange {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Send your current and new password.");
+  const input = raw as Record<string, unknown>;
+  const current = typeof input.current === "string" ? input.current : "";
+  const next = typeof input.next === "string" ? input.next : "";
+  if (!current) throw new Error("Enter your current password.");
+  if (!next) throw new Error("Enter a new password.");
+  if (input.confirm !== undefined && input.confirm !== next) throw new Error("The new passwords don't match.");
+  if (Array.from(next).length > 256) throw new Error("Keep your new password under 256 characters.");
+  const rules = passwordRules(next, person);
+  if (!rules.long) throw new Error(`Use at least ${passwordMinLength} characters.`);
+  if (!rules.notName) throw new Error("Don't use your name or username in your password.");
+  if (next === current) throw new Error("Choose a password you haven't been using.");
+  return { current, next, signOutOthers: input.signOutOthers !== false };
+}

@@ -1,33 +1,26 @@
-import type { ReactNode } from "react";
+import { cache, type ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { Crossing } from "@/components/crossing";
 import { Portrait } from "@/components/portrait";
 import { readAccount, type AccountProfile } from "@/lib/account";
 import { getPlatformSettings } from "@/lib/settings";
+import { AccountCard, AccountRooms } from "./account-rooms";
 import "./account.css";
 
-/** Every account page is the signed-in person's, and nobody else's. */
-export async function accountContext() {
+/** Every account page is the signed-in person's, and nobody else's. Read once per request. */
+export const accountContext = cache(async () => {
   const session = await auth();
   if (!session?.user?.username) redirect("/login");
   return { session, account: await readAccount(session.user) };
-}
-
-const rooms = [
-  { id: "profile", href: "/account", label: "Profile" },
-  { id: "password", href: "/account/password", label: "Password" },
-  { id: "devices", href: "/account/devices", label: "Signed-in devices" },
-] as const;
+});
 
 /**
  * 己 The account's frame: the same rail-and-panel composition as an app's
- * settings, with the person's own picture standing at the top of the rail so
- * it is in view on every account page.
+ * settings, with the person's own picture at the top of the rail. It is the
+ * section's layout, so moving between its rooms changes only the card.
  */
-export async function AccountFrame({ here, account, user, children }: {
-  here: (typeof rooms)[number]["id"];
+export async function AccountFrame({ account, user, children }: {
   account: AccountProfile;
   user: Parameters<typeof AppShell>[0]["user"];
   children: ReactNode;
@@ -42,11 +35,9 @@ export async function AccountFrame({ here, account, user, children }: {
             <h1>{account.name}</h1>
             <p>@{account.username} · {account.role}</p>
           </div>
-          <nav className="rail-nav" aria-label="Your account">
-            {rooms.map((room) => <Crossing key={room.id} kind="kakejiku" href={room.href} aria-current={room.id === here ? "page" : undefined}>{room.label}</Crossing>)}
-          </nav>
+          <AccountRooms />
         </aside>
-        <div className="app-panel">{children}</div>
+        <div className="app-panel"><AccountCard>{children}</AccountCard></div>
       </div>
     </div>
   </AppShell>;

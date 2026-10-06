@@ -36,3 +36,15 @@
 .picture-zoom input { width: 100%; accent-color: var(--k-accent); }
 .picture-crop-actions { align-self: flex-end; }
 .picture-error { margin: var(--k-space-4) 0 0; }
+
+/* the password */
+.password-form .k-field input { max-width: 420px; }
+.password-rules { display: grid; gap: var(--k-space-2); margin: calc(var(--k-space-2) * -1) 0 0; padding: 0; list-style: none; font-size: 13.5px; color: var(--k-ink-soft); }
+.password-rules li { display: flex; align-items: center; gap: var(--k-space-3); }
+/* A rule changes form when met: an empty ring fills with moss and gains a tick. */
+.password-rules li > span[aria-hidden] { width: 16px; height: 16px; flex: none; display: grid; place-items: center; border: 1.5px solid var(--k-hair-deep); border-radius: 50%; }
+.password-rules li.is-met { color: var(--k-ink); }
+.password-rules li.is-met > span[aria-hidden] { border-color: var(--k-moss); background: var(--k-moss); }
+.password-rules li.is-met > span[aria-hidden]::after { content: ""; width: 5px; height: 8px; margin-top: -2px; border: solid var(--k-lift); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.password-signout { display: flex; align-items: center; gap: var(--k-space-3); font-size: 14px; color: var(--k-ink); }
+.password-signout input { width: 18px; height: 18px; accent-color: var(--k-accent); }

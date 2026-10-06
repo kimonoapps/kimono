@@ -308,6 +308,73 @@ export async function endAllIdentitySessions(username: string): Promise<number> 
   return sessions.length;
 }
 
+/* ─── passwords ───
+   Kimono never stores or compares passwords. It asks the identity provider:
+   the current password is checked by walking the provider's own sign-in flow
+   as that person would, and the new one is set through its API. */
+
+const checkAgent = "Kimono password check";
+
+/** True when the identity provider accepts this password for this account. */
+export async function verifyIdentityPassword(username: string, password: string): Promise<boolean> {
+  const url = `${identityEndpoint()}/api/v3/flows/executor/default-authentication-flow/?query=`;
+  const jar = new Map<string, string>();
+  async function step(method: "GET" | "POST", body?: unknown): Promise<{ component?: string; password_fields?: boolean }> {
+    const csrf = jar.get("authentik_csrf");
+    const response = await fetch(url, {
+      method,
+      redirect: "manual",
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": checkAgent,
+        Cookie: [...jar].map(([key, value]) => `${key}=${value}`).join("; "),
+        ...(csrf ? { "X-authentik-CSRF": csrf } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    for (const header of response.headers.getSetCookie()) {
+      const pair = header.split(";")[0];
+      const split = pair.indexOf("=");
+      if (split > 0) jar.set(pair.slice(0, split), pair.slice(split + 1));
+    }
+    /* The executor answers a submitted stage by redirecting to itself. */
+    if (method === "POST" && response.status >= 300 && response.status < 400) return step("GET");
+    if (response.status >= 300 && response.status < 400) return {};
+    if (!response.ok) throw new Error(`The identity provider replied ${response.status} while checking a password.`);
+    return await response.json() as { component?: string; password_fields?: boolean };
+  }
+  const first = await step("GET");
+  if (first.component !== "ak-stage-identification") throw new Error(`The identity provider's sign-in flow starts with ${first.component ?? "nothing"}, not identification.`);
+  let next = await step("POST", { component: "ak-stage-identification", uid_field: username, ...(first.password_fields ? { password } : {}) });
+  if (!first.password_fields) {
+    if (next.component !== "ak-stage-password") throw new Error(`The identity provider's sign-in flow asks for ${next.component ?? "nothing"} before a password.`);
+    next = await step("POST", { component: "ak-stage-password", password });
+  }
+  const accepted = next.component !== "ak-stage-password" && next.component !== "ak-stage-identification";
+  if (accepted) await endChecksFor(username);
+  return accepted;
+}
+
+/** A check that ran to the end of the flow signs in; that sign-in is ended at once. */
+async function endChecksFor(username: string) {
+  try {
+    for (const session of await sessionsOf(username)) {
+      if ((session as { last_user_agent?: string }).last_user_agent === checkAgent) {
+        await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(session.uuid as string)}/`, { method: "DELETE" });
+      }
+    }
+  } catch {
+    /* Best effort: such a session holds no browser and expires on its own. */
+  }
+}
+
+export async function setIdentityPassword(username: string, password: string) {
+  const user = await findUser(username);
+  await identityRequest(`/api/v3/core/users/${user.pk}/set_password/`, { method: "POST", body: JSON.stringify({ password }) });
+}
+
 /** Whether an account carries Kimono VPN, without pulling the whole mesh. */
 export async function holdsMeshAccess(username: string): Promise<boolean> {
   try {

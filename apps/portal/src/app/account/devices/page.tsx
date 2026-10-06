@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { Compartment, Seal, Tray } from "@kimono/ui";
 import { auth } from "@/auth";
 import { endAllSessions, endSession, listSessions, type AccountSession } from "@/lib/account";
-import { AccountFrame, accountContext } from "../account-frame";
+import { accountContext } from "../account-frame";
 
 export const metadata = { title: "Signed-in devices · Your account" };
 
@@ -14,7 +14,7 @@ function describe(session: AccountSession) {
 }
 
 export default async function DevicesPage({ searchParams }: { searchParams: Promise<{ ended?: string; error?: string }> }) {
-  const { session, account } = await accountContext();
+  const { session } = await accountContext();
   const query = await searchParams;
   let sessions: AccountSession[] = [];
   let unavailable: string | null = null;
@@ -41,7 +41,7 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
     redirect(`/account/devices?ended=${count}`);
   }
 
-  return <AccountFrame here="devices" account={account} user={session.user}>
+  return <>
     {query.ended ? <p className="admin-notice success">{query.ended === "1" ? "That device was signed out." : `${query.ended} sign-ins were ended.`}</p> : null}
     {query.error ? <p className="admin-notice error">{query.error}</p> : null}
     <Tray>
@@ -63,5 +63,5 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
         <form action={endEverywhere} className="k-form-actions"><Seal tone="danger" type="submit">Sign out {sessions.length === 1 ? "1 sign-in" : `all ${sessions.length}`}</Seal></form>
       </Compartment> : null}
     </Tray>
-  </AccountFrame>;
+  </>;
 }

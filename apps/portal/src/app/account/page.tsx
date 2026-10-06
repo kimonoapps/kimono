@@ -2,13 +2,13 @@ import { redirect } from "next/navigation";
 import { Compartment, Field, Form, FormActions, Seal, Tray } from "@kimono/ui";
 import { auth, updateSession } from "@/auth";
 import { changeProfile } from "@/lib/account";
-import { AccountFrame, accountContext } from "./account-frame";
+import { accountContext } from "./account-frame";
 import { PictureEditor } from "./picture-editor";
 
-export const metadata = { title: "Your account · Kimono" };
+export const metadata = { title: "Your account" };
 
 export default async function AccountPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
-  const { session, account } = await accountContext();
+  const { account } = await accountContext();
   const query = await searchParams;
 
   async function saveDetails(form: FormData) {
@@ -24,7 +24,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
     redirect("/account?saved=1");
   }
 
-  return <AccountFrame here="profile" account={account} user={session.user}>
+  return <>
     {query.saved ? <p className="admin-notice success">Saved.</p> : null}
     {query.error ? <p className="admin-notice error">{query.error}</p> : null}
     <Tray>
@@ -41,5 +41,5 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
         </Form>
       </Compartment>
     </Tray>
-  </AccountFrame>;
+  </>;
 }
