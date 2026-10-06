@@ -91,9 +91,9 @@ entries:
     attrs:
       default: false
       branding_title: Kimono
-      branding_logo: /static/kimono/kimono-logo.png
+      branding_logo: /static/kimono/kimono-branch.svg
       branding_favicon: /static/kimono/favicon-48.png
-      branding_default_flow_background: /static/kimono/kimono-login-background.svg
+      branding_default_flow_background: /static/kimono/kimono-sign-in-art.svg
       branding_custom_css: !File /blueprints/kimono/kimono.css
       flow_authentication: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
       flow_invalidation: !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
