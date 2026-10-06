@@ -1,6 +1,6 @@
 "use client";
 
-import { CrossingProvider as CrossingLayer, useCrossing, cx, type SealTone, type CrossingKind } from "@kimono/ui";
+import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type SealTone, type CrossingKind } from "@kimono/ui";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useTransition, type MouseEvent, type ReactNode } from "react";
 
@@ -56,8 +56,17 @@ export function useCrossTo() {
   const navigate = useContext(Arrival);
   const router = useRouter();
 
-  return useCallback((kind: CrossingKind, href: string, external = false) => {
+  return useCallback((kind: CrossingKind, href: string, external = false, destinationAccent?: string) => {
     if (!external) router.prefetch(href);
+    const source = getComputedStyle(document.querySelector(".app-frame") || document.documentElement);
+    const portal = getComputedStyle(document.documentElement);
+    const destination = destinationAccent ? accentRamp(destinationAccent) : null;
+    const colors = {
+      from: source.getPropertyValue("--k-accent").trim(),
+      fromPale: source.getPropertyValue("--k-accent-pale").trim(),
+      to: destination?.deep || portal.getPropertyValue("--k-accent").trim(),
+      toPale: destination?.tint || portal.getPropertyValue("--k-accent-pale").trim(),
+    };
     cross(kind, () => {
       if (external) {
         // This document is being replaced, so nothing here will open the
@@ -67,7 +76,7 @@ export function useCrossTo() {
         return new Promise<void>(() => {});
       }
       return navigate(href);
-    });
+    }, colors);
   }, [cross, navigate, router]);
 }
 
@@ -88,10 +97,11 @@ export function useWarm() {
   return (href: string, external = false) => () => { if (!external) router.prefetch(href); };
 }
 
-export function Crossing({ href, kind, external = false, children, className, onClick, ...rest }: {
+export function Crossing({ href, kind, external = false, destinationAccent, children, className, onClick, ...rest }: {
   href: string;
   kind: CrossingKind;
   external?: boolean;
+  destinationAccent?: string;
   children: ReactNode;
   className?: string;
 } & Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "href">) {
@@ -107,7 +117,7 @@ export function Crossing({ href, kind, external = false, children, className, on
       onClick?.(event);
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0 || rest.target === "_blank" || rest.download !== undefined) return;
       event.preventDefault();
-      crossTo(kind, href, external);
+      crossTo(kind, href, external, destinationAccent);
     }}
     {...rest}
   >{children}</a>;

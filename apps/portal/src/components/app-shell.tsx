@@ -36,15 +36,15 @@ function authentikAccountUrl() {
   }
 }
 
-/**
- * Inside an app, its colour appears in exactly four places: the bloom, the
- * name in the lockup, the marker beside the thing that is selected, and an
- * eight percent wash behind it. The house action colour — every seal, every
- * focus ring — stays suō in every app, so a button is the same button
- * everywhere and an arbitrary accent can never fail the text on it.
- */
+/** Derive app actions and transition colours from the same bloom palette. */
 function appPalette(app: AppIdentity): CSSProperties {
-  return { "--k-app-accent": accentRamp(app.accent).deep } as CSSProperties;
+  const ramp = accentRamp(app.accent);
+  return {
+    "--k-app-accent": ramp.deep,
+    "--k-accent": ramp.deep,
+    "--k-accent-deep": `color-mix(in srgb, ${ramp.deep} 82%, #24221f)`,
+    "--k-accent-pale": ramp.tint,
+  } as CSSProperties;
 }
 
 export async function AppShell({ children, user, active = "home", app }: Props) {

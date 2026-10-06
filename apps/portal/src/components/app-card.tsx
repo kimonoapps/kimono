@@ -18,7 +18,7 @@ export function AppLauncher({ apps }: { apps: KimonoApp[] }) {
 
   function continueInBrowser() {
     setSelected(null);
-    if (selected) crossTo("hanafubuki", selected.href, selected.external);
+    if (selected) crossTo("hanafubuki", selected.href, selected.external, selected.accent);
   }
 
   return (
@@ -26,7 +26,7 @@ export function AppLauncher({ apps }: { apps: KimonoApp[] }) {
       <h2 id="apps-heading">Applications</h2>
       <div className="launcher-grid">
         {apps.map((app, index) => (
-          <Crossing className="launcher-app" kind="hanafubuki" external={app.external} href={app.href} key={app.id} onClick={(event) => {
+          <Crossing className="launcher-app" kind="hanafubuki" external={app.external} destinationAccent={app.accent} href={app.href} key={app.id} onClick={(event) => {
             if (!app.mobileApp || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
             const os = detectMobileOS(navigator);
             if (!os && !window.matchMedia("(max-width: 940px), (pointer: coarse)").matches) {

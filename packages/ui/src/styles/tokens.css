@@ -64,8 +64,7 @@
   --k-hover: #f7efe1;                 /* always paired with a form change */
   --k-selected: #f7e4e4;              /* sakura wash laid on sheet */
 
-  /* The house action colour. Stable in every app: an app's accent never
-     reaches a button. */
+  /* Portal actions use suō; app shells supply their own accent ramp. */
   --k-accent: var(--k-suo);
   --k-accent-deep: var(--k-suo-deep);
   --k-accent-pale: var(--k-sakura-wash);

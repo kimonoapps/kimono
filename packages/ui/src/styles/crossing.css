@@ -7,19 +7,27 @@
      掛軸    page to page       inside one surface, 820ms
    ───────────────────────────────────────────────────────────── */
 
-.k-crossing { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.k-crossing {
+  --k-cross-from: var(--k-accent); --k-cross-to: var(--k-accent);
+  --k-cross-from-pale: var(--k-accent-pale); --k-cross-to-pale: var(--k-accent-pale);
+  position: fixed; inset: 0; z-index: 90; pointer-events: none; }
 .k-crossing[data-kind] { pointer-events: all; }
 
 /* 花吹雪 */
 .k-haze { position: absolute; inset: 0; opacity: 0; background: color-mix(in srgb, var(--k-accent-pale) 74%, var(--k-accent)); }
 .k-crossing[data-kind="hanafubuki"] .k-haze { animation: k-haze 1900ms ease-in-out both; }
-@keyframes k-haze { 0% { opacity: 0 } 24%, 64% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes k-haze {
+  0% { opacity: 0; background: color-mix(in srgb, var(--k-cross-from-pale) 74%, var(--k-cross-from)); }
+  24% { opacity: 1; background: color-mix(in srgb, var(--k-cross-from-pale) 74%, var(--k-cross-from)); }
+  64% { opacity: 1; background: color-mix(in srgb, var(--k-cross-to-pale) 74%, var(--k-cross-to)); }
+  100% { opacity: 0; background: color-mix(in srgb, var(--k-cross-to-pale) 74%, var(--k-cross-to)); }
+}
 
 .k-petal { position: absolute; width: var(--sz); height: var(--sz); opacity: 0; overflow: visible;
   color: var(--k-accent-pale); stroke: var(--k-accent); --k-fold: var(--k-sheet); }
 .k-petal.k-deep { color: color-mix(in srgb, var(--k-accent-pale) 62%, var(--k-accent)); }
 .k-petal.k-faint { color: color-mix(in srgb, var(--k-accent-pale) 52%, var(--k-sheet)); }
-.k-crossing[data-kind="hanafubuki"] .k-petal { animation: k-gust 1900ms linear both, k-gust-fade 1900ms linear both; }
+.k-crossing[data-kind="hanafubuki"] .k-petal { animation: k-gust 1900ms linear both, k-gust-fade 1900ms linear both, k-petal-color 1900ms ease-in-out both; }
 @keyframes k-gust {
   0%   { transform: translate(-125vw, var(--y0)) rotate(0deg) scaleX(1); animation-timing-function: cubic-bezier(.12,.55,.28,1); }
   30%  { transform: translate(0, 0) rotate(var(--r1)) scaleX(var(--f1)); animation-timing-function: linear; }
@@ -58,4 +66,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   .k-crossing * { animation-duration: 1ms !important; }
+}
+
+/* Animate real colours; no registered custom properties are needed on Safari. */
+.k-petal { --k-petal-from: var(--k-cross-from-pale); --k-petal-to: var(--k-cross-to-pale); }
+.k-petal.k-deep { --k-petal-from: color-mix(in srgb, var(--k-cross-from-pale) 62%, var(--k-cross-from)); --k-petal-to: color-mix(in srgb, var(--k-cross-to-pale) 62%, var(--k-cross-to)); }
+.k-petal.k-faint { --k-petal-from: color-mix(in srgb, var(--k-cross-from-pale) 52%, var(--k-sheet)); --k-petal-to: color-mix(in srgb, var(--k-cross-to-pale) 52%, var(--k-sheet)); }
+@keyframes k-petal-color {
+  0%, 24% { color: var(--k-petal-from); stroke: var(--k-cross-from); }
+  64%, 100% { color: var(--k-petal-to); stroke: var(--k-cross-to); }
 }

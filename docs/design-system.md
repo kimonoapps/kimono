@@ -53,6 +53,11 @@ colour, and the colour is permitted in exactly four places:
   a focus ring;
 - one **small selected marker** — a `3px` bar beside the thing that is chosen.
 
+The sakura crossing blends from the current surface’s accent to the destination’s
+accent. Entering an app blends house pink into its colour; returning to Kimono
+blends back to pink. Primary seals use the app’s darker accent ramp for legible
+lettering; quiet, disabled, and danger controls retain their semantic treatments.
+
 Nothing else is recoloured. The paper stays paper, the ink stays ink, the wood
 stays wood, and Kimono's own chrome keeps its house colour. An app is
 recognised by its mark and by what it asks of you, never by a tinted room. An

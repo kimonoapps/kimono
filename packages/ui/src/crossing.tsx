@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { cx } from "./cx";
 
 export type CrossingKind = "hanafubuki" | "shoji" | "kakejiku";
@@ -21,7 +21,9 @@ const FOLD = "M49 96 C34 88 22 73 19 57 C28 70 38 82 49 96 Z";
  */
 export type CrossingSwap = () => void | Promise<unknown>;
 
-const CrossingContext = createContext<(kind: CrossingKind, swap: CrossingSwap) => void>(() => {});
+export type CrossingColors = { from: string; fromPale: string; to: string; toPale: string };
+
+const CrossingContext = createContext<(kind: CrossingKind, swap: CrossingSwap, colors?: CrossingColors) => void>(() => {});
 
 /** Call a crossing. The swap runs at the moment the screen is fully covered. */
 export function useCrossing() {
@@ -74,6 +76,7 @@ function makePetals(): Petal[] {
 /** Wrap the app once. Renders the crossing layer above all chrome. */
 export function CrossingProvider({ children }: { children: ReactNode }) {
   const [kind, setKind] = useState<CrossingKind | null>(null);
+  const [colors, setColors] = useState<CrossingColors | undefined>();
   const [held, setHeld] = useState(false);
   const [petals, setPetals] = useState<Petal[]>([]);
   const busy = useRef(false);
@@ -103,7 +106,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const cross = useCallback((next: CrossingKind, swap: CrossingSwap) => {
+  const cross = useCallback((next: CrossingKind, swap: CrossingSwap, palette?: CrossingColors) => {
     if (busy.current || !mounted.current) return;
     busy.current = true;
     const crossing = ++generation.current;
@@ -117,6 +120,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
     if (stillness()) { void swap(); done(); return; }
 
     if (next === "hanafubuki") setPetals(makePetals());
+    setColors(palette);
     setKind(next);
     const { total, covered } = CROSSING[next];
 
@@ -151,7 +155,10 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
 
   const layer = useMemo(() => {
     if (!kind) return null;
-    return <div className="k-crossing" data-kind={kind} data-held={held ? "" : undefined} aria-hidden="true">
+    return <div className="k-crossing" style={colors ? {
+      "--k-cross-from": colors.from, "--k-cross-from-pale": colors.fromPale,
+      "--k-cross-to": colors.to, "--k-cross-to-pale": colors.toPale,
+    } as CSSProperties : undefined} data-kind={kind} data-held={held ? "" : undefined} aria-hidden="true">
       {kind === "hanafubuki" ? <>
         <span className="k-haze" />
         {petals.map((p) => <svg key={p.key} className={cx("k-petal", p.cls)} viewBox="0 0 100 100" style={p.style as never}>
@@ -162,7 +169,7 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
       {kind === "shoji" ? <><span className="k-screen k-l" /><span className="k-screen k-r" /></> : null}
       {kind === "kakejiku" ? <><span className="k-blind" /><span className="k-rod" /></> : null}
     </div>;
-  }, [kind, held, petals]);
+  }, [kind, held, petals, colors]);
 
   return <CrossingContext.Provider value={cross}>{children}{layer}</CrossingContext.Provider>;
 }

@@ -16,8 +16,8 @@
    ───────────────────────────────────────────────────────────── */
 
 .k-seal {
-  --k-seal-base: var(--k-suo-pad);
-  --k-seal-impression: color-mix(in srgb, var(--k-suo) 42%, transparent);
+  --k-seal-base: color-mix(in srgb, var(--k-accent) 72%, var(--k-ink));
+  --k-seal-impression: color-mix(in srgb, var(--k-accent) 42%, transparent);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -28,7 +28,7 @@
   border: 0;
   border-radius: var(--k-r-seal);
   color: var(--k-lift);
-  background: var(--k-suo);
+  background: var(--k-accent);
   box-shadow: inset 0 -2px 0 var(--k-seal-base), 0 0 0 7px transparent;
   font: 700 13px/1 var(--k-sans);
   letter-spacing: .04em;
@@ -51,7 +51,7 @@
   pointer-events: none;
   transition: inset var(--k-t-tap) var(--k-ease-settle), border-color var(--k-t-state) var(--k-ease-settle), opacity var(--k-t-state) var(--k-ease-settle);
 }
-.k-seal:hover { background: var(--k-suo-deep); }
+.k-seal:hover { background: var(--k-accent-deep); }
 .k-seal:hover::before { border-color: rgba(255, 253, 248, .5); }
 /* Pressed: the block goes down, the base disappears under it, the ring
    tightens, and the impression is laid at zero spread — instantly. */
@@ -61,7 +61,7 @@
   transition-duration: var(--k-t-state), var(--k-t-state), var(--k-t-tap), 0ms;
 }
 .k-seal:active::before { inset: 4px; }
-.k-seal:focus-visible { outline: var(--k-rule) solid var(--k-suo); outline-offset: 3px; }
+.k-seal:focus-visible { outline: var(--k-rule) solid var(--k-accent); outline-offset: 3px; }
 
 /* Quiet: the same block, uninked. Paper on a hair base; no ring, because
    there is no pigment to carve into. Reaching for it inks the lettering plum. */
