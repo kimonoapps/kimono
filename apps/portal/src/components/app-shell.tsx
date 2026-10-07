@@ -64,6 +64,7 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
               ? <NavDoor href="/admin" label="Admin" here={active === "admin"} />
               : null}
           </nav>}
+          {active === "admin" && (user.role === "owner" || user.role === "admin") ? <UpdateBanner username={user.username} /> : null}
           <details className="profile-menu">
             <summary className="profile-chip" aria-label="Open account menu">
               <Portrait name={displayName} username={user.username} picture={picture} size={34} className="avatar" />
@@ -92,7 +93,6 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
           </details>
         </div>
       </header>
-      {active === "admin" && (user.role === "owner" || user.role === "admin") ? <UpdateBanner username={user.username} /> : null}
       <main className="main-content">{children}</main>
     </div>
   );
