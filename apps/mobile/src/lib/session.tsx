@@ -178,7 +178,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {
       throw new Error("Kimono's sign-in page isn't answering. Try again in a moment.");
     }
-    const request = new AuthSession.AuthRequest({ clientId: config.clientId, scopes: config.scopes, redirectUri, usePKCE: true });
+    /* prompt=login: the password is asked every time, even if the browser still
+       holds a sign-in. Android's sheet shares Chrome's cookies, so without it a
+       phone that signed out would be let straight back in. */
+    const request = new AuthSession.AuthRequest({ clientId: config.clientId, scopes: config.scopes, redirectUri, usePKCE: true, prompt: AuthSession.Prompt.Login });
     const result = await request.promptAsync(endpoints, { preferEphemeralSession: true });
     if (result.type !== "success") {
       if (result.type === "error") throw new Error(result.error?.description || "Signing in didn't finish. Try again.");

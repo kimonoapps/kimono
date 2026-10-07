@@ -3,13 +3,17 @@ import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useFonts } from "expo-font";
-import { ShipporiMincho_600SemiBold } from "@expo-google-fonts/shippori-mincho";
-import { ZenKakuGothicNew_400Regular, ZenKakuGothicNew_500Medium, ZenKakuGothicNew_700Bold } from "@expo-google-fonts/zen-kaku-gothic-new";
 import { SessionProvider, useSession } from "@/lib/session";
 import { color } from "@/theme";
 
 export default function RootLayout() {
-  const [fontsReady] = useFonts({ ShipporiMincho_600SemiBold, ZenKakuGothicNew_400Regular, ZenKakuGothicNew_500Medium, ZenKakuGothicNew_700Bold });
+  /* Latin cuts of Kata's faces (scripts/fonts.py); the full Japanese sets are 9 MB a weight. */
+  const [fontsReady] = useFonts({
+    ShipporiMincho_600SemiBold: require("../../assets/fonts/ShipporiMincho_600SemiBold.ttf"),
+    ZenKakuGothicNew_400Regular: require("../../assets/fonts/ZenKakuGothicNew_400Regular.ttf"),
+    ZenKakuGothicNew_500Medium: require("../../assets/fonts/ZenKakuGothicNew_500Medium.ttf"),
+    ZenKakuGothicNew_700Bold: require("../../assets/fonts/ZenKakuGothicNew_700Bold.ttf"),
+  });
   return (
     <SafeAreaProvider>
       <SessionProvider>

@@ -9,13 +9,28 @@ for names and passwords, and the shapes `/api/v1` answers with).
 ## Run it
 
 ```sh
-pnpm --filter @kimono/mobile start      # then scan the QR code with Expo Go
+pnpm --filter @kimono/mobile start      # the dev server, for Expo Go or a dev install
 pnpm --filter @kimono/mobile web        # the same app in a browser, for checking layouts
 ```
 
 Expo Go signs in through `exp://…/--/auth`, which only the local identity
 provider accepts (`infra/compose/authentik/blueprints/kimono-app.yaml`). A real
 install signs in through `kimono://auth`, the only address the server accepts.
+
+## Build the Android app
+
+```sh
+pnpm --filter @kimono/mobile apk
+```
+
+This builds a release APK on this machine (no cloud build service) into
+`dist/kimono-<version>.apk`, signed with the Kimono key in
+`~/.config/kimono/android-release.jks`. Every APK has to carry that same key,
+or Android won't install it over the copy already on a phone, so back the key
+and its password file up somewhere safe. It needs JDK 17 and the Android SDK;
+`scripts/build-apk.sh` says where it looks for them.
+
+Icons are drawn from Kimono's branch mark by `pnpm --filter @kimono/mobile icons`.
 
 ## How signing in works
 

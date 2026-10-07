@@ -3,11 +3,10 @@
   "version": "0.1.0",
   "main": "expo-router/entry",
   "dependencies": {
-    "@expo-google-fonts/shippori-mincho": "^0.4.1",
-    "@expo-google-fonts/zen-kaku-gothic-new": "^0.4.2",
     "@kimono/account": "workspace:*",
     "expo": "~57.0.27",
     "expo-auth-session": "~57.0.14",
+    "expo-build-properties": "~57.0.22",
     "expo-constants": "~57.0.21",
     "expo-crypto": "~57.0.3",
     "expo-font": "~57.0.4",
@@ -17,6 +16,7 @@
     "expo-linking": "~57.0.12",
     "expo-router": "~57.0.25",
     "expo-secure-store": "~57.0.4",
+    "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "expo-web-browser": "~57.0.3",
     "react": "19.2.3",
@@ -28,19 +28,25 @@
     "react-native-web": "^0.21.3"
   },
   "devDependencies": {
+    "@expo-google-fonts/shippori-mincho": "^0.4.1",
+    "@expo-google-fonts/zen-kaku-gothic-new": "^0.4.2",
     "@types/react": "~19.2.2",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~57.0.2",
+    "sharp": "^0.34.5",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
-    "ios": "expo start --ios",
-    "android": "expo start --android",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "theme": "node scripts/theme.mjs"
+    "theme": "node scripts/theme.mjs",
+    "icons": "node scripts/icons.mjs",
+    "apk": "sh scripts/build-apk.sh",
+    "fonts": "python3 scripts/fonts.py"
   },
   "private": true
 }
