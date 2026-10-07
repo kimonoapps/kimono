@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Compartment, Seal, Tray } from "@kimono/ui";
-import { auth } from "@/auth";
+import { auth, keepThisDeviceSignedIn } from "@/auth";
 import { endAllSessions, endSession, listSessions, type AccountSession } from "@/lib/account";
 import { accountContext } from "../account-frame";
 
@@ -36,7 +36,7 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
     const current = await auth();
     if (!current?.user?.username) redirect("/login");
     let count = 0;
-    try { count = await endAllSessions(current.user); }
+    try { count = await endAllSessions(current.user); await keepThisDeviceSignedIn(); }
     catch (error) { redirect(`/account/devices?error=${encodeURIComponent(error instanceof Error ? error.message : "Those sign-ins could not be ended")}`); }
     redirect(`/account/devices?ended=${count}`);
   }

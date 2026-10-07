@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import {
   endAllIdentitySessions,
+  emailUsedByOther,
   endIdentitySession,
   listIdentitySessions,
   readIdentityProfile,
@@ -13,6 +14,8 @@ import {
 } from "./directory";
 import { parsePasswordChange, parseProfileInput } from "./account-input";
 import { picturePathFor, removePicture, storePicture } from "./pictures";
+import { assertGuessesLeft, clearGuesses, recordWrongGuess } from "./attempts";
+import { signOutEverywhere } from "./session-epochs";
 
 /**
  * 己 The signed-in person's own account.
@@ -67,8 +70,36 @@ async function reach<T>(what: string, work: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * Checks the person's current password, with a ceiling on wrong guesses so a
+ * stolen session can't be used to find it.
+ */
+async function confirmPassword(user: SessionUser, password: unknown) {
+  if (typeof password !== "string" || !password) throw new Error("Enter your current password.");
+  assertGuessesLeft(user.username);
+  const correct = await reach("password check", () => verifyIdentityPassword(user.username, password));
+  if (!correct) {
+    recordWrongGuess(user.username);
+    throw new Error("Your current password isn't right.");
+  }
+  clearGuesses(user.username);
+}
+
+/**
+ * Changes name or email. A new email needs the current password: the email is
+ * where password resets go, so changing it is as sensitive as the password.
+ */
 export async function changeProfile(user: SessionUser, raw: unknown) {
   const change = parseProfileInput(raw);
+  if (change.email !== undefined) {
+    const current = await reach("read", () => readIdentityProfile(user.username));
+    if (change.email === current.email.trim().toLowerCase()) delete change.email;
+    else {
+      await confirmPassword(user, (raw as { currentPassword?: unknown }).currentPassword);
+      if (await reach("email check", () => emailUsedByOther(change.email as string, user.username))) throw new Error("Another account already uses that email.");
+    }
+  }
+  if (change.name === undefined && change.email === undefined) return change;
   await reach("update", () => updateIdentityProfile(user.username, change));
   return change;
 }
@@ -97,7 +128,11 @@ export async function clearPicture(user: SessionUser) {
 
 export const listSessions = (user: SessionUser) => reach("session list", () => listIdentitySessions(user.username));
 export const endSession = (user: SessionUser, id: string) => reach("sign-out", () => endIdentitySession(user.username, id));
-export const endAllSessions = (user: SessionUser) => reach("sign-out", () => endAllIdentitySessions(user.username));
+/** Ends every sign-in, and refuses every Kimono session but the one asking. */
+export async function endAllSessions(user: SessionUser) {
+  await signOutEverywhere(user.username);
+  return reach("sign-out", () => endAllIdentitySessions(user.username));
+}
 
 /**
  * Whether a password appears in known breaches, asked of Have I Been Pwned's
@@ -120,12 +155,11 @@ async function breached(password: string): Promise<boolean> {
 }
 
 /** Changes the signed-in person's password. Returns how many other sign-ins were ended. */
-export async function changePassword(user: SessionUser, raw: unknown): Promise<{ ended: number }> {
+export async function changePassword(user: SessionUser, raw: unknown): Promise<{ ended: number; signedOutOthers: boolean }> {
   const change = parsePasswordChange(raw, { username: user.username, name: user.name });
-  const correct = await reach("password check", () => verifyIdentityPassword(user.username, change.current));
-  if (!correct) throw new Error("Your current password isn't right.");
+  await confirmPassword(user, change.current);
   if (await breached(change.next)) throw new Error("That password has appeared in a data leak. Choose another.");
   await reach("password change", () => setIdentityPassword(user.username, change.next));
-  const ended = change.signOutOthers ? await reach("sign-out", () => endAllIdentitySessions(user.username)) : 0;
-  return { ended };
+  const ended = change.signOutOthers ? await endAllSessions(user) : 0;
+  return { ended, signedOutOthers: change.signOutOthers };
 }

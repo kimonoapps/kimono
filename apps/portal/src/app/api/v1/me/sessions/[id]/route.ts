@@ -1,7 +1,9 @@
 import { endSession } from "@/lib/account";
-import { apiError, apiJson, apiUser, failure, unauthorized } from "@/lib/api-v1";
+import { apiError, apiJson, apiUser, crossSite, failure, unauthorized } from "@/lib/api-v1";
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   const { id } = await params;

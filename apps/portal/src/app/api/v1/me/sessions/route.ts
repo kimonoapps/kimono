@@ -1,5 +1,6 @@
+import { keepThisDeviceSignedIn } from "@/auth";
 import { endAllSessions, listSessions } from "@/lib/account";
-import { apiJson, apiUser, failure, unauthorized } from "@/lib/api-v1";
+import { apiJson, apiUser, crossSite, failure, unauthorized } from "@/lib/api-v1";
 
 export async function GET() {
   const user = await apiUser();
@@ -11,12 +12,16 @@ export async function GET() {
   }
 }
 
-/** Signs this account out of every browser it is signed in to. */
-export async function DELETE() {
+/** Signs this account out everywhere except the device asking. */
+export async function DELETE(request: Request) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   try {
-    return apiJson({ ended: await endAllSessions(user) });
+    const ended = await endAllSessions(user);
+    await keepThisDeviceSignedIn();
+    return apiJson({ ended });
   } catch (error) {
     return failure(error, "Those sign-ins could not be ended.");
   }

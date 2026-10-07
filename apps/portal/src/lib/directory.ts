@@ -224,6 +224,13 @@ export const avatarAttribute = "avatar";
 
 export type IdentityProfile = { username: string; name: string; email: string };
 
+/** Whether another active account already uses this email. Compared case-insensitively. */
+export async function emailUsedByOther(email: string, username: string): Promise<boolean> {
+  const wanted = email.trim().toLowerCase();
+  return (await fetchPeople()).some((user) =>
+    user.username?.toLowerCase() !== username.toLowerCase() && user.email?.trim().toLowerCase() === wanted);
+}
+
 export async function readIdentityProfile(username: string): Promise<IdentityProfile> {
   const user = await findUser(username);
   return { username: (user.username as string).toLowerCase(), name: user.name?.trim() || "", email: user.email?.trim() || "" };
@@ -319,7 +326,8 @@ const checkAgent = "Kimono password check";
 export async function verifyIdentityPassword(username: string, password: string): Promise<boolean> {
   const url = `${identityEndpoint()}/api/v3/flows/executor/default-authentication-flow/?query=`;
   const jar = new Map<string, string>();
-  async function step(method: "GET" | "POST", body?: unknown): Promise<{ component?: string; password_fields?: boolean }> {
+  type Step = { component?: string; password_fields?: boolean; finished?: boolean };
+  async function step(method: "GET" | "POST", body?: unknown): Promise<Step> {
     const csrf = jar.get("authentik_csrf");
     const response = await fetch(url, {
       method,
@@ -341,9 +349,10 @@ export async function verifyIdentityPassword(username: string, password: string)
     }
     /* The executor answers a submitted stage by redirecting to itself. */
     if (method === "POST" && response.status >= 300 && response.status < 400) return step("GET");
-    if (response.status >= 300 && response.status < 400) return {};
+    /* The flow handing the browser onward means every stage was satisfied. */
+    if (response.status >= 300 && response.status < 400) return { finished: true };
     if (!response.ok) throw new Error(`The identity provider replied ${response.status} while checking a password.`);
-    return await response.json() as { component?: string; password_fields?: boolean };
+    return await response.json() as Step;
   }
   const first = await step("GET");
   if (first.component !== "ak-stage-identification") throw new Error(`The identity provider's sign-in flow starts with ${first.component ?? "nothing"}, not identification.`);
@@ -352,9 +361,16 @@ export async function verifyIdentityPassword(username: string, password: string)
     if (next.component !== "ak-stage-password") throw new Error(`The identity provider's sign-in flow asks for ${next.component ?? "nothing"} before a password.`);
     next = await step("POST", { component: "ak-stage-password", password });
   }
-  const accepted = next.component !== "ak-stage-password" && next.component !== "ak-stage-identification";
-  if (accepted) await endChecksFor(username);
-  return accepted;
+  /* Only an explicit success counts. Being asked for the password (or the
+     identity) again means it was wrong; any other screen — a denial, a
+     captcha, an error — is not a verdict on the password, so it is an error,
+     never a pass. A second factor after the password means the password held. */
+  if (next.component === "ak-stage-password" || next.component === "ak-stage-identification") return false;
+  if (next.finished || next.component === "xak-flow-redirect" || next.component === "ak-stage-authenticator-validate") {
+    await endChecksFor(username);
+    return true;
+  }
+  throw new Error(`The identity provider's sign-in flow answered a password with ${next.component ?? "nothing"}.`);
 }
 
 /** A check that ran to the end of the flow signs in; that sign-in is ended at once. */
@@ -373,6 +389,35 @@ async function endChecksFor(username: string) {
 export async function setIdentityPassword(username: string, password: string) {
   const user = await findUser(username);
   await identityRequest(`/api/v3/core/users/${user.pk}/set_password/`, { method: "POST", body: JSON.stringify({ password }) });
+}
+
+/* ─── standing ───
+   Whether an account is still active and which groups it holds, read live so
+   a deactivation or a change of role reaches a signed-in Portal session within
+   a minute instead of when its cookie expires. */
+
+export type Standing = { active: boolean; groups: string[] };
+const standingTtl = 60 * 1000;
+const standings = new Map<string, { at: number; value: Standing }>();
+
+/** The account's live standing, or null when the directory can't be asked. */
+export async function readStanding(username: string): Promise<Standing | null> {
+  const key = username.toLowerCase();
+  const hit = standings.get(key);
+  if (hit && Date.now() - hit.at < standingTtl) return hit.value;
+  let value: Standing;
+  try {
+    const response = await identityRequest(`/api/v3/core/users/?username=${encodeURIComponent(username)}&include_groups=true`);
+    const payload = await response.json() as { results?: IdentityUser[] };
+    const user = (payload.results || []).find((item) => item.username?.toLowerCase() === key);
+    value = user
+      ? { active: user.is_active !== false, groups: (user.groups_obj || []).map((group) => group.name || "").filter(Boolean) }
+      : { active: false, groups: [] };
+  } catch {
+    return null;
+  }
+  standings.set(key, { at: Date.now(), value });
+  return value;
 }
 
 /** Whether an account carries Kimono VPN, without pulling the whole mesh. */
