@@ -2,16 +2,10 @@ import { redirect } from "next/navigation";
 import { Compartment, Seal, Tray } from "@kimono/ui";
 import { auth, keepThisDeviceSignedIn } from "@/auth";
 import { endAllSessions, endSession, listSessions, type AccountSession } from "@/lib/account";
+import { describeSession as describe } from "@kimono/account";
 import { accountContext } from "../account-frame";
 
 export const metadata = { title: "Signed-in devices · Your account" };
-
-const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-
-function describe(session: AccountSession) {
-  const on = [session.device, session.os].filter(Boolean).join(", ");
-  return { title: on ? `${session.browser} on ${on}` : session.browser, detail: [session.place, session.ip, session.lastUsed ? `last used ${when.format(new Date(session.lastUsed))}` : null].filter(Boolean).join(" · ") };
-}
 
 export default async function DevicesPage({ searchParams }: { searchParams: Promise<{ ended?: string; error?: string }> }) {
   const { session } = await accountContext();

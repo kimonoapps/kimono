@@ -6,7 +6,7 @@ import { readStanding } from "@/lib/directory";
 
 const authentikIssuer = process.env.AUTHENTIK_ISSUER?.replace(/\/*$/, "/");
 
-function roleFromGroups(groups: unknown) {
+export function roleFromGroups(groups: unknown) {
   if (!Array.isArray(groups)) return "member";
   if (groups.includes("authentik Admins")) return "owner";
   if (groups.includes("kimono-owner")) return "owner";

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { initialOf } from "@/lib/account-input";
+import { initialOf } from "@kimono/account";
 
 /**
  * 肖 A person: their picture, or the first letter of their name in ink on

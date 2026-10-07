@@ -10,9 +10,8 @@ import {
   setIdentityPassword,
   updateIdentityProfile,
   verifyIdentityPassword,
-  type IdentitySessionSummary,
 } from "./directory";
-import { parsePasswordChange, parseProfileInput } from "./account-input";
+import { parsePasswordChange, parseProfileInput, type AccountProfile } from "@kimono/account";
 import { picturePathFor, removePicture, storePicture } from "./pictures";
 import { assertGuessesLeft, clearGuesses, recordWrongGuess } from "./attempts";
 import { signOutEverywhere } from "./session-epochs";
@@ -26,17 +25,7 @@ import { signOutEverywhere } from "./session-epochs";
  * sign-ins; Kimono keeps the pictures, because they are its to show.
  */
 
-/** The shape /api/v1/me returns. The phone app reads exactly this. */
-export type AccountProfile = {
-  username: string;
-  name: string;
-  email: string;
-  role: string;
-  /** Absolute address of the picture, or null to show the initial instead. */
-  picture: string | null;
-};
-
-export type AccountSession = IdentitySessionSummary;
+export type { AccountProfile, AccountSession } from "@kimono/account";
 
 type SessionUser = { username: string; name?: string | null; email?: string | null; role: string };
 

@@ -12,7 +12,7 @@ function load(path) {
   return module.exports;
 }
 const { sanitizePicturePng, pictureMaxBytes } = load('../src/lib/picture-png.ts');
-const { parseProfileInput, initialOf, parsePasswordChange, passwordRules } = load('../src/lib/account-input.ts');
+const { parseProfileInput, initialOf, parsePasswordChange, passwordRules } = load('../../../packages/account/src/index.ts');
 
 const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
 const crc = (bytes) => { let c = 0xffffffff; for (const b of bytes) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };

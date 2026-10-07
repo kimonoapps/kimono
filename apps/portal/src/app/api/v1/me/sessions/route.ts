@@ -12,7 +12,7 @@ export async function GET() {
   }
 }
 
-/** Signs this account out everywhere except the device asking. */
+/** Signs this account out everywhere. The website keeps the device asking; the app, holding only a token, is signed out with the rest. */
 export async function DELETE(request: Request) {
   const refused = crossSite(request);
   if (refused) return refused;
@@ -20,7 +20,7 @@ export async function DELETE(request: Request) {
   if (!user) return unauthorized();
   try {
     const ended = await endAllSessions(user);
-    await keepThisDeviceSignedIn();
+    if (user.via === "browser") await keepThisDeviceSignedIn();
     return apiJson({ ended });
   } catch (error) {
     return failure(error, "Those sign-ins could not be ended.");

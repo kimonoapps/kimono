@@ -18,7 +18,7 @@ export async function PATCH(request: Request) {
   if ("response" in read) return read.response;
   try {
     const change = await changeProfile(user, read.body);
-    await updateSession({ user: change });
+    if (user.via === "browser") await updateSession({ user: change });
     return apiJson(await readAccount({ ...user, ...change }));
   } catch (error) {
     return failure(error, "Your account could not be changed.");

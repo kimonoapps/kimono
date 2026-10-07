@@ -1,3 +1,4 @@
+import type { AccountSession } from "@kimono/account";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { stateDir } from "./state";
@@ -265,15 +266,8 @@ type IdentitySession = {
   geo_ip?: { city?: string | null; country?: string | null } | null;
 };
 
-export type IdentitySessionSummary = {
-  id: string;
-  browser: string;
-  os: string;
-  device: string;
-  ip: string;
-  lastUsed: string | null;
-  place: string | null;
-};
+/* The summary the account pages and /api/v1 show; its shape is the shared one. */
+export type IdentitySessionSummary = AccountSession;
 
 async function sessionsOf(username: string): Promise<IdentitySession[]> {
   const user = await findUser(username);

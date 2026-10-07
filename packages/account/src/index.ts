@@ -1,7 +1,46 @@
 /**
- * What a person may change about themselves, checked the same way whether it
- * arrives from the account page or from the phone app's API call.
+ * 己 A Kimono account, as the website and the phone app both see it.
+ *
+ * What a person may change about themselves is checked here, the same way
+ * whether it arrives from the account page or from the phone app. The app runs
+ * the same rules while the person types, so the two can't disagree about what
+ * a valid name or password is. The shapes /api/v1 answers with live here too.
  */
+
+/** What /api/v1/me returns. */
+export type AccountProfile = {
+  username: string;
+  name: string;
+  email: string;
+  role: string;
+  /** Absolute address of the picture, or null to show the initial instead. */
+  picture: string | null;
+};
+
+/** One signed-in browser or device, as /api/v1/me/sessions lists them. */
+export type AccountSession = {
+  id: string;
+  browser: string;
+  os: string;
+  device: string;
+  ip: string;
+  lastUsed: string | null;
+  place: string | null;
+};
+
+const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+/** How a sign-in reads in a list: "Safari on iPhone, iOS", then where and when. */
+export function describeSession(session: AccountSession): { title: string; detail: string } {
+  const on = [session.device, session.os].filter(Boolean).join(", ");
+  return {
+    title: on ? `${session.browser} on ${on}` : session.browser,
+    detail: [session.place, session.ip, session.lastUsed ? `last used ${when.format(new Date(session.lastUsed))}` : null].filter(Boolean).join(" · "),
+  };
+}
+
+/** Every /api/v1 failure: a sentence a person can read. */
+export type ApiFailure = { error: string };
 
 export type ProfileInput = { name?: string; email?: string };
 

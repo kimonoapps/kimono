@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { Field, FormActions, Seal } from "@kimono/ui";
-import { passwordMinLength, passwordRules } from "@/lib/account-input";
+import { passwordMinLength, passwordRules } from "@kimono/account";
 
 /** Changes the password through /api/v1/me/password, the same call the phone app makes. */
 export function PasswordForm({ username, name }: { username: string; name: string }) {

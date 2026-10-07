@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   try {
     const result = await changePassword(user, read.body);
     /* Everyone else was signed out; this device stays in. */
-    if (result.signedOutOthers) await keepThisDeviceSignedIn();
+    if (result.signedOutOthers && user.via === "browser") await keepThisDeviceSignedIn();
     return apiJson({ ended: result.ended });
   } catch (error) {
     return failure(error, "Your password could not be changed.");
