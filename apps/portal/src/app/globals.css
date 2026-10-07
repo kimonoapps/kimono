@@ -195,6 +195,20 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .profile-item.profile-signout { margin-top: var(--k-space-1); color: var(--k-suo-deep); }
 .profile-item.profile-signout > small { color: var(--k-suo-deep); }
 .profile-item.profile-signout:hover { background: var(--k-suo-wash); color: var(--k-suo-deep); }
+.profile-version { margin: var(--k-space-2) 0 0; padding: var(--k-space-2) var(--k-space-3) var(--k-space-1); border-top: var(--k-hairline) solid var(--k-hair); font: 500 11.5px/1.4 var(--k-mono); color: var(--k-faint); }
+
+/* A newer Kimono, across the top of the admin pages: a sheet under the header
+   with the new number in suō, what to run, and a way to put it away. */
+.update-banner { border-bottom: var(--k-hairline) solid var(--k-hair); background: var(--k-sheet); background-image: var(--k-grain); }
+.update-banner-inner { width: var(--k-shell-width); margin: auto; padding: var(--k-space-3) var(--k-shell-gutter); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--k-space-3) var(--k-space-5); }
+.update-banner-what { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--k-space-2) var(--k-space-4); font-size: 14px; color: var(--k-ink); }
+.update-banner-what strong { font-weight: 700; }
+.update-banner-versions { display: inline-flex; gap: var(--k-space-2); font: 500 13.5px/1 var(--k-mono); color: var(--k-ink-soft); }
+.update-banner-versions b { font-weight: 700; color: var(--k-suo-deep); }
+.update-banner-what a { font-weight: 600; color: var(--k-suo-deep); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.update-banner-how { display: flex; flex-wrap: wrap; align-items: center; gap: var(--k-space-3); }
+.update-banner-how code { padding: 6px 10px; border: var(--k-hairline) solid var(--k-hair); border-radius: var(--k-r-2); background: var(--k-fold); font: 500 13px/1.3 var(--k-mono); color: var(--k-ink); user-select: all; }
+.update-banner-how form { display: contents; }
 
 /* ═══════════════════════════════════════════════════════════════
    The page

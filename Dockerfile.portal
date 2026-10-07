@@ -15,7 +15,10 @@ COPY packages packages
 RUN pnpm --filter @kimono/portal build
 
 FROM node:24-alpine
-ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
+# The release tag this image was built from, shown in the Portal and compared
+# against the newest release. Local builds are "dev".
+ARG KIMONO_VERSION=dev
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 KIMONO_VERSION=$KIMONO_VERSION
 
 # Links this image to its repository, which is what grants the repository's
 # own Actions token permission to publish it.

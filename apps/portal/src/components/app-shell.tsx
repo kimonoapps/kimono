@@ -9,6 +9,8 @@ import { recordAccount } from "@/lib/directory";
 import { Crossing } from "@/components/crossing";
 import { Portrait } from "@/components/portrait";
 import { picturePathFor } from "@/lib/pictures";
+import { runningVersion } from "@/lib/kimono-release";
+import { UpdateBanner } from "@/components/update-banner";
 
 type Props = {
   children: React.ReactNode;
@@ -85,10 +87,12 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
                   <span>Sign out</span><small>Close this session</small>
                 </button>
               </form>
+              <p className="profile-version">Kimono {runningVersion() ?? "development build"}</p>
             </div>
           </details>
         </div>
       </header>
+      {active === "admin" && (user.role === "owner" || user.role === "admin") ? <UpdateBanner username={user.username} /> : null}
       <main className="main-content">{children}</main>
     </div>
   );

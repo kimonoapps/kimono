@@ -46,7 +46,7 @@ jobs:
           password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Publish Kimono Portal image
         run: |
-          docker build -f Dockerfile.portal -t ghcr.io/kimonoapps/kimono-portal:${{ github.ref_name }} -t ghcr.io/kimonoapps/kimono-portal:latest .
+          docker build -f Dockerfile.portal --build-arg KIMONO_VERSION=${{ github.ref_name }} -t ghcr.io/kimonoapps/kimono-portal:${{ github.ref_name }} -t ghcr.io/kimonoapps/kimono-portal:latest .
           docker push ghcr.io/kimonoapps/kimono-portal:${{ github.ref_name }}
           docker push ghcr.io/kimonoapps/kimono-portal:latest
       - name: Publish Kimono reconciler image
