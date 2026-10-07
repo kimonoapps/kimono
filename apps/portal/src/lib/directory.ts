@@ -213,6 +213,230 @@ export async function recordAccount(input: { username: string; name?: string | n
   await rename(temporary, directoryPath);
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   One person's own account: what they see on /account and through
+   /api/v1/me. Every call names the signed-in person; nothing here
+   lets one account read or change another.
+   ═══════════════════════════════════════════════════════════════ */
+
+/** The attribute the identity provider can be told to read pictures from. */
+export const avatarAttribute = "avatar";
+
+export type IdentityProfile = { username: string; name: string; email: string };
+
+/** Whether another active account already uses this email. Compared case-insensitively. */
+export async function emailUsedByOther(email: string, username: string): Promise<boolean> {
+  const wanted = email.trim().toLowerCase();
+  return (await fetchPeople()).some((user) =>
+    user.username?.toLowerCase() !== username.toLowerCase() && user.email?.trim().toLowerCase() === wanted);
+}
+
+export async function readIdentityProfile(username: string): Promise<IdentityProfile> {
+  const user = await findUser(username);
+  return { username: (user.username as string).toLowerCase(), name: user.name?.trim() || "", email: user.email?.trim() || "" };
+}
+
+export async function updateIdentityProfile(username: string, change: { name?: string; email?: string; avatar?: string | null }) {
+  const user = await findUser(username);
+  const body: Record<string, unknown> = {};
+  if (change.name !== undefined) body.name = change.name;
+  if (change.email !== undefined) body.email = change.email;
+  if (change.avatar !== undefined) {
+    const attributes = { ...(user.attributes || {}) };
+    if (change.avatar) attributes[avatarAttribute] = change.avatar;
+    else delete attributes[avatarAttribute];
+    body.attributes = attributes;
+  }
+  await identityRequest(`/api/v3/core/users/${user.pk}/`, { method: "PATCH", body: JSON.stringify(body) });
+  await recordAccount({ username, name: change.name, email: change.email });
+}
+
+type IdentitySession = {
+  uuid?: string;
+  user?: number;
+  last_ip?: string;
+  last_used?: string;
+  expires?: string | null;
+  user_agent?: {
+    device?: { family?: string; brand?: string | null; model?: string | null };
+    os?: { family?: string };
+    user_agent?: { family?: string };
+  };
+  geo_ip?: { city?: string | null; country?: string | null } | null;
+};
+
+export type IdentitySessionSummary = {
+  id: string;
+  browser: string;
+  os: string;
+  device: string;
+  ip: string;
+  lastUsed: string | null;
+  place: string | null;
+};
+
+async function sessionsOf(username: string): Promise<IdentitySession[]> {
+  const user = await findUser(username);
+  const response = await identityRequest(`/api/v3/core/authenticated_sessions/?user__username=${encodeURIComponent(user.username as string)}&page_size=100`);
+  const payload = await response.json() as { results?: IdentitySession[] };
+  /* Checked again here, so a filter the provider ignores can never leak someone else's sessions. */
+  return (payload.results || []).filter((session) => session.user === user.pk && typeof session.uuid === "string");
+}
+
+const known = (value: string | null | undefined) => value && value !== "Other" ? value : "";
+
+export async function listIdentitySessions(username: string): Promise<IdentitySessionSummary[]> {
+  return (await sessionsOf(username))
+    .map((session) => ({
+      id: session.uuid as string,
+      browser: known(session.user_agent?.user_agent?.family) || "A browser",
+      os: known(session.user_agent?.os?.family),
+      device: [known(session.user_agent?.device?.brand), known(session.user_agent?.device?.model)].filter(Boolean).join(" ") || known(session.user_agent?.device?.family),
+      ip: session.last_ip || "",
+      lastUsed: session.last_used || null,
+      place: [session.geo_ip?.city, session.geo_ip?.country].filter(Boolean).join(", ") || null,
+    }))
+    .sort((a, b) => (b.lastUsed || "").localeCompare(a.lastUsed || ""));
+}
+
+/** Ends one of this person's sign-ins. Returns false when it was not theirs. */
+export async function endIdentitySession(username: string, id: string): Promise<boolean> {
+  const session = (await sessionsOf(username)).find((item) => item.uuid === id);
+  if (!session) return false;
+  await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(id)}/`, { method: "DELETE" });
+  return true;
+}
+
+/**
+ * Ends the identity provider's sign-in in the browser that is signing out of
+ * Kimono. The provider doesn't tell Kimono which of its sessions a browser
+ * holds, so it is found by the browser's exact user agent, narrowed to its
+ * address when that also matches.
+ */
+export async function endIdentitySessionsOfBrowser(username: string, browser: { userAgent: string; ip: string | null }): Promise<number> {
+  if (!browser.userAgent) return 0;
+  const sameAgent = (await sessionsOf(username)).filter((session) => (session as { last_user_agent?: string }).last_user_agent === browser.userAgent);
+  const sameAddress = browser.ip ? sameAgent.filter((session) => session.last_ip === browser.ip) : [];
+  const ending = sameAddress.length ? sameAddress : sameAgent;
+  for (const session of ending) {
+    await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(session.uuid as string)}/`, { method: "DELETE" });
+  }
+  return ending.length;
+}
+
+export async function endAllIdentitySessions(username: string): Promise<number> {
+  const sessions = await sessionsOf(username);
+  for (const session of sessions) {
+    await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(session.uuid as string)}/`, { method: "DELETE" });
+  }
+  return sessions.length;
+}
+
+/* ─── passwords ───
+   Kimono never stores or compares passwords. It asks the identity provider:
+   the current password is checked by walking the provider's own sign-in flow
+   as that person would, and the new one is set through its API. */
+
+const checkAgent = "Kimono password check";
+
+/** True when the identity provider accepts this password for this account. */
+export async function verifyIdentityPassword(username: string, password: string): Promise<boolean> {
+  const url = `${identityEndpoint()}/api/v3/flows/executor/default-authentication-flow/?query=`;
+  const jar = new Map<string, string>();
+  type Step = { component?: string; password_fields?: boolean; finished?: boolean };
+  async function step(method: "GET" | "POST", body?: unknown): Promise<Step> {
+    const csrf = jar.get("authentik_csrf");
+    const response = await fetch(url, {
+      method,
+      redirect: "manual",
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": checkAgent,
+        Cookie: [...jar].map(([key, value]) => `${key}=${value}`).join("; "),
+        ...(csrf ? { "X-authentik-CSRF": csrf } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    for (const header of response.headers.getSetCookie()) {
+      const pair = header.split(";")[0];
+      const split = pair.indexOf("=");
+      if (split > 0) jar.set(pair.slice(0, split), pair.slice(split + 1));
+    }
+    /* The executor answers a submitted stage by redirecting to itself. */
+    if (method === "POST" && response.status >= 300 && response.status < 400) return step("GET");
+    /* The flow handing the browser onward means every stage was satisfied. */
+    if (response.status >= 300 && response.status < 400) return { finished: true };
+    if (!response.ok) throw new Error(`The identity provider replied ${response.status} while checking a password.`);
+    return await response.json() as Step;
+  }
+  const first = await step("GET");
+  if (first.component !== "ak-stage-identification") throw new Error(`The identity provider's sign-in flow starts with ${first.component ?? "nothing"}, not identification.`);
+  let next = await step("POST", { component: "ak-stage-identification", uid_field: username, ...(first.password_fields ? { password } : {}) });
+  if (!first.password_fields) {
+    if (next.component !== "ak-stage-password") throw new Error(`The identity provider's sign-in flow asks for ${next.component ?? "nothing"} before a password.`);
+    next = await step("POST", { component: "ak-stage-password", password });
+  }
+  /* Only an explicit success counts. Being asked for the password (or the
+     identity) again means it was wrong; any other screen — a denial, a
+     captcha, an error — is not a verdict on the password, so it is an error,
+     never a pass. A second factor after the password means the password held. */
+  if (next.component === "ak-stage-password" || next.component === "ak-stage-identification") return false;
+  if (next.finished || next.component === "xak-flow-redirect" || next.component === "ak-stage-authenticator-validate") {
+    await endChecksFor(username);
+    return true;
+  }
+  throw new Error(`The identity provider's sign-in flow answered a password with ${next.component ?? "nothing"}.`);
+}
+
+/** A check that ran to the end of the flow signs in; that sign-in is ended at once. */
+async function endChecksFor(username: string) {
+  try {
+    for (const session of await sessionsOf(username)) {
+      if ((session as { last_user_agent?: string }).last_user_agent === checkAgent) {
+        await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(session.uuid as string)}/`, { method: "DELETE" });
+      }
+    }
+  } catch {
+    /* Best effort: such a session holds no browser and expires on its own. */
+  }
+}
+
+export async function setIdentityPassword(username: string, password: string) {
+  const user = await findUser(username);
+  await identityRequest(`/api/v3/core/users/${user.pk}/set_password/`, { method: "POST", body: JSON.stringify({ password }) });
+}
+
+/* ─── standing ───
+   Whether an account is still active and which groups it holds, read live so
+   a deactivation or a change of role reaches a signed-in Portal session within
+   a minute instead of when its cookie expires. */
+
+export type Standing = { active: boolean; groups: string[] };
+const standingTtl = 60 * 1000;
+const standings = new Map<string, { at: number; value: Standing }>();
+
+/** The account's live standing, or null when the directory can't be asked. */
+export async function readStanding(username: string): Promise<Standing | null> {
+  const key = username.toLowerCase();
+  const hit = standings.get(key);
+  if (hit && Date.now() - hit.at < standingTtl) return hit.value;
+  let value: Standing;
+  try {
+    const response = await identityRequest(`/api/v3/core/users/?username=${encodeURIComponent(username)}&include_groups=true`);
+    const payload = await response.json() as { results?: IdentityUser[] };
+    const user = (payload.results || []).find((item) => item.username?.toLowerCase() === key);
+    value = user
+      ? { active: user.is_active !== false, groups: (user.groups_obj || []).map((group) => group.name || "").filter(Boolean) }
+      : { active: false, groups: [] };
+  } catch {
+    return null;
+  }
+  standings.set(key, { at: Date.now(), value });
+  return value;
+}
+
 /** Whether an account carries Kimono VPN, without pulling the whole mesh. */
 export async function holdsMeshAccess(username: string): Promise<boolean> {
   try {

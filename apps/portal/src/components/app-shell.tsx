@@ -1,11 +1,14 @@
 import { NavDoor } from "@/components/nav-door";
 import { AppLockup, KimonoMark, accentRamp, type AppIdentity } from "@kimono/ui";
 import type { Palette } from "@/lib/settings";
-import { signOut } from "@/auth";
+import { redirect } from "next/navigation";
+import { signOutCompletely } from "@/lib/sign-out";
 import { cx } from "@kimono/ui";
 import type { CSSProperties } from "react";
 import { recordAccount } from "@/lib/directory";
 import { Crossing } from "@/components/crossing";
+import { Portrait } from "@/components/portrait";
+import { picturePathFor } from "@/lib/pictures";
 
 type Props = {
   children: React.ReactNode;
@@ -17,7 +20,8 @@ type Props = {
     image?: string | null;
   };
   brandColors?: Palette;
-  active?: "home" | "admin";
+  /** Which header door is open. The account is neither room. */
+  active?: "home" | "admin" | "account";
   /**
    * When set, the shell wears the app rather than the Portal: the app's lockup
    * replaces the Kimono mark and the Portal's own rooms step aside. Being in an
@@ -25,16 +29,6 @@ type Props = {
    */
   app?: AppIdentity;
 };
-
-function authentikAccountUrl() {
-  try {
-    return process.env.AUTHENTIK_ISSUER
-      ? new URL("/if/user/#/settings", process.env.AUTHENTIK_ISSUER).toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Derive app actions and transition colours from the same bloom palette. */
 function appPalette(app: AppIdentity): CSSProperties {
@@ -52,10 +46,8 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
      real account instead of typing a username and hoping. */
   await recordAccount(user);
   const displayName = user.name?.trim() || user.username;
-  const accountUrl = authentikAccountUrl();
-  const avatarStyle = user.image
-    ? { backgroundImage: `url(${JSON.stringify(user.image)})` }
-    : undefined;
+  /* Kimono's own picture first; the identity provider's only if none was set here. */
+  const picture = await picturePathFor(user.username) ?? user.image ?? null;
   return (
     <div className={cx("app-frame", app && "in-app")} style={app ? appPalette(app) : undefined}>
       <header className="top-header">
@@ -72,8 +64,7 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
           </nav>}
           <details className="profile-menu">
             <summary className="profile-chip" aria-label="Open account menu">
-              {/* Only a real picture earns a portrait. There is no invented stand-in. */}
-              {user.image ? <span className="avatar has-image" style={avatarStyle} /> : null}
+              <Portrait name={displayName} username={user.username} picture={picture} size={34} className="avatar" />
               <span className="profile-copy"><strong>{displayName}</strong><small>{user.role}</small></span>
               <span className="profile-chevron" aria-hidden="true">⌄</span>
             </summary>
@@ -84,12 +75,11 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
               {app ? <Crossing className="profile-item profile-return" kind="hanafubuki" href="/">
                 <span>Back to Kimono</span><small>All your apps</small>
               </Crossing> : null}
-              {accountUrl
-                ? <Crossing kind="hanafubuki" external className="profile-item" href={accountUrl}><span>Kimono account</span><small>Name, password and sign-in</small></Crossing>
-                : null}
+              <Crossing kind="kakejiku" className="profile-item" href="/account"><span>Your account</span><small>Picture, name, password and devices</small></Crossing>
               <form action={async () => {
                 "use server";
-                await signOut({ redirectTo: "/login" });
+                await signOutCompletely();
+                redirect("/login");
               }}>
                 <button className="profile-item profile-signout" type="submit">
                   <span>Sign out</span><small>Close this session</small>

@@ -287,4 +287,4 @@ and why the rest lost.
 
 The home launcher uses the hanging ema plaques, cords, and tassels from the original design. Keep these authored objects; do not substitute a grid of product cards. App registration, availability, and blossom navigation still use the shared registry and Crossing.
 
-Shared surfaces have 2px corners, inputs and small controls 1px, and chips square corners. Hanko seals retain their intentional 2px cut. Circles remain for actual circular objects such as blossom hearts and portraits. Surface color washes remain solid; the launcher’s grain and braided cord are material details.
+Shared surfaces have 2px corners, inputs and small controls 1px, and chips square corners. Hanko seals retain their intentional 2px cut. Circles remain for actual circular objects such as blossom hearts and portraits. A portrait is the person's picture, from Kimono's own store or the identity provider; someone without one gets the first letter of their name in plum Mincho on fold paper, drawn by Kimono so it matches everything else (`Portrait` in the Portal). Surface color washes remain solid; the launcher’s grain and braided cord are material details.
