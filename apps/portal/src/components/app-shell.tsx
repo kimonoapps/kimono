@@ -1,7 +1,8 @@
 import { NavDoor } from "@/components/nav-door";
 import { AppLockup, KimonoMark, accentRamp, type AppIdentity } from "@kimono/ui";
 import type { Palette } from "@/lib/settings";
-import { signOut } from "@/auth";
+import { redirect } from "next/navigation";
+import { signOutCompletely } from "@/lib/sign-out";
 import { cx } from "@kimono/ui";
 import type { CSSProperties } from "react";
 import { recordAccount } from "@/lib/directory";
@@ -77,7 +78,8 @@ export async function AppShell({ children, user, active = "home", app }: Props) 
               <Crossing kind="kakejiku" className="profile-item" href="/account"><span>Your account</span><small>Picture, name, password and devices</small></Crossing>
               <form action={async () => {
                 "use server";
-                await signOut({ redirectTo: "/login" });
+                await signOutCompletely();
+                redirect("/login");
               }}>
                 <button className="profile-item profile-signout" type="submit">
                   <span>Sign out</span><small>Close this session</small>

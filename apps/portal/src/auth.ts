@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import Authentik from "next-auth/providers/authentik";
-import { signedOutBefore } from "@/lib/session-epochs";
+import { randomUUID } from "node:crypto";
+import { isRevoked, signedOutBefore } from "@/lib/session-epochs";
 import { readStanding } from "@/lib/directory";
 
 const authentikIssuer = process.env.AUTHENTIK_ISSUER?.replace(/\/*$/, "/");
@@ -43,11 +44,14 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
       if (trigger === "update" && session?.renewSignIn) token.signedInAt = Date.now();
       if (profile) {
         token.signedInAt = Date.now();
+        /* An ID for this one session, so signing out can refuse it by name. */
+        token.sessionId = randomUUID();
         token.identityId = profile.sub;
         token.username = profile.preferred_username;
         token.role = roleFromGroups(profile.groups);
       }
       /* Signed out everywhere after this session began: it is no longer honoured. */
+      if (typeof token.sessionId === "string" && isRevoked(token.sessionId)) return null;
       const username = typeof token.username === "string" ? token.username : "";
       if (username && (typeof token.signedInAt === "number" ? token.signedInAt : 0) < signedOutBefore(username)) return null;
       /* The role and the account itself are re-read from the directory (cached

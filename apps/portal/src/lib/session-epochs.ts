@@ -39,3 +39,38 @@ export async function signOutEverywhere(username: string, at = Date.now()) {
   await rename(temporary, epochPath);
   cached = null;
 }
+
+/* ─── single sessions ───
+   Signing out ends one Portal session: its ID goes on this list until the
+   moment the session would have expired anyway, so a copy of the cookie made
+   before signing out is refused too. */
+const revokedPath = join(stateDir, "revoked-sessions.json");
+let revokedCache: { mtimeMs: number; revoked: Record<string, number> } | null = null;
+
+function revoked(): Record<string, number> {
+  try {
+    const { mtimeMs } = statSync(revokedPath);
+    if (revokedCache?.mtimeMs === mtimeMs) return revokedCache.revoked;
+    const parsed = JSON.parse(readFileSync(revokedPath, "utf8")) as { revoked?: Record<string, number> };
+    revokedCache = { mtimeMs, revoked: parsed.revoked && typeof parsed.revoked === "object" ? parsed.revoked : {} };
+    return revokedCache.revoked;
+  } catch {
+    return {};
+  }
+}
+
+export function isRevoked(sessionId: string): boolean {
+  return Boolean(revoked()[sessionId]);
+}
+
+/** Refuses this session from now on. `expiresAt` (ms) is when the entry can be forgotten. */
+export async function revokeSession(sessionId: string, expiresAt: number) {
+  const now = Date.now();
+  const kept = Object.fromEntries(Object.entries(revoked()).filter(([, until]) => until > now));
+  kept[sessionId] = Math.max(expiresAt, now + 60_000);
+  await mkdir(stateDir, { recursive: true, mode: 0o700 });
+  const temporary = `${revokedPath}.new`;
+  await writeFile(temporary, `${JSON.stringify({ revoked: kept }, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporary, revokedPath);
+  revokedCache = null;
+}

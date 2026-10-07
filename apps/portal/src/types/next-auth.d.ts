@@ -18,5 +18,7 @@ declare module "@auth/core/jwt" {
     role?: KimonoRole;
     /** When this session signed in, in ms; older than the person's sign-out-everywhere time means refused. */
     signedInAt?: number;
+    /** Identifies this one session so signing out can refuse it. */
+    sessionId?: string;
   }
 }

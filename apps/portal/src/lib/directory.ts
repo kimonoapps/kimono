@@ -307,6 +307,23 @@ export async function endIdentitySession(username: string, id: string): Promise<
   return true;
 }
 
+/**
+ * Ends the identity provider's sign-in in the browser that is signing out of
+ * Kimono. The provider doesn't tell Kimono which of its sessions a browser
+ * holds, so it is found by the browser's exact user agent, narrowed to its
+ * address when that also matches.
+ */
+export async function endIdentitySessionsOfBrowser(username: string, browser: { userAgent: string; ip: string | null }): Promise<number> {
+  if (!browser.userAgent) return 0;
+  const sameAgent = (await sessionsOf(username)).filter((session) => (session as { last_user_agent?: string }).last_user_agent === browser.userAgent);
+  const sameAddress = browser.ip ? sameAgent.filter((session) => session.last_ip === browser.ip) : [];
+  const ending = sameAddress.length ? sameAddress : sameAgent;
+  for (const session of ending) {
+    await identityRequest(`/api/v3/core/authenticated_sessions/${encodeURIComponent(session.uuid as string)}/`, { method: "DELETE" });
+  }
+  return ending.length;
+}
+
 export async function endAllIdentitySessions(username: string): Promise<number> {
   const sessions = await sessionsOf(username);
   for (const session of sessions) {
