@@ -178,10 +178,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {
       throw new Error("Kimono's sign-in page isn't answering. Try again in a moment.");
     }
-    /* prompt=login: the password is asked every time, even if the browser still
-       holds a sign-in. Android's sheet shares Chrome's cookies, so without it a
-       phone that signed out would be let straight back in. */
-    const request = new AuthSession.AuthRequest({ clientId: config.clientId, scopes: config.scopes, redirectUri, usePKCE: true, prompt: AuthSession.Prompt.Login });
+    /* The password every time, asked exactly once: a browser sign-in older than
+       max_age is refused and asked for again, and the one just typed passes.
+       Android's sheet shares Chrome's cookies, so without it a phone that signed
+       out would be let straight back in. (prompt=login asks twice when the
+       browser holds no sign-in.) */
+    const request = new AuthSession.AuthRequest({ clientId: config.clientId, scopes: config.scopes, redirectUri, usePKCE: true, extraParams: { max_age: "30" } });
     const result = await request.promptAsync(endpoints, { preferEphemeralSession: true });
     if (result.type !== "success") {
       if (result.type === "error") throw new Error(result.error?.description || "Signing in didn't finish. Try again.");
