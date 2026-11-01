@@ -1,0 +1,265 @@
+<meta charset="utf-8">
+<title>Kimono Type</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Decol:wght@400;500;700&family=Shippori+Mincho:wght@600&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap">
+<style>
+/* Kata's paper world, one deliberate light theme: the sheet is about type on
+   Kimono's own surfaces, so the surfaces stay exactly as the product has them. */
+:root {
+  color-scheme: light;
+  --ink:#24221f; --ink-soft:#5b524d; --faint:#6b605a; --plum:#4e2b37;
+  --suo:#a84d63; --suo-deep:#7e3448; --suo-wash:#faeef0; --sakura-wash:#f2cbd2;
+  --lift:#fffdf8; --sheet:#fbf7ef; --ground:#f7f1e8; --fold:#ebe2d3; --hair:#ddd0bf; --hair-deep:#cdbda7;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mincho: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --decol: "Kaisei Decol", "Shippori Mincho", serif;
+  --kaku: "Zen Kaku Gothic New", system-ui, sans-serif;
+  --maru: "Zen Maru Gothic", "Zen Kaku Gothic New", system-ui, sans-serif;
+  /* the pair in use on the screens below; the switcher changes these */
+  --display: var(--mincho); --display-weight: 600; --text: var(--kaku);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.55 var(--kaku); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; }
+.kicker { font: 700 12px/1.4 var(--kaku); letter-spacing: .04em; color: var(--suo-deep); }
+h1 { margin: 6px 0 10px; font: 600 40px/1.1 var(--mincho); color: var(--plum); letter-spacing: -.015em; text-wrap: balance; }
+.lede { max-width: 70ch; margin: 0; color: var(--ink-soft); }
+h2 { margin: 48px 0 6px; font: 600 26px/1.2 var(--mincho); color: var(--plum); }
+h2 + p { margin: 0 0 20px; color: var(--ink-soft); max-width: 70ch; }
+
+/* ── side by side ── */
+.pairs { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 16px; }
+.pair { min-width: 0; display: grid; grid-template-rows: auto 1fr auto; border: 1px solid var(--hair); border-radius: 2px; background: var(--sheet); box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 14px 28px -20px rgba(78,43,55,.32); }
+.pair header { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--hair); }
+.pair header b { font: 600 18px/1.2 var(--mincho); color: var(--plum); }
+.pair header span { font: 700 12px/1.3 var(--kaku); color: var(--ink-soft); }
+.pair .jp { font-family: var(--mincho); color: var(--suo-deep); font-size: 18px; }
+.sample { padding: 18px 16px 16px; display: grid; gap: 12px; align-content: start; font-family: var(--t); }
+.sample .word { font: var(--dw) 30px/1 var(--d); color: var(--plum); letter-spacing: -.01em; }
+.sample .hero { font: var(--dw) 34px/1.08 var(--d); color: var(--plum); letter-spacing: -.02em; text-wrap: balance; }
+.sample .hero em { font-style: normal; color: var(--suo); }
+.sample .kana { font: var(--dw) 24px/1.3 var(--d); color: var(--plum); }
+.sample .title { font: var(--dw) 21px/1.25 var(--d); color: var(--plum); }
+.sample p { margin: 0; font: 400 14.5px/1.6 var(--t); color: var(--ink-soft); }
+.sample .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-top: 1px solid var(--hair); font: 500 15px/1.3 var(--t); }
+.sample .row small { font: 400 13px/1 var(--t); color: var(--ink-soft); }
+.sample .label { font: 700 12px/1.4 var(--t); color: var(--ink-soft); }
+.sample .seal { justify-self: start; }
+.notes { margin: 0; padding: 12px 16px 14px; display: grid; gap: 6px; border-top: 1px solid var(--hair); font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
+.notes b { color: var(--ink); font-weight: 700; }
+
+/* ── seal, as in Kata ── */
+.seal { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 24px; border: 0; border-radius: 2px; color: var(--lift); background: var(--suo); box-shadow: inset 0 -2px 0 #8a3e51; font: 700 13px/1 var(--t, var(--text)); letter-spacing: .04em; cursor: pointer; transition: background-color 160ms, transform 90ms, border-radius 180ms cubic-bezier(.3,1.6,.5,1); }
+.seal::before { content: ""; position: absolute; inset: 3px 3px 5px; border: 1px solid rgba(255,253,248,.32); border-radius: 1px; pointer-events: none; }
+.seal:hover { background: var(--suo-deep); }
+.seal:active, .seal.is-pressed { transform: translateY(1px) scale(.985); box-shadow: none; border-radius: 7px; }
+.seal:focus-visible, .seal.is-focus { outline: 2px solid var(--suo); outline-offset: 3px; }
+.seal.quiet { color: var(--ink); background: var(--fold); box-shadow: inset 0 -2px 0 var(--hair-deep); }
+.seal.quiet::before { display: none; }
+.seal[disabled] { color: var(--faint); background: var(--fold); box-shadow: none; cursor: not-allowed; transform: none; }
+.seal[disabled]::before { display: none; }
+.seal .spin { width: 14px; height: 14px; border: 2px solid rgba(255,253,248,.4); border-top-color: var(--lift); border-radius: 50%; animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .seal, .seal .spin { transition: none; animation: none; } }
+
+/* ── switcher ── */
+.switch { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 0; margin-bottom: 18px; background: var(--ground); border-bottom: 1px solid var(--hair); }
+.switch button { min-height: 44px; padding: 0 16px; border: 1px solid var(--hair); border-radius: 2px; background: var(--sheet); color: var(--ink); font: 700 13px/1 var(--kaku); cursor: pointer; }
+.switch button[aria-pressed="true"] { border-color: var(--plum); box-shadow: inset 0 -3px 0 var(--plum); background: var(--lift); }
+.switch button:focus-visible { outline: 2px solid var(--suo); outline-offset: 2px; }
+.switch .jp { font-family: var(--mincho); margin-right: 6px; color: var(--suo-deep); }
+
+/* ── screens ── */
+.screens { font-family: var(--text); }
+.screens .d { font-family: var(--display); font-weight: var(--display-weight); color: var(--plum); }
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 24px; align-items: start; }
+@media (max-width: 1000px) { .stage { grid-template-columns: 1fr; } }
+.web { min-width: 0; border: 1px solid var(--hair-deep); border-radius: 3px; background: var(--ground); overflow: hidden; box-shadow: 0 30px 60px -40px rgba(78,43,55,.45); }
+.w-head { display: flex; align-items: center; gap: 18px; height: 64px; padding: 0 20px; border-bottom: 2px solid var(--plum); }
+.brand { display: inline-flex; align-items: center; gap: 8px; }
+.brand svg { width: 30px; height: 30px; color: var(--plum); }
+.brand b { font: var(--display-weight) 22px/1 var(--display); color: var(--plum); }
+.doors { display: flex; gap: 8px; margin-left: 8px; }
+.door { padding: 6px 12px; border: 1px solid var(--hair); background: var(--sheet); font-size: 13px; font-weight: 700; }
+.door.here { background: #f6e7e6; color: var(--suo-deep); }
+.chip { margin-left: auto; display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; border: 1px solid var(--hair); background: var(--sheet); }
+.chip i { width: 32px; height: 32px; border-radius: 50%; background: var(--fold); display: grid; place-items: center; font: var(--display-weight) 15px/1 var(--display); color: var(--plum); font-style: normal; box-shadow: inset 0 0 0 1px var(--hair-deep); }
+.chip b { font-size: 13px; display: block; } .chip small { font-size: 12px; color: var(--ink-soft); }
+.w-body { padding: 28px 28px 32px; display: grid; gap: 22px; }
+.w-kick { font-size: 12px; font-weight: 700; color: var(--suo-deep); }
+.w-hero { margin: 4px 0 0; font-size: clamp(34px, 4.6vw, 52px); line-height: 1.06; letter-spacing: -.02em; }
+.w-hero em { font-style: normal; color: var(--suo); }
+.card { border: 1px solid var(--hair); background: var(--sheet); }
+.card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--hair); }
+.card > header .d { font-size: 22px; }
+.card .body { padding: 16px 18px 18px; display: grid; gap: 14px; }
+.field { display: grid; gap: 6px; max-width: 420px; }
+.field span { font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.field input { min-height: 44px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 1px; background: var(--fold); font: 400 15px/1 var(--text); color: var(--ink); }
+.field input:focus-visible { outline: 0; border-color: var(--suo); background: var(--lift); box-shadow: 0 0 0 3px rgba(168,77,99,.22); }
+.card p { margin: 0; color: var(--ink-soft); font-size: 14.5px; max-width: 60ch; }
+
+.phones { display: flex; gap: 20px; flex-wrap: wrap; }
+.phone { width: 300px; max-width: 100%; height: 620px; display: flex; flex-direction: column; border: 1px solid var(--hair-deep); border-radius: 22px; overflow: hidden; background: var(--ground); box-shadow: 0 30px 60px -40px rgba(78,43,55,.45); }
+.p-bar { padding: 26px 16px 12px; border-bottom: 2px solid var(--plum); }
+.p-bar .d { display: block; font-size: 28px; line-height: 1.1; }
+.p-bar small { color: var(--ink-soft); font-size: 13px; }
+.p-hero { display: grid; justify-items: center; gap: 6px; padding: 18px 0 10px; }
+.p-hero i { width: 84px; height: 84px; border-radius: 50%; background: var(--fold); display: grid; place-items: center; font: var(--display-weight) 38px/1 var(--display); color: var(--plum); font-style: normal; box-shadow: inset 0 0 0 1px var(--hair-deep); }
+.p-hero small { color: var(--ink-soft); font-size: 13px; }
+.p-group { padding: 12px 16px 6px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+.p-row { display: flex; align-items: center; justify-content: space-between; min-height: 50px; padding: 0 16px; border-top: 1px solid var(--hair); background: var(--sheet); font-size: 15px; }
+.p-row small { color: var(--ink-soft); font-size: 13px; }
+.p-row.danger { color: var(--suo-deep); font-weight: 700; }
+.p-nav { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; padding: 8px 0 14px; border-top: 1px solid var(--hair); }
+.p-nav span { display: grid; justify-items: center; gap: 4px; font-size: 11.5px; font-weight: 700; color: var(--ink-soft); }
+.p-nav span b { width: 56px; height: 28px; border-radius: 14px; display: grid; place-items: center; }
+.p-nav span.on { color: var(--plum); } .p-nav span.on b { background: var(--suo-wash); }
+.p-signin { flex: 1; display: grid; align-content: center; justify-items: center; gap: 12px; padding: 0 22px; text-align: center; }
+.p-signin svg { width: 64px; height: 64px; color: var(--plum); }
+.p-signin .d { font-size: 32px; }
+.p-signin p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+.p-signin .field { width: 100%; text-align: left; }
+.p-signin .seal { width: 100%; }
+.p-foot { padding: 0 20px 18px; text-align: center; font-size: 12px; color: var(--ink-soft); }
+
+.states { display: flex; flex-wrap: wrap; gap: 18px 22px; align-items: center; padding: 18px; border: 1px solid var(--hair); background: var(--sheet); }
+.states figure { margin: 0; display: grid; gap: 8px; justify-items: start; }
+.states figcaption { font: 500 11.5px/1 var(--mono); color: var(--faint); }
+.verdict { margin-top: 40px; padding: 16px 18px; border: 1px solid var(--hair); border-left: 3px solid var(--suo); background: var(--sheet); font-size: 14px; color: var(--ink-soft); }
+.verdict b { color: var(--ink); }
+</style>
+
+<div class="wrap">
+  <div class="kicker">型 Kata · specimen sheet 10 · type</div>
+  <h1>Type for Kimono</h1>
+  <p class="lede">Four pairs: a display face for names and headings, and a text face for everything read or pressed. Each is shown side by side first, then on real screens: the website's home and account pages, the phone's sign-in and You tab, and the seal in every state. Mark each <b>keep / adjust / kill</b>.</p>
+
+  <h2>Side by side</h2>
+  <p>The same words in each pair. The seals press: try them.</p>
+  <div class="pairs" id="pairs"></div>
+
+  <h2>On real screens</h2>
+  <p>Pick a pair; every screen below changes with it.</p>
+  <div class="switch" role="group" aria-label="Type pair" id="switch"></div>
+
+  <div class="screens" id="screens">
+    <div class="stage">
+      <div class="web">
+        <div class="w-head">
+          <span class="brand"><svg viewBox="1 12 111 106" fill="currentColor" aria-hidden="true" id="branch"></svg><b>kimono</b></span>
+          <span class="doors"><span class="door">Home</span><span class="door here">Admin</span></span>
+          <span class="chip"><i>A</i><span><b>Akram</b><small>Owner</small></span></span>
+        </div>
+        <div class="w-body">
+          <div>
+            <div class="w-kick">Your household</div>
+            <h3 class="w-hero d">Welcome home, <em>Akram.</em></h3>
+          </div>
+          <section class="card">
+            <header><span class="d">Profile</span><button class="seal" type="button">Save</button></header>
+            <div class="body">
+              <label class="field"><span>Name</span><input id="f-name" value="Akram Boussanni"></label>
+              <label class="field"><span>Email</span><input id="f-email" value="akram@kimono.example"></label>
+              <p>Your picture and name show on every Kimono app and to the people you share spaces with.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div class="phones">
+        <div class="phone">
+          <div class="p-signin">
+            <svg viewBox="1 12 111 106" fill="currentColor" aria-hidden="true" class="branch2"></svg>
+            <div class="d">Kimono</div>
+            <p>Sign in with your Kimono account.</p>
+            <label class="field"><span>Your Kimono's address</span><input id="f-addr" value="kimono.example"></label>
+            <button class="seal" type="button">Continue</button>
+          </div>
+          <div class="p-foot">Only the people on your Kimono can sign in.</div>
+        </div>
+        <div class="phone">
+          <div class="p-bar"><span class="d">Akram Boussanni</span><small>@akram</small></div>
+          <div class="p-hero"><i>A</i><small>akram@kimono.example</small></div>
+          <div class="p-group">Account</div>
+          <div class="p-row">Name and email<small>›</small></div>
+          <div class="p-row">Signed-in devices<small>4</small></div>
+          <div class="p-group">This phone</div>
+          <div class="p-row danger">Sign out</div>
+          <div class="p-nav"><span><b>⌂</b>Home</span><span class="on"><b>A</b>You</span></div>
+        </div>
+      </div>
+    </div>
+
+    <h2>The seal in every state</h2>
+    <p>Label weight matters most here: a face that is light at 13px loses the seal's authority.</p>
+    <div class="states">
+      <figure><button class="seal" type="button">Continue</button><figcaption>rest</figcaption></figure>
+      <figure><button class="seal is-focus" type="button">Continue</button><figcaption>focus-visible</figcaption></figure>
+      <figure><button class="seal is-pressed" type="button">Continue</button><figcaption>pressed</figcaption></figure>
+      <figure><button class="seal" type="button"><span class="spin" aria-hidden="true"></span>Saving</button><figcaption>busy</figcaption></figure>
+      <figure><button class="seal" type="button" disabled>Continue</button><figcaption>disabled</figcaption></figure>
+      <figure><button class="seal quiet" type="button">Keep them</button><figcaption>quiet</figcaption></figure>
+    </div>
+  </div>
+
+  <div class="verdict"><b>Verdict:</b> keep, adjust or kill each pair. Pairs can also be mixed (Kaisei Decol with Zen Kaku, say). Whatever is kept is cut into Kata's tokens for the website, the phone app and the sign-in page together.</div>
+</div>
+
+<script>
+const PAIRS = [
+  { id: "current", jp: "現", name: "Current", sub: "Shippori Mincho · Zen Kaku Gothic", d: "var(--mincho)", dw: 600, t: "var(--kaku)",
+    motif: "Printed books: a Mincho of the kind set in novels, a plain gothic for everything else.",
+    convention: "Product UI in a neutral sans; here the names are set like a book.",
+    cost: "None. It is what ships today." },
+  { id: "maru", jp: "丸", name: "Rounded", sub: "Shippori Mincho · Zen Maru Gothic", d: "var(--mincho)", dw: 600, t: "var(--maru)",
+    motif: "The same family as today, its corners rounded like worn wood type.",
+    convention: "Rounded faces read as childish in UI; at Zen Maru's weights they read as warm.",
+    cost: "One more font family; the Latin cut is tens of KB. Slightly softer at 12px." },
+  { id: "decol", jp: "飾", name: "Decorative", sub: "Kaisei Decol · Zen Maru Gothic", d: "var(--decol)", dw: 700, t: "var(--maru)",
+    motif: "A Mincho with softened, decorated strokes: the formal letter, drawn with a smile.",
+    convention: "Display faces are kept for marketing; here the people's names wear one.",
+    cost: "Two new families. Decol is for 20px and up only; it gets busy small. Its Latin is close to a bolder Mincho: the decoration lives mostly in the Japanese." },
+  { id: "decol-kaku", jp: "混", name: "Decorative, plain text", sub: "Kaisei Decol · Zen Kaku Gothic", d: "var(--decol)", dw: 700, t: "var(--kaku)",
+    motif: "The decorated display, with today's plain gothic carrying the work.",
+    convention: "A playful display usually brings a playful text face; this keeps the text sober.",
+    cost: "One new family, display only." },
+];
+
+const branch = `<path d="M2 108 C26 98 43 84 55 66 C62 55 71 47 79 43 L81 47 C73 51 66 60 59 72 C47 90 30 106 6 116Z"/><path d="M57 73 C56 63 53 54 47 47 L50 44 C57 52 60 62 61 72Z"/><path d="M27 97 C40 96 51 100 58 108 L55 111 C49 104 39 100 27 100Z"/><g transform="translate(83 41) scale(.55) translate(-50 -50)">${[0, 72, 144, 216, 288].map((r) => `<path transform="rotate(${r} 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/>`).join("")}<circle cx="50" cy="50" r="13"/></g>`;
+document.getElementById("branch").innerHTML = branch;
+document.querySelectorAll(".branch2").forEach((s) => s.innerHTML = branch);
+
+document.getElementById("pairs").innerHTML = PAIRS.map((p) => `
+  <article class="pair">
+    <header><span class="jp">${p.jp}</span><b>${p.name}</b><span>${p.sub}</span></header>
+    <div class="sample" style="--d:${p.d};--dw:${p.dw};--t:${p.t}">
+      <div class="word">kimono</div>
+      <div class="hero">Welcome home, <em>Akram.</em></div>
+      <div class="title">Game nights</div>
+      <div class="kana" lang="ja">ようこそ、きものへ</div>
+      <p>Mina added 3 clips to Game nights. Anyone in the space can open them; the link only works for people you share it with.</p>
+      <div><div class="row">Signed-in devices <small>4</small></div><div class="row">Password <small>Changed 2 months ago</small></div></div>
+      <div class="label">Your Kimono's address</div>
+      <button class="seal" type="button" style="--t:${p.t}">Continue</button>
+    </div>
+    <p class="notes"><span><b>Motif:</b> ${p.motif}</span><span><b>Challenges:</b> ${p.convention}</span><span><b>Cost:</b> ${p.cost}</span></p>
+  </article>`).join("");
+
+const sw = document.getElementById("switch");
+sw.innerHTML = PAIRS.map((p) => `<button type="button" data-id="${p.id}"><span class="jp">${p.jp}</span>${p.name}</button>`).join("");
+function use(id) {
+  const p = PAIRS.find((x) => x.id === id) || PAIRS[0];
+  const root = document.documentElement.style;
+  root.setProperty("--display", p.d);
+  root.setProperty("--display-weight", p.dw);
+  root.setProperty("--text", p.t);
+  document.querySelectorAll("#screens .seal").forEach((b) => b.style.setProperty("--t", p.t));
+  sw.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.id === p.id)));
+  try { localStorage.setItem("kimono-type-pair", p.id); } catch {}
+}
+sw.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) use(b.dataset.id); });
+let start = "maru";
+try { start = localStorage.getItem("kimono-type-pair") || start; } catch {}
+use(start);
+</script>

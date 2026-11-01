@@ -140,7 +140,7 @@
 
   /* type */
   --k-display: "Shippori Mincho Kimono", "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --k-sans: "Zen Kaku Gothic Kimono", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --k-sans: "Zen Maru Gothic Kimono", "Hiragino Maru Gothic ProN", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
   --k-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* The one Mincho weight loaded is 600. Nothing may ask for another and get

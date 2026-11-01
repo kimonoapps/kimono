@@ -11,6 +11,7 @@ vocabulary is proven on cheap elements before it carries a whole page.
 | 2 | **Cards and apps** (pulled forward) | Awaiting verdict | `specimens/05-cards.html` | — |
 | — | **Information inside an app** | Awaiting verdict | `specimens/06-information.html` | — |
 | — | **Dashboards** | Awaiting verdict | `specimens/07-dashboard.html` | — |
+| — | **Type** (out of band) | **Cut — Shippori Mincho with Zen Maru Gothic** | `specimens/10-type.html` | `decisions/0005-type.md` |
 | 3 | Links and underlines | Queued | — | — |
 | 3 | Text inputs, selects, checkboxes | Queued | — | — |
 | 4 | Containers — panels, compartments, disclosure | Queued | — | — |

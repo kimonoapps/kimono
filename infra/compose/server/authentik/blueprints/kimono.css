@@ -16,9 +16,9 @@
    its flow card.
    ═══════════════════════════════════════════════════════════════ */
 
-@font-face { font-family: "Zen Kaku Gothic Kimono"; font-weight: 400; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/zen-kaku-gothic-new-latin-400-normal.woff2") format("woff2"); }
-@font-face { font-family: "Zen Kaku Gothic Kimono"; font-weight: 500; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/zen-kaku-gothic-new-latin-500-normal.woff2") format("woff2"); }
-@font-face { font-family: "Zen Kaku Gothic Kimono"; font-weight: 700; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/zen-kaku-gothic-new-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Zen Maru Gothic Kimono"; font-weight: 400; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/zen-maru-gothic-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Zen Maru Gothic Kimono"; font-weight: 500; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/zen-maru-gothic-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Zen Maru Gothic Kimono"; font-weight: 700; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/zen-maru-gothic-latin-700-normal.woff2") format("woff2"); }
 @font-face { font-family: "Shippori Mincho Kimono"; font-weight: 600; font-style: normal; font-display: swap; src: url("/static/kimono/fonts/shippori-mincho-600-latin.woff2") format("woff2"); }
 
 html:has(ak-flow-executor) {
@@ -41,7 +41,7 @@ html:has(ak-flow-executor) {
   --k-hair-deep: #cdbda7;
   --k-hover: #f7efe1;
   --k-display: "Shippori Mincho Kimono", "Hiragino Mincho ProN", "Yu Mincho", serif;
-  --k-sans: "Zen Kaku Gothic Kimono", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --k-sans: "Zen Maru Gothic Kimono", "Hiragino Maru Gothic ProN", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
   --k-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --k-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.05'/%3E%3C/svg%3E");
   --kimono-panel: min(560px, 42vw);

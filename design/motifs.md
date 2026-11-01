@@ -100,5 +100,11 @@ timestamps or a changelog.
 
 ## Ruled out
 
-Nothing yet. Every rejected specimen lands here with its reason, and is never
-proposed again.
+Every rejected specimen lands here with its reason, and is never proposed again.
+
+- **Google Sans Flex, or any of Google's own faces** (type, 2026-10-31). The
+  owner wants Kimono to keep an identity of its own; Material's structure and
+  motion can be borrowed, its typeface cannot.
+- **Kaisei Decol** (type sheet 10, 2026-10-31). Its decoration lives mostly in
+  the Japanese; in Kimono's Latin it read as a heavier Mincho and lost to
+  Shippori with Zen Maru Gothic.

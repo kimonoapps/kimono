@@ -18,9 +18,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.kimono.resources.Res
 import app.kimono.resources.shippori_mincho_semibold
-import app.kimono.resources.zen_kaku_bold
-import app.kimono.resources.zen_kaku_medium
-import app.kimono.resources.zen_kaku_regular
+import app.kimono.resources.zen_maru_bold
+import app.kimono.resources.zen_maru_medium
+import app.kimono.resources.zen_maru_regular
 import org.jetbrains.compose.resources.Font
 
 /**
@@ -107,9 +107,9 @@ private val kataShapes = Shapes(
 private fun kataTypography(): Typography {
     val mincho = FontFamily(Font(Res.font.shippori_mincho_semibold, FontWeight.SemiBold))
     val gothic = FontFamily(
-        Font(Res.font.zen_kaku_regular, FontWeight.Normal),
-        Font(Res.font.zen_kaku_medium, FontWeight.Medium),
-        Font(Res.font.zen_kaku_bold, FontWeight.Bold),
+        Font(Res.font.zen_maru_regular, FontWeight.Normal),
+        Font(Res.font.zen_maru_medium, FontWeight.Medium),
+        Font(Res.font.zen_maru_bold, FontWeight.Bold),
     )
     val display = TextStyle(fontFamily = mincho, fontWeight = FontWeight.SemiBold, color = Kata.plum)
     val text = TextStyle(fontFamily = gothic)

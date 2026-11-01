@@ -5,24 +5,24 @@
  */
 
 @font-face {
-  font-family: "Zen Kaku Gothic Kimono";
-  src: url("/fonts/zen-kaku-gothic-new-latin-400-normal.woff2") format("woff2");
+  font-family: "Zen Maru Gothic Kimono";
+  src: url("/fonts/zen-maru-gothic-latin-400-normal.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Zen Kaku Gothic Kimono";
-  src: url("/fonts/zen-kaku-gothic-new-latin-500-normal.woff2") format("woff2");
+  font-family: "Zen Maru Gothic Kimono";
+  src: url("/fonts/zen-maru-gothic-latin-500-normal.woff2") format("woff2");
   font-style: normal;
   font-weight: 500;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Zen Kaku Gothic Kimono";
-  src: url("/fonts/zen-kaku-gothic-new-latin-700-normal.woff2") format("woff2");
+  font-family: "Zen Maru Gothic Kimono";
+  src: url("/fonts/zen-maru-gothic-latin-700-normal.woff2") format("woff2");
   font-style: normal;
   font-weight: 700;
   font-display: swap;
