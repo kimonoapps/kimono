@@ -2,70 +2,98 @@
 
 package app.kimono.ui
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
-import app.kimono.theme.Kata
-
-/** The plum rule the website's header sits on. */
-fun Modifier.plumRule(): Modifier = drawWithContent {
-    drawContent()
-    val y = size.height - 1.dp.toPx()
-    drawLine(Kata.plum, Offset(0f, y), Offset(size.width, y), strokeWidth = 2.dp.toPx())
-}
 
 /** A plain bar: back, a title, actions at the right edge. */
 @Composable
 fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable () -> Unit = {}) {
     TopAppBar(
-        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
-        navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(kimonoIcon("back"), "Back", tint = Kata.inkSoft) } },
+        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(kimonoIcon("back"), "Back") } },
         actions = { Row(Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() } },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Kata.ground),
-        modifier = Modifier.plumRule(),
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
     )
 }
 
 @Composable
 fun GroupLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = Kata.inkSoft, modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 8.dp))
+    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 8.dp))
 }
 
-/** One line of a settings list. */
+/** One entry in a grouped list. */
+class GroupItem(
+    val label: String,
+    val detail: String? = null,
+    val icon: String? = null,
+    val danger: Boolean = false,
+    val onLongClick: (() -> Unit)? = null,
+    val onClick: () -> Unit,
+)
+
+/* Each row's icon sits in one of Material's playful shapes, a different one per row. */
+private val iconShapes = listOf(MaterialShapes.Cookie6Sided, MaterialShapes.Clover4Leaf, MaterialShapes.Sunny, MaterialShapes.Cookie9Sided, MaterialShapes.Flower)
+
 @Composable
-fun ListRow(label: String, detail: String? = null, danger: Boolean = false, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 54.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (danger) FontWeight.Bold else FontWeight.Normal), color = if (danger) Kata.suoDeep else Kata.ink, modifier = Modifier.weight(1f))
-            if (detail != null) Text(detail, style = MaterialTheme.typography.bodySmall, color = Kata.inkSoft, modifier = Modifier.padding(end = 8.dp))
-            if (!danger) Icon(kimonoIcon("go"), null, tint = Kata.faint, modifier = Modifier.size(16.dp))
+fun iconShape(index: Int): Shape = iconShapes[index % iconShapes.size].toShape()
+
+/**
+ * Material's grouped list: rows as rounded segments with small gaps, the
+ * group's outer corners rounder than the inner ones.
+ */
+@Composable
+fun KimonoGroup(items: List<GroupItem>, modifier: Modifier = Modifier) {
+    Column(modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+        items.forEachIndexed { index, item ->
+            val tint = if (item.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+            SegmentedListItem(
+                onClick = item.onClick,
+                onLongClick = item.onLongClick,
+                shapes = ListItemDefaults.segmentedShapes(index, items.size),
+                colors = segmentColors(),
+                leadingContent = item.icon?.let { name ->
+                    {
+                        Box(Modifier.size(40.dp).background(if (item.danger) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer, iconShape(index)), contentAlignment = Alignment.Center) {
+                            Icon(kimonoIcon(name), null, tint = if (item.danger) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                },
+                supportingContent = item.detail?.let { { Text(it) } },
+                trailingContent = if (item.danger) null else ({ Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) }),
+            ) {
+                Text(item.label, style = MaterialTheme.typography.bodyLarge, color = tint)
+            }
         }
-        HorizontalDivider(color = Kata.hair)
     }
 }
 
+/* Segments sit a tone above the page, so the group reads as a group. */
+@Composable
+fun segmentColors() = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+
 @Composable
 fun Problem(text: String?) {
-    if (text != null) Text(text, style = MaterialTheme.typography.bodyMedium, color = Kata.suoDeep)
+    if (text != null) Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
 }

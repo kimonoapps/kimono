@@ -57,6 +57,9 @@ private val iconPaths = mapOf(
     "image" to "M4 5h16v14H4z M4 15.5l4.5-4.5 4 4 2.5-2.5 5 5",
     "phone" to "M8 2.5h8a1.5 1.5 0 0 1 1.5 1.5v16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 20V4A1.5 1.5 0 0 1 8 2.5z M10.5 18.5h3",
     "laptop" to "M5 5.5h14v10H5z M3 18.5h18",
+    "person" to "M12 11.5a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4.5 20.5c.8-3.6 3.8-5.5 7.5-5.5s6.7 1.9 7.5 5.5",
+    "lock" to "M5 10.5h14v9.5H5z M8 10.5V8a4 4 0 0 1 8 0v2.5",
+    "door" to "M14 4H6v16h8 M11 12h10M17 8l4 4-4 4",
 )
 
 private val iconCache = mutableMapOf<String, ImageVector>()

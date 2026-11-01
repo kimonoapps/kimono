@@ -63,7 +63,6 @@ import app.kimono.ui.Problem
 import app.kimono.ui.Seal
 import app.kimono.ui.SealTone
 import app.kimono.ui.kimonoIcon
-import app.kimono.ui.plumRule
 import kotlinx.coroutines.launch
 
 /**
@@ -75,7 +74,7 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
     KimonoTheme {
         LaunchedEffect(Unit) { session.start() }
         val state by session.state.collectAsState()
-        Box(Modifier.fillMaxSize().background(Kata.ground)) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             when (val s = state) {
                 SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
                 is SessionState.SignedOut -> SignInScreen(session, s.server)
@@ -95,10 +94,10 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?) 
     val route = entry?.destination?.route
     val tab = route == "home" || route == "you"
     Scaffold(
-        containerColor = Kata.ground,
+        containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
-            if (tab) ShortNavigationBar(containerColor = Kata.ground) {
-                val colors = ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = Kata.suoWash, selectedIconColor = Kata.suoDeep, selectedTextColor = Kata.plum, unselectedIconColor = Kata.inkSoft, unselectedTextColor = Kata.inkSoft)
+            if (tab) ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                val colors = ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = MaterialTheme.colorScheme.secondaryContainer, selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.onSurface, unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant)
                 ShortNavigationBarItem(selected = route == "home", onClick = { nav.navigate("home") { popUpTo("home") { inclusive = true } } }, icon = { Icon(kimonoIcon("home"), null) }, label = { Text("Home") }, colors = colors)
                 ShortNavigationBarItem(selected = route == "you", onClick = { nav.navigate("you") { popUpTo("home") } }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors)
             }
@@ -117,18 +116,17 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?) 
 @Composable
 private fun Home(me: AccountProfile?) {
     val first = me?.name?.split(" ")?.firstOrNull()?.takeIf { it.isNotBlank() } ?: me?.username ?: "home"
-    Scaffold(containerColor = Kata.ground, topBar = {
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = {
         TopAppBar(
             title = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { KimonoBranch(30.dp); Text("kimono", style = MaterialTheme.typography.titleLarge) } },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = Kata.ground),
-            modifier = Modifier.plumRule(),
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
         )
     }) { padding ->
         Column(Modifier.padding(padding).padding(horizontal = 20.dp, vertical = 22.dp)) {
-            Text("Your household", style = MaterialTheme.typography.labelMedium, color = Kata.suoDeep)
+            Text("Your household", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             Text(buildAnnotatedString {
                 append("Welcome home, ")
-                withStyle(SpanStyle(color = Kata.suo)) { append("$first.") }
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("$first.") }
             }, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(top = 6.dp))
         }
     }
@@ -142,13 +140,13 @@ private fun ShareSheet(session: Session, me: AccountProfile?, item: SharedItem, 
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val image = item.mimeType.startsWith("image/")
-    ModalBottomSheet(onDismissRequest = done, sheetState = sheet, containerColor = Kata.lift, shape = MaterialTheme.shapes.large, dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle(color = Kata.hairDeep) }) {
+    ModalBottomSheet(onDismissRequest = done, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.outline) }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(kimonoIcon(if (image) "image" else "folder"), null, tint = Kata.plum, modifier = Modifier.size(28.dp))
+                Icon(kimonoIcon(if (image) "image" else "folder"), null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
                 Column {
                     Text(item.name, style = MaterialTheme.typography.titleLarge, maxLines = 1)
-                    Text(listOfNotNull(item.mimeType, item.sizeBytes?.let { formatBytes(it) }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Kata.inkSoft)
+                    Text(listOfNotNull(item.mimeType, item.sizeBytes?.let { formatBytes(it) }).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Problem(problem)

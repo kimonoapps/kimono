@@ -1,4 +1,19 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package app.kimono.screens
+
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.toShape
+import androidx.compose.ui.graphics.graphicsLayer
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,18 +50,7 @@ import app.kimono.ui.Seal
 import kotlinx.coroutines.launch
 
 @Composable
-fun kataFieldColors() = OutlinedTextFieldDefaults.colors(
-    unfocusedContainerColor = Kata.fold,
-    focusedContainerColor = Kata.lift,
-    unfocusedBorderColor = Kata.hair,
-    focusedBorderColor = Kata.suo,
-    cursorColor = Kata.suo,
-    focusedLabelColor = Kata.suoDeep,
-    unfocusedLabelColor = Kata.inkSoft,
-    disabledContainerColor = Kata.ground,
-    disabledBorderColor = Kata.hairDeep,
-    disabledTextColor = Kata.faint,
-)
+fun kataFieldColors() = OutlinedTextFieldDefaults.colors()
 
 @Composable
 fun SignInScreen(session: Session, rememberedServer: String?) {
@@ -62,11 +66,17 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
             busy = false
         }
     }
+    /* Kimono's branch on Material's flower, turning slowly: the bloom that greets you. */
+    val turn = rememberInfiniteTransition()
+    val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(24_000, easing = LinearEasing)))
     Box(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
-        Column(Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            KimonoBranch(size = 76.dp)
-            Text("Kimono", style = MaterialTheme.typography.displaySmall)
-            Text("Sign in with your Kimono account.", style = MaterialTheme.typography.bodyLarge, color = Kata.inkSoft, textAlign = TextAlign.Center)
+        Column(Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.fillMaxSize().graphicsLayer { rotationZ = angle }.background(MaterialTheme.colorScheme.primaryContainer, MaterialShapes.Flower.toShape()))
+                KimonoBranch(size = 72.dp, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            Text("Kimono", style = MaterialTheme.typography.displayMedium)
+            Text("Sign in with your Kimono account.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             OutlinedTextField(
                 value = address,
                 onValueChange = { address = it },
@@ -75,13 +85,12 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
                 keyboardActions = KeyboardActions(onGo = { if (address.isNotBlank() && !busy) go() }),
-                colors = kataFieldColors(),
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             )
+            if (busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
             Problem(problem)
             Seal(if (busy) "Opening sign-in" else "Continue", onClick = go, enabled = address.isNotBlank(), busy = busy, modifier = Modifier.fillMaxWidth())
         }
-        Text("Only the people on your Kimono can sign in.", style = MaterialTheme.typography.bodySmall, color = Kata.inkSoft, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp))
+        Text("Only the people on your Kimono can sign in.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp))
     }
 }

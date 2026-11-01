@@ -2,7 +2,6 @@
 
 package app.kimono.theme
 
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
@@ -23,61 +22,50 @@ import app.kimono.resources.zen_maru_medium
 import app.kimono.resources.zen_maru_regular
 import org.jetbrains.compose.resources.Font
 
-/**
- * 型 Kata on Material 3 Expressive.
- *
- * Material supplies the structure and the motion: flexible app bars, the
- * navigation bar, sheets, springs that overshoot a little. Kata supplies the
- * materials: warm paper instead of tinted surfaces, suō as the one action
- * colour, Mincho for names and headings, and corners cut nearly square, so
- * nothing turns into a pill.
- */
 
-private val kataColors = lightColorScheme(
+/*
+ * Material 3 Expressive, seeded from suō. Surfaces are a warm near-white that
+ * steps into soft beige containers, the way Material's tonal palettes do;
+ * suō is the primary, plum the secondary, moss the tertiary. Shapes are
+ * Material's own (round, and morphing when pressed).
+ */
+private val kimonoColors = lightColorScheme(
     primary = Kata.suo,
-    onPrimary = Kata.lift,
-    primaryContainer = Kata.suoWash,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFD9DF),
     onPrimaryContainer = Kata.suoDeep,
-    secondary = Kata.plum,
-    onSecondary = Kata.lift,
-    secondaryContainer = Kata.sakuraWash,
+    inversePrimary = Color(0xFFFFB1C0),
+    secondary = Color(0xFF74565C),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFF6E0E2),
     onSecondaryContainer = Kata.plum,
     tertiary = Kata.moss,
-    onTertiary = Kata.lift,
-    tertiaryContainer = Kata.mossWash,
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFDCE8CF),
     onTertiaryContainer = Kata.mossDeep,
-    background = Kata.ground,
-    onBackground = Kata.ink,
-    surface = Kata.ground,
-    onSurface = Kata.ink,
-    surfaceVariant = Kata.fold,
-    onSurfaceVariant = Kata.inkSoft,
-    surfaceTint = Color.Transparent,
-    surfaceBright = Kata.lift,
-    surfaceDim = Kata.fold,
-    surfaceContainerLowest = Kata.lift,
-    surfaceContainerLow = Kata.sheet,
-    surfaceContainer = Kata.sheet,
-    surfaceContainerHigh = Kata.fold,
-    surfaceContainerHighest = Kata.fold,
-    outline = Kata.hairDeep,
-    outlineVariant = Kata.hair,
-    error = Kata.suoDeep,
-    onError = Kata.lift,
-    errorContainer = Kata.suoWash,
-    onErrorContainer = Kata.suoDeep,
-    inverseSurface = Color(0xFF2A1D22),
-    inverseOnSurface = Color(0xFFF3E9E0),
-    scrim = Color(0xFF2A1D22),
-)
-
-/* Carved, not pressed from plastic: every corner stays within a few pixels. */
-private val kataShapes = Shapes(
-    extraSmall = RoundedCornerShape(1.dp),
-    small = RoundedCornerShape(2.dp),
-    medium = RoundedCornerShape(2.dp),
-    large = RoundedCornerShape(3.dp),
-    extraLarge = RoundedCornerShape(4.dp),
+    background = Color(0xFFFFFBF7),
+    onBackground = Color(0xFF221A17),
+    surface = Color(0xFFFFFBF7),
+    onSurface = Color(0xFF221A17),
+    surfaceVariant = Color(0xFFF2E6DF),
+    onSurfaceVariant = Color(0xFF54443F),
+    surfaceTint = Kata.suo,
+    surfaceBright = Color(0xFFFFFBF7),
+    surfaceDim = Color(0xFFE6DAD3),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFFCF4EF),
+    surfaceContainer = Color(0xFFF7EEE8),
+    surfaceContainerHigh = Color(0xFFF1E8E2),
+    surfaceContainerHighest = Color(0xFFEBE2DC),
+    outline = Color(0xFF86736E),
+    outlineVariant = Color(0xFFD9C2BC),
+    error = Color(0xFFBA1A1A),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF93000A),
+    inverseSurface = Color(0xFF382E2B),
+    inverseOnSurface = Color(0xFFFFEDE8),
+    scrim = Color.Black,
 )
 
 @Composable
@@ -88,7 +76,7 @@ private fun kataTypography(): Typography {
         Font(Res.font.zen_maru_medium, FontWeight.Medium),
         Font(Res.font.zen_maru_bold, FontWeight.Bold),
     )
-    val display = TextStyle(fontFamily = mincho, fontWeight = FontWeight.SemiBold, color = Kata.plum)
+    val display = TextStyle(fontFamily = mincho, fontWeight = FontWeight.SemiBold)
     val text = TextStyle(fontFamily = gothic)
     return Typography(
         displayLarge = display.copy(fontSize = 52.sp, lineHeight = 56.sp, letterSpacing = (-1).sp),
@@ -112,9 +100,9 @@ private fun kataTypography(): Typography {
 @Composable
 fun KimonoTheme(content: @Composable () -> Unit) {
     MaterialExpressiveTheme(
-        colorScheme = kataColors,
+        colorScheme = kimonoColors,
         motionScheme = MotionScheme.expressive(),
-        shapes = kataShapes,
+        shapes = Shapes(),
         typography = kataTypography(),
         content = content,
     )

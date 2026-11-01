@@ -64,7 +64,7 @@ fun PasswordScreen(session: Session, me: AccountProfile?, back: () -> Unit) {
     var problem by remember { mutableStateOf<String?>(null) }
     val rules = passwordRules(next, me?.username ?: "", me?.name)
     val ready = current.isNotEmpty() && rules.met && next == again
-    Scaffold(containerColor = Kata.ground, topBar = {
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = {
         KimonoTopBar("Password", onBack = back) {
             Seal("Change", compact = true, busy = busy, enabled = ready, onClick = {
                 busy = true
@@ -82,20 +82,20 @@ fun PasswordScreen(session: Session, me: AccountProfile?, back: () -> Unit) {
         }
     }) { padding ->
         Column(Modifier.padding(padding).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            OutlinedTextField(current, { current = it }, label = { Text("Current password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = kataFieldColors(), shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(next, { next = it }, label = { Text("New password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = kataFieldColors(), shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(current, { current = it }, label = { Text("Current password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = kataFieldColors(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(next, { next = it }, label = { Text("New password") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), colors = kataFieldColors(), modifier = Modifier.fillMaxWidth())
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Rule(rules.long, "At least $PASSWORD_MIN_LENGTH characters")
                 Rule(rules.notName, "Not your name or username")
             }
-            OutlinedTextField(again, { again = it }, label = { Text("Type it again") }, singleLine = true, isError = again.isNotEmpty() && again != next, visualTransformation = PasswordVisualTransformation(), colors = kataFieldColors(), shape = MaterialTheme.shapes.small, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(again, { again = it }, label = { Text("Type it again") }, singleLine = true, isError = again.isNotEmpty() && again != next, visualTransformation = PasswordVisualTransformation(), colors = kataFieldColors(), modifier = Modifier.fillMaxWidth())
             if (again.isNotEmpty() && again != next) Problem("The two new passwords don’t match.")
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Sign out everywhere, this phone too", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 Switch(
                     checked = signOutOthers,
                     onCheckedChange = { signOutOthers = it },
-                    colors = SwitchDefaults.colors(checkedTrackColor = Kata.suo, checkedThumbColor = Kata.lift, uncheckedTrackColor = Kata.fold, uncheckedThumbColor = Kata.hairDeep, uncheckedBorderColor = Kata.hairDeep),
+                    colors = SwitchDefaults.colors(checkedTrackColor = MaterialTheme.colorScheme.primary, checkedThumbColor = MaterialTheme.colorScheme.surfaceContainerLow, uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHigh, uncheckedThumbColor = MaterialTheme.colorScheme.outline, uncheckedBorderColor = MaterialTheme.colorScheme.outline),
                 )
             }
             Problem(problem)
@@ -106,11 +106,11 @@ fun PasswordScreen(session: Session, me: AccountProfile?, back: () -> Unit) {
 /* A rule changes form when met: the empty ring fills with moss and gains a tick. */
 @Composable
 private fun Rule(met: Boolean, text: String) {
-    val fill by animateColorAsState(if (met) Kata.moss else Kata.ground)
+    val fill by animateColorAsState(if (met) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surface)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.size(20.dp).background(fill, CircleShape).border(1.5.dp, if (met) Kata.moss else Kata.hairDeep, CircleShape), contentAlignment = Alignment.Center) {
-            if (met) Icon(kimonoIcon("check"), null, tint = Kata.lift, modifier = Modifier.size(13.dp))
+        Box(Modifier.size(20.dp).background(fill, CircleShape).border(1.5.dp, if (met) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline, CircleShape), contentAlignment = Alignment.Center) {
+            if (met) Icon(kimonoIcon("check"), null, tint = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.size(13.dp))
         }
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = if (met) Kata.ink else Kata.inkSoft)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = if (met) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

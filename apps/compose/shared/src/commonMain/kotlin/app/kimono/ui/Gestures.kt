@@ -12,6 +12,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -123,11 +127,15 @@ fun HoldSeal(
         }
     }
 
+    val calm = MaterialTheme.colorScheme.errorContainer
+    val urgent = MaterialTheme.colorScheme.error
+    val calmText = MaterialTheme.colorScheme.onErrorContainer
+    val urgentText = MaterialTheme.colorScheme.onError
     Box(
         modifier
-            .heightIn(min = 48.dp)
+            .heightIn(min = 72.dp)
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
+            .clip(RoundedCornerShape(percent = 50))
             .semantics {
                 role = Role.Button
                 contentDescription = label
@@ -161,15 +169,10 @@ fun HoldSeal(
             }
             .drawWithContent {
                 val p = progress.value
-                /* The face deepens from rose wash to suō as it fills, slowly at
-                   first so the label stays readable on it. */
+                /* The face deepens as it fills, slowly at first so the label
+                   stays readable on it. */
                 val ink = p * p
-                drawRect(lerp(Kata.suoWash, Kata.suo, ink))
-                drawRect(lerp(Color(0xFFEBC4CC), Color(0xFF8A3E51), ink), topLeft = Offset(0f, size.height - 2.dp.toPx()), size = Size(size.width, 2.dp.toPx()))
-                if (p > .5f) {
-                    val inset = 3.dp.toPx()
-                    drawRoundRect(Kata.lift.copy(alpha = .32f * (p - .5f) * 2f), Offset(inset, inset), Size(size.width - inset * 2, size.height - inset * 2 - 2.dp.toPx()), CornerRadius(1.dp.toPx()), style = Stroke(1.dp.toPx()))
-                }
+                drawRect(lerp(calm, urgent, ink))
                 petals.forEachIndexed { index, petal ->
                     val start = index.toFloat() / petals.size
                     val local = ((p - start) * petals.size * 1.6f).coerceIn(0f, 1f)
@@ -183,7 +186,7 @@ fun HoldSeal(
                     translate(x, y) {
                         rotate(petal.turn + local * 90f, pivot = Offset.Zero) {
                             scale(scale, scale, pivot = Offset.Zero) {
-                                translate(-50f, -25f) { drawPath(petalPath, Kata.sakura.copy(alpha = alpha * .9f)) }
+                                translate(-50f, -25f) { drawPath(petalPath, Color.White.copy(alpha = alpha * .85f)) }
                             }
                         }
                     }
@@ -193,18 +196,23 @@ fun HoldSeal(
         contentAlignment = Alignment.Center,
     ) {
         val p = progress.value
-        Text(
-            if (holding) holdingLabel else label,
-            style = MaterialTheme.typography.labelLarge,
-            /* Dark on the light face, light once the face is dark: never pink on pink. */
-            color = if (!enabled) Kata.faint else if (p * p < .55f) Kata.suoDeep else Kata.lift,
-        )
+        val textColor = if (!enabled) calmText.copy(alpha = .5f) else if (p * p < .55f) calmText else urgentText
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(if (holding) holdingLabel else label, style = MaterialTheme.typography.titleSmall, color = textColor)
+            /* Material's squiggle, filling as you hold. */
+            LinearWavyProgressIndicator(
+                progress = { progress.value },
+                color = textColor,
+                trackColor = textColor.copy(alpha = .22f),
+                modifier = Modifier.width(140.dp),
+            )
+        }
     }
 }
 
 /**
- * A row you can swipe left to act on. The action waits underneath on rose
- * wash and inks to suō once the swipe is far enough to count, with a tick.
+ * A row you can swipe left to act on. The action waits underneath on the
+ * error container and fills in once the swipe is far enough to count, with a tick.
  * [onAction] says whether it happened; if not, the row slides back.
  */
 @Composable
@@ -228,15 +236,15 @@ fun SwipeRow(actionLabel: String, onAction: suspend () -> Boolean, modifier: Mod
         onDismiss = { scope.launch { if (!onAction()) state.reset() } },
         backgroundContent = {
             Row(
-                Modifier.fillMaxSize().background(if (armed) Kata.suo else Kata.suoWash).padding(horizontal = 20.dp),
+                Modifier.fillMaxSize().background(if (armed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.errorContainer).padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(actionLabel, style = MaterialTheme.typography.labelLarge, color = if (armed) Kata.lift else Kata.suoDeep)
+                Text(actionLabel, style = MaterialTheme.typography.titleSmall, color = if (armed) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onErrorContainer)
             }
         },
     ) {
-        Box(Modifier.background(Kata.ground)) { content() }
+        content()
     }
 }
 
@@ -256,10 +264,10 @@ fun HoldMenu(choices: List<MenuChoice>, onClick: () -> Unit = {}, modifier: Modi
         open = true
     })) {
         content()
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = Kata.lift, shape = MaterialTheme.shapes.small) {
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = MaterialTheme.shapes.large) {
             choices.forEach { choice ->
                 DropdownMenuItem(
-                    text = { Text(choice.label, style = MaterialTheme.typography.bodyLarge, color = if (choice.danger) Kata.suoDeep else Kata.ink) },
+                    text = { Text(choice.label, style = MaterialTheme.typography.bodyLarge, color = if (choice.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) },
                     onClick = { open = false; choice.onClick() },
                 )
             }
@@ -281,8 +289,8 @@ fun KimonoRefresh(refreshing: Boolean, onRefresh: () -> Unit, modifier: Modifier
                 state = state,
                 isRefreshing = refreshing,
                 modifier = Modifier.align(Alignment.TopCenter),
-                containerColor = Kata.lift,
-                color = Kata.suo,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         },
         content = content,
