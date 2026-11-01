@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 key=${KIMONO_ANDROID_KEY:-$HOME/.config/kimono/android-release.jks}
 [ -f "$key" ] || { echo "No signing key at $key" >&2; exit 1; }
 [ -f "${key%.jks}.password" ] || { echo "No password file beside $key" >&2; exit 1; }
-export JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}
+export JAVA_HOME=${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}
 export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
 export PATH="$JAVA_HOME/bin:$PATH"
 build_tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)

@@ -32,29 +32,6 @@ import org.jetbrains.compose.resources.Font
  * colour, Mincho for names and headings, and corners cut nearly square, so
  * nothing turns into a pill.
  */
-object Kata {
-    val ink = Color(0xFF24221F)
-    val inkSoft = Color(0xFF5B524D)
-    val faint = Color(0xFF6B605A)
-    val plum = Color(0xFF4E2B37)
-    val suo = Color(0xFFA84D63)
-    val suoDeep = Color(0xFF7E3448)
-    val suoPad = Color(0xFF5F2535)
-    val suoWash = Color(0xFFFAEEF0)
-    val sakura = Color(0xFFD77B8C)
-    val sakuraSoft = Color(0xFFD59AA4)
-    val sakuraWash = Color(0xFFF2CBD2)
-    val moss = Color(0xFF5C7150)
-    val mossDeep = Color(0xFF3E5236)
-    val mossWash = Color(0xFFEEF1EA)
-    val lift = Color(0xFFFFFDF8)
-    val sheet = Color(0xFFFBF7EF)
-    val ground = Color(0xFFF7F1E8)
-    val fold = Color(0xFFEBE2D3)
-    val hair = Color(0xFFDDD0BF)
-    val hairDeep = Color(0xFFCDBDA7)
-    val hover = Color(0xFFF7EFE1)
-}
 
 private val kataColors = lightColorScheme(
     primary = Kata.suo,

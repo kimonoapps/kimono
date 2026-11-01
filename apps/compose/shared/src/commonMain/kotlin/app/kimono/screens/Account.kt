@@ -60,6 +60,11 @@ import app.kimono.ui.Portrait
 import app.kimono.ui.Problem
 import app.kimono.ui.Seal
 import app.kimono.ui.SealTone
+import app.kimono.ui.HoldMenu
+import app.kimono.ui.HoldSeal
+import app.kimono.ui.KimonoRefresh
+import app.kimono.ui.MenuChoice
+import app.kimono.ui.SwipeRow
 import app.kimono.ui.kimonoIcon
 import app.kimono.ui.plumRule
 import io.ktor.client.request.setBody
@@ -101,21 +106,30 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
             Column(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box {
+                val choose: () -> Unit = {
+                    problem = null
+                    scope.launch {
+                        try {
+                            val png = platform.pickPicture() ?: return@launch
+                            busy = true
+                            session.usePicture(png)
+                        } catch (p: KimonoProblem) { problem = p.message } catch (_: Exception) { problem = "Your picture could not be saved." }
+                        busy = false
+                    }
+                }
+                val remove: () -> Unit = {
+                    problem = null
+                    scope.launch {
+                        try { busy = true; session.call("/api/v1/me/picture", HttpMethod.Delete); session.refreshMe() } catch (p: KimonoProblem) { problem = p.message }
+                        busy = false
+                    }
+                }
+                /* Long-press your picture for everything you can do with it. */
+                HoldMenu(listOfNotNull(MenuChoice("Choose a photo", onClick = choose), if (me?.picture != null) MenuChoice("Remove picture", danger = true, onClick = remove) else null), onClick = choose) {
                     Portrait(me?.picture, me?.name, me?.username, 104.dp)
                     if (busy) Box(Modifier.size(104.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
                     FilledIconButton(
-                        onClick = {
-                            problem = null
-                            scope.launch {
-                                try {
-                                    val png = platform.pickPicture() ?: return@launch
-                                    busy = true
-                                    session.usePicture(png)
-                                } catch (p: KimonoProblem) { problem = p.message } catch (_: Exception) { problem = "Your picture could not be saved." }
-                                busy = false
-                            }
-                        },
+                        onClick = choose,
                         colors = IconButtonDefaults.filledIconButtonColors(containerColor = Kata.lift, contentColor = Kata.ink),
                         modifier = Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 2.dp).size(38.dp).border(1.dp, Kata.hairDeep, CircleShape),
                     ) { Icon(kimonoIcon("camera"), "Change picture", modifier = Modifier.size(18.dp)) }
@@ -127,6 +141,7 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
             Column(Modifier.background(Kata.sheet)) {
                 HorizontalDivider(color = Kata.hair)
                 ListRow("Name and email") { open("details") }
+                ListRow("Password") { open("password") }
                 ListRow("Signed-in devices") { open("devices") }
             }
             GroupLabel("This phone")
@@ -185,41 +200,51 @@ fun DevicesScreen(session: Session, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf<SessionList?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
-    var ending by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        try { list = session.decode(session.call("/api/v1/me/sessions"), SessionList.serializer()) } catch (p: KimonoProblem) { problem = p.message }
+    var refreshing by remember { mutableStateOf(false) }
+    suspend fun load() {
+        try { list = session.decode(session.call("/api/v1/me/sessions"), SessionList.serializer()); problem = null } catch (p: KimonoProblem) { problem = p.message }
     }
+    LaunchedEffect(Unit) { load() }
     Scaffold(containerColor = Kata.ground, topBar = { KimonoTopBar("Signed-in devices", onBack = back) }) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize()) {
-            item { Box(Modifier.padding(16.dp)) { Problem(problem) } }
-            if (list == null && problem == null) item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
-            items(list?.sessions ?: emptyList(), key = { it.id }) { item ->
-                val on = listOf(item.device, item.os).filter { it.isNotBlank() }.joinToString(", ")
-                Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text(if (on.isEmpty()) item.browser else "${item.browser} on $on", style = MaterialTheme.typography.titleSmall)
-                        Text(listOfNotNull(item.place, item.ip).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Kata.inkSoft)
+        KimonoRefresh(refreshing, onRefresh = { scope.launch { refreshing = true; load(); refreshing = false } }, modifier = Modifier.padding(padding).fillMaxSize()) {
+            LazyColumn(Modifier.fillMaxSize()) {
+                item { Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { Problem(problem) } }
+                if (list == null && problem == null) item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
+                items(list?.sessions ?: emptyList(), key = { it.id }) { item ->
+                    val on = listOf(item.device, item.os).filter { it.isNotBlank() }.joinToString(", ")
+                    val title = if (on.isEmpty()) item.browser else "${item.browser} on $on"
+                    /* Swipe a device away to sign it out. */
+                    SwipeRow("Sign out", onAction = {
+                        try {
+                            session.call("/api/v1/me/sessions/${item.id}", HttpMethod.Delete)
+                            list = list?.copy(sessions = list!!.sessions.filter { it.id != item.id })
+                            true
+                        } catch (p: KimonoProblem) { problem = p.message; false }
+                    }, modifier = Modifier.animateItem()) {
+                        Column {
+                            Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Box(Modifier.size(40.dp).background(Kata.fold, MaterialTheme.shapes.small), contentAlignment = Alignment.Center) {
+                                    Icon(kimonoIcon(if (Regex("iphone|ipad|android|mobile", RegexOption.IGNORE_CASE).containsMatchIn("${item.device} ${item.os}")) "phone" else "laptop"), null, tint = Kata.ink, modifier = Modifier.size(22.dp))
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(title, style = MaterialTheme.typography.titleSmall)
+                                    Text(listOfNotNull(item.place, item.ip).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Kata.inkSoft)
+                                }
+                            }
+                            HorizontalDivider(color = Kata.hair, modifier = Modifier.padding(horizontal = 16.dp))
+                        }
                     }
-                    if (ending == item.id) LoadingIndicator(Modifier.size(32.dp)) else IconButton(onClick = {
-                        ending = item.id
-                        scope.launch {
-                            try {
-                                session.call("/api/v1/me/sessions/${item.id}", HttpMethod.Delete)
-                                list = list?.copy(sessions = list!!.sessions.filter { it.id != item.id })
-                            } catch (p: KimonoProblem) { problem = p.message }
-                            ending = null
-                        }
-                    }) { Icon(kimonoIcon("close"), "Sign out ${item.browser}", tint = Kata.inkSoft) }
                 }
-                HorizontalDivider(color = Kata.hair, modifier = Modifier.padding(horizontal = 16.dp))
-            }
-            item {
-                Box(Modifier.padding(16.dp)) {
-                    Seal("Sign out everywhere", tone = SealTone.Danger, modifier = Modifier.fillMaxWidth(), onClick = {
-                        scope.launch {
-                            try { session.call("/api/v1/me/sessions", HttpMethod.Delete); session.signOut() } catch (p: KimonoProblem) { problem = p.message }
-                        }
-                    })
+                item {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Swipe a device left to sign it out.", style = MaterialTheme.typography.bodySmall, color = Kata.inkSoft)
+                        /* Signing everything out can't be undone, so it is held, not tapped. */
+                        HoldSeal("Hold to sign out everywhere", onConfirm = {
+                            scope.launch {
+                                try { session.call("/api/v1/me/sessions", HttpMethod.Delete); session.signOut() } catch (p: KimonoProblem) { problem = p.message }
+                            }
+                        })
+                    }
                 }
             }
         }

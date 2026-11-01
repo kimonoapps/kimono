@@ -27,7 +27,7 @@ This builds a release APK on this machine (no cloud build service) into
 `dist/kimono-<version>.apk`, signed with the Kimono key in
 `~/.config/kimono/android-release.jks`. Every APK has to carry that same key,
 or Android won't install it over the copy already on a phone, so back the key
-and its password file up somewhere safe. It needs JDK 17 and the Android SDK;
+and its password file up somewhere safe. It needs JDK 21 and the Android SDK;
 `scripts/build-apk.sh` says where it looks for them.
 
 Icons are drawn from Kimono's branch mark by `pnpm --filter @kimono/mobile icons`.

@@ -20,5 +20,5 @@ Kimono key in `~/.config/kimono/` (see `apps/mobile/README.md`). It installs
 beside the React Native app (`app.kimono.compose`); with both installed,
 Android asks which one should finish a sign-in.
 
-Needs JDK 17 and the Android SDK with platform 37 (`sdk.dir` in
+Needs JDK 21 and the Android SDK with platform 37 (`sdk.dir` in
 `local.properties`).

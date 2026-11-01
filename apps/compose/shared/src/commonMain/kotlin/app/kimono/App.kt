@@ -51,6 +51,7 @@ import app.kimono.data.SessionState
 import app.kimono.data.SharedItem
 import app.kimono.screens.DetailsScreen
 import app.kimono.screens.DevicesScreen
+import app.kimono.screens.PasswordScreen
 import app.kimono.screens.SignInScreen
 import app.kimono.screens.YouScreen
 import app.kimono.screens.usePicture
@@ -108,6 +109,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?) 
             composable("you") { YouScreen(session, platform, me) { nav.navigate(it) } }
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
+            composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
         }
     }
 }
