@@ -319,6 +319,7 @@ func (m *Manager) extractAppliance() error {
 		"infra/compose/server/Caddyfile":                                   "Caddyfile",
 		"infra/compose/server/authentik/blueprints/kimono-headscale.yaml":  "authentik/blueprints/kimono-headscale.yaml",
 		"infra/compose/server/authentik/blueprints/kimono-enrollment.yaml": "authentik/blueprints/kimono-enrollment.yaml",
+		"infra/compose/server/authentik/blueprints/kimono-app.yaml":        "authentik/blueprints/kimono-app.yaml",
 		"infra/compose/server/authentik/blueprints/kimono.css":             "authentik/blueprints/kimono.css",
 		"infra/compose/server/authentik/certs/.gitkeep":                    "authentik/certs/.gitkeep",
 		"infra/compose/server/authentik/custom-templates/.gitkeep":         "authentik/custom-templates/.gitkeep",
@@ -327,7 +328,7 @@ func (m *Manager) extractAppliance() error {
 		"infra/compose/server/headscale/policy.hujson":                     "headscale/policy.hujson",
 		"infra/compose/server/scripts/render-headscale-config.sh":          "scripts/render-headscale-config.sh",
 		"apps/portal/public/kimono-sakura-mark.svg":                        "assets/kimono-sakura-mark.svg",
-		"scripts/install.sh":                                               "assets/install.sh",
+		"scripts/install.sh": "assets/install.sh",
 	}
 	// Every brand asset ships, so adding a logo variant needs no CLI change.
 	brand, err := fs.ReadDir(kimono.ApplianceFiles, "apps/portal/public/brand")
@@ -428,12 +429,24 @@ func generatedByKimono(path string) bool {
 var checkedInBlueprints = []string{
 	"kimono/kimono-headscale.yaml",
 	"kimono/kimono-enrollment.yaml",
+	"kimono/kimono-app.yaml",
+}
+
+// optionalBlueprints may fail without failing an update: the phone app's
+// sign-in is new, and a problem with it must never stop a server updating or
+// the Portal's own sign-in from working. It is applied again next update.
+var optionalBlueprints = map[string]bool{
+	"kimono/kimono-app.yaml": true,
 }
 
 func (m *Manager) bootstrapBlueprints() error {
 	for _, blueprint := range checkedInBlueprints {
 		command := reconcile.BlueprintApplyCommand(blueprint)
 		if err := m.Runner.Run("docker", "exec", "kimono-server-authentik-worker-1", "ak", "shell", "-c", command); err != nil {
+			if optionalBlueprints[blueprint] {
+				_, _ = fmt.Fprintf(m.Runner.Stdout, "warning: Kimono Authentik blueprint %s did not apply: %s\n", blueprint, err)
+				continue
+			}
 			return fmt.Errorf("create and apply Kimono Authentik blueprint %s: %w", blueprint, err)
 		}
 	}
