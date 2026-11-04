@@ -144,6 +144,40 @@ fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Uni
                         }
                     }
                 }
+                if (owner) {
+                    item { GroupLabel("Share by link") }
+                    item {
+                        val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+                        val current = if (here.link == null) null else here.linkAccess ?: "view"
+                        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            val options = listOf(null to "Off", "view" to "Can view", "add" to "Can add")
+                            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                                options.forEachIndexed { index, (access, label) ->
+                                    SegmentedButton(
+                                        selected = current == access,
+                                        onClick = {
+                                            if (current != access) change(when (access) { null -> "The link no longer works."; "view" -> "Anyone with the link can see this space."; else -> "Anyone with the link can see and add files." }) {
+                                                model.drive.setSpaceLink(spaceId, access)
+                                            }
+                                        },
+                                        shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                                    ) { Text(label) }
+                                }
+                            }
+                            here.link?.let { token ->
+                                val url = model.drive.spaceLinkUrl(token)
+                                Text(url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Seal("Share", compact = true, onClick = { model.platform.share(url) })
+                                    Seal("Copy", tone = SealTone.Quiet, compact = true, onClick = {
+                                        clipboard.setText(androidx.compose.ui.text.AnnotatedString(url))
+                                        scope.launch { snackbar.showSnackbar("Link copied.") }
+                                    })
+                                }
+                            }
+                        }
+                    }
+                }
                 item { GroupLabel("People") }
                 itemsIndexed(here.memberList, key = { _, m -> m.username }) { index, member ->
                     val person = people[member.username.lowercase()]

@@ -98,7 +98,7 @@ import kotlinx.coroutines.launch
  * between folders (and, where the OS allows, after the app closes), and an
  * open folder reloads when one lands.
  */
-class DriveModel(val drive: Drive, platform: Platform) {
+class DriveModel(val drive: Drive, val platform: Platform) {
     private val scope = CoroutineScope(SupervisorJob())
     val uploads: Uploads = platform.uploads ?: InAppUploads(drive)
     /** Goes up whenever an upload finishes, so open folders reload. */

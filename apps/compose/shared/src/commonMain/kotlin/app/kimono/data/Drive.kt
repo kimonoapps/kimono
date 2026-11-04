@@ -40,7 +40,7 @@ data class SpaceMember(val username: String, val role: String)
 
 /** A space with who is in it. */
 @Serializable
-data class SpaceDetail(val id: String, val name: String, val crest: String, val rootId: String, val role: String, val memberList: List<SpaceMember>, val color: String = "plum", val mark: String? = null)
+data class SpaceDetail(val id: String, val name: String, val crest: String, val rootId: String, val role: String, val memberList: List<SpaceMember>, val color: String = "plum", val mark: String? = null, val link: String? = null, val linkAccess: String? = null)
 
 @Serializable
 data class CrestChoice(val id: String, val jp: String, val name: String)
@@ -219,6 +219,17 @@ class Drive(private val session: Session) {
         }
         return if (json.parseToJsonElement(answer).jsonObject.containsKey("left")) null else json.decodeFromString<SpaceDetail>(answer)
     }
+
+    /** Opens the space to anyone with its link ("view" or "add"), or closes the link (null). Owners only. */
+    suspend fun setSpaceLink(spaceId: String, access: String?): SpaceDetail =
+        if (access == null) { session.call("/api/v1/drive/spaces/$spaceId/link", HttpMethod.Delete); space(spaceId) }
+        else json.decodeFromString(session.call("/api/v1/drive/spaces/$spaceId/link", HttpMethod.Put) {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("access", access) }.toString())
+        })
+
+    /** Where a space's link opens: the Kimono's own guest page. */
+    fun spaceLinkUrl(token: String): String = "${session.server?.trimEnd('/') ?: ""}/s/$token"
 
     /** Everyone with a Kimono account. */
     suspend fun people(): List<Person> = json.decodeFromString<PeopleList>(session.call("/api/v1/drive/people")).people
