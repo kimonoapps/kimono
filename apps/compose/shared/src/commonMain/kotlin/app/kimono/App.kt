@@ -40,6 +40,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.savedstate.read
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -130,7 +137,16 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             }
         },
     ) { padding ->
-        NavHost(nav, startDestination = "home", modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp)) {
+        /* Tabs swap in place; a screen opened from one slides over it and back, as on iOS. The default crossfade left both showing at once. */
+        val tabs = setOf("home", "drive", "you")
+        fun between(from: String?, to: String?) = from in tabs && to in tabs
+        NavHost(
+            nav, startDestination = "home", modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp),
+            enterTransition = { if (between(initialState.destination.route, targetState.destination.route)) fadeIn(tween(120)) else slideInHorizontally(tween(320)) { it } },
+            exitTransition = { if (between(initialState.destination.route, targetState.destination.route)) ExitTransition.None else slideOutHorizontally(tween(320)) { -it / 4 } + fadeOut(tween(320), .6f) },
+            popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) EnterTransition.None else slideInHorizontally(tween(320)) { -it / 4 } },
+            popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) fadeOut(tween(120)) else slideOutHorizontally(tween(320)) { it } },
+        ) {
             composable("home") { HomeScreen(me, model.drive, platform, update, onLater) { goTab("drive") } }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }
             composable("space/{id}") { backStack ->
