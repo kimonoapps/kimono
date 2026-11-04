@@ -91,9 +91,11 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
     func launched() {
         guard readKept(key: "kimono.refresh") != nil else { return }
         #if DEBUG
-        /* A test build re-adds Kimono so the testing switch takes effect on a domain added before it. */
+        /* A test build re-adds Kimono so the testing switch takes effect on a domain added before it
+           (or, launched with -freshFilesDomain, so the Files app picks up a new icon). */
         NSFileProviderManager.getDomainsWithCompletionHandler { domains, _ in
-            if domains.contains(where: { $0.identifier == Host.domain.identifier && !$0.userEnabled }) {
+            let fresh = ProcessInfo.processInfo.arguments.contains("-freshFilesDomain")
+            if fresh || domains.contains(where: { $0.identifier == Host.domain.identifier && !$0.userEnabled }) {
                 NSFileProviderManager.remove(Host.domain) { _ in Host.showInFiles(true) }
             } else {
                 Host.showInFiles(true)
