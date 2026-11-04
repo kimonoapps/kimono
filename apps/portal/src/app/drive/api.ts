@@ -4,10 +4,12 @@
  */
 
 export type Role = "owner" | "editor" | "viewer";
+export type LinkAccess = "view" | "add";
 
 export type Space = {
   id: string; name: string; crest: string; color: string; mark?: string; rootId: string;
   role: Role; members: number; createdBy: string;
+  link?: string | null; linkAccess?: LinkAccess | null;
 };
 export type Member = { username: string; role: Role };
 export type SpaceDetail = Space & { memberList: Member[] };
@@ -52,6 +54,7 @@ export const drive = {
   space: (id: string) => call<SpaceDetail>(`/spaces/${id}`),
   createSpace: (name: string, crest: string, color: string, members: Member[]) => call<Space>("/spaces", json("POST", { name, crest, color, members })),
   editSpace: (id: string, change: { name?: string; crest?: string; color?: string }) => call<SpaceDetail>(`/spaces/${id}`, json("PATCH", change)),
+  spaceLink: (id: string, access: LinkAccess | null) => call<SpaceDetail>(`/spaces/${id}/link`, access ? json("PUT", { access }) : { method: "DELETE" }),
   setMember: (id: string, username: string, role: Role | null) => call<SpaceDetail | { left: true }>(`/spaces/${id}/members`, json("PUT", { username, role })),
   folder: (id: string) => call<Folder>(`/nodes/${id}`),
   createFolder: (parent: string, name: string) => call<DriveNode>(`/nodes/${parent}/folders`, json("POST", { name })),
@@ -68,6 +71,29 @@ export const drive = {
   crests: () => call<Crests>("/crests"),
 };
 
+/* ── a space opened by its link: no sign-in, and nothing about who is in it ── */
+
+type SharedNode = { id: string; kind: "folder" | "file"; name: string; size: number; mime: string | null; updatedAt: number };
+export type SharedSpace = { id: string; name: string; crest: string; color: string; rootId: string; access: LinkAccess };
+
+const asNode = (spaceId: string, parentId: string | null) => (n: SharedNode): DriveNode => ({
+  ...n, spaceId, parentId, createdBy: "", trashedAt: null, link: null, guest: null,
+});
+
+export const shared = {
+  folder: (token: string, id?: string) => call<{ space: SharedSpace; folder: SharedNode; path: SharedNode[]; children: SharedNode[] }>(
+    `/shared/${encodeURIComponent(token)}${id ? `?folder=${encodeURIComponent(id)}` : ""}`,
+  ).then((r): Folder => {
+    const path = r.path.map((n, i) => asNode(r.space.id, r.path[i - 1]?.id ?? null)(n));
+    const folder = asNode(r.space.id, path.at(-1)?.id ?? null)(r.folder);
+    return { folder, path, children: r.children.map(asNode(r.space.id, folder.id)) };
+  }),
+  fileUrl: (token: string, id: string) => `/api/v1/drive/shared/${encodeURIComponent(token)}/files/${id}`,
+};
+
+/** A space link's address. */
+export const spaceLinkUrl = (token: string) => `${window.location.origin}/s/${token}`;
+
 export const contentUrl = (node: DriveNode) => `/api/v1/drive/nodes/${node.id}/content`;
 
 /** A public link's address, from the token the API lists with a file. */
@@ -81,11 +107,15 @@ const b64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().enco
 export type UploadProgress = (sent: number) => void;
 
 /** Uploads [file] into [folderId]; returns the new file's id. */
-export async function upload(file: File, folderId: string, progress: UploadProgress, signal: AbortSignal): Promise<string> {
+export async function upload(file: File, folderId: string, progress: UploadProgress, signal: AbortSignal, via?: { link: string; name?: string }): Promise<string> {
   const tus = { "Tus-Resumable": "1.0.0" };
+  /* A guest adds through the space's link instead of a session, and may say who they are. */
+  const meta = [`filename ${b64(file.name)}`, `folder ${b64(folderId)}`];
+  if (via) meta.push(`link ${b64(via.link)}`);
+  if (via?.name) meta.push(`name ${b64(via.name)}`);
   const started = await fetch("/api/v1/drive/uploads", {
     method: "POST", signal, credentials: "same-origin",
-    headers: { ...tus, "Upload-Length": String(file.size), "Upload-Metadata": `filename ${b64(file.name)},folder ${b64(folderId)}` },
+    headers: { ...tus, "Upload-Length": String(file.size), "Upload-Metadata": meta.join(",") },
   }).catch(() => { throw new DriveProblem("Kimono isn't answering. Check your connection and try again."); });
   if (started.status !== 201) throw new DriveProblem(await problemOf(started, "That file couldn't be uploaded."), started.status);
   const location = started.headers.get("Location");

@@ -1,27 +1,102 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { Seal } from "@kimono/ui";
+import { cx, Seal } from "@kimono/ui";
 import {
-  contentUrl, drive, DriveProblem, extension, kindOf, linkUrl, readableSize, upload, when,
-  type Crests, type DriveNode, type Folder, type Person, type Role, type Space, type SpaceDetail,
+  contentUrl, drive, DriveProblem, extension, kindOf, linkUrl, readableSize, shared, spaceLinkUrl, upload, when,
+  type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
 } from "./api";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 
 /*
  * 帳 Kimono Drive on the web, layout A (Ledger). One page: the sidebar of
  * spaces, the sheet for where you are, and the tray of uploads, which keeps
  * going as you move between folders. Where you are lives in the address
  * (?space=…&folder=…), so it can be shared and survives a reload.
+ *
+ * The same sheet opens a space for someone holding its link (/s/<token>):
+ * no sidebar, no people, and only what the link allows.
  */
 
 type Me = { username: string; name: string };
 type Upload = { id: string; name: string; size: number; sent: number; folderId: string; spaceName: string; done?: string; failed?: string; controller: AbortController };
 type Toast = { text: string; undo?: () => Promise<void> };
+type Guest = { token: string; access: LinkAccess };
 
 const roleWords: Record<Role, string> = { owner: "you own it", editor: "you can edit", viewer: "you can view" };
 const roleNames: Record<Role, string> = { owner: "Owner", editor: "Editor", viewer: "Viewer" };
+const problemText = (error: unknown, fallback = "That didn't work.") => error instanceof Error ? error.message : fallback;
+const labelFor = (nodes: DriveNode[]) => nodes.length === 1 ? `“${nodes[0].name}”` : `${nodes.length} items`;
+
+/** Where you are is this page's own state, kept in the address: the next entry in history, no crossing. */
+function goTo(base: string, to: Record<string, string | null>) {
+  const next = new URLSearchParams();
+  for (const [key, value] of Object.entries(to)) if (value) next.set(key, value);
+  window.history.pushState(null, "", `${base}${next.size ? `?${next}` : ""}`);
+}
+
+/* ── uploads, which outlive the folder they started in ── */
+
+function useUploads() {
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [landed, setLanded] = useState(0);
+  const start = useCallback((files: File[], folderId: string, spaceName: string, via?: { link: string; name?: string }) => {
+    const added = files.map((file): [File, Upload] => [file, { id: crypto.randomUUID(), name: file.name, size: file.size, sent: 0, folderId, spaceName, controller: new AbortController() }]);
+    setUploads((list) => [...list, ...added.map(([, item]) => item)]);
+    for (const [file, item] of added) {
+      const update = (change: Partial<Upload>) => setUploads((list) => list.map((u) => u.id === item.id ? { ...u, ...change } : u));
+      upload(file, folderId, (sent) => update({ sent }), item.controller.signal, via)
+        .then((fileId) => { update({ sent: item.size, done: fileId }); setLanded((n) => n + 1); })
+        .catch((error) => { if (!item.controller.signal.aborted) update({ failed: problemText(error, "That file couldn't be uploaded.") }); });
+    }
+  }, []);
+  const going = uploads.some((u) => !u.done && !u.failed);
+  /* Closing the tab mid-upload loses it; the browser asks first. */
+  useEffect(() => {
+    if (!going) return;
+    const hold = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", hold);
+    return () => window.removeEventListener("beforeunload", hold);
+  }, [going]);
+  return {
+    uploads, landed, start,
+    clear: () => setUploads((list) => list.filter((u) => !u.done && !u.failed)),
+    cancel: (id: string) => { uploads.find((u) => u.id === id)?.controller.abort(); setUploads((list) => list.filter((u) => u.id !== id)); },
+  };
+}
+
+function useToast() {
+  const [toast, setToast] = useState<Toast | null>(null);
+  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 8000); return () => clearTimeout(timer); }, [toast]);
+  return [toast, setToast] as const;
+}
+
+function ToastView({ toast, onDone }: { toast: Toast | null; onDone: () => void }) {
+  if (!toast) return null;
+  return <div className="dv-toast" role="status">
+    <span>{toast.text}</span>
+    {toast.undo ? <Seal type="button" tone="quiet" compact onClick={async () => { const undo = toast.undo!; onDone(); await undo(); }}>Undo</Seal> : null}
+  </div>;
+}
+
+/* A guest's name for what they add, remembered on this device. */
+const nameKey = "kimono-drive-guest-name";
+const nameListeners = new Set<() => void>();
+const guestName = {
+  subscribe(listener: () => void) {
+    nameListeners.add(listener);
+    window.addEventListener("storage", listener);
+    return () => { nameListeners.delete(listener); window.removeEventListener("storage", listener); };
+  },
+  get() { try { return window.localStorage.getItem(nameKey) ?? ""; } catch { return ""; } },
+  set(value: string) {
+    try { if (value) window.localStorage.setItem(nameKey, value); else window.localStorage.removeItem(nameKey); } catch { /* private window: it just isn't remembered */ }
+    for (const listener of nameListeners) listener();
+  },
+};
+
+/* ── Drive, signed in ── */
 
 export function DriveApp({ me }: { me: Me }) {
   const params = useSearchParams();
@@ -32,45 +107,25 @@ export function DriveApp({ me }: { me: Me }) {
   const [spaces, setSpaces] = useState<Space[] | null>(null);
   const [people, setPeople] = useState<Record<string, Person>>({});
   const [problem, setProblem] = useState<string | null>(null);
-  const [uploads, setUploads] = useState<Upload[]>([]);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const [toast, setToast] = useToast();
   const [making, setMaking] = useState(false);
-  const [landed, setLanded] = useState(0);
+  const uploads = useUploads();
 
   const loadSpaces = useCallback(() => drive.spaces().then(
     (list) => { setSpaces(list); setProblem(null); },
-    (error) => { setProblem(error instanceof Error ? error.message : "Drive isn't answering."); },
+    (error) => { setProblem(problemText(error, "Drive isn't answering.")); },
   ), []);
   useEffect(() => {
     let live = true;
-    drive.spaces().then((list) => { if (live) setSpaces(list); }, (error) => { if (live) setProblem(error instanceof Error ? error.message : "Drive isn't answering."); });
+    drive.spaces().then((list) => { if (live) setSpaces(list); }, (error) => { if (live) setProblem(problemText(error, "Drive isn't answering.")); });
     return () => { live = false; };
   }, []);
   useEffect(() => { void drive.people().then((list) => setPeople(Object.fromEntries(list.map((p) => [p.username.toLowerCase(), p])))).catch(() => {}); }, []);
-  useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 8000); return () => clearTimeout(timer); }, [toast]);
 
-  /* Where you are in Drive is this page's own state, kept in the address: no crossing, just the next entry in history. */
-  const go = useCallback((to: Record<string, string | null>) => {
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(to)) if (value) next.set(key, value);
-    window.history.pushState(null, "", `/drive${next.size ? `?${next}` : ""}`);
-  }, []);
-
+  const go = useCallback((to: Record<string, string | null>) => goTo("/drive", to), []);
   const current = spaces?.find((s) => s.id === spaceParam) ?? (view ? null : spaces?.[0] ?? null);
-
-  const startUploads = useCallback((files: File[], folderId: string, spaceName: string) => {
-    const added = files.map((file): [File, Upload] => [file, { id: crypto.randomUUID(), name: file.name, size: file.size, sent: 0, folderId, spaceName, controller: new AbortController() }]);
-    setUploads((list) => [...list, ...added.map(([, item]) => item)]);
-    for (const [file, item] of added) {
-      const update = (change: Partial<Upload>) => setUploads((list) => list.map((u) => u.id === item.id ? { ...u, ...change } : u));
-      upload(file, folderId, (sent) => update({ sent }), item.controller.signal)
-        .then((fileId) => { update({ sent: item.size, done: fileId }); setLanded((n) => n + 1); })
-        .catch((error) => { if (!item.controller.signal.aborted) update({ failed: error instanceof Error ? error.message : "That file couldn't be uploaded." }); });
-    }
-  }, []);
-
   const yours = spaces?.filter((s) => s.role === "owner") ?? [];
-  const shared = spaces?.filter((s) => s.role !== "owner") ?? [];
+  const sharedWithYou = spaces?.filter((s) => s.role !== "owner") ?? [];
 
   return <div className="dv">
     <div className="dv-body">
@@ -81,11 +136,11 @@ export function DriveApp({ me }: { me: Me }) {
         <div>
           <div className="dv-side-label">Your spaces <button type="button" aria-label="New space" onClick={() => setMaking(true)}><Icon name="plus" /></button></div>
           <div className="dv-nav">{yours.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
-          {spaces && !yours.length ? <p className="dv-quiet-text" style={{ padding: "4px 12px" }}>None yet.</p> : null}
+          {spaces && !yours.length ? <p className="dv-quiet-text dv-side-none">None yet.</p> : null}
         </div>
-        {shared.length ? <div>
+        {sharedWithYou.length ? <div>
           <div className="dv-side-label">Shared with you</div>
-          <div className="dv-nav">{shared.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
+          <div className="dv-nav">{sharedWithYou.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
         </div> : null}
         <nav className="dv-nav">
           <button type="button" aria-current={view === "trash" ? "page" : undefined} onClick={() => go({ view: "trash" })}><Icon name="trash" />Trash</button>
@@ -103,30 +158,51 @@ export function DriveApp({ me }: { me: Me }) {
             folderId={folderParam || current.rootId}
             openFile={params.get("file")}
             people={people}
-            landed={landed}
+            landed={uploads.landed}
             onGo={(folder, file) => go({ space: current.id, folder: folder === current.rootId ? null : folder, file: file ?? null })}
             onSettings={() => go({ space: current.id, view: "settings" })}
-            onUpload={startUploads}
+            onUpload={(files, folderId) => uploads.start(files, folderId, current.name)}
             onToast={setToast}
           />
         : <section className="dv-sheet"><div className="dv-empty">
-            <h3>Spaces hold your files</h3>
-            <p>Make one for yourself, or for the people you share things with. Everyone in a space can open everything in it.</p>
-            <div className="k-seal-group"><Seal type="button" onClick={() => setMaking(true)}>New space</Seal></div>
+            <h3>No spaces yet</h3>
+            <div className="k-seal-group"><Seal type="button" onClick={() => setMaking(true)}><Icon name="plus" />New space</Seal></div>
           </div></section>}
     </div>
 
-    {uploads.length ? <UploadTray uploads={uploads} onClear={() => setUploads((list) => list.filter((u) => !u.done && !u.failed))} onCancel={(id) => setUploads((list) => {
-      list.find((u) => u.id === id)?.controller.abort();
-      return list.filter((u) => u.id !== id);
-    })} onToast={setToast} /> : null}
-
-    {toast ? <div className="dv-toast" role="status" style={{ position: "fixed" }}>
-      {toast.text}
-      {toast.undo ? <Seal type="button" tone="quiet" compact onClick={async () => { const undo = toast.undo!; setToast(null); await undo(); }}>Undo</Seal> : null}
-    </div> : null}
-
+    {uploads.uploads.length ? <UploadTray uploads={uploads.uploads} onClear={uploads.clear} onCancel={uploads.cancel} onToast={setToast} /> : null}
+    <ToastView toast={toast} onDone={() => setToast(null)} />
     {making ? <NewSpaceDialog onClose={() => setMaking(false)} onMade={async (space) => { setMaking(false); await loadSpaces(); go({ space: space.id }); }} /> : null}
+  </div>;
+}
+
+/* ── Drive, through a space's link ── */
+
+export function GuestDrive({ token, space, mark }: { token: string; space: SharedSpace; mark: string }) {
+  const params = useSearchParams();
+  const [toast, setToast] = useToast();
+  const uploads = useUploads();
+  const asSpace = useMemo((): Space => ({
+    id: space.id, name: space.name, crest: space.crest, color: space.color, mark, rootId: space.rootId,
+    role: "viewer", members: 0, createdBy: "",
+  }), [space, mark]);
+  const guest = useMemo((): Guest => ({ token, access: space.access }), [token, space.access]);
+  return <div className="dv">
+    <div className="dv-body solo">
+      <SpaceView
+        space={asSpace}
+        guest={guest}
+        folderId={params.get("folder") || space.rootId}
+        openFile={params.get("file")}
+        people={{}}
+        landed={uploads.landed}
+        onGo={(folder, file) => goTo(`/s/${token}`, { folder: folder === space.rootId ? null : folder, file: file ?? null })}
+        onUpload={(files, folderId) => uploads.start(files, folderId, space.name, { link: token, name: guestName.get().trim() || undefined })}
+        onToast={setToast}
+      />
+    </div>
+    {uploads.uploads.length ? <UploadTray uploads={uploads.uploads} guest onClear={uploads.clear} onCancel={uploads.cancel} onToast={setToast} /> : null}
+    <ToastView toast={toast} onDone={() => setToast(null)} />
   </div>;
 }
 
@@ -150,29 +226,58 @@ function Portrait({ person, username, size = 28 }: { person?: Person; username: 
   const style = { "--s": `${size}px` } as React.CSSProperties;
   const name = person?.name || username;
   // eslint-disable-next-line @next/next/no-img-element -- a portrait from this Portal, already sized
-  if (person?.picture) return <span className="pfp" style={style} role="img" aria-label={name}><img src={person.picture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></span>;
+  if (person?.picture) return <span className="pfp" style={style} role="img" aria-label={name}><img src={person.picture} alt="" /></span>;
   return <span className="pfp initials" style={style} role="img" aria-label={name}>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
 /* ── a space ── */
 
 type Sort = "name" | "modified" | "size";
+type MenuAt = { id: string; top: number; bottom: number; left: number; right: number; align: "start" | "end"; from: HTMLElement | null };
 
-function SpaceView({ space, folderId, openFile, people, landed, onGo, onSettings, onUpload, onToast }: {
-  space: Space; folderId: string; openFile: string | null; people: Record<string, Person>; landed: number;
-  onGo: (folder: string, file?: string | null) => void; onSettings: () => void;
-  onUpload: (files: File[], folderId: string, spaceName: string) => void; onToast: (toast: Toast) => void;
+/** Every file's bytes, saved rather than shown. */
+function saveFiles(nodes: DriveNode[], url: (node: DriveNode) => string) {
+  for (const node of nodes) {
+    if (node.kind !== "file") continue;
+    const link = document.createElement("a");
+    link.href = url(node);
+    link.download = node.name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+  }
+}
+
+/** Reads a dropped folder's entries, all of them (browsers hand them over a hundred at a time). */
+async function entriesOf(directory: FileSystemDirectoryEntry): Promise<FileSystemEntry[]> {
+  const reader = directory.createReader();
+  const all: FileSystemEntry[] = [];
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
+    if (!batch.length) return all;
+    all.push(...batch);
+  }
+}
+
+function SpaceView({ space, guest = null, folderId, openFile, people, landed, onGo, onSettings, onUpload, onToast }: {
+  space: Space; guest?: Guest | null; folderId: string; openFile: string | null; people: Record<string, Person>; landed: number;
+  onGo: (folder: string, file?: string | null) => void; onSettings?: () => void;
+  onUpload: (files: File[], folderId: string) => void; onToast: (toast: Toast) => void;
 }) {
+  const token = guest?.token ?? null;
+  const canEdit = !guest && space.role !== "viewer";
+  const canAdd = guest ? guest.access === "add" : canEdit;
+
   const [folder, setFolder] = useState<Folder | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   /* A selection belongs to the folder it was made in. */
   const [selection, setSelection] = useState<{ folder: string; ids: Set<string> }>({ folder: folderId, ids: new Set() });
-  const selected = selection.folder === folderId ? selection.ids : new Set<string>();
+  const selected = useMemo(() => selection.folder === folderId ? selection.ids : new Set<string>(), [selection, folderId]);
   const setSelected = useCallback((next: Set<string> | ((current: Set<string>) => Set<string>)) => setSelection((now) => {
     const base = now.folder === folderId ? now.ids : new Set<string>();
     return { folder: folderId, ids: typeof next === "function" ? next(base) : next };
   }), [folderId]);
-  const [menu, setMenu] = useState<string | null>(null);
+  const [menu, setMenu] = useState<MenuAt | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [moving, setMoving] = useState<DriveNode[] | null>(null);
   const [naming, setNaming] = useState(false);
@@ -181,35 +286,36 @@ function SpaceView({ space, folderId, openFile, people, landed, onGo, onSettings
   const [results, setFound] = useState<DriveNode[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const [detail, setDetail] = useState<SpaceDetail | null>(null);
+  const name = useSyncExternalStore(guestName.subscribe, guestName.get, () => "");
   const picker = useRef<HTMLInputElement>(null);
-  const canEdit = space.role !== "viewer";
+  const searchField = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const pivot = useRef<string | null>(null);
+  const depth = useRef(0);
 
-  const load = useCallback(() => drive.folder(folderId).then(
+  const fetchFolder = useCallback((id: string) => token ? shared.folder(token, id) : drive.folder(id), [token]);
+  const fileUrl = useCallback((node: DriveNode) => token ? shared.fileUrl(token, node.id) : contentUrl(node), [token]);
+  const load = useCallback(() => fetchFolder(folderId).then(
     (loaded) => { setFolder(loaded); setProblem(null); },
-    (error) => { setProblem(error instanceof Error ? error.message : "That folder couldn't be opened."); },
-  ), [folderId]);
+    (error) => { setProblem(problemText(error, "That folder couldn't be opened.")); },
+  ), [fetchFolder, folderId]);
   useEffect(() => {
     let live = true;
-    drive.folder(folderId).then(
+    fetchFolder(folderId).then(
       (loaded) => { if (live) { setFolder(loaded); setProblem(null); } },
-      (error) => { if (live) setProblem(error instanceof Error ? error.message : "That folder couldn't be opened."); },
+      (error) => { if (live) setProblem(problemText(error, "That folder couldn't be opened.")); },
     );
     return () => { live = false; };
-  }, [folderId, landed]);
-  useEffect(() => { void drive.space(space.id).then(setDetail).catch(() => {}); }, [space.id]);
+  }, [fetchFolder, folderId, landed]);
+  useEffect(() => { if (token) return; void drive.space(space.id).then(setDetail).catch(() => {}); }, [space.id, token]);
   useEffect(() => {
-    if (!query.trim()) return;
+    if (!query.trim() || token) return;
     const timer = setTimeout(() => { void drive.search(query).then((items) => setFound(items.filter((n) => n.spaceId === space.id))).catch(() => setFound([])); }, 200);
     return () => clearTimeout(timer);
-  }, [query, space.id]);
-  useEffect(() => {
-    const close = () => setMenu(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, []);
+  }, [query, space.id, token]);
 
   const act = useCallback(async (work: () => Promise<unknown>, done?: Toast) => {
-    try { await work(); await load(); if (done) onToast(done); } catch (error) { onToast({ text: error instanceof Error ? error.message : "That didn't work." }); }
+    try { await work(); await load(); if (done) onToast(done); } catch (error) { onToast({ text: problemText(error) }); await load(); }
   }, [load, onToast]);
 
   /* Search results stand in for the folder only while there's something to search for. */
@@ -220,54 +326,172 @@ function SpaceView({ space, folderId, openFile, people, landed, onGo, onSettings
       : sort === "modified" ? b.updatedAt - a.updatedAt : b.size - a.size);
     return found ? sorted : [...sorted.filter((n) => n.kind === "folder"), ...sorted.filter((n) => n.kind === "file")];
   }, [folder, found, sort]);
-
-  const trash = (nodes: DriveNode[]) => act(async () => { for (const node of nodes) await drive.trash(node.id); setSelected(new Set()); }, {
-    text: `${nodes.length === 1 ? `“${nodes[0].name}”` : `${nodes.length} items`} moved to Trash. ${nodes.length === 1 ? "It stays" : "They stay"} there for 30 days.`,
-    undo: async () => { for (const node of nodes) await drive.restore(node.id).catch(() => {}); await load(); },
-  });
-  const copyLink = (node: DriveNode) => act(async () => {
-    const url = await drive.link(node.id);
-    await navigator.clipboard.writeText(url).catch(() => {});
-  }, { text: "Link copied. Anyone with it can open the file." });
-
   const chosen = rows.filter((n) => selected.has(n.id));
   const opened = openFile ? rows.find((n) => n.id === openFile) ?? null : null;
   const members = detail?.memberList ?? [];
+  const menuNode = menu ? rows.find((n) => n.id === menu.id) ?? null : null;
+  const here = folder?.folder.id ?? folderId;
+
+  /* ── going places ── */
+  const openFolder = (id: string) => { setMenu(null); setQuery(""); onGo(id); };
+  const openNode = (node: DriveNode) => {
+    setMenu(null);
+    if (node.kind === "folder") return openFolder(node.id);
+    if (found) setQuery("");
+    onGo(node.parentId ?? here, !found && opened?.id === node.id ? null : node.id);
+  };
+
+  /* ── choosing ── */
+  const toggle = (id: string) => { pivot.current = id; setSelected((s) => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; }); };
+  const selectRange = (to: string) => {
+    const ids = rows.map((n) => n.id);
+    const from = ids.indexOf(pivot.current ?? to), end = ids.indexOf(to);
+    if (from < 0 || end < 0) return toggle(to);
+    const [low, high] = from <= end ? [from, end] : [end, from];
+    setSelected((s) => new Set([...s, ...ids.slice(low, high + 1)]));
+  };
+  const focusRow = (id: string) => list.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(id)}"] .nm button`)?.focus();
+
+  /* ── doing things ── */
+  const trash = (nodes: DriveNode[]) => act(async () => { for (const node of nodes) await drive.trash(node.id); setSelected(new Set()); }, {
+    text: `${labelFor(nodes)} moved to Trash.`,
+    undo: async () => { for (const node of nodes) await drive.restore(node.id).catch(() => {}); await load(); },
+  });
+  const share = async (node: DriveNode) => {
+    try {
+      const url = linkUrl(node) ?? await drive.link(node.id);
+      /* Copying can be refused once the link took a moment to make; the drawer shows it to copy by hand. */
+      const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
+      if (!node.link) await load();
+      if (copied) onToast({ text: "Public link copied." });
+      else { onToast({ text: "Public link made." }); onGo(node.parentId ?? here, node.id); }
+    } catch (error) { onToast({ text: problemText(error) }); }
+  };
+  const unlink = (node: DriveNode) => act(() => drive.unlink(node.id), { text: "Public link turned off." });
+  const save = (nodes: DriveNode[]) => saveFiles(nodes, (node) => token ? fileUrl(node) : `${fileUrl(node)}?download=1`);
+  /* Acting on one of several chosen things acts on all of them. */
+  const group = (node: DriveNode) => selected.has(node.id) && chosen.length > 1 ? chosen : [node];
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const openMenu = (node: DriveNode, from: HTMLElement) => {
+    const rect = from.getBoundingClientRect();
+    setMenu(menu?.id === node.id ? null : { id: node.id, top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, align: "end", from });
+  };
+
+  /* ── dropping files, and folders of them ── */
+  const folderNamed = async (parentId: string, folderName: string) => {
+    try { return (await drive.createFolder(parentId, folderName)).id; } catch (error) {
+      if (!(error instanceof DriveProblem) || error.status !== 409) throw error;
+      const there = (await drive.folder(parentId)).children.find((n) => n.kind === "folder" && n.name.toLowerCase() === folderName.toLowerCase());
+      if (!there) throw error;
+      return there.id;
+    }
+  };
+  const addTree = async (directory: FileSystemDirectoryEntry, parentId: string) => {
+    const id = await folderNamed(parentId, directory.name);
+    const entries = await entriesOf(directory);
+    const files = await Promise.all(entries.filter((e): e is FileSystemFileEntry => e.isFile).map((e) => new Promise<File>((resolve, reject) => e.file(resolve, reject))));
+    if (files.length) onUpload(files, id);
+    for (const sub of entries) if (sub.isDirectory) await addTree(sub as FileSystemDirectoryEntry, id);
+  };
+  const drop = (data: DataTransfer) => {
+    if (!canAdd || !folder) return;
+    /* Entries can only be read while the drop is being handled. */
+    const files: File[] = [];
+    const folders: FileSystemDirectoryEntry[] = [];
+    for (const item of Array.from(data.items)) {
+      if (item.kind !== "file") continue;
+      const entry = item.webkitGetAsEntry?.();
+      if (entry?.isDirectory) folders.push(entry as FileSystemDirectoryEntry);
+      else { const file = item.getAsFile(); if (file) files.push(file); }
+    }
+    if (files.length) onUpload(files, folder.folder.id);
+    if (!folders.length) return;
+    if (token) { onToast({ text: "Only files can be added here, not folders." }); return; }
+    void (async () => {
+      try { for (const entry of folders) await addTree(entry, folder.folder.id); await load(); } catch (error) { onToast({ text: problemText(error) }); await load(); }
+    })();
+  };
+
+  /* ── the keyboard: arrows move, space chooses, shift stretches ── */
+  const onKeys = (event: React.KeyboardEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("input, textarea, select, [role=dialog], .dv-menu")) return;
+    const mod = event.metaKey || event.ctrlKey;
+    const key = event.key;
+    const rowId = target.closest<HTMLElement>("[data-row]")?.dataset.row ?? null;
+    const index = rowId ? rows.findIndex((n) => n.id === rowId) : -1;
+    if (key === "/" && !mod && !token) { event.preventDefault(); searchField.current?.focus(); return; }
+    if (mod && key.toLowerCase() === "a" && rows.length) { event.preventDefault(); setSelected(new Set(rows.map((n) => n.id))); return; }
+    if (key === "Escape" && selected.size) { event.preventDefault(); setSelected(new Set()); return; }
+    if (!list.current?.contains(target) || !rows.length) return;
+    if (key === "ArrowDown" || key === "ArrowUp" || key === "Home" || key === "End") {
+      event.preventDefault();
+      const nextIndex = key === "Home" ? 0 : key === "End" ? rows.length - 1
+        : index < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, index + (key === "ArrowDown" ? 1 : -1)));
+      const next = rows[nextIndex];
+      if (event.shiftKey) { if (!pivot.current || !selected.size) pivot.current = rowId ?? next.id; selectRange(next.id); }
+      focusRow(next.id);
+      return;
+    }
+    if (!rowId || index < 0) return;
+    const node = rows[index];
+    if (key === " ") { event.preventDefault(); if (event.shiftKey) selectRange(rowId); else toggle(rowId); }
+    else if ((key === "Delete" || (key === "Backspace" && mod)) && canEdit) { event.preventDefault(); void trash(group(node)); }
+    else if (key === "F2" && canEdit) { event.preventDefault(); setRenaming(rowId); }
+    else if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
+      event.preventDefault();
+      const more = list.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(rowId)}"] .dv-more`);
+      if (more) openMenu(node, more);
+    }
+  };
+
+  const subtitle = (node: DriveNode) => node.kind === "folder" ? "Folder"
+    : `${extension(node.name)}${!token && node.guest ? ` · added by ${node.guest}` : ""}`;
 
   return <section className="dv-sheet"
-    onDragOver={(event) => { if (canEdit && event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } }}
-    onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false); }}
-    onDrop={(event) => {
-      event.preventDefault(); setDragging(false);
-      const files = Array.from(event.dataTransfer.files);
-      if (canEdit && files.length && folder) onUpload(files, folder.folder.id, space.name);
-    }}>
+    onKeyDown={onKeys}
+    onKeyUp={(event) => { const target = event.target as HTMLElement; if (event.key === " " && target.closest("[data-row]") && !target.closest("input")) event.preventDefault(); }}
+    onDragEnter={(event) => { if (canAdd && event.dataTransfer.types.includes("Files")) { depth.current += 1; setDragging(true); } }}
+    onDragOver={(event) => { if (canAdd && event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
+    onDragLeave={() => { if (!dragging) return; depth.current = Math.max(0, depth.current - 1); if (!depth.current) setDragging(false); }}
+    onDrop={(event) => { event.preventDefault(); depth.current = 0; setDragging(false); drop(event.dataTransfer); }}>
     <div className="dv-mast">
       <div className="dv-mast-id">
         <Mark space={space} size="lg" />
         <div>
-          <div className="dv-kicker">Space · {roleWords[space.role]}</div>
+          <div className="dv-kicker">{guest ? (canAdd ? "Shared space · you can add files" : "Shared space") : `Space · ${roleWords[space.role]}`}</div>
           <h1>{space.name}</h1>
-          <p style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {!guest ? <p className="dv-members">
             <span className="pfps">{members.slice(0, 6).map((m) => <Portrait key={m.username} person={people[m.username.toLowerCase()]} username={m.username} size={26} />)}</span>
-            <button type="button" className="dv-linkbtn" style={{ padding: 0, minHeight: 0 }} onClick={onSettings}>{space.members === 1 ? "Only you" : `${space.members} people`}</button>
-          </p>
+            <button type="button" className="dv-linkbtn" onClick={onSettings}>{space.members === 1 ? "Only you" : `${space.members} people`}</button>
+          </p> : null}
         </div>
       </div>
-      {canEdit ? <div className="k-seal-group">
-        <Seal type="button" onClick={() => picker.current?.click()}><Icon name="upload" />Upload</Seal>
-        <Seal type="button" tone="quiet" onClick={() => setNaming(true)}><Icon name="folder" />New folder</Seal>
-        <input ref={picker} type="file" multiple hidden onChange={(event) => {
+      <div className="dv-mast-acts">
+        {guest && canAdd ? <label className="k-field dv-guestname"><span>Your name</span>
+          <input value={name} maxLength={60} autoComplete="name" onChange={(e) => guestName.set(e.target.value)} />
+        </label> : null}
+        <div className="k-seal-group">
+          {canAdd ? <Seal type="button" onClick={() => picker.current?.click()}><Icon name="upload" />Upload</Seal> : null}
+          {canEdit ? <Seal type="button" tone="quiet" onClick={() => setNaming(true)}><Icon name="folder" />New folder</Seal> : null}
+          {!guest ? <Seal type="button" tone="quiet" onClick={onSettings}><Icon name="people" />People</Seal> : null}
+        </div>
+        {canAdd ? <input ref={picker} type="file" multiple hidden onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
-          if (files.length && folder) onUpload(files, folder.folder.id, space.name);
+          if (files.length && folder) onUpload(files, folder.folder.id);
           event.target.value = "";
-        }} />
-      </div> : null}
+        }} /> : null}
+      </div>
     </div>
 
     {chosen.length ? <div className="dv-selbar">
-      <div className="count"><Check on={chosen.length === rows.length ? true : "part"} onClick={() => setSelected(new Set())} />{chosen.length} selected <small>· {readableSize(chosen.reduce((sum, n) => sum + n.size, 0))}</small></div>
+      <div className="count">
+        <Check on={chosen.length === rows.length ? true : "part"} label="Clear selection" onClick={() => setSelected(new Set())} />
+        <span>{chosen.length} selected</span>
+        {chosen.some((n) => n.kind === "file") ? <small>· {readableSize(chosen.reduce((sum, n) => sum + n.size, 0))}</small> : null}
+      </div>
       <div className="acts">
+        {chosen.every((n) => n.kind === "file") ? <Seal type="button" tone="quiet" compact onClick={() => save(chosen)}><Icon name="download" />Download</Seal> : null}
         {canEdit ? <Seal type="button" tone="quiet" compact onClick={() => setMoving(chosen)}><Icon name="move" />Move to…</Seal> : null}
         {canEdit ? <Seal type="button" tone="danger" compact onClick={() => void trash(chosen)}><Icon name="trash" />Move to Trash</Seal> : null}
         <button type="button" className="dv-linkbtn" onClick={() => setSelected(new Set())}>Clear</button>
@@ -276,83 +500,110 @@ function SpaceView({ space, folderId, openFile, people, landed, onGo, onSettings
       <div className="dv-crumbs">
         {found ? <b>Found in {space.name}</b> : (folder ? [...folder.path, folder.folder] : []).map((node, index, all) => index === all.length - 1
           ? <b key={node.id}>{index === 0 ? space.name : node.name}</b>
-          : <span key={node.id} style={{ display: "contents" }}><button type="button" onClick={() => onGo(node.id)}>{index === 0 ? space.name : node.name}</button><span className="sep">/</span></span>)}
+          : <Fragment key={node.id}><button type="button" onClick={() => openFolder(node.id)}>{index === 0 ? space.name : node.name}</button><span className="sep">/</span></Fragment>)}
       </div>
       <div className="dv-tools">
-        <label className="dv-search"><Icon name="search" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search this space" aria-label="Search this space" /></label>
+        {!guest ? <label className="dv-search"><Icon name="search" />
+          <input ref={searchField} type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }} placeholder="Search this space" aria-label="Search this space" />
+        </label> : null}
         <label className="dv-select"><select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort by">
           <option value="name">Name, A–Z</option><option value="modified">Newest first</option><option value="size">Largest first</option>
         </select><i className="k-cue" /></label>
       </div>
     </div>}
 
-    <div className="dv-list">
+    <div className={cx("dv-list", guest && "guest")} ref={list}>
       <div className="dv-lhead">
-        <Check on={rows.length > 0 && chosen.length === rows.length ? true : chosen.length ? "part" : false} onClick={() => setSelected(chosen.length ? new Set() : new Set(rows.map((n) => n.id)))} />
-        <span /><span className={sort === "name" ? "sorted" : ""}>Name{sort === "name" ? " ↑" : ""}</span><span>Sharing</span><span className={sort === "size" ? "sorted" : ""}>Size</span><span className={sort === "modified" ? "sorted" : ""}>Modified</span><span />
+        <Check on={rows.length > 0 && chosen.length === rows.length ? true : chosen.length ? "part" : false} label="Select all" onClick={() => setSelected(chosen.length ? new Set() : new Set(rows.map((n) => n.id)))} />
+        <span />
+        <SortHead sort={sort} by="name" onSort={setSort}>Name</SortHead>
+        {!guest ? <span className="c-share">Sharing</span> : null}
+        <SortHead sort={sort} by="size" onSort={setSort} className="c-size">Size</SortHead>
+        <SortHead sort={sort} by="modified" onSort={setSort} className="c-when">Modified</SortHead>
+        <span />
       </div>
       {problem ? <div className="dv-empty"><p>{problem}</p></div>
         : !folder ? <div className="dv-empty"><p>Opening…</p></div>
         : !rows.length ? <div className="dv-empty">
             <h3>{found ? "Nothing by that name" : "Nothing here yet"}</h3>
-            <p>{found ? "Try another word, or look in another space." : canEdit ? "Drop files here, or upload them. Everyone in this space will see them." : "When someone adds files, they'll be here."}</p>
+            {!found && canAdd ? <p>Drop files here, or upload them.</p> : null}
           </div>
-        : rows.map((node) => <div key={node.id} style={{ display: "contents" }}>
-            <div className={`dv-r ${selected.has(node.id) || opened?.id === node.id ? "sel" : ""}`}>
-              <Check on={selected.has(node.id)} ghost={!selected.size} onClick={() => setSelected((s) => { const next = new Set(s); if (next.has(node.id)) next.delete(node.id); else next.add(node.id); return next; })} />
+        : rows.map((node) => <Fragment key={node.id}>
+            <div className={cx("dv-r", selected.has(node.id) && "sel", opened?.id === node.id && "open")} data-row={node.id}
+              onContextMenu={(event) => {
+                if ((event.target as HTMLElement).closest("input")) return;
+                event.preventDefault();
+                setMenu({ id: node.id, top: event.clientY, bottom: event.clientY, left: event.clientX, right: event.clientX, align: "start", from: null });
+              }}>
+              <Check on={selected.has(node.id)} ghost={!selected.size} label={`Select ${node.name}`} onClick={(event) => { if (event.shiftKey) selectRange(node.id); else toggle(node.id); }} />
               <Kind node={node} />
               <div className="nm">
-                {renaming === node.id ? <RenameField node={node} onDone={(name) => { setRenaming(null); if (name && name !== node.name) void act(() => drive.rename(node.id, name)); }} />
-                  : <button type="button" onClick={() => node.kind === "folder" ? onGo(node.id) : onGo(folder.folder.id, opened?.id === node.id ? null : node.id)}>
-                      <b>{node.name}</b><small>{node.kind === "folder" ? "Folder" : `${extension(node.name)}${node.guest ? ` · added by ${node.guest}` : ""}`}</small>
+                {renaming === node.id ? <RenameField node={node} onDone={(next) => { setRenaming(null); if (next && next !== node.name) void act(() => drive.rename(node.id, next)); focusRow(node.id); }} />
+                  : <button type="button"
+                      onMouseDown={(event) => { if (event.shiftKey) event.preventDefault(); }}
+                      onClick={(event) => { if (event.shiftKey) selectRange(node.id); else if (event.metaKey || event.ctrlKey) toggle(node.id); else openNode(node); }}>
+                      <b>{node.name}</b>
+                      <small>{subtitle(node)}{node.kind === "file" ? <span className="dv-m"> · {readableSize(node.size)}</span> : null}</small>
                     </button>}
               </div>
-              <span>{node.link ? <span className="dv-pub"><Icon name="link" />Public link</span> : node.kind === "file" ? <span className="dv-quiet-text">Space only</span> : null}</span>
-              <span className="num">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
-              <span className="num who" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Portrait person={people[node.createdBy?.toLowerCase()]} username={node.createdBy || "?"} size={22} /><span>{when(node.updatedAt)}</span>
+              {!guest ? <span className="c-share">{node.link ? <span className="dv-pub"><Icon name="link" />Public link</span> : node.kind === "file" ? <span className="dv-quiet-text">Space only</span> : null}</span> : null}
+              <span className="num c-size">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
+              <span className="num dv-when c-when">
+                {!guest ? <Portrait person={people[node.createdBy?.toLowerCase()]} username={node.createdBy || node.guest || "?"} size={22} /> : null}
+                <span>{when(node.updatedAt)}</span>
               </span>
-              <span style={{ position: "relative" }}>
-                <button type="button" className={`dv-more ${menu === node.id ? "open" : ""}`} aria-label={`Actions for ${node.name}`} onClick={(event) => { event.stopPropagation(); setMenu(menu === node.id ? null : node.id); }}><Icon name="more" /></button>
-                {menu === node.id ? <div className="dv-menu" style={{ right: 0, top: 36 }} onClick={(event) => event.stopPropagation()}>
-                  {node.kind === "folder" ? <button type="button" onClick={() => { setMenu(null); onGo(node.id); }}><Icon name="open" />Open</button>
-                    : <>
-                      <button type="button" onClick={() => { setMenu(null); onGo(folder.folder.id, node.id); }}><Icon name="open" />Open</button>
-                      <button type="button" onClick={() => { setMenu(null); window.location.href = `${contentUrl(node)}?download=1`; }}><Icon name="download" />Download</button>
-                      {canEdit || node.link ? <button type="button" onClick={() => { setMenu(null); void copyLink(node); }}><Icon name="link" />Copy public link</button> : null}
-                    </>}
-                  {canEdit ? <>
-                    <hr />
-                    <button type="button" onClick={() => { setMenu(null); setRenaming(node.id); }}><Icon name="rename" />Rename</button>
-                    <button type="button" onClick={() => { setMenu(null); setMoving([node]); }}><Icon name="move" />Move to…</button>
-                    {node.link ? <button type="button" className="danger" onClick={() => { setMenu(null); void act(() => drive.unlink(node.id), { text: "The link no longer works." }); }}><Icon name="link" />Turn off link</button> : null}
-                    <hr />
-                    <button type="button" className="danger" onClick={() => { setMenu(null); void trash([node]); }}><Icon name="trash" />Move to Trash</button>
-                  </> : null}
-                </div> : null}
+              <span className="dv-rowmenu">
+                <button type="button" className={cx("dv-more", menu?.id === node.id && "open")} aria-label={`Actions for ${node.name}`} aria-haspopup="menu" aria-expanded={menu?.id === node.id}
+                  onClick={(event) => openMenu(node, event.currentTarget)}><Icon name="more" /></button>
               </span>
             </div>
-            {opened?.id === node.id ? <Drawer node={node} canEdit={canEdit} people={people} onCopy={() => void copyLink(node)} onUnlink={() => void act(() => drive.unlink(node.id), { text: "The link no longer works." })} onClose={() => onGo(folder.folder.id)} /> : null}
-          </div>)}
+            {opened?.id === node.id ? <Drawer node={node} url={fileUrl(node)} guest={Boolean(guest)} canEdit={canEdit} people={people}
+              onSave={() => save([node])} onShare={() => void share(node)} onUnlink={() => void unlink(node)} onClose={() => onGo(here)} /> : null}
+          </Fragment>)}
     </div>
+
+    {menu && menuNode ? <FloatingMenu at={menu} label={`Actions for ${menuNode.name}`} onClose={closeMenu}>
+      <MenuItem icon="open" onPick={() => openNode(menuNode)}>Open</MenuItem>
+      {menuNode.kind === "file" ? <MenuItem icon="download" onPick={() => save([menuNode])}>Download</MenuItem> : null}
+      {menuNode.kind === "file" && !guest && (menuNode.link || canEdit) ? <>
+        <hr />
+        <MenuItem icon="link" onPick={() => void share(menuNode)}>{menuNode.link ? "Copy public link" : "Make public link"}</MenuItem>
+        {menuNode.link && canEdit ? <MenuItem icon="lock" onPick={() => void unlink(menuNode)}>Turn off public link</MenuItem> : null}
+      </> : null}
+      {canEdit ? <>
+        <hr />
+        <MenuItem icon="rename" onPick={() => setRenaming(menuNode.id)}>Rename</MenuItem>
+        <MenuItem icon="move" onPick={() => setMoving(group(menuNode))}>Move to…</MenuItem>
+        <hr />
+        <MenuItem icon="trash" danger onPick={() => void trash(group(menuNode))}>Move to Trash</MenuItem>
+      </> : null}
+    </FloatingMenu> : null}
 
     {dragging ? <div className="dv-drop"><div>
       <span className="arrow"><Icon name="upload" /></span>
-      <b>Drop to keep in {folder && folder.path.length ? folder.folder.name : space.name}</b>
-      <small>Everyone in {space.name} will see them</small>
+      <b>Drop to add to {folder && folder.path.length ? folder.folder.name : space.name}</b>
     </div></div> : null}
 
-    {naming && folder ? <NameDialog title="New folder" action="Make it" onClose={() => setNaming(false)} onSave={async (name) => { await drive.createFolder(folder.folder.id, name); setNaming(false); await load(); }} /> : null}
-    {moving && folder ? <MoveDialog space={space} nodes={moving} onClose={() => setMoving(null)} onMove={async (target) => {
+    {naming && folder ? <NameDialog title="New folder" action="Make it" onClose={() => setNaming(false)} onSave={async (folderName) => { await drive.createFolder(folder.folder.id, folderName); setNaming(false); await load(); }} /> : null}
+    {moving ? <MoveDialog space={space} nodes={moving} onClose={() => setMoving(null)} onMove={async (target) => {
+      const nodes = moving;
       setMoving(null);
-      await act(async () => { for (const node of moving) await drive.move(node.id, target); setSelected(new Set()); }, { text: `Moved ${moving.length === 1 ? `“${moving[0].name}”` : `${moving.length} items`}.` });
+      await act(async () => { for (const node of nodes) await drive.move(node.id, target); setSelected(new Set()); }, { text: `Moved ${labelFor(nodes)}.` });
     }} /> : null}
   </section>;
 }
 
-function Check({ on, ghost, onClick }: { on: boolean | "part"; ghost?: boolean; onClick: () => void }) {
-  return <button type="button" className={`dv-check ${on === "part" ? "part" : on ? "on" : ""} ${ghost && !on ? "ghost" : ""}`} aria-pressed={on === true} aria-label="Select" onClick={onClick}>
-    {on === true ? <Icon name="check" /> : null}
+function SortHead({ sort, by, onSort, className, children }: { sort: Sort; by: Sort; onSort: (sort: Sort) => void; className?: string; children: React.ReactNode }) {
+  return <span className={className}>
+    <button type="button" className={cx("dv-sorthead", sort === by && "sorted")} aria-pressed={sort === by} onClick={() => onSort(by)}>
+      {children}{sort === by ? <i aria-hidden="true">{by === "name" ? "↑" : "↓"}</i> : null}
+    </button>
+  </span>;
+}
+
+function Check({ on, ghost, label, onClick }: { on: boolean | "part"; ghost?: boolean; label: string; onClick: (event: React.MouseEvent) => void }) {
+  return <button type="button" className={cx("dv-check", on === "part" && "part", on === true && "on", ghost && !on && "ghost")} aria-pressed={on === "part" ? "mixed" : on} aria-label={label} onClick={onClick}>
+    <span className="box">{on === true ? <Icon name="check" /> : null}</span>
   </button>;
 }
 
@@ -364,9 +615,9 @@ function Kind({ node }: { node: DriveNode }) {
 
 function RenameField({ node, onDone }: { node: DriveNode; onDone: (name: string | null) => void }) {
   const [value, setValue] = useState(node.name);
-  const field = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const input = field.current;
+  const finished = useRef(false);
+  const finish = (name: string | null) => { if (finished.current) return; finished.current = true; onDone(name); };
+  const field = useCallback((input: HTMLInputElement | null) => {
     if (!input) return;
     input.focus();
     /* The name without its extension is what people usually change. */
@@ -374,48 +625,109 @@ function RenameField({ node, onDone }: { node: DriveNode; onDone: (name: string 
     input.setSelectionRange(0, dot > 0 ? dot : node.name.length);
   }, [node]);
   return <input ref={field} value={value} aria-label="New name" onChange={(e) => setValue(e.target.value)}
-    onKeyDown={(e) => { if (e.key === "Enter") onDone(value.trim()); if (e.key === "Escape") onDone(null); }}
-    onBlur={() => onDone(value.trim())} />;
+    onKeyDown={(e) => { if (e.key === "Enter") finish(value.trim()); if (e.key === "Escape") { e.stopPropagation(); finish(null); } }}
+    onBlur={() => finish(value.trim())} />;
+}
+
+/* ── a menu that floats over the page, flipping up near the bottom ── */
+
+function FloatingMenu({ at, label, onClose, children }: { at: MenuAt; label: string; onClose: () => void; children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement | null>(null);
+  const close = useCallback((restore: boolean) => { onClose(); if (restore) at.from?.focus(); }, [at, onClose]);
+  const place = useCallback((element: HTMLDivElement | null) => {
+    box.current = element;
+    if (!element) return;
+    const edge = 8, gap = 4;
+    const width = element.offsetWidth, height = element.offsetHeight;
+    const viewWidth = document.documentElement.clientWidth, viewHeight = window.innerHeight;
+    const left = Math.max(edge, Math.min(at.align === "start" ? at.left : at.right - width, viewWidth - width - edge));
+    const below = at.bottom + gap, above = at.top - gap - height;
+    const top = below + height <= viewHeight - edge ? below : above >= edge ? above : Math.max(edge, viewHeight - edge - height);
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+    element.style.visibility = "visible";
+    element.querySelector<HTMLElement>("[role=menuitem]")?.focus({ preventScroll: true });
+  }, [at]);
+  useEffect(() => {
+    const away = (event: Event) => {
+      const target = event.target as Node;
+      if (box.current?.contains(target) || at.from?.contains(target)) return;
+      onClose();
+    };
+    const keys = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close(true); } };
+    const leave = () => onClose();
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("scroll", away, true);
+    document.addEventListener("keydown", keys);
+    window.addEventListener("resize", leave);
+    window.addEventListener("blur", leave);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("scroll", away, true);
+      document.removeEventListener("keydown", keys);
+      window.removeEventListener("resize", leave);
+      window.removeEventListener("blur", leave);
+    };
+  }, [at, close, onClose]);
+  return <div ref={place} className="dv-menu" role="menu" aria-label={label}
+    onKeyDown={(event) => {
+      const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[role=menuitem]"));
+      const index = items.indexOf(document.activeElement as HTMLElement);
+      const move = (to: number) => { event.preventDefault(); items[(to + items.length) % items.length]?.focus(); };
+      if (event.key === "ArrowDown") move(index + 1);
+      else if (event.key === "ArrowUp") move(index - 1);
+      else if (event.key === "Home") move(0);
+      else if (event.key === "End") move(items.length - 1);
+      else if (event.key === "Tab") close(false);
+    }}
+    onClick={(event) => { if ((event.target as HTMLElement).closest("[role=menuitem]")) close(Boolean(at.from)); }}>
+    {children}
+  </div>;
+}
+
+function MenuItem({ icon, danger, onPick, children }: { icon: IconName; danger?: boolean; onPick: () => void; children: React.ReactNode }) {
+  return <button type="button" role="menuitem" tabIndex={-1} className={danger ? "danger" : undefined} onClick={onPick}><Icon name={icon} />{children}</button>;
 }
 
 /* ── a file's drawer: preview and its public link ── */
 
-function Drawer({ node, canEdit, people, onCopy, onUnlink, onClose }: { node: DriveNode; canEdit: boolean; people: Record<string, Person>; onCopy: () => void; onUnlink: () => void; onClose: () => void }) {
+function Drawer({ node, url, guest, canEdit, people, onSave, onShare, onUnlink, onClose }: {
+  node: DriveNode; url: string; guest: boolean; canEdit: boolean; people: Record<string, Person>;
+  onSave: () => void; onShare: () => void; onUnlink: () => void; onClose: () => void;
+}) {
   const kind = kindOf(node);
   const by = people[node.createdBy?.toLowerCase()];
-  const url = linkUrl(node);
+  const address = guest ? null : linkUrl(node);
+  const byline = guest ? null : by?.name.split(" ")[0] ?? (node.createdBy || node.guest);
   return <div className="dv-drawer"><div className="dv-drawer-grid">
     <div className="dv-preview">
       {/* eslint-disable-next-line @next/next/no-img-element -- a preview of the file itself, from Drive */}
-      {kind === "image" ? <img src={contentUrl(node)} alt="" />
-        : kind === "video" ? <video src={contentUrl(node)} controls preload="metadata" />
-        : kind === "audio" ? <audio src={contentUrl(node)} controls style={{ position: "absolute", left: 8, right: 8, bottom: 8, width: "calc(100% - 16px)" }} />
+      {kind === "image" ? <img src={url} alt="" />
+        : kind === "video" ? <video src={url} controls preload="metadata" />
+        : kind === "audio" ? <audio src={url} controls />
         : <span className="ext">{extension(node.name)}</span>}
     </div>
-    <div>
+    <div className="dv-drawer-text">
       <div className="dv-head">
         <div>
-          <div className="kick" style={{ display: "flex", alignItems: "center", gap: 8 }}><Portrait person={by} username={node.createdBy || "?"} size={22} /><span>{readableSize(node.size)} · {by?.name.split(" ")[0] ?? node.createdBy}, {when(node.updatedAt).toLowerCase()}</span></div>
+          <div className="kick">
+            {!guest ? <Portrait person={by} username={node.createdBy || node.guest || "?"} size={22} /> : null}
+            <span>{readableSize(node.size)} · {byline ? `${byline}, ` : ""}{when(node.updatedAt).toLowerCase()}</span>
+          </div>
           <h2>{node.name}</h2>
         </div>
         <div className="dv-acts">
-          <Seal type="button" tone="quiet" compact onClick={() => { window.location.href = `${contentUrl(node)}?download=1`; }}>Download</Seal>
-          <Seal type="button" tone="quiet" compact onClick={() => window.open(contentUrl(node), "_blank", "noopener")}>Open full size</Seal>
+          <Seal type="button" tone="quiet" compact onClick={onSave}><Icon name="download" />Download</Seal>
+          {kind === "image" || kind === "video" || kind === "audio" ? <Seal type="button" tone="quiet" compact onClick={() => window.open(url, "_blank", "noopener")}><Icon name="open" />Open full size</Seal> : null}
           <button type="button" className="dv-more" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
         </div>
       </div>
-      {url ? <>
-        <div className="dv-addr"><code>{url}</code>
-          <span className="k-seal-group" style={{ flexWrap: "nowrap", gap: 8 }}>
-            <Seal type="button" compact onClick={onCopy}>Copy link</Seal>
-            {canEdit ? <Seal type="button" tone="danger" compact onClick={onUnlink}>Turn off link</Seal> : null}
-          </span>
-        </div>
-        <p>Anyone with this address can open the file. Turning it off stops the address at once; a new link later gets a new address.</p>
-      </> : canEdit ? <>
-        <div className="k-seal-group"><Seal type="button" onClick={onCopy}><Icon name="link" />Make public link</Seal></div>
-        <p>Only people in this space can open it. A public link lets anyone with the address open just this file; it&apos;s copied as it&apos;s made.</p>
-      </> : <p>Only people in this space can open it.</p>}
+      {guest ? null : address ? <div className="dv-addr"><code>{address}</code>
+        <span className="k-seal-group">
+          <Seal type="button" compact onClick={onShare}><Icon name="copy" />Copy link</Seal>
+          {canEdit ? <Seal type="button" tone="danger" compact onClick={onUnlink}>Turn off</Seal> : null}
+        </span>
+      </div> : canEdit ? <div className="k-seal-group"><Seal type="button" onClick={onShare}><Icon name="link" />Make public link</Seal></div> : null}
     </div>
   </div></div>;
 }
@@ -428,10 +740,13 @@ function Dialog({ title, lead, children, footer, onClose }: { title: string; lea
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
   }, [onClose]);
+  const opened = useCallback((element: HTMLDivElement | null) => {
+    if (element && !element.contains(document.activeElement)) (element.querySelector<HTMLElement>("[autofocus], input, select") ?? element).focus();
+  }, []);
   return <div className="dv-shade" onClick={onClose}>
-    <div className="dv-dialog" role="dialog" aria-label={title} onClick={(event) => event.stopPropagation()}>
+    <div className="dv-dialog" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={opened} onClick={(event) => event.stopPropagation()}>
       <header><h2>{title}</h2>{lead ? <p>{lead}</p> : null}</header>
-      {children}
+      <div className="dv-dialog-body">{children}</div>
       <footer>{footer}</footer>
     </div>
   </div>;
@@ -446,31 +761,49 @@ function NameDialog({ title, action, initial = "", onClose, onSave }: { title: s
     try { await onSave(name.trim()); } catch (error) { setProblem(error instanceof DriveProblem ? error.message : "That didn't work."); setBusy(false); }
   };
   return <Dialog title={title} onClose={onClose} footer={<>
-    {problem ? <span className="left" style={{ color: "var(--k-suo-deep)" }}>{problem}</span> : <span className="left" />}
+    <span className={cx("left", problem && "bad")}>{problem}</span>
     <Seal type="button" tone="quiet" onClick={onClose}>Cancel</Seal>
     <Seal type="button" disabled={!name.trim() || busy} onClick={() => void save()}>{action}</Seal>
   </>}>
-    <div style={{ padding: "0 26px 18px" }}>
-      <label className="k-field"><span>Name</span><input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) void save(); }} /></label>
-    </div>
+    <label className="k-field"><span>Name</span><input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) void save(); }} /></label>
   </Dialog>;
 }
 
+/** Move to…: the space's folders, browsed like the folder view, and "Move here". */
 function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: DriveNode[]; onClose: () => void; onMove: (folderId: string) => Promise<void> }) {
+  const [where, setWhere] = useState(nodes[0]?.parentId ?? space.rootId);
   const [at, setAt] = useState<Folder | null>(null);
-  const [where, setWhere] = useState(space.rootId);
-  useEffect(() => { void drive.folder(where).then(setAt).catch(() => {}); }, [where]);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    drive.folder(where).then((loaded) => { if (live) { setAt(loaded); setProblem(null); } }, (error) => { if (live) setProblem(problemText(error, "That folder couldn't be opened.")); });
+    return () => { live = false; };
+  }, [where]);
+  const ready = at?.folder.id === where;
   const moving = new Set(nodes.map((n) => n.id));
-  const here = at ? [...at.path, at.folder] : [];
-  return <Dialog title={nodes.length === 1 ? `Move “${nodes[0].name}”` : `Move ${nodes.length} items`} lead={`Pick a folder in ${space.name}.`} onClose={onClose} footer={<>
-    <span className="left">To {here.length > 1 ? here.slice(1).map((n) => n.name).join(" / ") : space.name}</span>
+  const already = nodes.every((n) => n.parentId === where);
+  const trail = at ? [...at.path, at.folder] : [];
+  const children = ready ? [...at.children].sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) : a.kind === "folder" ? -1 : 1) : [];
+  return <Dialog title={nodes.length === 1 ? `Move “${nodes[0].name}”` : `Move ${nodes.length} items`} onClose={onClose} footer={<>
+    <span className="left">{ready && already ? "Already here" : null}</span>
     <Seal type="button" tone="quiet" onClick={onClose}>Cancel</Seal>
-    <Seal type="button" onClick={() => void onMove(where)}>Move here</Seal>
+    <Seal type="button" disabled={!ready || already || busy} onClick={async () => { setBusy(true); await onMove(where); }}>Move here</Seal>
   </>}>
-    <div className="dv-folders-pick">
-      {at && at.path.length ? <button type="button" onClick={() => setWhere(at.folder.parentId ?? space.rootId)}><Icon name="back" />Up to {at.path.length === 1 ? space.name : at.path[at.path.length - 1].name}</button> : null}
-      {at?.children.filter((n) => n.kind === "folder" && !moving.has(n.id)).map((n) => <button key={n.id} type="button" onClick={() => setWhere(n.id)}><Icon name="folder" />{n.name}</button>)}
-      {at && !at.children.some((n) => n.kind === "folder" && !moving.has(n.id)) ? <p className="dv-quiet-text" style={{ padding: "8px 10px" }}>No folders inside.</p> : null}
+    <div className="dv-pick">
+      <div className="dv-crumbs">
+        {trail.map((node, index) => index === trail.length - 1
+          ? <b key={node.id}>{index === 0 ? space.name : node.name}</b>
+          : <Fragment key={node.id}><button type="button" onClick={() => setWhere(node.id)}>{index === 0 ? space.name : node.name}</button><span className="sep">/</span></Fragment>)}
+      </div>
+      <div className="dv-pick-list">
+        {problem ? <p className="dv-quiet-text">{problem}</p>
+          : !ready ? <p className="dv-quiet-text">Opening…</p>
+          : !children.length ? <p className="dv-quiet-text">Empty folder</p>
+          : children.map((n) => n.kind === "folder" && !moving.has(n.id)
+            ? <button key={n.id} type="button" className="dv-pick-row" onClick={() => setWhere(n.id)}><Kind node={n} /><b>{n.name}</b><i className="go" aria-hidden="true" /></button>
+            : <div key={n.id} className="dv-pick-row off"><Kind node={n} /><b>{n.name}</b></div>)}
+      </div>
     </div>
   </Dialog>;
 }
@@ -478,10 +811,10 @@ function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: Dr
 function CrestPicker({ crest, color, onPick }: { crest: string; color: string; onPick: (crest: string, color: string) => void }) {
   const [catalogue, setCatalogue] = useState<Crests | null>(null);
   useEffect(() => { void drive.crests().then(setCatalogue).catch(() => {}); }, []);
-  if (!catalogue) return <p className="dv-quiet-text">Loading crests…</p>;
-  return <div>
-    <div className="dv-colours">{catalogue.colors.map((c) => <button key={c.id} type="button" aria-pressed={c.id === color} aria-label={c.name} title={c.name} style={{ backgroundColor: c.hex }} onClick={() => onPick(crest, c.id)} />)}</div>
-    <div className="dv-crests">{catalogue.crests.map((c) => <button key={c.id} type="button" aria-pressed={c.id === crest} aria-label={c.name} onClick={() => onPick(c.id, color)}>
+  if (!catalogue) return <p className="dv-quiet-text">Opening…</p>;
+  return <div className="dv-crestpick">
+    <div className="dv-colours" role="group" aria-label="Colour">{catalogue.colors.map((c) => <button key={c.id} type="button" aria-pressed={c.id === color} aria-label={c.name} title={c.name} style={{ backgroundColor: c.hex }} onClick={() => onPick(crest, c.id)} />)}</div>
+    <div className="dv-crests" role="group" aria-label="Crest">{catalogue.crests.map((c) => <button key={c.id} type="button" aria-pressed={c.id === crest} aria-label={c.name} title={c.name} onClick={() => onPick(c.id, color)}>
       <span className="dv-mark mon" dangerouslySetInnerHTML={{ __html: catalogue.marks[c.id]?.[color] ?? "" }} />{c.jp}
     </button>)}</div>
   </div>;
@@ -493,16 +826,17 @@ function NewSpaceDialog({ onClose, onMade }: { onClose: () => void; onMade: (spa
   const [color, setColor] = useState("plum");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  return <Dialog title="New space" lead="A space holds files for you and the people you add. You can add them next." onClose={onClose} footer={<>
-    {problem ? <span className="left" style={{ color: "var(--k-suo-deep)" }}>{problem}</span> : <span className="left" />}
+  const make = async () => {
+    setBusy(true); setProblem(null);
+    try { onMade(await drive.createSpace(name.trim(), crest, color, [])); } catch (error) { setProblem(problemText(error)); setBusy(false); }
+  };
+  return <Dialog title="New space" onClose={onClose} footer={<>
+    <span className={cx("left", problem && "bad")}>{problem}</span>
     <Seal type="button" tone="quiet" onClick={onClose}>Cancel</Seal>
-    <Seal type="button" disabled={!name.trim() || busy} onClick={async () => {
-      setBusy(true); setProblem(null);
-      try { onMade(await drive.createSpace(name.trim(), crest, color, [])); } catch (error) { setProblem(error instanceof Error ? error.message : "That didn't work."); setBusy(false); }
-    }}>Make it</Seal>
+    <Seal type="button" disabled={!name.trim() || busy} onClick={() => void make()}>Make it</Seal>
   </>}>
-    <div style={{ padding: "0 26px 18px", display: "grid", gap: 14 }}>
-      <label className="k-field"><span>Name</span><input autoFocus value={name} onChange={(e) => setName(e.target.value)} /></label>
+    <div className="dv-stack">
+      <label className="k-field"><span>Name</span><input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) void make(); }} /></label>
       <div className="k-field"><span>Crest</span><CrestPicker crest={crest} color={color} onPick={(c, col) => { setCrest(c); setColor(col); }} /></div>
     </div>
   </Dialog>;
@@ -517,79 +851,105 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
   const [name, setName] = useState(space.name);
   const [find, setFind] = useState("");
   const [addRole, setAddRole] = useState<Role>("viewer");
+  const [leaving, setLeaving] = useState(false);
   const owner = space.role === "owner";
 
-  useEffect(() => { void drive.space(space.id).then(setDetail).catch((e) => setProblem(e instanceof Error ? e.message : "That space couldn't be opened.")); }, [space.id]);
+  useEffect(() => { void drive.space(space.id).then(setDetail).catch((e) => setProblem(problemText(e, "That space couldn't be opened."))); }, [space.id]);
 
   const change = async (work: () => Promise<SpaceDetail | { left: true }>, done?: string) => {
-    setProblem(null);
+    setProblem(null); setNotice(null);
     try {
       const next = await work();
       if ("left" in next) { onLeft(); return; }
       setDetail(next); setNotice(done ?? null); await onChanged();
-    } catch (error) { setProblem(error instanceof Error ? error.message : "That didn't work."); }
+    } catch (error) { setProblem(problemText(error)); }
   };
 
   const inSpace = new Set(detail?.memberList.map((m) => m.username.toLowerCase()) ?? []);
-  const suggestions = find.trim() ? Object.values(people).filter((p) => !inSpace.has(p.username.toLowerCase())
-    && (p.name.toLowerCase().includes(find.trim().toLowerCase()) || p.username.toLowerCase().includes(find.trim().toLowerCase().replace(/^@/, "")))).slice(0, 6) : [];
+  const words = find.trim().toLowerCase().replace(/^@/, "");
+  const suggestions = words ? Object.values(people).filter((p) => !inSpace.has(p.username.toLowerCase())
+    && (p.name.toLowerCase().includes(words) || p.username.toLowerCase().includes(words))).slice(0, 6) : [];
+  const add = (p: Person) => { setFind(""); void change(() => drive.setMember(space.id, p.username, addRole), `${p.name} can ${addRole === "editor" ? "edit" : "view"} ${space.name}.`); };
+  const owners = detail?.memberList.filter((m) => m.role === "owner").length ?? 0;
+  const lastOwner = owner && owners <= 1;
+  const link = detail?.link ? spaceLinkUrl(detail.link) : null;
 
-  return <section className="dv-sheet" style={{ background: "none", boxShadow: "none", border: 0 }}>
+  return <section className="dv-sheet dv-settings">
     <div className="k-tray">
-      <div className="dv-mast" style={{ border: 0 }}>
+      <div className="dv-mast">
         <div className="dv-mast-id">
           <Mark space={detail ?? space} size="lg" />
           <div>
-            <div className="dv-kicker" style={{ display: "flex", gap: 6 }}><button type="button" className="dv-linkbtn" style={{ padding: 0, minHeight: 0 }} onClick={back}>{space.name}</button> / Settings</div>
+            <div className="dv-kicker dv-trail"><button type="button" className="dv-linkbtn" onClick={back}>{space.name}</button><span>/</span><span>Settings</span></div>
             <h1>People and settings</h1>
-            <p>Everyone here can open every file in {space.name}.</p>
           </div>
         </div>
       </div>
-      {problem ? <p className="admin-notice error">{problem}</p> : notice ? <p className="admin-notice success">{notice}</p> : null}
+      {problem ? <p className="admin-notice error" role="alert">{problem}</p> : notice ? <p className="admin-notice success" role="status">{notice}</p> : null}
 
       <div className="k-compartment"><div className="k-tab"><h2>People</h2></div><div className="k-body">
         {detail?.memberList.map((m) => {
           const person = people[m.username.toLowerCase()];
+          const who = person?.name ?? m.username;
           const isMe = m.username.toLowerCase() === me.username.toLowerCase();
           return <div className="dv-person" key={m.username}>
-            <span className="who" style={{ display: "flex", alignItems: "center", gap: 12 }}><Portrait person={person} username={m.username} size={36} /><span><b>{person?.name ?? m.username}</b><small>@{m.username}{isMe ? " · you" : ""}</small></span></span>
-            {owner && !isMe ? <label className="k-field"><select aria-label={`Role for ${person?.name ?? m.username}`} value={m.role} onChange={(e) => void change(() => drive.setMember(space.id, m.username, e.target.value as Role), `${person?.name ?? m.username} is now ${e.target.value === "owner" ? "an owner" : `a${e.target.value === "editor" ? "n editor" : " viewer"}`}.`)}>
+            <span className="who"><Portrait person={person} username={m.username} size={36} /><span><b>{who}</b><small>@{m.username}{isMe ? " · you" : ""}</small></span></span>
+            {owner && !isMe ? <label className="k-field"><select aria-label={`Role for ${who}`} value={m.role} onChange={(e) => {
+              const role = e.target.value as Role;
+              void change(() => drive.setMember(space.id, m.username, role), `${who} is now ${role === "owner" ? "an owner" : role === "editor" ? "an editor" : "a viewer"}.`);
+            }}>
               <option value="owner">Owner</option><option value="editor">Editor</option><option value="viewer">Viewer</option>
             </select></label> : <span className="role-fixed">{roleNames[m.role]}</span>}
-            {owner && !isMe ? <button type="button" className="dv-more" aria-label={`Take ${person?.name ?? m.username} out`} onClick={() => void change(() => drive.setMember(space.id, m.username, null), `${person?.name ?? m.username} is out of this space.`)}><Icon name="close" /></button> : <span />}
+            {owner && !isMe ? <button type="button" className="dv-more" aria-label={`Take ${who} out`} title="Take out" onClick={() => void change(() => drive.setMember(space.id, m.username, null), `${who} is out of this space.`)}><Icon name="close" /></button> : <span />}
           </div>;
         })}
         {owner ? <div className="k-form k-after-rows">
           <div className="dv-inv">
-            <label className="k-field"><span>Add someone with a Kimono account</span><input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Name or @username" /></label>
-            <label className="k-field"><span>Can</span><select value={addRole} onChange={(e) => setAddRole(e.target.value as Role)}><option value="viewer">View</option><option value="editor">Edit</option></select></label>
+            <label className="k-field"><span>Add someone</span><input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Name or @username"
+              onKeyDown={(e) => { if (e.key === "Enter" && suggestions[0]) { e.preventDefault(); add(suggestions[0]); } }} /></label>
+            <label className="k-field"><span>Can</span><select value={addRole} onChange={(e) => setAddRole(e.target.value as Role)}><option value="viewer">View</option><option value="editor">Edit</option><option value="owner">Own</option></select></label>
           </div>
-          {find.trim() ? <div className="dv-sugg">
-            {suggestions.map((p) => <button key={p.username} type="button" className="dv-linkbtn" style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textDecoration: "none", padding: "8px 12px" }}
-              onClick={() => { setFind(""); void change(() => drive.setMember(space.id, p.username, addRole), `${p.name} can ${addRole === "editor" ? "edit" : "view"} ${space.name}.`); }}>
+          {words ? <div className="dv-sugg">
+            {suggestions.map((p) => <button key={p.username} type="button" onClick={() => add(p)}>
               <Portrait person={p} username={p.username} size={28} /><b>{p.name}</b><small>@{p.username}</small>
             </button>)}
-            {!suggestions.length ? <p className="dv-quiet-text" style={{ padding: "8px 12px", margin: 0 }}>No Kimono account by that name.</p> : null}
+            {!suggestions.length ? <p className="dv-quiet-text">No one by that name.</p> : null}
           </div> : null}
         </div> : null}
       </div></div>
 
-      <div className="k-compartment"><div className="k-tab"><h2>What each role can do</h2></div><div className="k-body">
-        <p className="k-note"><strong>View</strong> opens and downloads. <strong>Edit</strong> also uploads, renames, moves, deletes and makes public links. The <strong>owner</strong> also manages people and renames the space.</p>
-      </div></div>
+      {owner && detail ? <div className="k-compartment"><div className="k-tab"><h2>Share by link</h2></div><div className="k-body"><div className="k-form">
+        <label className="k-field"><span>Anyone with the link</span><select value={detail.linkAccess ?? "off"} onChange={(e) => {
+          const access = e.target.value === "off" ? null : e.target.value as LinkAccess;
+          void change(() => drive.spaceLink(space.id, access), access ? undefined : "The link no longer works.");
+        }}>
+          <option value="off">Off</option><option value="view">Can view</option><option value="add">Can add</option>
+        </select></label>
+        {link ? <div className="dv-addr"><code>{link}</code>
+          <span className="k-seal-group"><Seal type="button" compact onClick={() => void navigator.clipboard.writeText(link).then(() => setNotice("Link copied."), () => setProblem("Copy the link by hand."))}><Icon name="copy" />Copy link</Seal></span>
+        </div> : null}
+      </div></div></div> : null}
 
       {owner ? <div className="k-compartment"><div className="k-tab"><h2>Space</h2></div><div className="k-body"><div className="k-form">
-        <label className="k-field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
-        <div className="k-form-actions"><Seal type="button" disabled={!name.trim() || name.trim() === (detail?.name ?? space.name)} onClick={() => void change(() => drive.editSpace(space.id, { name: name.trim() }), "Renamed.")}>Save</Seal></div>
+        <div className="dv-rename-space">
+          <label className="k-field"><span>Name</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
+          <Seal type="button" disabled={!name.trim() || name.trim() === (detail?.name ?? space.name)} onClick={() => void change(() => drive.editSpace(space.id, { name: name.trim() }), "Renamed.")}>Save</Seal>
+        </div>
         <div className="k-field"><span>Crest</span>{detail ? <CrestPicker crest={detail.crest} color={detail.color} onPick={(crest, color) => void change(() => drive.editSpace(space.id, { crest, color }))} /> : null}</div>
       </div></div></div> : null}
 
       <div className="k-compartment"><div className="k-tab"><h2>Leave</h2></div><div className="k-body">
-        <p className="k-note">{owner ? "Owners can leave once someone else is an owner too. The files stay with the space." : "You'll stop seeing this space. Someone who owns it can add you back."}</p>
-        <div className="k-form-actions" style={{ marginTop: 12 }}><Seal type="button" tone="danger" onClick={() => void change(() => drive.setMember(space.id, me.username, null))}>Leave {space.name}</Seal></div>
+        <div className="dv-leave">
+          <Seal type="button" tone="danger" disabled={lastOwner} onClick={() => setLeaving(true)}><Icon name="door" />Leave {space.name}</Seal>
+          {lastOwner ? <span className="dv-quiet-text">Make someone else an owner first.</span> : null}
+        </div>
       </div></div>
     </div>
+    {leaving ? <Dialog title={`Leave ${space.name}?`} onClose={() => setLeaving(false)} footer={<>
+      <span className="left" />
+      <Seal type="button" tone="quiet" onClick={() => setLeaving(false)}>Stay</Seal>
+      <Seal type="button" tone="danger" onClick={() => { setLeaving(false); void change(() => drive.setMember(space.id, me.username, null)); }}>Leave</Seal>
+    </>} /> : null}
   </section>;
 }
 
@@ -605,20 +965,23 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
     drive.trashed().then((list) => { if (live) { setNow(Date.now()); setItems(list); } }, () => { if (live) setItems([]); });
     return () => { live = false; };
   }, []);
-  const spaceName = (id: string) => spaces.find((s) => s.id === id)?.name ?? "";
+  const spaceOf = (id: string) => spaces.find((s) => s.id === id);
   return <section className="dv-sheet">
-    <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder" style={{ width: 56, height: 56 }}><Icon name="trash" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Deleted things stay here for 30 days, then they&apos;re gone for good.</p></div></div></div>
+    <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder lg"><Icon name="trash" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Kept for 30 days.</p></div></div></div>
     <div className="dv-list">
-      {!items ? <div className="dv-empty"><p>Opening…</p></div> : !items.length ? <div className="dv-empty"><h3>Nothing in the Trash</h3><p>What you delete waits here for 30 days.</p></div>
-        : items.map((node) => <div className="dv-r" key={node.id} style={{ gridTemplateColumns: "40px minmax(0, 1fr) 160px 120px auto" }}>
+      {!items ? <div className="dv-empty"><p>Opening…</p></div> : !items.length ? <div className="dv-empty"><h3>Nothing in the Trash</h3></div>
+        : items.map((node) => {
+          const space = spaceOf(node.spaceId);
+          const left = node.trashedAt ? Math.max(0, 30 - Math.floor((now - node.trashedAt) / 86400000)) : null;
+          return <div className="dv-r trashed" key={node.id}>
             <Kind node={node} />
-            <div className="nm"><b>{node.name}</b><small>From {spaceName(node.spaceId)}</small></div>
-            <span className="num">{node.trashedAt ? `${Math.max(0, 30 - Math.floor((now - node.trashedAt) / 86400000))} days left` : ""}</span>
-            <span className="num">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
-            <Seal type="button" tone="quiet" compact onClick={async () => {
-              try { await drive.restore(node.id); onToast({ text: `“${node.name}” is back where it was.` }); await load(); } catch (error) { onToast({ text: error instanceof Error ? error.message : "That didn't work." }); }
-            }}><Icon name="restore" />Put back</Seal>
-          </div>)}
+            <div className="nm"><b>{node.name}</b><small>{space?.name ?? ""}{left !== null ? ` · ${left === 1 ? "1 day" : `${left} days`} left` : ""}</small></div>
+            <span className="num c-size">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
+            {space && space.role !== "viewer" ? <Seal type="button" tone="quiet" compact onClick={async () => {
+              try { await drive.restore(node.id); onToast({ text: `“${node.name}” is back.` }); await load(); } catch (error) { onToast({ text: problemText(error) }); }
+            }}><Icon name="restore" />Put back</Seal> : <span />}
+          </div>;
+        })}
     </div>
   </section>;
 }
@@ -628,14 +991,14 @@ function RecentView({ spaces, people, onOpen }: { spaces: Space[]; people: Recor
   useEffect(() => { void drive.recent().then(setItems).catch(() => setItems([])); }, []);
   const spaceName = (id: string) => spaces.find((s) => s.id === id)?.name ?? "";
   return <section className="dv-sheet">
-    <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder" style={{ width: 56, height: 56 }}><Icon name="clock" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Recent</h1><p>The files changed most lately, in every space you&apos;re in.</p></div></div></div>
+    <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder lg"><Icon name="clock" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Recent</h1></div></div></div>
     <div className="dv-list">
-      {!items ? <div className="dv-empty"><p>Opening…</p></div> : !items.length ? <div className="dv-empty"><h3>Nothing yet</h3><p>Files people add will show here.</p></div>
-        : items.map((node) => <div className="dv-r" key={node.id} style={{ gridTemplateColumns: "40px minmax(0, 1fr) 84px 160px" }}>
+      {!items ? <div className="dv-empty"><p>Opening…</p></div> : !items.length ? <div className="dv-empty"><h3>Nothing yet</h3></div>
+        : items.map((node) => <div className="dv-r recent" key={node.id}>
             <Kind node={node} />
-            <div className="nm"><button type="button" onClick={() => onOpen(node)}><b>{node.name}</b><small>{spaceName(node.spaceId)}</small></button></div>
-            <span className="num">{readableSize(node.size)}</span>
-            <span className="num who" style={{ display: "flex", alignItems: "center", gap: 8 }}><Portrait person={people[node.createdBy?.toLowerCase()]} username={node.createdBy || "?"} size={22} /><span>{when(node.updatedAt)}</span></span>
+            <div className="nm"><button type="button" onClick={() => onOpen(node)}><b>{node.name}</b><small>{spaceName(node.spaceId)}<span className="dv-m"> · {readableSize(node.size)}</span></small></button></div>
+            <span className="num c-size">{readableSize(node.size)}</span>
+            <span className="num dv-when c-when"><Portrait person={people[node.createdBy?.toLowerCase()]} username={node.createdBy || node.guest || "?"} size={22} /><span>{when(node.updatedAt)}</span></span>
           </div>)}
     </div>
   </section>;
@@ -643,22 +1006,24 @@ function RecentView({ spaces, people, onOpen }: { spaces: Space[]; people: Recor
 
 /* ── the upload tray ── */
 
-function UploadTray({ uploads, onClear, onCancel, onToast }: { uploads: Upload[]; onClear: () => void; onCancel: (id: string) => void; onToast: (toast: Toast) => void }) {
+function UploadTray({ uploads, guest, onClear, onCancel, onToast }: { uploads: Upload[]; guest?: boolean; onClear: () => void; onCancel: (id: string) => void; onToast: (toast: Toast) => void }) {
   const going = uploads.filter((u) => !u.done && !u.failed);
-  return <div className="dv-uploads" style={{ position: "fixed" }}>
+  return <div className="dv-uploads" role="region" aria-label="Uploads">
     <header><span>{going.length ? `Uploading ${uploads.length - going.length + 1} of ${uploads.length}` : `${uploads.length} ${uploads.length === 1 ? "upload" : "uploads"}`}</span>
       {!going.length ? <button type="button" className="dv-linkbtn" onClick={onClear}>Close</button> : null}</header>
-    {uploads.map((u) => <div className="dv-up" key={u.id}>
-      <span className="dv-kind"><span className="ext">{extension(u.name)}</span></span>
-      <div><b>{u.name}</b>
-        {u.failed ? <small className="err">{u.failed}</small>
-          : u.done ? <small>Done · {readableSize(u.size)} · in {u.spaceName}</small>
-          : <><div className="dv-bar"><i style={{ width: `${u.size ? Math.round(u.sent / u.size * 100) : 100}%` }} /></div><small>{readableSize(u.sent)} of {readableSize(u.size)}</small></>}
-      </div>
-      {u.done ? <Seal type="button" compact onClick={async () => {
-        try { await navigator.clipboard.writeText(await drive.link(u.done!)); onToast({ text: "Link copied. Anyone with it can open the file." }); } catch (error) { onToast({ text: error instanceof Error ? error.message : "That didn't work." }); }
-      }}><Icon name="link" />Copy public link</Seal>
-        : <button type="button" className="dv-more" aria-label={u.failed ? "Dismiss" : "Cancel"} onClick={() => onCancel(u.id)}><Icon name="close" /></button>}
-    </div>)}
+    <div className="dv-up-list">
+      {uploads.map((u) => <div className="dv-up" key={u.id}>
+        <span className="dv-kind"><span className="ext">{extension(u.name)}</span></span>
+        <div><b>{u.name}</b>
+          {u.failed ? <small className="err">{u.failed}</small>
+            : u.done ? <small>Done · {readableSize(u.size)} · in {u.spaceName}</small>
+            : <><div className="dv-bar"><i style={{ width: `${u.size ? Math.round(u.sent / u.size * 100) : 100}%` }} /></div><small>{readableSize(u.sent)} of {readableSize(u.size)}</small></>}
+        </div>
+        {u.done ? guest ? <span className="dv-done" aria-label="Done"><Icon name="check" /></span> : <Seal type="button" tone="quiet" compact onClick={async () => {
+          try { await navigator.clipboard.writeText(await drive.link(u.done!)); onToast({ text: "Public link copied." }); } catch (error) { onToast({ text: problemText(error) }); }
+        }}><Icon name="link" />Copy link</Seal>
+          : <button type="button" className="dv-more" aria-label={u.failed ? "Dismiss" : "Cancel"} onClick={() => onCancel(u.id)}><Icon name="close" /></button>}
+      </div>)}
+    </div>
   </div>;
 }

@@ -590,7 +590,7 @@ export function publicFile(db: DatabaseSync, token: string): { id: string; name:
 
 /* ── space links ── */
 
-export type SharedSpace = { id: string; name: string; crest: string; rootId: string; access: LinkAccess };
+export type SharedSpace = { id: string; name: string; crest: string; color: string; rootId: string; access: LinkAccess };
 /** A file or folder as a guest sees it: no usernames, no links of its own. */
 export type SharedNode = { id: string; kind: "folder" | "file"; name: string; size: number; mime: string | null; updatedAt: number };
 
@@ -613,8 +613,8 @@ const linkShape = /^[A-Za-z0-9_-]{8,32}$/;
 /** The space a link opens, if it still does. */
 export function linkedSpace(db: DatabaseSync, token: string): SharedSpace | null {
   if (!linkShape.test(token)) return null;
-  const row = db.prepare("SELECT id, name, crest, root_id, link_access FROM spaces WHERE link = ?").get(token) as { id: string; name: string; crest: string; root_id: string; link_access: LinkAccess } | undefined;
-  return row ? { id: row.id, name: row.name, crest: row.crest, rootId: row.root_id, access: row.link_access } : null;
+  const row = db.prepare("SELECT id, name, crest, color, root_id, link_access FROM spaces WHERE link = ?").get(token) as { id: string; name: string; crest: string; color: string | null; root_id: string; link_access: LinkAccess } | undefined;
+  return row ? { id: row.id, name: row.name, crest: row.crest, color: row.color || "plum", rootId: row.root_id, access: row.link_access } : null;
 }
 
 function guestSpace(db: DatabaseSync, token: string, need: LinkAccess = "view"): SharedSpace {
