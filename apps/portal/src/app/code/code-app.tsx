@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { cx, InkCard, Seal } from "@kimono/ui";
-import { CrossingSeal } from "@/components/crossing";
+import { useCrossTo } from "@/components/crossing";
 import {
   code, drive, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace,
@@ -244,6 +244,7 @@ function WorkspaceView({ workspace, tab, path, blocked, onChange, now }: { works
   const [publishing, setPublishing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const crossTo = useCrossTo();
   const go = (to: Partial<Record<"tab" | "path", string | null>>) => goTo({ w: workspace.id, tab: to.tab === "chat" ? null : to.tab ?? tab, path: to.path ?? null });
 
   async function publish() {
@@ -255,34 +256,33 @@ function WorkspaceView({ workspace, tab, path, blocked, onChange, now }: { works
     try { await code.remove(workspace.id); goTo({}, true); onChange(); } catch (error) { setProblem(problemText(error)); }
   }
 
+  /* One action on show; the rest wait behind ⋯. The running app has its own card in the chat. */
   return <div className="cd-sheet cd-ws">
     <header className="cd-ws-head">
+      <button type="button" className="cd-back" onClick={() => goTo({})} aria-label="All tasks"><Icon name="back" /></button>
       <div className="cd-ws-id">
-        <button type="button" className="cd-back" onClick={() => goTo({})}><Icon name="back" />All tasks</button>
         <h1>{workspace.title}</h1>
-        <p className="cd-mono"><Icon name="branch" />{repoName(workspace)} · {workspace.branch}<span className="cd-faint"> from {workspace.base}</span></p>
+        <p className="cd-mono">{repoName(workspace)} · {workspace.branch}
+          {workspace.pullRequest ? <> · <button type="button" className="cd-textbutton" onClick={() => openOutside(workspace.pullRequest!.url)}>#{workspace.pullRequest.number}</button></> : null}
+        </p>
       </div>
-      <div className="cd-ws-acts">
-        {workspace.preview ? <Seal type="button" compact onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</Seal> : null}
-        {workspace.drive ? <CrossingSeal compact tone="quiet" kind="hanafubuki" href={`/drive?space=${workspace.drive.spaceId}&folder=${workspace.drive.folderId}`}><Icon name="folder" />Open in Drive</CrossingSeal> : null}
-        {workspace.pullRequest
-          ? <button type="button" className="cd-pr" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button>
-          : null}
-        <Seal type="button" compact tone={workspace.pullRequest || workspace.preview ? "quiet" : "primary"} disabled={running || publishing || Boolean(blocked)} onClick={() => void publish()}>
-          {publishing ? "Pushing…" : workspace.pullRequest ? "Push changes" : "Open pull request"}
-        </Seal>
-        {confirmDelete
-          ? <span className="cd-confirm"><span>Delete the sandbox? Its files stay in Drive.</span><Seal type="button" compact tone="danger" onClick={() => void remove()}>Delete</Seal><Seal type="button" compact tone="quiet" onClick={() => setConfirmDelete(false)}>Keep</Seal></span>
-          : <button type="button" className="cd-iconbutton" aria-label="Delete workspace" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>}
-      </div>
-    </header>
-    <nav className="cd-tabs" role="tablist" aria-label="Workspace">
-      {([["chat", "Chat", "chat"], ["files", "Files", "folder"], ["changes", "Changes", "diff"]] as const).map(([id, label, icon]) => (
-        <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go({ tab: id })}><Icon name={icon} />{label}</button>
-      ))}
-      <span className="cd-grow" />
       {running ? <span className="cd-status running" role="status"><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</span>
         : !connected ? <span className="cd-status">Reconnecting…</span> : null}
+      <details className="cd-more" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { event.currentTarget.open = false; setConfirmDelete(false); } }}>
+        <summary className="cd-iconbutton" aria-label="More">⋯</summary>
+        <div className="cd-menu" role="menu">
+          <button type="button" role="menuitem" disabled={running || publishing || Boolean(blocked)} onClick={() => void publish()}><Icon name="pr" />{publishing ? "Pushing…" : workspace.pullRequest ? "Push changes" : "Open pull request"}</button>
+          {workspace.drive ? <button type="button" role="menuitem" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" />Open in Drive</button> : null}
+          {confirmDelete
+            ? <button type="button" role="menuitem" className="is-danger" onClick={() => void remove()}><Icon name="trash" />Delete the sandbox? Files stay in Drive</button>
+            : <button type="button" role="menuitem" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Delete task</button>}
+        </div>
+      </details>
+    </header>
+    <nav className="cd-tabs" role="tablist" aria-label="Workspace">
+      {([["chat", "Chat"], ["files", "Files"], ["changes", "Changes"]] as const).map(([id, label]) => (
+        <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go({ tab: id })}>{label}</button>
+      ))}
     </nav>
     {problem ? <p className="cd-problem cd-ws-problem" role="alert">{problem}</p> : null}
     {tab === "chat" ? <Chat workspace={workspace} events={events} running={running} blocked={blocked} />
@@ -521,13 +521,9 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
       <small>Anyone with the link can open it while it&rsquo;s up.</small>
     </div>
     <div className="cd-preview-acts">
-      <Seal type="button" compact onClick={() => openOutside(url)}><Icon name="open" />Open</Seal>
-      <Seal type="button" compact tone="quiet" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>
-        <Icon name={copied ? "check" : "copy"} />{copied ? "Copied" : "Copy link"}
-      </Seal>
-      <Seal type="button" compact tone="quiet" disabled={stopping} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}>
-        {stopping ? "Stopping…" : "Take down"}
-      </Seal>
+      <Seal type="button" compact onClick={() => openOutside(url)}>Open</Seal>
+      <button type="button" className="cd-quietbutton" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? "Copied" : "Copy link"}</button>
+      <button type="button" className="cd-quietbutton" disabled={stopping} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}>{stopping ? "Stopping…" : "Take down"}</button>
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </div></InkCard>;
@@ -607,12 +603,12 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
     <div className="cd-composer-bar">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <button type="button" className="cd-iconbutton" aria-label="Attach files" disabled={Boolean(blocked)} onClick={() => picker.current?.click()}><Icon name="clip" /></button>
-      {workspace.drive ? <button type="button" className="cd-textbutton cd-fromdrive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" />From Drive</button> : null}
-      {problem ? <span className="cd-problem" role="alert">{problem}</span> : <span className="cd-faint cd-hint">Drop or paste files to attach them</span>}
+      {workspace.drive ? <button type="button" className="cd-iconbutton" aria-label="Attach from Drive" title="Attach from Drive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" /></button> : null}
+      {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />
       {running
         ? <Seal type="button" compact tone="quiet" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" />Stop</Seal>
-        : <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Meta+Enter">Send<kbd>⌘↵</kbd></Seal>}
+        : <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Meta+Enter" title="Send (⌘↵)">Send</Seal>}
     </div>
     {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
     {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={async (items) => {
