@@ -43,6 +43,9 @@ targets:
       path: Kimono/Info.plist
       properties:
         CFBundleDisplayName: Kimono
+        # The release's numbers (MARKETING_VERSION, CURRENT_PROJECT_VERSION), never a fixed 1.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         # Only standard HTTPS: TestFlight builds go out without the export questions.
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
@@ -78,6 +81,9 @@ targets:
       path: KimonoFiles/Info.plist
       properties:
         CFBundleDisplayName: Kimono
+        # The release's numbers (MARKETING_VERSION, CURRENT_PROJECT_VERSION), never a fixed 1.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
         # The icon beside "Kimono" in the Files app: a symbol, not the app icon.
         CFBundleIcons:
