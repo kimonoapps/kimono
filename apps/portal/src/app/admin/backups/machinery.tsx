@@ -1,6 +1,6 @@
 import { CrossingSeal } from "@/components/crossing";
 import { RunJoint } from "@/components/run-joint";
-import { Compartment, Field, Mono, Seal } from "@kimono/ui";
+import { Choice, Compartment, Field, Mono, Seal } from "@kimono/ui";
 import type { BackupConfig, BackupStatus } from "@/lib/backups";
 import { BackupRefresh } from "./refresh";
 
@@ -70,8 +70,8 @@ export function BackupMachinery({ config, status, apps, save, run, queued }: {
       </Compartment>
       <Compartment label="Restore">
         {status?.snapshots?.length ? <div className="backup-grid backup-restore">
-          <Field label="Snapshot"><select name="snapshot">{status.snapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{when(snapshot.time)} · {snapshot.id.slice(0, 8)}{snapshot.summary?.total_bytes_processed ? ` · ${(snapshot.summary.total_bytes_processed / 1024 ** 3).toFixed(2)} GiB` : ""}</option>)}</select></Field>
-          <Field label="Contents"><select name="appId"><option value="">Everything</option>{apps.map((app) => <option key={app.id} value={app.id}>{app.name}</option>)}</select></Field>
+          <Field label="Snapshot"><Choice name="snapshot" defaultValue={status.snapshots[0]?.id} options={status.snapshots.map((snapshot) => ({ value: snapshot.id, label: `${when(snapshot.time)} · ${snapshot.id.slice(0, 8)}${snapshot.summary?.total_bytes_processed ? ` · ${(snapshot.summary.total_bytes_processed / 1024 ** 3).toFixed(2)} GiB` : ""}` }))} /></Field>
+          <Field label="Contents"><Choice name="appId" defaultValue="" options={[{ value: "", label: "Everything" }, ...apps.map((app) => ({ value: app.id, label: app.name }))]} /></Field>
           <Seal name="action" value="restore" type="submit" tone="quiet" disabled={busy}>Restore a copy</Seal>
         </div> : <p className="k-note">Snapshots appear here after the first backup. Restoring copies into a separate folder and never touches live data.</p>}
         {status?.restorePath ? <Mono items={[`Latest copy ${status.restorePath}`]} className="backup-restore-path" /> : null}

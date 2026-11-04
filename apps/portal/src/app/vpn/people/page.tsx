@@ -1,5 +1,5 @@
 import { CrossingSeal } from "@/components/crossing";
-import { Seal } from "@kimono/ui";
+import { Choice, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { VpnRooms } from "@/components/app-rooms";
@@ -93,10 +93,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         {invitable.length ? <Panels>
           <PanelForm label="Invite" title="Invite someone" action={invite} submit={<Seal type="submit">Invite</Seal>}>
             <label className="invite-field">
-              <select name="guest" required defaultValue="">
-                <option value="" disabled>Choose someone</option>
-                {invitable.map((person) => <option key={person.username} value={person.username}>{person.name} · @{person.username}</option>)}
-              </select>
+              <Choice name="guest" required placeholder="Choose someone" options={invitable.map((person) => ({ value: person.username, label: `${person.name} · @${person.username}` }))} />
             </label>
           </PanelForm>
         </Panels> : null}

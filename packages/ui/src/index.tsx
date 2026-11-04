@@ -25,6 +25,7 @@ export * from "./seal";
 export * from "./tray";
 export * from "./rows";
 export * from "./form";
+export * from "./choice";
 export * from "./page";
 
 /* Crossings — the press is the page change. */

@@ -1,4 +1,4 @@
-import { Compartment, Field, Form, FormActions, Note, PageHeader, Row, Rows, Seal } from "@kimono/ui";
+import { Choice, Compartment, Field, Form, FormActions, Note, PageHeader, Row, Rows, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { AppShell } from "@/components/app-shell";
@@ -74,10 +74,7 @@ export default async function AdminVpnPage({ searchParams }: { searchParams: Pro
       <Compartment label="Switch on for someone">
         {candidates.length ? <Form action={grant}>
           <Field label="Account">
-            <select name="username" required defaultValue="">
-              <option value="" disabled>Choose someone</option>
-              {candidates.map((account) => <option key={account.username} value={account.username}>{account.name} · @{account.username}</option>)}
-            </select>
+            <Choice name="username" required placeholder="Choose someone" options={candidates.map((account) => ({ value: account.username, label: `${account.name} · @${account.username}` }))} />
           </Field>
           <FormActions><Seal type="submit">Switch on</Seal></FormActions>
         </Form> : <Note>Everyone in your household already has Kimono VPN.</Note>}

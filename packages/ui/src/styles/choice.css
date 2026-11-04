@@ -1,0 +1,53 @@
+/* ─────────────────────────────────────────────────────────────
+   選 Choice — Kimono's dropdown.
+
+   Closed, it is a field: the same fold, hair edge and suō focus ring as an
+   input, with a small cue at the end. Open, a sheet of the lightest paper
+   lifts beside it with the sheet shadow; the option under the hand takes
+   the hover wash, the chosen one keeps a suō tick in its margin.
+   ───────────────────────────────────────────────────────────── */
+
+.k-choice { position: relative; display: block; width: 100%; max-width: 420px; }
+.k-choice-button {
+  display: flex; align-items: center; gap: var(--k-space-3);
+  width: 100%; min-height: var(--k-control);
+  padding: 0 var(--k-space-3) 0 var(--k-space-4);
+  border: var(--k-hairline) solid var(--k-hair); border-radius: var(--k-r-2);
+  background: var(--k-fold); color: var(--k-ink);
+  font: 14px/1.5 var(--k-sans); text-align: left; cursor: pointer;
+  transition: border-color var(--k-t-state) var(--k-ease-settle), background-color var(--k-t-state) var(--k-ease-settle), box-shadow var(--k-t-state) var(--k-ease-settle);
+}
+.k-choice-button:hover { border-color: var(--k-hair-deep); }
+.k-choice-button:focus-visible, .k-choice.is-open .k-choice-button {
+  outline: 0; border-color: var(--k-suo); background: var(--k-lift);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-suo) 22%, transparent);
+}
+.k-choice-button:disabled { color: var(--k-faint); background: transparent; border-style: dashed; cursor: not-allowed; }
+.k-choice-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-choice-value.is-placeholder { color: var(--k-faint); }
+/* The cue: a small chevron drawn in ink, turning over while open. */
+.k-choice-cue { flex: none; width: 8px; height: 8px; margin: -3px 4px 0 0; border-right: 1.5px solid var(--k-ink-soft); border-bottom: 1.5px solid var(--k-ink-soft); transform: rotate(45deg); transition: transform var(--k-t-state) var(--k-ease-settle); }
+.k-choice.is-open .k-choice-cue { transform: translateY(4px) rotate(-135deg); }
+.k-choice-required { position: absolute; inset: auto 0 0; width: 100%; height: 1px; opacity: 0; pointer-events: none; }
+
+.k-choice-list {
+  position: fixed; z-index: 1000; margin: 0; padding: var(--k-space-1); list-style: none; overflow-y: auto; box-sizing: border-box;
+  border: var(--k-hairline) solid var(--k-hair-deep); border-radius: var(--k-r-2);
+  background: var(--k-lift); box-shadow: var(--k-shadow-sheet);
+  font: 14px/1.4 var(--k-sans); color: var(--k-ink);
+  animation: k-choice-in var(--k-t-state) var(--k-ease-settle);
+}
+.k-choice-list.is-up { animation-name: k-choice-in-up; }
+@keyframes k-choice-in { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes k-choice-in-up { from { opacity: 0; transform: translateY(4px); } }
+.k-choice-option { position: relative; display: flex; align-items: center; min-height: 40px; padding: var(--k-space-2) var(--k-space-4) var(--k-space-2) calc(var(--k-space-4) + 10px); border-radius: calc(var(--k-r-2) - 2px); cursor: pointer; }
+.k-choice-option > span { display: grid; gap: 2px; min-width: 0; }
+.k-choice-option small { color: var(--k-ink-soft); font-size: 12px; }
+.k-choice-option.is-active { background: var(--k-hover); }
+.k-choice-option.is-chosen { font-weight: 600; }
+.k-choice-option.is-chosen::before { content: ""; position: absolute; left: var(--k-space-2); top: 50%; width: 4px; height: 16px; margin-top: -8px; background: var(--k-suo); }
+.k-choice-option.is-disabled { color: var(--k-faint); cursor: default; }
+
+/* Inside a labelled field it fills the field's measure like an input does. */
+.k-field .k-choice { max-width: 420px; }
+@media (prefers-reduced-motion: reduce) { .k-choice-list { animation: none; } .k-choice-cue { transition: none; } }
