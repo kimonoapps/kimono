@@ -10,7 +10,7 @@ import { usePins } from "./pins";
 import { defaultPins } from "@/lib/default-pins";
 import type { RailApp } from "./rail";
 
-type TileApp = RailApp & { mobileApp?: KimonoApp["mobileApp"] };
+type TileApp = RailApp & { mobileApp?: KimonoApp["mobileApp"]; /** One live line ("9 spaces · 2 new files today") in place of the description. */ line?: string };
 
 /*
  * The app grid: every app is a tile with its inked bloom and its name. Hover
@@ -50,7 +50,7 @@ export function AppTiles({ apps, compact = false, onOpen }: { apps: TileApp[]; c
           >
             <AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} className="app-tile-bloom" />
             <b>{app.name}</b>
-            <small>{app.description}</small>
+            <small>{app.line ?? app.description}</small>
           </Crossing>
           {app.external ? <svg className="app-tile-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> : null}
           <button className="app-tile-pin" type="button" aria-pressed={pinned} aria-label={pinned ? `Unpin ${app.name}` : `Pin ${app.name} to the side`}

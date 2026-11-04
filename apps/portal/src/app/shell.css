@@ -128,3 +128,13 @@
 .skel-pill { width: 130px; height: 32px; border-radius: 16px; }
 @media (max-width: 720px) { .skel-cards { grid-template-columns: 1fr; } .skel-card:nth-child(n+2) { display: none; } }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; background: var(--k-container-high); } }
+
+/* Home, to the mockup: one short line per tile, and the phone card under the grid */
+.app-tile-link small { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.home-page .app-tiles { margin-bottom: 22px; }
+.app-offer-ink { display: block; margin-bottom: var(--k-space-6); }
+.app-offer-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; background: var(--k-secondary-container); color: inherit; text-decoration: none; }
+.app-offer-card b { display: block; font-size: 17px; }
+.app-offer-card small { font-size: 14px; color: var(--k-on-surface-variant); }
+.app-offer-card .k-seal { pointer-events: none; }
+@media (max-width: 720px) { .app-offer-card { grid-template-columns: auto minmax(0, 1fr); } .app-offer-card .k-seal { display: none; } }
