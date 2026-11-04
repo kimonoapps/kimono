@@ -17,8 +17,10 @@ targets:
     platform: iOS
     sources:
       - Kimono
-      # The app's background uploads sign in the same way as the Files extension.
+      # The app's background uploads sign in the same way as the Files extension,
+      # and its thumbnails come from the same place (and the same cache).
       - KimonoFiles/Drive.swift
+      - KimonoFiles/Thumbnails.swift
     dependencies:
       - target: KimonoFiles
     settings:

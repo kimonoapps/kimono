@@ -209,7 +209,7 @@ class KimonoDocuments : DocumentsProvider() {
 
     /* ── Thumbnails, search and recent files ── */
 
-    private val thumbnails by lazy { Thumbnails(context!!, drive) }
+    private val thumbnails get() = app.thumbnails
 
     override fun openDocumentThumbnail(documentId: String, sizeHint: android.graphics.Point, signal: CancellationSignal?): android.content.res.AssetFileDescriptor {
         val file = blocking {

@@ -45,6 +45,18 @@ data class DriveNode(
     val contentVersion: Int = 1,
 ) {
     val isFolder get() = kind == "folder"
+
+    /** Photos, videos and PDFs: the files a small picture says more about than an icon. */
+    val mayHaveThumbnail: Boolean get() {
+        if (isFolder || size <= 0) return false
+        val type = mime ?: when (name.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg", "png", "heic", "heif", "gif", "webp", "bmp", "tif", "tiff", "dng" -> "image/"
+            "mp4", "mov", "m4v", "3gp", "mkv", "webm", "avi" -> "video/"
+            "pdf" -> "application/pdf"
+            else -> return false
+        }
+        return type.startsWith("image/") || type.startsWith("video/") || type == "application/pdf"
+    }
 }
 
 @Serializable

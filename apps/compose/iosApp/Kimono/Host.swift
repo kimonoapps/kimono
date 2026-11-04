@@ -109,6 +109,13 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
 
     func retryUpload(id: String) { BackgroundUploader.shared.retry(id) }
 
+    func thumbnail(id: String, contentVersion: Int64, name: String, mime: String?, size: Int64, pixels: Int64, done: @escaping (String?) -> Void) {
+        Task {
+            let made = try? await Thumbnails.shared.make(id: id, contentVersion: Int(contentVersion), name: name, mime: mime, size: size, pixels: Int(pixels))
+            await MainActor.run { done(made?.path) }
+        }
+    }
+
     func observeUploads(callback: @escaping ([IosUploadStatus]) -> Void) { BackgroundUploader.shared.observe(callback) }
 
     // MARK: Files app

@@ -102,3 +102,34 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
         Enumerator(containerItemIdentifier)
     }
 }
+
+// MARK: Thumbnails
+
+extension FileProviderExtension: NSFileProviderThumbnailing {
+    /// Thumbnails for files that aren't on the phone yet (the Files app makes its own for those that are).
+    func fetchThumbnails(for itemIdentifiers: [NSFileProviderItemIdentifier], requestedSize size: CGSize,
+                         perThumbnailCompletionHandler: @escaping (NSFileProviderItemIdentifier, Data?, Error?) -> Void,
+                         completionHandler: @escaping (Error?) -> Void) -> Progress {
+        let progress = Progress(totalUnitCount: Int64(itemIdentifiers.count))
+        let pixels = Int(max(size.width, size.height))
+        let task = Task {
+            await withTaskGroup(of: Void.self) { group in
+                for identifier in itemIdentifiers {
+                    group.addTask {
+                        do {
+                            let node = try await Drive.shared.node(identifier.rawValue)
+                            let made = try await Thumbnails.shared.make(id: node.id, contentVersion: node.contentVersion, name: node.name, mime: node.mime, size: node.size, pixels: pixels)
+                            perThumbnailCompletionHandler(identifier, made.flatMap { try? Data(contentsOf: $0) }, nil)
+                        } catch {
+                            perThumbnailCompletionHandler(identifier, nil, error)
+                        }
+                        progress.completedUnitCount += 1
+                    }
+                }
+            }
+            completionHandler(Task.isCancelled ? CocoaError(.userCancelled) : nil)
+        }
+        progress.cancellationHandler = { task.cancel() }
+        return progress
+    }
+}

@@ -55,6 +55,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil3.compose.AsyncImage
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -231,6 +237,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
                             val row = @Composable {
                                 NodeRow(
                                     node = node,
+                                    thumbnail = { pixels -> platform.thumbnail(node, pixels) },
                                     index = index,
                                     count = children.size,
                                     busy = opening?.first?.id == node.id,
@@ -285,9 +292,14 @@ class NodeChoice(val label: String, val danger: Boolean = false, val onClick: ()
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NodeRow(node: DriveNode, index: Int, count: Int, busy: Boolean, progress: Float?, choices: List<NodeChoice>, onClick: () -> Unit) {
+private fun NodeRow(node: DriveNode, thumbnail: suspend (Int) -> String?, index: Int, count: Int, busy: Boolean, progress: Float?, choices: List<NodeChoice>, onClick: () -> Unit) {
     val haptics = LocalHapticFeedback.current
     var menu by remember { mutableStateOf(false) }
+    val pixels = with(LocalDensity.current) { 40.dp.roundToPx() }
+    /* A photo, video or PDF shows a small picture of itself once one is ready; until then, its icon. */
+    val picture by produceState<String?>(null, node.id, node.contentVersion) {
+        if (node.mayHaveThumbnail) value = runCatching { thumbnail(pixels) }.getOrNull()
+    }
     Box {
         SegmentedListItem(
             onClick = onClick,
@@ -297,6 +309,14 @@ private fun NodeRow(node: DriveNode, index: Int, count: Int, busy: Boolean, prog
             leadingContent = {
                 Box(Modifier.size(40.dp).background(if (node.isFolder) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(if (node.isFolder) 12.dp else 20.dp)), contentAlignment = Alignment.Center) {
                     if (busy) LoadingIndicator(Modifier.size(28.dp))
+                    else if (picture != null) AsyncImage(
+                        model = "file://$picture",
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        /* A page reads from its top; a photo from its middle. */
+                        alignment = if (node.name.endsWith(".pdf", ignoreCase = true) || node.mime == "application/pdf") Alignment.TopCenter else Alignment.Center,
+                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
+                    )
                     else Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(20.dp), tint = if (node.isFolder) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer)
                 }
             },

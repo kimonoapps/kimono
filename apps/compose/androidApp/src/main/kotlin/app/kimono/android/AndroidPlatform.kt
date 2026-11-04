@@ -105,6 +105,12 @@ class AndroidPlatform(private val context: Context) : Platform {
 
     override val uploads: app.kimono.data.Uploads by lazy { AndroidUploads(context) }
 
+    override suspend fun thumbnail(node: app.kimono.data.DriveNode, pixels: Int): String? = withContext(Dispatchers.IO) {
+        val mime = node.mime ?: android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(node.name.substringAfterLast('.', "").lowercase()) ?: return@withContext null
+        if (!Thumbnails.canMake(node, mime)) return@withContext null
+        runCatching { (context.applicationContext as KimonoApplication).thumbnails.make(node, mime, pixels)?.absolutePath }.getOrNull()
+    }
+
     override fun openUrl(url: String) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

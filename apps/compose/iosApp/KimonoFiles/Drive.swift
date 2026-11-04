@@ -167,6 +167,24 @@ actor Drive {
         return roles[spaceId]
     }
 
+    /// Up to `length` bytes of a file from `offset`, for reading part of it without downloading it all.
+    func read(_ id: String, offset: Int64, length: Int) async throws -> Data {
+        let request = try await request("/api/v1/drive/nodes/\(id)/content", headers: ["Range": "bytes=\(offset)-\(offset + Int64(length) - 1)"])
+        let (data, response) = try await send(request)
+        /* A server that ignores ranges sends it all: keep the part asked for. */
+        if response.statusCode == 200, offset > 0 || data.count > length {
+            let start = Int(min(offset, Int64(data.count)))
+            return data.subdata(in: start..<min(data.count, start + length))
+        }
+        return data
+    }
+
+    /// Where a file's bytes are, with what it takes to read them, for players that fetch ranges themselves.
+    func contentAccess(_ id: String) async throws -> (url: URL, headers: [String: String]) {
+        let request = try await request("/api/v1/drive/nodes/\(id)/content")
+        return (request.url!.absoluteURL, ["Authorization": request.value(forHTTPHeaderField: "Authorization") ?? ""])
+    }
+
     /// Downloads a file's bytes to a temporary file.
     func download(_ id: String) async throws -> URL {
         let request = try await request("/api/v1/drive/nodes/\(id)/content")

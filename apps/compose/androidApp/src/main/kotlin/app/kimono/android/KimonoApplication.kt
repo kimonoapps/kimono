@@ -17,6 +17,8 @@ import kotlinx.coroutines.sync.withLock
 class KimonoApplication : Application() {
     val platform by lazy { AndroidPlatform(this) }
     val session by lazy { Session(platform, HttpClient(OkHttp) { followRedirects = true }) }
+    /** One thumbnailer for the app and the Files app, so they share what's made and how many go at once. */
+    internal val thumbnails by lazy { Thumbnails(this, app.kimono.data.Drive(session)) }
     private val starting = Mutex()
 
     override fun onCreate() {

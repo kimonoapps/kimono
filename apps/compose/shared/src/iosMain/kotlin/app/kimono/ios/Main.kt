@@ -5,6 +5,7 @@ package app.kimono.ios
 import androidx.compose.ui.window.ComposeUIViewController
 import app.kimono.KimonoApp
 import app.kimono.data.PickedFile
+import app.kimono.data.DriveNode
 import app.kimono.data.UploadStatus
 import app.kimono.data.Uploads
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +52,8 @@ interface IosHost {
     fun dismissUpload(id: String)
     fun retryUpload(id: String)
     fun observeUploads(callback: (List<IosUploadStatus>) -> Unit)
+    /** A thumbnail's local path, from the thumbnails the Files app shares; null when there can't be one. */
+    fun thumbnail(id: String, contentVersion: Long, name: String, mime: String?, size: Long, pixels: Long, done: (String?) -> Unit)
 }
 
 /** An upload's state, as the Swift uploader reports it. */
@@ -99,6 +102,9 @@ private class IosPlatform(private val host: IosHost) : Platform {
         suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }
             .map { IosFile(it.path, it.name, it.size, it.mimeType, host) }
     override val uploads: Uploads = IosUploads(host)
+    override suspend fun thumbnail(node: DriveNode, pixels: Int): String? = suspendCancellableCoroutine { waiting ->
+        host.thumbnail(node.id, node.contentVersion.toLong(), node.name, node.mime, node.size, pixels.toLong()) { waiting.resume(it) }
+    }
 }
 
 fun NSData.toByteArray(): ByteArray = ByteArray(length.toInt()).also { out ->
