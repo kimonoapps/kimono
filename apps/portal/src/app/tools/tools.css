@@ -270,3 +270,41 @@
 
 .tools-key-warning { padding: 12px 18px; margin: 0; background: var(--k-fold); color: var(--k-suo-deep); font-weight: 700; }
 .tools-key-warning a { color: inherit; text-underline-offset: 3px; }
+
+/* ── to the mockup (design/mockups/m3-everywhere.html, Tools) ──
+   No framed tray: the API leads the page, the caller key is a card on urushi,
+   endpoints are soft rows that open in place, the response sits on urushi. */
+.tools-page { padding-bottom: 80px; }
+.tools-off-ink { display: block; margin-bottom: 14px; }
+.tools-off { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; background: var(--k-primary-container); color: var(--k-on-primary-container); }
+.tools-off > span { flex: 1; min-width: 220px; display: grid; gap: 2px; }
+.tools-off small { font-size: 14px; }
+.tools-key { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-bottom: 14px; background: #2a1d22; color: #f3e9e0; }
+.tools-key small { display: block; font-size: 14px; color: #a8969c; }
+.tools-key-mark { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; background: #3a2a30; color: #d77b8c; }
+.tools-key-mark .line-icon { width: 22px; height: 22px; }
+.tools-key-btn { min-height: 40px; padding: 0 18px; border: 0; border-radius: var(--k-r-full); background: #3a2a30; color: #f3e9e0; font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.tools-key-btn:hover { background: #4a3740; }
+.tools-key-drawer { margin: -6px 0 14px; border-radius: var(--k-r-xl); }
+.tools-endpoints { display: grid; gap: 3px; }
+.tools-operation { border: 0; border-radius: 6px; background: var(--k-container); overflow: hidden; transition: background-color var(--k-t-state), box-shadow var(--k-t-state); }
+.tools-operation:first-child { border-top-left-radius: 24px; border-top-right-radius: 24px; }
+.tools-operation:last-child { border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; }
+.tools-operation:hover { background: var(--k-container-high); }
+.tools-operation[open] { background: var(--k-container-lowest); box-shadow: inset 0 0 0 2px var(--k-primary-container); border-radius: 24px; margin: 4px 0; }
+.tools-operation-summary { min-height: 72px; padding: 12px 20px; gap: 14px; border: 0; background: none; }
+.tools-operation-summary .k-cue { order: 9; margin-left: auto; }
+.tools-operation-name { font-weight: 700; font-size: 15px; color: var(--k-on-surface); }
+.tools-path { font: 13px var(--k-mono); color: var(--k-on-surface-variant); }
+.tools-operation-body { padding: 4px 20px 20px; border: 0; background: none; }
+.tools-pane { border: 0; border-radius: var(--k-r-l); background: #2a1d22; color: #f3e9e0; overflow: hidden; }
+.tools-pane-tabs { border: 0; background: transparent; }
+.tools-pane .k-code, .tools-pane .k-urushi { background: transparent; }
+.tools-parameter-table { border-collapse: separate; border-spacing: 0 4px; }
+.tools-parameter-table td { border: 0; background: var(--k-container); padding: 10px 12px; }
+.tools-parameter-table td:first-child { border-radius: 12px 0 0 12px; }
+.tools-parameter-table td:last-child { border-radius: 0 12px 12px 0; }
+.tools-foot { margin: 18px 8px 0; font-size: 14px; color: var(--k-on-surface-variant); }
+.tools-foot a { color: var(--k-suo); font-weight: 700; }
+.tools-method { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: var(--k-r-s); background: var(--k-container-highest); font: 700 12px/1 var(--k-mono); color: var(--k-on-surface-variant); }
+.tools-operation-summary .tools-access { margin-left: auto; }

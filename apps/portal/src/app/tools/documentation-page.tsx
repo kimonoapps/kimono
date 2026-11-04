@@ -26,5 +26,8 @@ export async function DocumentationPage({ selectedId, openKeyDrawer = false }: {
     access: Object.fromEntries(api.operations.map(op => [op.id, apiAccess(instance, api, op.id)])),
   })).filter(item => item.enabled).map(item => ({ ...item, api: { ...item.api, operations: item.api.operations.filter(op => item.access[op.id] !== "disabled") } })).filter(item => item.api.operations.length > 0);
   if (selectedId && !apis.some(item => item.api.id === selectedId)) notFound();
-  return <AppShell user={session.user} brandColors={settings.brand.colors} app={appIdentity(app)}><ToolsDocumentation key={selectedId || apis[0]?.api.id} openKeyDrawer={openKeyDrawer} apis={apis} selectedId={selectedId || apis[0]?.api.id || ""} administrator={["admin", "owner"].includes(session.user.role)} origin={origin} accent={app.accent} /></AppShell>;
+  /* Collections are rooms under Tools in the rail, as the phone shows spaces. */
+  const current = selectedId || apis[0]?.api.id;
+  const rooms = apis.map((item) => ({ href: `/tools/${item.api.id}`, label: item.api.name, here: item.api.id === current }));
+  return <AppShell user={session.user} brandColors={settings.brand.colors} app={appIdentity(app)} rooms={rooms}><ToolsDocumentation key={selectedId || apis[0]?.api.id} openKeyDrawer={openKeyDrawer} apis={apis} selectedId={selectedId || apis[0]?.api.id || ""} administrator={["admin", "owner"].includes(session.user.role)} origin={origin} accent={app.accent} /></AppShell>;
 }

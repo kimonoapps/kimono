@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { BloomMark, Chip, PageHeader, Seal } from "@kimono/ui";
+import { InkCard, PageHeader } from "@kimono/ui";
+import { LineIcon } from "@/components/line-icon";
 import { Crossing, CrossingSeal } from "@/components/crossing";
 import type { ToolApi } from "@/lib/tool-apis/catalog";
 import { ApiExplorer } from "./api-explorer";
@@ -28,58 +29,29 @@ export function ToolsDocumentation({ apis, selectedId, administrator, origin, op
   const configurationHref = "/admin/apps/kimono-tools?view=environment";
   function closeDrawer() { if (keyPending) return; setDrawer(false); keyTrigger.current?.focus(); }
   return <div className="page tools-page">
-    <div className="tools-workspace">
-      <nav className="tools-rail" aria-label="API collections">
-        <p className="tools-rail-label">Collections</p>
-        <div className="tools-collections">{apis.map(item => <Crossing kind="kakejiku" key={item.api.id} href={`/tools/${item.api.id}`} aria-current={item.api.id === selectedId ? "page" : undefined} className="tools-collection" data-enabled={item.enabled}>
-          <span className="tools-collection-bloom"><BloomMark identity={{ id: item.api.id, accent }} centre={15} /></span>
-          <span className="tools-collection-copy">
-            <span className="tools-collection-name">{item.api.name}</span>
-            <span className="tools-collection-meta">{item.api.operations.length} {item.api.operations.length === 1 ? "endpoint" : "endpoints"} · {item.enabled ? "Enabled" : "Disabled"}</span>
-          </span>
-        </Crossing>)}</div>
-        <div className="tools-rail-footer">
-          <Crossing kind="kakejiku" href="/api/tools/openapi.json" download="kimono-tools.openapi.json">Download OpenAPI <span aria-hidden="true">↓</span></Crossing>
-          {administrator && <Crossing kind="kakejiku" href={configurationHref}>API configuration <span aria-hidden="true">→</span></Crossing>}
-        </div>
-      </nav>
-
-      <section className="tools-reference" aria-labelledby="tools-api-title">
-        <header className="tools-masthead">
-          <BloomMark className="tools-masthead-bloom" identity={{ id: api.id, accent }} />
-          <div className="tools-masthead-copy">
-            <p className="tools-kicker">Kimono Tools · API reference</p>
-            <h1 id="tools-api-title">{api.name}</h1>
-            <p className="tools-lead">{api.description}</p>
-            <div className="tools-masthead-meta">
-              {enabled ? <Chip tone="running">API enabled</Chip> : <Chip tone="faint">API disabled</Chip>}
-              <span>{api.operations.length} {api.operations.length === 1 ? "endpoint" : "endpoints"} · GET · JSON</span>
-              <Crossing kind="kakejiku" href={api.source} target="_blank" rel="noreferrer">Source reference <span aria-hidden="true">↗</span></Crossing>
-            </div>
-          </div>
-          {/* While the API is disabled the primary action is enabling it, beside the notice; the key stays here as the secondary. */}
-          {administrator && <div className="k-seal-group tools-masthead-actions">
-            <Seal ref={keyTrigger} tone={enabled ? "primary" : "quiet"} disabled={keyPending} onClick={() => setDrawer(!drawer)} aria-expanded={drawer}>{hasKey ? "Manage API key" : "Create API key"}</Seal>
-          </div>}
-        </header>
-
-        {!enabled && <p className="tools-disabled-note" role="status">
-          <strong>This API is disabled.</strong>
-          <span>Every endpoint answers <code>404</code> until an administrator enables it in API configuration. The documentation stays readable.</span>
-          {administrator && <CrossingSeal compact href={configurationHref}>Enable {api.name}</CrossingSeal>}
-        </p>}
-
-        {drawer && <KeyDrawer apiId={api.id} apiName={api.name} accent={accent} configured={hasKey} onClose={closeDrawer} onPendingChange={setKeyPending} onKeyChange={setKnownKey} />}
-
-        {api.operations.some(op => access[op.id] === "api-key") && <p className="tools-key-warning" role="note">{administrator ? <Crossing kind="kakejiku" href={`/tools/${api.id}?create-key=1`}>Requires API key · {hasKey ? "Manage API key" : "Create API key"} →</Crossing> : <span>Requires API key · Ask an administrator to create a key for this API.</span>}</p>}
-
-        <div className="tools-endpoints-heading"><h2>Endpoints</h2><span>Open a row for its parameters, a request preview and the live response.</span></div>
-        <ApiExplorer key={api.id} api={api} access={access} enabled={enabled} callerKey={key} onCallerKeyChange={setKey} origin={origin} />
-
-        <footer className="tools-reference-footer">
-          <span>Public endpoints need no key. Protected endpoints take <code>Authorization: Bearer</code> with this API’s caller key.</span>
-        </footer>
-      </section>
+    <div className="topbar">
+      <span><span className="eyebrow">API reference</span><h1 id="tools-api-title">{api.name}</h1><p className="sub">{api.description}</p></span>
+      <div className="end">
+        <span className={enabled ? "k-ink-dot k-running" : "k-ink-dot"}>{enabled ? "API enabled" : "API disabled"}</span>
+        <Crossing kind="kakejiku" className="txt" href="/api/tools/openapi.json" download="kimono-tools.openapi.json"><LineIcon name="download" />OpenAPI</Crossing>
+        {administrator ? <Crossing kind="kakejiku" className="txt" href={configurationHref}>Configure</Crossing> : null}
+      </div>
     </div>
+
+    {!enabled ? <InkCard colour="#a84d63" seed={`tools-off-${api.id}`} className="tools-off-ink"><div className="card tools-off">
+      <span><b>This API is switched off</b><small>Every endpoint answers 404 until it&rsquo;s enabled. The reference stays readable.</small></span>
+      {administrator ? <CrossingSeal compact href={configurationHref}>Enable {api.name}</CrossingSeal> : null}
+    </div></InkCard> : null}
+
+    {administrator ? <div className="card tools-key">
+      <span className="tools-key-mark"><LineIcon name="key" /></span>
+      <span><b>Caller key</b><small>{hasKey ? "Set. It was shown once, when it was made." : api.operations.some(op => access[op.id] === "api-key") ? "Protected endpoints need one." : "Only protected endpoints use it."}</small></span>
+      <button ref={keyTrigger} type="button" className="tools-key-btn" disabled={keyPending} onClick={() => setDrawer(!drawer)} aria-expanded={drawer}>{drawer ? "Close" : hasKey ? "Replace" : "Create"}</button>
+    </div> : null}
+    {drawer ? <KeyDrawer apiId={api.id} apiName={api.name} accent={accent} configured={hasKey} onClose={closeDrawer} onPendingChange={setKeyPending} onKeyChange={setKnownKey} /> : null}
+
+    <div className="label">Endpoints</div>
+    <ApiExplorer key={api.id} api={api} access={access} enabled={enabled} callerKey={key} onCallerKeyChange={setKey} origin={origin} />
+    <p className="tools-foot">Public endpoints need no key. Protected ones take <code>Authorization: Bearer</code> with this API&rsquo;s caller key. <Crossing kind="kakejiku" href={api.source} target="_blank" rel="noreferrer">Source reference</Crossing></p>
   </div>;
 }
