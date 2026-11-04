@@ -14,6 +14,7 @@ coil = "3.6.3"
 activity = "1.13.0"
 browser = "1.10.0"
 kotlinx-io = "0.9.1"
+work = "2.12.0"
 
 [libraries]
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
@@ -34,6 +35,7 @@ coil-svg = { module = "io.coil-kt.coil3:coil-svg", version.ref = "coil" }
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 browser = { module = "androidx.browser:browser", version.ref = "browser" }
+work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 
 [plugins]
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

@@ -30,6 +30,31 @@ interface Platform {
     fun openFile(path: String, mimeType: String?)
     /** Asks the person for files to upload. Empty if they changed their mind. */
     suspend fun pickFiles(): List<PickedFile>
+    /** Uploads the OS carries on with after the app closes; null to upload while the app is open. */
+    val uploads: Uploads?
+}
+
+/** An upload as the screens show it, wherever it runs. */
+data class UploadStatus(
+    val id: String,
+    val name: String,
+    val size: Long,
+    val sent: Long,
+    val folderId: String,
+    /** Waiting for a connection, or for its turn. */
+    val waiting: Boolean = false,
+    val failed: String? = null,
+    val done: Boolean = false,
+)
+
+/** Where uploads happen: handed to the OS, or kept in the app while it's open. */
+interface Uploads {
+    val statuses: kotlinx.coroutines.flow.StateFlow<List<UploadStatus>>
+    fun start(files: List<PickedFile>, folderId: String)
+    /** Stops an upload and forgets it, done or not. */
+    fun dismiss(id: String)
+    /** Starts a failed upload again, from where the server says it stopped. */
+    fun retry(id: String)
 }
 
 /**

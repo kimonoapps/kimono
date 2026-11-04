@@ -5,6 +5,10 @@ package app.kimono.ios
 import androidx.compose.ui.window.ComposeUIViewController
 import app.kimono.KimonoApp
 import app.kimono.data.PickedFile
+import app.kimono.data.UploadStatus
+import app.kimono.data.Uploads
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import app.kimono.data.Platform
 import app.kimono.data.Session
 import io.ktor.client.HttpClient
@@ -42,6 +46,37 @@ interface IosHost {
     fun pickFiles(done: (List<IosPickedFile>) -> Unit)
     /** Up to [max] bytes of the file at [path], from [offset]. */
     fun readFile(path: String, offset: Long, max: Int): NSData
+    /** Hands a picked file to iOS's background uploads; the file is moved, not copied. */
+    fun startUpload(name: String, path: String, size: Long, folderId: String)
+    fun dismissUpload(id: String)
+    fun retryUpload(id: String)
+    fun observeUploads(callback: (List<IosUploadStatus>) -> Unit)
+}
+
+/** An upload's state, as the Swift uploader reports it. */
+class IosUploadStatus(val id: String, val name: String, val size: Long, val sent: Long, val folderId: String, val waiting: Boolean, val failed: String?, val done: Boolean)
+
+private class IosUploads(private val host: IosHost) : Uploads {
+    private val state = MutableStateFlow<List<UploadStatus>>(emptyList())
+    override val statuses: StateFlow<List<UploadStatus>> = state
+
+    init {
+        host.observeUploads { list ->
+            state.value = list.map { UploadStatus(it.id, it.name, it.size, it.sent, it.folderId, it.waiting, it.failed, it.done) }
+        }
+    }
+
+    override fun start(files: List<PickedFile>, folderId: String) {
+        files.filterIsInstance<IosFile>().forEach { host.startUpload(it.name, it.path, it.size, folderId) }
+    }
+
+    override fun dismiss(id: String) = host.dismissUpload(id)
+
+    override fun retry(id: String) = host.retryUpload(id)
+}
+
+private class IosFile(val path: String, override val name: String, override val size: Long, override val mimeType: String?, private val host: IosHost) : PickedFile {
+    override suspend fun read(offset: Long, max: Int) = host.readFile(path, offset, max).toByteArray()
 }
 
 /** A file the person picked on iPhone; the Swift side fills it in. */
@@ -61,14 +96,9 @@ private class IosPlatform(private val host: IosHost) : Platform {
     override fun cacheDir() = host.cacheDir()
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
     override suspend fun pickFiles(): List<PickedFile> =
-        suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }.map { picked ->
-            object : PickedFile {
-                override val name = picked.name
-                override val size = picked.size
-                override val mimeType = picked.mimeType
-                override suspend fun read(offset: Long, max: Int) = host.readFile(picked.path, offset, max).toByteArray()
-            }
-        }
+        suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }
+            .map { IosFile(it.path, it.name, it.size, it.mimeType, host) }
+    override val uploads: Uploads = IosUploads(host)
 }
 
 fun NSData.toByteArray(): ByteArray = ByteArray(length.toInt()).also { out ->

@@ -99,6 +99,18 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         return (try? handle.read(upToCount: Int(max))) ?? Data()
     }
 
+    // MARK: Background uploads
+
+    func startUpload(name: String, path: String, size: Int64, folderId: String) {
+        BackgroundUploader.shared.start(name: name, path: path, size: size, folderId: folderId)
+    }
+
+    func dismissUpload(id: String) { BackgroundUploader.shared.dismiss(id) }
+
+    func retryUpload(id: String) { BackgroundUploader.shared.retry(id) }
+
+    func observeUploads(callback: @escaping ([IosUploadStatus]) -> Void) { BackgroundUploader.shared.observe(callback) }
+
     // MARK: Files app
 
     private static let domain: NSFileProviderDomain = {
@@ -124,6 +136,7 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
 
     /// Whenever the app comes to the front: the Files app looks for changes now, rather than whenever it next would.
     func cameForward() {
+        BackgroundUploader.shared.resume()
         guard readKept(key: "kimono.refresh") != nil else { return }
         NSFileProviderManager(for: Host.domain)?.signalEnumerator(for: .workingSet) { error in
             if let error { NSLog("Kimono couldn't nudge the Files app: \(error.localizedDescription)") }

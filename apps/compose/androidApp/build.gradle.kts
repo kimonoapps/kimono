@@ -45,6 +45,7 @@ dependencies {
     implementation(project(":shared"))
     implementation(libs.activity.compose)
     implementation(libs.browser)
+    implementation(libs.work)
     implementation(libs.ktor.okhttp)
     implementation(libs.compose.ui)
     implementation(libs.material3)

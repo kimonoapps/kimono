@@ -15,7 +15,10 @@ targets:
   Kimono:
     type: application
     platform: iOS
-    sources: [Kimono]
+    sources:
+      - Kimono
+      # The app's background uploads sign in the same way as the Files extension.
+      - KimonoFiles/Drive.swift
     dependencies:
       - target: KimonoFiles
     settings:

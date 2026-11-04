@@ -10,6 +10,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -116,7 +117,9 @@ class Drive(private val session: Session) {
 
     /**
      * Downloads a file into [directory], reporting bytes as they arrive. A copy
-     * already downloaded at the same content version is used as it is.
+     * already downloaded at the same content version is used as it is. What
+     * arrived before a dropped connection is kept: the next try (automatic, or
+     * the person's) asks only for the rest.
      */
     suspend fun download(node: DriveNode, directory: String, progress: (Long) -> Unit): String {
         val folder = Path(directory, "drive", "${node.id}-${node.contentVersion}")
@@ -124,22 +127,39 @@ class Drive(private val session: Session) {
         SystemFileSystem.metadataOrNull(target)?.let { if (it.size == node.size) return target.toString() }
         SystemFileSystem.createDirectories(folder)
         val partial = Path(folder, ".${node.name}.part")
-        session.respond("/api/v1/drive/nodes/${node.id}/content", handle = { response ->
-            if (!response.status.isSuccess()) throw session.problemOf(response, "That file couldn't be opened.")
-            val channel = response.bodyAsChannel()
-            val buffer = ByteArray(64 * 1024)
-            var received = 0L
-            SystemFileSystem.sink(partial).buffered().use { sink ->
-                while (true) {
-                    val read = channel.readAvailable(buffer)
-                    if (read < 0) break
-                    if (read == 0) { if (channel.isClosedForRead) break else continue }
-                    sink.write(buffer, 0, read)
-                    received += read
+        var failures = 0
+        while (true) {
+            val have = SystemFileSystem.metadataOrNull(partial)?.size ?: 0L
+            if (have >= node.size && have > 0) break
+            try {
+                session.respond("/api/v1/drive/nodes/${node.id}/content", configure = {
+                    if (have > 0) header("Range", "bytes=$have-")
+                }, handle = { response ->
+                    /* 206: the rest, after what's kept. 200: the whole file (the server ignored the range). */
+                    val append = response.status.value == 206
+                    if (!append && !response.status.isSuccess()) throw session.problemOf(response, "That file couldn't be opened.")
+                    val channel = response.bodyAsChannel()
+                    val buffer = ByteArray(64 * 1024)
+                    var received = if (append) have else 0L
                     progress(received)
-                }
+                    SystemFileSystem.sink(partial, append = append).buffered().use { sink ->
+                        while (true) {
+                            val read = channel.readAvailable(buffer)
+                            if (read < 0) break
+                            if (read == 0) { if (channel.isClosedForRead) break else continue }
+                            sink.write(buffer, 0, read)
+                            received += read
+                            progress(received)
+                        }
+                    }
+                })
+                if ((SystemFileSystem.metadataOrNull(partial)?.size ?: 0L) >= node.size) break
+                throw KimonoProblem(OFFLINE)
+            } catch (problem: KimonoProblem) {
+                if (problem.message != OFFLINE || ++failures > 5) throw problem
+                delay(minOf(15_000L, 1_000L shl failures))
             }
-        })
+        }
         SystemFileSystem.atomicMove(partial, target)
         return target.toString()
     }
@@ -150,10 +170,12 @@ class Drive(private val session: Session) {
      * much arrived and carries on from there, backing off a little each time.
      */
     @OptIn(ExperimentalEncodingApi::class)
-    suspend fun upload(file: PickedFile, folderId: String, progress: (Long) -> Unit): String {
+    suspend fun upload(file: PickedFile, folderId: String, resumeAt: String? = null, started: (String) -> Unit = {}, progress: (Long) -> Unit): String {
         val tus = "1.0.0"
         val metadata = "filename ${Base64.encode(file.name.encodeToByteArray())},folder ${Base64.encode(folderId.encodeToByteArray())}"
-        val location = session.respond("/api/v1/drive/uploads", HttpMethod.Post, {
+        /* Carrying on from an earlier run: ask how far it got. Gone (thrown away, or the link expired): start again. */
+        val known = resumeAt?.let { at -> resumePoint(at)?.let { at to it } }
+        val location = known?.first ?: session.respond("/api/v1/drive/uploads", HttpMethod.Post, {
             header("Tus-Resumable", tus)
             header("Upload-Length", file.size.toString())
             header("Upload-Metadata", metadata)
@@ -161,7 +183,9 @@ class Drive(private val session: Session) {
             if (response.status.value != 201) throw session.problemOf(response, "That file couldn't be uploaded.")
             response.headers["Location"] ?: throw KimonoProblem("That file couldn't be uploaded.")
         }
-        var offset = 0L
+        started(location)
+        var offset = known?.second ?: 0L
+        progress(offset)
         var failures = 0
         while (true) {
             val piece = if (file.size == 0L) ByteArray(0) else file.read(offset, PIECE)
@@ -197,7 +221,7 @@ class Drive(private val session: Session) {
     }
 
     private suspend fun resumePoint(location: String): Long? = runCatching {
-        session.respond(location, HttpMethod.Head, { header("Tus-Resumable", "1.0.0") }) { it.headers["Upload-Offset"]?.toLongOrNull() }
+        session.respond(location, HttpMethod.Head, { header("Tus-Resumable", "1.0.0") }) { if (it.status.isSuccess()) it.headers["Upload-Offset"]?.toLongOrNull() else null }
     }.getOrNull()
 
     companion object {
@@ -215,4 +239,54 @@ fun readableSize(bytes: Long): String {
     while (value >= 1000 && unit < units.lastIndex) { value /= 1000; unit += 1 }
     val rounded = if (value >= 100) value.toLong().toString() else ((value * 10).toLong() / 10.0).toString().removeSuffix(".0")
     return "$rounded ${units[unit]}"
+}
+
+/** Uploads kept in the app: they go on while it's open, and stop when it closes. */
+class InAppUploads(private val drive: Drive) : Uploads {
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob())
+    private val state = kotlinx.coroutines.flow.MutableStateFlow<List<UploadStatus>>(emptyList())
+    private val jobs = mutableMapOf<String, kotlinx.coroutines.Job>()
+    override val statuses: kotlinx.coroutines.flow.StateFlow<List<UploadStatus>> = state
+
+    private fun update(id: String, change: (UploadStatus) -> UploadStatus) {
+        state.value = state.value.map { if (it.id == id) change(it) else it }
+    }
+
+    private val files = mutableMapOf<String, Pair<PickedFile, String>>()
+    private val locations = mutableMapOf<String, String>()
+
+    override fun start(files: List<PickedFile>, folderId: String) {
+        files.forEach { file ->
+            val id = randomId()
+            this.files[id] = file to folderId
+            state.value = state.value + UploadStatus(id, file.name, file.size, 0, folderId)
+            run(id)
+        }
+    }
+
+    private fun run(id: String) {
+        val (file, folderId) = files[id] ?: return
+        jobs[id] = scope.launch {
+            try {
+                drive.upload(file, folderId, resumeAt = locations[id], started = { locations[id] = it }) { sent -> update(id) { it.copy(sent = sent, failed = null) } }
+                update(id) { it.copy(sent = it.size, done = true) }
+                files.remove(id); locations.remove(id)
+            } catch (problem: KimonoProblem) {
+                update(id) { it.copy(failed = problem.message) }
+            }
+        }
+    }
+
+    override fun retry(id: String) {
+        update(id) { it.copy(failed = null) }
+        run(id)
+    }
+
+    override fun dismiss(id: String) {
+        jobs.remove(id)?.cancel()
+        files.remove(id); locations.remove(id)
+        state.value = state.value.filterNot { it.id == id }
+    }
+
+    private fun randomId() = (1..16).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
 }

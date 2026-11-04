@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,8 +47,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -66,7 +67,9 @@ import app.kimono.data.DriveFolder
 import app.kimono.data.DriveNode
 import app.kimono.data.DriveSpace
 import app.kimono.data.KimonoProblem
-import app.kimono.data.PickedFile
+import app.kimono.data.InAppUploads
+import app.kimono.data.UploadStatus
+import app.kimono.data.Uploads
 import app.kimono.data.Platform
 import app.kimono.data.readableSize
 import app.kimono.ui.KimonoRefresh
@@ -80,41 +83,29 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-/** An upload on its way, shown wherever you are in Drive. */
-class UploadTask(val name: String, val size: Long, val folderId: String) {
-    var sent by mutableStateOf(0L)
-    var failed by mutableStateOf<String?>(null)
-    var done by mutableStateOf(false)
-}
-
 /**
  * Drive's state that outlives a screen: uploads keep going while you move
- * between folders, and a folder you come back to refreshes when one lands.
+ * between folders (and, where the OS allows, after the app closes), and an
+ * open folder reloads when one lands.
  */
-class DriveModel(val drive: Drive, private val platform: Platform) {
+class DriveModel(val drive: Drive, platform: Platform) {
     private val scope = CoroutineScope(SupervisorJob())
-    val uploads = mutableStateListOf<UploadTask>()
+    val uploads: Uploads = platform.uploads ?: InAppUploads(drive)
     /** Goes up whenever an upload finishes, so open folders reload. */
     var landed by mutableStateOf(0)
 
-    fun upload(files: List<PickedFile>, folderId: String) {
-        files.forEach { file ->
-            val task = UploadTask(file.name, file.size, folderId)
-            uploads.add(task)
-            scope.launch {
-                try {
-                    drive.upload(file, folderId) { task.sent = it }
-                    task.done = true
+    init {
+        scope.launch {
+            val seen = mutableSetOf<String>()
+            uploads.statuses.collect { list ->
+                list.filter { it.done && seen.add(it.id) }.forEach { finished ->
                     landed += 1
-                    uploads.remove(task)
-                } catch (problem: KimonoProblem) {
-                    task.failed = problem.message
+                    /* A moment to see it reach 100%, then out of the way. */
+                    launch { kotlinx.coroutines.delay(1500); uploads.dismiss(finished.id) }
                 }
             }
         }
     }
-
-    fun dismiss(task: UploadTask) { uploads.remove(task) }
 }
 
 /* Each space's crest, as a colour: the same seven as on the web. */
@@ -204,12 +195,16 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     fun act(done: String? = null, work: suspend () -> Unit) = scope.launch {
         try { work(); load(); done?.let { snackbar.showSnackbar(it) } } catch (p: KimonoProblem) { snackbar.showSnackbar(p.message ?: "That didn't work.") }
     }
-    fun openFile(node: DriveNode) = scope.launch {
+    fun openFile(node: DriveNode): kotlinx.coroutines.Job = scope.launch {
         opening = node to 0L
         try {
             val path = model.drive.download(node, platform.cacheDir()) { opening = node to it }
             platform.openFile(path, node.mime)
-        } catch (p: KimonoProblem) { snackbar.showSnackbar(p.message ?: "That file couldn't be opened.") }
+        } catch (p: KimonoProblem) {
+            opening = null
+            /* What arrived is kept, so trying again carries on from there. */
+            if (snackbar.showSnackbar(p.message ?: "That file couldn't be opened.", actionLabel = "Try again") == SnackbarResult.ActionPerformed) openFile(node)
+        }
         opening = null
     }
     LaunchedEffect(folderId, model.landed) { load() }
@@ -224,7 +219,8 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            model.uploads.filter { it.folderId == folderId || it.failed != null }.forEach { task -> UploadRow(task) { model.dismiss(task) } }
+            val uploads by model.uploads.statuses.collectAsState()
+            uploads.filter { it.folderId == folderId || it.failed != null }.forEach { task -> UploadRow(task, retry = { model.uploads.retry(task.id) }) { model.uploads.dismiss(task.id) } }
             KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
                 val children = here?.children
                 when {
@@ -268,7 +264,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
         adding = false
         scope.launch {
             val files = platform.pickFiles()
-            if (files.isNotEmpty() && here != null) model.upload(files, here.folder.id)
+            if (files.isNotEmpty() && here != null) model.uploads.start(files, here.folder.id)
         }
     }, onFolder = { adding = false; naming = true })
     if (naming && here != null) NameDialog(title = "New folder", action = "Make it", initial = "", onDismiss = { naming = false }) { name ->
@@ -337,19 +333,27 @@ private fun detailOf(node: DriveNode): String = buildList {
 }.joinToString(" · ").ifEmpty { "Folder" }
 
 @Composable
-private fun UploadRow(task: UploadTask, dismiss: () -> Unit) {
+private fun UploadRow(task: UploadStatus, retry: () -> Unit, dismiss: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(20.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(task.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (task.failed != null) TextButton(onClick = dismiss) { Text("Dismiss") }
-                else Text(if (task.size > 0) "${(task.sent * 100 / task.size)}%" else "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (task.failed != null) TextButton(onClick = retry) { Text("Try again") }
+                if (task.failed != null || !task.done) TextButton(onClick = dismiss) { Text(if (task.failed != null) "Dismiss" else "Cancel") }
             }
             if (task.failed != null) Problem(task.failed)
             else {
-                Spacer(Modifier.height(8.dp))
-                LinearWavyProgressIndicator(progress = { if (task.size > 0) task.sent.toFloat() / task.size else 0f }, modifier = Modifier.fillMaxWidth())
-                Text("${readableSize(task.sent)} of ${readableSize(task.size)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                Spacer(Modifier.height(4.dp))
+                val share = if (task.size > 0) task.sent.toFloat() / task.size else if (task.done) 1f else 0f
+                LinearWavyProgressIndicator(progress = { share }, modifier = Modifier.fillMaxWidth())
+                Text(
+                    when {
+                        task.done -> "Uploaded"
+                        task.waiting -> "Waiting for a connection · ${readableSize(task.sent)} of ${readableSize(task.size)}"
+                        else -> "${readableSize(task.sent)} of ${readableSize(task.size)}"
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp),
+                )
             }
         }
     }

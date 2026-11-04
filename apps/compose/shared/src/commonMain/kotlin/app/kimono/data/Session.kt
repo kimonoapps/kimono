@@ -137,7 +137,7 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         var current = latestKept() ?: throw KimonoProblem("Sign in to Kimono first.")
         suspend fun ask(from: Kept) = try {
             tokens(discover(from.issuer).tokenEndpoint, mapOf("grant_type" to "refresh_token", "client_id" to from.clientId, "refresh_token" to from.refreshToken))
-        } catch (_: Exception) { throw KimonoProblem("Kimono isn't answering. Check your connection and try again.") }
+        } catch (_: Exception) { throw KimonoProblem(OFFLINE) }
         var got = ask(current)
         if (got.accessToken == null) {
             /* Refused, perhaps because the extension renewed at the same moment: try once more with what it kept. */
@@ -179,7 +179,7 @@ class Session(private val platform: Platform, private val http: HttpClient) {
      */
     suspend fun <T> respond(path: String, method: HttpMethod = HttpMethod.Get, configure: HttpRequestBuilder.() -> Unit = {}, handle: suspend (HttpResponse) -> T): T {
         val base = kept?.server ?: throw KimonoProblem("Sign in to Kimono first.")
-        val offline = "Kimono isn't answering. Check your connection and try again."
+        val offline = OFFLINE
         suspend fun attempt(bearer: String): T? = http.prepareRequest("$base$path") {
             this.method = method
             header(HttpHeaders.Accept, "application/json")
@@ -228,3 +228,6 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         forget()
     }
 }
+
+/** What a dropped or missing connection reads as: worth trying again, unlike a refusal. */
+const val OFFLINE = "Kimono isn't answering. Check your connection and try again."

@@ -103,6 +103,8 @@ class AndroidPlatform(private val context: Context) : Platform {
 
     override val os = "android"
 
+    override val uploads: app.kimono.data.Uploads by lazy { AndroidUploads(context) }
+
     override fun openUrl(url: String) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -131,7 +133,12 @@ class AndroidPlatform(private val context: Context) : Platform {
         return waiting.await().mapNotNull { pickedFile(it) }
     }
 
-    fun filesPicked(uris: List<Uri>) { pickingFiles?.complete(uris); pickingFiles = null }
+    fun filesPicked(uris: List<Uri>) {
+        /* Keep read access after the app closes, so a background upload can carry on reading. */
+        uris.forEach { runCatching { context.contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
+        pickingFiles?.complete(uris)
+        pickingFiles = null
+    }
 
     /** A shared or picked file, read straight from its provider a piece at a time. */
     fun pickedFile(uri: Uri): PickedFile? {
@@ -146,7 +153,8 @@ class AndroidPlatform(private val context: Context) : Platform {
         if (size < 0) size = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: return null
         val type = context.contentResolver.getType(uri)
         val resolver = context.contentResolver
-        return object : PickedFile {
+        return object : UriFile {
+            override val uri = uri
             override val name = name
             override val size = size
             override val mimeType = type

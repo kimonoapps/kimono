@@ -24,6 +24,8 @@ class MainActivity : ComponentActivity() {
 
     private val picker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> platform.picked(uri) }
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> platform.filesPicked(uris) }
+    /* Upload progress shows as a notification; Android 13 asks once. */
+    private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -31,7 +33,12 @@ class MainActivity : ComponentActivity() {
         platform = (application as KimonoApplication).platform
         platform.activity = this
         platform.launchPicker = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-        platform.launchFilePicker = { filePicker.launch(arrayOf("*/*")) }
+        platform.launchFilePicker = {
+            if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+            filePicker.launch(arrayOf("*/*"))
+        }
         handle(intent)
         val session = (application as KimonoApplication).session
         setContent { KimonoApp(session, platform, shared.value) { shared.value = null } }
@@ -49,6 +56,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        (platform.uploads as? AndroidUploads)?.nudge()
         /* Back from the browser sheet with no kimono://auth: it was closed. The
            return, when there is one, arrives just before this, so wait a beat. */
         if (platform.signingIn) Handler(Looper.getMainLooper()).postDelayed({ platform.signInMaybeAbandoned() }, 600)
