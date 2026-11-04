@@ -43,6 +43,8 @@ targets:
       path: Kimono/Info.plist
       properties:
         CFBundleDisplayName: Kimono
+        # Only standard HTTPS: TestFlight builds go out without the export questions.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
