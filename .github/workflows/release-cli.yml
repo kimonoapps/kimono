@@ -54,3 +54,53 @@ jobs:
           docker build -f Dockerfile.reconciler -t ghcr.io/kimonoapps/kimono-reconciler:${{ github.ref_name }} -t ghcr.io/kimonoapps/kimono-reconciler:latest .
           docker push ghcr.io/kimonoapps/kimono-reconciler:${{ github.ref_name }}
           docker push ghcr.io/kimonoapps/kimono-reconciler:latest
+
+  # The Kimono app for Android, signed and attached to the release, numbered
+  # from the tag so every release outranks the last (v0.7.3 → build 7003).
+  # Portals offer the one matching their own version. A separate job, so a
+  # problem here never holds up the CLI or the images; it skips itself when
+  # the signing key isn't set.
+  android:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE: ${{ secrets.KIMONO_ANDROID_KEYSTORE }}
+      KEYSTORE_PASSWORD: ${{ secrets.KIMONO_ANDROID_KEYSTORE_PASSWORD }}
+    steps:
+      - name: Check for the signing key
+        id: key
+        run: |
+          if [ -n "$KEYSTORE" ] && [ -n "$KEYSTORE_PASSWORD" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "No Android signing key in this repository's secrets; skipping the APK."; fi
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.present == 'true'
+      - uses: actions/setup-java@v4
+        if: steps.key.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build the signed APK
+        if: steps.key.outputs.present == 'true'
+        working-directory: apps/compose
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
+          BUILD=$(( MAJOR * 1000000 + MINOR * 1000 + PATCH ))
+          mkdir -p ~/.config/kimono
+          printf '%s' "$KEYSTORE" | base64 -d > ~/.config/kimono/android-release.jks
+          printf '%s' "$KEYSTORE_PASSWORD" > ~/.config/kimono/android-release.password
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          ./gradlew --no-daemon :androidApp:assembleRelease -PkimonoBuild="$BUILD" -PkimonoVersion="$VERSION"
+          rm -f ~/.config/kimono/android-release.jks ~/.config/kimono/android-release.password
+          APK="kimono-$VERSION.apk"
+          mv androidApp/build/outputs/apk/release/androidApp-release.apk "$APK"
+          "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs "$APK" | grep -q "CN=Kimono"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          SIZE=$(stat -c %s "$APK")
+          printf '{"version":"%s","build":%s,"file":"%s","size":%s,"sha256":"%s"}\n' "$VERSION" "$BUILD" "$APK" "$SIZE" "$SHA" > kimono-android.json
+          echo "APK=$APK" >> "$GITHUB_ENV"
+      - name: Attach it to the release
+        if: steps.key.outputs.present == 'true'
+        working-directory: apps/compose
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" --clobber "$APK" kimono-android.json

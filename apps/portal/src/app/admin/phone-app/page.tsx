@@ -110,6 +110,9 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
 }
 
 function describe(release: AppRelease) {
+  if (release.publishedBy === "kimono" && !release.publishedAt) {
+    return `Comes with this Kimono release, from GitHub${release.size ? ` · ${(release.size / 1_000_000).toFixed(1)} MB` : ""}`;
+  }
   const when = new Date(release.publishedAt).toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" });
   const size = release.size ? ` · ${(release.size / 1_000_000).toFixed(1)} MB` : "";
   return `Published ${when} by @${release.publishedBy}${size}${release.notes ? ` · ${release.notes}` : ""}`;
