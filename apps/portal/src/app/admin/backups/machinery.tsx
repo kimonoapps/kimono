@@ -53,8 +53,8 @@ export function RestoreSheet({ status, apps, run }: { status: BackupStatus | nul
     <h3>Restore a copy</h3>
     <p className="lead">Restoring copies into a separate folder and never touches live data.</p>
     {status?.snapshots?.length ? <>
-      <label className="field choice-field"><small>Snapshot</small><Choice name="snapshot" defaultValue={status.snapshots[0]?.id} options={status.snapshots.map((snapshot) => ({ value: snapshot.id, label: `${when(snapshot.time)} · ${snapshot.id.slice(0, 6)}${snapshot.summary?.total_bytes_processed ? ` · ${(snapshot.summary.total_bytes_processed / 1024 ** 3).toFixed(1)} GiB` : ""}` }))} /></label>
-      <label className="field choice-field"><small>Contents</small><Choice name="appId" defaultValue="" options={[{ value: "", label: "Everything" }, ...apps.map((app) => ({ value: app.id, label: app.name }))]} /></label>
+      <Choice label="Snapshot" name="snapshot" defaultValue={status.snapshots[0]?.id} options={status.snapshots.map((snapshot) => ({ value: snapshot.id, label: `${when(snapshot.time)} · ${snapshot.id.slice(0, 6)}${snapshot.summary?.total_bytes_processed ? ` · ${(snapshot.summary.total_bytes_processed / 1024 ** 3).toFixed(1)} GiB` : ""}` }))} />
+      <Choice label="Contents" name="appId" defaultValue="" options={[{ value: "", label: "Everything" }, ...apps.map((app) => ({ value: app.id, label: app.name }))]} />
     </> : <p className="lead">Snapshots appear here after the first backup.</p>}
     {status?.restorePath ? <p className="lead">Latest copy: <code>{status.restorePath}</code></p> : null}
     <div className="sheet-actions">

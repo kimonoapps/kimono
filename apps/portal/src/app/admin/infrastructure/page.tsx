@@ -155,7 +155,7 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
             <div className="pw-switch"><span><b>Use this connection</b></span><JointSwitch name="enabled" defaultChecked={tunnel.enabled} label="Use this connection" /></div>
             <div className="sheet-pair">
               <label className="field"><small>Name</small><input name="name" defaultValue={tunnel.name} required /></label>
-              <label className="field choice-field"><small>Provider</small><Choice name="provider" defaultValue={tunnel.provider} options={tunnelProviders.map((provider) => ({ value: provider.id, label: provider.name }))} /></label>
+              <Choice label="Provider" name="provider" defaultValue={tunnel.provider} options={tunnelProviders.map((provider) => ({ value: provider.id, label: provider.name }))} />
             </div>
             <label className="field"><small>Tunnel token (remote connector)</small><input name="TUNNEL_TOKEN" type="password" placeholder={tunnel.configuration.TUNNEL_TOKEN ? "Configured, leave blank to keep" : ""} /></label>
             <div className="sheet-pair">

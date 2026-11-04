@@ -324,8 +324,6 @@ label.opt { margin: 0; }
 .opt-group { display: grid; gap: 8px; }
 .opt-group:not(:has(.opt input:checked)) > .domain { display: none; }
 .domain.single { grid-template-columns: minmax(0, 1fr); }
-.choice-field .k-choice { margin: -2px -8px 0; }
-.choice-field .k-choice-button { min-height: 28px; padding: 0 8px; background: transparent; box-shadow: none; }
 .look { display: flex; align-items: center; gap: 14px; }
 .look .bloom.k-app-bloom { width: 64px; height: 64px; }
 .swatches { display: flex; gap: 8px; }
@@ -431,3 +429,7 @@ label.opt { margin: 0; }
 .release-version { font: 600 34px/1.05 var(--sans); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .release-version.is-none { font-size: 22px; }
 .testflight-setup input[type="file"]::file-selector-button { margin-right: 12px; min-height: 32px; padding: 0 14px; border: 0; border-radius: var(--r-full); background: var(--secondary-container); color: var(--on-secondary-container); font: 700 13px/1 var(--sans); cursor: pointer; }
+
+/* dropdowns sit in forms at full width, like the fields beside them */
+.page .k-choice.has-label { max-width: none; }
+.domain .k-choice { max-width: none; }

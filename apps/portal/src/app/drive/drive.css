@@ -612,3 +612,35 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
   .dv-dialog > footer { padding: 14px 18px; }
   .dv-toast { left: 16px; right: 16px; translate: none; width: auto; max-width: none; }
 }
+
+/* ── to the mockup (design/mockups/m3-everywhere.html, Drive) ──
+   The space isn't boxed: its crest and name lead on the page itself, files are
+   soft rows with no header line, People is a word, Upload the one strong seal.
+   Recent and Trash are rooms under Drive in the rail. */
+.dv-sheet { background: transparent; border-radius: 0; overflow: visible; }
+.dv-mast { padding: 18px 8px 16px 20px; gap: 18px; }
+.dv-mast h1 { font-size: 36px; }
+.dv-mast .dv-members { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.dv-mast .dv-members .pfps { display: flex; }
+.dv-mast .dv-members .pfps > * { margin-left: -6px; box-shadow: 0 0 0 2px var(--k-surface); border-radius: 50%; }
+.dv-mast .dv-members .pfps > *:first-child { margin-left: 0; }
+.dv-mast .dv-members small { font-size: 14px; color: var(--k-on-surface-variant); }
+.dv-acts { display: flex; align-items: center; gap: 8px; }
+.dv-textbtn { min-height: 40px; padding: 0 14px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.dv-textbtn:hover { background: var(--k-secondary-container); }
+.dv-toolbar { min-height: 0; padding: 4px 8px 12px 20px; }
+.dv-tools { display: flex; align-items: center; gap: 10px; margin-left: 0; }
+.dv-crumbs { flex-basis: 100%; }
+.dv-search { width: min(340px, 100%); }
+.dv-select.k-choice .k-choice-button { background: var(--dv-tone); color: var(--k-on-surface); }
+.dv-list { margin: 0 0 0 12px; padding: 0; gap: 2px; background: transparent; border-radius: 0; }
+.dv-r { padding: 0 8px 0 16px; }
+.dv-r:hover { background: var(--k-container); }
+.dv-side { gap: 18px; padding-top: 14px; }
+.dv-side-label { padding: 8px 16px 6px; color: var(--k-suo); font-size: 14px; }
+.dv-space { min-height: 58px; padding: 6px 14px 6px 10px; border-radius: var(--k-r-xl); grid-template-columns: 36px minmax(0, 1fr); }
+.dv-newspace { display: inline-flex; align-items: center; gap: 8px; width: fit-content; min-height: 40px; margin-left: 8px; padding: 0 14px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.dv-newspace:hover { background: var(--k-secondary-container); }
+.dv-newspace svg.i { width: 18px; height: 18px; }
+.dv-tools { flex-wrap: nowrap; }
+.dv-toolbar .dv-tools { flex: 1 1 auto; }

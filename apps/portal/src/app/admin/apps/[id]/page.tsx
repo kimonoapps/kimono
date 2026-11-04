@@ -34,7 +34,7 @@ async function requireAdmin() {
   if (!session?.user || (session.user.role !== "owner" && session.user.role !== "admin")) redirect("/");
 }
 
-function EnvironmentInput({ field, value, configured }: { field: ConfigurationField; value: string; configured: boolean }) {
+function EnvironmentInput({ field, value, configured, label }: { field: ConfigurationField; value: string; configured: boolean; label?: string }) {
   const common = {
     id: `env-${field.key}`,
     name: `env.${field.key}`,
@@ -42,7 +42,7 @@ function EnvironmentInput({ field, value, configured }: { field: ConfigurationFi
     placeholder: field.kind === "secret" && configured ? "Configured — leave blank to keep" : field.default,
   };
   if (field.kind === "toggle") return <input id={common.id} name={common.name} type="checkbox" defaultChecked={(value || field.default || "off") === "on"} />;
-  if (field.kind === "select") return <Choice id={common.id} name={common.name} defaultValue={value || field.options?.[0]} options={(field.options ?? []).map((option) => ({ value: option, label: option }))} />;
+  if (field.kind === "select") return <Choice label={label} id={common.id} name={common.name} defaultValue={value || field.options?.[0]} options={(field.options ?? []).map((option) => ({ value: option, label: option }))} />;
   return <input {...common} type={field.kind === "secret" ? "password" : field.kind === "number" || field.kind === "bytes" ? "number" : field.kind === "email" ? "email" : "text"} />;
 }
 
@@ -163,7 +163,9 @@ export default async function AppManagementPage({
     const value = override?.value || field.default || "";
     if (field.kind === "toggle") return <div className="pw-switch" key={field.key}><span><b>{field.label}</b>{showKey ? <code>{field.key}</code> : null}{field.description ? <small>{field.description}</small> : null}</span><JointSwitch name={`env.${field.key}`} defaultChecked={(value || "off") === "on"} label={field.label} /></div>;
     return <div className="env-field" key={field.key}>
-      <label className={field.kind === "select" ? "field choice-field" : "field"} htmlFor={`env-${field.key}`}><small>{field.label}</small><EnvironmentInput field={field} value={value} configured={Boolean(override)} /></label>
+      {field.kind === "select"
+        ? <EnvironmentInput field={field} value={value} configured={Boolean(override)} label={field.label} />
+        : <label className="field" htmlFor={`env-${field.key}`}><small>{field.label}</small><EnvironmentInput field={field} value={value} configured={Boolean(override)} /></label>}
       {showKey || field.description ? <p className="env-help">{showKey ? <code>{field.key}</code> : null}{field.description}</p> : null}
     </div>;
   });
@@ -211,7 +213,7 @@ export default async function AppManagementPage({
                     return <div className="opt-group" key={tunnel.id}>
                       <label className="opt"><input className="k-ink-radio" type="radio" name="tunnelId" value={tunnel.id} defaultChecked={instance.tunnelId === tunnel.id} /><span className="text"><b>{tunnel.name}</b><small>{tunnel.provider === "cloudflare" ? "Cloudflare" : tunnel.provider}{tunnel.configuration.ACCOUNT_NAME?.value ? ` · ${tunnel.configuration.ACCOUNT_NAME.value}` : ""}</small></span><ProviderMark provider={tunnel.provider} /></label>
                       {tunnel.provider === "cloudflare" && zones.length
-                        ? <div className="domain"><label className="field"><small>Subdomain</small><input name={`subdomain.${tunnel.id}`} defaultValue={subdomain} /></label><span>.</span><label className="field choice-field"><small>Domain</small><Choice name={`zone.${tunnel.id}`} defaultValue={matchedZone?.name || zones[0].name} options={zones.map((zone) => ({ value: zone.name, label: zone.name }))} /></label></div>
+                        ? <div className="domain"><label className="field"><small>Subdomain</small><input name={`subdomain.${tunnel.id}`} defaultValue={subdomain} /></label><span>.</span><Choice label="Domain" name={`zone.${tunnel.id}`} defaultValue={matchedZone?.name || zones[0].name} options={zones.map((zone) => ({ value: zone.name, label: zone.name }))} /></div>
                         : <div className="domain single"><label className="field"><small>App name or full address</small><input name={`domain.${tunnel.id}`} defaultValue={instance.domain} /></label></div>}
                     </div>;
                   })}

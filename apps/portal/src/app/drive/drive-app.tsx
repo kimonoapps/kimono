@@ -130,11 +130,8 @@ export function DriveApp({ me }: { me: Me }) {
   return <div className="dv">
     <div className="dv-body">
       <aside className="dv-side">
-        <nav className="dv-nav">
-          <button type="button" aria-current={view === "recent" ? "page" : undefined} onClick={() => go({ view: "recent" })}><Icon name="clock" />Recent</button>
-        </nav>
         <div>
-          <div className="dv-side-label">Your spaces <button type="button" aria-label="New space" onClick={() => setMaking(true)}><Icon name="plus" /></button></div>
+          <div className="dv-side-label">Your spaces</div>
           <div className="dv-nav">{yours.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
           {spaces && !yours.length ? <p className="dv-quiet-text dv-side-none">None yet.</p> : null}
         </div>
@@ -142,9 +139,7 @@ export function DriveApp({ me }: { me: Me }) {
           <div className="dv-side-label">Shared with you</div>
           <div className="dv-nav">{sharedWithYou.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
         </div> : null}
-        <nav className="dv-nav">
-          <button type="button" aria-current={view === "trash" ? "page" : undefined} onClick={() => go({ view: "trash" })}><Icon name="trash" />Trash</button>
-        </nav>
+        <button type="button" className="dv-newspace" onClick={() => setMaking(true)}><Icon name="plus" />New space</button>
       </aside>
 
       {problem && !spaces ? <section className="dv-sheet"><div className="dv-empty"><h3>Drive isn&apos;t answering</h3><p>{problem}</p></div></section>
@@ -459,11 +454,11 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
       <div className="dv-mast-id">
         <Mark space={space} size="lg" />
         <div>
-          <div className="dv-kicker">{guest ? (canAdd ? "Shared space · you can add files" : "Shared space") : `Space · ${roleWords[space.role]}`}</div>
+          {guest ? <div className="dv-kicker">{canAdd ? "Shared space · you can add files" : "Shared space"}</div> : null}
           <h1>{space.name}</h1>
           {!guest ? <p className="dv-members">
             <span className="pfps">{members.slice(0, 6).map((m) => <Portrait key={m.username} person={people[m.username.toLowerCase()]} username={m.username} size={26} />)}</span>
-            <button type="button" className="dv-linkbtn" onClick={onSettings}>{space.members === 1 ? "Only you" : `${space.members} people`}</button>
+            <small>{space.members === 1 ? "Only you" : `${space.members} people`}{space.role !== "owner" ? ` · ${roleWords[space.role]}` : ""}</small>
           </p> : null}
         </div>
       </div>
@@ -471,10 +466,10 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
         {guest && canAdd ? <label className="k-field dv-guestname"><span>Your name</span>
           <input value={name} maxLength={60} autoComplete="name" onChange={(e) => guestName.set(e.target.value)} />
         </label> : null}
-        <div className="k-seal-group">
-          {canAdd ? <Seal type="button" onClick={() => picker.current?.click()}><Icon name="upload" />Upload</Seal> : null}
+        <div className="dv-acts">
+          {!guest ? <button type="button" className="dv-textbtn" onClick={onSettings}>People</button> : null}
           {canEdit ? <Seal type="button" tone="quiet" onClick={() => setNaming(true)}><Icon name="folder" />New folder</Seal> : null}
-          {!guest ? <Seal type="button" tone="quiet" onClick={onSettings}><Icon name="people" />People</Seal> : null}
+          {canAdd ? <Seal type="button" onClick={() => picker.current?.click()}><Icon name="upload" />Upload</Seal> : null}
         </div>
         {canAdd ? <input ref={picker} type="file" multiple hidden onChange={(event) => {
           const files = Array.from(event.target.files ?? []);
@@ -486,7 +481,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
 
     {chosen.length ? <div className="dv-selbar">
       <div className="count">
-        <Check on={chosen.length === rows.length ? true : "part"} label="Clear selection" onClick={() => setSelected(new Set())} />
+        <Check on={chosen.length === rows.length ? true : "part"} label={chosen.length === rows.length ? "Clear selection" : "Select all"} onClick={() => setSelected(chosen.length === rows.length ? new Set() : new Set(rows.map((n) => n.id)))} />
         <span>{chosen.length} selected</span>
         {chosen.some((n) => n.kind === "file") ? <small>· {readableSize(chosen.reduce((sum, n) => sum + n.size, 0))}</small> : null}
       </div>
@@ -497,29 +492,20 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
         <button type="button" className="dv-linkbtn" onClick={() => setSelected(new Set())}>Clear</button>
       </div>
     </div> : <div className="dv-toolbar">
-      <div className="dv-crumbs">
+      {found || (folder?.path.length ?? 0) > 0 ? <div className="dv-crumbs">
         {found ? <b>Found in {space.name}</b> : (folder ? [...folder.path, folder.folder] : []).map((node, index, all) => index === all.length - 1
           ? <b key={node.id}>{index === 0 ? space.name : node.name}</b>
           : <Fragment key={node.id}><button type="button" onClick={() => openFolder(node.id)}>{index === 0 ? space.name : node.name}</button><span className="sep">/</span></Fragment>)}
-      </div>
+      </div> : null}
       <div className="dv-tools">
         {!guest ? <label className="dv-search"><Icon name="search" />
           <input ref={searchField} type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }} placeholder="Search this space" aria-label="Search this space" />
         </label> : null}
-        <Choice className="dv-select" aria-label="Sort by" value={sort} onChange={(next) => setSort(next as Sort)} options={[{ value: "name", label: "Name, A–Z" }, { value: "modified", label: "Newest first" }, { value: "size", label: "Largest first" }]} />
+        <Choice compact className="dv-select" aria-label="Sort by" value={sort} onChange={(next) => setSort(next as Sort)} options={[{ value: "name", label: "Name, A–Z" }, { value: "modified", label: "Newest first" }, { value: "size", label: "Largest first" }]} />
       </div>
     </div>}
 
     <div className={cx("dv-list", guest && "guest")} ref={list}>
-      <div className="dv-lhead">
-        <Check on={rows.length > 0 && chosen.length === rows.length ? true : chosen.length ? "part" : false} label="Select all" onClick={() => setSelected(chosen.length ? new Set() : new Set(rows.map((n) => n.id)))} />
-        <span />
-        <SortHead sort={sort} by="name" onSort={setSort}>Name</SortHead>
-        {!guest ? <span className="c-share">Sharing</span> : null}
-        <SortHead sort={sort} by="size" onSort={setSort} className="c-size">Size</SortHead>
-        <SortHead sort={sort} by="modified" onSort={setSort} className="c-when">Modified</SortHead>
-        <span />
-      </div>
       {problem ? <div className="dv-empty"><p>{problem}</p></div>
         : !folder ? <div className="dv-empty"><p>Opening…</p></div>
         : !rows.length ? <div className="dv-empty">
@@ -591,13 +577,6 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   </section>;
 }
 
-function SortHead({ sort, by, onSort, className, children }: { sort: Sort; by: Sort; onSort: (sort: Sort) => void; className?: string; children: React.ReactNode }) {
-  return <span className={className}>
-    <button type="button" className={cx("dv-sorthead", sort === by && "sorted")} aria-pressed={sort === by} onClick={() => onSort(by)}>
-      {children}{sort === by ? <i aria-hidden="true">{by === "name" ? "↑" : "↓"}</i> : null}
-    </button>
-  </span>;
-}
 
 function Check({ on, ghost, label, onClick }: { on: boolean | "part"; ghost?: boolean; label: string; onClick: (event: React.MouseEvent) => void }) {
   return <button type="button" className={cx("dv-check", on === "part" && "part", on === true && "on", ghost && !on && "ghost")} aria-pressed={on === "part" ? "mixed" : on} aria-label={label} onClick={onClick}>

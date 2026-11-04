@@ -12,8 +12,12 @@ export type ChoiceOption = { value: string; label: ReactNode; detail?: ReactNode
  * upward when there's no room below. Inside a form it submits like a select
  * (through `name`); outside one, `onChange` hears each pick.
  */
-export function Choice({ options, value, defaultValue, onChange, name, placeholder = "Choose", disabled = false, required = false, className, id, "aria-label": ariaLabel }: {
+export function Choice({ options, value, defaultValue, onChange, name, placeholder = "Choose", disabled = false, required = false, className, id, label, compact = false, "aria-label": ariaLabel }: {
   options: ChoiceOption[];
+  /** The field's name, inside the box above the value, as a filled text field has it. */
+  label?: ReactNode;
+  /** A tonal chip for toolbars ("Sort by Modified") that opens the same sheet. */
+  compact?: boolean;
   value?: string;
   defaultValue?: string;
   onChange?: (value: string) => void;
@@ -116,7 +120,7 @@ export function Choice({ options, value, defaultValue, onChange, name, placehold
     }
   }
 
-  return <span className={cx("k-choice", open && "is-open", className)}>
+  return <span className={cx("k-choice", open && "is-open", label !== undefined && "has-label", compact && "is-compact", className)}>
     <button
       ref={button}
       id={id}
@@ -132,7 +136,9 @@ export function Choice({ options, value, defaultValue, onChange, name, placehold
       onClick={() => (open ? setOpen(false) : show())}
       onKeyDown={keys}
     >
-      <span className={cx("k-choice-value", !chosen && "is-placeholder")}>{chosen ? chosen.label : placeholder}</span>
+      {label !== undefined
+        ? <span className="k-choice-text"><small>{label}</small><span className={cx("k-choice-value", !chosen && "is-placeholder")}>{chosen ? chosen.label : placeholder}</span></span>
+        : <span className={cx("k-choice-value", !chosen && "is-placeholder")}>{chosen ? chosen.label : placeholder}</span>}
       <i className="k-choice-cue" aria-hidden="true" />
     </button>
     {name ? <input type="hidden" name={name} value={current} /> : null}
