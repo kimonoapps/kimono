@@ -25,6 +25,14 @@ type Server struct {
 	byCapability map[string]*workspace
 	// previews are the live apps, by workspace id; kept in StateDir.
 	previews map[string]*preview
+	// records keep each sandbox's repository and last activity; kept in StateDir.
+	records      map[string]*record
+	recordsSaved time.Time
+	wakeLocks    map[string]*sync.Mutex
+	wakings      map[string]*waking
+	// now is the clock, replaceable in tests; started is when this node began.
+	now     func() time.Time
+	started time.Time
 }
 
 // apiProblem is a refusal the Portal shows as it is.
@@ -41,8 +49,11 @@ func New(cfg Config) (*Server, error) {
 	if err := cfg.defaults(); err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, docker: docker{bin: cfg.Docker}, spaces: map[string]*workspace{}, byCapability: map[string]*workspace{}, previews: map[string]*preview{}}
+	s := &Server{cfg: cfg, docker: docker{bin: cfg.Docker}, spaces: map[string]*workspace{}, byCapability: map[string]*workspace{}, previews: map[string]*preview{},
+		records: map[string]*record{}, wakeLocks: map[string]*sync.Mutex{}, wakings: map[string]*waking{}, now: time.Now}
+	s.started = s.now()
 	s.loadPreviews()
+	s.loadRecords()
 	return s, nil
 }
 
@@ -93,9 +104,11 @@ func (s *Server) Run(ctx context.Context) error {
 			}
 		}(server)
 	}
-	s.cfg.Logf("Kimono Code sandboxes: API on %s, gateway on %s (containers use %s), previews on %s, runtime %s", s.cfg.Listen, gatewayListen, s.gatewayURL, s.cfg.PreviewListen, s.runtime)
+	s.cfg.Logf("Kimono Code sandboxes: API on %s, gateway on %s (containers use %s), previews on %s, runtime %s; pause after %s, stop after %s", s.cfg.Listen, gatewayListen, s.gatewayURL, s.cfg.PreviewListen, s.runtime, s.cfg.PauseAfter, s.cfg.StopAfter)
 
-	ticker := time.NewTicker(20 * time.Second)
+	// Whatever went overdue while the node was down sleeps now, not later.
+	s.sweep(ctx)
+	ticker := time.NewTicker(s.sweepEvery())
 	defer ticker.Stop()
 	for {
 		select {
@@ -200,16 +213,9 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request, id string) 
 		branch, busy = space.repo.Branch, space.busy
 		space.mu.Unlock()
 	}
-	switch {
-	case state == "":
-		state = "gone"
-	case state == "paused":
-	case busy:
+	state = s.sleepState(r.Context(), id, state)
+	if busy && state == "ready" {
 		state = "busy"
-	case state == "running":
-		state = "ready"
-	default:
-		state = "paused"
 	}
 	writeJSON(w, 200, map[string]any{"id": id, "state": state, "branch": branch, "preview": s.previewJSON(id)})
 	return nil

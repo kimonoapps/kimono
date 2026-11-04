@@ -147,10 +147,10 @@ through either way, so dev servers' live reload works.
 Without a preview domain (or in development) the proxy listens on
 `127.0.0.1:7482` and links are `http://<name>.localhost:7482`.
 
-A sandbox with a live preview is never paused. Taking a preview down, or
-deleting the workspace, makes the proxy stop answering for its name. Previews survive a node restart:
-the node keeps them in its state directory and restarts their servers on the
-next ensure.
+Taking a preview down, or deleting the workspace, makes the proxy stop
+answering for its name. Previews survive a node restart: the node keeps them in
+its state directory. A sandbox with a live preview sleeps like any other (see
+"Sleep" below); opening its link wakes it.
 
 ## Inside a sandbox
 
@@ -161,7 +161,32 @@ next ensure.
 - `git` reaches Kimono Git only through the node's broker (`url.insteadOf` and
   an extra header carrying the capability). The broker allows smart-HTTP for the
   workspace's own repository and nothing else.
-- Idle for 2 minutes → paused. Ensuring unpauses it.
+
+## Sleep
+
+An idle sandbox costs next to nothing. Activity is a running turn, any API call
+for the workspace (except asking its state or its preview's state), the agent
+using the model or Kimono Git, or a request through its preview. After
+`--pause-after` of no activity (default 1 minute) the container is paused —
+frozen in memory, resumed instantly. After `--stop-after` (15 minutes) it is
+stopped, freeing its memory. After `--remove-after` (7 days; `0` never) the
+container is removed; its files stay on its volume. A running turn is never put
+to sleep.
+
+Anything that needs the sandbox wakes it: ensure and every workspace call
+unpause, start, or make the container again on the same volume. A preview's app
+is started again with it. Through the preview proxy, a paused sandbox thaws
+before the request is answered; a stopped or removed one is started while the
+browser waits up to 1.5 s (20 s for a WebSocket upgrade), after which it gets a
+small "Waking up…" page (`503`, `Retry-After: 2`) that refreshes itself every two
+seconds until the app answers.
+
+The state answers say `ready`, `busy`, `paused`, `stopped` (stopped or removed,
+files kept) or `gone`. Each sandbox's last activity and repository (never a
+credential) is kept in `<state-dir>/sandboxes.json`, so a restarted node neither
+wakes everything nor forgets what is overdue: it sleeps overdue sandboxes as it
+starts. `kimono node sandboxes status` lists every sandbox with its state and
+how long it has been quiet.
 
 ## Set up a node
 

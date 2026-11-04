@@ -373,9 +373,12 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request, id string
 	if p == nil {
 		return problem(404, "This workspace has no preview.")
 	}
-	state := "down"
-	if _, err := s.running(r.Context(), id); err == nil && s.portAnswers(r.Context(), id, p.Port) {
-		state = "live"
+	// Asking doesn't wake it. A sleeping sandbox's link still works: opening it wakes the app.
+	state := "live"
+	if containerState, err := s.docker.containerState(r.Context(), id); err != nil || containerState == "" && s.sleepState(r.Context(), id, "") == "gone" {
+		state = "down"
+	} else if containerState == "running" && !s.portAnswers(r.Context(), id, p.Port) {
+		state = "down"
 	}
 	writeJSON(w, 200, map[string]any{"url": s.previewURL(p), "port": p.Port, "state": state})
 	return nil
@@ -398,9 +401,24 @@ func (s *Server) portAnswers(ctx context.Context, id string, port int) bool {
 	return err == nil
 }
 
-// reviveServe starts a preview's app again after its sandbox lost it, such as
-// when Docker restarted the container. It runs in the background.
+// reviveServe starts a preview's app again after its sandbox stopped or was
+// made again, in the background.
 func (s *Server) reviveServe(id string) {
+	if !s.hasPreview(id) {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		if err := s.restartServe(ctx, id); err != nil {
+			s.cfg.Logf("restart preview for %s: %v", id, err)
+		}
+	}()
+}
+
+// restartServe runs a preview's app again unless it already answers. A stopped
+// container keeps kimono-serve's notes but not the process, so the port decides.
+func (s *Server) restartServe(ctx context.Context, id string) error {
 	s.mu.Lock()
 	p := s.previews[id]
 	var port int
@@ -409,21 +427,30 @@ func (s *Server) reviveServe(id string) {
 		port, args = p.Port, append([]string(nil), p.Args...)
 	}
 	s.mu.Unlock()
-	if p == nil || len(args) == 0 {
-		return
+	if p == nil || len(args) == 0 || s.portAnswers(ctx, id, port) {
+		return nil
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-		defer cancel()
-		box, err := s.readOutbox(ctx, id)
-		if err != nil || box.serve != nil {
-			return
-		}
-		command := append([]string{"exec", "-u", "agent", "-w", "/workspace", containerName(id), "kimono-serve", strconv.Itoa(port), "--"}, args...)
-		if _, err := s.docker.run(ctx, nil, command...); err != nil {
-			s.cfg.Logf("restart preview for %s: %v", id, err)
-		}
-	}()
+	lock := s.serveLock(id)
+	lock.Lock()
+	defer lock.Unlock()
+	if s.portAnswers(ctx, id, port) {
+		return nil
+	}
+	command := append([]string{"exec", "-u", "agent", "-w", "/workspace", containerName(id), "kimono-serve", strconv.Itoa(port), "--"}, args...)
+	_, err := s.docker.run(ctx, nil, command...)
+	return err
+}
+
+func (s *Server) serveLock(id string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := "serve:" + id
+	lock := s.wakeLocks[key]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.wakeLocks[key] = lock
+	}
+	return lock
 }
 
 /* ── the proxy ── */
@@ -485,13 +512,60 @@ func (s *Server) PreviewHandler() http.Handler {
 			notRunning(w, http.StatusNotFound)
 			return
 		}
-		if _, err := s.running(r.Context(), id); err != nil {
+		s.touch(id)
+		state, err := s.docker.containerState(r.Context(), id)
+		if err != nil {
 			notRunning(w, http.StatusBadGateway)
 			return
+		}
+		s.mu.Lock()
+		underway := s.wakings[id] != nil
+		s.mu.Unlock()
+		if underway {
+			// The container may already be up while its app is still starting.
+			state = "waking"
+		}
+		switch state {
+		case "running":
+		case "paused":
+			// Frozen in memory: thawing is instant, so nobody waits.
+			if _, err := s.wake(r.Context(), id); err != nil {
+				notRunning(w, http.StatusBadGateway)
+				return
+			}
+		default:
+			// Stopped or removed: start it and its app, and if that takes more
+			// than a moment, say so instead of leaving the browser spinning.
+			patience := 1500 * time.Millisecond
+			if isUpgrade(r.Header.Get("Connection")) {
+				patience = 20 * time.Second
+			}
+			wk := s.wakeForPreview(id, port)
+			select {
+			case <-wk.done:
+				if wk.err != nil {
+					s.cfg.Logf("wake %s for its preview: %v", id, wk.err)
+					notRunning(w, http.StatusBadGateway)
+					return
+				}
+			case <-time.After(patience):
+				stillWaking(w)
+				return
+			case <-r.Context().Done():
+				return
+			}
 		}
 		w.Header().Set("X-Robots-Tag", "noindex")
 		proxy.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), targetKey{}, target{id: id, port: port})))
 	})
+}
+
+func stillWaking(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "2")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = io.WriteString(w, wakingPage)
 }
 
 func notRunning(w http.ResponseWriter, status int) {
@@ -517,7 +591,7 @@ func (s *Server) dialSandbox(ctx context.Context, id string, port int) (net.Conn
 }
 
 func (s *Server) containerIP(ctx context.Context, id string) string {
-	out, err := s.docker.run(ctx, nil, "inspect", "-f", fmt.Sprintf(`{{(index .NetworkSettings.Networks %q).IPAddress}}`, s.cfg.Network), containerName(id))
+	out, err := s.docker.run(ctx, nil, "container", "inspect", "-f", fmt.Sprintf(`{{(index .NetworkSettings.Networks %q).IPAddress}}`, s.cfg.Network), containerName(id))
 	if err != nil {
 		return ""
 	}

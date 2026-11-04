@@ -56,7 +56,7 @@ func containerName(id string) string { return "kimono-sbx-" + id }
 // containerState is "running", "paused", "exited", "created", … or "" when
 // there is no container.
 func (d docker) containerState(ctx context.Context, id string) (string, error) {
-	out, err := d.run(ctx, nil, "inspect", "-f", "{{.State.Status}}", containerName(id))
+	out, err := d.run(ctx, nil, "container", "inspect", "-f", "{{.State.Status}}", containerName(id))
 	if err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "no such") {
 			return "", nil

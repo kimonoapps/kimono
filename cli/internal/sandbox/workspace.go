@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -158,18 +159,15 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 	if label := s.repoLabel(ctx, id); state != "" && label != "" && label != request.Repo.Owner+"/"+request.Repo.Name {
 		return nil, "", problem(409, "This workspace already belongs to another repository.")
 	}
-	switch state {
-	case "":
+	s.remember(id, request.Repo)
+	// Waking covers every sleep, a removed container included; only a sandbox
+	// that never existed (or lost its files) is made from scratch.
+	if _, err := s.wake(ctx, id); err != nil {
+		var refused *apiProblem
+		if !errors.As(err, &refused) || refused.status != 404 {
+			return nil, "", err
+		}
 		if err := s.create(ctx, id, request.Repo); err != nil {
-			return nil, "", err
-		}
-	case "paused":
-		if _, err := s.docker.run(ctx, nil, "unpause", containerName(id)); err != nil {
-			return nil, "", err
-		}
-	case "running":
-	default:
-		if _, err := s.docker.run(ctx, nil, "start", containerName(id)); err != nil {
 			return nil, "", err
 		}
 	}
@@ -180,7 +178,7 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 }
 
 func (s *Server) repoLabel(ctx context.Context, id string) string {
-	out, err := s.docker.run(ctx, nil, "inspect", "-f", `{{index .Config.Labels "kimono.repo"}}`, containerName(id))
+	out, err := s.docker.run(ctx, nil, "container", "inspect", "-f", `{{index .Config.Labels "kimono.repo"}}`, containerName(id))
 	if err != nil {
 		return ""
 	}
@@ -282,25 +280,15 @@ func (s *Server) execArgs(w *workspace, extra []string, interactive bool, comman
 	return append(args, command...)
 }
 
-// running wakes a sandbox that the idle sweep paused, for calls that only need
-// the container (files, changes). It needs no credentials.
+// running wakes a sandbox from whatever sleep it is in, for calls that only
+// need the container (files, changes). It needs no credentials.
 func (s *Server) running(ctx context.Context, id string) (*workspace, error) {
-	state, err := s.docker.containerState(ctx, id)
+	restarted, err := s.wake(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	switch state {
-	case "":
-		return nil, problem(404, "This workspace's sandbox is asleep. Open it again to wake it.")
-	case "paused":
-		if _, err := s.docker.run(ctx, nil, "unpause", containerName(id)); err != nil {
-			return nil, err
-		}
-	case "running":
-	default:
-		if _, err := s.docker.run(ctx, nil, "start", containerName(id)); err != nil {
-			return nil, err
-		}
+	if restarted {
+		s.reviveServe(id)
 	}
 	s.mu.Lock()
 	w := s.spaces[id]
@@ -340,6 +328,7 @@ func (s *Server) remove(ctx context.Context, id string) error {
 	}
 	s.mu.Unlock()
 	s.clearPreview(id)
+	s.forget(id)
 	name := containerName(id)
 	if _, err := s.docker.run(ctx, nil, "rm", "-f", "-v", name); err != nil && !strings.Contains(strings.ToLower(err.Error()), "no such") {
 		return err
@@ -348,41 +337,6 @@ func (s *Server) remove(ctx context.Context, id string) error {
 		return err
 	}
 	return nil
-}
-
-// sweep pauses sandboxes that have been quiet for IdleAfter. A paused gVisor
-// sandbox keeps its memory and resumes where it was.
-func (s *Server) sweep(ctx context.Context) {
-	found, err := s.docker.sandboxes(ctx)
-	if err != nil {
-		s.cfg.Logf("sweep: %v", err)
-		return
-	}
-	for id, state := range found {
-		if state != "running" {
-			continue
-		}
-		s.mu.Lock()
-		w := s.spaces[id]
-		if w == nil {
-			w = &workspace{id: id, capability: randomToken(), lastActive: time.Now()}
-			s.spaces[id] = w
-			s.byCapability[w.capability] = w
-		}
-		s.mu.Unlock()
-		w.mu.Lock()
-		quiet := !w.busy && time.Since(w.lastActive) > s.cfg.IdleAfter
-		w.mu.Unlock()
-		// A sandbox serving a preview stays awake: people may open the link at any time.
-		if s.hasPreview(id) {
-			quiet = false
-		}
-		if quiet {
-			if _, err := s.docker.run(ctx, nil, "pause", containerName(id)); err != nil {
-				s.cfg.Logf("pause %s: %v", id, err)
-			}
-		}
-	}
 }
 
 func isLoopbackHost(host string) bool {

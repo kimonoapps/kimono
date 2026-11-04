@@ -45,7 +45,7 @@ func (m *Manager) sandboxes(args []string) error {
 	case "serve":
 		return m.sandboxesServe(args[1:])
 	case "status":
-		return m.sandboxesStatus()
+		return m.sandboxesStatus(args[1:])
 	case "disable":
 		return m.sandboxesDisable(args[1:])
 	default:
@@ -309,7 +309,9 @@ func (m *Manager) sandboxesServe(args []string) error {
 	cpus := flags.String("cpus", "4", "CPUs per sandbox")
 	memory := flags.String("memory", "8g", "memory per sandbox")
 	pids := flags.Int("pids", 2048, "processes per sandbox")
-	idle := flags.Duration("idle", 2*time.Minute, "pause a sandbox after this long without use")
+	pauseAfter := flags.Duration("pause-after", time.Minute, "pause a sandbox after this long without use (it resumes instantly)")
+	stopAfter := flags.Duration("stop-after", 15*time.Minute, "stop a sandbox after this long without use (frees its memory; files kept)")
+	removeAfter := flags.Duration("remove-after", 7*24*time.Hour, "remove a sandbox's container after this long without use (files kept on its volume; 0 never)")
 	stateDir := flags.String("state-dir", sandboxesStateDir, "directory for what survives a restart (live previews)")
 	previewListen := flags.String("preview-listen", previewsListen, "preview proxy address")
 	previewDomain := flags.String("preview-domain", "", "domain whose subdomains open previews (empty: http://<name>.localhost:<port>)")
@@ -330,7 +332,7 @@ func (m *Manager) sandboxesServe(args []string) error {
 	server, err := sandbox.New(sandbox.Config{
 		Listen: *listen, Key: strings.TrimSpace(string(key)), Image: *image,
 		GatewayListen: *gatewayListen, GatewayURL: *gatewayURL, Runtime: *runtimeName,
-		CPUs: *cpus, Memory: *memory, Pids: *pids, IdleAfter: *idle,
+		CPUs: *cpus, Memory: *memory, Pids: *pids, PauseAfter: *pauseAfter, StopAfter: *stopAfter, RemoveAfter: *removeAfter,
 		Agent: os.Getenv("KIMONO_SANDBOX_AGENT"), DevGitDir: *devGitDir,
 		StateDir: *stateDir, PreviewListen: *previewListen, PreviewDomain: *previewDomain,
 		Logf: logger.Printf,
@@ -346,12 +348,33 @@ func (m *Manager) sandboxesServe(args []string) error {
 	return server.Run(ctx)
 }
 
-func (m *Manager) sandboxesStatus() error {
+func (m *Manager) sandboxesStatus(args []string) error {
+	flags := flag.NewFlagSet("node sandboxes status", flag.ContinueOnError)
+	stateDir := flags.String("state-dir", sandboxesStateDir, "the node's state directory")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
 	if m.Runner.Exists("systemctl") {
 		_ = m.Runner.Run("systemctl", "--no-pager", "--lines", "5", "status", "kimono-sandboxes")
+		_, _ = fmt.Fprintln(m.Runner.Stdout)
 	}
-	_, _ = fmt.Fprintln(m.Runner.Stdout)
-	return m.Runner.Run("docker", "ps", "-a", "--filter", "label=kimono.repo", "--format", "table {{.Label \"kimono.sandbox\"}}\t{{.Label \"kimono.repo\"}}\t{{.State}}\t{{.RunningFor}}")
+	rows, err := sandbox.Status(context.Background(), "docker", *stateDir)
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		_, _ = fmt.Fprintln(m.Runner.Stdout, "No sandboxes.")
+		return nil
+	}
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "WORKSPACE\tREPOSITORY\tSTATE\tQUIET FOR")
+	for _, row := range rows {
+		quiet := "-"
+		if row.Quiet > 0 {
+			quiet = row.Quiet.Round(time.Second).String()
+		}
+		_, _ = fmt.Fprintf(m.Runner.Stdout, "%s\t%s\t%s\t%s\n", row.ID, row.Repo, row.State, quiet)
+	}
+	return nil
 }
 
 func (m *Manager) sandboxesDisable(args []string) error {

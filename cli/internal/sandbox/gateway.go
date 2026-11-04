@@ -90,7 +90,7 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 502, "The model gateway is misconfigured.")
 		return
 	}
-	space.touch()
+	s.touch(space.id)
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(out *httputil.ProxyRequest) {
 			out.SetURL(upstream)
@@ -182,7 +182,7 @@ func (s *Server) serveGit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 403, "Sandboxes can only fetch and push their own repository.")
 		return
 	}
-	space.touch()
+	s.touch(space.id)
 	if push && r.Method == http.MethodPost {
 		// The agent may push its own branch, and nothing else.
 		var source io.Reader = r.Body

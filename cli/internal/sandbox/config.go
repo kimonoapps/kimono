@@ -53,7 +53,12 @@ type Config struct {
 	CPUs       string
 	Memory     string
 	Pids       int
-	IdleAfter  time.Duration
+	// PauseAfter, StopAfter and RemoveAfter are how long a sandbox stays
+	// quiet before it is paused, stopped, and its container removed (its files
+	// stay on their volume). RemoveAfter 0 never removes.
+	PauseAfter  time.Duration
+	StopAfter   time.Duration
+	RemoveAfter time.Duration
 	// Agent is the shell command a turn runs inside the container.
 	Agent string
 	// AnthropicUpstream is where the model gateway forwards.
@@ -96,8 +101,19 @@ func (c *Config) defaults() error {
 	if c.Pids == 0 {
 		c.Pids = 2048
 	}
-	if c.IdleAfter == 0 {
-		c.IdleAfter = 2 * time.Minute
+	if c.PauseAfter <= 0 {
+		c.PauseAfter = time.Minute
+	}
+	if c.StopAfter <= 0 {
+		c.StopAfter = 15 * time.Minute
+	}
+	if c.StopAfter < c.PauseAfter {
+		c.StopAfter = c.PauseAfter
+	}
+	if c.RemoveAfter < 0 {
+		c.RemoveAfter = 0
+	} else if c.RemoveAfter > 0 && c.RemoveAfter < c.StopAfter {
+		c.RemoveAfter = c.StopAfter
 	}
 	if c.Agent == "" {
 		c.Agent = DefaultAgent
