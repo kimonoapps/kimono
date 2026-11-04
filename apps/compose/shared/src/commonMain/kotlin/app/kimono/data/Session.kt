@@ -6,7 +6,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.header
-import io.ktor.client.request.request
+import io.ktor.client.request.prepareRequest
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
@@ -169,28 +169,41 @@ class Session(private val platform: Platform, private val http: HttpClient) {
     private suspend fun failureOf(response: HttpResponse, fallback: String): String =
         runCatching { json.decodeFromString<ApiFailure>(response.bodyAsText()).error }.getOrNull()?.takeIf { it.isNotBlank() } ?: fallback
 
-    /** Calls /api/v1 as the signed-in person. Throws a KimonoProblem a person can read. */
-    suspend fun call(path: String, method: HttpMethod = HttpMethod.Get, configure: HttpRequestBuilder.() -> Unit = {}): String {
+    /** The Kimono this app is signed in to, as https://… with no trailing slash. */
+    val server: String? get() = kept?.server
+
+    /**
+     * Calls /api/v1 as the signed-in person and hands back the answer, whatever
+     * its status (other than a sign-in that has ended, which signs out). [path]
+     * starts with a slash; [handle] reads the answer while it streams.
+     */
+    suspend fun <T> respond(path: String, method: HttpMethod = HttpMethod.Get, configure: HttpRequestBuilder.() -> Unit = {}, handle: suspend (HttpResponse) -> T): T {
         val base = kept?.server ?: throw KimonoProblem("Sign in to Kimono first.")
-        suspend fun send(bearer: String) = http.request("$base$path") {
+        val offline = "Kimono isn't answering. Check your connection and try again."
+        suspend fun attempt(bearer: String): T? = http.prepareRequest("$base$path") {
             this.method = method
             header(HttpHeaders.Accept, "application/json")
             header(HttpHeaders.Authorization, "Bearer $bearer")
             /* Not `configure()`'s neighbour build(): that is the builder's own method. */
             configure()
-        }
-        var response = try { send(token()) } catch (problem: KimonoProblem) { throw problem } catch (_: Exception) { throw KimonoProblem("Kimono isn't answering. Check your connection and try again.") }
-        if (response.status.value == 401) {
-            access = null
-            response = try { send(renew()) } catch (problem: KimonoProblem) { throw problem } catch (_: Exception) { throw KimonoProblem("Kimono isn't answering. Check your connection and try again.") }
-        }
-        if (response.status.value == 401) {
-            forget()
-            throw KimonoProblem("You've been signed out. Sign in again.")
-        }
-        if (!response.status.isSuccess()) throw KimonoProblem(failureOf(response, "Something went wrong. Try again."))
-        return response.bodyAsText()
+        }.execute { response -> if (response.status.value == 401) null else handle(response) }
+        val first = try { attempt(token()) } catch (problem: KimonoProblem) { throw problem } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel } catch (_: Exception) { throw KimonoProblem(offline) }
+        if (first != null) return first
+        access = null
+        val second = try { attempt(renew()) } catch (problem: KimonoProblem) { throw problem } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel } catch (_: Exception) { throw KimonoProblem(offline) }
+        if (second != null) return second
+        forget()
+        throw KimonoProblem("You've been signed out. Sign in again.")
     }
+
+    /** Calls /api/v1 as the signed-in person. Throws a KimonoProblem a person can read. */
+    suspend fun call(path: String, method: HttpMethod = HttpMethod.Get, configure: HttpRequestBuilder.() -> Unit = {}): String =
+        respond(path, method, configure) { response ->
+            if (!response.status.isSuccess()) throw KimonoProblem(failureOf(response, "Something went wrong. Try again."))
+            response.bodyAsText()
+        }
+
+    suspend fun problemOf(response: HttpResponse, fallback: String): KimonoProblem = KimonoProblem(failureOf(response, fallback))
 
     suspend fun me(): AccountProfile = json.decodeFromString(call("/api/v1/me"))
 

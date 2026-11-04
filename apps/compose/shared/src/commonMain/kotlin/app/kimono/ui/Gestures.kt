@@ -235,12 +235,17 @@ fun SwipeRow(actionLabel: String, onAction: suspend () -> Boolean, modifier: Mod
         /* If the action didn't happen, the row slides back. */
         onDismiss = { scope.launch { if (!onAction()) state.reset() } },
         backgroundContent = {
+            /* Only while swiping: at rest it would show through the gaps between rounded rows. */
+            val swiping = state.dismissDirection == SwipeToDismissBoxValue.EndToStart
             Row(
-                Modifier.fillMaxSize().background(if (armed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.errorContainer).padding(horizontal = 24.dp),
+                Modifier.fillMaxSize().background(
+                    when { !swiping -> Color.Transparent; armed -> MaterialTheme.colorScheme.error; else -> MaterialTheme.colorScheme.errorContainer },
+                    MaterialTheme.shapes.large,
+                ).padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(actionLabel, style = MaterialTheme.typography.titleSmall, color = if (armed) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onErrorContainer)
+                if (swiping) Text(actionLabel, style = MaterialTheme.typography.titleSmall, color = if (armed) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onErrorContainer)
             }
         },
     ) {

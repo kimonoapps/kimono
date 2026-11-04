@@ -40,6 +40,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
+import androidx.savedstate.read
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -49,7 +50,13 @@ import app.kimono.data.Platform
 import app.kimono.data.Session
 import app.kimono.data.SessionState
 import app.kimono.data.SharedItem
+import app.kimono.data.Drive
 import app.kimono.screens.DetailsScreen
+import app.kimono.screens.DriveModel
+import app.kimono.screens.DriveScreen
+import app.kimono.screens.FolderScreen
+import app.kimono.screens.HomeScreen
+import app.kimono.screens.TrashScreen
 import app.kimono.screens.DevicesScreen
 import app.kimono.screens.PasswordScreen
 import app.kimono.screens.SignInScreen
@@ -92,42 +99,32 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?) 
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    val tab = route == "home" || route == "you"
+    val tab = route == "home" || route == "drive" || route == "you"
+    val model = remember(session) { DriveModel(Drive(session), platform) }
+    fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
             if (tab) ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 val colors = ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = MaterialTheme.colorScheme.secondaryContainer, selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.onSurface, unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant)
-                ShortNavigationBarItem(selected = route == "home", onClick = { nav.navigate("home") { popUpTo("home") { inclusive = true } } }, icon = { Icon(kimonoIcon("home"), null) }, label = { Text("Home") }, colors = colors)
-                ShortNavigationBarItem(selected = route == "you", onClick = { nav.navigate("you") { popUpTo("home") } }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors)
+                ShortNavigationBarItem(selected = route == "home", onClick = { goTab("home") }, icon = { Icon(kimonoIcon("home"), null) }, label = { Text("Home") }, colors = colors)
+                ShortNavigationBarItem(selected = route == "drive", onClick = { goTab("drive") }, icon = { Icon(kimonoIcon("folder"), null) }, label = { Text("Drive") }, colors = colors)
+                ShortNavigationBarItem(selected = route == "you", onClick = { goTab("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors)
             }
         },
     ) { padding ->
         NavHost(nav, startDestination = "home", modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp)) {
-            composable("home") { Home(me) }
+            composable("home") { HomeScreen(me, model.drive, platform) { goTab("drive") } }
+            composable("drive") { DriveScreen(model) { nav.navigate(it) } }
+            composable("folder/{id}") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                FolderScreen(model, platform, id, open = { nav.navigate(it) }, back = { nav.popBackStack() })
+            }
+            composable("trash") { TrashScreen(model) { nav.popBackStack() } }
             composable("you") { YouScreen(session, platform, me) { nav.navigate(it) } }
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
-        }
-    }
-}
-
-@Composable
-private fun Home(me: AccountProfile?) {
-    val first = me?.name?.split(" ")?.firstOrNull()?.takeIf { it.isNotBlank() } ?: me?.username ?: "home"
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = {
-        TopAppBar(
-            title = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { KimonoBranch(30.dp); Text("kimono", style = MaterialTheme.typography.titleLarge) } },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-        )
-    }) { padding ->
-        Column(Modifier.padding(padding).padding(horizontal = 20.dp, vertical = 22.dp)) {
-            Text("Your household", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(buildAnnotatedString {
-                append("Welcome home, ")
-                withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("$first.") }
-            }, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(top = 6.dp))
         }
     }
 }

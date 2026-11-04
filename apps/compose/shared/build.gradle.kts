@@ -35,6 +35,8 @@ kotlin {
             implementation(libs.serialization.json)
             implementation(libs.coil.compose)
             implementation(libs.coil.ktor)
+            implementation(libs.coil.svg)
+            implementation(libs.kotlinx.io)
         }
         androidMain.dependencies {
             implementation(libs.ktor.okhttp)

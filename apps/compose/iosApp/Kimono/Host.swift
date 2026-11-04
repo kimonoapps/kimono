@@ -2,6 +2,8 @@ import AuthenticationServices
 import CryptoKit
 import FileProvider
 import PhotosUI
+import QuickLook
+import UniformTypeIdentifiers
 import Security
 import Shared
 import UIKit
@@ -55,6 +57,47 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
     }
 
     func sha256(data: Data) -> Data { Data(SHA256.hash(data: data)) }
+
+    // MARK: Links and files
+
+    func openUrl(url: String) {
+        guard let target = URL(string: url) else { return }
+        DispatchQueue.main.async { UIApplication.shared.open(target) }
+    }
+
+    func cacheDir() -> String {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].path
+    }
+
+    private var previewing: URL?
+
+    func openFile(path: String) {
+        DispatchQueue.main.async {
+            self.previewing = URL(fileURLWithPath: path)
+            let preview = QLPreviewController()
+            preview.dataSource = self
+            Host.top()?.present(preview, animated: true)
+        }
+    }
+
+    private var pickedFiles: (([IosPickedFile]) -> Void)?
+
+    func pickFiles(done: @escaping ([IosPickedFile]) -> Void) {
+        DispatchQueue.main.async {
+            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
+            picker.allowsMultipleSelection = true
+            picker.delegate = self
+            self.pickedFiles = done
+            Host.top()?.present(picker, animated: true)
+        }
+    }
+
+    func readFile(path: String, offset: Int64, max: Int32) -> Data {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return Data() }
+        defer { try? handle.close() }
+        try? handle.seek(toOffset: UInt64(offset))
+        return (try? handle.read(upToCount: Int(max))) ?? Data()
+    }
 
     // MARK: Files app
 
@@ -179,5 +222,26 @@ extension Host: PHPickerViewControllerDelegate {
             let png = (image as? UIImage).flatMap(Host.square)
             DispatchQueue.main.async { done?(png) }
         }
+    }
+}
+
+extension Host: QLPreviewControllerDataSource {
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int { previewing == nil ? 0 : 1 }
+    func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { previewing! as NSURL }
+}
+
+extension Host: UIDocumentPickerDelegate {
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        let files = urls.map { url -> IosPickedFile in
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
+            return IosPickedFile(name: url.lastPathComponent, path: url.path, size: Int64(values?.fileSize ?? 0), mimeType: values?.contentType?.preferredMIMEType)
+        }
+        pickedFiles?(files)
+        pickedFiles = nil
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        pickedFiles?([])
+        pickedFiles = nil
     }
 }

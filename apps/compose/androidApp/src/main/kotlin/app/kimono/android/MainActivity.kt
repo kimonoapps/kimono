@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
     private val shared = mutableStateOf<SharedItem?>(null)
 
     private val picker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> platform.picked(uri) }
+    private val filePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> platform.filesPicked(uris) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -30,6 +31,7 @@ class MainActivity : ComponentActivity() {
         platform = (application as KimonoApplication).platform
         platform.activity = this
         platform.launchPicker = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+        platform.launchFilePicker = { filePicker.launch(arrayOf("*/*")) }
         handle(intent)
         val session = (application as KimonoApplication).session
         setContent { KimonoApp(session, platform, shared.value) { shared.value = null } }

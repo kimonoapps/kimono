@@ -19,6 +19,29 @@ interface Platform {
     suspend fun openSignIn(url: String, redirect: String): String?
     /** Asks the person for a photo; returns it squared up as a 512×512 PNG, or null. */
     suspend fun pickPicture(): ByteArray?
+
+    /** "android" or "ios": which store a phone app lives in. */
+    val os: String
+    /** Opens a web page, or a store page in the store. */
+    fun openUrl(url: String)
+    /** A directory for files opened from Drive; the OS may clear it. */
+    fun cacheDir(): String
+    /** Shows a downloaded file in the system's own viewer (Quick Look, or the app that opens it). */
+    fun openFile(path: String, mimeType: String?)
+    /** Asks the person for files to upload. Empty if they changed their mind. */
+    suspend fun pickFiles(): List<PickedFile>
+}
+
+/**
+ * A file chosen for upload, read a piece at a time so a 150 GB file never
+ * sits in memory.
+ */
+interface PickedFile {
+    val name: String
+    val size: Long
+    val mimeType: String?
+    /** Up to [max] bytes from [offset]; fewer only at the end. */
+    suspend fun read(offset: Long, max: Int): ByteArray
 }
 
 /** Something another app shared into Kimono. */

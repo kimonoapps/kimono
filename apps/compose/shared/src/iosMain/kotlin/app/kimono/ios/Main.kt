@@ -4,6 +4,7 @@ package app.kimono.ios
 
 import androidx.compose.ui.window.ComposeUIViewController
 import app.kimono.KimonoApp
+import app.kimono.data.PickedFile
 import app.kimono.data.Platform
 import app.kimono.data.Session
 import io.ktor.client.HttpClient
@@ -33,7 +34,18 @@ interface IosHost {
     fun openSignIn(url: String, redirect: String, done: (String?) -> Unit)
     /** A photo from the picker, squared to a 512×512 PNG, or null. */
     fun pickPicture(done: (NSData?) -> Unit)
+    fun openUrl(url: String)
+    fun cacheDir(): String
+    /** Shows a downloaded file in Quick Look, with its share button. */
+    fun openFile(path: String)
+    /** Files from the document picker, copied somewhere the app can read. */
+    fun pickFiles(done: (List<IosPickedFile>) -> Unit)
+    /** Up to [max] bytes of the file at [path], from [offset]. */
+    fun readFile(path: String, offset: Long, max: Int): NSData
 }
+
+/** A file the person picked on iPhone; the Swift side fills it in. */
+class IosPickedFile(val name: String, val path: String, val size: Long, val mimeType: String?)
 
 private class IosPlatform(private val host: IosHost) : Platform {
     override suspend fun readKept(key: String) = host.readKept(key)
@@ -44,6 +56,19 @@ private class IosPlatform(private val host: IosHost) : Platform {
         suspendCancellableCoroutine { waiting -> host.openSignIn(url, redirect) { waiting.resume(it) } }
     override suspend fun pickPicture(): ByteArray? =
         suspendCancellableCoroutine { waiting -> host.pickPicture { waiting.resume(it?.toByteArray()) } }
+    override val os = "ios"
+    override fun openUrl(url: String) = host.openUrl(url)
+    override fun cacheDir() = host.cacheDir()
+    override fun openFile(path: String, mimeType: String?) = host.openFile(path)
+    override suspend fun pickFiles(): List<PickedFile> =
+        suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }.map { picked ->
+            object : PickedFile {
+                override val name = picked.name
+                override val size = picked.size
+                override val mimeType = picked.mimeType
+                override suspend fun read(offset: Long, max: Int) = host.readFile(picked.path, offset, max).toByteArray()
+            }
+        }
 }
 
 fun NSData.toByteArray(): ByteArray = ByteArray(length.toInt()).also { out ->

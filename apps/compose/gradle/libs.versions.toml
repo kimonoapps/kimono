@@ -13,6 +13,7 @@ serialization = "1.12.0"
 coil = "3.6.3"
 activity = "1.13.0"
 browser = "1.10.0"
+kotlinx-io = "0.9.1"
 
 [libraries]
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
@@ -29,6 +30,8 @@ ktor-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
+coil-svg = { module = "io.coil-kt.coil3:coil-svg", version.ref = "coil" }
+kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 browser = { module = "androidx.browser:browser", version.ref = "browser" }
 

@@ -10,7 +10,14 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.browser.customtabs.CustomTabsIntent
+import app.kimono.data.PickedFile
 import app.kimono.data.Platform
+import android.content.Intent
+import android.provider.OpenableColumns
+import androidx.core.content.FileProvider
+import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -93,6 +100,68 @@ class AndroidPlatform(private val context: Context) : Platform {
     }
 
     fun picked(uri: Uri?) { picking?.complete(uri); picking = null }
+
+    override val os = "android"
+
+    override fun openUrl(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        (activity ?: context).startActivity(intent)
+    }
+
+    override fun cacheDir(): String = context.cacheDir.absolutePath
+
+    /** Hands the file to whichever app opens its type, through Kimono's FileProvider. */
+    override fun openFile(path: String, mimeType: String?) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", File(path))
+        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mimeType ?: context.contentResolver.getType(uri) ?: "*/*")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val chooser = Intent.createChooser(intent, null)
+        if (activity == null) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        (activity ?: context).startActivity(chooser)
+    }
+
+    var launchFilePicker: (() -> Unit)? = null
+    private var pickingFiles: CompletableDeferred<List<Uri>>? = null
+
+    override suspend fun pickFiles(): List<PickedFile> {
+        val waiting = CompletableDeferred<List<Uri>>()
+        pickingFiles = waiting
+        launchFilePicker?.invoke() ?: return emptyList()
+        return waiting.await().mapNotNull { pickedFile(it) }
+    }
+
+    fun filesPicked(uris: List<Uri>) { pickingFiles?.complete(uris); pickingFiles = null }
+
+    /** A shared or picked file, read straight from its provider a piece at a time. */
+    fun pickedFile(uri: Uri): PickedFile? {
+        var name = "File"
+        var size = -1L
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(0)?.let { name = it }
+                if (!cursor.isNull(1)) size = cursor.getLong(1)
+            }
+        }
+        if (size < 0) size = context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: return null
+        val type = context.contentResolver.getType(uri)
+        val resolver = context.contentResolver
+        return object : PickedFile {
+            override val name = name
+            override val size = size
+            override val mimeType = type
+            override suspend fun read(offset: Long, max: Int): ByteArray = withContext(Dispatchers.IO) {
+                resolver.openFileDescriptor(uri, "r")!!.use { descriptor ->
+                    FileInputStream(descriptor.fileDescriptor).channel.use { channel ->
+                        channel.position(offset)
+                        val buffer = ByteBuffer.allocate(minOf(max.toLong(), size - offset).toInt())
+                        while (buffer.hasRemaining() && channel.read(buffer) > 0) Unit
+                        buffer.array().copyOf(buffer.position())
+                    }
+                }
+            }
+        }
+    }
 
     /** A photo, cut square from the middle and scaled to the 512×512 PNG the Portal stores. */
     suspend fun squarePicture(uri: Uri): ByteArray? = withContext(Dispatchers.Default) {
