@@ -136,3 +136,32 @@ test('key action requires admin, prevents silent replacement, and creates server
   const revoked = await actions.exports.manageApiKey('mawaqit','revoke');
   assert.equal(saved.key,null); assert.equal(revoked.revoked,true);
 });
+const rmp = load('src/lib/tool-apis/rmp.ts');
+const rmpApi = JSON.parse(readFileSync('app-definitions/tools/app.json')).spec.apiCollection.find(a => a.id === 'rmp');
+test('RateMyProfessors registration validates alongside Mawaqit', () => {
+  catalog.validateApiCollection([api, rmpApi]);
+});
+test('RateMyProfessors input encodes legacy school IDs and rejects other IDs and flags', () => {
+  assert.equal(rmp.schoolId('1452'), 'U2Nob29sLTE0NTI=');
+  assert.equal(rmp.schoolId('U2Nob29sLTE0NTI='), 'U2Nob29sLTE0NTI=');
+  for (const id of ['', 'VGVhY2hlci0x', '../x', 'abc']) assert.throws(() => rmp.schoolId(id), e => e.status === 400);
+  assert.equal(rmp.flag(new URLSearchParams('ratings=true'), 'ratings'), true);
+  assert.equal(rmp.flag(new URLSearchParams(''), 'ratings'), false);
+  assert.throws(() => rmp.flag(new URLSearchParams('ratings=yes'), 'ratings'));
+});
+test('RateMyProfessors adapter posts to the fixed host, formats professors, and sanitizes failures', async () => {
+  const old = globalThis.fetch; const urls = [];
+  const teacher = { __typename: 'Teacher', legacyId: 7, firstName: 'Ada', lastName: 'L', school: { legacyId: 1452, name: 'U' }, courseCodes: [{ courseName: 'A', courseCount: 1 }, { courseName: 'B', courseCount: 5 }], teacherRatingTags: [{ tagName: 'Respected' }], ratings: { edges: [{ node: { comment: 'ok', ratingTags: 'x--y' } }] }, relatedTeachers: [{ legacyId: 8, firstName: 'B', lastName: 'C', avgRating: 4 }] };
+  try {
+    globalThis.fetch = async (url, init) => { urls.push(url); const body = JSON.parse(init.body); return Response.json({ data: body.variables.id ? { node: teacher } : { search: { teachers: { edges: [{ node: { legacyId: 7 } }] } } } }); };
+    const result = await rmp.executeRmp('professor', new URLSearchParams('school=1452&name=Ada&ratings=true&related=true'));
+    assert.ok(urls.every(u => u === 'https://www.ratemyprofessors.com/graphql'));
+    assert.deepEqual(result.courses.map(c => c.name), ['B', 'A']);
+    assert.deepEqual(result.ratings[0].tags, ['x', 'y']);
+    assert.deepEqual(result.relatedProfessors, [{ id: 8, name: 'B C', rating: 4 }]);
+    globalThis.fetch = async () => Response.json({ data: { search: { teachers: { edges: [] } } } });
+    assert.deepEqual(await rmp.executeRmp('professor', new URLSearchParams('school=1452&name=Nobody')), { found: false });
+    globalThis.fetch = async () => { throw new Error('secret upstream detail'); };
+    await assert.rejects(rmp.executeRmp('schools', new URLSearchParams('q=ottawa')), e => e.status === 502 && !e.message.includes('secret'));
+  } finally { globalThis.fetch = old; }
+});
