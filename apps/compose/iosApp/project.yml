@@ -72,6 +72,10 @@ targets:
       properties:
         CFBundleDisplayName: Kimono
         KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
+        # The icon beside "Kimono" in the Files app: a symbol, not the app icon.
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleSymbolName: kimono.blossom
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSExtension:

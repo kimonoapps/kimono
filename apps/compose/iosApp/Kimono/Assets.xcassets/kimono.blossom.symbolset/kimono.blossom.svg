@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--Kimono's blossom branch as a custom SF Symbol, for the Files app.-->
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="3300" height="2200">
+ <g id="Notes">
+  <rect height="2200" id="artboard" style="fill:white;opacity:1" width="3300" x="0" y="0"/>
+  <text style="stroke:none;fill:black;font-family:sans-serif;font-size:13;" transform="matrix(1 0 0 1 263 322)">Template v.3.0</text>
+  <text id="template-version" style="stroke:none;fill:black;font-family:sans-serif;font-size:13;" transform="matrix(1 0 0 1 3036 1933)">Template v.3.0</text>
+ </g>
+ <g id="Guides">
+  <line id="Baseline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="696" y2="696"/>
+  <line id="Capline-S" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="625.541" y2="625.541"/>
+  <line id="Baseline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1126" y2="1126"/>
+  <line id="Capline-M" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1055.54" y2="1055.54"/>
+  <line id="Baseline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1556" y2="1556"/>
+  <line id="Capline-L" style="fill:none;stroke:#27AAE1;opacity:1;stroke-width:0.5;" x1="263" x2="3036" y1="1485.54" y2="1485.54"/>
+  <line id="left-margin-Regular-M" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="1391.3" x2="1391.3" y1="1030.79" y2="1150.12"/>
+  <line id="right-margin-Regular-M" style="fill:none;stroke:#00AEEF;stroke-width:0.5;opacity:1.0;" x1="1541.15" x2="1541.15" y1="1030.79" y2="1150.12"/>
+ </g>
+ <g id="Symbols">
+  <g id="Regular-M" transform="matrix(1 0 0 1 1391.3 1126)">
+   <path d="M1.35 23.05 C33.75 9.55 56.70 -9.35 72.90 -33.65 C82.35 -48.50 94.50 -59.30 105.30 -64.70 L108.00 -59.30 C97.20 -53.90 87.75 -41.75 78.30 -25.55 C62.10 -1.25 39.15 20.35 6.75 33.85 Z"/>
+   <path d="M75.60 -24.20 C74.25 -37.70 70.20 -49.85 62.10 -59.30 L66.15 -63.35 C75.60 -52.55 79.65 -39.05 81.00 -25.55 Z"/>
+   <path d="M35.10 8.20 C52.65 6.85 67.50 12.25 76.95 23.05 L72.90 27.10 C64.80 17.65 51.30 12.25 35.10 12.25 Z"/>
+   <path d="M110.70 -68.89 C100.31 -75.57 96.59 -88.93 104.02 -97.84 C106.99 -101.56 110.70 -103.04 110.70 -103.04 C114.41 -101.56 117.38 -99.33 119.61 -96.36 C124.81 -88.19 120.35 -75.57 110.70 -68.89 Z"/>
+   <path d="M112.11 -67.86 C115.26 -79.81 126.82 -87.47 137.59 -83.16 C142.04 -81.49 144.60 -78.41 144.60 -78.41 C144.33 -74.42 143.13 -70.91 140.99 -67.87 C134.83 -60.41 121.45 -60.74 112.11 -67.86 Z"/>
+   <path d="M111.57 -66.20 C123.91 -66.90 134.77 -58.27 134.00 -46.70 C133.78 -41.95 131.65 -38.57 131.65 -38.57 C127.77 -37.59 124.06 -37.64 120.51 -38.74 C111.51 -42.29 107.69 -55.12 111.57 -66.20 Z"/>
+   <path d="M109.83 -66.20 C114.31 -54.68 109.46 -41.69 98.21 -38.84 C93.63 -37.59 89.75 -38.57 89.75 -38.57 C87.62 -41.95 86.53 -45.50 86.47 -49.21 C87.07 -58.87 98.09 -66.47 109.83 -66.20 Z"/>
+   <path d="M109.29 -67.86 C99.72 -60.04 85.86 -60.64 79.68 -70.45 C77.07 -74.42 76.80 -78.41 76.80 -78.41 C79.36 -81.49 82.40 -83.62 85.91 -84.82 C95.29 -87.24 105.92 -79.10 109.29 -67.86 Z"/>
+   <path d="M120.35 -67.40 C120.35 -62.07 116.03 -57.75 110.70 -57.75 C105.37 -57.75 101.05 -62.07 101.05 -67.40 C101.05 -72.73 105.37 -77.05 110.70 -77.05 C116.03 -77.05 120.35 -72.73 120.35 -67.40Z"/>
+  </g>
+ </g>
+</svg>
