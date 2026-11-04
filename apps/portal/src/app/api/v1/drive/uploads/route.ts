@@ -1,5 +1,5 @@
 import { apiError, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
-import { db, drive, DriveProblem, maxFileBytes, root, startUpload, typeOf } from "@/lib/drive";
+import { db, drive, DriveProblem, maxFileBytes, promisedBytes, root, startUpload, typeOf } from "@/lib/drive";
 import { freeBytes, reserveBytes } from "@/lib/drive/storage";
 import { tusHeaders } from "@/lib/drive/tus";
 
@@ -8,7 +8,9 @@ import { tusHeaders } from "@/lib/drive/tus";
  * ready-made clients for browsers and Android work as they are. An upload is
  * created here with its size and name; its bytes arrive in PATCHes to the
  * address this returns, and the file appears in the folder when the last byte
- * lands. Send chunks of 50 MB or less: some proxies refuse bigger requests.
+ * lands. Files can be up to 150 GB. Send chunks of 50 MB or less (some
+ * proxies refuse bigger requests); an upload that receives nothing for seven
+ * days is thrown away, so a big file can be resumed over several days.
  *
  *   Upload-Length: <bytes>
  *   Upload-Metadata: filename <base64>, folder <base64>
@@ -23,7 +25,8 @@ export async function POST(request: Request) {
     const size = Number(request.headers.get("upload-length"));
     const meta = metadata(request.headers.get("upload-metadata"));
     if (!meta.folder) throw new DriveProblem("Say which folder the file goes in.");
-    if ((await freeBytes(root)) - size < reserveBytes) throw new DriveProblem("Kimono's disk is too full for that file.", 507);
+    /* Room for this file and everything already on its way, with some left over. */
+    if ((await freeBytes(root)) - promisedBytes(db()) - size < reserveBytes) throw new DriveProblem("Kimono's disk is too full for that file.", 507);
     const upload = startUpload(db(), meta.folder, user.username, { name: meta.filename, size, mime: typeOf(meta.filename ?? "") }, maxFileBytes);
     return new Response(null, { status: 201, headers: { ...tusHeaders, Location: `/api/v1/drive/uploads/${upload.id}`, "Upload-Offset": "0" } });
   });

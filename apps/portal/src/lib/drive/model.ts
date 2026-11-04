@@ -99,6 +99,16 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 2) {
+    /* Big uploads take days; they are judged by when bytes last arrived. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE uploads ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+      UPDATE uploads SET updated_at = created_at;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '2');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── names ── */
@@ -394,8 +404,8 @@ export function startUpload(db: DatabaseSync, parentId: string, username: string
   if (!Number.isSafeInteger(file.size) || file.size < 0) throw new DriveProblem("Say how big the file is.");
   if (file.size > maxBytes) throw new DriveProblem(`Files can be up to ${Math.floor(maxBytes / 1024 ** 3)} GB.`, 413);
   const id = newId();
-  db.prepare("INSERT INTO uploads (id, space_id, parent_id, name, mime, size, received, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)")
-    .run(id, parent.spaceId, parentId, name, file.mime, file.size, username.toLowerCase(), now);
+  db.prepare("INSERT INTO uploads (id, space_id, parent_id, name, mime, size, received, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
+    .run(id, parent.spaceId, parentId, name, file.mime, file.size, username.toLowerCase(), now, now);
   return { id, spaceId: parent.spaceId, parentId, name, mime: file.mime, size: file.size, received: 0, createdBy: username.toLowerCase() };
 }
 
@@ -406,18 +416,27 @@ export function uploadFor(db: DatabaseSync, id: string, username: string): Uploa
   return { id: row.id, spaceId: row.space_id, parentId: row.parent_id, name: row.name, mime: row.mime, size: row.size, received: row.received, createdBy: row.created_by };
 }
 
-export function recordReceived(db: DatabaseSync, id: string, received: number) {
-  db.prepare("UPDATE uploads SET received = ? WHERE id = ?").run(received, id);
+export function recordReceived(db: DatabaseSync, id: string, received: number, now = Date.now()) {
+  db.prepare("UPDATE uploads SET received = ?, updated_at = ? WHERE id = ?").run(received, now, id);
 }
+
+/** Bytes still to arrive for every unfinished upload: disk space already promised. */
+export function promisedBytes(db: DatabaseSync): number {
+  return Number((db.prepare("SELECT coalesce(sum(size - received), 0) AS n FROM uploads").get() as { n: number }).n);
+}
+
+/** How long an upload may go without receiving anything before it is thrown away. */
+export const uploadIdleDays = 7;
 
 export function endUpload(db: DatabaseSync, id: string) {
   db.prepare("DELETE FROM uploads WHERE id = ?").run(id);
 }
 
-/** Uploads left unfinished for a day; the caller deletes their partial bytes. */
+/** Uploads that received nothing for [uploadIdleDays]; the caller deletes their partial bytes. */
 export function staleUploads(db: DatabaseSync, now = Date.now()): string[] {
-  const rows = db.prepare("SELECT id FROM uploads WHERE created_at < ?").all(now - 24 * 60 * 60 * 1000) as { id: string }[];
-  db.prepare("DELETE FROM uploads WHERE created_at < ?").run(now - 24 * 60 * 60 * 1000);
+  const cutoff = now - uploadIdleDays * 24 * 60 * 60 * 1000;
+  const rows = db.prepare("SELECT id FROM uploads WHERE updated_at < ?").all(cutoff) as { id: string }[];
+  db.prepare("DELETE FROM uploads WHERE updated_at < ?").run(cutoff);
   return rows.map((r) => r.id);
 }
 

@@ -117,13 +117,25 @@ test('a folder becomes a space with its contents and links, and leaves the old s
 });
 
 test('uploads belong to the person who started them and respect the size limit', () => {
+  assert.throws(() => drive.startUpload(fresh(), 'x', 'a', { name: 'a', size: 1, mime: null }, 1));
   const db = fresh();
   const space = drive.createSpace(db, 'akram', { name: 'S', members: [{ username: 'ren', role: 'viewer' }, { username: 'mina', role: 'editor' }] });
   assert.throws(() => drive.startUpload(db, space.rootId, 'ren', { name: 'a.mp4', size: 5, mime: null }, 100), /only view/);
   assert.throws(() => drive.startUpload(db, space.rootId, 'akram', { name: 'big.mp4', size: 101, mime: null }, 100), (e) => e.status === 413);
   const upload = drive.startUpload(db, space.rootId, 'akram', { name: 'a.mp4', size: 5, mime: 'video/mp4' }, 100);
   assert.throws(() => drive.uploadFor(db, upload.id, 'mina'), (e) => e.status === 404);
+  assert.equal(drive.promisedBytes(db), 5);
   drive.recordReceived(db, upload.id, 3);
   assert.equal(drive.uploadFor(db, upload.id, 'akram').received, 3);
-  assert.deepEqual(drive.staleUploads(db, Date.now() + 2 * 86400000), [upload.id]);
+  assert.equal(drive.promisedBytes(db), 2);
+});
+
+test('a slow upload survives as long as bytes keep arriving', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'S' });
+  const day = 86400000, start = 1_000_000;
+  const upload = drive.startUpload(db, space.rootId, 'akram', { name: 'film.mkv', size: 150 * 1024 ** 3, mime: null }, 150 * 1024 ** 3, start);
+  drive.recordReceived(db, upload.id, 1024, start + 6 * day);
+  assert.deepEqual(drive.staleUploads(db, start + 10 * day), [], 'six days in, still receiving');
+  assert.deepEqual(drive.staleUploads(db, start + 14 * day), [upload.id], 'a week of silence ends it');
 });

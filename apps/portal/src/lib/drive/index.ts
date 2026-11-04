@@ -12,8 +12,8 @@ export * from "./model";
 export { blobPath, sendFile, typeOf } from "./storage";
 
 export const root = driveRoot(stateDir);
-/** The largest single file. Cloudflare and phones are both happier below this. */
-export const maxFileBytes = Number(process.env.KIMONO_DRIVE_MAX_FILE_BYTES) || 4 * 1024 ** 3;
+/** The largest single file: 150 GB. Drive as a whole is limited only by the disk. */
+export const maxFileBytes = Number(process.env.KIMONO_DRIVE_MAX_FILE_BYTES) || 150 * 1024 ** 3;
 
 /* One connection for the process, kept across hot reloads in development. */
 const cache = globalThis as unknown as { kimonoDrive?: DatabaseSync; kimonoDriveSwept?: number };
