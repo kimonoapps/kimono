@@ -196,14 +196,16 @@ fun DetailsScreen(session: Session, me: AccountProfile?, back: () -> Unit) {
     }
 }
 
+private const val SESSIONS = "/api/v1/me/sessions"
+
 @Composable
 fun DevicesScreen(session: Session, back: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var list by remember { mutableStateOf<SessionList?>(null) }
+    var list by remember { mutableStateOf(session.answers.peek(SESSIONS)?.let { runCatching { Json.decodeFromString(SessionList.serializer(), it) }.getOrNull() }) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     suspend fun load() {
-        try { list = session.decode(session.call("/api/v1/me/sessions"), SessionList.serializer()); problem = null } catch (p: KimonoProblem) { problem = p.message }
+        try { list = session.decode(session.fetch(SESSIONS), SessionList.serializer()); problem = null } catch (p: KimonoProblem) { problem = p.message }
     }
     LaunchedEffect(Unit) { load() }
     Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Signed-in devices", onBack = back) }) { padding ->

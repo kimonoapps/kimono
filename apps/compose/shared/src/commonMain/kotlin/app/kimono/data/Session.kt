@@ -37,6 +37,7 @@ sealed interface SessionState {
 }
 
 private const val REDIRECT = "kimono://auth"
+private const val ME = "/api/v1/me"
 private val json = Json { ignoreUnknownKeys = true }
 
 @OptIn(ExperimentalTime::class, ExperimentalEncodingApi::class)
@@ -48,6 +49,10 @@ class Session(private val platform: Platform, private val http: HttpClient) {
     private var kept: Kept? = null
     private var access: Pair<String, Long>? = null
     private val renewing = Mutex()
+    /** What the Portal answered last, so screens open on it while they ask again. */
+    val answers = Answers(platform)
+    /* The sign-in provider's endpoints barely ever change: asked once per launch, not at every renewal. */
+    private val discovered = mutableMapOf<String, Discovery>()
 
     private fun now() = Clock.System.now().toEpochMilliseconds()
 
@@ -61,6 +66,13 @@ class Session(private val platform: Platform, private val http: HttpClient) {
             return
         }
         kept = Kept(server, issuer, clientId, refresh)
+        answers.server = server
+        /* Who you were last time opens the app at once; the Portal is asked underneath. */
+        answers.peek(ME)?.let { text -> runCatching { json.decodeFromString<AccountProfile>(text) }.getOrNull() }?.let { known ->
+            _state.value = SessionState.SignedIn(server, known)
+            try { refreshMe() } catch (_: KimonoProblem) { /* Refused: already signed out. Offline: what's known stands. */ }
+            return
+        }
         _state.value = try {
             SessionState.SignedIn(server, me())
         } catch (problem: KimonoProblem) {
@@ -69,8 +81,8 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         }
     }
 
-    private suspend fun discover(issuer: String): Discovery =
-        json.decodeFromString(http.get("${issuer.trimEnd('/')}/.well-known/openid-configuration").bodyAsText())
+    private suspend fun discover(issuer: String): Discovery = discovered[issuer]
+        ?: json.decodeFromString<Discovery>(http.get("${issuer.trimEnd('/')}/.well-known/openid-configuration").bodyAsText()).also { discovered[issuer] = it }
 
     private suspend fun tokens(endpoint: String, form: Map<String, String>): TokenAnswer {
         val response = http.submitForm(endpoint, Parameters.build { form.forEach { (k, v) -> append(k, v) } })
@@ -157,6 +169,8 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         val refresh = got.refreshToken
         if (got.accessToken == null || refresh == null) throw KimonoProblem("Signing in didn't finish. Try again.")
         kept = Kept(waiting.server, waiting.config.issuer, waiting.config.clientId, refresh)
+        answers.clear()
+        answers.server = waiting.server
         access = got.accessToken to now() + got.expiresIn * 1000
         platform.keep("kimono.server", waiting.server)
         platform.keep("kimono.issuer", waiting.config.issuer)
@@ -169,6 +183,8 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         val server = kept?.server
         kept = null
         access = null
+        answers.clear()
+        answers.server = null
         platform.keep("kimono.refresh", null)
         _state.value = SessionState.SignedOut(server ?: platform.readKept("kimono.server"))
     }
@@ -245,9 +261,12 @@ class Session(private val platform: Platform, private val http: HttpClient) {
             response.bodyAsText()
         }
 
+    /** Like [call] for a question (a GET), keeping the answer for [answers]. */
+    suspend fun fetch(path: String): String = call(path).also { answers.put(path, it) }
+
     suspend fun problemOf(response: HttpResponse, fallback: String): KimonoProblem = KimonoProblem(failureOf(response, fallback))
 
-    suspend fun me(): AccountProfile = json.decodeFromString(call("/api/v1/me"))
+    suspend fun me(): AccountProfile = json.decodeFromString(fetch(ME))
 
     suspend fun refreshMe() {
         val current = _state.value

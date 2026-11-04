@@ -86,19 +86,20 @@ private fun roleLabel(role: String) = when (role) { "owner" -> "Owner"; "editor"
 fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Unit, left: () -> Unit) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    var space by remember { mutableStateOf<SpaceDetail?>(null) }
-    var people by remember { mutableStateOf<Map<String, Person>>(emptyMap()) }
+    var space by remember { mutableStateOf(model.drive.knownSpace(spaceId)) }
+    var people by remember { mutableStateOf(model.drive.knownPeople().orEmpty().associateBy { it.username.lowercase() }) }
     var problem by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
-    var name by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(space?.name ?: "") }
     var saving by remember { mutableStateOf(false) }
 
     LaunchedEffect(spaceId) {
         try {
             val loaded = model.drive.space(spaceId)
+            /* Opened on the kept answer: leave a name being typed alone. */
+            if (name.isEmpty() || name == space?.name) name = loaded.name
             space = loaded
-            name = loaded.name
-            people = runCatching { model.people() }.getOrDefault(emptyList()).associateBy { it.username.lowercase() }
+            runCatching { model.people() }.onSuccess { list -> people = list.associateBy { it.username.lowercase() } }
         } catch (p: KimonoProblem) { problem = p.message }
     }
     fun change(done: String? = null, work: suspend () -> SpaceDetail?) = scope.launch {

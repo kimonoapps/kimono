@@ -139,9 +139,23 @@ private val json = Json { ignoreUnknownKeys = true }
  * and pick up where they stopped after a dropped connection.
  */
 class Drive(private val session: Session) {
-    suspend fun spaces(): List<DriveSpace> = json.decodeFromString<SpaceList>(session.call("/api/v1/drive/spaces")).spaces
+    private val answers get() = session.answers
 
-    suspend fun folder(id: String): DriveFolder = json.decodeFromString(session.call("/api/v1/drive/nodes/$id"))
+    /** What [path] answered last time, if it still reads. */
+    private inline fun <reified T> known(path: String): T? =
+        answers.peek(path)?.let { text -> runCatching { json.decodeFromString<T>(text) }.getOrNull() }
+
+    /* What each screen showed last, to open on while it asks again. */
+    fun knownSpaces(): List<DriveSpace>? = known<SpaceList>(SPACES)?.spaces
+    fun knownFolder(id: String): DriveFolder? = known("/api/v1/drive/nodes/$id")
+    fun knownSpace(id: String): SpaceDetail? = known("/api/v1/drive/spaces/$id")
+    fun knownTrash(): List<DriveNode>? = known<TrashList>(TRASH)?.items
+    fun knownPeople(): List<Person>? = known<PeopleList>(PEOPLE)?.people
+    fun knownApps(): List<KimonoAppLink>? = known<AppList>(APPS)?.also(::heard)?.apps
+
+    suspend fun spaces(): List<DriveSpace> = json.decodeFromString<SpaceList>(session.fetch(SPACES)).spaces
+
+    suspend fun folder(id: String): DriveFolder = json.decodeFromString(session.fetch("/api/v1/drive/nodes/$id"))
 
     /** One file or folder, by id. */
     suspend fun node(id: String): DriveNode {
@@ -155,6 +169,7 @@ class Drive(private val session: Session) {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject { put("parent", parentId) }.toString())
         }
+        answers.drop("/api/v1/drive/nodes/$parentId")
     }
 
     /** Up to [length] bytes of a file from [offset], for reading it in place without downloading it all. */
@@ -181,17 +196,17 @@ class Drive(private val session: Session) {
             if (filled == length) out else out.copyOf(filled)
         }
 
-    suspend fun trash(): List<DriveNode> = json.decodeFromString<TrashList>(session.call("/api/v1/drive/trash")).items
+    suspend fun trash(): List<DriveNode> = json.decodeFromString<TrashList>(session.fetch(TRASH)).items
 
     /** Files and folders whose names contain [query], closest first. */
     suspend fun search(query: String): List<DriveNode> =
         json.decodeFromString<TrashList>(session.call("/api/v1/drive/search?q=${query.encodeURLParameter()}")).items
 
     /** The most recently changed files, newest first. */
-    suspend fun recent(): List<DriveNode> = json.decodeFromString<TrashList>(session.call("/api/v1/drive/recent")).items
+    suspend fun recent(): List<DriveNode> = json.decodeFromString<TrashList>(session.fetch("/api/v1/drive/recent")).items
 
     /** A new space, with its crest and the people it starts with. */
-    suspend fun createSpace(name: String, crest: String = "sakura", colour: String = "plum", members: List<SpaceMember> = emptyList()): DriveSpace = json.decodeFromString(session.call("/api/v1/drive/spaces", HttpMethod.Post) {
+    suspend fun createSpace(name: String, crest: String = "sakura", colour: String = "plum", members: List<SpaceMember> = emptyList()): DriveSpace = json.decodeFromString<DriveSpace>(session.call(SPACES, HttpMethod.Post) {
         contentType(ContentType.Application.Json)
         setBody(buildJsonObject {
             put("name", name)
@@ -201,15 +216,22 @@ class Drive(private val session: Session) {
                 members.forEach { member -> add(buildJsonObject { put("username", member.username); put("role", member.role) }) }
             })
         }.toString())
-    })
+    }).also { answers.drop(SPACES) }
 
-    suspend fun space(id: String): SpaceDetail = json.decodeFromString(session.call("/api/v1/drive/spaces/$id"))
+    suspend fun space(id: String): SpaceDetail = json.decodeFromString(session.fetch("/api/v1/drive/spaces/$id"))
+
+    /* A space changed here: keep what it answered, and let the list of spaces ask again. */
+    private fun changed(detail: SpaceDetail): SpaceDetail {
+        answers.put("/api/v1/drive/spaces/${detail.id}", json.encodeToString(SpaceDetail.serializer(), detail))
+        answers.drop(SPACES)
+        return detail
+    }
 
     /** Renames a space or changes its crest. Owners only. */
-    suspend fun editSpace(id: String, name: String? = null, crest: String? = null, colour: String? = null): SpaceDetail = json.decodeFromString(session.call("/api/v1/drive/spaces/$id", HttpMethod.Patch) {
+    suspend fun editSpace(id: String, name: String? = null, crest: String? = null, colour: String? = null): SpaceDetail = changed(json.decodeFromString(session.call("/api/v1/drive/spaces/$id", HttpMethod.Patch) {
         contentType(ContentType.Application.Json)
         setBody(buildJsonObject { name?.let { put("name", it) }; crest?.let { put("crest", it) }; colour?.let { put("color", it) } }.toString())
-    })
+    }))
 
     /** Adds someone, changes their role, or (role null) takes them out; anyone may take themselves out. Null when you left. */
     suspend fun setMember(spaceId: String, username: String, role: String?): SpaceDetail? {
@@ -217,22 +239,26 @@ class Drive(private val session: Session) {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject { put("username", username); put("role", role) }.toString())
         }
-        return if (json.parseToJsonElement(answer).jsonObject.containsKey("left")) null else json.decodeFromString<SpaceDetail>(answer)
+        if (json.parseToJsonElement(answer).jsonObject.containsKey("left")) {
+            answers.drop("/api/v1/drive/spaces/$spaceId"); answers.drop(SPACES)
+            return null
+        }
+        return changed(json.decodeFromString<SpaceDetail>(answer))
     }
 
     /** Opens the space to anyone with its link ("view" or "add"), or closes the link (null). Owners only. */
     suspend fun setSpaceLink(spaceId: String, access: String?): SpaceDetail =
         if (access == null) { session.call("/api/v1/drive/spaces/$spaceId/link", HttpMethod.Delete); space(spaceId) }
-        else json.decodeFromString(session.call("/api/v1/drive/spaces/$spaceId/link", HttpMethod.Put) {
+        else changed(json.decodeFromString(session.call("/api/v1/drive/spaces/$spaceId/link", HttpMethod.Put) {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject { put("access", access) }.toString())
-        })
+        }))
 
     /** Where a space's link opens: the Kimono's own guest page. */
     fun spaceLinkUrl(token: String): String = "${session.server?.trimEnd('/') ?: ""}/s/$token"
 
     /** Everyone with a Kimono account. */
-    suspend fun people(): List<Person> = json.decodeFromString<PeopleList>(session.call("/api/v1/drive/people")).people
+    suspend fun people(): List<Person> = json.decodeFromString<PeopleList>(session.fetch(PEOPLE)).people
 
     suspend fun createFolder(parentId: String, name: String): DriveNode = json.decodeFromString(session.call("/api/v1/drive/nodes/$parentId/folders", HttpMethod.Post) {
         contentType(ContentType.Application.Json)
@@ -244,11 +270,17 @@ class Drive(private val session: Session) {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject { put("name", name) }.toString())
         }
+        /* A folder's own answer carries its name. */
+        answers.drop("/api/v1/drive/nodes/$id")
     }
 
-    suspend fun moveToTrash(id: String) { session.call("/api/v1/drive/nodes/$id", HttpMethod.Delete) }
+    suspend fun moveToTrash(id: String) { session.call("/api/v1/drive/nodes/$id", HttpMethod.Delete); answers.drop(TRASH) }
 
-    suspend fun restore(id: String) { session.call("/api/v1/drive/nodes/$id/restore", HttpMethod.Post) }
+    /* Back in a folder this phone may have kept without it: that folder asks again when opened. */
+    suspend fun restore(id: String) {
+        session.call("/api/v1/drive/nodes/$id/restore", HttpMethod.Post)
+        knownTrash()?.firstOrNull { it.id == id }?.parentId?.let { answers.drop("/api/v1/drive/nodes/$it") }
+    }
 
     /** Turns on the file's public link (or returns the one it has). */
     suspend fun link(id: String): String = json.decodeFromString<LinkAnswer>(session.call("/api/v1/drive/nodes/$id/link", HttpMethod.Post)).url
@@ -260,17 +292,21 @@ class Drive(private val session: Session) {
     /** Whether the household's Kimono has Drive switched on; null until asked. */
     val driveOn = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
 
-    suspend fun otherApps(): List<KimonoAppLink> {
-        val list = json.decodeFromString<AppList>(session.call("/api/v1/apps"))
+    suspend fun otherApps(): List<KimonoAppLink> = json.decodeFromString<AppList>(session.fetch(APPS)).also(::heard).apps
+
+    private fun heard(list: AppList) {
         list.drive?.bloom?.let { driveBloom.value = it }
         driveOn.value = list.driveOn
-        return list.apps
     }
+
+    /* Drive's tab and bloom are there from the first frame, as they were last time. */
+    init { knownApps() }
 
     private var catalogue: CrestCatalogue? = null
 
-    /** The crests and colours to pick from. */
-    suspend fun crests(): CrestCatalogue = catalogue ?: json.decodeFromString<CrestCatalogue>(session.call("/api/v1/drive/crests")).also { catalogue = it }
+    /** The crests and colours to pick from: kept, and asked again once per launch. */
+    suspend fun crests(): CrestCatalogue = catalogue
+        ?: runCatching { json.decodeFromString<CrestCatalogue>(session.fetch(CRESTS)) }.getOrElse { problem -> known<CrestCatalogue>(CRESTS) ?: throw problem }.also { catalogue = it }
 
     /**
      * Downloads a file into [directory], reporting bytes as they arrive. A copy
@@ -384,6 +420,12 @@ class Drive(private val session: Session) {
     }.getOrNull()
 
     companion object {
+        private const val SPACES = "/api/v1/drive/spaces"
+        private const val TRASH = "/api/v1/drive/trash"
+        private const val PEOPLE = "/api/v1/drive/people"
+        private const val APPS = "/api/v1/apps"
+        private const val CRESTS = "/api/v1/drive/crests"
+
         /** 8 MB: small enough for any proxy and a phone's memory, big enough to move quickly. */
         const val PIECE = 8 * 1024 * 1024
     }

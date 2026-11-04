@@ -65,9 +65,9 @@ import coil3.compose.AsyncImage
 @Composable
 fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: AppUpdate?, onLater: () -> Unit, openDrive: () -> Unit) {
     val first = me?.name?.split(" ")?.firstOrNull()?.takeIf { it.isNotBlank() } ?: me?.username ?: "home"
-    var apps by remember { mutableStateOf<List<KimonoAppLink>?>(null) }
+    var apps by remember { mutableStateOf(drive.knownApps()) }
     val driveOn by drive.driveOn.collectAsState()
-    LaunchedEffect(Unit) { apps = try { drive.otherApps() } catch (_: KimonoProblem) { null } }
+    LaunchedEffect(Unit) { try { apps = drive.otherApps() } catch (_: KimonoProblem) { } }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item {
             TopAppBar(
