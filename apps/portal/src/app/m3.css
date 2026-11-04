@@ -280,3 +280,16 @@ details[open] > summary .chev { transform: rotate(-135deg); margin-top: 3px; }
 /* the mockup's base type, scoped to the redesigned pages */
 .you h1, .you h2, .you h3, .topbar h1, .topbar h2, .sheet h3, .card h3, .hero h2, .proof h1 { margin: 0; font-family: var(--display); font-weight: 600; color: var(--plum); text-wrap: balance; }
 .you p, .card p, .sheet p, .hero p, .topbar p { margin: 0; }
+.admin-overview { padding-bottom: 80px; }
+.admin-overview .topbar { padding-left: 8px; }
+.status-ink { border-radius: var(--r-xl); }
+.status-ink > .status-card { height: 100%; }
+.update-ink { border-radius: var(--r-xl); }
+.status-card .big { display: block; }
+
+/* One title per page: the page h1 is the only serif headline. Eyebrow and title
+   get their own spacing, and the page breathes before the first content. */
+.topbar > span:first-child { display: grid; gap: 6px; }
+.page > .topbar:first-child { padding-top: 36px; padding-bottom: 22px; }
+.status-card .big { font: 600 26px/1.1 var(--sans); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.status-card b { font-size: 15px; font-weight: 700; }
