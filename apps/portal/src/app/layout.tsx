@@ -1,8 +1,10 @@
 import { CrossingProvider } from "@/components/crossing";
+import { InkIconDefs } from "@/components/line-icon";
 import type { Metadata } from "next";
 import "@kimono/ui/kata.css";
 import "./globals.css";
 import "./shell.css";
+import "./m3.css";
 
 export const metadata: Metadata = {
   title: {
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body><CrossingProvider>{children}</CrossingProvider></body>
+      <body><InkIconDefs /><CrossingProvider>{children}</CrossingProvider></body>
     </html>
   );
 }

@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
-import { Compartment, Seal, Tray } from "@kimono/ui";
+import { InkBlot, Seal } from "@kimono/ui";
+import { Crossing } from "@/components/crossing";
+import { LineIcon } from "@/components/line-icon";
+import { HoldSeal } from "@/components/hold-seal";
 import { auth, keepThisDeviceSignedIn } from "@/auth";
 import { endAllSessions, endSession, listSessions, type AccountSession } from "@/lib/account";
 import { describeSession as describe } from "@kimono/account";
 import { accountContext } from "../account-frame";
 
-export const metadata = { title: "Signed-in devices · Your account" };
+export const metadata = { title: "Signed-in devices · You" };
 
 export default async function DevicesPage({ searchParams }: { searchParams: Promise<{ ended?: string; error?: string }> }) {
   const { session } = await accountContext();
@@ -35,27 +38,20 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
     redirect(`/account/devices?ended=${count}`);
   }
 
-  return <>
-    {query.ended ? <p className="admin-notice success">{query.ended === "1" ? "That device was signed out." : `${query.ended} sign-ins were ended.`}</p> : null}
-    {query.error ? <p className="admin-notice error">{query.error}</p> : null}
-    <Tray>
-      <header className="account-heading"><h2>Signed-in devices</h2></header>
-      <Compartment label={unavailable ? "Unavailable" : `${sessions.length} ${sessions.length === 1 ? "sign-in" : "sign-ins"}`}>
-        {unavailable
-          ? <p className="k-note">{unavailable}</p>
-          : sessions.length
-            ? <div className="k-rows">{sessions.map((item) => {
-                const text = describe(item);
-                return <div className="k-row" key={item.id}>
-                  <div className="k-row-copy"><h3>{text.title}</h3><p>{text.detail}</p></div>
-                  <form action={endOne}><input type="hidden" name="id" value={item.id} /><Seal tone="quiet" compact type="submit">Sign out</Seal></form>
-                </div>;
-              })}</div>
-            : <p className="k-note">No browser is signed in right now.</p>}
-      </Compartment>
-      {sessions.length ? <Compartment label="Sign out everywhere">
-        <form action={endEverywhere} className="k-form-actions"><Seal tone="danger" type="submit">Sign out {sessions.length === 1 ? "1 sign-in" : `all ${sessions.length}`}</Seal></form>
-      </Compartment> : null}
-    </Tray>
-  </>;
+  return <div className="you">
+    <div className="topbar"><Crossing kind="kakejiku" className="back" href="/account" aria-label="Back to You"><LineIcon name="back" /></Crossing><h1>Signed-in devices</h1></div>
+    {query.ended ? <p className="admin-notice success" role="status">{query.ended === "1" ? "That device was signed out." : `${query.ended} sign-ins were ended.`}</p> : null}
+    {query.error ? <p className="admin-notice error" role="alert">{query.error}</p> : null}
+    <p style={{ color: "var(--on-surface-variant)", padding: "0 0 14px 12px" }}>{unavailable ?? (sessions.length ? "Sign out a device you don't use any more." : "No browser is signed in right now.")}</p>
+    {sessions.length ? <div className="seg">{sessions.map((item) => {
+      const text = describe(item), phone = /phone|android|ios|mobile/i.test(`${item.device} ${item.os}`);
+      return <div className="row swipe" key={item.id}>
+        <InkBlot tint={phone ? "#a84d63" : "#5c7150"} seed={item.id}><LineIcon name={phone ? "phone" : "laptop"} /></InkBlot>
+        <span className="text"><b>{text.title}</b><small>{text.detail}</small></span>
+        <form action={endOne}><input type="hidden" name="id" value={item.id} /><Seal tone="danger" compact className="reveal" type="submit">Sign out</Seal></form>
+      </div>;
+    })}</div> : null}
+    {sessions.length ? <form action={endEverywhere} style={{ marginTop: 28 }}><HoldSeal label="Hold to sign out everywhere" /></form> : null}
+    {sessions.length ? <p style={{ textAlign: "center", marginTop: 10, fontSize: 14, color: "var(--on-surface-variant)" }}>Keeps this browser signed in.</p> : null}
+  </div>;
 }

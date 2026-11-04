@@ -30,7 +30,7 @@ export function InkBlot({ tint = "#a84d63", seed, strong = false, className, chi
     ? washGradient(`blot-${unique}`, mixHex(tint, "#ffffff", .15), tint, mixHex(tint, "#000000", .15), "50%")
     : washGradient(`blot-${unique}`, mixHex(tint, "#ffffff", .7), mixHex(tint, "#ffffff", .42), mixHex(tint, "#ffffff", .08), "60%");
   return <span className={cx("k-ink-blot", className)}>
-    <svg viewBox="0 0 54 54" aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<defs>${inkFilters(unique, 9)}${gradient}</defs><path d="${blotPath(random, 27, 27, 21)}" fill="url(#blot-${unique})" filter="url(#ink-wash-${unique})" opacity=".92"></path>` }}/>
+    <svg className="k-ink-wash" viewBox="0 0 54 54" aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<defs>${inkFilters(unique, 9)}${gradient}</defs><path d="${blotPath(random, 27, 27, 21)}" fill="url(#blot-${unique})" filter="url(#ink-wash-${unique})" opacity=".92"></path>` }}/>
     {children}
   </span>;
 }
@@ -48,7 +48,7 @@ export function InkPortraitFrame({ seed, tint = "#a84d63", weight = 3, children,
   const random = inkRandom(seedOf(seed));
   const ring = ringPath(random, 47, .25 + random() * .35);
   return <span className={cx("k-ink-portrait", className)}>
-    <svg viewBox="0 0 100 100" aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<defs>${inkFilters(unique, 11)}${washGradient(`pw-${unique}`, mixHex(tint, "#ffffff", .82), mixHex(tint, "#ffffff", .58), mixHex(tint, "#ffffff", .3), "65%")}</defs>`
+    <svg className="k-ink-wash" viewBox="0 0 100 100" aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<defs>${inkFilters(unique, 11)}${washGradient(`pw-${unique}`, mixHex(tint, "#ffffff", .82), mixHex(tint, "#ffffff", .58), mixHex(tint, "#ffffff", .3), "65%")}</defs>`
       + `<circle cx="50" cy="50" r="46" fill="url(#pw-${unique})" filter="url(#ink-wash-${unique})"></circle>`
       + `<path d="${ring}" fill="none" stroke="${INK}" stroke-width="${weight}" stroke-linecap="round" opacity=".85" filter="url(#ink-brush-${unique})"></path>` }}/>
     {children}
