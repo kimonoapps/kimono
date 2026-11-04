@@ -293,3 +293,14 @@ details[open] > summary .chev { transform: rotate(-135deg); margin-top: 3px; }
 .page > .topbar:first-child { padding-top: 36px; padding-bottom: 22px; }
 .status-card .big { font: 600 26px/1.1 var(--sans); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
 .status-card b { font-size: 15px; font-weight: 700; }
+
+/* Applications */
+.admin-apps { padding-bottom: 80px; }
+.apps-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 4px 0 6px 8px; }
+.search .line-icon { width: 22px; height: 22px; }
+.search-clear { border: 0; background: none; font-size: 20px; color: var(--on-surface-variant); cursor: pointer; }
+.app-card-ink { display: block; min-width: 0; }
+.app-card-ink > .app-card { height: 100%; }
+.app-card .bloom.k-app-bloom { width: 48px; height: 48px; }
+.app-card.want b { color: var(--on-primary-container); }
+.apps-empty { margin: 24px 8px; color: var(--on-surface-variant); }

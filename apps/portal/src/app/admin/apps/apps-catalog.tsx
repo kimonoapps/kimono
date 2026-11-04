@@ -1,90 +1,84 @@
 "use client";
 
-import { AppBloom, StatedSeal, type SealState } from "@kimono/ui";
+import { AppBloom, InkCard } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
+import { LineIcon } from "@/components/line-icon";
 import type { RegisteredApp } from "@/lib/apps";
 import { useMemo, useState } from "react";
 
 type CatalogApp = RegisteredApp;
+type Filter = "all" | "attention" | "running" | "disabled" | "available";
 
-/* State is stamped, not tinted: every catalog card wears a 判 seal that says
-   the same thing in words as the card says in material. */
-const sealStates: Record<CatalogApp["state"], SealState> = {
-  problem: "wants",
-  disabled: "quiet",
-  private: "private",
-  public: "running",
-  system: "running",
-  available: "quiet",
-};
+const running = (app: CatalogApp) => app.state === "public" || app.state === "private" || app.state === "system";
+const order = ["problem", "public", "private", "system", "disabled", "available"];
 
-type Filter = "all" | "attention" | "running" | "private" | "disabled" | "available";
+/* A state is a dot with a word: moss when it runs, suō when it needs you, quiet otherwise. */
+function StateDot({ app }: { app: CatalogApp }) {
+  if (app.state === "problem") return <span className="k-ink-dot k-wants">Needs you</span>;
+  if (running(app)) return <span className="k-ink-dot k-running">{app.state === "private" ? "Private" : "Running"}</span>;
+  return <span className="k-ink-dot">{app.state === "disabled" ? "Off" : "Available"}</span>;
+}
 
+/*
+ * Applications (design/mockups/m3-everywhere.html): apps that need you come
+ * first in pink cards with the reason written out, then everything else.
+ * Filters are Material filter chips that tick when on.
+ */
 export function AppsCatalog({ apps, intent }: { apps: CatalogApp[]; intent?: "publish" }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const counts = useMemo(() => ({
     attention: apps.filter((app) => app.state === "problem").length,
-    running: apps.filter((app) => app.state === "public" || app.state === "private" || app.state === "system").length,
-    private: apps.filter((app) => app.state === "private").length,
+    running: apps.filter(running).length,
     disabled: apps.filter((app) => app.state === "disabled").length,
     available: apps.filter((app) => app.state === "available").length,
   }), [apps]);
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const matchesFilter = (app: CatalogApp) => filter === "all"
+    const matches = (app: CatalogApp) => filter === "all"
       || filter === "attention" && app.state === "problem"
-      || filter === "running" && (app.state === "public" || app.state === "private" || app.state === "system")
+      || filter === "running" && running(app)
       || app.state === filter;
-    return apps.filter((app) => matchesFilter(app) && (!needle || [app.name, app.description, app.category, app.id, app.stateLabel, app.stateDetail, app.hostname || ""].some((value) => value.toLowerCase().includes(needle))))
-      .toSorted((left, right) => ["problem", "disabled", "private", "public", "system", "available"].indexOf(left.state) - ["problem", "disabled", "private", "public", "system", "available"].indexOf(right.state) || left.name.localeCompare(right.name));
+    return apps.filter((app) => matches(app) && (!needle || [app.name, app.description, app.category, app.id, app.stateLabel, app.stateDetail, app.hostname || ""].some((value) => value.toLowerCase().includes(needle))))
+      .toSorted((left, right) => order.indexOf(left.state) - order.indexOf(right.state) || left.name.localeCompare(right.name));
   }, [apps, filter, query]);
+  const needYou = visible.filter((app) => app.state === "problem");
+  const rest = visible.filter((app) => app.state !== "problem");
 
-  function grid(items: CatalogApp[]) {
-    return <div className="app-catalog-grid">
-      {items.map((app) => (
-        <Crossing className={`catalog-app state-${app.state}`} kind="kakejiku" href={`${app.catalogHref}${intent === "publish" ? "?intent=publish" : ""}`} key={app.id}>
-          <span className="catalog-card-top">
-            <span className="catalog-icon"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl} /></span>
-            <StatedSeal state={sealStates[app.state]}>{app.stateLabel}</StatedSeal>
-          </span>
-          <span className="catalog-copy">
-            <span className="catalog-title"><strong>{app.name}</strong></span>
-            <span className="catalog-description">{app.description}</span>
-            <span className="catalog-card-footer">
-              {app.hostname && app.installed
-                ? <code>{app.hostname}</code>
-                : <span className={app.state === "problem" ? "is-wanted" : undefined}>{app.state === "problem" ? app.stateDetail : app.category}</span>}
-              <span className="catalog-arrow" aria-hidden="true">{intent === "publish" ? "Choose" : "Open"} <b>→</b></span>
-            </span>
-          </span>
-        </Crossing>
-      ))}
-    </div>;
-  }
+  const card = (app: CatalogApp) => {
+    const want = app.state === "problem";
+    const link = <Crossing className={want ? "app-card want" : "app-card"} kind="kakejiku" href={`${app.catalogHref}${intent === "publish" ? "?intent=publish" : ""}`}>
+      <span className="top"><AppBloom className="bloom" identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl} size="mark" /><StateDot app={app} /></span>
+      <b>{app.name}</b>
+      <p>{want ? `${app.stateDetail}. Pick another connection or keep it private.` : app.description}</p>
+      {want ? null : <code>{app.hostname && app.installed ? app.hostname : app.state === "system" ? "Built into Kimono" : app.category}</code>}
+    </Crossing>;
+    return want ? <InkCard key={app.id} colour="#a84d63" seed={`app-${app.id}`} className="app-card-ink">{link}</InkCard> : <span key={app.id} className="app-card-ink">{link}</span>;
+  };
 
   return (
     <>
-      <div className="catalog-toolbar">
-        <label className="catalog-search">
+      <div className="apps-toolbar">
+        <label className="search">
+          <LineIcon name="search" />
           <span className="sr-only">Search applications</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search applications" />
-          {query ? <button type="button" onClick={() => setQuery("")} aria-label="Clear search">×</button> : null}
+          {query ? <button className="search-clear" type="button" onClick={() => setQuery("")} aria-label="Clear search">×</button> : null}
         </label>
-        <nav className="catalog-filters" aria-label="Filter applications">
+        <div className="filters" role="group" aria-label="Filter applications">
           {([
             ["all", "All", apps.length],
-            ["attention", "Attention", counts.attention],
+            ["attention", "Needs you", counts.attention],
             ["running", "Running", counts.running],
-            ["disabled", "Disabled", counts.disabled],
+            ["disabled", "Off", counts.disabled],
             ["available", "Available", counts.available],
-          ] as Array<[Filter, string, number]>).filter(([id, , count]) => id === "all" || count > 0).map(([id, label, count]) => <button key={id} type="button" className={`k-seal ${filter === id ? "is-active" : "k-tone-quiet"} ${id === "attention" ? "has-problems" : ""}`} onClick={() => setFilter(id)}>{label}<span>{count}</span></button>)}
-        </nav>
+          ] as Array<[Filter, string, number]>).filter(([id, , count]) => id === "all" || count > 0).map(([id, label, count]) =>
+            <button key={id} type="button" className="filter" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label} <small>{count}</small></button>)}
+        </div>
       </div>
-      {visible.length ? (
-        <div className="catalog-groups"><section><header className="catalog-results-heading"><h2>{intent === "publish" ? "Choose an application" : filter === "all" ? "All applications" : `${filter === "attention" ? "Needs attention" : filter[0].toUpperCase() + filter.slice(1)} applications`}</h2><span>{visible.length} {visible.length === 1 ? "app" : "apps"}</span></header>{grid(visible)}</section></div>
-      ) : <p className="catalog-empty">{query ? `No applications match “${query}”.` : "No applications have this status."}</p>}
+      {needYou.length ? <><div className="label">Needs you</div><div className="apps-grid">{needYou.map(card)}</div></> : null}
+      {rest.length ? <><div className="label">{needYou.length ? "Everything else" : intent === "publish" ? "Choose an app" : { all: "All apps", attention: "Needs you", running: "Running", disabled: "Off", available: "Available" }[filter]}</div><div className="apps-grid">{rest.map(card)}</div></> : null}
+      {visible.length ? null : <p className="apps-empty">{query ? `No applications match “${query}”.` : "No applications have this status."}</p>}
     </>
   );
 }
