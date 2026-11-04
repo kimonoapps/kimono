@@ -134,6 +134,17 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         return SignInNext.Done
     }
 
+    /**
+     * Whether a newer version of this app is out, and whether it's required:
+     * asked of the Kimono you use, or kimonolabs.dev before you've signed in.
+     * Null when there's nothing new, or no answer.
+     */
+    suspend fun checkUpdate(): AppUpdate? = runCatching {
+        val server = kept?.server ?: platform.readKept("kimono.server") ?: app.kimono.screens.DEFAULT_SERVER
+        val response = http.get("$server/api/v1/app/update?platform=${platform.os}&build=${platform.build}")
+        if (!response.status.isSuccess()) null else json.decodeFromString<AppUpdate>(response.bodyAsText())
+    }.getOrNull()?.takeIf { it.available && it.url != null }
+
     /** Starts over from the username and password. */
     fun cancelSignIn() { pending = null }
 

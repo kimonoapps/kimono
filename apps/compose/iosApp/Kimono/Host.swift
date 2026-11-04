@@ -80,6 +80,8 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         }
     }
 
+    func appBuild() -> Int64 { Int64(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0 }
+
     func share(text: String) {
         DispatchQueue.main.async {
             let sheet = UIActivityViewController(activityItems: [URL(string: text) ?? text], applicationActivities: nil)

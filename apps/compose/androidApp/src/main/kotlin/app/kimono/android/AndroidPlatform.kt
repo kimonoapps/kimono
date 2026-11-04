@@ -129,6 +129,10 @@ class AndroidPlatform(private val context: Context) : Platform {
         (activity ?: context).startActivity(chooser)
     }
 
+    override val build: Long get() = SelfUpdate.build(context)
+
+    override suspend fun installUpdate(url: String, sha256: String?, progress: (Float) -> Unit): String? = SelfUpdate.install(context, url, sha256, progress)
+
     override fun share(text: String) {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         val chooser = Intent.createChooser(send, null)

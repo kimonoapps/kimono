@@ -35,3 +35,16 @@ data class ApiFailure(val error: String)
 
 /** A sentence a person can read, for the screen to show as it is. */
 class KimonoProblem(message: String) : Exception(message)
+
+/** Whether this app should update, as the Portal says (/api/v1/app/update). */
+@Serializable
+data class AppUpdate(
+    val available: Boolean = false,
+    val required: Boolean = false,
+    val version: String? = null,
+    val build: Long? = null,
+    val notes: String = "",
+    val size: Long? = null,
+    val sha256: String? = null,
+    val url: String? = null,
+)

@@ -32,6 +32,14 @@ interface Platform {
     suspend fun pickFiles(): List<PickedFile>
     /** Uploads the OS carries on with after the app closes; null to upload while the app is open. */
     val uploads: Uploads?
+    /** This app's build number (Android's versionCode, iOS's CFBundleVersion), for knowing when to update. */
+    val build: Long get() = 0
+    /**
+     * Updates the app from [url]: Android downloads the package and installs
+     * it over itself; an iPhone is sent where its updates come from. Returns a
+     * problem to show, or null when it's under way.
+     */
+    suspend fun installUpdate(url: String, sha256: String?, progress: (Float) -> Unit): String? { openUrl(url); return null }
     /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */
     fun share(text: String) {}
     /** A small picture of a photo, video or PDF, at least [pixels] across, as a local file; null if there can't be one. */

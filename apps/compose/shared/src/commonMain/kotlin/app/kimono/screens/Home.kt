@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import app.kimono.data.AccountProfile
+import app.kimono.data.AppUpdate
 import app.kimono.data.Drive
 import app.kimono.data.KimonoAppLink
 import app.kimono.data.KimonoProblem
@@ -62,7 +63,7 @@ import coil3.compose.AsyncImage
  * its website when it doesn't.
  */
 @Composable
-fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, openDrive: () -> Unit) {
+fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: AppUpdate?, onLater: () -> Unit, openDrive: () -> Unit) {
     val first = me?.name?.split(" ")?.firstOrNull()?.takeIf { it.isNotBlank() } ?: me?.username ?: "home"
     var apps by remember { mutableStateOf<List<KimonoAppLink>?>(null) }
     LaunchedEffect(Unit) { apps = try { drive.otherApps() } catch (_: KimonoProblem) { null } }
@@ -82,6 +83,7 @@ fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, openDrive:
                 }, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(top = 6.dp))
             }
         }
+        if (update != null) item { UpdateCard(update, platform, onLater) }
         item {
             Card(
                 onClick = openDrive,

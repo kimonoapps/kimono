@@ -57,6 +57,8 @@ import app.kimono.screens.DriveScreen
 import app.kimono.screens.FolderScreen
 import app.kimono.screens.HomeScreen
 import app.kimono.screens.TrashScreen
+import app.kimono.screens.UpdateScreen
+import app.kimono.data.AppUpdate
 import app.kimono.screens.SpaceScreen
 import app.kimono.screens.DevicesScreen
 import app.kimono.screens.PasswordScreen
@@ -82,12 +84,18 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
     KimonoTheme {
         LaunchedEffect(Unit) { session.start() }
         val state by session.state.collectAsState()
+        /* Asked again whenever the Kimono in use changes (signing in, say). */
+        var update by remember { mutableStateOf<AppUpdate?>(null) }
+        var later by remember { mutableStateOf(false) }
+        val server = when (val s = state) { is SessionState.SignedIn -> s.server; is SessionState.SignedOut -> s.server ?: ""; SessionState.Loading -> null }
+        LaunchedEffect(server) { if (server != null) update = session.checkUpdate() }
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-            when (val s = state) {
+            val required = update?.takeIf { it.required }
+            if (required != null) UpdateScreen(required, platform) else when (val s = state) {
                 SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
                 is SessionState.SignedOut -> SignInScreen(session, s.server)
                 is SessionState.SignedIn -> {
-                    SignedIn(session, platform, s.me)
+                    SignedIn(session, platform, s.me, update?.takeIf { !later }) { later = true }
                     if (shared != null) ShareSheet(session, s.me, shared, onSharedHandled)
                 }
             }
@@ -96,7 +104,7 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
 }
 
 @Composable
-private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?) {
+private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, update: AppUpdate?, onLater: () -> Unit) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
@@ -115,7 +123,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?) 
         },
     ) { padding ->
         NavHost(nav, startDestination = "home", modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp)) {
-            composable("home") { HomeScreen(me, model.drive, platform) { goTab("drive") } }
+            composable("home") { HomeScreen(me, model.drive, platform, update, onLater) { goTab("drive") } }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }
             composable("space/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""

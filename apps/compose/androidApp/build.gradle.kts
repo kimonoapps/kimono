@@ -18,8 +18,9 @@ android {
         applicationId = "app.kimono.compose"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        /* Each published build needs a higher number: pass -PkimonoBuild=N and -PkimonoVersion=x.y.z when building one. */
+        versionCode = (findProperty("kimonoBuild") as String?)?.toInt() ?: 1
+        versionName = (findProperty("kimonoVersion") as String?) ?: "0.1.0"
         manifestPlaceholders["cleartext"] = localTest.toString()
     }
     signingConfigs {

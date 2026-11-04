@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- New versions published on the Portal install over this one. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".KimonoApplication"
@@ -49,6 +51,13 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/drive_files" />
         </provider>
+        <!-- An update's progress from the installer, and Kimono reopening once it's in. -->
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
+        <receiver android:name=".UpdatedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <!-- Kimono Drive in the Files app and every app's open and save pickers. -->
         <provider
             android:name=".KimonoDocuments"

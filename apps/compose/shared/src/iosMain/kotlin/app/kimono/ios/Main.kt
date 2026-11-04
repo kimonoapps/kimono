@@ -43,6 +43,8 @@ interface IosHost {
     fun cacheDir(): String
     /** Shows a downloaded file in Quick Look, with its share button. */
     fun openFile(path: String)
+    /** The app's build number (CFBundleVersion). */
+    fun appBuild(): Long
     /** The share sheet, with a link or some text. */
     fun share(text: String)
     /** Files from the document picker, copied somewhere the app can read. */
@@ -101,6 +103,7 @@ private class IosPlatform(private val host: IosHost) : Platform {
     override fun cacheDir() = host.cacheDir()
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
     override fun share(text: String) = host.share(text)
+    override val build: Long get() = host.appBuild()
     override suspend fun pickFiles(): List<PickedFile> =
         suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }
             .map { IosFile(it.path, it.name, it.size, it.mimeType, host) }
