@@ -103,11 +103,9 @@ class DriveModel(val drive: Drive, val platform: Platform) {
     val uploads: Uploads = platform.uploads ?: InAppUploads(drive)
     /** Goes up whenever an upload finishes, so open folders reload. */
     var landed by mutableStateOf(0)
-    private var peopleKnown: List<app.kimono.data.Person>? = null
-
     /** Everyone with a Kimono account: asked afresh each time, the last answer standing in when offline. */
     suspend fun people(): List<app.kimono.data.Person> =
-        try { drive.people().also { peopleKnown = it } } catch (p: app.kimono.data.KimonoProblem) { peopleKnown ?: throw p }
+        try { drive.people() } catch (p: app.kimono.data.KimonoProblem) { drive.knownPeople() ?: throw p }
 
     init {
         scope.launch {
@@ -128,7 +126,7 @@ class DriveModel(val drive: Drive, val platform: Platform) {
 @Composable
 fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
-    var spaces by remember { mutableStateOf<List<DriveSpace>?>(null) }
+    var spaces by remember { mutableStateOf(model.drive.knownSpaces()) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
@@ -181,16 +179,17 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val snackbar = remember { SnackbarHostState() }
-    var folder by remember { mutableStateOf<DriveFolder?>(null) }
+    var folder by remember { mutableStateOf(model.drive.knownFolder(folderId)) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<DriveNode?>(null) }
     var opening by remember { mutableStateOf<Pair<DriveNode, Long>?>(null) }
-    var canEdit by remember { mutableStateOf(true) }
+    val knownSpace = remember { folder?.let { f -> model.drive.knownSpaces()?.firstOrNull { it.id == f.folder.spaceId } } }
+    var canEdit by remember { mutableStateOf(knownSpace?.role != "viewer") }
     /* The space's crest stays beside the name, however deep in it you go. */
-    var crest by remember { mutableStateOf<String?>(null) }
+    var crest by remember { mutableStateOf(knownSpace?.mark) }
     /* Long-press picks things; while any are picked, a tap adds or drops one. */
     val selected = remember { mutableStateListOf<String>() }
     var acting by remember { mutableStateOf<DriveNode?>(null) }
@@ -472,7 +471,7 @@ private fun MovePicker(model: DriveModel, platform: Platform, moving: List<Drive
     suspend fun load() {
         try { folder = model.drive.folder(at); problem = null } catch (p: KimonoProblem) { problem = p.message }
     }
-    LaunchedEffect(at) { folder = null; load() }
+    LaunchedEffect(at) { folder = model.drive.knownFolder(at); load() }
     val movingIds = moving.map { it.id }.toSet()
     val alreadyHere = moving.all { it.parentId == at }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface) {
@@ -614,7 +613,7 @@ private fun NameDialog(title: String, action: String, initial: String, onDismiss
 fun TrashScreen(model: DriveModel, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    var items by remember { mutableStateOf<List<DriveNode>?>(null) }
+    var items by remember { mutableStateOf(model.drive.knownTrash()) }
     var problem by remember { mutableStateOf<String?>(null) }
     suspend fun load() { try { items = model.drive.trash(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(Unit) { load() }
