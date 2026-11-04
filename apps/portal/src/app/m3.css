@@ -433,3 +433,14 @@ label.opt { margin: 0; }
 /* dropdowns sit in forms at full width, like the fields beside them */
 .page .k-choice.has-label { max-width: none; }
 .domain .k-choice { max-width: none; }
+
+/* VPN */
+.vpn-page { padding-bottom: 120px; }
+.vpn-page .fab { position: fixed; right: 32px; bottom: 32px; text-decoration: none; }
+.vpn-page .fab .line-icon { width: 22px; height: 22px; }
+.vpn-empty { max-width: 640px; }
+.vpn-empty .lead, .vpn-none { margin: 0; color: var(--on-surface-variant); }
+.vpn-none { margin-left: 28px; }
+.vpn-none a { color: var(--primary); font-weight: 700; }
+.seg .row .reveal { margin: 0; }
+@media (max-width: 720px) { .vpn-page .fab { bottom: 96px; right: 16px; } }

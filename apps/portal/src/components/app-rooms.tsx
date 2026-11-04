@@ -23,3 +23,12 @@ export function VpnRooms({ here }: { here: "devices" | "people" | "connect" }) {
     />)}
   </AppRooms>;
 }
+
+/** Kimono VPN's rooms, for the rail under its pin. */
+export function vpnRoomList(here: "devices" | "people" | "connect") {
+  return [
+    { href: "/vpn", label: "Devices", here: here === "devices" },
+    { href: "/vpn/people", label: "People", here: here === "people" },
+    { href: "/vpn/connect", label: "Connect", here: here === "connect" },
+  ];
+}

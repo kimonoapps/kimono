@@ -1,7 +1,7 @@
 import { Command, Reveal, Rows, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { VpnRooms } from "@/components/app-rooms";
+import { vpnRoomList } from "@/components/app-rooms";
 import { Panel, PanelEmpty, Panels, SectionHeading, Workspace } from "@/components/panel";
 import { createEnrolmentKey } from "@/lib/mesh";
 import { meshContext } from "../shared";
@@ -26,9 +26,8 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
   }
 
   if (!member) {
-    return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity}>
+    return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity} rooms={vpnRoomList("connect")}>
       <div className="page admin-page">
-        <VpnRooms here="connect" />
         <Workspace>
           <PanelEmpty title="Kimono VPN is not switched on">
             Ask whoever runs this Kimono to switch it on for @{session.user.username}. Until then a device you added would reach nothing.
@@ -38,9 +37,8 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
     </AppShell>;
   }
 
-  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity}>
+  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity} rooms={vpnRoomList("connect")}>
     <div className="page admin-page">
-      <VpnRooms here="connect" />
 
       {query.error ? <p className="admin-notice error">{query.error}</p> : null}
 

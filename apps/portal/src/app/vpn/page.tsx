@@ -1,9 +1,9 @@
-import { CrossingSeal } from "@/components/crossing";
-import { Reveal, Rows, Seal, StatedSeal } from "@kimono/ui";
+import { Crossing } from "@/components/crossing";
+import { InkBlot, Seal } from "@kimono/ui";
+import { LineIcon } from "@/components/line-icon";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { VpnRooms } from "@/components/app-rooms";
-import { Panel, PanelEmpty, Panels, SectionHeading, Workspace } from "@/components/panel";
+import { vpnRoomList } from "@/components/app-rooms";
 import { describeLastSeen, devicesFor, disconnectDevice, readMesh, removeDevice } from "@/lib/mesh";
 import { meshContext } from "./shared";
 import { redirect } from "next/navigation";
@@ -48,76 +48,44 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
     redirect(`/vpn?${outcome}`);
   }
 
-  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity}>
-    <div className="page admin-page">
-      <VpnRooms here="devices" />
+  const isPhone = (name: string) => /phone|pixel|ipad|android|galaxy|mobile/i.test(name);
 
-      {query.error ? <p className="admin-notice error">{query.error}</p> : null}
-      {query.done ? <p className="admin-notice success">{query.done}</p> : null}
+  /* design/mockups/m3-everywhere.html, VPN: one list, a moss dot for online, sign out on hover, Connect as the floating button. */
+  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity} rooms={vpnRoomList("devices")}>
+    <div className="page vpn-page">
+      <div className="topbar"><span><h1>Your devices</h1><p className="sub">These reach each other directly, wherever they are.{devices.length ? ` ${connected} of ${devices.length} connected.` : ""}</p></span></div>
+      {query.error ? <p role="alert" className="app-notice is-error">{query.error}</p> : null}
+      {query.done ? <p role="status" className="app-notice">{query.done}</p> : null}
 
-      <Workspace>
-        {!member
-          ? <PanelEmpty title="Kimono VPN is not switched on" action={<CrossingSeal kind="hanafubuki" href="/">Back to Kimono</CrossingSeal>}>
-              Ask whoever runs this Kimono to switch it on for @{session.user.username}, and your devices will appear here.
-            </PanelEmpty>
-          : <>
-              <SectionHeading
-                title="Your devices"
-                description="These reach each other directly, wherever they are."
-                meta={devices.length ? `${connected} of ${devices.length} connected` : undefined}
-              />
-              {!mesh.available
-                ? <PanelEmpty title="Not connected to the mesh">{mesh.reason}</PanelEmpty>
-                : devices.length
-                  ? <Panels>
-                      {devices.map((device) => <Panel
-                        key={device.id}
-                        label={device.online ? "Online" : "Offline"}
-                        title={device.name}
-                        state={<StatedSeal state={device.online ? "running" : "quiet"}>{device.online ? "Connected" : "Offline"}</StatedSeal>}
-                        action={device.addresses.length ? <span className="device-addresses">{device.addresses.map((address) => <code key={address}>{address}</code>)}</span> : undefined}
-                      >
-                        <p>{describeLastSeen(device)}{describeExpiry(device.expiry) ? ` · ${describeExpiry(device.expiry)}` : ""}</p>
-                        <Rows>
-                          <Reveal title="Stop using this device" summary="Sign it out, or forget it entirely">
-                            <p>Signing out leaves the device its address and its place here; it comes back when someone signs in on it again. Removing forgets it, and joining once more is a new device.</p>
-                            <div className="device-actions">
-                              <form action={act}>
-                                <input type="hidden" name="device" value={device.id} />
-                                <input type="hidden" name="intent" value="disconnect" />
-                                <Seal tone="quiet" type="submit">Sign out</Seal>
-                              </form>
-                              <form action={act}>
-                                <input type="hidden" name="device" value={device.id} />
-                                <input type="hidden" name="intent" value="remove" />
-                                <Seal tone="danger" type="submit">Remove</Seal>
-                              </form>
-                            </div>
-                          </Reveal>
-                        </Rows>
-                      </Panel>)}
-                    </Panels>
-                  : <PanelEmpty title="No devices yet" action={<CrossingSeal href="/vpn/connect">Connect a device</CrossingSeal>}>
-                      Nothing of yours has joined this mesh. Adding one takes about a minute.
-                    </PanelEmpty>}
+      {!member
+        ? <div className="card vpn-empty"><b>Kimono VPN isn&rsquo;t switched on for you</b><p className="lead">Ask whoever runs this Kimono to switch it on for @{session.user.username}, and your devices will appear here.</p></div>
+        : <>
+            {!mesh.available
+              ? <div className="card vpn-empty"><b>Not connected to the mesh</b><p className="lead">{mesh.reason}</p></div>
+              : devices.length
+                ? <div className="seg devices">
+                    {devices.map((device) => <div className="row swipe" key={device.id}>
+                      <InkBlot tint={device.online ? "#5c7150" : "#8a7c77"} seed={device.id}><LineIcon name={isPhone(device.name) ? "phone" : "laptop"} /></InkBlot>
+                      <span className="text"><b>{device.name}</b><small>{device.addresses[0] ? <code>{device.addresses[0]}</code> : null}{device.addresses[0] ? " · " : ""}{describeLastSeen(device)}{describeExpiry(device.expiry) ? ` · ${describeExpiry(device.expiry)}` : ""}</small></span>
+                      <span className={device.online ? "k-ink-dot k-running" : "k-ink-dot"}>{device.online ? "Connected" : "Offline"}</span>
+                      <form action={act} className="reveal">
+                        <input type="hidden" name="device" value={device.id} />
+                        <input type="hidden" name="intent" value={device.online ? "disconnect" : "remove"} />
+                        <Seal tone="danger" compact type="submit">{device.online ? "Sign out" : "Remove"}</Seal>
+                      </form>
+                    </div>)}
+                  </div>
+                : <div className="card vpn-empty"><b>No devices yet</b><p className="lead">Nothing of yours has joined. Adding one takes about a minute.</p></div>}
 
-              <SectionHeading
-                title="Meshes you can reach"
-                description="People who invited you. Their devices answer from yours."
-                meta={hosts.length ? `${hosts.length}` : undefined}
-              />
-              {hosts.length
-                ? <Panels>
-                    {hosts.map((host) => <Panel key={host.username} label="Host" title={host.displayName}
-                      action={<CrossingSeal href="/vpn/people" tone="quiet">People</CrossingSeal>}>
-                      <p>@{host.username} invited you in.</p>
-                    </Panel>)}
-                  </Panels>
-                : <PanelEmpty title="Nobody has invited you" action={<CrossingSeal href="/vpn/people" tone="quiet">Invite someone</CrossingSeal>}>
-                    Your devices reach each other. Reaching someone else&rsquo;s takes an invitation.
-                  </PanelEmpty>}
-            </>}
-      </Workspace>
+            <div className="label">Meshes you can reach</div>
+            {hosts.length
+              ? <div className="seg">{hosts.map((host) => <Crossing kind="kakejiku" className="row" key={host.username} href="/vpn/people">
+                  <InkBlot tint="#5c7150" seed={host.username}><LineIcon name="user" /></InkBlot>
+                  <span className="text"><b>{host.displayName}&rsquo;s devices</b><small>@{host.username} invited you</small></span><span className="go" />
+                </Crossing>)}</div>
+              : <p className="lead vpn-none">Nobody has invited you yet. <Crossing kind="kakejiku" href="/vpn/people">Invite someone</Crossing></p>}
+            <Crossing kind="kakejiku" className="fab" href="/vpn/connect"><LineIcon name="plus" />Connect a device</Crossing>
+          </>}
     </div>
   </AppShell>;
 }
