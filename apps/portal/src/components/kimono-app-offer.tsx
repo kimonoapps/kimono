@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Crossing } from "@/components/crossing";
 import { detectMobileOS, type MobileOS } from "@/lib/mobile-app";
 
@@ -18,48 +18,38 @@ const hidden = "kimono-app-offer-hidden";
 type Standing = "tester" | "invited" | "waiting" | "problem" | "none";
 const said: Record<Standing, string> = {
   tester: "You're in. Open TestFlight and install Kimono.",
-  invited: "Apple has emailed that address an invite. Accept it, then come back and send again.",
+  invited: "Apple has emailed you an invite at your Kimono email. Accept it, then come back and tap again.",
   waiting: "Your invite is on its way. Try again in a minute.",
-  problem: "Apple didn't take that. Check the address and try again.",
-  none: "",
+  problem: "Apple didn't take your email. Ask whoever runs your Kimono.",
+  none: "Your Kimono account needs an email first.",
 };
 
-/** Asks for the person's Apple ID and has this Kimono invite it to TestFlight, then says what to do next. */
+/** Has this Kimono invite you to TestFlight now, and says what to do next. */
 function JoinTestflight() {
-  const [appleId, setAppleId] = useState("");
   const [state, setState] = useState<{ busy: boolean; message: string | null }>({ busy: false, message: null });
-  /* Someone coming back after accepting Apple's email finds their address already in. */
+  /* Someone coming back after accepting Apple's email sees where they stand. */
   useEffect(() => {
     let current = true;
     fetch("/api/v1/app/testflight", { credentials: "same-origin" })
-      .then((response) => response.ok ? response.json() as Promise<{ appleId?: string | null; status?: Standing }> : null)
-      .then((body) => {
-        if (!current || !body?.appleId) return;
-        setAppleId((typed) => typed || body.appleId || "");
-        if (body.status && said[body.status]) setState({ busy: false, message: said[body.status] });
-      })
+      .then((response) => response.ok ? response.json() as Promise<{ status?: Standing }> : null)
+      .then((body) => { if (current && body?.status && body.status !== "none") setState({ busy: false, message: said[body.status] }); })
       .catch(() => {});
     return () => { current = false; };
   }, []);
-  async function join(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function join() {
     setState({ busy: true, message: null });
     try {
-      const response = await fetch("/api/v1/app/testflight", {
-        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ appleId }),
-      });
+      const response = await fetch("/api/v1/app/testflight", { method: "POST", credentials: "same-origin" });
       const body = await response.json().catch(() => ({})) as { status?: Standing; error?: string };
-      setState({ busy: false, message: body.status ? said[body.status] || said.waiting : body.error || "That didn't work. Try again." });
+      setState({ busy: false, message: body.status ? said[body.status] : body.error || "That didn't work. Try again." });
     } catch {
       setState({ busy: false, message: "Kimono isn't answering. Try again in a moment." });
     }
   }
-  return <form className="app-offer-join" onSubmit={join}>
-    <label htmlFor="app-offer-apple-id">Your Apple ID email (the one your iPhone uses)</label>
-    <input id="app-offer-apple-id" type="email" required autoComplete="email" inputMode="email" placeholder="you@icloud.com" value={appleId} onChange={(event) => setAppleId(event.target.value)} />
-    <button type="submit" className="k-seal" disabled={state.busy}><span>{state.busy ? "Asking Apple…" : "Send my invite"}</span></button>
+  return <>
+    <button type="button" className="k-seal" onClick={join} disabled={state.busy}><span>{state.busy ? "Asking Apple…" : "Get my TestFlight invite"}</span></button>
     {state.message ? <p className="app-offer-detail" role="status">{state.message}</p> : null}
-  </form>;
+  </>;
 }
 
 /* Which phone this is, unless it has said not now. Read on the device only: the server renders nothing. */

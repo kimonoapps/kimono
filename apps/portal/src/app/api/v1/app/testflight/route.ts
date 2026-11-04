@@ -1,36 +1,26 @@
-import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { appleIdOf, setAppleId, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { apiError, apiJson, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
+import { syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
 
-/** Where you stand with the iPhone app's TestFlight, and the Apple ID you gave. */
+/** Where you stand with the iPhone app's TestFlight. */
 export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
   const settings = await testflightSettings().catch(() => null);
   if (!settings) return apiError(404, "The iPhone app isn't set up on this Kimono yet.");
-  return apiJson({ appleId: await appleIdOf(user.username), status: standing(settings.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase())?.status) });
+  return apiJson({ status: standing(settings.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase())?.status) });
 }
 
-/**
- * `{ appleId }`: the email of your Apple ID. Kimono invites it to TestFlight
- * now rather than at the next hourly sync; sending it again after accepting
- * Apple's email adds you straight away.
- */
+/** Invites you to TestFlight now, at your Kimono email, rather than at the next hourly sync; asking again after accepting Apple's email adds you straight away. */
 export async function POST(request: Request) {
   const refused = crossSite(request);
   if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
-  const read = await readJson(request);
-  if ("response" in read) return read.response;
-  const appleId = String((read.body as { appleId?: unknown }).appleId ?? "").trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(appleId) || appleId.length > 254) return apiError(400, "Enter the email of your Apple ID.");
   if (!(await testflightSettings().catch(() => null))) return apiError(404, "The iPhone app isn't set up on this Kimono yet.");
-  const changed = (await appleIdOf(user.username)) !== appleId;
-  if (changed) await setAppleId(user.username, appleId);
-  /* A new Apple ID goes out at once; asking again waits at least ten seconds between syncs. */
-  await syncTestflightIfDue(changed ? 0 : 10 * 1000);
+  /* At most one sync every ten seconds, however many people ask. */
+  await syncTestflightIfDue(10 * 1000);
   const row = (await testflightSettings())?.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase());
-  return apiJson({ appleId, status: standing(row?.status) });
+  return apiJson({ status: standing(row?.status) });
 }
 
 /** A person's TestFlight status, as the website explains it. */
