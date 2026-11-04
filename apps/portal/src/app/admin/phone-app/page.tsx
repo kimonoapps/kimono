@@ -31,7 +31,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
   if (session.user.role !== "owner" && session.user.role !== "admin") redirect("/");
   /* Keeps TestFlight in step at most hourly; the page shows the last result without waiting. */
   void syncTestflightIfDue().catch(() => {});
-  const [settings, { releases }, query, testflight] = await Promise.all([getPlatformSettings(), readReleases(), searchParams, testflightSettings().catch(() => null)]);
+  const [settings, { releases }, query, testflight] = await Promise.all([getPlatformSettings(), readReleases({ fresh: true }), searchParams, testflightSettings().catch(() => null)]);
 
   async function toggleRequired(form: FormData) {
     "use server";

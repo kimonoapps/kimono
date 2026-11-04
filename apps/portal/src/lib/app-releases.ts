@@ -38,8 +38,8 @@ async function readIndex(): Promise<Index> {
 const key = (platform: AppPlatform, build: number) => `${platform}:${build}`;
 
 /** The builds that came with this Kimono's release, as phones are offered them. */
-export async function readReleases(): Promise<{ releases: AppRelease[]; iosLink: string }> {
-  const [index, ...found] = await Promise.all([readIndex(), releasedBuild("android"), releasedBuild("ios")]);
+export async function readReleases({ fresh = false } = {}): Promise<{ releases: AppRelease[]; iosLink: string }> {
+  const [index, ...found] = await Promise.all([readIndex(), releasedBuild("android", fresh), releasedBuild("ios", fresh)]);
   const releases = found.filter((r): r is Released => r !== null).map((r) => ({ ...r, required: index.required[key(r.platform, r.build)] ?? false }));
   return { releases, iosLink };
 }
@@ -53,11 +53,12 @@ const repository = process.env.KIMONO_REPOSITORY || "kimonoapps/kimono";
 type Released = AppRelease & { source?: string };
 const lookedUp = new Map<AppPlatform, { at: number; version: string; release: Released | null }>();
 
-async function releasedBuild(platform: AppPlatform): Promise<Released | null> {
+async function releasedBuild(platform: AppPlatform, fresh = false): Promise<Released | null> {
   const version = runningVersion();
   if (!version || process.env.KIMONO_UPDATE_CHECK === "off") return null;
   const last = lookedUp.get(platform);
-  if (last && last.version === version && Date.now() - last.at < (last.release ? 6 : .5) * 60 * 60 * 1000) return last.release;
+  /* Found: kept six hours. Not found (still building, say): asked again after five minutes. */
+  if (!fresh && last && last.version === version && Date.now() - last.at < (last.release ? 6 * 60 : 5) * 60 * 1000) return last.release;
   let release: Released | null = null;
   try {
     const base = `https://github.com/${repository}/releases/download/v${version}`;
