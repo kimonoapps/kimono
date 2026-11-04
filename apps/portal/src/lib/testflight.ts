@@ -22,7 +22,9 @@ const api = "https://api.appstoreconnect.apple.com";
 const syncEvery = 60 * 60 * 1000;
 
 export type LastSync = { at: number; ok: boolean; message: string; counts: Record<string, number> };
-type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; lastSync: LastSync | null; statuses: TesterStatus[] };
+/** Who asked to try the iPhone app, by Kimono username: only they are invited. */
+type Requested = Record<string, number>;
+type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; requested: Requested; lastSync: LastSync | null; statuses: TesterStatus[] };
 
 async function readConfig(): Promise<Config | null> {
   try {
@@ -32,6 +34,7 @@ async function readConfig(): Promise<Config | null> {
       issuerId: parsed.issuerId, keyId: parsed.keyId, privateKey: parsed.privateKey,
       groupName: parsed.groupName || "Kimono",
       invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
+      requested: parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {},
       lastSync: parsed.lastSync ?? null,
       statuses: Array.isArray(parsed.statuses) ? parsed.statuses : [],
     };
@@ -53,20 +56,33 @@ export async function testflightSettings(): Promise<{ keyId: string; issuerId: s
   return config ? { keyId: config.keyId, issuerId: config.issuerId, groupName: config.groupName, lastSync: config.lastSync, statuses: config.statuses } : null;
 }
 
-/* Whom the Portal invited, kept even without a key. */
-async function readInvited(): Promise<Invited> {
+/* Whom the Portal invited, and who asked, kept even without a key. */
+async function readKept(): Promise<{ invited: Invited; requested: Requested }> {
   try {
-    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited };
-    return parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {};
+    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited; requested?: Requested };
+    return {
+      invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
+      requested: parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {},
+    };
   } catch {
-    return {};
+    return { invited: {}, requested: {} };
   }
+}
+
+/** Notes that someone asked to try the iPhone app; true when they hadn't before. */
+export async function requestTestflight(username: string): Promise<boolean> {
+  const config = await readConfig();
+  if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
+  const key = username.toLowerCase();
+  if (config.requested[key]) return false;
+  await writeConfig({ ...config, requested: { ...config.requested, [key]: Date.now() } });
+  return true;
 }
 
 export async function saveTestflightKey(input: { issuerId: string; keyId: string; privateKey: string; groupName: string }) {
   await writeConfig({
     issuerId: input.issuerId, keyId: input.keyId, privateKey: input.privateKey, groupName: input.groupName || "Kimono",
-    invited: await readInvited(), lastSync: null, statuses: [],
+    ...(await readKept()), lastSync: null, statuses: [],
   });
 }
 
@@ -131,12 +147,19 @@ class AppStoreConnect {
 const text = (resource: Resource, key: string) => String(resource.attributes?.[key] ?? "");
 
 /** The Kimono accounts, with whether each may still sign in (null when the directory can't say). */
-async function kimonoAccounts(): Promise<PlanAccount[]> {
+async function kimonoAccounts(config: Config): Promise<{ list: PlanAccount[]; notAsked: Set<string> }> {
   const accounts = await listAccounts();
-  return Promise.all(accounts.map(async (account) => {
+  /* Only people who asked, plus anyone already invited (so no one is taken off for not asking). */
+  const invited = new Set(Object.keys(config.invited).map((email) => email.toLowerCase()));
+  const notAsked = new Set<string>();
+  const list = await Promise.all(accounts.map(async (account) => {
     const standing = await readStanding(account.username).catch(() => null);
-    return { username: account.username, name: account.name || account.username, email: account.email || null, active: standing ? standing.active : null };
+    const email = account.email || null;
+    const wanted = Boolean(config.requested[account.username.toLowerCase()] || (email && invited.has(email.toLowerCase())));
+    if (email && !wanted) notAsked.add(account.username.toLowerCase());
+    return { username: account.username, name: account.name || account.username, email: wanted ? email : null, active: standing ? standing.active : null };
   }));
+  return { list, notAsked };
 }
 
 /** Brings TestFlight in step with Kimono's accounts now. */
@@ -155,11 +178,11 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
     if (!group) {
       group = await store.create("betaGroups", { name: config.groupName, isInternalGroup: true, hasAccessToAllBuilds: true }, { app: { data: { type: "apps", id: app.id } } });
     }
-    const [users, invitations, testers, accounts] = await Promise.all([
+    const [users, invitations, testers, { list: accounts, notAsked }] = await Promise.all([
       store.all("/v1/users?limit=200"),
       store.all("/v1/userInvitations?limit=200"),
       store.all(`/v1/betaGroups/${group.id}/betaTesters?limit=200`),
-      kimonoAccounts(),
+      kimonoAccounts(config),
     ]);
     const plan = planSync({
       accounts,
@@ -168,7 +191,8 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
       testers: testers.map((t) => ({ id: t.id, email: text(t, "email") })),
       invited: config.invited,
     });
-    statuses = plan.statuses;
+    /* People with an email who haven't asked show as such, not as missing an email. */
+    statuses = plan.statuses.map((row) => row.status === "no email" && notAsked.has(row.username.toLowerCase()) ? { ...row, status: "not requested" } : row);
     const failed = (email: string, error: unknown) => {
       for (const row of statuses) if (row.email?.toLowerCase() === email) row.status = `error: ${error instanceof Error ? error.message : "didn't work"}`;
     };

@@ -6,7 +6,7 @@ import { detectMobileOS } from "@/lib/mobile-app";
 import type { AppOffer } from "@/lib/app-offer";
 
 type Phone = "ios" | "android";
-type Standing = "tester" | "invited" | "waiting" | "problem" | "none";
+type Standing = "tester" | "invited" | "waiting" | "problem" | "none" | "idle";
 const never = () => () => {};
 
 /** The steps for an iPhone or an Android phone; this phone's first, the other a tap away. */
@@ -69,7 +69,7 @@ function IosSteps({ address }: { address: string | null }) {
     let current = true;
     fetch("/api/v1/app/testflight", { credentials: "same-origin" })
       .then((response) => response.ok ? response.json() as Promise<{ status: Standing; email: string | null }> : null)
-      .then((body) => { if (current && body && body.status !== "none") setStanding(body); })
+      .then((body) => { if (current && body && body.status !== "idle") setStanding(body); })
       .catch(() => {});
     return () => { current = false; };
   }, []);
