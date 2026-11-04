@@ -11,7 +11,7 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[] }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number }
   | { kind: "published"; url: string; number: number }
@@ -21,8 +21,25 @@ export type CodeEvent =
 
 const clip = (value: string, max: number) => value.length > max ? `${value.slice(0, max)}\n…` : value;
 
+/** What a write or an edit changed, as diff lines ("+ added", "- removed"), so a tool call can be opened to see it. */
+function toolChange(name: string, input: Record<string, unknown>): string | undefined {
+  const lines = (value: unknown, mark: string) => typeof value === "string" && value ? value.split("\n").map((line) => `${mark} ${line}`) : [];
+  const pair = (edit: Record<string, unknown>) => [...lines(edit.old_string, "-"), ...lines(edit.new_string, "+")];
+  const change = name === "Write" ? lines(input.content, "+")
+    : name === "Edit" ? pair(input)
+    : name === "MultiEdit" && Array.isArray(input.edits) ? (input.edits as Record<string, unknown>[]).flatMap((edit, index) => [...(index ? ["…"] : []), ...pair(edit)])
+    : name === "NotebookEdit" ? lines(input.new_source, "+")
+    : [];
+  return change.length ? clip(change.join("\n"), 3000) : undefined;
+}
+
 /** The one argument worth showing beside a tool: the file it touched, the command it ran, what it searched for. */
-function toolLabel(name: string, input: Record<string, unknown>): { label: string; detail?: string } {
+function toolLabel(name: string, input: Record<string, unknown>): { label: string; detail?: string; change?: string } {
+  const change = toolChange(name, input);
+  return change ? { ...toolName(name, input), change } : toolName(name, input);
+}
+
+function toolName(name: string, input: Record<string, unknown>): { label: string; detail?: string } {
   const text = (key: string) => typeof input[key] === "string" ? input[key] as string : undefined;
   const path = text("file_path") ?? text("path") ?? text("notebook_path");
   const short = (value: string) => value.replace(/^\/workspace\/?/, "") || ".";

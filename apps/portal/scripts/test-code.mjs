@@ -67,6 +67,15 @@ test('a restart fails the turns nobody is driving any more', () => {
   assert.equal(model.workspaceFor(db, w.id, 'akram').turn.state, 'failed');
 });
 
+test("a write or an edit carries what it changed", () => {
+  const { events } = translate({ type: 'assistant', message: { content: [
+    { type: 'tool_use', id: 'w', name: 'Write', input: { file_path: '/workspace/NOTES.md', content: '# Notes\nHello' } },
+    { type: 'tool_use', id: 'e', name: 'Edit', input: { file_path: '/workspace/a.ts', old_string: 'let x = 1', new_string: 'const x = 1' } },
+  ] } });
+  assert.equal(events[0].change, '+ # Notes\n+ Hello');
+  assert.equal(events[1].change, '- let x = 1\n+ const x = 1');
+});
+
 test("Claude Code's stream becomes text, tool calls and their results", () => {
   const assistant = translate({ type: 'assistant', session_id: 's1', message: { content: [
     { type: 'text', text: 'Looking at the redirect.' },

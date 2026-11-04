@@ -359,3 +359,90 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
 .cd-drivepick li input { width: 18px; height: 18px; accent-color: var(--k-app-accent); }
 .cd-drivepick-note { padding: 14px 18px; font-size: 14px; }
 .cd-drivepick footer { display: flex; align-items: center; gap: 8px; padding: 12px 14px 12px 18px; border-top: 2px solid var(--k-hair); font-size: 13px; }
+
+/* ── M3 pass (ADR 0006, design/mockups/m3-everywhere.html): the same three
+   parts with clearer weight. Tasks are soft rows, the conversation sits on a
+   tonal card with your messages as suō bubbles, tool calls open to show what
+   they did, and the running app is a moss card. ── */
+.cd-page { padding-bottom: 24px; }
+.cd-top { padding-left: 28px; padding-right: 28px; }
+.cd-top .cd-new svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cd { grid-template-columns: 300px minmax(0, 1fr); gap: 16px; padding: 0 24px 24px; }
+.cd-side { top: 16px; gap: 14px; }
+.cd-side-label { margin: 4px 0 2px; padding: 0 16px; font: 700 14px/1.2 var(--k-sans); letter-spacing: .02em; color: var(--k-primary, var(--k-suo)); }
+.cd-list { gap: 3px; }
+.cd-list button { min-height: 56px; padding: 12px 16px; border-radius: var(--k-r-l); }
+.cd-list button:hover { background: var(--k-container-high); }
+.cd-list button[aria-current] { background: var(--k-secondary-container); }
+.cd-list button[aria-current]::before { display: none; }
+.cd-list b { font: 700 15px/1.3 var(--k-sans); }
+.cd-list small .cd-mono { font-family: var(--k-mono); font-size: 12px; }
+.cd-word.running { color: var(--k-moss, #5c7150); }
+.cd-sheet { border: 0; border-radius: var(--k-r-xl); background: var(--k-container-low); background-image: none; box-shadow: none; overflow: hidden; }
+.cd-ws-head { padding: 18px 20px 10px; background: transparent; border-bottom: 0; }
+.cd-ws-id h1 { font: 600 22px/1.2 var(--k-display); color: var(--k-plum); }
+.cd-back { border-radius: var(--k-r-full); }
+.cd-tabs { width: fit-content; margin: 0 0 6px 20px; padding: 4px; gap: 4px; border: 0; border-radius: var(--k-r-full); background: var(--k-container-high); }
+.cd-tabs [role="tab"] { min-height: 38px; padding: 0 16px; border-radius: var(--k-r-full); font-weight: 700; font-size: 14px; }
+.cd-tabs [role="tab"][aria-selected="true"] { background: var(--k-container-lowest); color: var(--k-on-surface); box-shadow: 0 1px 3px rgba(78, 43, 55, .14); }
+.cd-tabs [role="tab"][aria-selected="true"]::after { display: none; }
+.cd-tabs .cd-grow { display: none; }
+.cd-status { margin-left: 12px; align-self: center; padding-right: 8px; }
+.cd-ask { max-width: min(620px, 78%); padding: 12px 16px; border: 0; border-radius: 20px 20px 6px 20px; background: var(--k-primary-container); }
+.cd-ask p { color: var(--k-on-primary-container); }
+.cd-pre { border-radius: var(--k-r-l); }
+
+/* tool calls: a pill that opens to a list; each call opens to what it did */
+details.calls > summary, details.call > summary { list-style: none; cursor: pointer; }
+details.calls > summary::-webkit-details-marker, details.call > summary::-webkit-details-marker { display: none; }
+.tools-used { display: inline-flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; min-height: 34px; padding: 0 14px; border-radius: var(--k-r-full); background: var(--k-container-high); font-size: 13px; font-weight: 700; color: var(--k-on-surface-variant); }
+.tools-used:hover { background: var(--k-container-highest); }
+.tools-used svg.i { width: 16px; height: 16px; }
+.tools-used .cd-faint { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tools-used .chev, .call .chev { width: 7px; height: 7px; margin: -3px 2px 0 6px; flex: none; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform .3s var(--k-spring); }
+details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
+.call-list { display: grid; gap: 3px; margin-top: 8px; }
+.call { background: var(--k-container-lowest); border-radius: 6px; }
+.call:first-child { border-top-left-radius: 18px; border-top-right-radius: 18px; }
+.call:last-child { border-bottom-left-radius: 18px; border-bottom-right-radius: 18px; }
+.call > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 14px 6px 8px; border-radius: inherit; }
+.call > summary:hover { background: var(--k-container); }
+.call .ci { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border-radius: 10px; background: var(--k-container-high); color: var(--k-plum); }
+.call .ci svg.i { width: 17px; height: 17px; }
+.call .cv { flex: none; font-weight: 700; font-size: 14px; }
+.call code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px var(--k-mono); color: var(--k-plum); }
+.call .cm { margin-left: auto; flex: none; font-size: 13px; color: var(--k-on-surface-variant); white-space: nowrap; }
+.call .cm.is-failed { color: var(--k-suo-deep); font-weight: 700; }
+.call[data-state="failed"] .ci { background: var(--k-primary-container); }
+.cbody { padding: 0 12px 12px 50px; }
+.cbody .urushi { margin: 0; max-height: 320px; overflow: auto; padding: 14px 16px; border-radius: var(--k-r-l); background: #2a1d22; color: #f3e9e0; font: 12.5px/1.6 var(--k-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cbody .urushi .c { color: #a8969c; }
+.cbody .cd-faint { margin: 0; font-size: 13px; }
+.diff { max-height: 320px; overflow: auto; border-radius: var(--k-r-m); font: 12.5px/1.7 var(--k-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.diff .add { padding: 0 12px; background: #e6efdc; color: #2f3d29; }
+.diff .del { padding: 0 12px; background: #f6dfe3; color: #6d2a3a; }
+.diff .gap { padding: 0 12px; color: var(--k-on-surface-variant); }
+.cd-spin { width: 14px; height: 14px; }
+
+/* the running app: a moss card you can open, copy or take down */
+.cd-preview-ink { display: block; }
+.cd-preview { gap: 12px 14px; padding: 16px; border: 0; border-radius: var(--k-r-l); background: var(--k-tertiary-container, #dfe8d6); color: var(--k-on-tertiary-container, #2f3d29); }
+.cd-preview::before { display: none; }
+.cd-preview-mark { width: 44px; height: 44px; display: grid; place-items: center; flex: none; border-radius: 14px; background: #5c7150; color: #fff; }
+.cd-preview-id b, .cd-preview-id .cd-mono, .cd-preview-id small { color: inherit; }
+
+/* the composer: a pill on the card */
+.cd-composer { border: 0; border-radius: 24px; background: var(--k-container-lowest); box-shadow: 0 1px 2px rgba(78, 43, 55, .1); }
+.cd-composer:focus-within { box-shadow: 0 0 0 2px var(--k-app-accent); }
+.cd-composer.is-start { border-radius: var(--k-r-xl); }
+
+@media (max-width: 720px) {
+  .cd { grid-template-columns: minmax(0, 1fr); padding: 0 12px 12px; }
+  .cd-top { padding-left: 12px; padding-right: 12px; }
+  .cd-ask { max-width: 92%; }
+  .cbody { padding-left: 12px; }
+}
+/* one serif title per page: the page says Code; the new-task prompt is a sans headline */
+.cd-start { margin-top: 4vh; }
+.cd-start h2 { margin: 0; font: 600 24px/1.25 var(--k-sans); color: var(--k-on-surface); letter-spacing: -.005em; }
+.cd-ws-id h1 { font: 700 19px/1.3 var(--k-sans); color: var(--k-on-surface); }

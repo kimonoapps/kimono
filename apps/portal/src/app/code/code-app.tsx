@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { cx, Seal } from "@kimono/ui";
+import { cx, InkCard, Seal } from "@kimono/ui";
 import { CrossingSeal } from "@/components/crossing";
 import {
   code, drive, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace,
 } from "./api";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
 import { Picker } from "./picker";
 
@@ -91,9 +91,10 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  return <div className={cx("cd", current && "has-workspace")}>
+  return <div className="cd-page">
+    <div className="topbar cd-top"><h1>Code</h1><div className="end"><Seal type="button" className="cd-new" onClick={() => goTo({})} aria-keyshortcuts="Meta+K" title="New task (⌘K)"><Icon name="plus" />New task</Seal></div></div>
+    <div className={cx("cd", current && "has-workspace")}>
     <aside className="cd-side" aria-label="Workspaces">
-      <Seal type="button" className="cd-new" onClick={() => goTo({})} aria-keyshortcuts="Meta+K"><Icon name="plus" />New task<kbd>⌘K</kbd></Seal>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <div className="cd-skeleton-list" aria-hidden="true"><i /><i /><i /></div> : null}
       <WorkspaceList label="Working" list={workspaces?.filter((w) => w.turn?.state === "running") ?? []} current={current} now={now} />
@@ -109,6 +110,7 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
             ? <div className="cd-sheet cd-loading" aria-busy="true" />
             : <Start blocked={blocked} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
+    </div>
   </div>;
 }
 
@@ -199,7 +201,7 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
   }
 
   return <section className="cd-start">
-    <h1>What should we work on?</h1>
+    <h2>What should we work on?</h2>
     {blocked ? <div className="cd-sheet cd-blocked"><p>{blocked}</p></div> : <div className="cd-sheet cd-new-task">
       {naming !== null || (repos && !repos.length) ? <div className="cd-naming">
         <label className="cd-task">
@@ -397,36 +399,64 @@ function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { 
   </div>;
 }
 
-/** Tool calls as one line — "Used 5 tools" — open while the agent is still in them, unless you closed it. */
+/** Tool calls as one pill — "Used 5 tools" — open while the agent is still in them, unless you closed it. Each call opens to show what it did. */
 function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   const [chosen, setChosen] = useState<boolean | null>(null);
   const open = chosen ?? live;
   const failed = tools.filter((t) => t.result && !t.result.ok).length;
   const pending = tools.some((t) => !t.result);
   const touched = [...new Set(tools.filter((t) => t.label === "Edited" || t.label === "Wrote").map((t) => t.detail).filter(Boolean))];
-  return <details className="cd-tools" open={open} onToggle={(event) => { const next = (event.currentTarget as HTMLDetailsElement).open; if (next !== open) setChosen(next); }}>
-    <summary>
-      <Icon name="chevron" />
+  return <details className="calls" open={open} onToggle={(event) => { const next = (event.currentTarget as HTMLDetailsElement).open; if (next !== open) setChosen(next); }}>
+    <summary className="tools-used">
+      {live && pending ? <i className="cd-spin" aria-hidden="true" /> : <Icon name="gear" />}
       <span>{live && pending ? "Using tools" : `Used ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`}</span>
       {touched.length ? <span className="cd-faint">· edited {touched.length === 1 ? touched[0] : `${touched.length} files`}</span> : null}
       {failed ? <span className="cd-word">{failed} failed</span> : null}
+      <span className="chev" aria-hidden="true" />
     </summary>
-    <ol>{tools.map((tool) => <ToolRow key={tool.id} tool={tool} />)}</ol>
+    <div className="call-list">{tools.map((tool) => <ToolRow key={tool.id} tool={tool} />)}</div>
   </details>;
 }
 
+const toolIcons: Record<string, IconName> = { Read: "file", Wrote: "file", Edited: "diff", Ran: "code", "Searched for": "search", "Looked for": "search", Fetched: "link", "Searched the web for": "search", "Asked a helper": "chat" };
+
+/** A few words on how a call went: how much it read, what it changed, how many matches. */
+function toolMeta(tool: Tool): string {
+  if (!tool.result) return "running";
+  if (!tool.result.ok) return "failed";
+  const count = (text: string) => text ? text.split("\n").filter(Boolean).length : 0;
+  const added = tool.change?.split("\n").filter((line) => line.startsWith("+ ")).length ?? 0;
+  const removed = tool.change?.split("\n").filter((line) => line.startsWith("- ")).length ?? 0;
+  switch (tool.label) {
+    case "Read": return `${count(tool.result.output)} lines`;
+    case "Wrote": return `+${added}`;
+    case "Edited": return `+${added} −${removed}`;
+    case "Searched for": case "Looked for": { const n = count(tool.result.output); return n ? `${n} match${n === 1 ? "" : "es"}` : "nothing found"; }
+    case "Ran": return "done";
+    default: return "";
+  }
+}
+
 function ToolRow({ tool }: { tool: Tool }) {
-  const [open, setOpen] = useState(false);
   const state = !tool.result ? "running" : tool.result.ok ? "ok" : "failed";
-  return <li data-state={state}>
-    <button type="button" className="cd-toolrow" aria-expanded={open} onClick={() => setOpen(!open)} disabled={!tool.result?.output}>
-      <span className="cd-toolmark" aria-hidden="true">{state === "running" ? <i className="cd-spin" /> : state === "ok" ? <Icon name="check" /> : <Icon name="close" />}</span>
-      <span className="cd-toollabel">{tool.label}</span>
+  const command = tool.label === "Ran" && tool.detail;
+  const output = tool.result?.output.trim();
+  return <details className="call" data-state={state}>
+    <summary>
+      <span className="ci" aria-hidden="true">{state === "running" ? <i className="cd-spin" /> : <Icon name={toolIcons[tool.label] ?? "gear"} />}</span>
+      <span className="cv">{tool.label}</span>
       {tool.detail ? <code>{tool.detail.split("\n")[0]}</code> : null}
-      {state === "failed" ? <span className="cd-word">failed</span> : null}
-    </button>
-    {open && tool.result?.output ? <pre className="cd-pre cd-output">{tool.result.output}</pre> : null}
-  </li>;
+      <span className={state === "failed" ? "cm is-failed" : "cm"}>{toolMeta(tool)}</span>
+      <span className="chev" aria-hidden="true" />
+    </summary>
+    <div className="cbody">
+      {tool.change && state !== "failed"
+        ? <div className="diff">{tool.change.split("\n").map((line, index) => <div key={index} className={line.startsWith("+ ") ? "add" : line.startsWith("- ") ? "del" : "gap"}>{line}</div>)}</div>
+        : command || output
+          ? <pre className="urushi">{command ? <span className="c">$ {command}{output ? "\n" : ""}</span> : null}{output}</pre>
+          : <p className="cd-faint">{state === "running" ? "Still running." : "Nothing came back."}</p>}
+    </div>
+  </details>;
 }
 
 function Done({ event }: { event: Extract<CodeEvent, { kind: "done" }> }) {
@@ -483,7 +513,8 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
   const [stopping, setStopping] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   if (!live) return <p className="cd-note"><Icon name="link" />The app ran at <span className="cd-mono">{url.replace(/^https?:\/\//, "")}</span></p>;
-  return <div className="cd-preview">
+  return <InkCard colour="#5c7150" seed={`preview-${workspace.id}`} className="cd-preview-ink"><div className="cd-preview">
+    <span className="cd-preview-mark" aria-hidden="true"><Icon name="open" /></span>
     <div className="cd-preview-id">
       <b>Your app is running</b>
       <span className="cd-mono">{url.replace(/^https?:\/\//, "")}</span>
@@ -499,7 +530,7 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
       </Seal>
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
-  </div>;
+  </div></InkCard>;
 }
 
 /* ── the composer: what to say next, and what to show it ── */

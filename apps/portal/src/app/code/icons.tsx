@@ -12,6 +12,7 @@ export const icons = {
   pr: '<circle cx="6" cy="5.5" r="2"/><circle cx="6" cy="18.5" r="2"/><circle cx="18" cy="18.5" r="2"/><path d="M6 7.5v9M18 16.5V9a2.5 2.5 0 0 0-2.5-2.5H11M13.5 4 11 6.5 13.5 9"/>',
   chat: '<path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/>',
   diff: '<path d="M12 4v8M8 8h8M8 19h8"/>',
+  code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/>',
 } as const;
 
 export type IconName = keyof typeof icons;

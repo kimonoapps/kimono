@@ -18,7 +18,7 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[] }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number }
   | { kind: "published"; url: string; number: number }
