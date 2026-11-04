@@ -8,6 +8,7 @@ import { holdsMeshAccess } from "@/lib/directory";
 import { redirect } from "next/navigation";
 import { KimonoAppOffer } from "@/components/kimono-app-offer";
 import { readReleases } from "@/lib/app-releases";
+import { testflightSettings } from "@/lib/testflight";
 import { portalOrigin } from "@/lib/account";
 
 /** Where the Kimono app looks unless told otherwise. */
@@ -19,7 +20,7 @@ export default async function HomePage() {
   const [settings, catalog] = await Promise.all([getPlatformSettings(), scanAppDefinitions()]);
 
   const displayName = session.user.name?.split(" ")[0] || session.user.username || "home";
-  const { releases, iosLink } = await readReleases();
+  const [{ releases, iosLink }, testflight] = await Promise.all([readReleases(), testflightSettings().catch(() => null)]);
   const newest = (platform: "android" | "ios") => releases.filter((r) => r.platform === platform).sort((a, b) => b.build - a.build)[0];
   const android = newest("android");
   const host = new URL(portalOrigin()).host;
@@ -35,7 +36,8 @@ export default async function HomePage() {
         </header>
         <KimonoAppOffer offer={{
           android: android ? { version: android.version, build: android.build, size: android.size ?? null } : null,
-          ios: newest("ios") ? { link: iosLink } : null,
+          /* Offered on every iPhone once TestFlight is set up, so anyone can ask for their invite. */
+          ios: testflight || newest("ios") ? { link: iosLink } : null,
           address: host === appDefault || host === "kimonolabs.dev" ? null : host,
         }} />
         <AppLauncher apps={launcherApps(appRegistry(settings, catalog.definitions), {
