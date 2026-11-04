@@ -9,8 +9,9 @@ import type { AppPlatform, AppRelease } from "./app-updates";
 
 /*
  * The Kimono phone app as each Kimono release ships it: the release workflow
- * builds both apps, attaches the Android package and a note of each build to
- * the GitHub release, and sends the iPhone build to TestFlight. The Portal
+ * builds both apps (or, when they haven't changed, offers the last builds
+ * again), attaches the Android package and a note of each build to the
+ * GitHub release, and sends the iPhone build to TestFlight. The Portal
  * offers the builds that came with the version it runs; the only thing left
  * to an admin is whether phones must install them before carrying on.
  */
@@ -63,8 +64,10 @@ async function releasedBuild(platform: AppPlatform): Promise<Released | null> {
     const response = await fetch(`${base}/kimono-${platform}.json`, { headers: { "User-Agent": "kimono-portal" }, cache: "no-store", signal: AbortSignal.timeout(5000) });
     if (response.ok) {
       const about = await response.json() as { version?: unknown; build?: unknown; file?: unknown; size?: unknown; sha256?: unknown };
-      const common = { version, build: about.build as number, required: false, notes: "", publishedAt: 0, publishedBy: "kimono" };
-      if (about.version !== version || !Number.isInteger(about.build)) release = null;
+      /* A release that left the phone app alone offers the earlier build again, under its own version. */
+      const appVersion = typeof about.version === "string" && /^\d+\.\d+\.\d+$/.test(about.version) ? about.version : null;
+      const common = { version: appVersion ?? version, build: about.build as number, required: false, notes: "", publishedAt: 0, publishedBy: "kimono" };
+      if (!appVersion || !Number.isInteger(about.build)) release = null;
       else if (platform === "ios") release = { platform, ...common };
       else if (typeof about.file === "string" && /^[\w.-]+\.apk$/.test(about.file) && typeof about.sha256 === "string" && /^[0-9a-f]{64}$/.test(about.sha256)) {
         release = {

@@ -73,13 +73,34 @@ jobs:
           if [ -n "$KEYSTORE" ] && [ -n "$KEYSTORE_PASSWORD" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "No Android signing key in this repository's secrets; skipping the APK."; fi
       - uses: actions/checkout@v4
         if: steps.key.outputs.present == 'true'
-      - uses: actions/setup-java@v4
+        with:
+          fetch-depth: 0
+      - name: Reuse the last build if the phone app hasn't changed
+        id: reuse
         if: steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          if [ -z "$PREV" ]; then echo "No earlier release; building."; exit 0; fi
+          if ! git diff --quiet "$PREV" "$GITHUB_REF_NAME" -- apps/compose .github/workflows/release-cli.yml; then echo "The phone app changed since $PREV; building."; exit 0; fi
+          mkdir -p "$RUNNER_TEMP/previous" && cd "$RUNNER_TEMP/previous"
+          if ! gh release download "$PREV" --repo "$GITHUB_REPOSITORY" -p kimono-android.json; then echo "$PREV has no android build; building."; exit 0; fi
+          FILE=$(jq -r .file kimono-android.json)
+          gh release download "$PREV" --repo "$GITHUB_REPOSITORY" -p "$FILE"
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "$FILE" kimono-android.json
+          echo "Unchanged since $PREV: offering its build again."
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         with:
           distribution: temurin
           java-version: "21"
+      # Gradle's downloads and build cache, kept between releases.
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
       - name: Build the signed APK
-        if: steps.key.outputs.present == 'true'
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         working-directory: apps/compose
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -89,7 +110,7 @@ jobs:
           printf '%s' "$KEYSTORE" | base64 -d > ~/.config/kimono/android-release.jks
           printf '%s' "$KEYSTORE_PASSWORD" > ~/.config/kimono/android-release.password
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          ./gradlew --no-daemon :androidApp:assembleRelease -PkimonoBuild="$BUILD" -PkimonoVersion="$VERSION"
+          ./gradlew :androidApp:assembleRelease -PkimonoBuild="$BUILD" -PkimonoVersion="$VERSION"
           rm -f ~/.config/kimono/android-release.jks ~/.config/kimono/android-release.password
           APK="kimono-$VERSION.apk"
           mv androidApp/build/outputs/apk/release/androidApp-release.apk "$APK"
@@ -99,7 +120,7 @@ jobs:
           printf '{"version":"%s","build":%s,"file":"%s","size":%s,"sha256":"%s"}\n' "$VERSION" "$BUILD" "$APK" "$SIZE" "$SHA" > kimono-android.json
           echo "APK=$APK" >> "$GITHUB_ENV"
       - name: Attach it to the release
-        if: steps.key.outputs.present == 'true'
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         working-directory: apps/compose
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,13 +145,39 @@ jobs:
           if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] && [ -n "$ASC_KEY" ] && [ -n "$APPLE_TEAM_ID" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "No App Store Connect key in this repository's secrets; skipping the iPhone build."; fi
       - uses: actions/checkout@v4
         if: steps.key.outputs.present == 'true'
-      - uses: actions/setup-java@v4
+        with:
+          fetch-depth: 0
+      - name: Reuse the last build if the phone app hasn't changed
+        id: reuse
         if: steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREV=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          if [ -z "$PREV" ]; then echo "No earlier release; building."; exit 0; fi
+          if ! git diff --quiet "$PREV" "$GITHUB_REF_NAME" -- apps/compose .github/workflows/release-cli.yml; then echo "The phone app changed since $PREV; building."; exit 0; fi
+          mkdir -p "$RUNNER_TEMP/previous" && cd "$RUNNER_TEMP/previous"
+          if ! gh release download "$PREV" --repo "$GITHUB_REPOSITORY" -p kimono-ios.json; then echo "$PREV has no ios build; building."; exit 0; fi
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber kimono-ios.json
+          echo "Unchanged since $PREV: offering its build again."
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         with:
           distribution: temurin
           java-version: "21"
+      # Gradle's downloads and build cache, and the Kotlin/Native toolchain
+      # (about a gigabyte), kept between releases.
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
+      - uses: actions/cache@v4
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('apps/compose/gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
       - name: Build and send to TestFlight
-        if: steps.key.outputs.present == 'true'
+        if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         working-directory: apps/compose/iosApp
         env:
           GH_TOKEN: ${{ github.token }}
