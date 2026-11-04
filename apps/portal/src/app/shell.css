@@ -107,3 +107,24 @@
 .page-loading { display: grid; place-items: center; min-height: 70vh; }
 .ink-loader { width: 56px; height: 56px; overflow: visible; opacity: 0; animation: loader-in 200ms cubic-bezier(.05, .7, .1, 1) 250ms forwards; }
 @keyframes loader-in { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
+
+/* ── skeletons: invisible for 350ms, then a soft shimmer in the shape of what's coming ── */
+.skel-wait { opacity: 0; animation: skel-appear 240ms ease 350ms forwards; }
+@keyframes skel-appear { to { opacity: 1; } }
+.skel { display: block; height: 14px; border-radius: 7px; background: linear-gradient(100deg, var(--k-container) 20%, var(--k-container-highest) 50%, var(--k-container) 80%) 0 0 / 300% 100%; animation: skel-shine 1.6s ease-in-out infinite; }
+@keyframes skel-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.skel-small { height: 10px; margin-top: 8px; opacity: .8; }
+.skel-rows { display: grid; gap: 4px; }
+.skel-row { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 0 16px; }
+.skel-row > span { flex: 1; min-width: 0; }
+.skel-mark { width: 40px; height: 40px; flex: none; border-radius: 12px; }
+.skel-page { display: grid; gap: 14px; align-content: start; padding-top: 44px; }
+.skel-title { width: min(280px, 60%); height: 34px; border-radius: 12px; margin-left: 8px; }
+.skel-line { width: min(420px, 80%); margin: 0 0 12px 8px; }
+.skel-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 10px; }
+.skel-card { height: 120px; border-radius: var(--k-r-xl); }
+.skel-chat { display: grid; gap: 14px; }
+.skel-bubble { width: 46%; height: 44px; margin-left: auto; border-radius: 20px 20px 6px 20px; }
+.skel-pill { width: 130px; height: 32px; border-radius: 16px; }
+@media (max-width: 720px) { .skel-cards { grid-template-columns: 1fr; } .skel-card:nth-child(n+2) { display: none; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; background: var(--k-container-high); } }

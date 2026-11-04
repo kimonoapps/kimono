@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from "next/navigation";
 import { cx, InkCard, Seal } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
+import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import {
   code, drive, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace,
@@ -96,7 +97,7 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
     <aside className="cd-side" aria-label="Tasks">
       <div className="cd-side-head"><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({})} aria-keyshortcuts="Meta+K" aria-label="New task" title="New task (⌘K)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
-      {workspaces === null && !problem ? <div className="cd-skeleton-list" aria-hidden="true"><i /><i /><i /></div> : null}
+      {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       <WorkspaceList label="Working" list={workspaces?.filter((w) => w.turn?.state === "running") ?? []} current={current} now={now} />
       <WorkspaceList label="Recent" list={workspaces?.filter((w) => w.turn?.state !== "running") ?? []} current={current} now={now} />
       {workspaces && !workspaces.length ? <p className="cd-quiet cd-side-note">Nothing yet.</p> : null}
@@ -107,7 +108,7 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
         : current && workspaces
           ? <div className="cd-sheet cd-empty"><p>That workspace isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({})}>New task</Seal></div>
           : current
-            ? <div className="cd-sheet cd-loading" aria-busy="true" />
+            ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
             : <Start blocked={blocked} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
@@ -396,7 +397,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
   return <div className="cd-chat">
     <div className="cd-scroll" ref={scroller} onScroll={onScroll}>
       <div className="cd-timeline" ref={timeline} aria-live="polite">
-        {items.length === 0 ? <div className="cd-skeleton-timeline" aria-hidden="true"><i /><i /><i /></div> : null}
+        {items.length === 0 ? <SkeletonChat /> : null}
         {items.map((item) => {
           switch (item.type) {
             case "ask": return <Ask key={item.seq} workspace={workspace} item={item} />;
@@ -799,7 +800,7 @@ function ChangesView({ workspace, running, lastSeq }: { workspace: Workspace; ru
   }, [workspace.id, lastSeq, running]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (problem && !changes) return <p className="cd-problem cd-pad">{problem}</p>;
-  if (!changes) return <div className="cd-pad"><div className="cd-skeleton-timeline" aria-hidden="true"><i /><i /></div></div>;
+  if (!changes) return <div className="cd-pad"><SkeletonRows rows={4} /></div>;
   if (!changes.files.length) return <p className="cd-quiet cd-pad">No changes from {changes.base} yet.</p>;
   const diffs = new Map(splitDiff(changes.diff).map((d) => [d.path, d]));
   const added = changes.files.reduce((n, f) => n + f.additions, 0);

@@ -552,3 +552,8 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
   .cd-timeline { padding: 20px 18px 36px; }
 }
 @media (max-width: 720px) { .cd-ws { height: calc(100dvh - 100px); } }
+/* the narrow layout must win over the wide one above: one column, the task list hides inside a task */
+@media (max-width: 980px) {
+  .cd { grid-template-columns: minmax(0, 1fr); }
+  .cd.has-workspace .cd-side { display: none; }
+}

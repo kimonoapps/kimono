@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonRows } from "@/components/skeleton";
+
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { Choice, cx, Seal } from "@kimono/ui";
@@ -143,7 +145,7 @@ export function DriveApp({ me }: { me: Me }) {
       </aside>
 
       {problem && !spaces ? <section className="dv-sheet"><div className="dv-empty"><h3>Drive isn&apos;t answering</h3><p>{problem}</p></div></section>
-        : !spaces ? <section className="dv-sheet"><div className="dv-empty"><p>Opening Drive…</p></div></section>
+        : !spaces ? <section className="dv-sheet"><SkeletonRows rows={6} className="dv-skel" /></section>
         : view === "trash" ? <TrashView onToast={setToast} spaces={spaces} />
         : view === "recent" ? <RecentView spaces={spaces} people={people} onOpen={(node) => go({ space: node.spaceId, folder: node.parentId, file: node.id })} />
         : current && view === "settings" ? <SettingsView key={current.id} space={current} me={me} people={people} onChanged={loadSpaces} onLeft={() => { void loadSpaces(); go({}); }} back={() => go({ space: current.id })} />
@@ -507,7 +509,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
 
     <div className={cx("dv-list", guest && "guest")} ref={list}>
       {problem ? <div className="dv-empty"><p>{problem}</p></div>
-        : !folder ? <div className="dv-empty"><p>Opening…</p></div>
+        : !folder ? <SkeletonRows rows={5} />
         : !rows.length ? <div className="dv-empty">
             <h3>{found ? "Nothing by that name" : "Nothing here yet"}</h3>
             {!found && canAdd ? <p>Drop files here, or upload them.</p> : null}
@@ -942,7 +944,7 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
   return <section className="dv-sheet">
     <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder lg"><Icon name="trash" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Kept for 30 days.</p></div></div></div>
     <div className="dv-list">
-      {!items ? <div className="dv-empty"><p>Opening…</p></div> : !items.length ? <div className="dv-empty"><h3>Nothing in the Trash</h3></div>
+      {!items ? <SkeletonRows rows={5} /> : !items.length ? <div className="dv-empty"><h3>Nothing in the Trash</h3></div>
         : items.map((node) => {
           const space = spaceOf(node.spaceId);
           const left = node.trashedAt ? Math.max(0, 30 - Math.floor((now - node.trashedAt) / 86400000)) : null;
@@ -966,7 +968,7 @@ function RecentView({ spaces, people, onOpen }: { spaces: Space[]; people: Recor
   return <section className="dv-sheet">
     <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder lg"><Icon name="clock" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Recent</h1></div></div></div>
     <div className="dv-list">
-      {!items ? <div className="dv-empty"><p>Opening…</p></div> : !items.length ? <div className="dv-empty"><h3>Nothing yet</h3></div>
+      {!items ? <SkeletonRows rows={5} /> : !items.length ? <div className="dv-empty"><h3>Nothing yet</h3></div>
         : items.map((node) => <div className="dv-r recent" key={node.id}>
             <Kind node={node} />
             <div className="nm"><button type="button" onClick={() => onOpen(node)}><b>{node.name}</b><small>{spaceName(node.spaceId)}<span className="dv-m"> · {readableSize(node.size)}</span></small></button></div>

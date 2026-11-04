@@ -1,6 +1,6 @@
-import { InkLoader } from "@/components/ink-loader";
+import { SkeletonPage } from "@/components/skeleton";
 
-/* A page that takes a moment shows Kimono's painted morphing shape, only after a quarter second. */
+/* A page that takes a moment shows its shape, shimmering, but only after a third of a second: quick loads show nothing. */
 export default function Loading() {
-  return <div className="page-loading"><InkLoader /></div>;
+  return <SkeletonPage />;
 }
