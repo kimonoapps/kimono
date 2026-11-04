@@ -2,12 +2,17 @@ export type MobileAppStep = {
   id: string;
   title: string;
   description: string;
-  kind: "download" | "server" | "instruction";
+  kind: "download" | "server" | "open" | "instruction";
+  /** For `open`: the link the phone opens. `{{server}}` becomes this app's address. */
+  href?: string;
+  /** For `open`: the button's wording. */
+  label?: string;
 };
 
 export type MobileApp = {
   name: string;
-  guideUrl: string;
+  /** A setup guide, linked under every step. */
+  guideUrl?: string;
   iosUrl?: string;
   androidUrl?: string;
   steps: (MobileAppStep | string)[];
@@ -33,6 +38,18 @@ export function mobileAppSteps(app: MobileApp): MobileAppStep[] {
   } : step);
 }
 
+/** An `open` step's link, with `{{server}}` filled in with the app's address (its origin). */
+export function openLink(step: MobileAppStep, serverUrl: string): string {
+  let origin = serverUrl;
+  try { origin = new URL(serverUrl).origin; } catch { /* keep as given */ }
+  return (step.href ?? "").replaceAll("{{server}}", encodeURIComponent(origin));
+}
+
+/** A download link is HTTPS, or a path on the Portal (such as its TestFlight guide). */
+export function isPortalPath(value: string) {
+  return value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\");
+}
+
 export function validateMobileApp(value: unknown): asserts value is MobileApp {
   const app = value as MobileApp | null;
   const text = (value: unknown) => typeof value === "string" && Boolean(value.trim());
@@ -40,14 +57,21 @@ export function validateMobileApp(value: unknown): asserts value is MobileApp {
     if (typeof value !== "string") return false;
     try { return new URL(value).protocol === "https:"; } catch { return false; }
   };
-  if (!app || !text(app.name) || !https(app.guideUrl) || !Array.isArray(app.steps) || !app.steps.length) throw new Error("spec.mobileApp requires a name, HTTPS guide URL, and tutorial steps");
+  if (!app || !text(app.name) || (app.guideUrl !== undefined && !https(app.guideUrl)) || !Array.isArray(app.steps) || !app.steps.length) throw new Error("spec.mobileApp requires a name and tutorial steps, and its guide URL must be HTTPS");
   for (const link of [app.iosUrl, app.androidUrl]) {
-    if (link !== undefined && !https(link)) throw new Error("mobile app download links must be HTTPS URLs");
+    if (link !== undefined && !https(link) && !(typeof link === "string" && isPortalPath(link))) throw new Error("mobile app download links must be HTTPS URLs or Portal paths");
   }
+  /* An app's own scheme: never a web page, and never script. */
+  const appLink = (value: unknown) => {
+    if (typeof value !== "string") return false;
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
+    return Boolean(scheme) && !["http", "https", "javascript", "data", "vbscript", "file", "blob"].includes(scheme!);
+  };
   const ids = new Set<string>();
   for (const step of mobileAppSteps(app)) {
-    if (!step || !text(step.id) || ids.has(step.id) || !text(step.title) || !text(step.description) || !["download", "server", "instruction"].includes(step.kind)) throw new Error("mobile app steps require unique IDs, titles, descriptions, and a supported kind");
+    if (!step || !text(step.id) || ids.has(step.id) || !text(step.title) || !text(step.description) || !["download", "server", "open", "instruction"].includes(step.kind)) throw new Error("mobile app steps require unique IDs, titles, descriptions, and a supported kind");
     if (step.kind === "download" && !app.iosUrl && !app.androidUrl) throw new Error("download steps require a store URL");
+    if (step.kind === "open" && (!text(step.label) || !appLink(step.href))) throw new Error("open steps require a label and an app link such as myapp://connect?server={{server}}");
     ids.add(step.id);
   }
 }

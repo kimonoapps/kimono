@@ -26,7 +26,7 @@ export function AppGuide({ offer, asked }: { offer: AppOffer; asked: Phone | nul
       </div> : null}
     </header>
     {phone === "ios"
-      ? offer.ios ? <IosSteps address={offer.address} /> : <p className="get-app-none">The iPhone app isn&apos;t set up on this Kimono yet.</p>
+      ? offer.ios ? <IosSteps address={offer.address} apps={offer.iosApps} /> : <p className="get-app-none">The iPhone app isn&apos;t set up on this Kimono yet.</p>
       : offer.android ? <AndroidSteps android={offer.android} address={offer.address} /> : <p className="get-app-none">The Android app isn&apos;t out for this Kimono yet.</p>}
   </>;
 }
@@ -60,7 +60,7 @@ function AndroidSteps({ android, address }: { android: NonNullable<AppOffer["and
   </ol>;
 }
 
-function IosSteps({ address }: { address: string | null }) {
+function IosSteps({ address, apps }: { address: string | null; apps: string[] }) {
   const [standing, setStanding] = useState<{ status: Standing; email: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -113,7 +113,9 @@ function IosSteps({ address }: { address: string | null }) {
       <p>In a few minutes you&apos;ll get an email from Apple{email ? <> at <b>{email}</b></> : null}. Open it and follow the instructions to accept, then come back here and tap <b>Check again</b>.</p>
     </Step>
     <Step n={4} title="Install Kimono">
-      <p>Open TestFlight. Kimono is waiting there: tap <b>Install</b>.</p>
+      {apps.length > 1
+        ? <p>Open TestFlight. {apps.map((app, i) => <span key={app}>{i ? (i === apps.length - 1 ? " and " : ", ") : null}<b>{app}</b></span>)} are waiting there: tap <b>Install</b> on each.</p>
+        : <p>Open TestFlight. Kimono is waiting there: tap <b>Install</b>.</p>}
     </Step>
     <SignInStep n={5} address={address} />
   </ol>;

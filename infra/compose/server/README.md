@@ -179,9 +179,25 @@ its own **Administration → Settings** screens are read-only. The Kimono page i
 the editor. Anything neither page sets stays at the Immich default, and adding a
 knob means adding a field to the app definition rather than changing code.
 
-Mobile apps sign in through the same provider. Kimono registers
-`app.immich:///oauth-callback` alongside the two web redirect URIs, so the iOS
-and Android clients can use **Sign in with Kimono** without further setup.
+The server runs Kimono Photos' own build of Immich,
+`ghcr.io/kimonoapps/kimono-photos-server`, published from the `repatches` repo.
+It carries Kimono's look and sends signed-out visitors straight to Kimono
+sign-in, and it adds no database migrations, so moving between it and the
+upstream image of the same version keeps every photo, user and setting. The
+machine-learning and PostgreSQL images stay upstream's.
+
+Phones use the Kimono Photos app (`app.kimono.photos`): an APK from the
+`repatches` release, and on iPhone the same TestFlight the Kimono app uses
+(**Admin → Phone app** adds everyone to both). The app has no address field;
+the Portal's setup steps open `kimono-photos://connect?server=…` on the phone,
+which is the only way it learns where Photos is. Kimono registers
+`app.kimono.photos:///oauth-callback` for it, and keeps
+`app.immich:///oauth-callback` so the stock Immich app still signs in.
+
+On a fresh install, Immich refuses the first Kimono sign-in until an admin
+exists: create the admin account first at
+`https://<photos hostname>/auth/register`, then sign in with Kimono. A server
+that already has an admin is unaffected.
 
 ## Publishing without a tunnel
 

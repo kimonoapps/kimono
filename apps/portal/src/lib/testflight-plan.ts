@@ -9,6 +9,10 @@
  * on it), then added to the Kimono group once they've accepted. When their
  * Kimono access ends, only people this Portal invited are taken off again,
  * never anyone else on the team.
+ *
+ * Other Kimono phone apps (Kimono Photos) share the same people: planAlso
+ * puts whoever is on the team into that app's group too. Invitations and
+ * removals are the team's, so only the Kimono app's plan makes them.
  */
 
 export type PlanAccount = {
@@ -30,7 +34,11 @@ export type Step =
   | { kind: "removeUser"; email: string; userId: string }
   | { kind: "forget"; email: string };
 
-export type TesterStatus = { username: string; name: string; email: string | null; status: string };
+export type TesterStatus = {
+  username: string; name: string; email: string | null; status: string;
+  /** Where they stand with the team's other phone apps, by app name. */
+  also?: Record<string, string>;
+};
 
 /** The role the Portal gives the people it invites: it sees the Kimono app's page, and nothing that matters. */
 export const invitedRole = "CUSTOMER_SUPPORT";
@@ -84,5 +92,18 @@ export function planSync(input: {
     if (account) statuses.push({ username: account.username, name: account.name, email: account.email, status: "removed" });
   }
 
+  return { steps, statuses };
+}
+
+/** The same people, for another app's group: add whoever is on the team, and say where everyone stands. */
+export function planAlso(input: { accounts: PlanAccount[]; users: PlanUser[]; testers: PlanTester[] }): {
+  steps: Extract<Step, { kind: "add" }>[];
+  statuses: Map<string, string>;
+} {
+  const plan = planSync({ ...input, invitations: [], invited: {} });
+  const steps = plan.steps.filter((step): step is Extract<Step, { kind: "add" }> => step.kind === "add");
+  const statuses = new Map(plan.statuses
+    .filter((row) => row.status === "tester" || row.status === "added" || row.status.startsWith("invited"))
+    .map((row) => [row.username.toLowerCase(), row.status]));
   return { steps, statuses };
 }
