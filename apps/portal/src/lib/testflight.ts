@@ -22,7 +22,9 @@ const api = "https://api.appstoreconnect.apple.com";
 const syncEvery = 60 * 60 * 1000;
 
 export type LastSync = { at: number; ok: boolean; message: string; counts: Record<string, number> };
-type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; lastSync: LastSync | null; statuses: TesterStatus[] };
+/** Each person's Apple ID email, by Kimono username: TestFlight invites go there, and only to people who gave one. */
+type AppleIds = Record<string, string>;
+type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; appleIds: AppleIds; lastSync: LastSync | null; statuses: TesterStatus[] };
 
 async function readConfig(): Promise<Config | null> {
   try {
@@ -32,6 +34,7 @@ async function readConfig(): Promise<Config | null> {
       issuerId: parsed.issuerId, keyId: parsed.keyId, privateKey: parsed.privateKey,
       groupName: parsed.groupName || "Kimono",
       invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
+      appleIds: parsed.appleIds && typeof parsed.appleIds === "object" ? parsed.appleIds : {},
       lastSync: parsed.lastSync ?? null,
       statuses: Array.isArray(parsed.statuses) ? parsed.statuses : [],
     };
@@ -53,20 +56,35 @@ export async function testflightSettings(): Promise<{ keyId: string; issuerId: s
   return config ? { keyId: config.keyId, issuerId: config.issuerId, groupName: config.groupName, lastSync: config.lastSync, statuses: config.statuses } : null;
 }
 
-/* Whom the Portal invited, kept even without a key. */
-async function readInvited(): Promise<Invited> {
+/* Whom the Portal invited, and the Apple IDs people gave, kept even without a key. */
+async function readKept(): Promise<{ invited: Invited; appleIds: AppleIds }> {
   try {
-    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited };
-    return parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {};
+    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited; appleIds?: AppleIds };
+    return {
+      invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
+      appleIds: parsed.appleIds && typeof parsed.appleIds === "object" ? parsed.appleIds : {},
+    };
   } catch {
-    return {};
+    return { invited: {}, appleIds: {} };
   }
+}
+
+/** The Apple ID someone gave for TestFlight, if they have. */
+export async function appleIdOf(username: string): Promise<string | null> {
+  return (await readKept()).appleIds[username.toLowerCase()] ?? null;
+}
+
+/** Keeps the Apple ID someone gave; the next sync invites it (and withdraws an invite sent to an older one). */
+export async function setAppleId(username: string, email: string) {
+  const config = await readConfig();
+  if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
+  await writeConfig({ ...config, appleIds: { ...config.appleIds, [username.toLowerCase()]: email.trim().toLowerCase() } });
 }
 
 export async function saveTestflightKey(input: { issuerId: string; keyId: string; privateKey: string; groupName: string }) {
   await writeConfig({
     issuerId: input.issuerId, keyId: input.keyId, privateKey: input.privateKey, groupName: input.groupName || "Kimono",
-    invited: await readInvited(), lastSync: null, statuses: [],
+    ...(await readKept()), lastSync: null, statuses: [],
   });
 }
 
@@ -74,8 +92,8 @@ export async function saveTestflightKey(input: { issuerId: string; keyId: string
 export async function forgetTestflightKey() {
   const existing = await readConfig();
   if (!existing) return;
-  if (!Object.keys(existing.invited).length) { await rm(configPath, { force: true }); return; }
-  await writeFile(configPath, `${JSON.stringify({ invited: existing.invited }, null, 2)}\n`, { mode: 0o600 });
+  if (!Object.keys(existing.invited).length && !Object.keys(existing.appleIds).length) { await rm(configPath, { force: true }); return; }
+  await writeFile(configPath, `${JSON.stringify({ invited: existing.invited, appleIds: existing.appleIds }, null, 2)}\n`, { mode: 0o600 });
 }
 
 /* ── App Store Connect ── */
@@ -130,12 +148,12 @@ class AppStoreConnect {
 
 const text = (resource: Resource, key: string) => String(resource.attributes?.[key] ?? "");
 
-/** The Kimono accounts, with whether each may still sign in (null when the directory can't say). */
-async function kimonoAccounts(): Promise<PlanAccount[]> {
+/** The Kimono accounts, each with the Apple ID they gave and whether they may still sign in (null when the directory can't say). */
+async function kimonoAccounts(appleIds: AppleIds): Promise<PlanAccount[]> {
   const accounts = await listAccounts();
   return Promise.all(accounts.map(async (account) => {
     const standing = await readStanding(account.username).catch(() => null);
-    return { username: account.username, name: account.name || account.username, email: account.email || null, active: standing ? standing.active : null };
+    return { username: account.username, name: account.name || account.username, email: appleIds[account.username.toLowerCase()] ?? null, active: standing ? standing.active : null };
   }));
 }
 
@@ -159,7 +177,7 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
       store.all("/v1/users?limit=200"),
       store.all("/v1/userInvitations?limit=200"),
       store.all(`/v1/betaGroups/${group.id}/betaTesters?limit=200`),
-      kimonoAccounts(),
+      kimonoAccounts(config.appleIds),
     ]);
     const plan = planSync({
       accounts,

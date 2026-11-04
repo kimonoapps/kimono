@@ -918,4 +918,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .app-offer-detail { font-size: .85rem; }
 .app-offer ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; color: var(--k-ink-soft); }
 .app-offer a:not(.k-seal) { color: var(--k-suo); text-decoration: underline; }
+.app-offer-join { display: grid; gap: 8px; margin-top: 6px; }
+.app-offer-join label { font-size: .85rem; color: var(--k-ink-soft); }
+.app-offer-join input { font: inherit; padding: 10px 12px; border: 1px solid var(--k-hair); border-radius: 12px; background: var(--k-paper, transparent); color: inherit; max-width: 22rem; }
 .app-offer-later { justify-self: start; border: 0; background: none; padding: 4px 0; color: var(--k-faint); font: inherit; font-size: .85rem; cursor: pointer; }

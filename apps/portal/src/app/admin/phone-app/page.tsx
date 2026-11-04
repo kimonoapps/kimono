@@ -92,7 +92,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
 
       <Compartment label="TestFlight" wants={!testflight}>
         {testflight ? <>
-          <Note>Everyone with a Kimono account and an email is invited to test the iPhone app, and added once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId} · group {testflight.groupName}.</Note>
+          <Note>People opening Kimono on an iPhone give their Apple ID and are invited, then added once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId}.</Note>
           {testflight.lastSync ? <p className={`admin-notice ${testflight.lastSync.ok ? "success" : "error"}`}>Last checked {new Date(testflight.lastSync.at).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })}: {testflight.lastSync.message}</p> : null}
           {testflight.statuses.length ? <Rows>{testflight.statuses.map((row) => <Row
             key={row.username}
@@ -104,7 +104,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
             <form action={forgetKey}><Seal type="submit" tone="danger" compact>Forget key</Seal></form>
           </div>
         </> : <Form action={saveTestflight}>
-          <Note>Give Kimono an App Store Connect API key with the Admin role, and everyone with a Kimono account becomes a tester of the iPhone app automatically.</Note>
+          <Note>Give Kimono an App Store Connect API key with the Admin role, and anyone with a Kimono account can get the iPhone app from the website on their iPhone.</Note>
           <Field label="Issuer ID"><input name="issuerId" required autoComplete="off" placeholder="57246542-96fe-1a63-e053-0824d011072a" /></Field>
           <Field label="Key ID"><input name="keyId" required autoComplete="off" placeholder="2X9R4HXF34" /></Field>
           <Field label="Key file (.p8)"><input name="key" type="file" accept=".p8" required /></Field>
@@ -118,6 +118,6 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
 /** A tester status as a short label beside the name. */
 function testerLabel(status: string) {
   if (status.startsWith("invited")) return "Invited";
-  return ({ added: "Added", removed: "Removed", "no email": "No email", "no Kimono access": "No access" } as Record<string, string>)[status] ?? status;
+  return ({ added: "Added", removed: "Removed", "no email": "No Apple ID yet", "no Kimono access": "No access" } as Record<string, string>)[status] ?? status;
 }
 
