@@ -1,13 +1,10 @@
 import { bloomSvg } from "@kimono/ui/bloom-svg";
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { appRegistry, launcherApps } from "@/lib/apps";
-import { identityOf, ownApp } from "@/lib/kimono-apps";
+import { driveConfig, driveIdentity } from "@/lib/drive/config";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { holdsMeshAccess } from "@/lib/directory";
 import { getPlatformSettings } from "@/lib/settings";
-
-/* The phone apps have Drive themselves; this is its bloom for them, while it is switched on. */
-const drive = { ...identityOf(ownApp("kimono-drive")), glyph: "file" } as const;
 
 /* Built into the Kimono apps themselves, or not wanted on a phone. */
 const notListed = new Set(["kimono-tools", "kimono-drive"]);
@@ -40,9 +37,12 @@ export async function GET(request: Request) {
       ios: app.mobileApp?.iosUrl ?? null,
       android: app.mobileApp?.androidUrl ?? null,
     }));
+  /* The phone apps have Drive themselves; this is its bloom for them, while it is switched on. */
+  const driveOn = driveConfig(settings).enabled;
+  const drive = driveOn ? await driveIdentity(settings) : null;
   return apiJson({
     apps,
-    driveOn: settings.drive.enabled,
-    drive: settings.drive.enabled ? { ...drive, bloom: bloomSvg(drive, { glyph: drive.glyph, standalone: true, unique: drive.id }) } : null,
+    driveOn,
+    drive: drive ? { ...drive, bloom: bloomSvg(drive, { glyph: drive.glyph, standalone: true, unique: drive.id }) } : null,
   });
 }

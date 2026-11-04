@@ -148,7 +148,7 @@ function parseDefinition(value: unknown, directory: string, source: AppDefinitio
       if (value !== undefined && (typeof value !== "string" || !value.trim() || value.length > 1000)) throw new Error(`volume ${volume.id} has invalid backup text`);
     }
   }
-  validateSettings(definition.spec.settingsFile, definition.spec.configuration, definition.spec.services);
+  validateSettings(definition.spec.settingsFile, definition.spec.configuration, definition.spec.services, definition.spec.portalPath !== undefined);
   validateBackups(definition);
   const iconPath = join(directory, definition.metadata.icon);
   return { ...definition, source, iconPath, iconUrl: `/api/app-definitions/${definition.metadata.id}/icon` };
@@ -197,12 +197,16 @@ function validateIdentity(identity: IdentityIntegration | undefined) {
 
 /**
  * A settings document only makes sense with somewhere to mount it, and a field
- * that targets one would silently vanish without it.
+ * that targets one would silently vanish without it. A native app is the
+ * exception: it is the Portal, and reads its settings from Kimono directly.
  */
-function validateSettings(file: SettingsFile | undefined, configuration: ConfigurationField[], services: AppDefinition["spec"]["services"]) {
+function validateSettings(file: SettingsFile | undefined, configuration: ConfigurationField[], services: AppDefinition["spec"]["services"], native = false) {
   const targeted = configuration.filter((field) => field.target === "settings");
   if (!file) {
-    if (targeted.length) throw new Error(`${targeted[0].key} targets settings, but spec.settingsFile is missing`);
+    if (targeted.length && !native) throw new Error(`${targeted[0].key} targets settings, but spec.settingsFile is missing`);
+    for (const field of configuration) {
+      if (field.kind === "toggle" && field.default && field.default !== "on" && field.default !== "off") throw new Error(`${field.key} is a toggle, so its default must be on or off`);
+    }
     return;
   }
   if (!services.some((service) => service.id === file.service)) throw new Error(`spec.settingsFile names unknown service ${file.service}`);

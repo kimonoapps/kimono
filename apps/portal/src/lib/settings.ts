@@ -38,14 +38,6 @@ export type AppRoute = {
   tunnelId: string;
   enabled: boolean;
 };
-/** Kimono Drive: off until an admin switches it on. */
-export type DriveSettings = {
-  enabled: boolean;
-  /** Whether people may make links that open a file without signing in. */
-  publicLinks: boolean;
-  /** The largest single file, in MB; 0 for no limit beyond the disk. */
-  largestFileMb: number;
-};
 export type PlatformSettings = {
   version: 4;
   baseDomain: string;
@@ -55,7 +47,6 @@ export type PlatformSettings = {
   apps: Record<string, AppInstance>;
   tunnels: Record<string, TunnelInstance>;
   routes: Record<string, AppRoute>;
-  drive: DriveSettings;
 };
 
 const domainPattern = /^(?:@|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)$/;
@@ -100,17 +91,6 @@ function defaults(): PlatformSettings {
       public: { id: "public", name: "Public Cloudflare", provider: "cloudflare", enabled: true, configuration: {} },
     },
     routes: {},
-    drive: { enabled: false, publicLinks: true, largestFileMb: 0 },
-  };
-}
-
-function normalizeDrive(value: unknown): DriveSettings {
-  const input = (value && typeof value === "object" ? value : {}) as Partial<DriveSettings>;
-  const largest = Number(input.largestFileMb);
-  return {
-    enabled: input.enabled === true,
-    publicLinks: input.publicLinks !== false,
-    largestFileMb: Number.isFinite(largest) && largest > 0 ? Math.floor(largest) : 0,
   };
 }
 
@@ -135,7 +115,7 @@ function normalizeInstance(value: unknown, fallback?: AppInstance): AppInstance 
 function normalize(value: unknown): PlatformSettings {
   const fallback = defaults();
   if (!value || typeof value !== "object") return fallback;
-  const input = value as { version?: number; baseDomain?: string; identityDomain?: string; brand?: { colors?: unknown }; apps?: unknown; tunnels?: unknown; routes?: unknown; drive?: unknown };
+  const input = value as { version?: number; baseDomain?: string; identityDomain?: string; brand?: { colors?: unknown }; apps?: unknown; tunnels?: unknown; routes?: unknown };
   if (input.version !== 2 && input.version !== 3 && input.version !== 4) {
     const legacy = input as { baseDomain?: string; brand?: { colors?: unknown }; apps?: { notes?: { enabled?: boolean; domain?: string; colors?: unknown } } };
     if (legacy.apps?.notes) {
@@ -190,7 +170,7 @@ function normalize(value: unknown): PlatformSettings {
       tunnelId: outline.tunnelId || "public", enabled: outline.enabled && Boolean(outline.tunnelId),
     };
   }
-  return { version: 4, baseDomain: input.baseDomain || fallback.baseDomain, identityDomain: input.identityDomain || fallback.identityDomain, meshDomain: fallback.meshDomain, brand: { colors: validPalette(input.brand?.colors, fallback.brand.colors) }, apps: { ...fallback.apps, ...apps }, tunnels, routes, drive: normalizeDrive(input.drive) };
+  return { version: 4, baseDomain: input.baseDomain || fallback.baseDomain, identityDomain: input.identityDomain || fallback.identityDomain, meshDomain: fallback.meshDomain, brand: { colors: validPalette(input.brand?.colors, fallback.brand.colors) }, apps: { ...fallback.apps, ...apps }, tunnels, routes };
 }
 
 async function persist(settings: PlatformSettings) {
@@ -206,14 +186,6 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
     try { return normalize(JSON.parse(await readFile(path, "utf8"))); } catch { continue; }
   }
   return defaults();
-}
-
-/** Drive's switch and limits, from the admin page. */
-export async function saveDriveSettings(change: Partial<DriveSettings>) {
-  const settings = await getPlatformSettings();
-  settings.drive = normalizeDrive({ ...settings.drive, ...change });
-  await persist(settings);
-  return settings.drive;
 }
 
 export function appHostname(domain: string, baseDomain: string) {

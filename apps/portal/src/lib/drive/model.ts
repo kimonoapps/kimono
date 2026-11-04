@@ -844,14 +844,3 @@ export function folderToSpace(db: DatabaseSync, folderId: string, username: stri
   } catch (error) { db.exec("ROLLBACK"); throw error; }
   return spacesOf(db, owner).find((s) => s.id === id)!;
 }
-
-/** What Drive holds, for the admin page: spaces, live files, and their bytes, with what waits in the trash. */
-export function driveUsage(db: DatabaseSync): { spaces: number; files: number; bytes: number; trashedBytes: number } {
-  const spaces = Number((db.prepare("SELECT count(*) AS n FROM spaces").get() as { n: number }).n);
-  const files = db.prepare(`SELECT
-      coalesce(sum(CASE WHEN trashed_at IS NULL THEN 1 ELSE 0 END), 0) AS files,
-      coalesce(sum(CASE WHEN trashed_at IS NULL THEN size ELSE 0 END), 0) AS bytes,
-      coalesce(sum(CASE WHEN trashed_at IS NOT NULL THEN size ELSE 0 END), 0) AS trashed
-    FROM nodes WHERE kind = 'file'`).get() as { files: number; bytes: number; trashed: number };
-  return { spaces, files: Number(files.files), bytes: Number(files.bytes), trashedBytes: Number(files.trashed) };
-}

@@ -1,4 +1,5 @@
 import { getPlatformSettings } from "@/lib/settings";
+import { driveConfig } from "@/lib/drive/config";
 import { blobPath, db, publicFile, root, sendFile, typeOf } from "@/lib/drive";
 
 /**
@@ -8,7 +9,7 @@ import { blobPath, db, publicFile, root, sendFile, typeOf } from "@/lib/drive";
  */
 async function serve(request: Request, { params }: { params: Promise<{ token: string; name: string }> }) {
   const { token } = await params;
-  const { drive: settings } = await getPlatformSettings();
+  const settings = driveConfig(await getPlatformSettings());
   const open = settings.enabled && settings.publicLinks;
   const file = open && /^[A-Za-z0-9_-]{8,32}$/.test(token) ? publicFile(db(), token) : null;
   if (!file) return new Response("This link doesn't work any more.", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });

@@ -1,0 +1,50 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "kimono-drive",
+    "name": "Kimono Drive",
+    "shortName": "Drive",
+    "description": "Spaces for the files you share with the people in your household.",
+    "category": "Files",
+    "version": "0.1.0",
+    "icon": "icon.svg",
+    "colors": [
+      "#5f5596",
+      "#352d5c",
+      "#d9d3ee"
+    ],
+    "glyph": "file"
+  },
+  "spec": {
+    "integration": "native",
+    "services": [],
+    "volumes": [],
+    "configuration": [
+      {
+        "key": "public_links",
+        "label": "Public links",
+        "kind": "toggle",
+        "group": "sharing",
+        "target": "settings",
+        "default": "on",
+        "description": "Links that open a file or a space without signing in. Switching this off stops every such link at once."
+      },
+      {
+        "key": "largest_file_gb",
+        "label": "Largest file (GB)",
+        "kind": "number",
+        "group": "storage",
+        "target": "settings",
+        "description": "Empty for no limit beyond the disk."
+      }
+    ],
+    "managedEnvironment": [],
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    },
+    "portalPath": "/drive",
+    "setupReady": true
+  }
+}
