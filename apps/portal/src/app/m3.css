@@ -405,3 +405,29 @@ label.opt { margin: 0; }
 .token-form { display: grid; gap: 10px; margin-top: 12px; }
 .raw-plan { margin: 0; max-height: 46vh; overflow: auto; padding: 16px; border-radius: var(--r-l); background: #2a1d22; color: #f3e6e9; font-size: 12px; }
 .sheet-actions form { display: contents; }
+
+/* Phone app */
+.phone-app-page { padding-bottom: 80px; }
+.release-card { gap: 8px; }
+.release-version { font: 600 40px/1 var(--display); color: var(--plum); }
+.release-version.is-none { font-size: 28px; color: var(--on-surface-variant); }
+.release-card > small { font-size: 14px; opacity: .85; }
+.release-required { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.release-required > span { flex: 1; display: grid; gap: 1px; }
+.release-required small { font-size: 13px; opacity: .8; }
+.testers-head { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.testers-head .label { margin-right: auto; }
+.testers-head > small { color: var(--on-surface-variant); }
+.testers-head .line-icon { width: 18px; height: 18px; }
+.seg .row .k-ink-portrait { width: 44px; height: 44px; flex: none; }
+.phone-empty { margin: 0 0 0 28px; color: var(--on-surface-variant); }
+.testflight-key { margin-top: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.testflight-key > span { flex: 1; min-width: 260px; display: grid; gap: 4px; }
+.testflight-key small { color: var(--on-surface-variant); font-size: 14px; }
+.testflight-key form { width: min(280px, 100%); }
+.testflight-setup { max-width: 720px; }
+.testflight-setup input[type="file"] { font-size: 14px; }
+/* One serif title per page: release numbers use the sans face, as status values do. */
+.release-version { font: 600 34px/1.05 var(--sans); letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.release-version.is-none { font-size: 22px; }
+.testflight-setup input[type="file"]::file-selector-button { margin-right: 12px; min-height: 32px; padding: 0 14px; border: 0; border-radius: var(--r-full); background: var(--secondary-container); color: var(--on-secondary-container); font: 700 13px/1 var(--sans); cursor: pointer; }

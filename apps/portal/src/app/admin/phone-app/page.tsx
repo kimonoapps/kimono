@@ -1,7 +1,11 @@
-import { Compartment, Field, Form, FormActions, Note, PageHeader, Row, Rows, Seal, StatedSeal } from "@kimono/ui";
+import { InkPortraitFrame, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
-import { AdminNavigation } from "@/components/admin-navigation";
 import { AppShell } from "@/components/app-shell";
+import { Crossing } from "@/components/crossing";
+import { HoldSeal } from "@/components/hold-seal";
+import { LineIcon } from "@/components/line-icon";
+import { Portrait } from "@/components/portrait";
+import { picturePathFor } from "@/lib/pictures";
 import { getPlatformSettings } from "@/lib/settings";
 import { readReleases, setRequired } from "@/lib/app-releases";
 import type { AppPlatform } from "@/lib/app-updates";
@@ -65,54 +69,87 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
   }
 
   const platforms: { platform: AppPlatform; label: string }[] = [{ platform: "android", label: "Android" }, { platform: "ios", label: "iPhone" }];
+  const pictures = new Map(await Promise.all((testflight?.statuses ?? []).map(async (row) => [row.username, await picturePathFor(row.username)] as const)));
+  const checked = (at: number | string) => new Date(at).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" });
 
+  /*
+   * Phone app (design/mockups/m3-everywhere.html): two release cards with the
+   * version as the big number and "Required" as a switch. Testers are a list
+   * of portraits with plain status; sync is a small action at the top, and
+   * forgetting the key is held.
+   */
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
-    <div className="page admin-page">
-      <AdminNavigation active="phone-app" />
-      <PageHeader title="Phone app" description="Each Kimono release builds the phone apps. Phones offer them when opened; a required one must be installed first." />
-      {query.error ? <p className="admin-notice error">{query.error}</p> : null}
+    <div className="page phone-app-page">
+      <div className="topbar">
+        <Crossing kind="kakejiku" className="back" href="/admin" aria-label="Back to Admin"><LineIcon name="back" /></Crossing>
+        <span><h1>Phone app</h1><p className="sub">Phones offer each release when opened. A required one must be installed first.</p></span>
+      </div>
+      {query.error ? <p role="alert" className="app-notice is-error">{query.error}</p> : null}
 
-      <Compartment label="This release">
-        {releases.length ? <Rows>{platforms.map(({ platform, label }) => {
+      <div className="cols">
+        {platforms.map(({ platform, label }, index) => {
           const release = releases.find((r) => r.platform === platform);
-          if (!release) return <Row key={platform} title={label}>Not built for this release</Row>;
-          return <Row
-            key={platform}
-            title={`${label} · ${release.version}`}
-            lead={release.required ? <StatedSeal state="wants">Required</StatedSeal> : null}
-            action={<form action={toggleRequired}>
+          const tone = index === 0 ? { background: "var(--tertiary-container)", color: "var(--on-tertiary-container)" } : { background: "var(--secondary-container)" };
+          if (!release) return <div className="card release-card" key={platform} style={{ background: "var(--sc)" }}><span className="eyebrow">{label}</span><span className="release-version is-none">Not built</span><small>No {label} app was built for this release.</small></div>;
+          return <div className="card release-card" key={platform} style={tone}>
+            <span className="eyebrow" style={{ color: tone.color }}>{label}</span>
+            <span className="release-version">{release.version}</span>
+            <small>{platform === "android" ? `Build ${release.build}${release.size ? ` · ${(release.size / 1_000_000).toFixed(0)} MB` : ""}` : `Build ${release.build} · TestFlight`}</small>
+            <form action={toggleRequired} className="release-required">
               <input type="hidden" name="platform" value={platform} />
               <input type="hidden" name="build" value={release.build} />
               <input type="hidden" name="required" value={String(!release.required)} />
-              <Seal type="submit" tone="quiet" compact>{release.required ? "Make optional" : "Require"}</Seal>
-            </form>}
-          >{platform === "android" ? `Build ${release.build}${release.size ? ` · ${(release.size / 1_000_000).toFixed(1)} MB` : ""}` : `Build ${release.build} · TestFlight`}</Row>;
-        })}</Rows> : <Note>No phone apps were built for this release.</Note>}
-      </Compartment>
+              <span><b>Required</b><small>{release.required ? "Phones must install it before going on" : "Phones offer it; people can wait"}</small></span>
+              <button className="joint" role="switch" type="submit" aria-checked={release.required} aria-label={`Require ${label} ${release.version}`} />
+            </form>
+          </div>;
+        })}
+      </div>
 
-      <Compartment label="TestFlight" wants={!testflight}>
-        {testflight ? <>
-          <Note>People who ask on their iPhone are invited at their Kimono email, and added once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId}.</Note>
-          {testflight.lastSync ? <p className={`admin-notice ${testflight.lastSync.ok ? "success" : "error"}`}>Last checked {new Date(testflight.lastSync.at).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })}: {testflight.lastSync.message}</p> : null}
-          {testflight.statuses.length ? <Rows>{testflight.statuses.map((row) => <Row
-            key={row.username}
-            title={row.name}
-            lead={row.status === "tester" ? <StatedSeal state="running">Tester</StatedSeal> : row.status.startsWith("error") ? <StatedSeal state="wants">Problem</StatedSeal> : <StatedSeal state="quiet">{testerLabel(row.status)}</StatedSeal>}
-          >@{row.username}{row.email ? ` · ${row.email}` : ""} · {row.status}</Row>)}</Rows> : null}
-          <div className="k-seal-group" style={{ marginTop: 12 }}>
-            <form action={syncNow}><Seal type="submit" compact>Sync now</Seal></form>
-            <form action={forgetKey}><Seal type="submit" tone="danger" compact>Forget key</Seal></form>
+      {testflight ? <>
+        <div className="testers-head">
+          <div className="label">TestFlight testers</div>
+          {testflight.lastSync ? <small>Checked {checked(testflight.lastSync.at)}</small> : null}
+          <form action={syncNow}><button className="txt" type="submit"><LineIcon name="restore" />Sync now</button></form>
+        </div>
+        {testflight.lastSync && !testflight.lastSync.ok ? <p role="alert" className="app-notice is-error">{testflight.lastSync.message}</p> : null}
+        {testflight.statuses.length ? <div className="seg">
+          {testflight.statuses.map((row) => <div className="row" key={row.username}>
+            <InkPortraitFrame seed={row.username} weight={5}><Portrait name={row.name} username={row.username} picture={pictures.get(row.username)} size={36} /></InkPortraitFrame>
+            <span className="text"><b>{row.name}</b><small>@{row.username} · {testerLine(row.status, row.email)}</small></span>
+            <span className={row.status === "tester" ? "k-ink-dot k-running" : row.status.startsWith("error") || row.status === "no email" ? "k-ink-dot k-wants" : "k-ink-dot"}>{row.status.startsWith("error") ? "Problem" : testerLabel(row.status)}</span>
+          </div>)}
+        </div> : <p className="lead phone-empty">Nobody has asked for the iPhone app yet. People ask from Get the app on their iPhone.</p>}
+        <div className="card testflight-key">
+          <span><b>App Store Connect key {testflight.keyId}</b><small>People who ask on their iPhone are invited at their Kimono email and added once they accept. When their Kimono access ends, they&rsquo;re taken off.</small></span>
+          <form action={forgetKey}><HoldSeal label="Hold to forget key" holdingLabel="Keep holding" /></form>
+        </div>
+      </> : <>
+        <div className="label">TestFlight</div>
+        <form action={saveTestflight} className="card testflight-setup">
+          <p className="lead">Give Kimono an App Store Connect API key with the Admin role, and anyone with a Kimono account can get the iPhone app from the website on their iPhone.</p>
+          <div className="sheet-pair">
+            <label className="field"><small>Issuer ID</small><input name="issuerId" required autoComplete="off" placeholder="57246542-96fe-1a63-e053-0824d011072a" /></label>
+            <label className="field"><small>Key ID</small><input name="keyId" required autoComplete="off" placeholder="2X9R4HXF34" /></label>
           </div>
-        </> : <Form action={saveTestflight}>
-          <Note>Give Kimono an App Store Connect API key with the Admin role, and anyone with a Kimono account can get the iPhone app from the website on their iPhone.</Note>
-          <Field label="Issuer ID"><input name="issuerId" required autoComplete="off" placeholder="57246542-96fe-1a63-e053-0824d011072a" /></Field>
-          <Field label="Key ID"><input name="keyId" required autoComplete="off" placeholder="2X9R4HXF34" /></Field>
-          <Field label="Key file (.p8)"><input name="key" type="file" accept=".p8" required /></Field>
-          <FormActions><Seal type="submit">Save and sync</Seal></FormActions>
-        </Form>}
-      </Compartment>
+          <label className="field"><small>Key file (.p8)</small><input name="key" type="file" accept=".p8" required /></label>
+          <div className="sheet-actions"><Seal type="submit">Save and sync</Seal></div>
+        </form>
+      </>}
     </div>
   </AppShell>;
+}
+
+/** What a tester's status means, in a few words. */
+function testerLine(status: string, email?: string | null) {
+  if (status === "tester") return "Kimono installed through TestFlight";
+  if (status.startsWith("invited")) return email ? `Invite sent to ${email}` : "Invite sent";
+  if (status === "added") return "Accepted, not installed yet";
+  if (status === "no email") return "Needs an email on their account";
+  if (status === "not requested") return "Hasn't asked yet";
+  if (status === "no Kimono access") return "Their Kimono access has ended";
+  if (status === "removed") return "Taken off TestFlight";
+  return status;
 }
 
 /** A tester status as a short label beside the name. */
