@@ -40,11 +40,16 @@ data class CodePreview(val url: String, val port: Int) {
 @Serializable
 data class CodeTurn(val id: String, val state: String, val startedAt: Long, val endedAt: Long? = null)
 
+/** Where a task's files live in Drive: its folder in the person's Code space. */
+@Serializable
+data class CodeDrive(val spaceId: String, val folderId: String)
+
 @Serializable
 data class CodeWorkspace(
     val id: String, val title: String, val repo: CodeRepo, val base: String, val branch: String,
     val pullRequest: CodePullRequest? = null,
     val preview: CodePreview? = null,
+    val drive: CodeDrive? = null,
     val createdAt: Long = 0, val updatedAt: Long = 0, val lastSeq: Long = 0,
     val turn: CodeTurn? = null,
 ) {
@@ -184,6 +189,12 @@ class Code(private val session: Session) {
 
     suspend fun attachment(id: String, a: CodeAttachment): ByteArray =
         bytes("${ws(id)}/attachments/${a.path.removePrefix("/attachments/").encodeURLParameter()}?type=${a.type.encodeURLParameter()}")
+
+    /** Copies Drive files into the task, for the next message. Each comes back as an attachment. */
+    suspend fun fromDrive(id: String, nodes: List<String>): List<CodeAttachment> =
+        json.decodeFromString(session.call("${ws(id)}/from-drive", HttpMethod.Post, jsonBody(buildJsonObject {
+            put("nodes", kotlinx.serialization.json.JsonArray(nodes.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+        })))
 
     /** Puts a picked file in the sandbox for the next message. Up to 20 MB. */
     suspend fun attach(id: String, file: PickedFile): CodeAttachment {

@@ -223,3 +223,44 @@ func TestAPIRequiresKey(t *testing.T) {
 		t.Fatalf("%d %s", recorder.Code, recorder.Body)
 	}
 }
+
+func TestParseTree(t *testing.T) {
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	out := []byte("12\t" + sha + "\tindex.html\x00" +
+		"3\t" + sha + "\tsrc/app.js\x00" +
+		"99999999\tx\tbig.mov\x00" +
+		"5\t" + sha + "\t../escape\x00" +
+		"5\t" + sha + "\t.git/config\x00" +
+		"5\t" + sha + "\t/abs\x00" +
+		"5\tshort\tbad-sha\x00")
+	files, truncated := parseTree(out)
+	if truncated {
+		t.Fatal("not truncated")
+	}
+	if len(files) != 2 || files[0].Path != "index.html" || files[1].Path != "src/app.js" || files[0].Size != 12 {
+		t.Fatalf("got %+v", files)
+	}
+}
+
+func TestParseTreeCaps(t *testing.T) {
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	var b strings.Builder
+	for i := 0; i < maxTreeFiles+3; i++ {
+		fmt.Fprintf(&b, "1\t%s\tf%05d\x00", sha, i)
+	}
+	files, truncated := parseTree([]byte(b.String()))
+	if !truncated || len(files) != maxTreeFiles {
+		t.Fatalf("got %d files, truncated %v", len(files), truncated)
+	}
+}
+
+func TestWritablePaths(t *testing.T) {
+	for _, bad := range []string{"", ".", "../x", "a/../../x", "/etc/passwd", ".git/hooks/post-commit", "a\x00b"} {
+		if clean, ok := cleanPath(bad); ok && clean != "" {
+			t.Errorf("%q should be refused for writing, got %q", bad, clean)
+		}
+	}
+	if clean, ok := cleanPath("site/recipes/index.html"); !ok || clean != "site/recipes/index.html" {
+		t.Errorf("a normal path was refused")
+	}
+}

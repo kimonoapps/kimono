@@ -154,7 +154,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("code") { CodeScreen(code, model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.bloom) { nav.navigate(it) } }
             composable("code/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
-                WorkspaceScreen(code, platform, id) { nav.popBackStack() }
+                WorkspaceScreen(code, model.drive, platform, id, open = { nav.navigate(it) }) { nav.popBackStack() }
             }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }
             composable("space/{id}") { backStack ->

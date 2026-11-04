@@ -19,7 +19,10 @@ const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.1.0"
 
 // DefaultAgent runs Claude Code for one turn. The prompt and the session to
 // resume arrive in the environment, so nothing is quoted into a shell line.
-const DefaultAgent = `exec claude -p "$KIMONO_PROMPT" --output-format stream-json --verbose --dangerously-skip-permissions --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
+//
+// A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
+// session that can't be found starts fresh instead of failing the turn.
+const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --output-format stream-json --verbose --dangerously-skip-permissions --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
 
 // SystemPrompt is appended to Claude Code's own on every turn. The people
 // asking may not be technical, so the agent shows its work instead of

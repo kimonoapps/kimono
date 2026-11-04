@@ -98,6 +98,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import app.kimono.data.Code
+import app.kimono.data.Drive
+import app.kimono.data.DriveFolder
+import app.kimono.data.DriveNode
+import app.kimono.data.DriveSpace
 import app.kimono.data.CodeAttachment
 import app.kimono.data.CodeChanges
 import app.kimono.data.CodeEntry
@@ -339,7 +343,7 @@ private fun Picker(label: String, value: String, options: List<String>, action: 
 /* ── a workspace ── */
 
 @Composable
-fun WorkspaceScreen(code: Code, platform: Platform, id: String, back: () -> Unit) {
+fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, open: (String) -> Unit, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     var workspace by remember { mutableStateOf(code.knownWorkspaces()?.firstOrNull { it.id == id }) }
     val events = remember { mutableStateListOf<StoredCodeEvent>() }
@@ -376,6 +380,7 @@ fun WorkspaceScreen(code: Code, platform: Platform, id: String, back: () -> Unit
                     if (w?.preview != null) TextButton(onClick = { platform.openUrl(w.preview.url) }) {
                         Icon(kimonoIcon("open"), null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("Open app")
                     }
+                    if (w?.drive != null) IconButton(onClick = { open("folder/${w.drive.folderId}") }) { Icon(kimonoIcon("folder"), "Open in Drive") }
                     IconButton(onClick = { deleting = true }) { Icon(kimonoIcon("trash"), "Delete workspace") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -409,7 +414,7 @@ fun WorkspaceScreen(code: Code, platform: Platform, id: String, back: () -> Unit
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (w == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
                 else when (tab) {
-                    0 -> Chat(code, platform, w, events)
+                    0 -> Chat(code, drive, platform, w, events)
                     1 -> Files(code, w)
                     else -> Changes(code, w, events.lastOrNull()?.seq ?: 0)
                 }
@@ -419,7 +424,7 @@ fun WorkspaceScreen(code: Code, platform: Platform, id: String, back: () -> Unit
     if (deleting) AlertDialog(
         onDismissRequest = { deleting = false },
         title = { Text("Delete the sandbox?") },
-        text = { Text("The branch stays in Kimono Git.") },
+        text = { Text("Its files stay in Drive.") },
         confirmButton = { TextButton(onClick = {
             deleting = false
             scope.launch { try { code.remove(id); back() } catch (p: KimonoProblem) { problem = p.message } }
@@ -469,7 +474,7 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
 }
 
 @Composable
-private fun Chat(code: Code, platform: Platform, w: CodeWorkspace, events: List<StoredCodeEvent>) {
+private fun Chat(code: Code, drive: Drive, platform: Platform, w: CodeWorkspace, events: List<StoredCodeEvent>) {
     val items = remember(events.size) { itemsOf(events) }
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -515,7 +520,7 @@ private fun Chat(code: Code, platform: Platform, w: CodeWorkspace, events: List<
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
             ) { Text("Latest ↓", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
         }
-        Composer(code, platform, w)
+        Composer(code, drive, platform, w)
     }
     viewing?.let { (shots, at) -> ShotViewer(code, w, shots, at) { viewing = null } }
 }
@@ -701,13 +706,15 @@ private fun DoneNote(e: CodeEvent.Done) {
 
 /* ── the composer ── */
 
-private class Pending(val file: PickedFile) {
+/** A file on its way into the sandbox: picked from the phone, or already copied from Drive. */
+private class Pending(val name: String, val size: Long) {
     var attachment by mutableStateOf<CodeAttachment?>(null)
     var failed by mutableStateOf<String?>(null)
 }
 
 @Composable
-private fun Composer(code: Code, platform: Platform, w: CodeWorkspace) {
+private fun Composer(code: Code, drive: Drive, platform: Platform, w: CodeWorkspace) {
+    var choosing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var text by remember(w.id) { mutableStateOf("") }
     val pending = remember(w.id) { mutableStateListOf<Pending>() }
@@ -722,7 +729,7 @@ private fun Composer(code: Code, platform: Platform, w: CodeWorkspace) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (pending.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(pending) { p -> FileChip(p.file.name, p.failed ?: if (p.attachment != null) readableSize(p.file.size) else "Attaching…") { pending.remove(p) } }
+            items(pending) { p -> FileChip(p.name, p.failed ?: if (p.attachment != null) readableSize(p.size) else "Attaching…") { pending.remove(p) } }
         }
         androidx.compose.foundation.text.BasicTextField(
             value = text, onValueChange = { text = it },
@@ -736,12 +743,13 @@ private fun Composer(code: Code, platform: Platform, w: CodeWorkspace) {
                 scope.launch {
                     val picked = platform.pickFiles().take(10 - pending.size)
                     for (file in picked) {
-                        val item = Pending(file)
+                        val item = Pending(file.name, file.size)
                         pending += item
                         launch { try { item.attachment = code.attach(w.id, file) } catch (p: KimonoProblem) { item.failed = p.message ?: "Didn't attach" } }
                     }
                 }
             }) { Icon(kimonoIcon("clip"), "Attach files") }
+            IconButton(onClick = { choosing = true }) { Icon(kimonoIcon("folder"), "From Drive") }
             Box(Modifier.weight(1f)) { Problem(problem) }
             if (w.running) Seal("Stop", compact = true, tone = SealTone.Quiet, onClick = { scope.launch { try { code.stop(w.id) } catch (p: KimonoProblem) { problem = p.message } } })
             else Seal("Send", compact = true, busy = sending, enabled = canSend, onClick = {
@@ -752,6 +760,86 @@ private fun Composer(code: Code, platform: Platform, w: CodeWorkspace) {
                     sending = false
                 }
             })
+        }
+    }
+    if (choosing) FromDriveSheet(drive, onDismiss = { choosing = false }) { nodes ->
+        choosing = false
+        val items = nodes.map { Pending(it.name, it.size) }
+        pending += items
+        scope.launch {
+            try {
+                val attached = code.fromDrive(w.id, nodes.map { it.id })
+                items.forEachIndexed { i, item -> item.attachment = attached.getOrNull(i); if (item.attachment == null) item.failed = "Didn't attach" }
+            } catch (p: KimonoProblem) { items.forEach { it.failed = p.message ?: "Didn't attach" } }
+        }
+    }
+}
+
+/**
+ * Files from Drive for the agent: your spaces, then folders down to files,
+ * any number chosen across folders. Added files are copied into the task.
+ */
+@Composable
+private fun FromDriveSheet(drive: Drive, onDismiss: () -> Unit, onAdd: (List<DriveNode>) -> Unit) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    /* Where you are: null is the list of spaces; otherwise the folders you came down through. */
+    val trail = remember { mutableStateListOf<Pair<String, String>>() }
+    val chosen = remember { mutableStateMapOf<String, DriveNode>() }
+    val here = trail.lastOrNull()
+    val spaces by produceState<Result<List<DriveSpace>>?>(drive.knownSpaces()?.let { Result.success(it) }) { value = runCatching { drive.spaces() } }
+    val folder by produceState<Result<DriveFolder>?>(null, here?.first) { value = null; if (here != null) value = runCatching { drive.folder(here.first) } }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (here != null) IconButton(onClick = { trail.removeAt(trail.lastIndex) }) { Icon(kimonoIcon("back"), "Back") }
+                Text(here?.second ?: "From Drive", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = if (here == null) 4.dp else 0.dp))
+            }
+            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                if (here == null) {
+                    val result = spaces
+                    when {
+                        result == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
+                        result.isFailure -> item { Problem(result.exceptionOrNull()?.message ?: "Drive isn't answering.") }
+                        else -> {
+                            val list = result.getOrThrow()
+                            itemsIndexed(list, key = { _, s -> s.id }) { index, space ->
+                                SegmentedListItem(
+                                    onClick = { trail += space.rootId to space.name },
+                                    shapes = ListItemDefaults.segmentedShapes(index, list.size), colors = segmentColors(),
+                                    leadingContent = { Icon(kimonoIcon("folder"), null, modifier = Modifier.size(20.dp)) },
+                                    trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(16.dp)) },
+                                ) { Text(space.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            }
+                        }
+                    }
+                } else {
+                    val result = folder
+                    when {
+                        result == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
+                        result.isFailure -> item { Problem(result.exceptionOrNull()?.message ?: "That folder couldn't be opened.") }
+                        else -> {
+                            val list = result.getOrThrow().children.sortedWith(compareBy({ !it.isFolder }, { it.name.lowercase() }))
+                            if (list.isEmpty()) item { Text("Nothing here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+                            itemsIndexed(list, key = { _, n -> n.id }) { index, node ->
+                                val picked = chosen.containsKey(node.id)
+                                SegmentedListItem(
+                                    onClick = { if (node.isFolder) trail += node.id to node.name else if (picked) chosen.remove(node.id) else chosen[node.id] = node },
+                                    shapes = ListItemDefaults.segmentedShapes(index, list.size), colors = segmentColors(),
+                                    leadingContent = { Icon(kimonoIcon(if (node.isFolder) "folder" else "file"), null, modifier = Modifier.size(20.dp)) },
+                                    trailingContent = {
+                                        when {
+                                            node.isFolder -> Icon(kimonoIcon("go"), null, modifier = Modifier.size(16.dp))
+                                            picked -> Icon(kimonoIcon("check"), "Chosen", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                            else -> Text(readableSize(node.size), fontFamily = mono, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    },
+                                ) { Text(node.name, style = MaterialTheme.typography.bodyLarge, fontWeight = if (picked) FontWeight.SemiBold else null, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                            }
+                        }
+                    }
+                }
+            }
+            Seal(if (chosen.isEmpty()) "Choose files" else if (chosen.size == 1) "Add 1 file" else "Add ${chosen.size} files", enabled = chosen.isNotEmpty(), modifier = Modifier.fillMaxWidth(), onClick = { onAdd(chosen.values.toList()) })
         }
     }
 }

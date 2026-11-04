@@ -10,10 +10,11 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, translate, type Attachment, type CodeEvent, type TurnResult } from "./events";
 import {
-  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, setPreview, setSession, startTurn, workspaceFor,
+  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox } from "./node";
+import { shotToDrive, syncDrive } from "./drive";
 
 export * from "./model";
 export type { CodeEvent, Attachment } from "./events";
@@ -105,7 +106,11 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   try {
     await sandbox.ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
-    const response = await sandbox.turn(config, workspace, { prompt, session, attachments: attachments.map((a) => a.path) }, controller.signal);
+    /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
+    await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
+    const changed = takeDriveNews(db(), workspace.id);
+    const told = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n${prompt}` : prompt;
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path) }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -151,6 +156,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const outcome = finish(result, done, failure);
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
+    /* What the agent made goes to Drive. */
+    void syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync to Drive:", error instanceof Error ? error.message : error));
   }
 }
 
@@ -180,6 +187,7 @@ async function keepShot(config: CodeConfig, workspace: Workspace, turn: string, 
     const stored = `${newId(3)}-${name}`;
     await writeFile(join(shotDir(workspace.id), stored), bytes, { mode: 0o600 });
     record(workspace.id, turn, { kind: "image", name: stored, ...(caption ? { caption: caption.slice(0, 200) } : {}) });
+    await shotToDrive(db(), workspace, name, bytes).catch((error) => console.warn("Code couldn't put a screenshot in Drive:", error instanceof Error ? error.message : error));
   } catch (error) {
     console.warn("Code couldn't keep a screenshot:", error instanceof Error ? error.message : error);
   }
@@ -223,3 +231,4 @@ export async function forgetAttachments(workspaceId: string) {
 }
 
 export { who };
+export { fromDrive, syncDrive, taskFolder } from "./drive";

@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { ask, code, createWorkspace, db, workspaceFor, workspacesOf, type Attachment } from "@/lib/code";
+import { ask, code, createWorkspace, db, taskFolder, workspaceFor, workspacesOf, type Attachment } from "@/lib/code";
 
 /** Your workspaces, the most recently active first. */
 export async function GET() {
@@ -24,6 +24,7 @@ export async function POST(request: Request) {
     const body = read.body as { owner?: unknown; name?: unknown; base?: unknown; prompt?: unknown };
     const made = createWorkspace(db(), user.username, { repoOwner: body.owner, repoName: body.name, base: body.base, prompt: body.prompt });
     ask(config, made, user, String(body.prompt), [] as Attachment[]);
+    void taskFolder(db(), made).catch((error) => console.warn("Code couldn't make a Drive folder:", error instanceof Error ? error.message : error));
     return apiJson(workspaceFor(db(), made.id, user.username), 201);
   });
 }

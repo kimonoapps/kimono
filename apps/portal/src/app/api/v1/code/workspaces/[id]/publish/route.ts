@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { code, CodeProblem, db, published, setPullRequest, who, workspaceFor } from "@/lib/code";
+import { code, CodeProblem, db, published, setPullRequest, syncDrive, who, workspaceFor } from "@/lib/code";
 import { sandbox } from "@/lib/code/node";
 
 type Context = { params: Promise<{ id: string }> };
@@ -22,6 +22,7 @@ export async function POST(request: Request, { params }: Context) {
     const pr = await sandbox.publish(config, workspace, { title, body: String(body.body ?? "").trim() });
     if (workspace.pullRequest?.number !== pr.number) published(workspace, pr);
     setPullRequest(db(), id, pr);
+    void syncDrive(db(), config, workspace).catch(() => {});
     return apiJson(workspaceFor(db(), id, user.username));
   });
 }

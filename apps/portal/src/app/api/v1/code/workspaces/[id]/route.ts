@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { code, db, forgetAttachments, removeWorkspace, renameWorkspace, workspaceFor } from "@/lib/code";
+import { code, db, forgetAttachments, removeWorkspace, renameWorkspace, taskFolder, workspaceFor } from "@/lib/code";
 import { sandbox } from "@/lib/code/node";
 
 type Context = { params: Promise<{ id: string }> };
@@ -8,7 +8,12 @@ export async function GET(_request: Request, { params }: Context) {
   const user = await apiUser();
   if (!user) return unauthorized();
   const { id } = await params;
-  return code(user, () => apiJson(workspaceFor(db(), id, user.username)), false);
+  return code(user, async () => {
+    const workspace = workspaceFor(db(), id, user.username);
+    /* Its folder in Drive is made the first time anyone looks, so "Open in Drive" always has somewhere to go. */
+    if (!workspace.drive) await taskFolder(db(), workspace).catch((error) => console.warn("Code couldn't make a Drive folder:", error instanceof Error ? error.message : error));
+    return apiJson(workspaceFor(db(), id, user.username));
+  }, false);
 }
 
 /** Renames it: `{ title }`. */

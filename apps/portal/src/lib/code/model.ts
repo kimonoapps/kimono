@@ -25,6 +25,8 @@ export type Workspace = {
   pullRequest: { url: string; number: number } | null;
   /** The app the agent is running, open to anyone with the link while it's up. */
   preview: { url: string; port: number } | null;
+  /** Where the task's files are in Drive: the Code space, and the task's own folder there. */
+  drive: { spaceId: string; folderId: string } | null;
   createdAt: number; updatedAt: number;
   /* the last turn, which is what the list shows */
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
@@ -77,16 +79,40 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 3) {
+    /* Each person's Code space in Drive, each task's folder in it, and what both sides held when they last agreed. */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE drive_spaces (owner TEXT PRIMARY KEY, space_id TEXT NOT NULL);
+      ALTER TABLE workspaces ADD COLUMN drive_folder TEXT;
+      CREATE TABLE synced (
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        path TEXT NOT NULL, node_id TEXT NOT NULL, sha1 TEXT NOT NULL, content_version INTEGER NOT NULL,
+        PRIMARY KEY (workspace_id, path)
+      );
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '3');
+      COMMIT;
+    `);
+  }
+  if (version < 4) {
+    /* What a person changed in Drive, held until the agent's next turn is told. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE workspaces ADD COLUMN drive_news TEXT;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '4');
+      COMMIT;
+    `);
+  }
 }
 
 type WorkspaceRow = {
   id: string; owner: string; title: string; repo_owner: string; repo_name: string; base: string; branch: string;
-  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; created_at: number; updated_at: number; last_seq: number;
+  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; drive_folder: string | null; drive_space: string | null; created_at: number; updated_at: number; last_seq: number;
   turn_id: string | null; turn_state: TurnState | null; turn_started: number | null; turn_ended: number | null;
 };
 
 const selectWorkspace = `
-  SELECT w.*, t.id AS turn_id, t.state AS turn_state, t.started_at AS turn_started, t.ended_at AS turn_ended
+  SELECT w.*, (SELECT space_id FROM drive_spaces d WHERE d.owner = w.owner) AS drive_space, t.id AS turn_id, t.state AS turn_state, t.started_at AS turn_started, t.ended_at AS turn_ended
   FROM workspaces w
   LEFT JOIN turns t ON t.id = (SELECT id FROM turns WHERE workspace_id = w.id ORDER BY started_at DESC LIMIT 1)`;
 
@@ -97,6 +123,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
     session: row.session,
     pullRequest: row.pr_url && row.pr_number ? { url: row.pr_url, number: row.pr_number } : null,
     preview: row.preview_url && row.preview_port ? { url: row.preview_url, port: row.preview_port } : null,
+    drive: row.drive_space && row.drive_folder ? { spaceId: row.drive_space, folderId: row.drive_folder } : null,
     createdAt: row.created_at, updatedAt: row.updated_at, lastSeq: row.last_seq,
     turn: row.turn_id ? { id: row.turn_id, state: row.turn_state!, startedAt: row.turn_started!, endedAt: row.turn_ended } : null,
   };
@@ -201,4 +228,46 @@ export function appendEvent(db: DatabaseSync, workspaceId: string, turnId: strin
 export function eventsAfter(db: DatabaseSync, workspaceId: string, after: number, limit = 2000): StoredEvent[] {
   const rows = db.prepare("SELECT seq, turn_id, at, data FROM events WHERE workspace_id = ? AND seq > ? ORDER BY seq LIMIT ?").all(workspaceId, after, limit) as { seq: number; turn_id: string | null; at: number; data: string }[];
   return rows.map((row) => ({ seq: row.seq, turn: row.turn_id, at: row.at, event: JSON.parse(row.data) as CodeEvent }));
+}
+
+/* ── Drive ── */
+
+export function driveSpaceOf(db: DatabaseSync, owner: string): string | null {
+  return (db.prepare("SELECT space_id FROM drive_spaces WHERE owner = ?").get(owner.toLowerCase()) as { space_id?: string } | undefined)?.space_id ?? null;
+}
+
+export function setDriveSpace(db: DatabaseSync, owner: string, spaceId: string) {
+  db.prepare("INSERT INTO drive_spaces (owner, space_id) VALUES (?, ?) ON CONFLICT (owner) DO UPDATE SET space_id = excluded.space_id").run(owner.toLowerCase(), spaceId);
+}
+
+/** The task's folder changed (it was made, or made again): what was synced before no longer describes it. */
+export function setDriveFolder(db: DatabaseSync, workspaceId: string, folderId: string) {
+  db.prepare("UPDATE workspaces SET drive_folder = ? WHERE id = ?").run(folderId, workspaceId);
+  db.prepare("DELETE FROM synced WHERE workspace_id = ?").run(workspaceId);
+}
+
+export function syncedRows(db: DatabaseSync, workspaceId: string): { path: string; nodeId: string; sha1: string; contentVersion: number }[] {
+  return (db.prepare("SELECT path, node_id, sha1, content_version FROM synced WHERE workspace_id = ?").all(workspaceId) as { path: string; node_id: string; sha1: string; content_version: number }[])
+    .map((r) => ({ path: r.path, nodeId: r.node_id, sha1: r.sha1, contentVersion: r.content_version }));
+}
+
+export function recordSynced(db: DatabaseSync, workspaceId: string, path: string, row: { nodeId: string; sha1: string; contentVersion: number } | null) {
+  if (!row) db.prepare("DELETE FROM synced WHERE workspace_id = ? AND path = ?").run(workspaceId, path);
+  else db.prepare("INSERT INTO synced (workspace_id, path, node_id, sha1, content_version) VALUES (?, ?, ?, ?, ?) ON CONFLICT (workspace_id, path) DO UPDATE SET node_id = excluded.node_id, sha1 = excluded.sha1, content_version = excluded.content_version")
+    .run(workspaceId, path, row.nodeId, row.sha1, row.contentVersion);
+}
+
+/** Paths a person changed in Drive that the agent hasn't been told about yet; whoever takes them, takes them once. */
+export function noteDriveNews(db: DatabaseSync, workspaceId: string, paths: string[]) {
+  if (!paths.length) return;
+  const row = db.prepare("SELECT drive_news FROM workspaces WHERE id = ?").get(workspaceId) as { drive_news: string | null } | undefined;
+  const news = new Set<string>(row?.drive_news ? JSON.parse(row.drive_news) as string[] : []);
+  for (const path of paths) news.add(path);
+  db.prepare("UPDATE workspaces SET drive_news = ? WHERE id = ?").run(JSON.stringify([...news].slice(-500)), workspaceId);
+}
+
+export function takeDriveNews(db: DatabaseSync, workspaceId: string): string[] {
+  const row = db.prepare("SELECT drive_news FROM workspaces WHERE id = ?").get(workspaceId) as { drive_news: string | null } | undefined;
+  db.prepare("UPDATE workspaces SET drive_news = NULL WHERE id = ?").run(workspaceId);
+  return row?.drive_news ? JSON.parse(row.drive_news) as string[] : [];
 }

@@ -56,8 +56,6 @@ export const sandbox = {
 
   state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string }>),
 
-  remove: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { method: "DELETE" }).then(() => undefined),
-
   /** Starts a turn; the body is the node's NDJSON stream, read until it ends. */
   turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[] }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
     method: "POST",
@@ -76,6 +74,23 @@ export const sandbox = {
   attach: (config: CodeConfig, workspace: Workspace, name: string, body: Uint8Array) => call(config, `${at(workspace)}/attachments?name=${encodeURIComponent(name)}`, {
     method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: body as BodyInit, timeout: 2 * 60_000,
   }).then(json<{ path: string }>),
+
+  /** Every file git would keep, with its sha1: what the Drive mirror compares. */
+  tree: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/tree`).then(json<{ files: { path: string; size: number; sha1: string }[]; truncated: boolean }>),
+
+  /** A file's bytes, up to 50 MB, to copy into Drive. */
+  readFull: (config: CodeConfig, workspace: Workspace, path: string) =>
+    call(config, `${at(workspace)}/file?full=1&path=${encodeURIComponent(path)}`, { timeout: 2 * 60_000 }).then(async (r) => new Uint8Array(await r.arrayBuffer())),
+
+  /** Writes a file into the repository, as Drive hands it back. */
+  write: (config: CodeConfig, workspace: Workspace, path: string, body: Uint8Array) => call(config, `${at(workspace)}/file?path=${encodeURIComponent(path)}`, {
+    method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: body as BodyInit, timeout: 2 * 60_000,
+  }).then(() => undefined),
+
+  remove: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { method: "DELETE" }).then(() => undefined),
+
+  removeFile: (config: CodeConfig, workspace: Workspace, path: string) =>
+    call(config, `${at(workspace)}/file?path=${encodeURIComponent(path)}`, { method: "DELETE" }).then(() => undefined),
 
   /** A screenshot the agent took, from the sandbox's outbox. */
   outbox: (config: CodeConfig, workspace: Workspace, name: string) =>

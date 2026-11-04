@@ -152,6 +152,37 @@ answering for its name. Previews survive a node restart: the node keeps them in
 its state directory. A sandbox with a live preview sleeps like any other (see
 "Sleep" below); opening its link wakes it.
 
+## Code in Drive
+
+Every task's files are in Drive, so they show up wherever Drive does — the web,
+the phone, and the Files app on iPhone and Android.
+
+- Each person gets a **Code** space (made the first time they use Code, and
+  made again if they delete it). Inside: a folder per project, and in it a
+  folder per task, holding the task's files as they are in its sandbox. The
+  agent's screenshots go in the task's **Screenshots** folder.
+- **Sandbox → Drive** after every turn, after publishing, and when the Files
+  tab opens: new files are added, changed ones become a new version of the
+  same file, removed ones go to Drive's trash. Ignored files (by
+  `.gitignore`), `.git`, files over 50 MB and anything past 5,000 files stay
+  out.
+- **Drive → sandbox** before every turn and when the Files tab opens: what a
+  person added, edited or deleted in the task folder goes into the sandbox,
+  and the agent's next turn begins "Changed in Drive since last time: …".
+  If both changed the same file, Drive's copy wins and the agent's is kept
+  beside it as `<name> (agent).<ext>`.
+- Everything goes through Drive's own model, so versions, the trash and the
+  change feed the Files app syncs from all apply as they would to any file.
+- **From Drive** in the composer copies files from any space you can see
+  into the task folder and attaches them to the message. **Open in Drive** in
+  a task's header goes to its folder. Deleting a task leaves its folder.
+- Node calls used: `GET /v1/workspaces/{id}/tree` (`{ files: [{ path, size,
+  sha1 }], truncated }`), `GET …/file?full=1&path=` (up to 50 MB), `PUT
+  …/file?path=` and `DELETE …/file?path=`. Portal API for the phone: workspace
+  JSON carries `drive: { spaceId, folderId } | null`; `POST
+  /api/v1/code/workspaces/{id}/from-drive { nodes: [ids] }` answers `{
+  attachments }`.
+
 ## Inside a sandbox
 
 - Repository at `/workspace`, attachments at `/attachments`, user `agent`

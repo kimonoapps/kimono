@@ -103,3 +103,46 @@ test('a workspace remembers the app it is running, and only real links', () => {
   model.setPreview(db, w.id, null);
   assert.equal(model.workspaceFor(db, w.id, 'akram').preview, null);
 });
+
+import { agentCopyName, planSync } from '../src/lib/code/sync.ts';
+
+const row = (path, sha1 = 'a', nodeId = `n-${path}`, contentVersion = 1) => ({ path, nodeId, sha1, contentVersion });
+const here = (path, sha1 = 'a') => ({ path, size: 1, sha1 });
+const there = (path, contentVersion = 1, nodeId = `n-${path}`) => ({ path, nodeId, contentVersion });
+
+test('a first sync sends the sandbox to Drive and Drive to the sandbox', () => {
+  assert.deepEqual(planSync([], [here('index.html')], [there('photo.jpg')]), [
+    { kind: 'upload', path: 'index.html' },
+    { kind: 'put', path: 'photo.jpg', nodeId: 'n-photo.jpg' },
+  ]);
+});
+
+test('nothing moves when nothing changed', () => {
+  assert.deepEqual(planSync([row('a.txt')], [here('a.txt')], [there('a.txt')]), []);
+});
+
+test("the agent's edits become new versions in Drive, and its deletions go to Drive's trash", () => {
+  assert.deepEqual(planSync([row('a.txt'), row('b.txt')], [here('a.txt', 'b')], [there('a.txt'), there('b.txt')]), [
+    { kind: 'update', path: 'a.txt', nodeId: 'n-a.txt' },
+    { kind: 'trash', path: 'b.txt', nodeId: 'n-b.txt' },
+  ]);
+});
+
+test("a person's edits and deletions in Drive come into the sandbox", () => {
+  assert.deepEqual(planSync([row('a.txt'), row('b.txt')], [here('a.txt'), here('b.txt')], [there('a.txt', 2)]), [
+    { kind: 'put', path: 'a.txt', nodeId: 'n-a.txt' },
+    { kind: 'delete', path: 'b.txt' },
+  ]);
+});
+
+test('when both sides changed, Drive wins and the agent keeps a copy', () => {
+  assert.deepEqual(planSync([row('a.txt')], [here('a.txt', 'b')], [there('a.txt', 2)]), [{ kind: 'conflict', path: 'a.txt', nodeId: 'n-a.txt' }]);
+  assert.deepEqual(planSync([], [here('new.txt')], [there('new.txt')]), [{ kind: 'conflict', path: 'new.txt', nodeId: 'n-new.txt' }]);
+  /* Edited by the agent, deleted by a person: the deletion stands, the agent's copy is kept. */
+  assert.deepEqual(planSync([row('a.txt')], [here('a.txt', 'b')], []), [{ kind: 'conflict', path: 'a.txt', nodeId: null }]);
+  /* Deleted by the agent, edited by a person: the edit comes back. */
+  assert.deepEqual(planSync([row('a.txt')], [], [there('a.txt', 2)]), [{ kind: 'put', path: 'a.txt', nodeId: 'n-a.txt' }]);
+  assert.deepEqual(planSync([row('a.txt')], [], []), [{ kind: 'forget', path: 'a.txt' }]);
+  assert.equal(agentCopyName('site/index.html'), 'site/index (agent).html');
+  assert.equal(agentCopyName('Makefile'), 'Makefile (agent)');
+});

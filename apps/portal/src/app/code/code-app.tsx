@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { cx, Seal } from "@kimono/ui";
+import { CrossingSeal } from "@/components/crossing";
 import {
-  code, elapsed, isPicture, readableSize, when,
+  code, drive, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace,
 } from "./api";
 import { Icon } from "./icons";
@@ -261,6 +262,7 @@ function WorkspaceView({ workspace, tab, path, blocked, onChange, now }: { works
       </div>
       <div className="cd-ws-acts">
         {workspace.preview ? <Seal type="button" compact onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</Seal> : null}
+        {workspace.drive ? <CrossingSeal compact tone="quiet" kind="hanafubuki" href={`/drive?space=${workspace.drive.spaceId}&folder=${workspace.drive.folderId}`}><Icon name="folder" />Open in Drive</CrossingSeal> : null}
         {workspace.pullRequest
           ? <button type="button" className="cd-pr" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button>
           : null}
@@ -268,7 +270,7 @@ function WorkspaceView({ workspace, tab, path, blocked, onChange, now }: { works
           {publishing ? "Pushing…" : workspace.pullRequest ? "Push changes" : "Open pull request"}
         </Seal>
         {confirmDelete
-          ? <span className="cd-confirm"><span>Delete the sandbox? The branch stays.</span><Seal type="button" compact tone="danger" onClick={() => void remove()}>Delete</Seal><Seal type="button" compact tone="quiet" onClick={() => setConfirmDelete(false)}>Keep</Seal></span>
+          ? <span className="cd-confirm"><span>Delete the sandbox? Its files stay in Drive.</span><Seal type="button" compact tone="danger" onClick={() => void remove()}>Delete</Seal><Seal type="button" compact tone="quiet" onClick={() => setConfirmDelete(false)}>Keep</Seal></span>
           : <button type="button" className="cd-iconbutton" aria-label="Delete workspace" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>}
       </div>
     </header>
@@ -502,7 +504,7 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
 
 /* ── the composer: what to say next, and what to show it ── */
 
-type Pending = { id: string; file: File; preview: string | null; attachment?: Attachment; failed?: string };
+type Pending = { id: string; name: string; size: number; preview: string | null; attachment?: Attachment; failed?: string };
 
 function Composer({ workspace, running, blocked }: { workspace: Workspace; running: boolean; blocked: string | null }) {
   const draftKey = `kimono-code-draft-${workspace.id}`;
@@ -513,6 +515,7 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
   const [sending, setSending] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const [choosing, setChoosing] = useState(false);
 
   useEffect(() => { try { if (text) sessionStorage.setItem(draftKey, text); else sessionStorage.removeItem(draftKey); } catch { /* not kept */ } }, [text, draftKey]);
   useEffect(() => () => { for (const p of pending) if (p.preview) URL.revokeObjectURL(p.preview); }, [pending]);
@@ -527,11 +530,11 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
   }, [text]);
 
   const add = useCallback((files: File[]) => {
-    const fresh = files.slice(0, 10).map((file): Pending => ({ id: crypto.randomUUID(), file, preview: isPicture(file.type) ? URL.createObjectURL(file) : null }));
-    setPending((list) => [...list, ...fresh].slice(0, 10));
-    for (const item of fresh) {
-      if (item.file.size > 20 * 1024 * 1024) { setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: "Over 20 MB" } : p)); continue; }
-      code.attach(workspace.id, item.file).then(
+    const fresh = files.slice(0, 10).map((file) => ({ file, item: { id: crypto.randomUUID(), name: file.name, size: file.size, preview: isPicture(file.type) ? URL.createObjectURL(file) : null } as Pending }));
+    setPending((list) => [...list, ...fresh.map((f) => f.item)].slice(0, 10));
+    for (const { file, item } of fresh) {
+      if (file.size > 20 * 1024 * 1024) { setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: "Over 20 MB" } : p)); continue; }
+      code.attach(workspace.id, file).then(
         (attachment) => setPending((list) => list.map((p) => p.id === item.id ? { ...p, attachment } : p)),
         (error) => setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: problemText(error, "Didn't attach") } : p)),
       );
@@ -560,9 +563,9 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
     {pending.length ? <div className="cd-pending">{pending.map((p) => <span key={p.id} className={cx("cd-filechip", !p.attachment && !p.failed && "is-sending", p.failed && "is-failed")}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {p.preview ? <img src={p.preview} alt="" /> : <Icon name="file" />}
-      <span>{p.file.name}</span>
-      <small>{p.failed ?? (p.attachment ? readableSize(p.file.size) : "Attaching…")}</small>
-      <button type="button" aria-label={`Remove ${p.file.name}`} onClick={() => setPending((list) => list.filter((x) => x.id !== p.id))}><Icon name="close" /></button>
+      <span>{p.name}</span>
+      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : "Attaching…")}</small>
+      <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPending((list) => list.filter((x) => x.id !== p.id))}><Icon name="close" /></button>
     </span>)}</div> : null}
     <textarea ref={field} value={text} rows={1} aria-label="Message"
       placeholder={blocked ? blocked : running ? "The agent is working…" : "Ask for a change, or reply"}
@@ -573,6 +576,7 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
     <div className="cd-composer-bar">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <button type="button" className="cd-iconbutton" aria-label="Attach files" disabled={Boolean(blocked)} onClick={() => picker.current?.click()}><Icon name="clip" /></button>
+      {workspace.drive ? <button type="button" className="cd-textbutton cd-fromdrive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" />From Drive</button> : null}
       {problem ? <span className="cd-problem" role="alert">{problem}</span> : <span className="cd-faint cd-hint">Drop or paste files to attach them</span>}
       <span className="cd-grow" />
       {running
@@ -580,7 +584,61 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
         : <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Meta+Enter">Send<kbd>⌘↵</kbd></Seal>}
     </div>
     {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
+    {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={async (items) => {
+      setChoosing(false);
+      const shown = items.map((item): Pending => ({ id: item.id, name: item.name, size: item.size, preview: null }));
+      setPending((list) => [...list, ...shown].slice(0, 10));
+      try {
+        const attached = await code.fromDrive(workspace.id, items.map((i) => i.id));
+        setPending((list) => list.map((p) => {
+          const at = shown.findIndex((s) => s.id === p.id);
+          if (at < 0) return p;
+          const attachment = attached[at];
+          return { ...p, attachment, preview: attachment && isPicture(attachment.type) ? code.attachmentUrl(workspace.id, attachment) : null };
+        }));
+      } catch (error) {
+        setPending((list) => list.map((p) => shown.some((s) => s.id === p.id) ? { ...p, failed: problemText(error, "Didn't attach") } : p));
+      }
+    }} /> : null}
   </div>;
+}
+
+/** Files from Drive: spaces, then folders, then files to tick. */
+function DrivePicker({ onClose, onPick }: { onClose: () => void; onPick: (items: DriveItem[]) => void }) {
+  const box = useRef<HTMLDialogElement>(null);
+  const [spaces, setSpaces] = useState<DriveSpace[] | null>(null);
+  const [at, setAt] = useState<{ folder: DriveItem; path: DriveItem[]; children: DriveItem[] } | null>(null);
+  const [chosen, setChosen] = useState<Map<string, DriveItem>>(new Map());
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { box.current?.showModal(); }, []);
+  useEffect(() => { drive.spaces().then(setSpaces, (error) => setProblem(problemText(error))); }, []);
+  const open = (id: string) => drive.folder(id).then((f) => { setAt(f); setProblem(null); }, (error) => setProblem(problemText(error)));
+  const toggle = (item: DriveItem) => setChosen((m) => { const next = new Map(m); if (next.has(item.id)) next.delete(item.id); else if (next.size < 10) next.set(item.id, item); return next; });
+
+  return <dialog ref={box} className="cd-drivepick" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+    <header>
+      <b>From Drive</b>
+      <nav className="cd-drivepick-path">
+        <button type="button" onClick={() => setAt(null)}>Spaces</button>
+        {at ? [...at.path, at.folder].map((step) => <span key={step.id}><Icon name="chevron" /><button type="button" onClick={() => void open(step.id)}>{step.name}</button></span>) : null}
+      </nav>
+      <button type="button" className="cd-iconbutton" aria-label="Close" onClick={() => box.current?.close()}><Icon name="close" /></button>
+    </header>
+    <ul>
+      {!at ? (spaces ?? []).map((space) => <li key={space.id}><button type="button" onClick={() => void open(space.rootId)}><Icon name="space" /><span>{space.name}</span><Icon name="chevron" /></button></li>)
+        : at.children.map((item) => item.kind === "folder"
+          ? <li key={item.id}><button type="button" onClick={() => void open(item.id)}><Icon name="folder" /><span>{item.name}</span><Icon name="chevron" /></button></li>
+          : <li key={item.id}><label><input type="checkbox" checked={chosen.has(item.id)} onChange={() => toggle(item)} /><Icon name="file" /><span>{item.name}</span><small>{readableSize(item.size)}</small></label></li>)}
+      {spaces === null && !problem ? <li className="cd-faint cd-drivepick-note">…</li> : null}
+      {at && !at.children.length ? <li className="cd-faint cd-drivepick-note">Nothing here.</li> : null}
+    </ul>
+    <footer>
+      {problem ? <span className="cd-problem">{problem}</span> : <span className="cd-faint">{chosen.size ? `${chosen.size} chosen` : "Tick the files to add"}</span>}
+      <span className="cd-grow" />
+      <Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Cancel</Seal>
+      <Seal type="button" compact disabled={!chosen.size} onClick={() => onPick([...chosen.values()])}>Add</Seal>
+    </footer>
+  </dialog>;
 }
 
 /* ── files ── */

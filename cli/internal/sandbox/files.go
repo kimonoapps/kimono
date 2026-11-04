@@ -13,6 +13,8 @@ import (
 
 const (
 	maxFileBytes       = 2 << 20
+	maxSyncBytes       = 50 << 20
+	maxTreeFiles       = 5000
 	maxAttachmentBytes = 20 << 20
 	maxDiffBytes       = 1 << 20
 )
@@ -114,8 +116,13 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, id string) e
 	if err != nil {
 		return err
 	}
+	/* Viewing caps at 2 MB; copying a file out to Drive (?full=1) at 50 MB. */
+	limit := maxFileBytes
+	if r.URL.Query().Get("full") == "1" {
+		limit = maxSyncBytes
+	}
 	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c",
-		`[ -f "$1" ] || exit 3; [ "$(stat -c %s -- "$1")" -le `+strconv.Itoa(maxFileBytes)+` ] || exit 4; cat -- "$1"`, "file", "./"+file)
+		`[ -f "$1" ] || exit 3; [ "$(stat -c %s -- "$1")" -le `+strconv.Itoa(limit)+` ] || exit 4; cat -- "$1"`, "file", "./"+file)
 	switch exitCode(err) {
 	case 3:
 		return problem(404, "That file isn't in this workspace.")
@@ -129,6 +136,122 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, id string) e
 	w.Header().Set("Content-Length", strconv.Itoa(len(out)))
 	w.WriteHeader(200)
 	_, _ = w.Write(out)
+	return nil
+}
+
+// handlePutFile writes a file into the repository, as Drive hands it back:
+// parents made as needed, owned by the agent.
+func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request, id string) error {
+	file, ok := cleanPath(r.URL.Query().Get("path"))
+	if !ok || file == "" {
+		return problem(400, "That path isn't in this workspace.")
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxSyncBytes+1))
+	if err != nil {
+		return problem(400, "The file couldn't be read.")
+	}
+	if len(body) > maxSyncBytes {
+		return problem(413, "Files can be at most 50 MB.")
+	}
+	space, err := s.running(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	_, err = s.exec(r.Context(), space, nil, bytes.NewReader(body), "sh", "-c",
+		`[ ! -d "$1" ] || exit 3; mkdir -p -- "$(dirname -- "$1")" && cat > "$1"`, "put", "./"+file)
+	if exitCode(err) == 3 {
+		return problem(409, "A folder already has that name.")
+	}
+	if err != nil {
+		return err
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+// handleDeleteFile removes one file. Folders are left alone; an empty one is harmless.
+func (s *Server) handleDeleteFile(w http.ResponseWriter, r *http.Request, id string) error {
+	file, ok := cleanPath(r.URL.Query().Get("path"))
+	if !ok || file == "" {
+		return problem(400, "That path isn't in this workspace.")
+	}
+	space, err := s.running(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	_, err = s.exec(r.Context(), space, nil, nil, "sh", "-c", `[ ! -d "$1" ] || exit 3; rm -f -- "$1"`, "delete", "./"+file)
+	if exitCode(err) == 3 {
+		return problem(409, "That's a folder.")
+	}
+	if err != nil {
+		return err
+	}
+	w.WriteHeader(204)
+	return nil
+}
+
+type treeFile struct {
+	Path string `json:"path"`
+	Size int64  `json:"size"`
+	Sha1 string `json:"sha1"`
+}
+
+// parseTree reads `size\tsha1\tpath\0` records, keeping only paths the
+// file endpoints would accept, and stops at maxTreeFiles.
+func parseTree(out []byte) ([]treeFile, bool) {
+	files := []treeFile{}
+	for _, record := range bytes.Split(out, []byte{0}) {
+		fields := strings.SplitN(string(record), "\t", 3)
+		if len(fields) != 3 {
+			continue
+		}
+		clean, ok := cleanPath(fields[2])
+		if !ok || clean == "" || clean != fields[2] || len(fields[1]) != 40 {
+			continue
+		}
+		size, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil || size > maxSyncBytes {
+			continue
+		}
+		if len(files) == maxTreeFiles {
+			return files, true
+		}
+		files = append(files, treeFile{Path: clean, Size: size, Sha1: fields[1]})
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	return files, false
+}
+
+// treeScript lists every file git would keep (tracked and untracked, not
+// ignored), with its size and a sha1 of its bytes. Files over the sync limit
+// are listed with an impossible size so they are skipped, not hashed.
+const treeScript = `git ls-files -z -co --exclude-standard | xargs -0 -r sh -c '
+for f; do
+  [ -f "$f" ] && [ ! -L "$f" ] || continue
+  n=$(stat -c %s -- "$f")
+  if [ "$n" -gt ` + "52428800" + ` ]; then printf "%s\t%s\t%s\0" "$n" x "$f"; continue; fi
+  printf "%s\t%s\t%s\0" "$n" "$(sha1sum -- "$f" | cut -c1-40)" "$f"
+done' tree | head -c 4000000`
+
+func (s *Server) handleTree(w http.ResponseWriter, r *http.Request, id string) error {
+	space, err := s.running(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c", treeScript)
+	if err != nil {
+		return err
+	}
+	/* At the output cap the last record may be cut short: drop it rather than sync half a name. */
+	cut := len(out) >= 4000000
+	if cut {
+		if i := bytes.LastIndexByte(out, 0); i >= 0 {
+			out = out[:i]
+		}
+	}
+	files, truncated := parseTree(out)
+	truncated = truncated || cut
+	writeJSON(w, 200, map[string]any{"files": files, "truncated": truncated})
 	return nil
 }
 

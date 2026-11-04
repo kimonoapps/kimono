@@ -8,6 +8,7 @@ export type Workspace = {
   id: string; title: string; repo: { owner: string; name: string }; base: string; branch: string;
   pullRequest: { url: string; number: number } | null;
   preview: { url: string; port: number } | null;
+  drive: { spaceId: string; folderId: string } | null;
   createdAt: number; updatedAt: number; lastSeq: number;
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
 };
@@ -66,6 +67,7 @@ export const code = {
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
   ask: (id: string, text: string, attachments: Attachment[]) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments })),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
+  fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),
   stopPreview: (id: string) => call<void>(`${ws(id)}/preview`, { method: "DELETE" }),
   shotUrl: (id: string, name: string) => `${base}${ws(id)}/shots/${encodeURIComponent(name)}`,
   files: (id: string, path: string) => call<{ path: string; entries: Entry[] }>(`${ws(id)}/files?path=${encodeURIComponent(path)}`),
@@ -114,3 +116,20 @@ export function when(at: number, now = Date.now()) {
   if (hours < 24) return `${hours}h`;
   return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
+
+/* Drive, as the "From Drive" picker reads it: the same /api/v1/drive the Drive page uses. */
+export type DriveSpace = { id: string; name: string; rootId: string; role: string };
+export type DriveItem = { id: string; kind: "folder" | "file"; name: string; size: number; mime: string | null };
+
+async function driveCall<T>(path: string): Promise<T> {
+  const response = await fetch(`/api/v1/drive${path}`, { credentials: "same-origin" }).catch(() => null);
+  if (!response) throw new CodeProblem("Kimono isn't answering.");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new CodeProblem((body as { error?: string }).error || "Drive didn't answer.", response.status);
+  return body as T;
+}
+
+export const drive = {
+  spaces: () => driveCall<{ spaces: DriveSpace[] }>("/spaces").then((r) => r.spaces),
+  folder: (id: string) => driveCall<{ folder: DriveItem; path: DriveItem[]; children: DriveItem[] }>(`/nodes/${encodeURIComponent(id)}`),
+};
