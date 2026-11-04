@@ -1,0 +1,517 @@
+<meta charset="utf-8">
+<title>Kimono M3 Redesigns</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Maru+Gothic:wght@400;500;700&display=swap">
+<style>
+/* Layout: three full app screens (Drive, Account, Tools) stacked, each in a
+   window frame, using only specimen 11's vocabulary: M3 colour roles, type,
+   corner scale and motion; Kata seals, Choice, blooms, hold, urushi pane.
+   Kimono is one light theme, so this page is light only. */
+:root {
+  color-scheme: light;
+  --primary: #a84d63; --on-primary: #fff;
+  --primary-container: #ffd9df; --on-primary-container: #7e3448;
+  --secondary: #74565c; --secondary-container: #f6e0e2; --on-secondary-container: #4e2b37;
+  --tertiary: #5c7150; --tertiary-container: #dce8cf; --on-tertiary-container: #3e5236;
+  --surface: #fffbf7; --on-surface: #221a17; --on-surface-variant: #54443f;
+  --sc-lowest: #fff; --sc-low: #fcf4ef; --sc: #f7eee8; --sc-high: #f1e8e2; --sc-highest: #ebe2dc;
+  --outline-variant: #d9c2bc;
+  --plum: #4e2b37;
+  --urushi: #2a1d22; --urushi-text: #f3e9e0; --urushi-dim: #a8969c; --urushi-string: #e9c8a8; --urushi-key: #d77b8c;
+  --page: #efe6e0;
+
+  --display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --sans: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --r-xs: 4px; --r-s: 8px; --r-m: 12px; --r-l: 16px; --r-xl: 28px; --r-full: 999px;
+  --spring: cubic-bezier(.38, 1.21, .22, 1);
+  --spring-fast: cubic-bezier(.42, 1.67, .21, .9);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--on-surface); font: 400 16px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+h1, h2, h3 { margin: 0; font-family: var(--display); font-weight: 600; color: var(--plum); text-wrap: balance; }
+p { margin: 0; }
+code { font-family: var(--mono); }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 48px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 64px; }
+.intro { display: grid; gap: 12px; max-width: 70ch; }
+.intro h1 { font-size: clamp(34px, 5vw, 48px); line-height: 1.1; letter-spacing: -.02em; }
+.intro p { color: var(--on-surface-variant); font-size: 18px; }
+.eyebrow { font: 700 13px/1.2 var(--sans); letter-spacing: .04em; color: var(--primary); }
+
+.proof { display: grid; gap: 18px; }
+.proof-head { display: grid; gap: 6px; max-width: 75ch; }
+.proof-head h2 { font-size: 30px; line-height: 1.15; }
+.proof-head p { color: var(--on-surface-variant); }
+.scroller { overflow-x: auto; border-radius: 22px; box-shadow: 0 40px 80px -50px rgba(78, 43, 55, .55), 0 0 0 1px rgba(78, 43, 55, .08); }
+.screen { min-width: 1080px; background: var(--surface); display: grid; grid-template-rows: auto 1fr; }
+.notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.notes div { background: var(--sc-low); border-radius: var(--r-m); padding: 12px 14px; font-size: 14px; color: var(--on-surface-variant); }
+.notes b { display: block; font-size: 12px; letter-spacing: .04em; color: var(--secondary); margin-bottom: 2px; }
+@media (max-width: 760px) { .notes { grid-template-columns: 1fr; } }
+
+/* ───── shell ───── */
+.bar { display: flex; align-items: center; gap: 28px; padding: 14px 28px; background: var(--surface); }
+.brand { display: flex; align-items: center; gap: 10px; font: 600 24px/1 var(--display); color: var(--plum); }
+.brand svg { width: 30px; height: 30px; color: var(--primary); }
+.nav { display: flex; gap: 4px; }
+.nav a { padding: 9px 16px; border-radius: var(--r-full); font: 700 15px/1 var(--sans); color: var(--on-surface-variant); text-decoration: none; transition: background-color .2s; }
+.nav a:hover { background: var(--sc-high); }
+.nav a[aria-current] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.bar .spacer { flex: 1; }
+.portrait { display: grid; place-items: center; flex: none; font: 600 18px/1 var(--display); color: var(--on-primary-container); background: var(--primary-container); clip-path: url(#scallop); }
+.portrait.s { width: 30px; height: 30px; font-size: 14px; }
+.portrait.m { width: 40px; height: 40px; }
+.portrait.l { width: 112px; height: 112px; font-size: 52px; }
+.portrait.moss { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.portrait.plum { background: var(--secondary-container); color: var(--on-secondary-container); }
+.portrait.sand { background: #f3e1c7; color: #6a4a22; }
+
+.body { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; padding: 8px 28px 28px; }
+.rail { display: grid; gap: 4px; align-content: start; }
+.rail .group { font: 700 13px/1 var(--sans); letter-spacing: .03em; color: var(--on-surface-variant); padding: 18px 14px 8px; }
+.rail a { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; border-radius: var(--r-full); text-decoration: none; color: var(--on-surface); font-weight: 500; transition: background-color .2s; }
+.rail a:hover { background: var(--sc-high); }
+.rail a[aria-current] { background: var(--secondary-container); color: var(--on-secondary-container); font-weight: 700; }
+.rail a .meta { margin-left: auto; font-size: 13px; color: var(--on-surface-variant); font-weight: 500; }
+.rail svg.bloom { width: 24px; height: 24px; flex: none; }
+.rail .ico { width: 24px; height: 24px; flex: none; color: var(--on-surface-variant); }
+.panel { background: var(--sc-low); border-radius: var(--r-xl); padding: 28px; display: grid; gap: 22px; align-content: start; min-width: 0; }
+
+/* ───── seals (from specimen 11) ───── */
+.seal { --seal-base: #7e3448; position: relative; overflow: hidden; isolation: isolate; min-height: 44px; padding: 0 20px; border: 0; border-radius: 2px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: 700 14px/1 var(--sans); letter-spacing: .04em; cursor: pointer; white-space: nowrap; background: var(--primary); color: var(--on-primary); box-shadow: inset 0 -3px 0 var(--seal-base); transition: transform .3s var(--spring-fast), box-shadow .35s var(--spring), background-color .2s ease; }
+.seal::before { content: ""; position: absolute; inset: 4px; z-index: 1; pointer-events: none; border: 1px solid rgba(255, 253, 248, .34); border-radius: 0; }
+.seal:hover { background: #973f55; }
+.seal:active { transform: translateY(2px); box-shadow: inset 0 0 0 var(--seal-base); transition-duration: .1s; }
+.seal:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.seal.quiet { --seal-base: #d6c3b8; background: var(--sc-highest); color: var(--on-surface); }
+.seal.quiet::before { display: none; }
+.seal.quiet:hover { background: #e3d6cd; color: var(--plum); }
+.seal.tonal { --seal-base: #e7aab6; background: var(--primary-container); color: var(--on-primary-container); }
+.seal.tonal::before { border-color: rgba(126, 52, 72, .18); }
+.seal.tonal:hover { background: #fccbd3; }
+.seal svg { width: 18px; height: 18px; position: relative; z-index: 2; }
+.seal > span { position: relative; z-index: 2; }
+.txt { min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--r-full); background: transparent; color: var(--primary); font: 700 14px/1 var(--sans); cursor: pointer; }
+.txt:hover { background: var(--secondary-container); }
+
+/* ───── fields and choice ───── */
+.field { display: grid; gap: 2px; padding: 8px 16px; min-height: 56px; border-radius: var(--r-m); background: var(--sc-highest); box-shadow: inset 0 -2px 0 transparent; }
+.field small { font: 700 12px/1.2 var(--sans); letter-spacing: .03em; color: var(--on-surface-variant); }
+.field input { border: 0; background: transparent; padding: 0; font-size: 16px; outline: 0; min-width: 0; }
+.field:focus-within { box-shadow: inset 0 -2px 0 var(--primary); background: var(--sc-high); border-radius: var(--r-m) var(--r-m) var(--r-xs) var(--r-xs); }
+.field:focus-within small { color: var(--primary); }
+.field.mono input { font-family: var(--mono); font-size: 14px; }
+.search { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 18px; border-radius: var(--r-full); background: var(--sc-highest); color: var(--on-surface-variant); flex: 1; max-width: 420px; }
+.search svg { width: 20px; height: 20px; }
+.search input { flex: 1; border: 0; background: transparent; outline: 0; font-size: 15px; min-width: 0; }
+.chip-choice { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px 0 14px; border: 0; border-radius: var(--r-s); background: var(--secondary-container); color: var(--on-secondary-container); font-size: 14px; cursor: pointer; }
+.chip-choice small { font-size: 13px; opacity: .75; }
+.chip-choice b { font-weight: 700; }
+.chip-choice i { width: 7px; height: 7px; margin: -3px 4px 0 2px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+
+/* ───── Drive ───── */
+.space-head { display: flex; align-items: center; gap: 18px; }
+.crest { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; background: var(--primary-container); flex: none; }
+.crest svg { width: 40px; height: 40px; color: var(--primary); }
+.space-head h2 { font-size: 34px; line-height: 1.1; letter-spacing: -.01em; }
+.space-head .sub { display: flex; align-items: center; gap: 10px; color: var(--on-surface-variant); font-size: 14px; margin-top: 4px; }
+.stack { display: flex; }
+.stack .portrait { margin-left: -6px; box-shadow: none; }
+.stack .portrait:first-child { margin-left: 0; }
+.space-head .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toolbar .end { margin-left: auto; display: flex; gap: 10px; }
+.files { background: var(--sc-lowest); border-radius: var(--r-l); padding: 6px; }
+.files .hd, .files .row { display: grid; grid-template-columns: minmax(0, 1fr) 150px 130px 90px; align-items: center; gap: 16px; padding: 0 16px 0 22px; }
+.files .hd { min-height: 40px; font: 700 13px/1 var(--sans); color: var(--on-surface-variant); }
+.files .row { position: relative; min-height: 56px; border-radius: var(--r-l); transition: background-color .2s, border-radius .35s var(--spring); cursor: default; }
+.files .row:hover { background: var(--sc-low); }
+.files .row.sel { background: var(--secondary-container); color: var(--on-secondary-container); }
+.files .row.sel::before { content: ""; position: absolute; left: 8px; top: 50%; width: 4px; height: 20px; margin-top: -10px; border-radius: 1px; background: var(--primary); }
+.files .name { display: flex; align-items: center; gap: 14px; font-weight: 500; min-width: 0; }
+.files .name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ficon { width: 36px; height: 36px; flex: none; border-radius: var(--r-m); display: grid; place-items: center; font: 700 11px/1 var(--sans); letter-spacing: .03em; }
+.ficon.folder { background: #f3e1c7; color: #6a4a22; }
+.ficon.pdf { background: var(--primary-container); color: var(--on-primary-container); }
+.ficon.doc { background: #dfe5ef; color: #354a6a; }
+.ficon.img { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.ficon.md { background: var(--sc-highest); color: var(--on-surface-variant); }
+.ficon svg { width: 20px; height: 20px; }
+.files .who { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.files .dim { font-size: 14px; color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.files .row.sel .dim { color: inherit; }
+.drive-main { position: relative; padding-bottom: 104px; }
+.upload-tray { position: absolute; right: 24px; bottom: 24px; width: 340px; background: var(--sc-lowest); border-radius: var(--r-l); padding: 16px 18px; display: grid; gap: 10px; box-shadow: 0 1px 2px rgba(78, 43, 55, .12), 0 16px 40px -12px rgba(78, 43, 55, .35); }
+.upload-tray header { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
+.upload-tray header b { font-weight: 700; }
+.upload-tray header span { font-size: 13px; color: var(--on-surface-variant); font-variant-numeric: tabular-nums; }
+.wave { width: 100%; height: 16px; display: block; }
+.selection-bar { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 18px; border-radius: var(--r-full); background: var(--plum); color: #fff; width: fit-content; font-size: 14px; }
+.selection-bar b { margin-right: 8px; }
+.selection-bar button { min-height: 36px; padding: 0 14px; border: 0; border-radius: var(--r-full); background: transparent; color: #f6dfe4; font-weight: 700; font-size: 14px; cursor: pointer; }
+.selection-bar button:hover { background: rgba(255, 255, 255, .12); }
+
+/* ───── Account ───── */
+.acc-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.card { background: var(--sc-lowest); border-radius: var(--r-xl); padding: 26px; display: grid; gap: 18px; align-content: start; }
+.card h3 { font-size: 22px; line-height: 1.2; }
+.card .lead { color: var(--on-surface-variant); font-size: 15px; }
+.pic { display: flex; align-items: center; gap: 22px; }
+.pic .portrait.l { position: relative; }
+.pic-actions { display: grid; gap: 10px; justify-items: start; }
+.pic-actions p { font-size: 14px; color: var(--on-surface-variant); }
+.fields { display: grid; gap: 12px; }
+.form-end { display: flex; justify-content: flex-end; gap: 8px; }
+.devices { display: grid; gap: 6px; }
+.device { display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 10px 14px; border-radius: var(--r-l); background: var(--sc-low); }
+.device .dico { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-container); color: var(--on-primary-container); flex: none; }
+.device .dico svg { width: 20px; height: 20px; }
+.device b { display: block; font-weight: 700; font-size: 15px; }
+.device small { font-size: 13px; color: var(--on-surface-variant); }
+.device .here { margin-left: auto; padding: 4px 10px; border-radius: var(--r-s); background: var(--tertiary-container); color: var(--on-tertiary-container); font: 700 12px/1.2 var(--sans); }
+.hold { min-width: 100%; min-height: 52px; font-size: 15px; }
+.hold .fill { position: absolute; inset: 0; z-index: 0; background: #d0606f; transform-origin: left; transform: scaleX(0); }
+.hold.done { background: #b9465a; color: #fff; }
+.hold .petal { position: absolute; z-index: 1; width: 9px; height: 7px; border-radius: 60% 0 60% 0; background: #fff; pointer-events: none; opacity: .9; }
+.saved { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--r-full); background: var(--tertiary-container); color: var(--on-tertiary-container); font-size: 14px; font-weight: 700; width: fit-content; }
+.saved::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tertiary); }
+
+/* ───── Tools ───── */
+.coll { display: grid; gap: 2px; padding: 12px 14px; border-radius: var(--r-l); text-decoration: none; color: inherit; transition: background-color .2s; }
+.coll:hover { background: var(--sc-high); }
+.coll[aria-current] { background: var(--secondary-container); color: var(--on-secondary-container); }
+.coll b { font-weight: 700; }
+.coll small { font-size: 13px; color: var(--on-surface-variant); }
+.keycard { margin-top: 14px; border-radius: var(--r-l); padding: 16px; background: var(--urushi); color: var(--urushi-text); display: grid; gap: 10px; }
+.keycard small { font: 700 12px/1 var(--sans); letter-spacing: .04em; color: var(--urushi-key); }
+.keycard code { font-size: 13px; color: var(--urushi-dim); }
+.keycard .seal.quiet { background: #3a2a30; color: var(--urushi-text); --seal-base: #1b1215; min-height: 38px; font-size: 13px; }
+.api-head { display: flex; align-items: flex-start; gap: 18px; }
+.api-head h2 { font-size: 34px; line-height: 1.1; }
+.api-head p { color: var(--on-surface-variant); margin-top: 6px; max-width: 60ch; }
+.api-head .end { margin-left: auto; display: flex; gap: 8px; align-items: center; flex: none; }
+.status { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: var(--r-s); background: var(--tertiary-container); color: var(--on-tertiary-container); font: 700 13px/1 var(--sans); }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tertiary); }
+.ops { display: grid; gap: 10px; }
+.op { background: var(--sc-lowest); border-radius: var(--r-l); }
+.op > header { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 0 18px; }
+.method { padding: 4px 8px; border-radius: var(--r-xs); background: var(--sc-high); font: 700 12px/1 var(--mono); color: var(--on-surface-variant); }
+.op header b { font-weight: 700; }
+.op header code { font-size: 13px; color: var(--on-surface-variant); }
+.op header .cue { margin-left: auto; width: 8px; height: 8px; border-right: 2px solid var(--on-surface-variant); border-bottom: 2px solid var(--on-surface-variant); transform: rotate(45deg); margin-top: -4px; }
+.op.open header .cue { transform: rotate(-135deg); margin-top: 4px; }
+.op.open { box-shadow: 0 0 0 2px var(--primary-container); }
+.op:not(.open) .op-body { display: none; }
+.op-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; padding: 0 18px 18px; }
+.op-body .side { display: grid; gap: 12px; align-content: start; }
+.op-body .label { font: 700 13px/1 var(--sans); letter-spacing: .03em; color: var(--secondary); }
+.param-desc { font-size: 13px; color: var(--on-surface-variant); margin: -6px 0 0 16px; }
+.response { border-radius: var(--r-l); background: var(--urushi); color: var(--urushi-text); padding: 16px 18px; display: grid; gap: 10px; align-content: start; min-height: 100%; }
+.response header { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--urushi-dim); }
+.response .ok { padding: 3px 8px; border-radius: var(--r-xs); background: #3e5236; color: #dce8cf; font: 700 12px/1 var(--mono); }
+.response pre { margin: 0; font: 13px/1.6 var(--mono); white-space: pre-wrap; }
+.response .k { color: var(--urushi-key); } .response .s { color: var(--urushi-string); } .response .n { color: #c9d9b8; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <clipPath id="scallop" clipPathUnits="objectBoundingBox">
+      <path d="M.5 0C.58 0 .62.07.69.09.76.11.84.07.9.13.95.18.92.26.94.33.96.4 1 .43 1 .5 1 .57.96.6.94.67.92.74.95.82.9.87.84.93.76.89.69.91.62.93.58 1 .5 1 .42 1 .38.93.31.91.24.89.16.93.1.87.05.82.08.74.06.67.04.6 0 .57 0 .5 0 .43.04.4.06.33.08.26.05.18.1.13.16.07.24.11.31.09.38.07.42 0 .5 0Z"/>
+    </clipPath>
+    <symbol id="bloom" viewBox="0 0 40 40">
+      <g transform="translate(20 20)" fill="currentColor">
+        <g id="pt"><path d="M0-3C-5-8-6-15-3-18c1.5 1 2.2 2 3 3 .8-1 1.5-2 3-3 3 3 2 10-3 15Z"/></g>
+        <use href="#pt" transform="rotate(72)"/><use href="#pt" transform="rotate(144)"/><use href="#pt" transform="rotate(216)"/><use href="#pt" transform="rotate(288)"/>
+      </g>
+    </symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path fill="currentColor" d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6c.6 0 1.2.3 1.6.7L12 6h6.5A2.5 2.5 0 0 1 21 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13"/></symbol>
+    <symbol id="i-people" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 9a6 6 0 0 1 12 0m2-9a3 3 0 1 0 0-6m2 15a5 5 0 0 0-3-4.6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="m20 20-4.5-4.5M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 16V5m-5 5 5-5 5 5M5 19h14"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-laptop" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M5 6.5A1.5 1.5 0 0 1 6.5 5h11A1.5 1.5 0 0 1 19 6.5V16H5zM3 19h18"/></symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header class="intro">
+  <span class="eyebrow">Proof pages · specimen 11 vocabulary only</span>
+  <h1>Drive, Account and Tools, redrawn</h1>
+  <p>The same pages and labels as the Portal today. The structure comes from Material 3 and the character from Kata: seals, Choice, blooms, hold-to-confirm and the urushi response pane. Buttons, dropdowns and hold all respond to the mouse.</p>
+</header>
+
+<!-- ═══════════ Drive ═══════════ -->
+<section class="proof">
+  <div class="proof-head">
+    <span class="eyebrow">Drive</span>
+    <h2>A space, mid-upload</h2>
+    <p>The space's band becomes a crest and a big name. The file list is one white sheet with soft rows instead of a hairline table. Uploads collect in a floating tray with the wavy line.</p>
+  </div>
+  <div class="scroller"><div class="screen">
+    <div class="bar">
+      <span class="brand"><svg><use href="#bloom"/></svg>kimono</span>
+      <nav class="nav"><a href="#drive">Home</a><a href="#drive" aria-current="page">Drive</a><a href="#drive">Photos</a><a href="#drive">Tools</a><a href="#drive">Code</a></nav>
+      <span class="spacer"></span>
+      <span class="portrait m" aria-label="Akram">A</span>
+    </div>
+    <div class="body">
+      <nav class="rail" aria-label="Spaces">
+        <div class="group">Your spaces</div>
+        <a href="#drive" aria-current="page"><svg class="bloom" style="color:#a84d63"><use href="#bloom"/></svg>Family<span class="meta">12.4 GB</span></a>
+        <a href="#drive"><svg class="bloom" style="color:#5f8f8b"><use href="#bloom"/></svg>Akram<span class="meta">3.1 GB</span></a>
+        <a href="#drive"><svg class="bloom" style="color:#c27a3f"><use href="#bloom"/></svg>Recipes<span class="meta">220 MB</span></a>
+        <div class="group">Across your spaces</div>
+        <a href="#drive"><svg class="ico"><use href="#i-clock"/></svg>Recent</a>
+        <a href="#drive"><svg class="ico"><use href="#i-people"/></svg>Shared with you</a>
+        <a href="#drive"><svg class="ico"><use href="#i-trash"/></svg>Trash</a>
+      </nav>
+      <div class="panel drive-main">
+        <div class="space-head">
+          <span class="crest"><svg><use href="#bloom"/></svg></span>
+          <div>
+            <h2>Family</h2>
+            <div class="sub"><span class="stack"><span class="portrait s">A</span><span class="portrait s moss">S</span><span class="portrait s plum">Y</span><span class="portrait s sand">M</span></span>4 people · 12.4 GB</div>
+          </div>
+          <div class="actions"><button class="txt" type="button">People and settings</button><button class="seal tonal" type="button"><span>Share by link</span></button></div>
+        </div>
+        <div class="toolbar">
+          <label class="search"><svg><use href="#i-search"/></svg><input id="drive-search" placeholder="Search this space" aria-label="Search this space"></label>
+          <button class="chip-choice" type="button"><small>Sort by</small><b>Modified</b><i></i></button>
+          <div class="end"><button class="seal quiet" type="button"><span>New folder</span></button><button class="seal" type="button"><svg><use href="#i-up"/></svg><span>Upload</span></button></div>
+        </div>
+        <div class="selection-bar"><b>1 selected</b><button type="button">Download</button><button type="button">Move to…</button><button type="button">Rename</button><button type="button">Move to Trash</button></div>
+        <div class="files" role="table" aria-label="Files in Family">
+          <div class="hd" role="row"><span>Name</span><span>Owner</span><span>Modified</span><span>Size</span></div>
+          <div class="row" role="row"><span class="name"><span class="ficon folder"><svg><use href="#i-folder"/></svg></span><span>Wedding photos</span></span><span class="who"><span class="portrait s moss">S</span>Sara</span><span class="dim">Today, 9:12</span><span class="dim">—</span></div>
+          <div class="row sel" role="row"><span class="name"><span class="ficon pdf">PDF</span><span>Lease renewal 2027.pdf</span></span><span class="who"><span class="portrait s">A</span>You</span><span class="dim">Yesterday</span><span class="dim">1.8 MB</span></div>
+          <div class="row" role="row"><span class="name"><span class="ficon folder"><svg><use href="#i-folder"/></svg></span><span>Taxes 2026</span></span><span class="who"><span class="portrait s">A</span>You</span><span class="dim">Nov 1</span><span class="dim">—</span></div>
+          <div class="row" role="row"><span class="name"><span class="ficon doc">DOC</span><span>Mum's recipes.docx</span></span><span class="who"><span class="portrait s sand">M</span>Mariam</span><span class="dim">Oct 28</span><span class="dim">640 KB</span></div>
+          <div class="row" role="row"><span class="name"><span class="ficon md">MD</span><span>Grocery list.md</span></span><span class="who"><span class="portrait s plum">Y</span>Yusuf</span><span class="dim">Oct 27</span><span class="dim">2 KB</span></div>
+          <div class="row" role="row"><span class="name"><span class="ficon img">IMG</span><span>IMG_2041.HEIC</span></span><span class="who"><span class="portrait s moss">S</span>Sara</span><span class="dim">Oct 19</span><span class="dim">3.2 MB</span></div>
+        </div>
+        <div class="upload-tray" aria-label="Uploads">
+          <header><b>Uploading 3 photos</b><span>62%</span></header>
+          <svg class="wave" viewBox="0 0 300 16" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M196 8 H300" fill="none" stroke="#ffd9df" stroke-width="4" stroke-linecap="round"/>
+            <path class="wave-ind" data-end="184" d="" fill="none" stroke="#a84d63" stroke-width="4" stroke-linecap="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="notes">
+    <div><b>Today</b>A band header, a hairline table, a select box and a progress strip</div>
+    <div><b>Now</b>Crest and name, a search bar, the compact Choice, one white sheet of rows, a floating tray</div>
+    <div><b>Kept</b>Upload and New folder as seals, the suō tick on the chosen row, each space's bloom</div>
+  </div>
+</section>
+
+<!-- ═══════════ Account ═══════════ -->
+<section class="proof">
+  <div class="proof-head">
+    <span class="eyebrow">Account</span>
+    <h2>Profile, with devices beside it</h2>
+    <p>The tray and its compartments become two white cards. The portrait is the scalloped shape the phone uses. Signing out everywhere is a held seal, the same as on the phone.</p>
+  </div>
+  <div class="scroller"><div class="screen">
+    <div class="bar">
+      <span class="brand"><svg><use href="#bloom"/></svg>kimono</span>
+      <nav class="nav"><a href="#account">Home</a><a href="#account">Drive</a><a href="#account">Photos</a><a href="#account">Tools</a><a href="#account">Code</a></nav>
+      <span class="spacer"></span>
+      <span class="portrait m" aria-label="Akram">A</span>
+    </div>
+    <div class="body">
+      <nav class="rail" aria-label="Your account">
+        <div class="group">Your account</div>
+        <a href="#account" aria-current="page">Profile</a>
+        <a href="#account">Password</a>
+        <a href="#account">Signed-in devices</a>
+      </nav>
+      <div class="panel">
+        <h2 style="font-size:34px;line-height:1.1">Profile</h2>
+        <div class="acc-grid">
+          <div class="card">
+            <div class="pic">
+              <span class="portrait l">A</span>
+              <div class="pic-actions">
+                <h3>Akram</h3>
+                <p>@akram</p>
+                <button class="seal quiet" type="button"><span>Change picture</span></button>
+              </div>
+            </div>
+            <div class="fields">
+              <label class="field"><small>Your name</small><input id="acc-name" value="Akram"></label>
+              <label class="field"><small>Email</small><input id="acc-email" value="akram@home.example"></label>
+              <label class="field"><small>Current password</small><input id="acc-pass" type="password" value="lanternriver"></label>
+            </div>
+            <div class="form-end"><span class="saved" style="margin-right:auto">Saved</span><button class="seal" type="button"><span>Save details</span></button></div>
+          </div>
+          <div class="card">
+            <h3>Signed-in devices</h3>
+            <p class="lead">Where your Kimono account is open right now.</p>
+            <div class="devices">
+              <div class="device"><span class="dico"><svg><use href="#i-laptop"/></svg></span><span><b>Safari on Mac</b><small>Kimono · Active now</small></span><span class="here">This device</span></div>
+              <div class="device"><span class="dico"><svg><use href="#i-phone"/></svg></span><span><b>Kimono on Pixel 9</b><small>2 hours ago</small></span></div>
+              <div class="device"><span class="dico"><svg><use href="#i-phone"/></svg></span><span><b>Kimono on iPhone 15</b><small>Yesterday</small></span></div>
+            </div>
+            <button class="seal tonal hold" type="button" id="hold-btn"><span class="fill"></span><span class="hold-label">Hold to sign out everywhere</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="notes">
+    <div><b>Today</b>A framed tray with Picture and Details compartments, hairline fields</div>
+    <div><b>Now</b>Two cards, filled fields with the label inside, a moss "Saved" note</div>
+    <div><b>Kept</b>Save details as an inked seal, hold-to-confirm with petals, Mincho names</div>
+  </div>
+</section>
+
+<!-- ═══════════ Tools ═══════════ -->
+<section class="proof">
+  <div class="proof-head">
+    <span class="eyebrow">Tools</span>
+    <h2>The API reference, one endpoint open</h2>
+    <p>Kata's densest page. Collections sit on the rail, and each endpoint is its own soft row that opens in place. The key drawer and the live response keep Kata's urushi lacquer, the one dark material, so tried requests still read as a different world.</p>
+  </div>
+  <div class="scroller"><div class="screen">
+    <div class="bar">
+      <span class="brand"><svg><use href="#bloom"/></svg>kimono</span>
+      <nav class="nav"><a href="#tools">Home</a><a href="#tools">Drive</a><a href="#tools">Photos</a><a href="#tools" aria-current="page">Tools</a><a href="#tools">Code</a></nav>
+      <span class="spacer"></span>
+      <span class="portrait m" aria-label="Akram">A</span>
+    </div>
+    <div class="body">
+      <nav class="rail" aria-label="API collections">
+        <div class="group">Collections</div>
+        <a class="coll" href="#tools" aria-current="page"><b>Mawaqit</b><small>3 endpoints · GET · JSON</small></a>
+        <a class="coll" href="#tools"><b>RateMyProfessors</b><small>2 endpoints · GET · JSON</small></a>
+        <div class="keycard">
+          <small>CALLER KEY</small>
+          <code>kim_live_••••••••3f9a</code>
+          <button class="seal quiet" type="button"><span>Replace key</span></button>
+        </div>
+      </nav>
+      <div class="panel">
+        <div class="api-head">
+          <div>
+            <h2>Mawaqit</h2>
+            <p>Find mosques and read their published prayer calendars.</p>
+          </div>
+          <div class="end"><span class="status">API enabled</span><button class="txt" type="button">Download OpenAPI</button><button class="seal quiet" type="button"><span>Configure APIs</span></button></div>
+        </div>
+        <div class="ops">
+          <article class="op open">
+            <header><span class="method">GET</span><b>Search mosques</b><code>/tools/mawaqit/search</code><span class="cue"></span></header>
+            <div class="op-body">
+              <div class="side">
+                <span class="label">Parameters</span>
+                <label class="field mono"><small>q</small><input id="p-q" value="Paris"></label>
+                <p class="param-desc">Mosque or city name. Use q or both lat and lon.</p>
+                <label class="field mono"><small>lat</small><input id="p-lat" placeholder="48.8566"></label>
+                <label class="field mono"><small>lon</small><input id="p-lon" placeholder="2.3522"></label>
+                <div><button class="seal" type="button"><span>Send request</span></button></div>
+              </div>
+              <div class="response" aria-label="Response">
+                <header><span class="ok">200</span>GET /tools/mawaqit/search?q=Paris · 184 ms</header>
+<pre>{
+  <span class="k">"mosques"</span>: [
+    {
+      <span class="k">"slug"</span>: <span class="s">"grande-mosquee-de-paris"</span>,
+      <span class="k">"name"</span>: <span class="s">"Grande Mosquée de Paris"</span>,
+      <span class="k">"location"</span>: <span class="s">"Paris 5e"</span>
+    },
+    {
+      <span class="k">"slug"</span>: <span class="s">"mosquee-de-belleville"</span>,
+      <span class="k">"name"</span>: <span class="s">"Mosquée de Belleville"</span>,
+      <span class="k">"location"</span>: <span class="s">"Paris 20e"</span>
+    }
+  ]
+}</pre>
+              </div>
+            </div>
+          </article>
+          <article class="op"><header><span class="method">GET</span><b>Prayer calendar</b><code>/tools/mawaqit/calendar</code><span class="cue"></span></header></article>
+          <article class="op"><header><span class="method">GET</span><b>Prayer times</b><code>/tools/mawaqit/times</code><span class="cue"></span></header></article>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="notes">
+    <div><b>Today</b>One framed tray, two compartments on a rule, hairline rows, stated seals</div>
+    <div><b>Now</b>Rail and sheet, soft endpoint rows that open in place, a moss status chip</div>
+    <div><b>Kept</b>Urushi for the key and the live response, seals for actions, mono only for addresses</div>
+  </div>
+</section>
+
+</div>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ink impression on seals
+  document.querySelectorAll('.seal:not(.hold)').forEach(b => b.addEventListener('pointerdown', e => {
+    if (reduce) return;
+    const r = b.getBoundingClientRect(), s = document.createElement('span');
+    s.style.cssText = 'position:absolute;z-index:0;width:12px;height:12px;border-radius:50%;pointer-events:none;left:' + (e.clientX - r.left) + 'px;top:' + (e.clientY - r.top) + 'px;background:' + (b.classList.contains('quiet') ? 'rgba(78,43,55,.14)' : b.classList.contains('tonal') ? 'rgba(168,77,99,.25)' : 'rgba(95,37,53,.55)');
+    s.animate([{ transform: 'translate(-50%,-50%) scale(1)', opacity: 1 }, { transform: 'translate(-50%,-50%) scale(28)', opacity: 0 }], { duration: 700, easing: 'cubic-bezier(.2,.8,.3,1)' }).onfinish = () => s.remove();
+    b.appendChild(s);
+  }));
+
+  // hold to confirm
+  const hold = document.getElementById('hold-btn'), fill = hold.querySelector('.fill'), label = hold.querySelector('.hold-label');
+  let start = 0, raf = 0, petals = [], done = false;
+  const tick = t => {
+    const p = Math.min((t - start) / 1400, 1);
+    fill.style.transform = 'scaleX(' + p + ')';
+    if (!reduce && Math.random() < .45) {
+      const el = document.createElement('span'); el.className = 'petal';
+      el.style.left = Math.random() * hold.clientWidth * Math.max(p, .1) + 'px';
+      el.style.top = (hold.clientHeight - 6 - Math.random() * hold.clientHeight * .5 * p) + 'px';
+      el.style.transform = 'rotate(' + Math.random() * 360 + 'deg)';
+      hold.appendChild(el); petals.push(el);
+    }
+    if (p < 1) { raf = requestAnimationFrame(tick); return; }
+    done = true; hold.classList.add('done'); label.textContent = 'Signed out everywhere';
+    petals.forEach(el => el.remove()); petals = [];
+    setTimeout(() => { done = false; raf = 0; hold.classList.remove('done'); fill.style.transform = 'scaleX(0)'; label.textContent = 'Hold to sign out everywhere'; }, 1800);
+  };
+  const begin = () => { if (done || raf) return; label.textContent = 'Keep holding'; start = performance.now(); raf = requestAnimationFrame(tick); };
+  const cancel = () => {
+    if (done || !raf) return;
+    cancelAnimationFrame(raf); raf = 0; fill.style.transform = 'scaleX(0)';
+    petals.forEach(el => { el.style.transition = 'transform .6s, opacity .6s'; el.style.transform += ' translate(' + (Math.random() * 80 - 40) + 'px,-50px)'; el.style.opacity = 0; setTimeout(() => el.remove(), 650); });
+    petals = []; label.textContent = 'Hold to sign out everywhere';
+  };
+  hold.addEventListener('pointerdown', begin);
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => hold.addEventListener(ev, cancel));
+  hold.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); begin(); } });
+  hold.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') cancel(); });
+
+  // endpoint rows open in place
+  document.querySelectorAll('.op > header').forEach(h => { h.style.cursor = 'pointer'; h.addEventListener('click', () => { if (h.parentElement.querySelector('.op-body')) h.parentElement.classList.toggle('open'); }); });
+
+  // wavy progress
+  const paths = [...document.querySelectorAll('.wave-ind')];
+  let phase = 0;
+  (function wave() {
+    paths.forEach(p => {
+      const end = +p.dataset.end; let d = 'M2 8';
+      for (let x = 2; x <= end; x += 3) d += ' L' + x + ' ' + (8 + Math.sin(x / 7 + phase) * 3).toFixed(2);
+      p.setAttribute('d', d);
+    });
+    phase -= .12;
+    if (!reduce) requestAnimationFrame(wave);
+  })();
+})();
+</script>

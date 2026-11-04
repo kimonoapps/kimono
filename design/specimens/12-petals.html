@@ -1,0 +1,197 @@
+<meta charset="utf-8">
+<title>Kimono Petals</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Maru+Gothic:wght@400;500;700&display=swap">
+<style>
+/* Layout: three petal directions side by side, each with a still study of five
+   petals, the same petals falling, and the petals riding a page swipe.
+   Light only, like Kimono. */
+:root {
+  color-scheme: light;
+  --surface: #fffbf7; --sc-low: #fcf4ef; --sc: #f7eee8; --sc-high: #f1e8e2;
+  --on-surface: #221a17; --on-surface-variant: #54443f; --plum: #4e2b37; --primary: #a84d63;
+  --display: "Shippori Mincho", "Hiragino Mincho ProN", serif;
+  --sans: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--on-surface); font: 16px/1.5 var(--sans); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 48px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 32px; }
+h1, h2 { margin: 0; font-family: var(--display); font-weight: 600; color: var(--plum); text-wrap: balance; }
+h1 { font-size: clamp(34px, 5vw, 46px); line-height: 1.1; }
+.lede { color: var(--on-surface-variant); max-width: 64ch; font-size: 17px; }
+.eyebrow { font: 700 13px/1.2 var(--sans); letter-spacing: .04em; color: var(--primary); }
+.dirs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+@media (max-width: 900px) { .dirs { grid-template-columns: 1fr; } }
+.dir { background: var(--sc-low); border-radius: 28px; padding: 22px; display: grid; gap: 14px; align-content: start; }
+.dir h2 { font-size: 24px; }
+.dir p { color: var(--on-surface-variant); font-size: 15px; }
+.study { display: flex; justify-content: center; gap: 4px; padding: 18px 8px; border-radius: 20px; background: var(--surface); min-height: 120px; align-items: center; }
+.study svg { width: 64px; height: 64px; }
+.fallbox, .swipebox { position: relative; height: 220px; border-radius: 20px; background: var(--surface); overflow: hidden; }
+.swipebox { height: 170px; background: var(--sc); }
+.swipebox .page { position: absolute; inset: 14px; border-radius: 16px; background: var(--surface); padding: 16px; display: grid; gap: 8px; align-content: start; }
+.swipebox .page b { font: 600 20px/1.2 var(--display); color: var(--plum); }
+.swipebox .page i { display: block; height: 10px; border-radius: 5px; background: var(--sc-high); }
+.p { position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+button.go { min-height: 40px; padding: 0 16px; border: 0; border-radius: 2px; background: var(--primary); color: #fff; font: 700 14px/1 var(--sans); letter-spacing: .04em; cursor: pointer; box-shadow: inset 0 -3px 0 #7e3448; }
+button.go:active { transform: translateY(2px); box-shadow: none; }
+.meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.meta div { background: var(--surface); border-radius: 12px; padding: 10px 12px; font-size: 13px; color: var(--on-surface-variant); }
+.meta b { display: block; font-size: 11px; letter-spacing: .04em; color: #74565c; }
+@media (prefers-reduced-motion: reduce) { .p { display: none; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- A: ink and wash. A wobbling brush edge, a watercolour bleed pooling at the rim -->
+    <filter id="brush" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="3" seed="4" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="5"/>
+    </filter>
+    <filter id="wash" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency=".02 .06" numOctaves="3" seed="9" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="7" result="d"/>
+      <feGaussianBlur in="d" stdDeviation=".6"/>
+    </filter>
+    <!-- B: woodblock. Grain pressed into flat colour -->
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".9 .08" numOctaves="2" seed="3" result="g"/>
+      <feColorMatrix in="g" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 -.9 .55" result="w"/>
+      <feComposite in="w" in2="SourceGraphic" operator="in" result="wi"/>
+      <feBlend in="SourceGraphic" in2="wi" mode="screen"/>
+    </filter>
+    <!-- C: chalk pastel. Ragged edge and a dry, broken fill -->
+    <filter id="chalk" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency=".75" numOctaves="2" seed="2" result="t"/>
+      <feColorMatrix in="t" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.3 1.55" result="mask"/>
+      <feComposite in="d" in2="mask" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header style="display:grid;gap:12px">
+    <span class="eyebrow">Specimen 12 · Petals</span>
+    <h1>Petals that look made by hand</h1>
+    <p class="lede">Today's petal is one smooth vector shape repeated, and that's what reads as cheap. Each direction here draws every petal a little differently: its own outline, notch and curl, with the medium doing the rest. They're used for the page swipe, hold-to-confirm and the bloom. Press Fall or Swipe to see them move.</p>
+  </header>
+
+  <div class="dirs">
+    <section class="dir" data-dir="ink">
+      <span class="eyebrow">A</span>
+      <h2>Ink and wash</h2>
+      <p>A sumi brush outline that thickens and thins, over a watercolour wash that pools darker at the rim. The closest to a painted scroll.</p>
+      <div class="study"></div>
+      <div class="fallbox"></div>
+      <div class="swipebox"><div class="page"><b>Family photos</b><i style="width:70%"></i><i style="width:90%"></i><i style="width:55%"></i></div></div>
+      <div class="row"><button class="go" type="button" data-act="fall">Fall</button><button class="go" type="button" data-act="swipe">Swipe</button></div>
+      <div class="meta"><div><b>Feels like</b>A hanging scroll</div><div><b>Pairs with</b>Mincho, the branch</div><div><b>Cost</b>2 SVG filters</div></div>
+    </section>
+    <section class="dir" data-dir="block">
+      <span class="eyebrow">B</span>
+      <h2>Woodblock print</h2>
+      <p>Flat pigment in two layers printed slightly out of register, with the wood's grain showing through. The ukiyo-e look, like the colour folds.</p>
+      <div class="study"></div>
+      <div class="fallbox"></div>
+      <div class="swipebox"><div class="page"><b>Family photos</b><i style="width:70%"></i><i style="width:90%"></i><i style="width:55%"></i></div></div>
+      <div class="row"><button class="go" type="button" data-act="fall">Fall</button><button class="go" type="button" data-act="swipe">Swipe</button></div>
+      <div class="meta"><div><b>Feels like</b>A printed fan</div><div><b>Pairs with</b>Seals, colour folds</div><div><b>Cost</b>1 SVG filter</div></div>
+    </section>
+    <section class="dir" data-dir="chalk">
+      <span class="eyebrow">C</span>
+      <h2>Chalk pastel</h2>
+      <p>Soft, dry pastel with no outline: ragged edges, paper showing through, a deeper blush at the base. The lightest, most playful one, close to the phone app's softness.</p>
+      <div class="study"></div>
+      <div class="fallbox"></div>
+      <div class="swipebox"><div class="page"><b>Family photos</b><i style="width:70%"></i><i style="width:90%"></i><i style="width:55%"></i></div></div>
+      <div class="row"><button class="go" type="button" data-act="fall">Fall</button><button class="go" type="button" data-act="swipe">Swipe</button></div>
+      <div class="meta"><div><b>Feels like</b>A sketchbook</div><div><b>Pairs with</b>Zen Maru, M3 shapes</div><div><b>Cost</b>1 SVG filter</div></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let uid = 0;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  /* A sakura petal, never the same twice: a fan with a notch at the tip and a narrow
+     base, with every control point nudged so the outline wobbles like a hand drew it. */
+  function petalPath(j) {
+    const w = rnd(.86, 1.08) * j, notch = rnd(7, 15), lean = rnd(-6, 6), curl = rnd(-5, 5);
+    const P = (x, y) => (x + rnd(-1.8, 1.8)).toFixed(1) + ' ' + (y + rnd(-1.8, 1.8)).toFixed(1);
+    return 'M' + P(50, 94) +
+      ' C' + P(50 - 20 * w, 86) + ' ' + P(50 - 38 * w + curl, 62) + ' ' + P(50 - 34 * w + lean, 34) +
+      ' C' + P(50 - 30 * w + lean, 16) + ' ' + P(50 - 16 * w + lean, 7) + ' ' + P(43 + lean, 9) +
+      ' C' + P(46 + lean, 10) + ' ' + P(48 + lean, 8 + notch * .6) + ' ' + P(50 + lean * .6, 8 + notch) +
+      ' C' + P(52 + lean, 8 + notch * .6) + ' ' + P(54 + lean, 10) + ' ' + P(57 + lean, 9) +
+      ' C' + P(50 + 16 * w + lean, 7) + ' ' + P(50 + 30 * w + lean, 16) + ' ' + P(50 + 34 * w + lean, 34) +
+      ' C' + P(50 + 38 * w - curl, 62) + ' ' + P(50 + 20 * w, 86) + ' ' + P(50, 94) + 'Z';
+  }
+  function vein(lean) { return 'M50 90 C' + (50 + lean * .2).toFixed(1) + ' 70 ' + (50 + lean * .5).toFixed(1) + ' 46 ' + (50 + lean * .7).toFixed(1) + ' 26'; }
+
+  const pinks = [['#f7d7de', '#e79aab', '#b8566c'], ['#fbe3e8', '#efb3c0', '#c4677c'], ['#f4cdd6', '#df8ea1', '#a84d63']];
+  function drawPetal(dir) {
+    const id = 'g' + (uid++), [light, mid, deep] = pinks[Math.floor(Math.random() * pinks.length)];
+    const d = petalPath(1), lean = rnd(-6, 6);
+    if (dir === 'ink') {
+      return '<svg viewBox="0 0 100 100" overflow="visible"><defs><radialGradient id="' + id + '" cx="50%" cy="80%" r="75%"><stop offset="0" stop-color="#fff8f6"/><stop offset=".55" stop-color="' + light + '"/><stop offset=".92" stop-color="' + mid + '"/><stop offset="1" stop-color="' + deep + '" stop-opacity=".9"/></radialGradient></defs>' +
+        '<path d="' + d + '" fill="url(#' + id + ')" filter="url(#wash)" opacity=".95"/>' +
+        '<path d="' + d + '" fill="none" stroke="#4e2b37" stroke-width="' + rnd(2.2, 3.4).toFixed(1) + '" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="' + rnd(60, 90).toFixed(0) + ' ' + rnd(4, 9).toFixed(0) + '" filter="url(#brush)" opacity=".82"/>' +
+        '<path d="' + vein(lean) + '" fill="none" stroke="' + deep + '" stroke-width="1.2" stroke-linecap="round" opacity=".45" filter="url(#brush)"/></svg>';
+    }
+    if (dir === 'block') {
+      const dx = rnd(-3, 3).toFixed(1), dy = rnd(-3, 3).toFixed(1);
+      return '<svg viewBox="0 0 100 100" overflow="visible"><g filter="url(#grain)">' +
+        '<path d="' + d + '" fill="' + mid + '"/>' +
+        '<path d="' + petalPath(.72) + '" fill="' + light + '" transform="translate(' + dx + ' ' + dy + ')"/>' +
+        '<path d="M50 92 C47 80 46 70 47 62 C49 70 51 70 53 62 C54 70 53 80 50 92Z" fill="' + deep + '" opacity=".85"/></g>' +
+        '<path d="' + vein(lean) + '" fill="none" stroke="#fffaf2" stroke-width="1.6" stroke-linecap="round" opacity=".7"/></svg>';
+    }
+    return '<svg viewBox="0 0 100 100" overflow="visible"><defs><radialGradient id="' + id + '" cx="50%" cy="92%" r="80%"><stop offset="0" stop-color="' + deep + '" stop-opacity=".75"/><stop offset=".35" stop-color="' + mid + '"/><stop offset="1" stop-color="' + light + '"/></radialGradient></defs>' +
+      '<path d="' + d + '" fill="url(#' + id + ')" filter="url(#chalk)"/>' +
+      '<path d="' + vein(lean) + '" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".55" filter="url(#chalk)"/></svg>';
+  }
+
+  /* stills */
+  document.querySelectorAll('.dir').forEach(sec => {
+    const st = sec.querySelector('.study');
+    for (let i = 0; i < 5; i++) { st.insertAdjacentHTML('beforeend', drawPetal(sec.dataset.dir)); st.lastElementChild.style.transform = 'rotate(' + rnd(-40, 40).toFixed(0) + 'deg)'; }
+  });
+
+  /* a petal tumbling: it turns, flips edge-on (rotateY) and sways, like paper in air */
+  function fly(box, dir, from, to, ms, delay) {
+    const el = document.createElement('div'); el.className = 'p';
+    const sz = rnd(18, 30); el.style.width = el.style.height = sz + 'px';
+    el.innerHTML = drawPetal(dir); el.firstElementChild.style.cssText = 'width:100%;height:100%';
+    box.appendChild(el);
+    const spin = rnd(160, 420) * (Math.random() < .5 ? -1 : 1), flips = Math.round(rnd(1, 3));
+    const frames = [];
+    for (let k = 0; k <= 8; k++) {
+      const t = k / 8, sway = Math.sin(t * Math.PI * 2 + rnd(0, 1)) * 14;
+      frames.push({ transform: 'translate(' + (from[0] + (to[0] - from[0]) * t + sway).toFixed(1) + 'px,' + (from[1] + (to[1] - from[1]) * t).toFixed(1) + 'px) rotate(' + (spin * t).toFixed(0) + 'deg) rotateY(' + (180 * flips * t).toFixed(0) + 'deg)', opacity: k === 0 || k === 8 ? 0 : 1 });
+    }
+    el.animate(frames, { duration: ms, delay, easing: 'linear', fill: 'both' });
+    setTimeout(() => el.remove(), ms + delay + 50);
+  }
+  function fall(sec) {
+    const box = sec.querySelector('.fallbox'), W = box.clientWidth, H = box.clientHeight;
+    for (let i = 0; i < 9; i++) { const x = rnd(10, W - 40); fly(box, sec.dataset.dir, [x, -30], [x + rnd(-60, 60), H + 10], rnd(2200, 3200), i * 160); }
+  }
+  function swipe(sec) {
+    const box = sec.querySelector('.swipebox'), page = box.querySelector('.page'), W = box.clientWidth, H = box.clientHeight;
+    page.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(48px)', offset: .3 }, { opacity: 0, transform: 'translateX(-48px)', offset: .31 }, { opacity: 1, transform: 'none' }], { duration: 560, easing: 'cubic-bezier(.05,.7,.1,1)' });
+    for (let i = 0; i < 10; i++) { const y = rnd(10, H - 30); fly(box, sec.dataset.dir, [-30, y], [W + 10, y + rnd(-30, 30)], rnd(800, 1100), rnd(0, 260)); }
+  }
+  document.querySelectorAll('.dir').forEach(sec => sec.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if (!b || reduce) return;
+    b.dataset.act === 'fall' ? fall(sec) : swipe(sec);
+  }));
+  if (!reduce) setTimeout(() => document.querySelectorAll('.dir').forEach(fall), 400);
+})();
+</script>

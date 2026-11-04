@@ -1,43 +1,43 @@
 /* ─────────────────────────────────────────────────────────────
    組 Form — a labelled control and the seals that commit it.
 
-   An input at rest is a fold in the paper: a shade deeper than the sheet,
-   a hair edge, no ink. Reaching for it warms the edge; focusing lifts it to
-   the lightest paper and draws the suō ring. Disabled is dashed and faint,
-   never faded.
+   An input is a Material filled field: a tonal box with no outline.
+   Focusing it lightens the box and draws a suō rule underneath. The label
+   sits above it in bold. Disabled is a flatter box with faint text, never
+   faded.
    ───────────────────────────────────────────────────────────── */
 
 .k-field { display: grid; gap: var(--k-space-2); }
-.k-field > span { font: 600 12px/1.4 var(--k-sans); letter-spacing: .01em; color: var(--k-ink-soft); }
-.k-field > span > em { margin-left: var(--k-space-2); font: 500 12px/1.4 var(--k-sans); color: var(--k-suo-deep); }
-.k-field > small { font: 13px/1.45 var(--k-sans); color: var(--k-ink-soft); }
+.k-field > span { font: 700 13px/1.4 var(--k-sans); letter-spacing: .02em; color: var(--k-on-surface-variant); }
+.k-field > span > em { margin-left: var(--k-space-2); font: 500 13px/1.4 var(--k-sans); color: var(--k-suo-deep); }
+.k-field > small { font: 14px/1.45 var(--k-sans); color: var(--k-on-surface-variant); }
 
 .k-field input, .k-field select, .k-field textarea,
 .k-input {
-  min-height: var(--k-control);
+  min-height: 48px;
   width: 100%;
   max-width: 420px;
   padding: 0 var(--k-space-4);
-  border: var(--k-hairline) solid var(--k-hair);
-  border-radius: var(--k-r-2);
-  background: var(--k-fold);
-  color: var(--k-ink);
-  font: 14px/1.5 var(--k-sans);
+  border: 0;
+  border-radius: var(--k-r-m);
+  background: var(--k-container-highest);
+  box-shadow: inset 0 -2px 0 transparent;
+  color: var(--k-on-surface);
+  font: 16px/1.5 var(--k-sans);
   transition:
     border-color var(--k-t-state) var(--k-ease-settle),
     background-color var(--k-t-state) var(--k-ease-settle),
     box-shadow var(--k-t-state) var(--k-ease-settle);
 }
 .k-field textarea { padding: var(--k-space-3) var(--k-space-4); resize: vertical; }
-.k-field input:hover, .k-field select:hover, .k-field textarea:hover, .k-input:hover { border-color: var(--k-hair-deep); }
+.k-field input:hover, .k-field select:hover, .k-field textarea:hover, .k-input:hover { background: #e4d9d2; }
 .k-field input:focus-visible, .k-field select:focus-visible, .k-field textarea:focus-visible, .k-input:focus-visible {
   outline: 0;
-  border-color: var(--k-suo);
-  background: var(--k-lift);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-suo) 22%, transparent);
+  background: var(--k-container-high);
+  box-shadow: inset 0 -2px 0 var(--k-accent);
 }
-.k-field input::placeholder, .k-input::placeholder { color: var(--k-faint); }
-.k-field input:disabled, .k-field select:disabled, .k-input:disabled { color: var(--k-faint); background: transparent; border-style: dashed; cursor: not-allowed; }
+.k-field input::placeholder, .k-input::placeholder { color: var(--k-on-surface-variant); opacity: .7; }
+.k-field input:disabled, .k-field select:disabled, .k-input:disabled { color: var(--k-faint); background: var(--k-container-high); cursor: not-allowed; }
 .k-field input[type="checkbox"], .k-field input[type="radio"] { width: 18px; min-height: 0; height: 18px; padding: 0; accent-color: var(--k-suo); }
 
 /* A form inside a compartment, separated from the list it follows. */

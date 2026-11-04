@@ -1,35 +1,27 @@
-import { AppShell } from "@/components/app-shell";
-import { AppLauncher } from "@/components/app-card";
-import { appRegistry, launcherApps } from "@/lib/apps";
+import { AppShell, railApps } from "@/components/app-shell";
+import { AppTiles } from "@/components/app-card";
 import { getPlatformSettings } from "@/lib/settings";
-import { scanAppDefinitions } from "@/lib/definitions";
 import { auth } from "@/auth";
-import { holdsMeshAccess } from "@/lib/directory";
 import { redirect } from "next/navigation";
 import { KimonoAppOffer } from "@/components/kimono-app-offer";
 import { appOffer } from "@/lib/app-offer";
 
+/* Home is the app grid: every app lives here, and pinning one puts it in the rail. */
 export default async function HomePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  const [settings, catalog] = await Promise.all([getPlatformSettings(), scanAppDefinitions()]);
-
+  const [settings, apps, offer] = await Promise.all([getPlatformSettings(), railApps(session.user.username), appOffer()]);
   const displayName = session.user.name?.split(" ")[0] || session.user.username || "home";
-  const offer = await appOffer();
 
   return (
-    <AppShell user={session.user} brandColors={settings.brand.colors} >
+    <AppShell user={session.user} brandColors={settings.brand.colors} active="home">
       <div className="page home-page">
-        <header className="home-hero">
-          <div className="hero-copy">
-            <p className="hero-kicker">Your household</p>
-            <h1>Welcome home, <strong>{displayName}.</strong></h1>
-          </div>
+        <header className="home-greeting">
+          <p className="hero-kicker">Your household</p>
+          <h1>Welcome home, <strong>{displayName}.</strong></h1>
         </header>
+        <AppTiles apps={apps} />
         <KimonoAppOffer android={Boolean(offer.android)} ios={offer.ios} />
-        <AppLauncher apps={launcherApps(appRegistry(settings, catalog.definitions), {
-          mesh: await holdsMeshAccess(session.user.username),
-        })} />
       </div>
     </AppShell>
   );

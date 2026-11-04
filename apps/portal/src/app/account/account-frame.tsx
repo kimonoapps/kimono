@@ -1,5 +1,6 @@
 import { cache, type ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { signOutCompletely } from "@/lib/sign-out";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { Portrait } from "@/components/portrait";
@@ -36,6 +37,12 @@ export async function AccountFrame({ account, user, children }: {
             <p>@{account.username} · {account.role}</p>
           </div>
           <AccountRooms />
+          {/* Sign out lives with the account now that the header menu is gone. */}
+          <form className="account-signout" action={async () => {
+            "use server";
+            await signOutCompletely();
+            redirect("/login");
+          }}><button type="submit">Sign out<small>Close this session</small></button></form>
         </aside>
         <div className="app-panel"><AccountCard>{children}</AccountCard></div>
       </div>

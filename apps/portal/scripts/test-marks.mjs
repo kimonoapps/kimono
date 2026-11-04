@@ -11,7 +11,7 @@ const source = new URL('../../../packages/ui/src/', import.meta.url);
 /* Inside the Portal, so the compiled files find its React. */
 const out = new URL('../node_modules/.cache/kimono-marks/', import.meta.url).pathname;
 mkdirSync(out, { recursive: true });
-for (const file of ['bloom.tsx', 'bloom-identity.ts', 'accent.ts', 'cx.ts', 'glyphs.tsx', 'bloom-svg.ts']) {
+for (const file of ['bloom.tsx', 'bloom-identity.ts', 'accent.ts', 'cx.ts', 'glyphs.tsx', 'bloom-svg.ts', 'ink.ts', 'ink-bloom.ts']) {
   const { outputText } = ts.transpileModule(readFileSync(new URL(file, source), 'utf8'), {
     compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
   });
@@ -23,7 +23,7 @@ const { bloomSvg } = await import(join(out, 'bloom-svg.mjs'));
 
 /* React picks its own ids; name them alike before comparing. */
 function sameIds(svg) {
-  const unique = svg.match(/id="bloom-texture-([^"]+)"/)[1];
+  const unique = svg.match(/id="bloom-centre-clip-([^"]+)"/)[1];
   return svg.split(unique).join('ID');
 }
 
@@ -44,10 +44,10 @@ for (const app of apps) {
   }
 }
 
-test('a standalone bloom carries the stylesheet with it', () => {
+test('a standalone bloom carries its ink with it', () => {
   const svg = bloomSvg(apps[0], { glyph: 'notes', standalone: true });
   assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg"/);
   assert.doesNotMatch(svg, /class=|var\(/);
-  assert.match(svg, /stroke-opacity="\.32"/);
-  assert.match(svg, /fill="#4e2b37"/);
+  assert.match(svg, /<filter id="ink-wash-/);
+  assert.match(svg, /stroke="#4e2b37"/);
 });

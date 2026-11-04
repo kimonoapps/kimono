@@ -2,6 +2,7 @@ import { CrossingProvider } from "@/components/crossing";
 import type { Metadata } from "next";
 import "@kimono/ui/kata.css";
 import "./globals.css";
+import "./shell.css";
 
 export const metadata: Metadata = {
   title: {

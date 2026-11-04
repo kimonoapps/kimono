@@ -148,7 +148,9 @@ export function CrossingProvider({ children }: { children: ReactNode }) {
       if (!mounted.current || generation.current !== crossing) return;
       cancel();
     };
-    if (stillness()) { void swap(); done(); return; }
+    /* ADR 0006: pages swipe in place now (apps/portal/src/app/template.tsx);
+       nothing covers the screen. Every crossing goes straight through. */
+    void swap(); done(); return;
 
     if (next === "hanafubuki") setPetals(makePetals());
     setColors(palette);

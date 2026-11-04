@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, type ReactNode, type SVGProps } from "react";
-import { createBloomIdentity, petalPath, veinPath, type BloomIdentityInput } from "./bloom-identity";
+import { type BloomIdentityInput } from "./bloom-identity";
+import { inkBloomMarkup } from "./ink-bloom";
 import { cx } from "./cx";
 
 export { createBloomIdentity, petalPath, veinPath, type BloomIdentity, type BloomIdentityInput } from "./bloom-identity";
@@ -18,23 +19,10 @@ export function BloomMark({ identity: input, children, centre = 20, ...props }: 
   centre?: number;
 }) {
   const unique = useId().replaceAll(":", "");
-  const identity = createBloomIdentity(input);
-  const textureId = `bloom-texture-${unique}`;
-  const centreClipId = `bloom-centre-clip-${unique}`;
-
+  /* Drawn in ink and wash by the same function the server uses (bloom-svg.ts). */
   return <svg viewBox="0 0 100 100" aria-hidden="true" {...props}>
-    <defs>
-      {identity.petals.map((petal, index) => <linearGradient key={index} id={`bloom-gradient-${unique}-${index}`} x1="20" y1="12" x2="78" y2="90" gradientUnits="userSpaceOnUse"><stop stopColor={petal.start}/><stop offset=".5" stopColor={petal.middle}/><stop offset="1" stopColor={petal.end}/></linearGradient>)}
-      <filter id={textureId} x="-15%" y="-15%" width="130%" height="130%"><feTurbulence type="fractalNoise" baseFrequency=".03 .075" numOctaves="2" seed={identity.textureSeed} result="noise"/><feDisplacementMap in="SourceGraphic" in2="noise" scale={identity.textureScale}/></filter>
-      <clipPath id={centreClipId}><circle cx="50" cy="50" r={centre - 1}/></clipPath>
-    </defs>
-    <g filter={`url(#${textureId})`} className="app-bloom-petals" transform={`rotate(${identity.rotation} 50 50)`}>
-      {identity.petals.map((petal, index) => <path key={index} d={petalPath} transform={`rotate(${petal.rotation} 50 50) translate(50 50) scale(${petal.scale}) translate(-50 -50)`} fill={`url(#bloom-gradient-${unique}-${index})`} opacity={petal.opacity}/>)}
-      {identity.petals.map((petal, index) => <path key={`h${index}`} className="app-bloom-vein" d={veinPath} transform={`rotate(${petal.rotation} 50 50)`}/>)}
-    </g>
-    <circle className="app-bloom-centre-shadow" cx="50" cy="50" r={centre + 3} style={{ fill: identity.centreShadow }}/>
-    <circle className="app-bloom-centre" cx="50" cy="50" r={centre} style={{ fill: identity.centre }}/>
-    <g className="app-bloom-glyph" clipPath={`url(#${centreClipId})`}>{children}</g>
+    <g dangerouslySetInnerHTML={{ __html: inkBloomMarkup(input, centre, unique) }}/>
+    <g className="app-bloom-glyph" clipPath={`url(#bloom-centre-clip-${unique})`}>{children}</g>
   </svg>;
 }
 

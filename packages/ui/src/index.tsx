@@ -13,6 +13,8 @@ export { cx } from "./cx";
 /* Identity — an app is a name and one accent; the rest is derived. */
 export * from "./accent";
 export * from "./bloom";
+export * from "./ink";
+export * from "./ink-marks";
 export * from "./glyphs";
 export * from "./app-identity";
 

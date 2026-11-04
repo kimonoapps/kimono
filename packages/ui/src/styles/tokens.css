@@ -64,6 +64,27 @@
   --k-hover: #f7efe1;                 /* always paired with a form change */
   --k-selected: #f7e4e4;              /* sakura wash laid on sheet */
 
+  /* ── Material 3 roles, the same scheme as the phone app (Kata.kt) ──
+     ADR 0006: tonal surfaces carry hierarchy, suō may fill a container.
+     Every role stays in the suō, plum and moss family. */
+  --k-surface: #fffbf7;
+  --k-container-lowest: #ffffff;
+  --k-container-low: #fcf4ef;
+  --k-container: #f7eee8;
+  --k-container-high: #f1e8e2;
+  --k-container-highest: #ebe2dc;
+  --k-on-surface: #221a17;
+  --k-on-surface-variant: #54443f;
+  --k-outline-variant: #d9c2bc;
+  --k-primary-container: #ffd9df;
+  --k-on-primary-container: var(--k-suo-deep);
+  --k-secondary-container: #f6e0e2;
+  --k-on-secondary-container: var(--k-plum);
+  --k-tertiary-container: #dce8cf;
+  --k-on-tertiary-container: var(--k-moss-deep);
+  /* a lifted sheet: menus, trays, dialogs */
+  --k-shadow-raised: 0 1px 2px rgba(78, 43, 55, .12), 0 16px 40px -12px rgba(78, 43, 55, .32);
+
   /* Portal actions use suō; app shells supply their own accent ramp. */
   --k-accent: var(--k-suo);
   --k-accent-deep: var(--k-suo-deep);
@@ -84,6 +105,11 @@
   --k-r-1: 0px;
   --k-r-seal: 2px;
   --k-r-round: 999px;
+  /* Material's corner scale, for containers. Seals keep their own 2px cut. */
+  --k-r-s: 8px;
+  --k-r-m: 12px;
+  --k-r-l: 16px;
+  --k-r-xl: 28px;
 
   /* depth: paper lifts by tone and a plum-tinted shadow, never by outline */
   --k-shadow-sheet:
@@ -132,6 +158,7 @@
   --k-ease-settle: cubic-bezier(.2, .9, .25, 1);
   --k-ease-seat: cubic-bezier(.3, 1.35, .5, 1);     /* wood only */
   --k-ease-leave: cubic-bezier(.7, 0, .9, .36);     /* departures, 180ms at most */
+  --k-spring: cubic-bezier(.38, 1.21, .22, 1);      /* Material's expressive spatial spring */
   /* older names */
   --k-t-element: var(--k-t-seat);
   --k-t-place: var(--k-t-cross);

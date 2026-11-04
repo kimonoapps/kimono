@@ -1,0 +1,738 @@
+<meta charset="utf-8">
+<title>Kimono M3 Foundations</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600&family=Zen+Maru+Gothic:wght@400;500;700&display=swap">
+<style>
+/* Layout: a single specimen column. Each section pairs a live specimen with its
+   provenance (from / challenges / cost), the way Katagami sheets do.
+   Colour roles are copied from apps/compose/.../theme/Kata.kt so web and phone
+   share one scheme. Kimono is a light-only product, so this sheet is light only. */
+:root {
+  color-scheme: light;
+  /* M3 roles, seeded from suō */
+  --primary: #a84d63;
+  --on-primary: #ffffff;
+  --primary-container: #ffd9df;
+  --on-primary-container: #7e3448;
+  --secondary: #74565c;
+  --secondary-container: #f6e0e2;
+  --on-secondary-container: #4e2b37;
+  --tertiary: #5c7150;
+  --tertiary-container: #dce8cf;
+  --on-tertiary-container: #3e5236;
+  --surface: #fffbf7;
+  --on-surface: #221a17;
+  --on-surface-variant: #54443f;
+  --sc-lowest: #ffffff;
+  --sc-low: #fcf4ef;
+  --sc: #f7eee8;
+  --sc-high: #f1e8e2;
+  --sc-highest: #ebe2dc;
+  --outline: #86736e;
+  --outline-variant: #d9c2bc;
+  --plum: #4e2b37;
+  --sakura: #d77b8c;
+
+  /* Kata today, for the comparison only */
+  --kata-ground: #f7f1e8;
+  --kata-sheet: #fbf7ef;
+  --kata-fold: #ebe2d3;
+  --kata-hair: #ddd0bf;
+  --kata-ink: #24221f;
+  --kata-soft: #5b524d;
+
+  --display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --sans: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* M3 corner scale */
+  --r-xs: 4px; --r-s: 8px; --r-m: 12px; --r-l: 16px; --r-xl: 28px; --r-full: 999px;
+  /* M3 expressive springs, approximated */
+  --spring-fast: cubic-bezier(.42, 1.67, .21, .9);
+  --spring: cubic-bezier(.38, 1.21, .22, 1);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--on-surface);
+  font: 400 16px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding-block: 56px 96px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 72px;
+}
+h1, h2, h3 { font-family: var(--display); font-weight: 600; color: var(--plum); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(36px, 6vw, 52px); line-height: 1.08; letter-spacing: -.02em; }
+h2 { font-size: 30px; line-height: 1.15; letter-spacing: -.01em; }
+h3 { font-size: 21px; line-height: 1.25; }
+p { margin: 0; max-width: 65ch; }
+.lede { font-size: 18px; color: var(--on-surface-variant); }
+.eyebrow { font: 700 13px/1.2 var(--sans); letter-spacing: .04em; color: var(--primary); }
+
+header.intro { display: grid; gap: 16px; }
+section { display: grid; gap: 24px; }
+.section-head { display: grid; gap: 8px; }
+
+/* provenance strip under each specimen */
+.prov { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.prov div { background: var(--sc-low); border-radius: var(--r-m); padding: 12px 14px; font-size: 14px; color: var(--on-surface-variant); }
+.prov b { display: block; font-size: 12px; letter-spacing: .04em; color: var(--secondary); margin-bottom: 2px; }
+@media (max-width: 720px) { .prov { grid-template-columns: 1fr; } }
+
+/* ───────── comparison ───────── */
+.compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 860px) { .compare { grid-template-columns: 1fr; } }
+.frame { border-radius: var(--r-xl); overflow: hidden; display: grid; grid-template-rows: auto 1fr; background: var(--sc); }
+.frame > .tag { padding: 12px 18px; font: 700 13px/1 var(--sans); letter-spacing: .04em; color: var(--on-surface-variant); }
+
+/* Kata today, rebuilt from tokens.css + globals.css values */
+.kata { background: var(--kata-ground); padding: 22px; display: grid; gap: 16px; color: var(--kata-ink); font-size: 14px; }
+.kata h4 { margin: 0; font: 600 24px/1.1 var(--display); color: var(--plum); }
+.kata .k-sub { font-size: 12px; color: var(--kata-soft); }
+.kata .k-label { font: 600 12px/1.4 var(--sans); color: var(--kata-soft); }
+.kata .k-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--kata-hair); }
+.kata .k-app { display: flex; gap: 10px; align-items: center; padding: 12px; background: var(--kata-sheet); border-right: 1px solid var(--kata-hair); border-bottom: 1px solid var(--kata-hair); }
+.kata .k-app:nth-child(2n) { border-right: 0; }
+.kata .k-app:nth-last-child(-n+2) { border-bottom: 0; }
+.kata .k-app b { display: block; font: 600 14px/1.3 var(--display); color: #493139; }
+.kata .k-app small { font-size: 12px; color: var(--kata-soft); }
+.kata .k-dot { width: 26px; height: 26px; flex: none; }
+.kata .k-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.kata .k-seal { position: relative; min-height: 36px; padding: 0 16px; border: 0; border-radius: 2px; font: 700 13px/1 var(--sans); letter-spacing: .04em; background: var(--primary); color: #fffdf8; box-shadow: inset 0 -2px 0 #7e3448; }
+.kata .k-seal::before { content: ""; position: absolute; inset: 3px; border: 1px solid rgba(255,253,248,.32); border-radius: 1px; }
+.kata .k-seal.q { background: var(--kata-fold); color: var(--kata-ink); box-shadow: inset 0 -2px 0 #cdbda7; }
+.kata .k-seal.q::before { display: none; }
+
+/* Proposed */
+.m3 { background: var(--surface); padding: 22px; display: grid; gap: 18px; }
+.m3 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.m3 h4 { margin: 0; font: 600 30px/1.1 var(--display); color: var(--plum); }
+.m3 .sub { font-size: 14px; color: var(--on-surface-variant); }
+.avatar { width: 40px; height: 40px; flex: none; display: grid; place-items: center; font: 600 18px/1 var(--display); color: var(--on-primary-container); background: var(--primary-container); clip-path: url(#scallop); }
+.m3 .apps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.m3 .app {
+  display: flex; gap: 12px; align-items: center; padding: 14px; border: 0; text-align: left; color: inherit; font: inherit;
+  background: var(--sc-low); border-radius: var(--r-xl); cursor: pointer;
+  transition: border-radius .35s var(--spring), background-color .2s ease, transform .35s var(--spring);
+}
+.m3 .app:hover { background: var(--sc-high); border-radius: var(--r-l); }
+.m3 .app:active { transform: scale(.97); border-radius: var(--r-m); }
+.m3 .app:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.m3 .app b { display: block; font: 700 16px/1.25 var(--sans); }
+.m3 .app small { display: block; font-size: 13px; color: var(--on-surface-variant); }
+.bloom { width: 40px; height: 40px; flex: none; }
+.running { display: inline-flex; align-items: center; gap: 6px; }
+.running::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tertiary); }
+.m3 .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* ───────── buttons ───────── */
+.btn {
+  position: relative; overflow: hidden; isolation: isolate;
+  min-height: 48px; padding: 0 24px; border: 0; border-radius: var(--r-full);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: 700 15px/1 var(--sans); letter-spacing: .02em; cursor: pointer;
+  transition: border-radius .4s var(--spring), background-color .2s ease, transform .3s var(--spring-fast);
+}
+.btn:active { border-radius: var(--r-m); transform: scale(.98); transition-duration: .12s; }
+.btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.btn.filled { background: var(--primary); color: var(--on-primary); }
+.btn.filled:hover { background: #973f55; }
+.btn.tonal { background: var(--primary-container); color: var(--on-primary-container); }
+.btn.tonal:hover { background: #fccbd3; }
+.btn.text { background: transparent; color: var(--primary); padding: 0 16px; }
+.btn.text:hover { background: var(--secondary-container); }
+.btn[disabled] { background: var(--sc-highest); color: #8a7c77; cursor: not-allowed; }
+.btn[disabled]:active { border-radius: var(--r-full); transform: none; }
+.btn.small { min-height: 40px; padding: 0 18px; font-size: 14px; }
+
+/* The hanko impression: where you press, the seal leaves an ink mark that spreads and fades. Replaces M3's grey ripple. */
+.ink { position: absolute; z-index: -1; width: 12px; height: 12px; border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%) scale(1); animation: ink .7s cubic-bezier(.2, .8, .3, 1) forwards; }
+.filled .ink { background: rgba(95, 37, 53, .55); box-shadow: 0 0 0 2px rgba(255, 255, 255, .25) inset; }
+.tonal .ink, .text .ink { background: rgba(168, 77, 99, .28); }
+@keyframes ink { to { transform: translate(-50%, -50%) scale(28); opacity: 0; } }
+
+/* Hold to confirm: petals pile up while held, scatter on early release */
+.hold { min-width: 260px; }
+.hold .fill { position: absolute; inset: 0; z-index: -1; background: #d0606f; transform-origin: left; transform: scaleX(0); }
+.hold.done { background: #b9465a; color: #fff; }
+.hold .fill { z-index: 0; }
+.hold .petal { z-index: 1; }
+.hold .petal { position: absolute; width: 9px; height: 7px; border-radius: 60% 0 60% 0; background: #fff; pointer-events: none; opacity: .9; }
+
+/* 判 Seal on Material. The hanko block keeps its character: near-square
+   corners, a base it stands on, and the carved ring on the inked face.
+   Material gives it the scheme's colours, 48px height, 15px label and
+   springy motion. Pressing it sinks the block onto its base and leaves an
+   ink impression. --seal-r sets the corner: 2px is Kata, 8px is the softer cut. */
+.seal {
+  --seal-r: 2px;
+  --seal-base: #7e3448;
+  position: relative; overflow: hidden; isolation: isolate;
+  min-height: 48px; padding: 0 24px; border: 0; border-radius: var(--seal-r);
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: 700 15px/1 var(--sans); letter-spacing: .04em; cursor: pointer;
+  background: var(--primary); color: var(--on-primary);
+  box-shadow: inset 0 -3px 0 var(--seal-base);
+  transition: transform .3s var(--spring-fast), box-shadow .35s var(--spring), background-color .2s ease;
+}
+.seal::before {
+  content: ""; position: absolute; inset: 4px; z-index: 1; pointer-events: none;
+  border: 1px solid rgba(255, 253, 248, .34);
+  border-radius: max(0px, calc(var(--seal-r) - 3px));
+  transition: inset .15s var(--spring-fast), border-color .2s ease;
+}
+.seal:hover { background: #973f55; }
+.seal:hover::before { border-color: rgba(255, 253, 248, .55); }
+.seal:active { transform: translateY(2px); box-shadow: inset 0 0 0 var(--seal-base); transition-duration: .1s; }
+.seal:active::before { inset: 5px; }
+.seal:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.seal.quiet { --seal-base: #d6c3b8; background: var(--sc-highest); color: var(--on-surface); }
+.seal.quiet::before { display: none; }
+.seal.quiet:hover { background: #e3d6cd; color: var(--plum); }
+.seal.tonal { --seal-base: #e7aab6; background: var(--primary-container); color: var(--on-primary-container); }
+.seal.tonal::before { border-color: rgba(126, 52, 72, .18); }
+.seal.tonal:hover { background: #fccbd3; }
+.seal[disabled] { background: var(--sc-high); color: #8a7c77; box-shadow: none; transform: translateY(2px); cursor: not-allowed; }
+.seal[disabled]::before { display: none; }
+.seal.soft { --seal-r: 8px; }
+.seal.small { min-height: 42px; padding: 0 18px; font-size: 14px; }
+.seal .ink { z-index: 0; }
+.seal.quiet .ink { background: rgba(78, 43, 55, .14); }
+.seal.tonal .ink { background: rgba(168, 77, 99, .25); }
+.seal:not(.quiet):not(.tonal) .ink { background: rgba(95, 37, 53, .55); }
+.seal > span:not(.ink):not(.fill):not(.petal) { position: relative; z-index: 2; }
+
+.row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+.specimen { background: var(--sc-low); border-radius: var(--r-xl); padding: 28px; display: grid; gap: 22px; }
+.specimen .label { font: 700 12px/1 var(--sans); letter-spacing: .04em; color: var(--secondary); }
+.states { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.state { display: grid; gap: 8px; justify-items: start; }
+.state > span { font-size: 13px; color: var(--on-surface-variant); }
+
+/* ───────── colour ───────── */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.sw { border-radius: var(--r-l); padding: 16px 14px 14px; min-height: 96px; display: grid; align-content: end; gap: 2px; font-size: 14px; }
+.sw b { font-weight: 700; }
+.sw code { font: 12px/1.3 var(--mono); opacity: .8; }
+.surface-stack { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-radius: var(--r-xl); overflow: hidden; }
+.surface-stack div { min-height: 110px; padding: 12px; display: grid; align-content: end; font-size: 12px; color: var(--on-surface-variant); }
+@media (max-width: 720px) { .surface-stack { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+/* ───────── type ───────── */
+.scale { display: grid; gap: 0; background: var(--sc-low); border-radius: var(--r-xl); overflow: hidden; }
+.scale > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 16px; align-items: baseline; padding: 14px 24px; }
+.scale > div + div { box-shadow: 0 -1px 0 var(--sc-high); }
+.scale .meta { font: 12px/1.3 var(--mono); color: var(--on-surface-variant); }
+.scale .was { color: #a8495d; }
+@media (max-width: 560px) { .scale > div { grid-template-columns: 1fr; gap: 4px; } }
+
+/* ───────── shapes ───────── */
+.shapes { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 14px; }
+.shape { display: grid; gap: 8px; justify-items: center; font-size: 13px; color: var(--on-surface-variant); }
+.shape i { width: 88px; height: 88px; background: var(--primary-container); display: block; transition: border-radius .5s var(--spring); }
+.shape:hover i { border-radius: 50% !important; }
+
+/* ───────── progress ───────── */
+.wave { width: 100%; height: 24px; display: block; }
+.wave .track { stroke: var(--primary-container); }
+.wave .ind { stroke: var(--primary); }
+.loading-btn { min-width: 220px; }
+
+/* ───────── keep / drop ───────── */
+.ledger { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 720px) { .ledger { grid-template-columns: 1fr; } }
+.ledger > div { border-radius: var(--r-xl); padding: 22px 24px; display: grid; gap: 12px; align-content: start; }
+.ledger .keep { background: var(--tertiary-container); color: var(--on-tertiary-container); }
+.ledger .drop { background: var(--sc); color: var(--on-surface-variant); }
+.ledger ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.ledger h3 { color: inherit; }
+
+
+/* ───────── choice (dropdown) ───────── */
+.choice { position: relative; width: 100%; max-width: 360px; }
+.choice-btn {
+  width: 100%; min-height: 56px; padding: 8px 14px 8px 16px; border: 0; border-radius: var(--r-m);
+  display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; color: var(--on-surface); font: inherit;
+  background: var(--sc-highest); box-shadow: inset 0 -2px 0 transparent;
+  transition: background-color .2s ease, box-shadow .2s ease, border-radius .35s var(--spring);
+}
+.choice-btn:hover { background: #e4d9d2; }
+.choice-btn:focus-visible, .choice.open .choice-btn { outline: 0; box-shadow: inset 0 -2px 0 var(--primary); background: var(--sc-high); }
+.choice.open .choice-btn { border-radius: var(--r-m) var(--r-m) var(--r-xs) var(--r-xs); }
+.choice-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.choice-text small { font: 700 12px/1.2 var(--sans); letter-spacing: .03em; color: var(--on-surface-variant); }
+.choice.open .choice-text small, .choice-btn:focus-visible .choice-text small { color: var(--primary); }
+.choice-text span { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.choice-cue { width: 24px; height: 24px; flex: none; display: grid; place-items: center; border-radius: 50%; transition: transform .4s var(--spring), background-color .2s; }
+.choice-cue::before { content: ""; width: 7px; height: 7px; margin-top: -4px; border-right: 2px solid var(--on-surface-variant); border-bottom: 2px solid var(--on-surface-variant); transform: rotate(45deg); }
+.choice.open .choice-cue { transform: rotate(180deg); background: var(--primary-container); }
+.choice-list {
+  position: absolute; z-index: 20; left: 0; right: 0; top: calc(100% + 6px); margin: 0; padding: 6px; list-style: none;
+  border-radius: var(--r-l); background: var(--sc-lowest);
+  box-shadow: 0 1px 2px rgba(78, 43, 55, .12), 0 12px 32px -8px rgba(78, 43, 55, .28);
+  transform-origin: top center; animation: choice-in .32s var(--spring);
+}
+.choice-list[hidden] { display: none; }
+@keyframes choice-in { from { opacity: 0; transform: scaleY(.85) translateY(-6px); } }
+.choice-opt { position: relative; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 14px 8px 22px; border-radius: var(--r-m); cursor: pointer; font-size: 15px; }
+.choice-opt small { display: block; font-size: 13px; color: var(--on-surface-variant); }
+.choice-opt.active { background: var(--sc-high); }
+.choice-opt[aria-selected="true"] { background: var(--secondary-container); color: var(--on-secondary-container); font-weight: 700; }
+.choice-opt[aria-selected="true"]::before { content: ""; position: absolute; left: 8px; top: 50%; width: 4px; height: 18px; margin-top: -9px; border-radius: 1px; background: var(--primary); animation: tick .45s var(--spring-fast); }
+@keyframes tick { from { transform: scaleY(0); } }
+.choice-opt[aria-disabled="true"] { color: #9b8d88; cursor: default; }
+
+/* the compact form, for toolbars: a tonal chip that opens the same sheet */
+.choice.compact { width: auto; max-width: none; }
+.choice.compact .choice-btn { min-height: 40px; padding: 0 8px 0 14px; border-radius: var(--r-s); background: var(--secondary-container); color: var(--on-secondary-container); gap: 6px; }
+.choice.compact .choice-btn:hover { background: #f0d3d6; }
+.choice.compact .choice-text { display: flex; gap: 6px; align-items: baseline; }
+.choice.compact .choice-text small { font-size: 13px; color: inherit; opacity: .75; }
+.choice.compact .choice-text span { font-size: 14px; font-weight: 700; }
+.choice.compact .choice-list { right: auto; min-width: 220px; }
+.choice-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px; align-items: start; min-height: 290px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- the scalloped portrait the phone uses -->
+    <clipPath id="scallop" clipPathUnits="objectBoundingBox">
+      <path d="M.5 0C.58 0 .62.07.69.09.76.11.84.07.9.13.95.18.92.26.94.33.96.4 1 .43 1 .5 1 .57.96.6.94.67.92.74.95.82.9.87.84.93.76.89.69.91.62.93.58 1 .5 1 .42 1 .38.93.31.91.24.89.16.93.1.87.05.82.08.74.06.67.04.6 0 .57 0 .5 0 .43.04.4.06.33.08.26.05.18.1.13.16.07.24.11.31.09.38.07.42 0 .5 0Z"/>
+    </clipPath>
+    <symbol id="bloom" viewBox="0 0 40 40">
+      <g transform="translate(20 20)">
+        <g id="pt"><path d="M0-3C-5-8-6-15-3-18c1.5 1 2.2 2 3 3 .8-1 1.5-2 3-3 3 3 2 10-3 15Z"/></g>
+        <use href="#pt" transform="rotate(72)"/><use href="#pt" transform="rotate(144)"/><use href="#pt" transform="rotate(216)"/><use href="#pt" transform="rotate(288)"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+
+<header class="intro">
+  <span class="eyebrow">Specimen 11 · Foundations</span>
+  <h1>Material 3 underneath, Kimono on top</h1>
+  <p class="lede">The website borrows the phone app's colour roles, type scale, shapes and motion, and keeps Kata's mechanics: the seal's impression, petals when you hold, blooms and the sakura sun. Mark each section keep, adjust or kill.</p>
+</header>
+
+<!-- 1. Comparison -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">01</span>
+    <h2>Home, same content</h2>
+    <p>The left is rebuilt from today's Kata tokens. The right uses only what this sheet proposes. Hover and press the apps on the right.</p>
+  </div>
+  <div class="compare">
+    <div class="frame">
+      <div class="tag">Kata today</div>
+      <div class="kata">
+        <div><h4>Good evening, Akram</h4><div class="k-sub">4 apps running</div></div>
+        <div class="k-label">Your apps</div>
+        <div class="k-grid">
+          <div class="k-app"><svg class="k-dot" style="color:#a84d63"><use href="#bloom" fill="currentColor"/></svg><span><b>Drive</b><small>Running</small></span></div>
+          <div class="k-app"><svg class="k-dot" style="color:#c27a3f"><use href="#bloom" fill="currentColor"/></svg><span><b>Photos</b><small>Running</small></span></div>
+          <div class="k-app"><svg class="k-dot" style="color:#5f8f8b"><use href="#bloom" fill="currentColor"/></svg><span><b>Code</b><small>Running</small></span></div>
+          <div class="k-app"><svg class="k-dot" style="color:#6a6aa0"><use href="#bloom" fill="currentColor"/></svg><span><b>Tools</b><small>Running</small></span></div>
+        </div>
+        <div class="k-actions"><button class="k-seal" type="button">Add an app</button><button class="k-seal q" type="button">Invite someone</button></div>
+      </div>
+    </div>
+    <div class="frame">
+      <div class="tag">Proposed</div>
+      <div class="m3">
+        <div class="top">
+          <div><h4>Good evening, Akram</h4><div class="sub">4 apps running</div></div>
+          <span class="avatar" aria-label="Akram">A</span>
+        </div>
+        <div class="apps">
+          <button class="app" type="button"><svg class="bloom" style="color:#a84d63"><use href="#bloom" fill="currentColor"/></svg><span><b>Drive</b><small class="running">Running</small></span></button>
+          <button class="app" type="button"><svg class="bloom" style="color:#c27a3f"><use href="#bloom" fill="currentColor"/></svg><span><b>Photos</b><small class="running">Running</small></span></button>
+          <button class="app" type="button"><svg class="bloom" style="color:#5f8f8b"><use href="#bloom" fill="currentColor"/></svg><span><b>Code</b><small class="running">Running</small></span></button>
+          <button class="app" type="button"><svg class="bloom" style="color:#6a6aa0"><use href="#bloom" fill="currentColor"/></svg><span><b>Tools</b><small class="running">Running</small></span></button>
+        </div>
+        <div class="actions"><button class="seal small" type="button"><span>Add an app</span></button><button class="seal quiet small" type="button"><span>Invite someone</span></button></div>
+      </div>
+    </div>
+  </div>
+  <div class="prov">
+    <div><b>From</b>The phone's Home and You screens</div>
+    <div><b>Challenges</b>Hairline grids as the way to group things</div>
+    <div><b>Cost</b>Every page's containers get redrawn</div>
+  </div>
+</section>
+
+<!-- 2. Colour -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">02</span>
+    <h2>Colour roles</h2>
+    <p>The same scheme as <code>Kata.kt</code>. Each container belongs to the suō, plum or moss family, so decision 0004's "no second palette" still holds. Suō can fill a container now, not only a button.</p>
+  </div>
+  <div class="swatches">
+    <div class="sw" style="background:var(--primary);color:var(--on-primary)"><b>Primary · suō</b><code>#a84d63</code></div>
+    <div class="sw" style="background:var(--primary-container);color:var(--on-primary-container)"><b>Primary container</b><code>#ffd9df</code></div>
+    <div class="sw" style="background:var(--secondary-container);color:var(--on-secondary-container)"><b>Secondary · plum</b><code>#f6e0e2</code></div>
+    <div class="sw" style="background:var(--tertiary-container);color:var(--on-tertiary-container)"><b>Tertiary · moss</b><code>#dce8cf</code></div>
+    <div class="sw" style="background:var(--plum);color:#fff"><b>Plum · names</b><code>#4e2b37</code></div>
+  </div>
+  <div class="surface-stack" aria-label="Surface containers from lowest to highest">
+    <div style="background:var(--sc-lowest)">Lowest</div>
+    <div style="background:var(--surface)">Surface</div>
+    <div style="background:var(--sc-low)">Low</div>
+    <div style="background:var(--sc)">Container</div>
+    <div style="background:var(--sc-high)">High</div>
+    <div style="background:var(--sc-highest)">Highest</div>
+  </div>
+  <div class="prov">
+    <div><b>From</b>Material tonal palettes, seeded from suō</div>
+    <div><b>Challenges</b>"Paper stacks by edge, not by shade"</div>
+    <div><b>Cost</b>The grain texture and the wood tones go</div>
+  </div>
+</section>
+
+<!-- 3. Type -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">03</span>
+    <h2>Type scale</h2>
+    <p>The faces stay the same and the sizes grow. Red figures are today's web sizes.</p>
+  </div>
+  <div class="scale">
+    <div><span class="meta">Display · 52</span><span style="font:600 52px/1.08 var(--display);letter-spacing:-1px;color:var(--plum)">Come home.</span></div>
+    <div><span class="meta">Headline · 30</span><span style="font:600 30px/1.15 var(--display);color:var(--plum)">Signed-in devices</span></div>
+    <div><span class="meta">Title · 21</span><span style="font:600 21px/1.25 var(--display);color:var(--plum)">Family photos</span></div>
+    <div><span class="meta">Title S · 16 bold</span><span style="font:700 16px/1.4 var(--sans)">Name and email</span></div>
+    <div><span class="meta">Body · 16 <span class="was">was 14</span></span><span style="font:400 16px/1.5 var(--sans)">One private place for your household's people, tools and shared memories.</span></div>
+    <div><span class="meta">Body S · 14 <span class="was">was 12</span></span><span style="font:400 14px/1.45 var(--sans);color:var(--on-surface-variant)">Last opened on Pixel 9 · 2 hours ago</span></div>
+    <div><span class="meta">Label · 13 bold <span class="was">was 12</span></span><span style="font:700 13px/1.2 var(--sans);letter-spacing:.04em;color:var(--primary)">This phone</span></div>
+  </div>
+  <div class="prov">
+    <div><b>From</b><code>kataTypography()</code> in the phone app</div>
+    <div><b>Challenges</b>12px labels as the workhorse size</div>
+    <div><b>Cost</b>Dense admin tables need a compact variant</div>
+  </div>
+</section>
+
+<!-- 4. Shapes -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">04</span>
+    <h2>Shapes</h2>
+    <p>Material's corner scale replaces 0–2px corners on containers. Buttons keep the seal's own cut (see 05). Hover a shape to see it round off.</p>
+  </div>
+  <div class="shapes">
+    <div class="shape"><i style="border-radius:var(--r-s)"></i>8 · chips, menus</div>
+    <div class="shape"><i style="border-radius:var(--r-m)"></i>12 · fields</div>
+    <div class="shape"><i style="border-radius:var(--r-l)"></i>16 · rows</div>
+    <div class="shape"><i style="border-radius:var(--r-xl)"></i>28 · cards, sheets</div>
+    <div class="shape"><i style="border-radius:var(--r-full)"></i>Full · chips, switches</div>
+    <div class="shape"><i style="clip-path:url(#scallop);background:var(--primary-container)"></i>Scallop · portraits</div>
+  </div>
+  <div class="prov">
+    <div><b>From</b>M3 Expressive shapes and the phone's scalloped portrait</div>
+    <div><b>Challenges</b>0–2px corners on every surface</div>
+    <div><b>Cost</b>Cards and sheets get redrawn. Seals keep their cut.</div>
+  </div>
+</section>
+
+<!-- 5. Buttons -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">05</span>
+    <h2>Buttons</h2>
+    <p>Buttons stay hanko seals: a carved block standing on its base, with the ring cut into the inked face. Material gives them its colours, size and spring. Press one and the block sinks onto its base, leaving an ink impression where you pressed. Destructive actions are held, not clicked.</p>
+  </div>
+  <div class="specimen">
+    <span class="label">A · Kata cut, 2px corners</span>
+    <div class="states">
+      <div class="state"><button class="seal" type="button"><span>Save changes</span></button><span>Seal · inked</span></div>
+      <div class="state"><button class="seal tonal" type="button"><span>Invite someone</span></button><span>Seal · tonal (new)</span></div>
+      <div class="state"><button class="seal quiet" type="button"><span>Cancel</span></button><span>Seal · uninked</span></div>
+      <div class="state"><button class="seal" type="button" disabled><span>Save changes</span></button><span>Disabled · lifted off its base</span></div>
+    </div>
+    <span class="label">B · Softer cut, 8px corners</span>
+    <div class="states">
+      <div class="state"><button class="seal soft" type="button"><span>Save changes</span></button><span>Seal · inked</span></div>
+      <div class="state"><button class="seal soft tonal" type="button"><span>Invite someone</span></button><span>Seal · tonal (new)</span></div>
+      <div class="state"><button class="seal soft quiet" type="button"><span>Cancel</span></button><span>Seal · uninked</span></div>
+      <div class="state"><button class="seal soft" type="button" disabled><span>Save changes</span></button><span>Disabled · lifted off its base</span></div>
+    </div>
+    <span class="label">Hold to confirm</span>
+    <div class="row">
+      <button class="seal tonal hold" type="button" id="hold-btn"><span class="fill"></span><span class="hold-label">Hold to sign out everywhere</span></button>
+      <span style="font-size:14px;color:var(--on-surface-variant)">Hold for 1.4s (Space or Enter works too). Let go early and the petals scatter.</span>
+    </div>
+  </div>
+  <div class="prov">
+    <div><b>From</b>Kata's seal (owner's pick, 2026-11-04), kept specimen 12 (Hold), M3 colour roles and sizing</div>
+    <div><b>Challenges</b>M3's round pill, the grey ripple and the confirm dialog</div>
+    <div><b>Cost</b>A little JavaScript for the impression and the hold. Keyboard hold uses keydown and keyup.</div>
+  </div>
+</section>
+
+<!-- 6. Progress -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">06</span>
+    <h2>Progress</h2>
+    <p>The wavy line from the phone's sign-in screen. It is the only loading mark on the site.</p>
+  </div>
+  <div class="specimen">
+    <svg class="wave" viewBox="0 0 600 24" preserveAspectRatio="none" aria-label="Uploading, 62 percent" role="img">
+      <path class="track" d="M380 12 H600" fill="none" stroke-width="4" stroke-linecap="round"/>
+      <path class="ind" id="wave-path" d="" fill="none" stroke-width="4" stroke-linecap="round"/>
+    </svg>
+    <div class="row" style="justify-content:space-between">
+      <span style="font-size:14px;color:var(--on-surface-variant)">Uploading 3 photos · 62%</span>
+      <button class="seal small loading-btn" type="button" disabled><span>Opening sign-in…</span></button>
+    </div>
+  </div>
+  <div class="prov">
+    <div><b>From</b>M3 Expressive wavy progress, as the phone uses it</div>
+    <div><b>Challenges</b>The spinning square in <code>.login-progress</code></div>
+    <div><b>Cost</b>An SVG path animated with requestAnimationFrame</div>
+  </div>
+</section>
+
+<!-- 7. Choice -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">07</span>
+    <h2>Dropdowns</h2>
+    <p>Choice stays Kimono's own dropdown, with keyboard and type-ahead. It now looks like an M3 filled field: a tonal box with its label inside and a suō rule underneath when it's open. The menu is a lifted sheet. The chosen row still gets Kata's suō tick, which stamps in when you pick it. Try them with the mouse or with arrow keys and Enter.</p>
+  </div>
+  <div class="specimen">
+    <div class="choice-grid">
+      <div class="state">
+        <div class="choice" data-choice>
+          <button class="choice-btn" type="button" aria-haspopup="listbox" aria-expanded="false" id="ch-role-btn">
+            <span class="choice-text"><small>Can</small><span data-value>Edit</span></span><span class="choice-cue" aria-hidden="true"></span>
+          </button>
+          <ul class="choice-list" role="listbox" hidden aria-labelledby="ch-role-btn">
+            <li class="choice-opt" role="option" aria-selected="false"><span>View<small>Open and download</small></span></li>
+            <li class="choice-opt" role="option" aria-selected="true"><span>Edit<small>Upload, rename and move</small></span></li>
+            <li class="choice-opt" role="option" aria-selected="false"><span>Own<small>Also share and delete the space</small></span></li>
+          </ul>
+        </div>
+        <span>Field · in a form (Drive's sharing)</span>
+      </div>
+      <div class="state">
+        <div class="choice compact" data-choice>
+          <button class="choice-btn" type="button" aria-haspopup="listbox" aria-expanded="false" id="ch-sort-btn">
+            <span class="choice-text"><small>Sort by</small><span data-value>Modified</span></span><span class="choice-cue" aria-hidden="true"></span>
+          </button>
+          <ul class="choice-list" role="listbox" hidden aria-labelledby="ch-sort-btn">
+            <li class="choice-opt" role="option" aria-selected="false"><span>Name</span></li>
+            <li class="choice-opt" role="option" aria-selected="true"><span>Modified</span></li>
+            <li class="choice-opt" role="option" aria-selected="false"><span>Size</span></li>
+          </ul>
+        </div>
+        <span>Compact · in a toolbar (Drive's sort)</span>
+      </div>
+      <div class="state">
+        <div class="choice" data-choice>
+          <button class="choice-btn" type="button" aria-haspopup="listbox" aria-expanded="false" id="ch-backup-btn">
+            <span class="choice-text"><small>Back up</small><span data-value>Every night at 3:00</span></span><span class="choice-cue" aria-hidden="true"></span>
+          </button>
+          <ul class="choice-list" role="listbox" hidden aria-labelledby="ch-backup-btn">
+            <li class="choice-opt" role="option" aria-selected="false"><span>Every hour</span></li>
+            <li class="choice-opt" role="option" aria-selected="true"><span>Every night at 3:00</span></li>
+            <li class="choice-opt" role="option" aria-selected="false"><span>Every Sunday</span></li>
+            <li class="choice-opt" role="option" aria-selected="false" aria-disabled="true"><span>Continuously<small>Needs a second disk</small></span></li>
+          </ul>
+        </div>
+        <span>With a disabled option and its reason (admin backups)</span>
+      </div>
+    </div>
+  </div>
+  <div class="prov">
+    <div><b>From</b>Kata's Choice (bdc5a77) and M3's filled field and menu</div>
+    <div><b>Challenges</b>The hairline box with a chevron, and the browser's own select</div>
+    <div><b>Cost</b>Nothing new: Choice already handles keyboard, type-ahead and flipping up near the bottom</div>
+  </div>
+</section>
+
+<!-- 8. Ledger -->
+<section>
+  <div class="section-head">
+    <span class="eyebrow">08</span>
+    <h2>What stays and what goes</h2>
+  </div>
+  <div class="ledger">
+    <div class="keep">
+      <h3>Kata keeps</h3>
+      <ul>
+        <li>Shippori Mincho for names, Zen Maru Gothic for everything else</li>
+        <li>Suō, plum and moss as the only hues; moss still means running</li>
+        <li>Each app's bloom and the sakura crossing between apps</li>
+        <li>The seal: carved ring, base, sinking press and ink impression</li>
+        <li>Hold-to-confirm with petals for anything destructive</li>
+        <li>The joint switch and the shoji door transition</li>
+        <li>The sakura sun on the sign-in page</li>
+      </ul>
+    </div>
+    <div class="drop">
+      <h3>Goes</h3>
+      <ul>
+        <li>1px hairline boxes as the way to group things</li>
+        <li>0–2px corners</li>
+        <li>Paper grain and the near-identical beiges</li>
+        <li>Ema plaques, cords and tassels on Home</li>
+        <li>12px as the default label size</li>
+        <li>The hairline box with a chevron on dropdowns</li>
+        <li>Authentik's default sign-in page</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+(() => {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Ink impression on press
+  document.querySelectorAll('.btn, .seal:not(.hold)').forEach(b => {
+    b.addEventListener('pointerdown', e => {
+      if (b.disabled || reduce) return;
+      const r = b.getBoundingClientRect();
+      const s = document.createElement('span');
+      s.className = 'ink';
+      s.style.left = (e.clientX - r.left) + 'px';
+      s.style.top = (e.clientY - r.top) + 'px';
+      b.appendChild(s);
+      s.addEventListener('animationend', () => s.remove());
+    });
+  });
+
+  // Hold to confirm
+  const hold = document.getElementById('hold-btn');
+  const fill = hold.querySelector('.fill');
+  const label = hold.querySelector('.hold-label');
+  const DURATION = 1400;
+  let start = 0, raf = 0, petals = [], done = false;
+
+  function spawnPetal(p) {
+    const el = document.createElement('span');
+    el.className = 'petal';
+    const w = hold.clientWidth, h = hold.clientHeight;
+    el.style.left = (Math.random() * w * Math.max(p, .1)) + 'px';
+    el.style.top = (h - 6 - Math.random() * h * .5 * p) + 'px';
+    el.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+    hold.appendChild(el);
+    petals.push(el);
+  }
+  function tick(t) {
+    const p = Math.min((t - start) / DURATION, 1);
+    fill.style.transform = 'scaleX(' + p + ')';
+    if (!reduce && Math.random() < .45) spawnPetal(p);
+    if (p < 1) { raf = requestAnimationFrame(tick); return; }
+    done = true;
+    hold.classList.add('done');
+    label.textContent = 'Signed out everywhere';
+    petals.forEach(el => el.remove()); petals = [];
+    setTimeout(reset, 1800);
+  }
+  function begin() {
+    if (done || raf) return;
+    label.textContent = 'Keep holding';
+    start = performance.now();
+    raf = requestAnimationFrame(tick);
+  }
+  function cancel() {
+    if (done || !raf) return;
+    cancelAnimationFrame(raf); raf = 0;
+    fill.style.transition = 'transform .3s ease';
+    fill.style.transform = 'scaleX(0)';
+    setTimeout(() => fill.style.transition = '', 320);
+    petals.forEach(el => {
+      el.style.transition = 'transform .6s cubic-bezier(.2,.8,.3,1), opacity .6s';
+      el.style.transform += ' translate(' + (Math.random() * 80 - 40) + 'px,' + (-30 - Math.random() * 40) + 'px)';
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 650);
+    });
+    petals = [];
+    label.textContent = 'Hold to sign out everywhere';
+  }
+  function reset() {
+    done = false; raf = 0;
+    hold.classList.remove('done');
+    fill.style.transform = 'scaleX(0)';
+    label.textContent = 'Hold to sign out everywhere';
+  }
+  hold.addEventListener('pointerdown', begin);
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => hold.addEventListener(ev, () => { if (raf && !done) cancel(); raf = done ? raf : 0; }));
+  hold.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); begin(); } });
+  hold.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') { if (!done) cancel(); raf = done ? raf : 0; } });
+
+  // Choice
+  document.querySelectorAll('[data-choice]').forEach(root => {
+    const btn = root.querySelector('.choice-btn');
+    const list = root.querySelector('.choice-list');
+    const opts = [...list.querySelectorAll('.choice-opt')];
+    const val = root.querySelector('[data-value]');
+    let active = -1;
+    const enabled = i => opts[i] && opts[i].getAttribute('aria-disabled') !== 'true';
+    function setActive(i) { opts.forEach(o => o.classList.remove('active')); active = i; if (opts[i]) opts[i].classList.add('active'); }
+    function open() {
+      document.querySelectorAll('[data-choice].open').forEach(r => r !== root && r.close());
+      root.classList.add('open'); list.hidden = false; btn.setAttribute('aria-expanded', 'true');
+      setActive(opts.findIndex(o => o.getAttribute('aria-selected') === 'true'));
+    }
+    function close() { root.classList.remove('open'); list.hidden = true; btn.setAttribute('aria-expanded', 'false'); setActive(-1); }
+    root.close = close;
+    function choose(i) {
+      if (!enabled(i)) return;
+      opts.forEach(o => o.setAttribute('aria-selected', 'false'));
+      opts[i].setAttribute('aria-selected', 'true');
+      val.textContent = opts[i].firstElementChild.firstChild.textContent.trim();
+      close(); btn.focus();
+    }
+    btn.addEventListener('click', () => root.classList.contains('open') ? close() : open());
+    opts.forEach((o, i) => { o.addEventListener('click', () => choose(i)); o.addEventListener('pointerenter', () => enabled(i) && setActive(i)); });
+    btn.addEventListener('keydown', e => {
+      const isOpen = root.classList.contains('open');
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); if (!isOpen) { open(); return; }
+        const step = e.key === 'ArrowDown' ? 1 : -1; let i = active;
+        do { i = (i + step + opts.length) % opts.length; } while (!enabled(i));
+        setActive(i);
+      } else if ((e.key === 'Enter' || e.key === ' ') && isOpen && active >= 0) { e.preventDefault(); choose(active); }
+      else if (e.key === 'Escape' && isOpen) { e.preventDefault(); close(); }
+      else if (e.key.length === 1 && isOpen) {
+        const i = opts.findIndex((o, n) => enabled(n) && o.textContent.trim().toLowerCase().startsWith(e.key.toLowerCase()));
+        if (i >= 0) setActive(i);
+      }
+    });
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('[data-choice]')) document.querySelectorAll('[data-choice].open').forEach(r => r.close()); });
+
+  // Wavy progress
+  const path = document.getElementById('wave-path');
+  const END = 600 * .62 - 12;
+  let phase = 0;
+  function wave() {
+    let d = 'M2 12';
+    for (let x = 2; x <= END; x += 4) d += ' L' + x + ' ' + (12 + Math.sin(x / 9 + phase) * 4).toFixed(2);
+    path.setAttribute('d', d);
+    phase -= .12;
+    if (!reduce) requestAnimationFrame(wave);
+  }
+  wave();
+})();
+</script>

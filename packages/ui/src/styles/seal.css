@@ -23,14 +23,14 @@
   align-items: center;
   justify-content: center;
   gap: var(--k-space-2);
-  min-height: var(--k-control);
+  min-height: 48px;
   padding: 0 var(--k-space-5);
   border: 0;
   border-radius: var(--k-r-seal);
   color: var(--k-lift);
   background: var(--k-accent);
-  box-shadow: inset 0 -2px 0 var(--k-seal-base), 0 0 0 7px transparent;
-  font: 700 13px/1 var(--k-sans);
+  box-shadow: inset 0 -3px 0 var(--k-seal-base), 0 0 0 7px transparent;
+  font: 700 15px/1 var(--k-sans);
   letter-spacing: .04em;
   text-decoration: none;
   white-space: nowrap;
@@ -41,11 +41,11 @@
     transform var(--k-t-tap) var(--k-ease-settle),
     box-shadow var(--k-t-seat) var(--k-ease-settle);
 }
-/* The carved ring: cut into the face, 3px in from the edge. */
+/* The carved ring: cut into the face, 4px in from the edge. */
 .k-seal::before {
   content: "";
   position: absolute;
-  inset: 3px;
+  inset: 4px;
   border: 1px solid rgba(255, 253, 248, .32);
   border-radius: 1px;
   pointer-events: none;
@@ -56,23 +56,23 @@
 /* Pressed: the block goes down, the base disappears under it, the ring
    tightens, and the impression is laid at zero spread — instantly. */
 .k-seal:active {
-  transform: translateY(1px) scale(.985);
+  transform: translateY(2px);
   box-shadow: inset 0 0 0 var(--k-seal-base), 0 0 0 0 var(--k-seal-impression);
   transition-duration: var(--k-t-state), var(--k-t-state), var(--k-t-tap), 0ms;
 }
-.k-seal:active::before { inset: 4px; }
+.k-seal:active::before { inset: 5px; }
 .k-seal:focus-visible { outline: var(--k-rule) solid var(--k-accent); outline-offset: 3px; }
 
 /* Quiet: the same block, uninked. Paper on a hair base; no ring, because
    there is no pigment to carve into. Reaching for it inks the lettering plum. */
 .k-seal.k-tone-quiet {
-  --k-seal-base: var(--k-hair-deep);
+  --k-seal-base: #d6c3b8;
   --k-seal-impression: color-mix(in srgb, var(--k-ink) 22%, transparent);
-  color: var(--k-ink);
-  background: var(--k-fold);
+  color: var(--k-on-surface);
+  background: var(--k-container-highest);
 }
 .k-seal.k-tone-quiet::before { display: none; }
-.k-seal.k-tone-quiet:hover { color: var(--k-plum); background: color-mix(in srgb, var(--k-fold) 60%, var(--k-hair)); }
+.k-seal.k-tone-quiet:hover { color: var(--k-plum); background: #e3d6cd; }
 
 /* Danger: the consequence in words and in suō, filled only once you reach for it. */
 .k-seal.k-tone-danger {
@@ -86,16 +86,16 @@
 
 /* Lifted off its base. */
 .k-seal[disabled], .k-seal[aria-disabled="true"] {
-  color: var(--k-faint);
-  background: var(--k-fold);
+  color: #8a7c77;
+  background: var(--k-container-high);
   box-shadow: none;
   transform: none;
   cursor: not-allowed;
 }
 .k-seal[disabled]::before, .k-seal[aria-disabled="true"]::before { display: none; }
 
-/* Compact: 36px tall, padded out to a 44px hit area. */
-.k-seal.k-compact { min-height: var(--k-control-compact); padding: 0 var(--k-space-4); font-size: 12px; }
+/* Compact: 40px tall, padded out to a 48px hit area. */
+.k-seal.k-compact { min-height: 40px; padding: 0 var(--k-space-4); font-size: 14px; }
 .k-seal.k-compact::after { content: ""; position: absolute; inset: -4px; border-radius: inherit; }
 
 /* ─────────────────────────────────────────────────────────────

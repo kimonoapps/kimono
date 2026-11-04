@@ -1,53 +1,58 @@
 /* ─────────────────────────────────────────────────────────────
    選 Choice — Kimono's dropdown.
 
-   Closed, it is a field: the same fold, hair edge and suō focus ring as an
-   input, with a small cue at the end. Open, a sheet of the lightest paper
-   lifts beside it with the sheet shadow; the option under the hand takes
-   the hover wash, the chosen one keeps a suō tick in its margin.
+   Closed, it is a Material filled field: a tonal box with no outline, and
+   a suō rule under it while it is open or focused. Open, a white sheet
+   lifts beside it on a spring; the option under the hand takes a tonal
+   wash, and the chosen one keeps Kata's suō tick, stamped in when picked.
    ───────────────────────────────────────────────────────────── */
 
 .k-choice { position: relative; display: block; width: 100%; max-width: 420px; }
 .k-choice-button {
   display: flex; align-items: center; gap: var(--k-space-3);
-  width: 100%; min-height: var(--k-control);
+  width: 100%; min-height: 48px;
   padding: 0 var(--k-space-3) 0 var(--k-space-4);
-  border: var(--k-hairline) solid var(--k-hair); border-radius: var(--k-r-2);
-  background: var(--k-fold); color: var(--k-ink);
-  font: 14px/1.5 var(--k-sans); text-align: left; cursor: pointer;
-  transition: border-color var(--k-t-state) var(--k-ease-settle), background-color var(--k-t-state) var(--k-ease-settle), box-shadow var(--k-t-state) var(--k-ease-settle);
+  border: 0; border-radius: var(--k-r-m);
+  background: var(--k-container-highest); color: var(--k-on-surface);
+  box-shadow: inset 0 -2px 0 transparent;
+  font: 16px/1.5 var(--k-sans); text-align: left; cursor: pointer;
+  transition: background-color var(--k-t-state) var(--k-ease-settle), box-shadow var(--k-t-state) var(--k-ease-settle), border-radius var(--k-t-seat) var(--k-spring);
 }
-.k-choice-button:hover { border-color: var(--k-hair-deep); }
+.k-choice-button:hover { background: #e4d9d2; }
 .k-choice-button:focus-visible, .k-choice.is-open .k-choice-button {
-  outline: 0; border-color: var(--k-suo); background: var(--k-lift);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-suo) 22%, transparent);
+  outline: 0; background: var(--k-container-high);
+  box-shadow: inset 0 -2px 0 var(--k-accent);
 }
-.k-choice-button:disabled { color: var(--k-faint); background: transparent; border-style: dashed; cursor: not-allowed; }
+.k-choice.is-open .k-choice-button { border-radius: var(--k-r-m) var(--k-r-m) 4px 4px; }
+.k-choice-button:disabled { color: var(--k-faint); background: var(--k-container-high); cursor: not-allowed; }
 .k-choice-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.k-choice-value.is-placeholder { color: var(--k-faint); }
-/* The cue: a small chevron drawn in ink, turning over while open. */
-.k-choice-cue { flex: none; width: 8px; height: 8px; margin: -3px 4px 0 0; border-right: 1.5px solid var(--k-ink-soft); border-bottom: 1.5px solid var(--k-ink-soft); transform: rotate(45deg); transition: transform var(--k-t-state) var(--k-ease-settle); }
-.k-choice.is-open .k-choice-cue { transform: translateY(4px) rotate(-135deg); }
+.k-choice-value.is-placeholder { color: var(--k-on-surface-variant); }
+/* The cue: a chevron in a small round well that turns over while open. */
+.k-choice-cue { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; transition: transform var(--k-t-seat) var(--k-spring), background-color var(--k-t-state) var(--k-ease-settle); }
+.k-choice-cue::before { content: ""; width: 7px; height: 7px; margin-top: -4px; border-right: 2px solid var(--k-on-surface-variant); border-bottom: 2px solid var(--k-on-surface-variant); transform: rotate(45deg); }
+.k-choice.is-open .k-choice-cue { transform: rotate(180deg); background: var(--k-primary-container); }
 .k-choice-required { position: absolute; inset: auto 0 0; width: 100%; height: 1px; opacity: 0; pointer-events: none; }
 
 .k-choice-list {
-  position: fixed; z-index: 1000; margin: 0; padding: var(--k-space-1); list-style: none; overflow-y: auto; box-sizing: border-box;
-  border: var(--k-hairline) solid var(--k-hair-deep); border-radius: var(--k-r-2);
-  background: var(--k-lift); box-shadow: var(--k-shadow-sheet);
-  font: 14px/1.4 var(--k-sans); color: var(--k-ink);
-  animation: k-choice-in var(--k-t-state) var(--k-ease-settle);
+  position: fixed; z-index: 1000; margin: 0; padding: 6px; list-style: none; overflow-y: auto; box-sizing: border-box;
+  border: 0; border-radius: var(--k-r-l);
+  background: var(--k-container-lowest); box-shadow: var(--k-shadow-raised);
+  font: 15px/1.4 var(--k-sans); color: var(--k-on-surface);
+  transform-origin: top center;
+  animation: k-choice-in var(--k-t-seat) var(--k-spring);
 }
-.k-choice-list.is-up { animation-name: k-choice-in-up; }
-@keyframes k-choice-in { from { opacity: 0; transform: translateY(-4px); } }
-@keyframes k-choice-in-up { from { opacity: 0; transform: translateY(4px); } }
-.k-choice-option { position: relative; display: flex; align-items: center; min-height: 40px; padding: var(--k-space-2) var(--k-space-4) var(--k-space-2) calc(var(--k-space-4) + 10px); border-radius: calc(var(--k-r-2) - 2px); cursor: pointer; }
+.k-choice-list.is-up { transform-origin: bottom center; animation-name: k-choice-in-up; }
+@keyframes k-choice-in { from { opacity: 0; transform: scaleY(.85) translateY(-6px); } }
+@keyframes k-choice-in-up { from { opacity: 0; transform: scaleY(.85) translateY(6px); } }
+.k-choice-option { position: relative; display: flex; align-items: center; min-height: 48px; padding: var(--k-space-2) var(--k-space-4) var(--k-space-2) 22px; border-radius: var(--k-r-m); cursor: pointer; }
 .k-choice-option > span { display: grid; gap: 2px; min-width: 0; }
-.k-choice-option small { color: var(--k-ink-soft); font-size: 12px; }
-.k-choice-option.is-active { background: var(--k-hover); }
-.k-choice-option.is-chosen { font-weight: 600; }
-.k-choice-option.is-chosen::before { content: ""; position: absolute; left: var(--k-space-2); top: 50%; width: 4px; height: 16px; margin-top: -8px; background: var(--k-suo); }
+.k-choice-option small { color: var(--k-on-surface-variant); font-size: 13px; }
+.k-choice-option.is-active { background: var(--k-container-high); }
+.k-choice-option.is-chosen { background: color-mix(in srgb, var(--k-accent) 13%, var(--k-container-lowest)); color: var(--k-on-surface); font-weight: 700; }
+.k-choice-option.is-chosen::before { content: ""; position: absolute; left: 8px; top: 50%; width: 4px; height: 18px; margin-top: -9px; border-radius: 1px; background: var(--k-accent); animation: k-choice-tick var(--k-t-fold) var(--k-spring); }
+@keyframes k-choice-tick { from { transform: scaleY(0); } }
 .k-choice-option.is-disabled { color: var(--k-faint); cursor: default; }
 
 /* Inside a labelled field it fills the field's measure like an input does. */
 .k-field .k-choice { max-width: 420px; }
-@media (prefers-reduced-motion: reduce) { .k-choice-list { animation: none; } .k-choice-cue { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .k-choice-list, .k-choice-option.is-chosen::before { animation: none; } .k-choice-cue, .k-choice-button { transition: none; } }
