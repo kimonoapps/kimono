@@ -92,7 +92,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
 
       <Compartment label="TestFlight" wants={!testflight}>
         {testflight ? <>
-          <Note>Everyone with a Kimono account is invited at their Kimono email, and added once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId}.</Note>
+          <Note>People who ask on their iPhone are invited at their Kimono email, and added once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId}.</Note>
           {testflight.lastSync ? <p className={`admin-notice ${testflight.lastSync.ok ? "success" : "error"}`}>Last checked {new Date(testflight.lastSync.at).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })}: {testflight.lastSync.message}</p> : null}
           {testflight.statuses.length ? <Rows>{testflight.statuses.map((row) => <Row
             key={row.username}
@@ -118,6 +118,6 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
 /** A tester status as a short label beside the name. */
 function testerLabel(status: string) {
   if (status.startsWith("invited")) return "Invited";
-  return ({ added: "Added", removed: "Removed", "no email": "No email", "no Kimono access": "No access" } as Record<string, string>)[status] ?? status;
+  return ({ added: "Added", removed: "Removed", "no email": "No email", "not requested": "Not requested", "no Kimono access": "No access" } as Record<string, string>)[status] ?? status;
 }
 

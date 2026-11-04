@@ -1,5 +1,5 @@
 import { apiError, apiJson, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
-import { syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { requestTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
 
 /** Where you stand with the iPhone app's TestFlight. */
 export async function GET() {
@@ -11,24 +11,26 @@ export async function GET() {
   return apiJson({ status: standing(row?.status), email: row?.email ?? null });
 }
 
-/** Invites you to TestFlight now, at your Kimono email, rather than at the next hourly sync; asking again after accepting Apple's email adds you straight away. */
+/** Asks to try the iPhone app: invites you at your Kimono email now; asking again after accepting Apple's email adds you straight away. */
 export async function POST(request: Request) {
   const refused = crossSite(request);
   if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!(await testflightSettings().catch(() => null))) return apiError(404, "The iPhone app isn't set up on this Kimono yet.");
-  /* At most one sync every ten seconds, however many people ask. */
-  await syncTestflightIfDue(10 * 1000);
+  /* Asking is what gets you invited; a first ask goes out at once, asking again syncs at most every ten seconds. */
+  const first = await requestTestflight(user.username);
+  await syncTestflightIfDue(first ? 0 : 10 * 1000);
   const row = (await testflightSettings())?.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase());
   return apiJson({ status: standing(row?.status), email: row?.email ?? null });
 }
 
 /** A person's TestFlight status, as the website explains it. */
-function standing(status: string | undefined): "tester" | "invited" | "waiting" | "problem" | "none" {
+function standing(status: string | undefined): "tester" | "invited" | "waiting" | "problem" | "none" | "idle" {
+  if (!status || status === "not requested") return "idle";
   if (status === "tester" || status === "added") return "tester";
   if (status?.startsWith("invited")) return "invited";
   if (status?.startsWith("error")) return "problem";
-  if (!status || status === "no email") return "none";
+  if (status === "no email") return "none";
   return "waiting";
 }
