@@ -26,4 +26,5 @@ export function proxy(request: NextRequest) {
   return response;
 }
 
-export const config = { matcher: "/api/v1/:path*" };
+/* Uploads stream their bodies straight to disk; a proxy in front would buffer them. */
+export const config = { matcher: "/api/v1/((?!drive/uploads).*)" };

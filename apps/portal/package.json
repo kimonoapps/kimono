@@ -11,7 +11,8 @@
     "test:tools": "node --test scripts/test-tools.mjs",
     "test:mobile-app": "node --test scripts/test-mobile-app.mjs",
     "test:tunnels": "node --test scripts/test-tunnel-settings.mjs",
-    "test:account": "node --test scripts/test-account.mjs"
+    "test:account": "node --test scripts/test-account.mjs",
+    "test:drive": "node --test scripts/test-drive.mjs"
   },
   "dependencies": {
     "@kimono/account": "workspace:*",
@@ -24,7 +25,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.14",
-    "@types/node": "^20.19.13",
+    "@types/node": "^24.19.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "eslint": "^9.35.0",
