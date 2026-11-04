@@ -19,24 +19,34 @@
  *     " (2)", " (3)" … before the extension.
  *   - Trash keeps things for 30 days. A public link to something in the trash
  *     stops working, and works again if it is restored.
+ *   - An owner can open a space to anyone with its link, to view and download,
+ *     or also to add files. Such guests never see who is in the space, and
+ *     can't rename, move or remove anything. Turning the link off ends it for
+ *     good; turning it on again makes a new one.
  *   - Being a Kimono admin gives no access to other people's spaces.
  */
 import type { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
 
 export type Role = "owner" | "editor" | "viewer";
-export type Space = { id: string; name: string; crest: string; rootId: string; createdBy: string; createdAt: number; role: Role; members: number };
+export type LinkAccess = "view" | "add";
+export type Space = {
+  id: string; name: string; crest: string; rootId: string; createdBy: string; createdAt: number; role: Role; members: number;
+  link: string | null; linkAccess: LinkAccess | null;
+};
 export type Member = { username: string; role: Role; addedAt: number };
 export type DriveNode = {
   id: string; spaceId: string; parentId: string | null; kind: "folder" | "file"; name: string;
   size: number; mime: string | null; createdBy: string; createdAt: number; updatedAt: number;
   trashedAt: number | null; link: string | null;
+  /** The name a guest gave when adding this through the space's link (createdBy is then ""). */
+  guest: string | null;
 };
 
 /** A refusal a person can read. Routes turn it into a 4xx with this sentence. */
 export class DriveProblem extends Error {
-  readonly status: 400 | 403 | 404 | 409 | 413 | 507;
-  constructor(message: string, status: 400 | 403 | 404 | 409 | 413 | 507 = 400) {
+  readonly status: 400 | 403 | 404 | 409 | 413 | 429 | 507;
+  constructor(message: string, status: 400 | 403 | 404 | 409 | 413 | 429 | 507 = 400) {
     super(message);
     this.status = status;
   }
@@ -109,6 +119,20 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 3) {
+    /* Spaces open to anyone with their link, and the files guests add through it. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE spaces ADD COLUMN link TEXT;
+      ALTER TABLE spaces ADD COLUMN link_access TEXT CHECK (link_access IN ('view', 'add'));
+      CREATE UNIQUE INDEX spaces_by_link ON spaces (link) WHERE link IS NOT NULL;
+      ALTER TABLE nodes ADD COLUMN guest TEXT;
+      ALTER TABLE uploads ADD COLUMN link TEXT;
+      ALTER TABLE uploads ADD COLUMN guest TEXT;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '3');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── names ── */
@@ -137,16 +161,16 @@ export function numbered(name: string, n: number): string {
 type NodeRow = {
   id: string; space_id: string; parent_id: string | null; kind: "folder" | "file"; name: string; size: number;
   mime: string | null; blob: string | null; created_by: string; created_at: number; updated_at: number;
-  trashed_at: number | null; link: string | null;
+  trashed_at: number | null; link: string | null; guest: string | null;
 };
 
-const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.trashed_at,
+const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.trashed_at, n.guest,
   (SELECT token FROM links l WHERE l.node_id = n.id AND l.revoked_at IS NULL ORDER BY l.created_at DESC LIMIT 1) AS link`;
 
 const toNode = (row: NodeRow): DriveNode => ({
   id: row.id, spaceId: row.space_id, parentId: row.parent_id, kind: row.kind, name: row.name, size: row.size,
   mime: row.mime, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
-  trashedAt: row.trashed_at, link: row.link,
+  trashedAt: row.trashed_at, link: row.link, guest: row.guest,
 });
 
 function nodeRow(db: DatabaseSync, id: string): (NodeRow & { blob: string | null }) | undefined {
@@ -189,12 +213,12 @@ export function nodeFor(db: DatabaseSync, id: string, username: string, need: Ro
 
 export function spacesOf(db: DatabaseSync, username: string): Space[] {
   const rows = db.prepare(`
-    SELECT s.id, s.name, s.crest, s.root_id, s.created_by, s.created_at, m.role,
+    SELECT s.id, s.name, s.crest, s.root_id, s.created_by, s.created_at, s.link, s.link_access, m.role,
       (SELECT count(*) FROM members x WHERE x.space_id = s.id) AS members
     FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
     ORDER BY lower(s.name)
-  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; root_id: string; created_by: string; created_at: number; role: Role; members: number }[];
-  return rows.map((r) => ({ id: r.id, name: r.name, crest: r.crest, rootId: r.root_id, createdBy: r.created_by, createdAt: r.created_at, role: r.role, members: r.members }));
+  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; role: Role; members: number }[];
+  return rows.map((r) => ({ id: r.id, name: r.name, crest: r.crest, rootId: r.root_id, createdBy: r.created_by, createdAt: r.created_at, role: r.role, members: r.members, link: r.link, linkAccess: r.link_access }));
 }
 
 export function spaceFor(db: DatabaseSync, spaceId: string, username: string): Space & { memberList: Member[] } {
@@ -300,11 +324,15 @@ export function createFolder(db: DatabaseSync, parentId: string, username: strin
 /** Adds a finished upload as a file, numbering the name if it clashes. */
 export function addFile(db: DatabaseSync, parentId: string, username: string, file: { name: string; size: number; mime: string | null; blob: string }, now = Date.now()): DriveNode {
   const parent = nodeFor(db, parentId, username, "editor");
+  return insertFile(db, parent, username.toLowerCase(), null, file, now);
+}
+
+function insertFile(db: DatabaseSync, parent: DriveNode, createdBy: string, guest: string | null, file: { name: string; size: number; mime: string | null; blob: string }, now: number): DriveNode {
   if (parent.kind !== "folder") throw new DriveProblem("Files go inside folders.");
-  const name = freeName(db, parentId, cleanName(file.name, "file name"));
+  const name = freeName(db, parent.id, cleanName(file.name, "file name"));
   const id = newId();
-  db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, size, mime, blob, created_by, created_at, updated_at) VALUES (?, ?, ?, 'file', ?, ?, ?, ?, ?, ?, ?)")
-    .run(id, parent.spaceId, parentId, name, file.size, file.mime, file.blob, username.toLowerCase(), now, now);
+  db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, size, mime, blob, created_by, created_at, updated_at, guest) VALUES (?, ?, ?, 'file', ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(id, parent.spaceId, parent.id, name, file.size, file.mime, file.blob, createdBy, now, now, guest);
   return toNode(nodeRow(db, id)!);
 }
 
@@ -393,27 +421,157 @@ export function publicFile(db: DatabaseSync, token: string): { id: string; name:
   return { id: row.id, name: row.name, size: row.size, mime: row.mime, blob: row.blob, updatedAt: row.updated_at };
 }
 
+/* ── space links ── */
+
+export type SharedSpace = { id: string; name: string; crest: string; rootId: string; access: LinkAccess };
+/** A file or folder as a guest sees it: no usernames, no links of its own. */
+export type SharedNode = { id: string; kind: "folder" | "file"; name: string; size: number; mime: string | null; updatedAt: number };
+
+/** Opens a space to anyone with its link ("view" or "add"), or closes it (null). Owners only. */
+export function setSpaceLink(db: DatabaseSync, spaceId: string, username: string, access: LinkAccess | null): string | null {
+  require(db, spaceId, username, "owner");
+  if (access === null) {
+    db.prepare("UPDATE spaces SET link = NULL, link_access = NULL WHERE id = ?").run(spaceId);
+    return null;
+  }
+  if (access !== "view" && access !== "add") throw new DriveProblem("A link lets people view, or view and add files.");
+  const current = (db.prepare("SELECT link FROM spaces WHERE id = ?").get(spaceId) as { link: string | null }).link;
+  const token = current ?? newId(12);
+  db.prepare("UPDATE spaces SET link = ?, link_access = ? WHERE id = ?").run(token, access, spaceId);
+  return token;
+}
+
+const linkShape = /^[A-Za-z0-9_-]{8,32}$/;
+
+/** The space a link opens, if it still does. */
+export function linkedSpace(db: DatabaseSync, token: string): SharedSpace | null {
+  if (!linkShape.test(token)) return null;
+  const row = db.prepare("SELECT id, name, crest, root_id, link_access FROM spaces WHERE link = ?").get(token) as { id: string; name: string; crest: string; root_id: string; link_access: LinkAccess } | undefined;
+  return row ? { id: row.id, name: row.name, crest: row.crest, rootId: row.root_id, access: row.link_access } : null;
+}
+
+function guestSpace(db: DatabaseSync, token: string, need: LinkAccess = "view"): SharedSpace {
+  const space = linkedSpace(db, token);
+  if (!space) throw new DriveProblem("This link doesn't work any more.", 404);
+  if (need === "add" && space.access !== "add") throw new DriveProblem("This link is for viewing only.", 403);
+  return space;
+}
+
+/** A node inside the link's space, not in the trash. */
+function guestNode(db: DatabaseSync, space: SharedSpace, id: string): DriveNode & { blob: string | null } {
+  const row = nodeRow(db, id);
+  if (!row || row.space_id !== space.id || inTrash(db, id)) throw new DriveProblem("That file or folder doesn't exist.", 404);
+  return { ...toNode(row), blob: row.blob };
+}
+
+const shared = (node: DriveNode): SharedNode => ({ id: node.id, kind: node.kind, name: node.name, size: node.size, mime: node.mime, updatedAt: node.updatedAt });
+
+/** A folder of a linked space, for anyone holding the link. The path starts at the space's top. */
+export function sharedFolder(db: DatabaseSync, token: string, folderId?: string): { space: SharedSpace; folder: SharedNode; path: SharedNode[]; children: SharedNode[] } {
+  const space = guestSpace(db, token);
+  const folder = guestNode(db, space, folderId || space.rootId);
+  if (folder.kind !== "folder") throw new DriveProblem("That's a file, not a folder.");
+  const children = (db.prepare(`SELECT ${nodeColumns} FROM nodes n WHERE n.parent_id = ? AND n.trashed_at IS NULL ORDER BY n.kind = 'file', lower(n.name)`).all(folder.id) as NodeRow[]).map(toNode);
+  const path: SharedNode[] = [];
+  for (let at: string | null = folder.parentId; at && path.length < 256;) {
+    const row = nodeRow(db, at);
+    if (!row || row.space_id !== space.id) break;
+    path.unshift(shared(toNode(row)));
+    at = row.parent_id;
+  }
+  return { space, folder: shared(folder), path, children: children.map(shared) };
+}
+
+/** A file of a linked space, for downloading. */
+export function sharedFile(db: DatabaseSync, token: string, id: string): { name: string; size: number; blob: string } {
+  const node = guestNode(db, guestSpace(db, token), id);
+  if (node.kind !== "file" || !node.blob) throw new DriveProblem("That's a folder.");
+  return { name: node.name, size: node.size, blob: node.blob };
+}
+
 /* ── uploads ── */
 
-export type Upload = { id: string; spaceId: string; parentId: string; name: string; mime: string | null; size: number; received: number; createdBy: string };
+/**
+ * An upload in progress. A member's belongs to them; a guest's has no owner,
+ * only the link it came through, and its unguessable id is what lets the
+ * guest carry on with it.
+ */
+export type Upload = { id: string; spaceId: string; parentId: string; name: string; mime: string | null; size: number; received: number; createdBy: string; link: string | null; guest: string | null };
+
+/** Unfinished guest uploads one link may have at once, so strangers can't promise the whole disk away. */
+export const guestUploadsAtOnce = 10;
+
+function checkFile(file: { name: unknown; size: number }, maxBytes: number): string {
+  const name = cleanName(file.name, "file name");
+  if (!Number.isSafeInteger(file.size) || file.size < 0) throw new DriveProblem("Say how big the file is.");
+  if (file.size > maxBytes) throw new DriveProblem(`Files can be up to ${Math.floor(maxBytes / 1024 ** 3)} GB.`, 413);
+  return name;
+}
 
 export function startUpload(db: DatabaseSync, parentId: string, username: string, file: { name: unknown; size: number; mime: string | null }, maxBytes: number, now = Date.now()): Upload {
   const parent = nodeFor(db, parentId, username, "editor");
   if (parent.kind !== "folder") throw new DriveProblem("Files go inside folders.");
-  const name = cleanName(file.name, "file name");
-  if (!Number.isSafeInteger(file.size) || file.size < 0) throw new DriveProblem("Say how big the file is.");
-  if (file.size > maxBytes) throw new DriveProblem(`Files can be up to ${Math.floor(maxBytes / 1024 ** 3)} GB.`, 413);
+  const name = checkFile(file, maxBytes);
   const id = newId();
   db.prepare("INSERT INTO uploads (id, space_id, parent_id, name, mime, size, received, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
     .run(id, parent.spaceId, parentId, name, file.mime, file.size, username.toLowerCase(), now, now);
-  return { id, spaceId: parent.spaceId, parentId, name, mime: file.mime, size: file.size, received: 0, createdBy: username.toLowerCase() };
+  return { id, spaceId: parent.spaceId, parentId, name, mime: file.mime, size: file.size, received: 0, createdBy: username.toLowerCase(), link: null, guest: null };
 }
 
-/** An upload in progress, only for the person who started it. */
-export function uploadFor(db: DatabaseSync, id: string, username: string): Upload {
-  const row = db.prepare("SELECT id, space_id, parent_id, name, mime, size, received, created_by FROM uploads WHERE id = ?").get(id) as { id: string; space_id: string; parent_id: string; name: string; mime: string | null; size: number; received: number; created_by: string } | undefined;
-  if (!row || row.created_by !== username.toLowerCase()) throw new DriveProblem("That upload doesn't exist.", 404);
-  return { id: row.id, spaceId: row.space_id, parentId: row.parent_id, name: row.name, mime: row.mime, size: row.size, received: row.received, createdBy: row.created_by };
+/** Starts an upload through a space's link, by someone without an account. [guest] is the name they give, if any. */
+export function startGuestUpload(db: DatabaseSync, token: string, folderId: string | undefined, guest: unknown, file: { name: unknown; size: number; mime: string | null }, maxBytes: number, now = Date.now()): Upload {
+  const space = guestSpace(db, token, "add");
+  const parent = guestNode(db, space, folderId || space.rootId);
+  if (parent.kind !== "folder") throw new DriveProblem("Files go inside folders.");
+  const name = checkFile(file, maxBytes);
+  const who = guestName(guest);
+  const open = (db.prepare("SELECT count(*) AS n FROM uploads WHERE link = ?").get(token) as { n: number }).n;
+  if (open >= guestUploadsAtOnce) throw new DriveProblem("Too many uploads are going through this link at once. Try again when some finish.", 429);
+  const id = newId();
+  db.prepare("INSERT INTO uploads (id, space_id, parent_id, name, mime, size, received, created_by, created_at, updated_at, link, guest) VALUES (?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?)")
+    .run(id, space.id, parent.id, name, file.mime, file.size, now, now, token, who);
+  return { id, spaceId: space.id, parentId: parent.id, name, mime: file.mime, size: file.size, received: 0, createdBy: "", link: token, guest: who };
+}
+
+function guestName(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const name = raw.normalize("NFC").replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  if (!name) return null;
+  if ([...name].length > 60) throw new DriveProblem("That name is too long.");
+  return name;
+}
+
+/**
+ * An upload in progress: a member's only for them (username), a guest's for
+ * whoever holds its id (username null) while its link still lets people add.
+ */
+export function uploadFor(db: DatabaseSync, id: string, username: string | null): Upload {
+  const row = db.prepare("SELECT id, space_id, parent_id, name, mime, size, received, created_by, link, guest FROM uploads WHERE id = ?").get(id) as { id: string; space_id: string; parent_id: string; name: string; mime: string | null; size: number; received: number; created_by: string; link: string | null; guest: string | null } | undefined;
+  const missing = new DriveProblem("That upload doesn't exist.", 404);
+  if (!row) throw missing;
+  if (row.link) {
+    const space = linkedSpace(db, row.link);
+    if (!space || space.id !== row.space_id || space.access !== "add") throw missing;
+  } else if (!username || row.created_by !== username.toLowerCase()) throw missing;
+  return { id: row.id, spaceId: row.space_id, parentId: row.parent_id, name: row.name, mime: row.mime, size: row.size, received: row.received, createdBy: row.created_by, link: row.link, guest: row.guest };
+}
+
+/** Puts a finished upload in its folder, as its member or as the guest. */
+export function finishUpload(db: DatabaseSync, upload: Upload, blob: string, now = Date.now()): DriveNode {
+  db.exec("BEGIN");
+  try {
+    let node: DriveNode;
+    if (upload.link) {
+      const space = guestSpace(db, upload.link, "add");
+      if (space.id !== upload.spaceId) throw new DriveProblem("This link doesn't work any more.", 404);
+      node = insertFile(db, guestNode(db, space, upload.parentId), "", upload.guest, { name: upload.name, size: upload.size, mime: upload.mime, blob }, now);
+    } else {
+      node = addFile(db, upload.parentId, upload.createdBy, { name: upload.name, size: upload.size, mime: upload.mime, blob }, now);
+    }
+    endUpload(db, upload.id);
+    db.exec("COMMIT");
+    return node;
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
 export function recordReceived(db: DatabaseSync, id: string, received: number, now = Date.now()) {
@@ -432,11 +590,13 @@ export function endUpload(db: DatabaseSync, id: string) {
   db.prepare("DELETE FROM uploads WHERE id = ?").run(id);
 }
 
-/** Uploads that received nothing for [uploadIdleDays]; the caller deletes their partial bytes. */
+/** Uploads that received nothing for [uploadIdleDays], or whose link closed; the caller deletes their partial bytes. */
 export function staleUploads(db: DatabaseSync, now = Date.now()): string[] {
   const cutoff = now - uploadIdleDays * 24 * 60 * 60 * 1000;
-  const rows = db.prepare("SELECT id FROM uploads WHERE updated_at < ?").all(cutoff) as { id: string }[];
-  db.prepare("DELETE FROM uploads WHERE updated_at < ?").run(cutoff);
+  /* Guests' uploads also end when their link closes or stops letting people add. */
+  const stale = "updated_at < ? OR (link IS NOT NULL AND link NOT IN (SELECT link FROM spaces WHERE link IS NOT NULL AND link_access = 'add'))";
+  const rows = db.prepare(`SELECT id FROM uploads WHERE ${stale}`).all(cutoff) as { id: string }[];
+  db.prepare(`DELETE FROM uploads WHERE ${stale}`).run(cutoff);
   return rows.map((r) => r.id);
 }
 

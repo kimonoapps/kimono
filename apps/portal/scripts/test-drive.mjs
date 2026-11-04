@@ -139,3 +139,58 @@ test('a slow upload survives as long as bytes keep arriving', () => {
   assert.deepEqual(drive.staleUploads(db, start + 10 * day), [], 'six days in, still receiving');
   assert.deepEqual(drive.staleUploads(db, start + 14 * day), [upload.id], 'a week of silence ends it');
 });
+
+test('a space opened by its link: guests view, add only when allowed, and never see members', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'Wedding', members: [{ username: 'mina', role: 'editor' }] });
+  const photos = drive.createFolder(db, space.rootId, 'akram', 'Photos');
+  drive.addFile(db, photos.id, 'akram', file('vows.png', 'b-vows'));
+  assert.throws(() => drive.setSpaceLink(db, space.id, 'mina', 'view'), /owners/);
+  const token = drive.setSpaceLink(db, space.id, 'akram', 'view');
+  assert.equal(drive.spaceFor(db, space.id, 'mina').link, token);
+  const top = drive.sharedFolder(db, token);
+  assert.equal(top.space.name, 'Wedding');
+  assert.deepEqual(top.children.map((n) => n.name), ['Photos']);
+  const inside = drive.sharedFolder(db, token, photos.id);
+  assert.equal(inside.children[0].createdBy, undefined, 'no usernames for guests');
+  assert.equal(drive.sharedFile(db, token, inside.children[0].id).blob, 'b-vows');
+  assert.throws(() => drive.startGuestUpload(db, token, photos.id, 'Sam', { name: 'a.png', size: 3, mime: null }, 100), /viewing only/);
+
+  assert.equal(drive.setSpaceLink(db, space.id, 'akram', 'add'), token, 'changing access keeps the link');
+  const upload = drive.startGuestUpload(db, token, photos.id, '  Sam  ', { name: 'vows.png', size: 3, mime: 'image/png' }, 100);
+  assert.equal(drive.uploadFor(db, upload.id, null).guest, 'Sam');
+  assert.throws(() => drive.uploadFor(db, 'nope', null), (e) => e.status === 404);
+  const mine = drive.startUpload(db, space.rootId, 'akram', { name: 'm.png', size: 3, mime: null }, 100);
+  assert.throws(() => drive.uploadFor(db, mine.id, null), (e) => e.status === 404, "a member's upload needs its member");
+  const node = drive.finishUpload(db, drive.uploadFor(db, upload.id, null), 'b-guest');
+  assert.equal(node.name, 'vows (2).png');
+  assert.equal(node.guest, 'Sam');
+  assert.equal(node.createdBy, '');
+  assert.throws(() => drive.uploadFor(db, upload.id, null), (e) => e.status === 404, 'finished uploads are gone');
+
+  /* Things elsewhere, or in the trash, are out of reach. */
+  const other = drive.createSpace(db, 'akram', { name: 'Private' });
+  assert.throws(() => drive.sharedFolder(db, token, other.rootId), (e) => e.status === 404);
+  assert.throws(() => drive.startGuestUpload(db, token, other.rootId, null, { name: 'x', size: 1, mime: null }, 100), (e) => e.status === 404);
+  drive.trashNode(db, photos.id, 'akram');
+  assert.throws(() => drive.sharedFolder(db, token, photos.id), (e) => e.status === 404);
+
+  /* Turning the link off ends it, and its unfinished uploads, for good. */
+  const pending = drive.startGuestUpload(db, token, undefined, null, { name: 'late.png', size: 3, mime: null }, 100);
+  drive.setSpaceLink(db, space.id, 'akram', null);
+  assert.throws(() => drive.sharedFolder(db, token), /doesn't work/);
+  assert.throws(() => drive.uploadFor(db, pending.id, null), (e) => e.status === 404);
+  assert.ok(drive.staleUploads(db).includes(pending.id), 'and its bytes are swept');
+  assert.ok(!drive.staleUploads(db).includes(mine.id));
+  assert.notEqual(drive.setSpaceLink(db, space.id, 'akram', 'view'), token, 'a new link, not the old one');
+  assert.equal(drive.linkedSpace(db, 'short'), null);
+});
+
+test('guests can only have a few uploads going through one link at once', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'Drop' });
+  const token = drive.setSpaceLink(db, space.id, 'akram', 'add');
+  for (let i = 0; i < drive.guestUploadsAtOnce; i += 1) drive.startGuestUpload(db, token, undefined, null, { name: `f${i}`, size: 1, mime: null }, 100);
+  assert.throws(() => drive.startGuestUpload(db, token, undefined, null, { name: 'one more', size: 1, mime: null }, 100), (e) => e.status === 429);
+  assert.throws(() => drive.startGuestUpload(db, token, undefined, 'x'.repeat(61), { name: 'n', size: 1, mime: null }, 100));
+});

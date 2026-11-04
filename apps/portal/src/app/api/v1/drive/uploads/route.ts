@@ -1,5 +1,5 @@
 import { apiError, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
-import { db, drive, DriveProblem, maxFileBytes, promisedBytes, root, startUpload, typeOf } from "@/lib/drive";
+import { db, drive, DriveProblem, maxFileBytes, promisedBytes, root, startGuestUpload, startUpload, typeOf } from "@/lib/drive";
 import { freeBytes, reserveBytes } from "@/lib/drive/storage";
 import { tusHeaders } from "@/lib/drive/tus";
 
@@ -14,20 +14,27 @@ import { tusHeaders } from "@/lib/drive/tus";
  *
  *   Upload-Length: <bytes>
  *   Upload-Metadata: filename <base64>, folder <base64>
+ *
+ * Someone without an account adds files through a space's link instead,
+ * when it lets people add: they send `link` (and `name`, if they give one)
+ * in the metadata, `folder` being optional, and no sign-in.
  */
 export async function POST(request: Request) {
   const refused = crossSite(request);
   if (refused) return refused;
-  const user = await apiUser();
-  if (!user) return unauthorized();
   if (request.headers.get("tus-resumable") !== "1.0.0") return apiError(412, "Use tus 1.0.0.");
+  const meta = metadata(request.headers.get("upload-metadata"));
+  const user = meta.link === undefined ? await apiUser() : null;
+  if (!user && meta.link === undefined) return unauthorized();
   return drive(async () => {
     const size = Number(request.headers.get("upload-length"));
-    const meta = metadata(request.headers.get("upload-metadata"));
-    if (!meta.folder) throw new DriveProblem("Say which folder the file goes in.");
+    const file = { name: meta.filename, size, mime: typeOf(meta.filename ?? "") };
+    if (user && !meta.folder) throw new DriveProblem("Say which folder the file goes in.");
     /* Room for this file and everything already on its way, with some left over. */
     if ((await freeBytes(root)) - promisedBytes(db()) - size < reserveBytes) throw new DriveProblem("Kimono's disk is too full for that file.", 507);
-    const upload = startUpload(db(), meta.folder, user.username, { name: meta.filename, size, mime: typeOf(meta.filename ?? "") }, maxFileBytes);
+    const upload = user
+      ? startUpload(db(), meta.folder, user.username, file, maxFileBytes)
+      : startGuestUpload(db(), meta.link, meta.folder, meta.name, file, maxFileBytes);
     return new Response(null, { status: 201, headers: { ...tusHeaders, Location: `/api/v1/drive/uploads/${upload.id}`, "Upload-Offset": "0" } });
   });
 }
