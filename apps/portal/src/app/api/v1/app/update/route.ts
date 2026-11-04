@@ -1,5 +1,6 @@
 import { readReleases } from "@/lib/app-releases";
 import { updateFor } from "@/lib/app-updates";
+import { syncTestflightIfDue } from "@/lib/testflight";
 
 /**
  * Whether this phone's Kimono app should update: `?platform=android|ios&build=N`.
@@ -13,6 +14,8 @@ export async function GET(request: Request) {
   if ((platform !== "android" && platform !== "ios") || !Number.isInteger(build) || build < 0) {
     return Response.json({ error: "Say which platform and build." }, { status: 400 });
   }
+  /* iPhones ask here: a good moment to bring TestFlight in step, without making them wait for it. */
+  if (platform === "ios") void syncTestflightIfDue().catch(() => {});
   const { releases, iosLink } = await readReleases();
   const update = updateFor(releases, platform, build);
   const origin = new URL(request.url).origin;

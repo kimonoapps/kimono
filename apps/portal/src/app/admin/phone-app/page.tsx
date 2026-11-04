@@ -7,6 +7,8 @@ import { publishRelease, readReleases, removeRelease, setIosLink, setRequired } 
 import type { AppPlatform, AppRelease } from "@/lib/app-updates";
 import { redirect } from "next/navigation";
 import { PublishAndroid } from "./publish-android";
+import { forgetTestflightKey, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { isApiKey } from "@/lib/testflight-token";
 
 export const metadata = { title: "Phone app · Admin" };
 
@@ -28,7 +30,9 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "owner" && session.user.role !== "admin") redirect("/");
-  const [settings, { releases, iosLink }, query] = await Promise.all([getPlatformSettings(), readReleases(), searchParams]);
+  /* Keeps TestFlight in step at most hourly; the page shows the last result without waiting. */
+  void syncTestflightIfDue().catch(() => {});
+  const [settings, { releases, iosLink }, query, testflight] = await Promise.all([getPlatformSettings(), readReleases(), searchParams, testflightSettings().catch(() => null)]);
   const of = (platform: AppPlatform) => releases.filter((r) => r.platform === platform).sort((a, b) => b.build - a.build);
   const next = (platform: AppPlatform) => Math.max(0, ...of(platform).map((r) => r.build)) + 1;
 
@@ -46,6 +50,31 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
     "use server";
     const user = await admin();
     await then(() => publishRelease({ platform: "ios", version: form.get("version"), build: form.get("build"), notes: form.get("notes"), required: form.get("required") === "on" }, user.username));
+  }
+  async function saveTestflight(form: FormData) {
+    "use server";
+    await admin();
+    await then(async () => {
+      const issuerId = String(form.get("issuerId") || "").trim();
+      const keyId = String(form.get("keyId") || "").trim();
+      const file = form.get("key");
+      const privateKey = file instanceof File && file.size > 0 && file.size < 10_000 ? (await file.text()).trim() : "";
+      if (!/^[0-9a-f-]{36}$/i.test(issuerId)) throw new Error("The issuer ID looks like 57246542-96fe-1a63-e053-0824d011072a.");
+      if (!/^[A-Z0-9]{10}$/.test(keyId)) throw new Error("The key ID is ten letters and numbers, like 2X9R4HXF34.");
+      if (!isApiKey(privateKey)) throw new Error("Choose the .p8 key file App Store Connect gave you.");
+      await saveTestflightKey({ issuerId, keyId, privateKey, groupName: String(form.get("group") || "").trim() || "Kimono" });
+      await syncTestflight();
+    });
+  }
+  async function syncNow() {
+    "use server";
+    await admin();
+    await then(() => syncTestflight());
+  }
+  async function forgetKey() {
+    "use server";
+    await admin();
+    await then(() => forgetTestflightKey());
   }
   async function saveLink(form: FormData) {
     "use server";
@@ -105,8 +134,37 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
           <FormActions><Seal type="submit" tone="quiet">Save</Seal></FormActions>
         </Form>
       </Compartment>
+
+      <Compartment label="TestFlight" wants={!testflight}>
+        {testflight ? <>
+          <Note>Everyone with a Kimono account and an email is invited to test the iPhone app, and added once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId} · group {testflight.groupName}.</Note>
+          {testflight.lastSync ? <p className={`admin-notice ${testflight.lastSync.ok ? "success" : "error"}`}>Last checked {new Date(testflight.lastSync.at).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })}: {testflight.lastSync.message}</p> : null}
+          {testflight.statuses.length ? <Rows>{testflight.statuses.map((row) => <Row
+            key={row.username}
+            title={row.name}
+            lead={row.status === "tester" ? <StatedSeal state="running">Tester</StatedSeal> : row.status.startsWith("error") ? <StatedSeal state="wants">Problem</StatedSeal> : <StatedSeal state="quiet">{testerLabel(row.status)}</StatedSeal>}
+          >@{row.username}{row.email ? ` · ${row.email}` : ""} · {row.status}</Row>)}</Rows> : null}
+          <div className="k-seal-group" style={{ marginTop: 12 }}>
+            <form action={syncNow}><Seal type="submit" compact>Sync now</Seal></form>
+            <form action={forgetKey}><Seal type="submit" tone="danger" compact>Forget key</Seal></form>
+          </div>
+        </> : <Form action={saveTestflight}>
+          <Note>Give Kimono an App Store Connect API key with the Admin role, and everyone with a Kimono account becomes a tester of the iPhone app automatically.</Note>
+          <Field label="Issuer ID"><input name="issuerId" required autoComplete="off" placeholder="57246542-96fe-1a63-e053-0824d011072a" /></Field>
+          <Field label="Key ID"><input name="keyId" required autoComplete="off" placeholder="2X9R4HXF34" /></Field>
+          <Field label="Key file (.p8)"><input name="key" type="file" accept=".p8" required /></Field>
+          <Field label="Tester group"><input name="group" defaultValue="Kimono" /></Field>
+          <FormActions><Seal type="submit">Save and sync</Seal></FormActions>
+        </Form>}
+      </Compartment>
     </div>
   </AppShell>;
+}
+
+/** A tester status as a short label beside the name. */
+function testerLabel(status: string) {
+  if (status.startsWith("invited")) return "Invited";
+  return ({ added: "Added", removed: "Removed", "no email": "No email", "no Kimono access": "No access" } as Record<string, string>)[status] ?? status;
 }
 
 function describe(release: AppRelease) {
