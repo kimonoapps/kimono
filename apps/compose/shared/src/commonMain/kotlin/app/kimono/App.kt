@@ -111,13 +111,21 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val tab = route == "home" || route == "drive" || route == "you"
     val model = remember(session) { DriveModel(Drive(session), platform) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
+    /* Drive is the server's to switch on: asked on opening, and the tab and the Files app entry follow. */
+    val driveOn by model.drive.driveOn.collectAsState()
+    LaunchedEffect(model) { runCatching { model.drive.otherApps() } }
+    LaunchedEffect(driveOn) {
+        val on = driveOn ?: return@LaunchedEffect
+        platform.driveAvailable(on)
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password")) goTab("home")
+    }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
             if (tab) ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 val colors = ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = MaterialTheme.colorScheme.secondaryContainer, selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.onSurface, unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant)
                 ShortNavigationBarItem(selected = route == "home", onClick = { goTab("home") }, icon = { Icon(kimonoIcon("home"), null) }, label = { Text("Home") }, colors = colors)
-                ShortNavigationBarItem(selected = route == "drive", onClick = { goTab("drive") }, icon = { Icon(kimonoIcon("folder"), null) }, label = { Text("Drive") }, colors = colors)
+                if (driveOn != false) ShortNavigationBarItem(selected = route == "drive", onClick = { goTab("drive") }, icon = { Icon(kimonoIcon("folder"), null) }, label = { Text("Drive") }, colors = colors)
                 ShortNavigationBarItem(selected = route == "you", onClick = { goTab("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors)
             }
         },

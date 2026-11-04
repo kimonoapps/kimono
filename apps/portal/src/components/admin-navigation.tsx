@@ -7,13 +7,14 @@ import { useCrossTo, useWarm } from "@/components/crossing";
  * The admin surfaces. These are places, not tabs, so they are doors —
  * the same primitive as the header, at the same size.
  */
-export function AdminNavigation({ active }: { active: "apps" | "infrastructure" | "links" | "vpn" | "backups" | "phone-app" }) {
+export function AdminNavigation({ active }: { active: "apps" | "infrastructure" | "links" | "vpn" | "backups" | "phone-app" | "drive" }) {
   const crossTo = useCrossTo();
   const warm = useWarm();
   const rooms = [
     { href: "/admin/apps", label: "Applications", here: active === "apps" },
     { href: "/admin/backups", label: "Backups", here: active === "backups" },
     { href: "/admin/infrastructure", label: "Connectivity", here: active === "infrastructure" },
+    { href: "/admin/drive", label: "Kimono Drive", here: active === "drive" },
     { href: "/admin/vpn", label: "Kimono VPN", here: active === "vpn" },
     { href: "/admin/phone-app", label: "Phone app", here: active === "phone-app" },
     { href: "/admin/links", label: "Useful links", here: active === "links" },

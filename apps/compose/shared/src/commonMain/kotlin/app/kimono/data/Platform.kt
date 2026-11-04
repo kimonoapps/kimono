@@ -42,6 +42,8 @@ interface Platform {
     suspend fun installUpdate(url: String, sha256: String?, progress: (Float) -> Unit): String? { openUrl(url); return null }
     /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */
     fun share(text: String) {}
+    /** Drive was switched on or off on the server: the Files app entry follows. */
+    fun driveAvailable(on: Boolean) {}
     /** A small picture of a photo, video or PDF, at least [pixels] across, as a local file; null if there can't be one. */
     suspend fun thumbnail(node: DriveNode, pixels: Int): String? = null
 }

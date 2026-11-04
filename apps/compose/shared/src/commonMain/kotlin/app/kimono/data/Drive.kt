@@ -129,7 +129,7 @@ data class KimonoAppLink(
 private data class DriveLook(val bloom: String? = null)
 
 @Serializable
-private data class AppList(val apps: List<KimonoAppLink>, val drive: DriveLook? = null)
+private data class AppList(val apps: List<KimonoAppLink>, val drive: DriveLook? = null, val driveOn: Boolean = true)
 
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -246,10 +246,13 @@ class Drive(private val session: Session) {
 
     /** Drive's own bloom, as the Portal draws it; arrives with the list of apps. */
     val driveBloom = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    /** Whether the household's Kimono has Drive switched on; null until asked. */
+    val driveOn = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
 
     suspend fun otherApps(): List<KimonoAppLink> {
         val list = json.decodeFromString<AppList>(session.call("/api/v1/apps"))
         list.drive?.bloom?.let { driveBloom.value = it }
+        driveOn.value = list.driveOn
         return list.apps
     }
 

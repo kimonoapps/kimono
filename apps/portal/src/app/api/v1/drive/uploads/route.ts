@@ -1,5 +1,5 @@
 import { apiError, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
-import { db, drive, DriveProblem, maxFileBytes, promisedBytes, root, startGuestUpload, startReplace, startUpload, typeOf } from "@/lib/drive";
+import { db, drive, DriveProblem, largestFile, publicLinksAllowed, promisedBytes, root, startGuestUpload, startReplace, startUpload, typeOf } from "@/lib/drive";
 import { freeBytes, reserveBytes } from "@/lib/drive/storage";
 import { tusHeaders } from "@/lib/drive/tus";
 
@@ -35,19 +35,21 @@ export async function POST(request: Request) {
     const size = Number(request.headers.get("upload-length"));
     const file = { name: meta.filename, size, mime: typeOf(meta.filename ?? "") };
     if (user && !meta.folder && !meta.replaces) throw new DriveProblem("Say which folder the file goes in.");
+    if (!user) await publicLinksAllowed();
+    const limit = await largestFile();
     /* Room for this file and everything already on its way, with some left over. */
     if ((await freeBytes(root)) - promisedBytes(db()) - size < reserveBytes) throw new DriveProblem("Kimono's disk is too full for that file.", 507);
     const upload = user && meta.replaces
-      ? startReplace(db(), meta.replaces, user.username, Number(meta.base), file, maxFileBytes)
+      ? startReplace(db(), meta.replaces, user.username, Number(meta.base), file, limit)
       : user
-      ? startUpload(db(), meta.folder, user.username, file, maxFileBytes)
-      : startGuestUpload(db(), meta.link, meta.folder, meta.name, file, maxFileBytes);
+      ? startUpload(db(), meta.folder, user.username, file, limit)
+      : startGuestUpload(db(), meta.link, meta.folder, meta.name, file, limit);
     return new Response(null, { status: 201, headers: { ...tusHeaders, Location: `/api/v1/drive/uploads/${upload.id}`, "Upload-Offset": "0" } });
   });
 }
 
-export function OPTIONS() {
-  return new Response(null, { status: 204, headers: { ...tusHeaders, "Tus-Version": "1.0.0", "Tus-Extension": "creation,termination", "Tus-Max-Size": String(maxFileBytes) } });
+export async function OPTIONS() {
+  return new Response(null, { status: 204, headers: { ...tusHeaders, "Tus-Version": "1.0.0", "Tus-Extension": "creation,termination", "Tus-Max-Size": String(await largestFile()) } });
 }
 
 function metadata(header: string | null): Record<string, string> {

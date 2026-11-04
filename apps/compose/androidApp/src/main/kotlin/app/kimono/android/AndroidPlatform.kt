@@ -133,6 +133,12 @@ class AndroidPlatform(private val context: Context) : Platform {
 
     override suspend fun installUpdate(url: String, sha256: String?, progress: (Float) -> Unit): String? = SelfUpdate.install(context, url, sha256, progress)
 
+    override fun driveAvailable(on: Boolean) {
+        if (prefs.getBoolean(KimonoDocuments.DRIVE_ON, true) == on) return
+        prefs.edit().putBoolean(KimonoDocuments.DRIVE_ON, on).apply()
+        KimonoDocuments.rootsChanged(context)
+    }
+
     override fun share(text: String) {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         val chooser = Intent.createChooser(send, null)

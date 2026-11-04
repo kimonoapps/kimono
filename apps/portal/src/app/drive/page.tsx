@@ -14,6 +14,7 @@ export default async function DrivePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const settings = await getPlatformSettings();
+  if (!settings.drive.enabled) redirect(session.user.role === "owner" || session.user.role === "admin" ? "/admin/drive" : "/");
   return <AppShell user={session.user} brandColors={settings.brand.colors} app={identityOf(ownApp("kimono-drive"))}>
     <Suspense>
       <DriveApp me={{ username: session.user.username, name: session.user.name || session.user.username }} />

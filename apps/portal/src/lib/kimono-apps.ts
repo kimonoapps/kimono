@@ -34,7 +34,7 @@ export type KimonoOwnApp = {
    */
   accent: string;
   glyph: GlyphName;
-  /** The mesh uses the existing appliance configuration; Drive needs none. */
+  /** The mesh uses the existing appliance configuration; Drive has its own switch. */
   configuration: "mesh" | "drive";
   managementPath: string;
   /**
@@ -54,7 +54,7 @@ export const kimonoApps: readonly KimonoOwnApp[] = [
     accent: "#5f5596",
     glyph: "file",
     configuration: "drive",
-    managementPath: "/drive",
+    managementPath: "/admin/drive",
   },
   {
     id: "kimono-vpn",

@@ -82,6 +82,15 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
 
     func appBuild() -> Int64 { Int64(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0 }
 
+    /// Drive switched on or off on the server: Kimono joins or leaves the Files app to match.
+    func driveAvailable(on: Bool) {
+        guard Host.driveOn != on else { return }
+        UserDefaults.standard.set(on, forKey: "kimono.driveOn")
+        Host.showInFiles(readKept(key: "kimono.refresh") != nil)
+    }
+
+    static var driveOn: Bool { UserDefaults.standard.object(forKey: "kimono.driveOn") as? Bool ?? true }
+
     func share(text: String) {
         DispatchQueue.main.async {
             let sheet = UIActivityViewController(activityItems: [URL(string: text) ?? text], applicationActivities: nil)
@@ -140,7 +149,7 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
 
     /// Kimono appears in the Files app while signed in, and leaves it (with its copies) on signing out.
     static func showInFiles(_ signedIn: Bool) {
-        if signedIn {
+        if signedIn && driveOn {
             NSFileProviderManager.add(domain) { error in
                 if let error { NSLog("Kimono couldn't join the Files app: \(error.localizedDescription)") }
                 NSFileProviderManager(for: domain)?.signalEnumerator(for: .workingSet) { _ in }

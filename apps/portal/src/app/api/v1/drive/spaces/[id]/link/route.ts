@@ -1,6 +1,6 @@
 import { withMark } from "@/lib/drive/marks";
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { db, drive, setSpaceLink, spaceFor, type LinkAccess } from "@/lib/drive";
+import { db, drive, publicLinksAllowed, setSpaceLink, spaceFor, type LinkAccess } from "@/lib/drive";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -13,7 +13,8 @@ export async function PUT(request: Request, { params }: Context) {
   const read = await readJson(request);
   if ("response" in read) return read.response;
   const { id } = await params;
-  return drive(() => {
+  return drive(async () => {
+    await publicLinksAllowed();
     setSpaceLink(db(), id, user.username, (read.body as { access?: unknown }).access as LinkAccess);
     return apiJson(withMark(spaceFor(db(), id, user.username)));
   });

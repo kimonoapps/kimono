@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { stateDir } from "../state";
+import { getPlatformSettings } from "../settings";
 import { apiError } from "../api-v1";
 import { DriveProblem, emptyOldTrash, forgetOldChanges, migrate, staleUploads } from "./model";
 import { driveRoot, removeBlob, removePart } from "./storage";
@@ -42,9 +43,27 @@ function sweep(database: DatabaseSync) {
   }
 }
 
+/** The largest file Drive takes now: the admin's limit, within the hard one. */
+export async function largestFile(): Promise<number> {
+  const { drive: settings } = await getPlatformSettings();
+  return settings.largestFileMb ? Math.min(maxFileBytes, settings.largestFileMb * 1024 ** 2) : maxFileBytes;
+}
+
+/** Refuses when links that work without signing in are switched off. */
+export async function publicLinksAllowed() {
+  const { drive: settings } = await getPlatformSettings();
+  if (!settings.publicLinks) throw new DriveProblem("Public links are switched off.", 403);
+}
+
+/** Whether Drive is switched on. */
+export async function driveOn() {
+  return (await getPlatformSettings()).drive.enabled;
+}
+
 /** Runs a Drive action, turning its refusals into the JSON errors /api/v1 answers with. */
 export async function drive(work: () => Promise<Response> | Response): Promise<Response> {
   try {
+    if (!(await driveOn())) return apiError(404, "Drive isn't switched on.");
     return await work();
   } catch (error) {
     if (error instanceof DriveProblem) return apiError(error.status, error.message);

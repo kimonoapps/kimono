@@ -1,6 +1,6 @@
 import { apiJson, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
 import { portalOrigin } from "@/lib/account";
-import { db, drive, linkFile, nodeFor, unlinkFile } from "@/lib/drive";
+import { db, drive, linkFile, publicLinksAllowed, nodeFor, unlinkFile } from "@/lib/drive";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -11,7 +11,8 @@ export async function POST(request: Request, { params }: Context) {
   const user = await apiUser();
   if (!user) return unauthorized();
   const { id } = await params;
-  return drive(() => {
+  return drive(async () => {
+    await publicLinksAllowed();
     const token = linkFile(db(), id, user.username);
     const node = nodeFor(db(), id, user.username);
     return apiJson({ token, url: `${portalOrigin()}/d/${token}/${encodeURIComponent(node.name)}` });

@@ -47,6 +47,7 @@ interface IosHost {
     fun appBuild(): Long
     /** The share sheet, with a link or some text. */
     fun share(text: String)
+    fun driveAvailable(on: Boolean)
     /** Files from the document picker, copied somewhere the app can read. */
     fun pickFiles(done: (List<IosPickedFile>) -> Unit)
     /** Up to [max] bytes of the file at [path], from [offset]. */
@@ -103,6 +104,7 @@ private class IosPlatform(private val host: IosHost) : Platform {
     override fun cacheDir() = host.cacheDir()
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
     override fun share(text: String) = host.share(text)
+    override fun driveAvailable(on: Boolean) = host.driveAvailable(on)
     override val build: Long get() = host.appBuild()
     override suspend fun pickFiles(): List<PickedFile> =
         suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }

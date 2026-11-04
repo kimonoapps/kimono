@@ -55,6 +55,9 @@ class KimonoDocuments : DocumentsProvider() {
         }
 
         /** Signed in or out: Kimono appears in, or leaves, the Files app. */
+        /** Whether the server has Drive switched on, as last heard; it's on until said otherwise. */
+        const val DRIVE_ON = "drive_on"
+
         fun rootsChanged(context: Context) {
             context.contentResolver.notifyChange(DocumentsContract.buildRootsUri(authority(context)), null)
         }
@@ -92,6 +95,7 @@ class KimonoDocuments : DocumentsProvider() {
         cursor.setNotificationUri(context!!.contentResolver, DocumentsContract.buildRootsUri(authority(context!!)))
         val signedIn = runCatching { runBlocking(Dispatchers.IO) { app.ensureSession() } }.getOrDefault(false)
         if (!signedIn) return cursor
+        if (!context!!.getSharedPreferences("kimono", Context.MODE_PRIVATE).getBoolean(DRIVE_ON, true)) return cursor
         cursor.newRow().apply {
             add(Root.COLUMN_ROOT_ID, ROOT)
             /* Shown when saving too: folders in it take new files. */
