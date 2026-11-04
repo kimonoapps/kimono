@@ -17,6 +17,8 @@ import kotlinx.io.files.SystemFileSystem
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -46,6 +48,9 @@ data class DriveNode(
 
 @Serializable
 data class DriveFolder(val folder: DriveNode, val path: List<DriveNode>, val children: List<DriveNode>)
+
+@Serializable
+private data class FileAnswer(val file: DriveNode)
 
 @Serializable
 private data class SpaceList(val spaces: List<DriveSpace>)
@@ -84,6 +89,44 @@ class Drive(private val session: Session) {
     suspend fun spaces(): List<DriveSpace> = json.decodeFromString<SpaceList>(session.call("/api/v1/drive/spaces")).spaces
 
     suspend fun folder(id: String): DriveFolder = json.decodeFromString(session.call("/api/v1/drive/nodes/$id"))
+
+    /** One file or folder, by id. */
+    suspend fun node(id: String): DriveNode {
+        val text = session.call("/api/v1/drive/nodes/$id")
+        val answer = json.parseToJsonElement(text).jsonObject
+        return if ("file" in answer) json.decodeFromJsonElement<FileAnswer>(answer).file else json.decodeFromJsonElement<DriveFolder>(answer).folder
+    }
+
+    suspend fun move(id: String, parentId: String) {
+        session.call("/api/v1/drive/nodes/$id", HttpMethod.Patch) {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("parent", parentId) }.toString())
+        }
+    }
+
+    /** Up to [length] bytes of a file from [offset], for reading it in place without downloading it all. */
+    suspend fun read(id: String, offset: Long, length: Int): ByteArray =
+        session.respond("/api/v1/drive/nodes/$id/content", configure = { header("Range", "bytes=$offset-${offset + length - 1}") }) { response ->
+            if (response.status.value == 416) return@respond ByteArray(0)
+            if (!response.status.isSuccess()) throw session.problemOf(response, "That file couldn't be opened.")
+            val channel = response.bodyAsChannel()
+            /* A server that ignores ranges sends it all: skip to the part asked for. */
+            var skip = if (response.status.value == 206) 0L else offset
+            val out = ByteArray(length)
+            var filled = 0
+            val buffer = ByteArray(64 * 1024)
+            while (filled < length) {
+                val read = channel.readAvailable(buffer)
+                if (read < 0) break
+                if (read == 0) { if (channel.isClosedForRead) break else continue }
+                var start = 0
+                if (skip > 0) { val dropped = minOf(skip, read.toLong()).toInt(); skip -= dropped; start = dropped }
+                val take = minOf(read - start, length - filled)
+                buffer.copyInto(out, filled, start, start + take)
+                filled += take
+            }
+            if (filled == length) out else out.copyOf(filled)
+        }
 
     suspend fun trash(): List<DriveNode> = json.decodeFromString<TrashList>(session.call("/api/v1/drive/trash")).items
 
@@ -170,9 +213,11 @@ class Drive(private val session: Session) {
      * much arrived and carries on from there, backing off a little each time.
      */
     @OptIn(ExperimentalEncodingApi::class)
-    suspend fun upload(file: PickedFile, folderId: String, resumeAt: String? = null, started: (String) -> Unit = {}, progress: (Long) -> Unit): String {
+    suspend fun upload(file: PickedFile, folderId: String, resumeAt: String? = null, replaces: Replacing? = null, started: (String) -> Unit = {}, progress: (Long) -> Unit): String {
         val tus = "1.0.0"
-        val metadata = "filename ${Base64.encode(file.name.encodeToByteArray())},folder ${Base64.encode(folderId.encodeToByteArray())}"
+        fun encoded(text: String) = Base64.encode(text.encodeToByteArray())
+        /* A new version of an existing file names it and the version it was edited from: a clash keeps both. */
+        val metadata = "filename ${encoded(file.name)}," + if (replaces == null) "folder ${encoded(folderId)}" else "replaces ${encoded(replaces.fileId)},base ${encoded(replaces.contentVersion.toString())}"
         /* Carrying on from an earlier run: ask how far it got. Gone (thrown away, or the link expired): start again. */
         val known = resumeAt?.let { at -> resumePoint(at)?.let { at to it } }
         val location = known?.first ?: session.respond("/api/v1/drive/uploads", HttpMethod.Post, {
@@ -229,6 +274,9 @@ class Drive(private val session: Session) {
         const val PIECE = 8 * 1024 * 1024
     }
 }
+
+/** The file an upload is a new version of, and the version it was edited from. */
+data class Replacing(val fileId: String, val contentVersion: Int)
 
 /** "3.1 MB", "15 KB": sizes as people read them. */
 fun readableSize(bytes: Long): String {
