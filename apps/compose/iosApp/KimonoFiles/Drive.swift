@@ -26,6 +26,8 @@ actor Drive {
     struct Changes: Decodable { let cursor: Int; let changed: [Node]; let removed: [String]; let more: Bool; let spaces: [Space] }
     struct Cursor: Decodable { let cursor: Int }
     struct Failure: Decodable { let error: String }
+    struct SpaceList: Decodable { let spaces: [Space] }
+    struct TrashList: Decodable { let items: [Node] }
 
     /// Roles by space, refreshed with every change check, deciding what the Files app offers.
     private(set) var roles: [String: String] = [:]
@@ -131,7 +133,7 @@ actor Drive {
     // MARK: Drive
 
     func spaces() async throws -> [Space] {
-        let spaces = try await call([Space].self, "/api/v1/drive/spaces")
+        let spaces = try await call(SpaceList.self, "/api/v1/drive/spaces").spaces
         roles = Dictionary(uniqueKeysWithValues: spaces.map { ($0.id, $0.role) })
         return spaces
     }
@@ -146,7 +148,7 @@ actor Drive {
         try await call(Folder.self, "/api/v1/drive/nodes/\(id)").children
     }
 
-    func trash() async throws -> [Node] { try await call([Node].self, "/api/v1/drive/trash") }
+    func trash() async throws -> [Node] { try await call(TrashList.self, "/api/v1/drive/trash").items }
 
     func latestCursor() async throws -> Int { try await call(Cursor.self, "/api/v1/drive/changes").cursor }
 

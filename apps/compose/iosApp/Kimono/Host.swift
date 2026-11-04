@@ -58,7 +58,14 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
 
     // MARK: Files app
 
-    private static let domain = NSFileProviderDomain(identifier: NSFileProviderDomainIdentifier("kimono"), displayName: "Kimono")
+    private static let domain: NSFileProviderDomain = {
+        let domain = NSFileProviderDomain(identifier: NSFileProviderDomainIdentifier("kimono"), displayName: "Kimono")
+        #if DEBUG
+        /* Test builds skip the Files app's own switch; people turn Kimono on there once. */
+        domain.testingModes = [.alwaysEnabled]
+        #endif
+        return domain
+    }()
 
     /// Kimono appears in the Files app while signed in, and leaves it (with its copies) on signing out.
     static func showInFiles(_ signedIn: Bool) {
@@ -72,9 +79,29 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         }
     }
 
+    /// Whenever the app comes to the front: the Files app looks for changes now, rather than whenever it next would.
+    func cameForward() {
+        guard readKept(key: "kimono.refresh") != nil else { return }
+        NSFileProviderManager(for: Host.domain)?.signalEnumerator(for: .workingSet) { error in
+            if let error { NSLog("Kimono couldn't nudge the Files app: \(error.localizedDescription)") }
+        }
+    }
+
     /// On launch: still signed in means still in the Files app, and worth a fresh look for changes.
     func launched() {
-        if readKept(key: "kimono.refresh") != nil { Host.showInFiles(true) }
+        guard readKept(key: "kimono.refresh") != nil else { return }
+        #if DEBUG
+        /* A test build re-adds Kimono so the testing switch takes effect on a domain added before it. */
+        NSFileProviderManager.getDomainsWithCompletionHandler { domains, _ in
+            if domains.contains(where: { $0.identifier == Host.domain.identifier && !$0.userEnabled }) {
+                NSFileProviderManager.remove(Host.domain) { _ in Host.showInFiles(true) }
+            } else {
+                Host.showInFiles(true)
+            }
+        }
+        #else
+        Host.showInFiles(true)
+        #endif
     }
 
     // MARK: Sign-in
@@ -89,6 +116,8 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
                 done(returned?.absoluteString)
             }
             session.presentationContextProvider = self
+            /* Its own cookie jar: no "wants to use … to sign in" prompt, and the Portal asks for the password anyway. */
+            session.prefersEphemeralWebBrowserSession = true
             self.signIn = session
             if !session.start() { self.signIn = nil; done(nil) }
         }

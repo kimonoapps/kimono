@@ -22,6 +22,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.kimono.compose
         PRODUCT_NAME: Kimono
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Kimono/Kimono.entitlements
         FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
         OTHER_LDFLAGS: ["-framework", "Shared"]
@@ -29,6 +30,10 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         # The shared framework is built for Apple silicon simulators only.
         "ARCHS[sdk=iphonesimulator*]": arm64
+      configs:
+        Debug:
+          # Debug builds switch Kimono on in the Files app by themselves, for testing.
+          CODE_SIGN_ENTITLEMENTS: Kimono/Kimono-Debug.entitlements
     info:
       path: Kimono/Info.plist
       properties:
