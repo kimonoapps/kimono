@@ -55,6 +55,19 @@ private fun rememberInstall(platform: Platform, update: AppUpdate): Pair<Install
     }
 }
 
+/** The download's progress bar, with how far it has come. */
+@Composable
+private fun Progress(progress: Float, update: AppUpdate) {
+    LinearWavyProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+    val percent = (progress * 100).toInt()
+    val text = when {
+        progress >= 1f -> "Installing…"
+        update.size != null && update.size > 0 -> "$percent% · ${readableSize((update.size * progress).toLong())} of ${readableSize(update.size)}"
+        else -> "$percent%"
+    }
+    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
 private fun what(update: AppUpdate, platform: Platform) =
     listOfNotNull("Kimono ${update.version ?: ""}".trim(), update.size?.takeIf { platform.os == "android" }?.let { readableSize(it) }).joinToString(" · ")
 
@@ -72,7 +85,7 @@ fun UpdateScreen(update: AppUpdate, platform: Platform) {
             )
             Text(what(update, platform), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             if (update.notes.isNotBlank()) Text(update.notes, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-            installing.progress?.let { LinearWavyProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
+            installing.progress?.let { Progress(it, update) }
             Problem(installing.problem)
             Seal(
                 when { installing.progress == null -> if (platform.os == "ios") "Open TestFlight" else "Update"; installing.progress!! < 1f -> "Downloading"; else -> "Installing" },
@@ -94,7 +107,7 @@ fun UpdateCard(update: AppUpdate, platform: Platform, onLater: () -> Unit) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("A new version is ready", style = MaterialTheme.typography.titleMedium)
             Text(listOf(what(update, platform), update.notes).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
-            installing.progress?.let { LinearWavyProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth()) }
+            installing.progress?.let { Progress(it, update) }
             Problem(installing.problem)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Seal(if (installing.progress == null) (if (platform.os == "ios") "Open TestFlight" else "Update") else "Downloading", onClick = start, busy = installing.progress != null, compact = true)
