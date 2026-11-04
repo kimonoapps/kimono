@@ -791,9 +791,17 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .login-copy h1 em { color: var(--k-suo); font-style: normal; font-weight: inherit; }
 .login-copy > p:last-child { max-width: 38ch; margin: 0; color: var(--k-ink-soft); font-size: 16px; line-height: 1.6; }
 .login-button { width: 100%; max-width: 480px; min-height: 52px; justify-content: space-between; padding: 0 var(--k-space-5); font-size: 15px; }
-/* The art is one blossom on a flat rose field, and nothing else. */
-.login-art { min-height: 100vh; position: relative; display: grid; place-items: center; overflow: hidden; background: color-mix(in srgb, var(--k-sakura-wash) 55%, var(--k-ground)); }
-.login-bloom { position: relative; width: min(46vw, 520px); height: min(46vw, 520px); filter: drop-shadow(0 30px 40px rgba(78, 43, 55, .18)); }
+/* A sakura sun over faint seigaiha waves, inside a thin frame, on four
+   bands of kimono colour. */
+.login-art { min-height: 100vh; position: relative; overflow: hidden; background: #f5dfe3; }
+.login-art::before { position: absolute; inset: 0; content: ""; opacity: .25; background: radial-gradient(circle at 50% 100%, transparent 0 34px, var(--k-plum) 35px 36px, transparent 37px 49px, var(--k-plum) 50px 51px, transparent 52px) 0 0/72px 36px; }
+.login-art::after { position: absolute; inset: 7%; border: 1px solid rgba(43, 29, 34, .16); content: ""; }
+.sun-disc { position: absolute; width: min(27vw, 390px); aspect-ratio: 1; top: 48%; left: 51%; border-radius: 50%; background: color-mix(in srgb, var(--k-sakura) 82%, white); box-shadow: 0 0 0 30px rgba(255, 255, 255, .18); transform: translate(-50%, -50%); }
+.color-folds { position: absolute; z-index: 3; inset: auto 0 0; height: 20%; display: grid; grid-template-columns: repeat(4, 1fr); opacity: .82; }
+.color-folds i:nth-child(1) { background: #ad696b; }
+.color-folds i:nth-child(2) { background: #e3cdb6; }
+.color-folds i:nth-child(3) { background: #6d7969; }
+.color-folds i:nth-child(4) { background: #465f74; }
 
 /* ═══════════════════════════════════════════════════════════════
    Folding and breakpoints
