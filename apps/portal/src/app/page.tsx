@@ -7,12 +7,7 @@ import { auth } from "@/auth";
 import { holdsMeshAccess } from "@/lib/directory";
 import { redirect } from "next/navigation";
 import { KimonoAppOffer } from "@/components/kimono-app-offer";
-import { readReleases } from "@/lib/app-releases";
-import { testflightSettings } from "@/lib/testflight";
-import { portalOrigin } from "@/lib/account";
-
-/** Where the Kimono app looks unless told otherwise. */
-const appDefault = "www.kimonolabs.dev";
+import { appOffer } from "@/lib/app-offer";
 
 export default async function HomePage() {
   const session = await auth();
@@ -20,10 +15,7 @@ export default async function HomePage() {
   const [settings, catalog] = await Promise.all([getPlatformSettings(), scanAppDefinitions()]);
 
   const displayName = session.user.name?.split(" ")[0] || session.user.username || "home";
-  const [{ releases, iosLink }, testflight] = await Promise.all([readReleases(), testflightSettings().catch(() => null)]);
-  const newest = (platform: "android" | "ios") => releases.filter((r) => r.platform === platform).sort((a, b) => b.build - a.build)[0];
-  const android = newest("android");
-  const host = new URL(portalOrigin()).host;
+  const offer = await appOffer();
 
   return (
     <AppShell user={session.user} brandColors={settings.brand.colors} >
@@ -34,12 +26,7 @@ export default async function HomePage() {
             <h1>Welcome home, <strong>{displayName}.</strong></h1>
           </div>
         </header>
-        <KimonoAppOffer offer={{
-          android: android ? { version: android.version, build: android.build, size: android.size ?? null } : null,
-          /* Offered on every iPhone once TestFlight is set up, so anyone can ask for their invite. */
-          ios: testflight || newest("ios") ? { link: iosLink } : null,
-          address: host === appDefault || host === "kimonolabs.dev" ? null : host,
-        }} />
+        <KimonoAppOffer android={Boolean(offer.android)} ios={offer.ios} />
         <AppLauncher apps={launcherApps(appRegistry(settings, catalog.definitions), {
           mesh: await holdsMeshAccess(session.user.username),
         })} />

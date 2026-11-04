@@ -1,0 +1,19 @@
+/* 携 Getting the Kimono app (get-app/): the steps for this phone. */
+.get-app-page { max-width: 640px; margin: 0 auto; }
+.get-app-head { margin: 8px 0 24px; }
+.get-app-kicker { margin: 0 0 4px; color: var(--k-ink-soft); font-size: .9rem; }
+.get-app-head h1 { margin: 0; font-family: var(--k-display); font-weight: 500; font-size: clamp(1.9rem, 6vw, 2.6rem); }
+.get-app-switch { display: inline-flex; margin-top: 16px; border: 1px solid var(--k-hair); }
+.get-app-switch button { border: 0; background: none; padding: 8px 16px; font: inherit; color: var(--k-ink-soft); cursor: pointer; }
+.get-app-switch button + button { border-left: 1px solid var(--k-hair); }
+.get-app-switch button.is-here { background: var(--k-lift); color: var(--k-ink); font-weight: 600; }
+
+.get-app-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--k-hair); }
+.get-app-step { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--k-hair); }
+.get-app-n { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--k-hair-deep, var(--k-hair)); font-family: var(--k-mono); font-size: .9rem; color: var(--k-ink); }
+.get-app-step.is-done .get-app-n { background: var(--k-ink); color: var(--k-lift); border-color: var(--k-ink); }
+.get-app-step h2 { margin: 4px 0 6px; font-size: 1.1rem; font-weight: 600; }
+.get-app-step p { margin: 0 0 12px; color: var(--k-ink-soft); line-height: 1.5; }
+.get-app-step .k-seal { text-decoration: none; display: inline-flex; }
+.get-app-problem { color: var(--k-suo-deep, #8a2f3c) !important; margin-top: 10px !important; }
+.get-app-none { color: var(--k-ink-soft); }

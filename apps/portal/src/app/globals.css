@@ -911,7 +911,9 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .connection-delete .k-seal { justify-self: start; }
 
 /* 携 The Kimono app, offered on phones (components/kimono-app-offer.tsx). */
-.app-offer { margin: 0 0 28px; padding: 22px 22px 18px; border: 1px solid var(--k-hair); border-radius: 22px; background: var(--k-lift); display: grid; gap: 12px; }
+.app-offer { margin: 0 0 28px; padding: 16px 18px; border: 1px solid var(--k-hair); background: var(--k-lift); display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.app-offer-line { flex: 1 1 100%; margin: 0; }
+.app-offer-go { text-decoration: none; }
 .app-offer h2 { margin: 0; font-size: 1.25rem; }
 .app-offer p { margin: 0; color: var(--k-ink-soft); }
 .app-offer .k-seal { justify-self: start; text-decoration: none; }

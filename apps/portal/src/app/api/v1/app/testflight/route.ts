@@ -7,7 +7,8 @@ export async function GET() {
   if (!user) return unauthorized();
   const settings = await testflightSettings().catch(() => null);
   if (!settings) return apiError(404, "The iPhone app isn't set up on this Kimono yet.");
-  return apiJson({ status: standing(settings.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase())?.status) });
+  const row = settings.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase());
+  return apiJson({ status: standing(row?.status), email: row?.email ?? null });
 }
 
 /** Invites you to TestFlight now, at your Kimono email, rather than at the next hourly sync; asking again after accepting Apple's email adds you straight away. */
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
   /* At most one sync every ten seconds, however many people ask. */
   await syncTestflightIfDue(10 * 1000);
   const row = (await testflightSettings())?.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase());
-  return apiJson({ status: standing(row?.status) });
+  return apiJson({ status: standing(row?.status), email: row?.email ?? null });
 }
 
 /** A person's TestFlight status, as the website explains it. */
