@@ -20,7 +20,7 @@ import { DoorBack } from "@/components/door-back";
 import { AppBloom } from "@kimono/ui";
 import { accentOf } from "@/lib/apps";
 import { RunJoint } from "@/components/run-joint";
-import { Door, Seal, StatedSeal } from "@kimono/ui";
+import { Choice, Door, Seal, StatedSeal } from "@kimono/ui";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 
@@ -45,7 +45,7 @@ function EnvironmentInput({ field, value, configured }: { field: ConfigurationFi
     placeholder: field.kind === "secret" && configured ? "Configured — leave blank to keep" : field.default,
   };
   if (field.kind === "toggle") return <input id={common.id} name={common.name} type="checkbox" defaultChecked={(value || field.default || "off") === "on"} />;
-  if (field.kind === "select") return <select {...common}>{field.options?.map((option) => <option key={option}>{option}</option>)}</select>;
+  if (field.kind === "select") return <Choice id={common.id} name={common.name} defaultValue={value || field.options?.[0]} options={(field.options ?? []).map((option) => ({ value: option, label: option }))} />;
   return <input {...common} type={field.kind === "secret" ? "password" : field.kind === "number" || field.kind === "bytes" ? "number" : field.kind === "email" ? "email" : "text"} />;
 }
 
@@ -199,7 +199,7 @@ export default async function AppManagementPage({
                         const zones = tunnelZones(tunnel);
                         const matchedZone = zones.toSorted((a, b) => b.name.length - a.name.length).find((zone) => instance.domain === zone.name || instance.domain.endsWith(`.${zone.name}`));
                         const subdomain = matchedZone ? instance.domain === matchedZone.name ? "@" : instance.domain.slice(0, -(matchedZone.name.length + 1)) : definition.metadata.shortName.toLowerCase();
-                        return <article className="tunnel-choice" key={tunnel.id}><label><input type="radio" name="tunnelId" value={tunnel.id} defaultChecked={instance.tunnelId === tunnel.id} /><ProviderMark provider={tunnel.provider} /><span><strong>{tunnel.name}</strong><small>{tunnel.configuration.ACCOUNT_NAME?.value || tunnel.provider}</small></span></label>{tunnel.provider === "cloudflare" && zones.length ? <div className="tunnel-domain-fields"><label><span>Subdomain</span><input name={`subdomain.${tunnel.id}`} defaultValue={subdomain} /></label><span className="domain-dot">.</span><label><span>Domain</span><select name={`zone.${tunnel.id}`} defaultValue={matchedZone?.name || zones[0].name}>{zones.map((zone) => <option key={zone.id} value={zone.name}>{zone.name}</option>)}</select></label></div> : <div className="tunnel-domain-fields single-domain-field"><label><span>App name or complete hostname</span><input name={`domain.${tunnel.id}`} defaultValue={instance.domain} /></label></div>}</article>;
+                        return <article className="tunnel-choice" key={tunnel.id}><label><input type="radio" name="tunnelId" value={tunnel.id} defaultChecked={instance.tunnelId === tunnel.id} /><ProviderMark provider={tunnel.provider} /><span><strong>{tunnel.name}</strong><small>{tunnel.configuration.ACCOUNT_NAME?.value || tunnel.provider}</small></span></label>{tunnel.provider === "cloudflare" && zones.length ? <div className="tunnel-domain-fields"><label><span>Subdomain</span><input name={`subdomain.${tunnel.id}`} defaultValue={subdomain} /></label><span className="domain-dot">.</span><label><span>Domain</span><Choice name={`zone.${tunnel.id}`} defaultValue={matchedZone?.name || zones[0].name} options={zones.map((zone) => ({ value: zone.name, label: zone.name }))} /></label></div> : <div className="tunnel-domain-fields single-domain-field"><label><span>App name or complete hostname</span><input name={`domain.${tunnel.id}`} defaultValue={instance.domain} /></label></div>}</article>;
                       })}
                     </fieldset>}</Compartment> : null}
                   </>}

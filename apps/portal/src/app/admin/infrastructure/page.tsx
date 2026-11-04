@@ -1,7 +1,7 @@
 import { ConnectionManagement } from "@/components/connection-management";
 import { ProviderMark } from "@/components/provider-mark";
 import { CrossingSeal } from "@/components/crossing";
-import { Compartment, PageHeader, Seal, StatedSeal, Tray } from "@kimono/ui";
+import { Choice, Compartment, PageHeader, Seal, StatedSeal, Tray } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { AppShell } from "@/components/app-shell";
@@ -124,7 +124,7 @@ export default async function InfrastructurePage({ searchParams }: { searchParam
                 <input type="hidden" name="id" value={tunnel.id} />
                 <RunJoint defaultChecked={tunnel.enabled} label="Use this connection" />
                 <label><span>Name</span><input name="name" defaultValue={tunnel.name} required /></label>
-                <label><span>Provider</span><select name="provider" defaultValue={tunnel.provider}>{tunnelProviders.map((provider) => <option value={provider.id} key={provider.id}>{provider.name}</option>)}</select></label>
+                <label><span>Provider</span><Choice name="provider" defaultValue={tunnel.provider} options={tunnelProviders.map((provider) => ({ value: provider.id, label: provider.name }))} /></label>
                 <div className="form-divider">Remote connector</div>
                 <label><span>Tunnel token</span><input name="TUNNEL_TOKEN" type="password" placeholder={tunnel.configuration.TUNNEL_TOKEN ? "Configured — leave blank to keep" : ""} /></label>
                 <div className="form-divider">Local connector</div>

@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { cx, Seal } from "@kimono/ui";
+import { Choice, cx, Seal } from "@kimono/ui";
 import {
   contentUrl, drive, DriveProblem, extension, kindOf, linkUrl, readableSize, shared, spaceLinkUrl, upload, when,
   type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
@@ -506,9 +506,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
         {!guest ? <label className="dv-search"><Icon name="search" />
           <input ref={searchField} type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }} placeholder="Search this space" aria-label="Search this space" />
         </label> : null}
-        <label className="dv-select"><select value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort by">
-          <option value="name">Name, A–Z</option><option value="modified">Newest first</option><option value="size">Largest first</option>
-        </select><i className="k-cue" /></label>
+        <Choice className="dv-select" aria-label="Sort by" value={sort} onChange={(next) => setSort(next as Sort)} options={[{ value: "name", label: "Name, A–Z" }, { value: "modified", label: "Newest first" }, { value: "size", label: "Largest first" }]} />
       </div>
     </div>}
 
@@ -894,12 +892,10 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
           const isMe = m.username.toLowerCase() === me.username.toLowerCase();
           return <div className="dv-person" key={m.username}>
             <span className="who"><Portrait person={person} username={m.username} size={36} /><span><b>{who}</b><small>@{m.username}{isMe ? " · you" : ""}</small></span></span>
-            {owner && !isMe ? <label className="k-field"><select aria-label={`Role for ${who}`} value={m.role} onChange={(e) => {
-              const role = e.target.value as Role;
+            {owner && !isMe ? <Choice aria-label={`Role for ${who}`} value={m.role} options={[{ value: "owner", label: "Owner" }, { value: "editor", label: "Editor" }, { value: "viewer", label: "Viewer" }]} onChange={(next) => {
+              const role = next as Role;
               void change(() => drive.setMember(space.id, m.username, role), `${who} is now ${role === "owner" ? "an owner" : role === "editor" ? "an editor" : "a viewer"}.`);
-            }}>
-              <option value="owner">Owner</option><option value="editor">Editor</option><option value="viewer">Viewer</option>
-            </select></label> : <span className="role-fixed">{roleNames[m.role]}</span>}
+            }} /> : <span className="role-fixed">{roleNames[m.role]}</span>}
             {owner && !isMe ? <button type="button" className="dv-more" aria-label={`Take ${who} out`} title="Take out" onClick={() => void change(() => drive.setMember(space.id, m.username, null), `${who} is out of this space.`)}><Icon name="close" /></button> : <span />}
           </div>;
         })}
@@ -907,7 +903,7 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
           <div className="dv-inv">
             <label className="k-field"><span>Add someone</span><input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Name or @username"
               onKeyDown={(e) => { if (e.key === "Enter" && suggestions[0]) { e.preventDefault(); add(suggestions[0]); } }} /></label>
-            <label className="k-field"><span>Can</span><select value={addRole} onChange={(e) => setAddRole(e.target.value as Role)}><option value="viewer">View</option><option value="editor">Edit</option><option value="owner">Own</option></select></label>
+            <label className="k-field"><span>Can</span><Choice value={addRole} onChange={(next) => setAddRole(next as Role)} options={[{ value: "viewer", label: "View" }, { value: "editor", label: "Edit" }, { value: "owner", label: "Own" }]} /></label>
           </div>
           {words ? <div className="dv-sugg">
             {suggestions.map((p) => <button key={p.username} type="button" onClick={() => add(p)}>
@@ -919,12 +915,10 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
       </div></div>
 
       {owner && detail ? <div className="k-compartment"><div className="k-tab"><h2>Share by link</h2></div><div className="k-body"><div className="k-form">
-        <label className="k-field"><span>Anyone with the link</span><select value={detail.linkAccess ?? "off"} onChange={(e) => {
-          const access = e.target.value === "off" ? null : e.target.value as LinkAccess;
+        <label className="k-field"><span>Anyone with the link</span><Choice value={detail.linkAccess ?? "off"} options={[{ value: "off", label: "Off" }, { value: "view", label: "Can view" }, { value: "add", label: "Can add" }]} onChange={(next) => {
+          const access = next === "off" ? null : next as LinkAccess;
           void change(() => drive.spaceLink(space.id, access), access ? undefined : "The link no longer works.");
-        }}>
-          <option value="off">Off</option><option value="view">Can view</option><option value="add">Can add</option>
-        </select></label>
+        }} /></label>
         {link ? <div className="dv-addr"><code>{link}</code>
           <span className="k-seal-group"><Seal type="button" compact onClick={() => void navigator.clipboard.writeText(link).then(() => setNotice("Link copied."), () => setProblem("Copy the link by hand."))}><Icon name="copy" />Copy link</Seal></span>
         </div> : null}
