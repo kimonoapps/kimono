@@ -27,7 +27,39 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 /* ── What Drive answers with (apps/portal/src/lib/drive/model.ts) ── */
 
 @Serializable
-data class DriveSpace(val id: String, val name: String, val crest: String, val rootId: String, val role: String, val members: Int)
+data class DriveSpace(
+    val id: String, val name: String, val crest: String, val rootId: String, val role: String, val members: Int,
+    val createdBy: String = "",
+    val color: String = "plum",
+    /** The crest, drawn by the Portal as SVG. */
+    val mark: String? = null,
+)
+
+@Serializable
+data class SpaceMember(val username: String, val role: String)
+
+/** A space with who is in it. */
+@Serializable
+data class SpaceDetail(val id: String, val name: String, val crest: String, val rootId: String, val role: String, val memberList: List<SpaceMember>, val color: String = "plum", val mark: String? = null)
+
+@Serializable
+data class CrestChoice(val id: String, val jp: String, val name: String)
+
+@Serializable
+data class CrestColour(val id: String, val jp: String, val name: String, val hex: String)
+
+/** Every crest a space can have, in every colour, drawn by the Portal. */
+@Serializable
+data class CrestCatalogue(val crests: List<CrestChoice>, val colors: List<CrestColour>, val marks: Map<String, Map<String, String>>) {
+    fun mark(crest: String, colour: String): String? = marks[crest]?.get(colour)
+}
+
+/** Someone with a Kimono account, whom a space can be shared with. */
+@Serializable
+data class Person(val username: String, val name: String, val picture: String? = null)
+
+@Serializable
+private data class PeopleList(val people: List<Person>)
 
 @Serializable
 data class DriveNode(
@@ -83,14 +115,21 @@ data class KimonoAppLink(
     val shortName: String,
     val description: String,
     val accent: String,
+    /** The mark at the centre of its bloom, when it has one of Kimono's own. */
+    val glyph: String? = null,
     val icon: String? = null,
+    /** Its bloom in its colours as set now, drawn by the Portal as SVG. */
+    val bloom: String? = null,
     val web: String,
     val ios: String? = null,
     val android: String? = null,
 )
 
 @Serializable
-private data class AppList(val apps: List<KimonoAppLink>)
+private data class DriveLook(val bloom: String? = null)
+
+@Serializable
+private data class AppList(val apps: List<KimonoAppLink>, val drive: DriveLook? = null)
 
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -151,10 +190,38 @@ class Drive(private val session: Session) {
     /** The most recently changed files, newest first. */
     suspend fun recent(): List<DriveNode> = json.decodeFromString<TrashList>(session.call("/api/v1/drive/recent")).items
 
-    suspend fun createSpace(name: String): DriveSpace = json.decodeFromString(session.call("/api/v1/drive/spaces", HttpMethod.Post) {
+    /** A new space, with its crest and the people it starts with. */
+    suspend fun createSpace(name: String, crest: String = "sakura", colour: String = "plum", members: List<SpaceMember> = emptyList()): DriveSpace = json.decodeFromString(session.call("/api/v1/drive/spaces", HttpMethod.Post) {
         contentType(ContentType.Application.Json)
-        setBody(buildJsonObject { put("name", name) }.toString())
+        setBody(buildJsonObject {
+            put("name", name)
+            put("crest", crest)
+            put("color", colour)
+            put("members", kotlinx.serialization.json.buildJsonArray {
+                members.forEach { member -> add(buildJsonObject { put("username", member.username); put("role", member.role) }) }
+            })
+        }.toString())
     })
+
+    suspend fun space(id: String): SpaceDetail = json.decodeFromString(session.call("/api/v1/drive/spaces/$id"))
+
+    /** Renames a space or changes its crest. Owners only. */
+    suspend fun editSpace(id: String, name: String? = null, crest: String? = null, colour: String? = null): SpaceDetail = json.decodeFromString(session.call("/api/v1/drive/spaces/$id", HttpMethod.Patch) {
+        contentType(ContentType.Application.Json)
+        setBody(buildJsonObject { name?.let { put("name", it) }; crest?.let { put("crest", it) }; colour?.let { put("color", it) } }.toString())
+    })
+
+    /** Adds someone, changes their role, or (role null) takes them out; anyone may take themselves out. Null when you left. */
+    suspend fun setMember(spaceId: String, username: String, role: String?): SpaceDetail? {
+        val answer = session.call("/api/v1/drive/spaces/$spaceId/members", HttpMethod.Put) {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("username", username); put("role", role) }.toString())
+        }
+        return if (json.parseToJsonElement(answer).jsonObject.containsKey("left")) null else json.decodeFromString<SpaceDetail>(answer)
+    }
+
+    /** Everyone with a Kimono account. */
+    suspend fun people(): List<Person> = json.decodeFromString<PeopleList>(session.call("/api/v1/drive/people")).people
 
     suspend fun createFolder(parentId: String, name: String): DriveNode = json.decodeFromString(session.call("/api/v1/drive/nodes/$parentId/folders", HttpMethod.Post) {
         contentType(ContentType.Application.Json)
@@ -177,7 +244,19 @@ class Drive(private val session: Session) {
 
     suspend fun unlink(id: String) { session.call("/api/v1/drive/nodes/$id/link", HttpMethod.Delete) }
 
-    suspend fun otherApps(): List<KimonoAppLink> = json.decodeFromString<AppList>(session.call("/api/v1/apps")).apps
+    /** Drive's own bloom, as the Portal draws it; arrives with the list of apps. */
+    val driveBloom = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    suspend fun otherApps(): List<KimonoAppLink> {
+        val list = json.decodeFromString<AppList>(session.call("/api/v1/apps"))
+        list.drive?.bloom?.let { driveBloom.value = it }
+        return list.apps
+    }
+
+    private var catalogue: CrestCatalogue? = null
+
+    /** The crests and colours to pick from. */
+    suspend fun crests(): CrestCatalogue = catalogue ?: json.decodeFromString<CrestCatalogue>(session.call("/api/v1/drive/crests")).also { catalogue = it }
 
     /**
      * Downloads a file into [directory], reporting bytes as they arrive. A copy

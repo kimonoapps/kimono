@@ -29,9 +29,14 @@ import androidx.compose.ui.unit.dp
 
 /** A plain bar: back, a title, actions at the right edge. */
 @Composable
-fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable () -> Unit = {}) {
+fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, mark: (@Composable () -> Unit)? = null, actions: @Composable () -> Unit = {}) {
     TopAppBar(
-        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+        title = {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                mark?.invoke()
+                Text(title, style = MaterialTheme.typography.titleLarge)
+            }
+        },
         navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(kimonoIcon("back"), "Back") } },
         actions = { Row(Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() } },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),

@@ -129,6 +129,13 @@ class AndroidPlatform(private val context: Context) : Platform {
         (activity ?: context).startActivity(chooser)
     }
 
+    override fun share(text: String) {
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        val chooser = Intent.createChooser(send, null)
+        if (activity == null) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        (activity ?: context).startActivity(chooser)
+    }
+
     var launchFilePicker: (() -> Unit)? = null
     private var pickingFiles: CompletableDeferred<List<Uri>>? = null
 

@@ -7,7 +7,9 @@
     ".": "./src/index.tsx",
     "./kata.css": "./src/kata.css",
     "./accent": "./src/accent.ts",
-    "./bloom-identity": "./src/bloom-identity.ts"
+    "./bloom-identity": "./src/bloom-identity.ts",
+    "./bloom-svg": "./src/bloom-svg.ts",
+    "./crest": "./src/crest.ts"
   },
   "scripts": {
     "lint": "tsc --noEmit",

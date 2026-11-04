@@ -295,3 +295,15 @@ test('search and recent files cover only live things in your own spaces', () => 
   assert.deepEqual(drive.searchNodes(db, 'akram', '  '), []);
   assert.deepEqual(drive.recentFiles(db, 'akram').map((n) => n.name), ['kyoto-map.pdf', 'Temple.png']);
 });
+
+test('a crest has a colour its owner picks, plum until then', () => {
+  const db = fresh();
+  const plain = drive.createSpace(db, 'akram', { name: 'Plain', members: [{ username: 'mina', role: 'editor' }] });
+  assert.equal(plain.color, 'plum');
+  const dyed = drive.createSpace(db, 'akram', { name: 'Dyed', crest: 'kiku', color: 'ai' });
+  assert.deepEqual([dyed.crest, dyed.color], ['kiku', 'ai']);
+  drive.renameSpace(db, plain.id, 'akram', { color: 'koke' });
+  assert.equal(drive.spaceFor(db, plain.id, 'akram').color, 'koke');
+  assert.throws(() => drive.renameSpace(db, plain.id, 'akram', { color: '#ff0000' }), /colours/);
+  assert.throws(() => drive.renameSpace(db, plain.id, 'mina', { color: 'ai' }), /owner/i);
+});

@@ -84,6 +84,7 @@ import app.kimono.ui.Problem
 import app.kimono.ui.Seal
 import app.kimono.ui.SwipeRow
 import app.kimono.ui.kimonoIcon
+import app.kimono.ui.SvgMark
 import app.kimono.ui.segmentColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -99,6 +100,11 @@ class DriveModel(val drive: Drive, platform: Platform) {
     val uploads: Uploads = platform.uploads ?: InAppUploads(drive)
     /** Goes up whenever an upload finishes, so open folders reload. */
     var landed by mutableStateOf(0)
+    private var peopleKnown: List<app.kimono.data.Person>? = null
+
+    /** Everyone with a Kimono account: asked afresh each time, the last answer standing in when offline. */
+    suspend fun people(): List<app.kimono.data.Person> =
+        try { drive.people().also { peopleKnown = it } } catch (p: app.kimono.data.KimonoProblem) { peopleKnown ?: throw p }
 
     init {
         scope.launch {
@@ -114,17 +120,10 @@ class DriveModel(val drive: Drive, platform: Platform) {
     }
 }
 
-/* Each space's crest, as a colour: the same seven as on the web. */
-private val crestColors = mapOf(
-    "sakura" to Color(0xFFE8A3B3), "ume" to Color(0xFFB0577A), "kikyo" to Color(0xFF8A78C2), "kiku" to Color(0xFFD9A441),
-    "hanabishi" to Color(0xFFC0503F), "nadeshiko" to Color(0xFFD98DB8), "aoi" to Color(0xFF6E9B6A),
-)
-
-private val spaceShapes = listOf(MaterialShapes.Flower, MaterialShapes.Cookie9Sided, MaterialShapes.Clover4Leaf, MaterialShapes.Sunny, MaterialShapes.Cookie6Sided)
 
 /** Your spaces: the top of Drive. */
 @Composable
-fun DriveScreen(model: DriveModel, open: (String) -> Unit) {
+fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var spaces by remember { mutableStateOf<List<DriveSpace>?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -134,9 +133,11 @@ fun DriveScreen(model: DriveModel, open: (String) -> Unit) {
         try { spaces = model.drive.spaces(); problem = null } catch (p: KimonoProblem) { problem = p.message }
     }
     LaunchedEffect(model.landed) { load() }
+    /* Drive's bloom comes with the list of apps; fetch it if Home hasn't. */
+    LaunchedEffect(Unit) { if (model.drive.driveBloom.value == null) runCatching { model.drive.otherApps() } }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar("Drive") { IconButton(onClick = { open("trash") }) { Icon(kimonoIcon("trash"), "Recently deleted") } } },
+        topBar = { KimonoTopBar("Drive", mark = { SvgMark(model.drive.driveBloom.collectAsState().value, 32.dp) }) { IconButton(onClick = { open("trash") }) { Icon(kimonoIcon("trash"), "Recently deleted") } } },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { naming = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("New space") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
         },
@@ -150,13 +151,10 @@ fun DriveScreen(model: DriveModel, open: (String) -> Unit) {
                     itemsIndexed(list, key = { _, s -> s.id }) { index, space ->
                         SegmentedListItem(
                             onClick = { open("folder/${space.rootId}") },
+                            onLongClick = { open("space/${space.id}") },
                             shapes = ListItemDefaults.segmentedShapes(index, list.size),
                             colors = segmentColors(),
-                            leadingContent = {
-                                Box(Modifier.size(44.dp).background(crestColors[space.crest] ?: MaterialTheme.colorScheme.secondaryContainer, spaceShapes[index % spaceShapes.size].toShape()), contentAlignment = Alignment.Center) {
-                                    Text(space.name.take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = Color.White)
-                                }
-                            },
+                            leadingContent = { SvgMark(space.mark, 44.dp) },
                             supportingContent = { Text(listOf(roleWord(space.role), if (space.members == 1) "Just you" else "${space.members} people").joinToString(" · ")) },
                             trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) },
                         ) { Text(space.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -165,10 +163,9 @@ fun DriveScreen(model: DriveModel, open: (String) -> Unit) {
             }
         }
     }
-    if (naming) NameDialog(title = "New space", action = "Make it", initial = "", onDismiss = { naming = false }) { name ->
-        val made = model.drive.createSpace(name)
+    if (naming) NewSpaceSheet(model, me, onDismiss = { naming = false }) { rootId ->
         naming = false
-        open("folder/${made.rootId}")
+        open("folder/$rootId")
     }
 }
 
@@ -218,7 +215,12 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     val here = folder
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar(here?.folder?.name ?: "", onBack = back) },
+        topBar = {
+            KimonoTopBar(here?.folder?.name ?: "", onBack = back) {
+                /* At the top of a space: who's in it, and its settings. */
+                if (here != null && here.path.isEmpty()) IconButton(onClick = { open("space/${here.folder.spaceId}") }) { Icon(kimonoIcon("person"), "People and settings") }
+            }
+        },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
             if (canEdit && here != null) ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("Add") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -245,6 +247,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
                                     choices = if (!canEdit) emptyList() else buildList {
                                         add(NodeChoice("Rename") { renaming = node })
                                         if (!node.isFolder) {
+                                            add(NodeChoice("Share link") { act { platform.share(model.drive.link(node.id)) } })
                                             if (node.link == null) add(NodeChoice("Copy public link") { act("Link copied. Anyone with it can open the file.") { clipboard.setText(AnnotatedString(model.drive.link(node.id))) } })
                                             else {
                                                 add(NodeChoice("Copy public link") { act("Link copied.") { clipboard.setText(AnnotatedString(model.drive.link(node.id))) } })

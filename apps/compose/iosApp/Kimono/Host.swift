@@ -80,6 +80,13 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         }
     }
 
+    func share(text: String) {
+        DispatchQueue.main.async {
+            let sheet = UIActivityViewController(activityItems: [URL(string: text) ?? text], applicationActivities: nil)
+            Host.top()?.present(sheet, animated: true)
+        }
+    }
+
     private var pickedFiles: (([IosPickedFile]) -> Void)?
 
     func pickFiles(done: @escaping ([IosPickedFile]) -> Void) {

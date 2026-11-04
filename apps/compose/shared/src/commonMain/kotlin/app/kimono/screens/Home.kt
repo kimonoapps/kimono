@@ -30,6 +30,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
@@ -52,6 +52,7 @@ import app.kimono.data.Platform
 import app.kimono.ui.GroupLabel
 import app.kimono.ui.KimonoBranch
 import app.kimono.ui.kimonoIcon
+import app.kimono.ui.SvgMark
 import app.kimono.ui.segmentColors
 import coil3.compose.AsyncImage
 
@@ -89,9 +90,7 @@ fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, openDrive:
                 modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
             ) {
                 Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Box(Modifier.size(56.dp).background(MaterialTheme.colorScheme.primary, MaterialShapes.Cookie9Sided.toShape()), contentAlignment = Alignment.Center) {
-                        Icon(kimonoIcon("folder"), null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(26.dp))
-                    }
+                    SvgMark(drive.driveBloom.collectAsState().value, 60.dp)
                     Column(Modifier.weight(1f)) {
                         Text("Drive", style = MaterialTheme.typography.headlineSmall)
                         Text("Your spaces and files, and what others share with you.", style = MaterialTheme.typography.bodyMedium)
@@ -123,15 +122,10 @@ fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, openDrive:
 /** An app's glyph on its own colour, in a blossom like its tile on the web. */
 @Composable
 private fun AppMark(app: KimonoAppLink) {
-    val accent = remember(app.accent) { parseColor(app.accent) }
-    Box(Modifier.size(42.dp).background(accent, MaterialShapes.Flower.toShape()), contentAlignment = Alignment.Center) {
-        if (app.icon != null) AsyncImage(model = app.icon, contentDescription = null, colorFilter = ColorFilter.tint(Color.White), modifier = Modifier.size(22.dp))
-        else Text(app.shortName.take(1), color = Color.White, style = MaterialTheme.typography.titleMedium)
+    /* The app's bloom as the Portal's launcher draws it; an app without a glyph of Kimono's wears its own icon in the heart. */
+    Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
+        SvgMark(app.bloom, 46.dp)
+        if (app.glyph == null && app.icon != null) AsyncImage(model = app.icon, contentDescription = null, modifier = Modifier.size(46.dp * .3f))
     }
 }
 
-private fun parseColor(hex: String): Color {
-    val clean = hex.removePrefix("#")
-    val value = clean.toLongOrNull(16) ?: return Color(0xFFA84D63)
-    return if (clean.length == 6) Color(0xFF000000 or value) else Color(value)
-}

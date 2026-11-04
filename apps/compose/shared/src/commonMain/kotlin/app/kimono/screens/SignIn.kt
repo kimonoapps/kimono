@@ -27,8 +27,14 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import app.kimono.data.SignInNext
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,17 +58,32 @@ import kotlinx.coroutines.launch
 @Composable
 fun kataFieldColors() = OutlinedTextFieldDefaults.colors()
 
+/** Where Kimono lives unless you run your own. */
+const val DEFAULT_SERVER = "https://www.kimonolabs.dev"
+
 @Composable
 fun SignInScreen(session: Session, rememberedServer: String?) {
     val scope = rememberCoroutineScope()
-    var address by remember { mutableStateOf(rememberedServer?.removePrefix("https://") ?: "") }
+    /* Your own Kimono, if you signed in to one before; kimonolabs.dev otherwise. */
+    var custom by remember { mutableStateOf(rememberedServer != null && rememberedServer.trimEnd('/') != DEFAULT_SERVER) }
+    var address by remember { mutableStateOf(rememberedServer?.takeIf { custom }?.removePrefix("https://") ?: "") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
+    var askingCode by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
+    val target = if (custom) address else DEFAULT_SERVER
+    val ready = if (askingCode) code.length >= 6 else target.isNotBlank() && username.isNotBlank() && password.isNotEmpty()
     val go: () -> Unit = {
         busy = true
         problem = null
         scope.launch {
-            try { session.signIn(address) } catch (p: KimonoProblem) { problem = p.message } catch (_: Exception) { problem = "Signing in didn't finish. Try again." }
+            try {
+                val next = if (askingCode) session.signInCode(code) else session.signIn(target, username, password)
+                askingCode = next == SignInNext.Code
+                if (askingCode) code = ""
+            } catch (p: KimonoProblem) { problem = p.message } catch (_: Exception) { problem = "Signing in didn't finish. Try again." }
             busy = false
         }
     }
@@ -70,27 +91,68 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
     val turn = rememberInfiniteTransition()
     val angle by turn.animateFloat(0f, 360f, infiniteRepeatable(tween(24_000, easing = LinearEasing)))
     Box(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
-        Column(Modifier.fillMaxWidth().align(Alignment.Center).padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(Modifier.size(148.dp), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.fillMaxWidth().align(Alignment.Center).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Box(Modifier.size(128.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.fillMaxSize().graphicsLayer { rotationZ = angle }.background(MaterialTheme.colorScheme.primaryContainer, MaterialShapes.Flower.toShape()))
-                KimonoBranch(size = 72.dp, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                KimonoBranch(size = 64.dp, tint = MaterialTheme.colorScheme.onPrimaryContainer)
             }
             Text("Kimono", style = MaterialTheme.typography.displayMedium)
-            Text("Sign in with your Kimono account.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            OutlinedTextField(
-                value = address,
-                onValueChange = { address = it },
-                label = { Text("Your Kimono's address") },
-                placeholder = { Text("kimono.example") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
-                keyboardActions = KeyboardActions(onGo = { if (address.isNotBlank() && !busy) go() }),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            Text(
+                if (askingCode) "Enter the code from your authenticator app." else "Sign in with your Kimono account.",
+                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
             )
+            if (askingCode) {
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.filter { c -> c.isLetterOrDigit() }.take(12) },
+                    label = { Text("Code") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { if (ready && !busy) go() }),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+            } else {
+                if (custom) OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text("Your Kimono's address") },
+                    placeholder = { Text("kimono.example") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Username or email") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next, autoCorrectEnabled = false, capitalization = KeyboardCapitalization.None),
+                    modifier = Modifier.fillMaxWidth().padding(top = if (custom) 0.dp else 8.dp),
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go, autoCorrectEnabled = false),
+                    keyboardActions = KeyboardActions(onGo = { if (ready && !busy) go() }),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             if (busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
             Problem(problem)
-            Seal(if (busy) "Opening sign-in" else "Continue", onClick = go, enabled = address.isNotBlank(), busy = busy, modifier = Modifier.fillMaxWidth())
+            Seal(if (busy) "Signing in" else "Continue", onClick = go, enabled = ready, busy = busy, modifier = Modifier.fillMaxWidth())
+            if (askingCode) TextButton(onClick = { session.cancelSignIn(); askingCode = false; problem = null }, enabled = !busy) {
+                Text("Start again", style = MaterialTheme.typography.labelMedium)
+            } else TextButton(onClick = { custom = !custom; problem = null }, enabled = !busy) {
+                Text(if (custom) "Use kimonolabs.dev" else "Use a different address", style = MaterialTheme.typography.labelMedium)
+            }
+            Text("Only the people on your Kimono can sign in.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 24.dp, bottom = 24.dp))
         }
-        Text("Only the people on your Kimono can sign in.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.BottomCenter).padding(24.dp))
     }
 }

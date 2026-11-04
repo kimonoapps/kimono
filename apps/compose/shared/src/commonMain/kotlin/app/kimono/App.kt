@@ -57,6 +57,7 @@ import app.kimono.screens.DriveScreen
 import app.kimono.screens.FolderScreen
 import app.kimono.screens.HomeScreen
 import app.kimono.screens.TrashScreen
+import app.kimono.screens.SpaceScreen
 import app.kimono.screens.DevicesScreen
 import app.kimono.screens.PasswordScreen
 import app.kimono.screens.SignInScreen
@@ -115,7 +116,11 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?) 
     ) { padding ->
         NavHost(nav, startDestination = "home", modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp)) {
             composable("home") { HomeScreen(me, model.drive, platform) { goTab("drive") } }
-            composable("drive") { DriveScreen(model) { nav.navigate(it) } }
+            composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }
+            composable("space/{id}") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                SpaceScreen(model, id, me?.username, back = { nav.popBackStack() }, left = { nav.popBackStack("drive", inclusive = false) })
+            }
             composable("folder/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 FolderScreen(model, platform, id, open = { nav.navigate(it) }, back = { nav.popBackStack() })

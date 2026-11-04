@@ -32,6 +32,8 @@ interface Platform {
     suspend fun pickFiles(): List<PickedFile>
     /** Uploads the OS carries on with after the app closes; null to upload while the app is open. */
     val uploads: Uploads?
+    /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */
+    fun share(text: String) {}
     /** A small picture of a photo, video or PDF, at least [pixels] across, as a local file; null if there can't be one. */
     suspend fun thumbnail(node: DriveNode, pixels: Int): String? = null
 }

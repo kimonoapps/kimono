@@ -1,3 +1,4 @@
+import { withMark } from "@/lib/drive/marks";
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { db, drive, setSpaceLink, spaceFor, type LinkAccess } from "@/lib/drive";
 
@@ -14,7 +15,7 @@ export async function PUT(request: Request, { params }: Context) {
   const { id } = await params;
   return drive(() => {
     setSpaceLink(db(), id, user.username, (read.body as { access?: unknown }).access as LinkAccess);
-    return apiJson(spaceFor(db(), id, user.username));
+    return apiJson(withMark(spaceFor(db(), id, user.username)));
   });
 }
 
@@ -27,6 +28,6 @@ export async function DELETE(request: Request, { params }: Context) {
   const { id } = await params;
   return drive(() => {
     setSpaceLink(db(), id, user.username, null);
-    return apiJson(spaceFor(db(), id, user.username));
+    return apiJson(withMark(spaceFor(db(), id, user.username)));
   });
 }

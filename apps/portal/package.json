@@ -12,7 +12,8 @@
     "test:mobile-app": "node --test scripts/test-mobile-app.mjs",
     "test:tunnels": "node --test scripts/test-tunnel-settings.mjs",
     "test:account": "node --test scripts/test-account.mjs",
-    "test:drive": "node --test scripts/test-drive.mjs"
+    "test:drive": "node --test scripts/test-drive.mjs",
+    "test:marks": "node --test scripts/test-marks.mjs"
   },
   "dependencies": {
     "@kimono/account": "workspace:*",

@@ -1,14 +1,19 @@
+import { bloomSvg } from "@kimono/ui/bloom-svg";
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { appRegistry, launcherApps } from "@/lib/apps";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { holdsMeshAccess } from "@/lib/directory";
 import { getPlatformSettings } from "@/lib/settings";
 
+/* Drive lives in the Portal rather than the app catalogue; this is its bloom. */
+const drive = { id: "kimono-drive", name: "Drive", accent: "#5f5596", glyph: "file" } as const;
+
 /* Built into the Kimono apps themselves, or not wanted on a phone. */
 const notListed = new Set(["kimono-tools"]);
 
 /**
  * The person's other Kimono apps, for the Kimono apps' "More Kimono apps":
+ * each with its bloom drawn by the website's own renderer, and Drive's too.
  * where each lives on the web, and its own phone app when it has one. The
  * same list as the Portal's launcher.
  */
@@ -25,10 +30,14 @@ export async function GET(request: Request) {
       shortName: app.shortName,
       description: app.description,
       accent: app.accent,
+      /* The mark at the centre of the app's bloom, as the launcher draws it; the icon file is for apps without one. */
+      glyph: app.glyph ?? null,
       icon: app.iconUrl ? new URL(app.iconUrl, origin).toString() : null,
+      /* The launcher's bloom, in the app's colours as set now, ready to draw. An app without a glyph shows its icon over it. */
+      bloom: bloomSvg({ id: app.id, accent: app.accent }, { glyph: app.glyph, standalone: true, unique: app.id }),
       web: new URL(app.href, origin).toString(),
       ios: app.mobileApp?.iosUrl ?? null,
       android: app.mobileApp?.androidUrl ?? null,
     }));
-  return apiJson({ apps });
+  return apiJson({ apps, drive: { ...drive, bloom: bloomSvg(drive, { glyph: drive.glyph, standalone: true, unique: drive.id }) } });
 }

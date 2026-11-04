@@ -77,16 +77,27 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         return runCatching { json.decodeFromString<TokenAnswer>(response.bodyAsText()) }.getOrDefault(TokenAnswer(error = "status ${response.status.value}"))
     }
 
-    suspend fun signIn(address: String) {
+    /* A sign-in waiting on a code from the person's authenticator app. */
+    private class Pending(val flow: SignInFlow, val server: String, val config: SignInConfig, val tokenEndpoint: String, val verifier: String, val state: String, val username: String, val password: String)
+    private var pending: Pending? = null
+
+    /**
+     * Signs in with a username and password typed into the app. The steps
+     * the sign-in page would take run here, out of sight; an account with an
+     * authenticator app asks for its code next ([SignInNext.Code]).
+     */
+    suspend fun signIn(address: String, username: String, password: String): SignInNext {
         val trimmed = address.trim().trimEnd('/')
         if (trimmed.isEmpty()) throw KimonoProblem("Enter your Kimono's address.")
+        if (username.isBlank()) throw KimonoProblem("Enter your username.")
+        if (password.isEmpty()) throw KimonoProblem("Enter your password.")
         val server = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "https://$trimmed"
         val config = try {
             val response = http.get("$server/api/v1/sign-in")
             if (!response.status.isSuccess()) throw KimonoProblem(failureOf(response, "There's no Kimono at that address."))
             json.decodeFromString<SignInConfig>(response.bodyAsText())
         } catch (problem: KimonoProblem) { throw problem } catch (_: Exception) { throw KimonoProblem("There's no Kimono at that address.") }
-        val discovery = try { discover(config.issuer) } catch (_: Exception) { throw KimonoProblem("Kimono's sign-in page isn't answering. Try again in a moment.") }
+        val discovery = try { discover(config.issuer) } catch (_: Exception) { throw KimonoProblem("Kimono isn't answering. Try again in a moment.") }
 
         val verifier = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(platform.randomBytes(32))
         val challenge = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(platform.sha256(verifier.encodeToByteArray()))
@@ -99,28 +110,48 @@ class Session(private val platform: Platform, private val http: HttpClient) {
             parameters.append("code_challenge", challenge)
             parameters.append("code_challenge_method", "S256")
             parameters.append("state", state)
-            /* The password every time, asked exactly once: a browser sign-in
-               older than this is refused and asked for again, and the one just
-               typed passes. (prompt=login asks twice when the browser has none.) */
-            parameters.append("max_age", "30")
         }.buildString()
 
-        val returned = platform.openSignIn(url, REDIRECT) ?: return
-        val answer = URLBuilder(returned).parameters
-        if (answer["state"] != state) throw KimonoProblem("Signing in didn't finish. Try again.")
-        val code = answer["code"] ?: throw KimonoProblem(answer["error_description"] ?: "Signing in didn't finish. Try again.")
+        val flow = SignInFlow(http, REDIRECT)
+        val next = try {
+            flow.start(url)
+            flow.answer(username.trim(), password, null)
+        } catch (problem: KimonoProblem) { throw problem } catch (_: Exception) { throw KimonoProblem("Kimono isn't answering. Try again in a moment.") }
+        val waiting = Pending(flow, server, config, discovery.tokenEndpoint, verifier, state, username.trim(), password)
+        if (next == SignInNext.Code) { pending = waiting; return next }
+        finish(waiting)
+        return SignInNext.Done
+    }
+
+    /** The code from the authenticator app, for a sign-in that asked for one. */
+    suspend fun signInCode(code: String): SignInNext {
+        val waiting = pending ?: throw KimonoProblem("Signing in didn't finish. Try again.")
+        val next = try { waiting.flow.answer(waiting.username, waiting.password, code.filter { it.isLetterOrDigit() }) }
+            catch (problem: KimonoProblem) { throw problem } catch (_: Exception) { throw KimonoProblem("Kimono isn't answering. Try again in a moment.") }
+        if (next == SignInNext.Code) return next
+        pending = null
+        finish(waiting)
+        return SignInNext.Done
+    }
+
+    /** Starts over from the username and password. */
+    fun cancelSignIn() { pending = null }
+
+    private suspend fun finish(waiting: Pending) {
+        val code = waiting.flow.code ?: throw KimonoProblem("Signing in didn't finish. Try again.")
+        if (waiting.flow.returnedState != waiting.state) throw KimonoProblem("Signing in didn't finish. Try again.")
         val got = try {
-            tokens(discovery.tokenEndpoint, mapOf("grant_type" to "authorization_code", "client_id" to config.clientId, "code" to code, "redirect_uri" to REDIRECT, "code_verifier" to verifier))
+            tokens(waiting.tokenEndpoint, mapOf("grant_type" to "authorization_code", "client_id" to waiting.config.clientId, "code" to code, "redirect_uri" to REDIRECT, "code_verifier" to waiting.verifier))
         } catch (_: Exception) { throw KimonoProblem("Signing in didn't finish. Try again.") }
         val refresh = got.refreshToken
         if (got.accessToken == null || refresh == null) throw KimonoProblem("Signing in didn't finish. Try again.")
-        kept = Kept(server, config.issuer, config.clientId, refresh)
+        kept = Kept(waiting.server, waiting.config.issuer, waiting.config.clientId, refresh)
         access = got.accessToken to now() + got.expiresIn * 1000
-        platform.keep("kimono.server", server)
-        platform.keep("kimono.issuer", config.issuer)
-        platform.keep("kimono.clientId", config.clientId)
+        platform.keep("kimono.server", waiting.server)
+        platform.keep("kimono.issuer", waiting.config.issuer)
+        platform.keep("kimono.clientId", waiting.config.clientId)
         platform.keep("kimono.refresh", refresh)
-        _state.value = SessionState.SignedIn(server, me())
+        _state.value = SessionState.SignedIn(waiting.server, me())
     }
 
     private suspend fun forget() {

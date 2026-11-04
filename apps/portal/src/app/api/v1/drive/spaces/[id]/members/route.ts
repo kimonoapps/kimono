@@ -1,3 +1,4 @@
+import { withMark } from "@/lib/drive/marks";
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { db, drive, DriveProblem, setMember, spaceFor, type Role } from "@/lib/drive";
 import { knownMembers } from "@/lib/drive/members";
@@ -20,6 +21,6 @@ export async function PUT(request: Request, { params }: Context) {
     if (!leaving) await knownMembers([{ username: body.username, role: body.role }]);
     setMember(db(), id, user.username, body.username, leaving ? null : body.role as Role);
     if (leaving && body.username.toLowerCase() === user.username.toLowerCase()) return apiJson({ left: true });
-    return apiJson(spaceFor(db(), id, user.username));
+    return apiJson(withMark(spaceFor(db(), id, user.username)));
   });
 }

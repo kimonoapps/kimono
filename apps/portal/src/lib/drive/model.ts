@@ -36,7 +36,7 @@ import { randomBytes } from "node:crypto";
 export type Role = "owner" | "editor" | "viewer";
 export type LinkAccess = "view" | "add";
 export type Space = {
-  id: string; name: string; crest: string; rootId: string; createdBy: string; createdAt: number; role: Role; members: number;
+  id: string; name: string; crest: string; color: string; rootId: string; createdBy: string; createdAt: number; role: Role; members: number;
   link: string | null; linkAccess: LinkAccess | null;
 };
 export type Member = { username: string; role: Role; addedAt: number };
@@ -62,6 +62,8 @@ export class DriveProblem extends Error {
 }
 
 export const crests = ["sakura", "ume", "kikyo", "kiku", "hanabishi", "nadeshiko", "aoi"] as const;
+/** The colours a crest can be (their inks live with the drawing, in @kimono/ui/crest). */
+export const crestColours = ["plum", "suo", "sakura", "fuji", "ai", "asagi", "koke", "kincha"] as const;
 export const trashDays = 30;
 const rank: Record<Role, number> = { viewer: 1, editor: 2, owner: 3 };
 
@@ -162,6 +164,15 @@ export function migrate(db: DatabaseSync) {
       CREATE INDEX changes_by_space ON changes (space_id, seq);
       CREATE INDEX changes_by_user ON changes (username, seq);
       INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '4');
+      COMMIT;
+    `);
+  }
+  if (version < 5) {
+    /* Each space's crest gets a colour, plum until its owner picks another. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE spaces ADD COLUMN color TEXT NOT NULL DEFAULT 'plum';
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '5');
       COMMIT;
     `);
   }
@@ -320,12 +331,12 @@ export function nodeFor(db: DatabaseSync, id: string, username: string, need: Ro
 
 export function spacesOf(db: DatabaseSync, username: string): Space[] {
   const rows = db.prepare(`
-    SELECT s.id, s.name, s.crest, s.root_id, s.created_by, s.created_at, s.link, s.link_access, m.role,
+    SELECT s.id, s.name, s.crest, s.color, s.root_id, s.created_by, s.created_at, s.link, s.link_access, m.role,
       (SELECT count(*) FROM members x WHERE x.space_id = s.id) AS members
     FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
     ORDER BY lower(s.name)
-  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; role: Role; members: number }[];
-  return rows.map((r) => ({ id: r.id, name: r.name, crest: r.crest, rootId: r.root_id, createdBy: r.created_by, createdAt: r.created_at, role: r.role, members: r.members, link: r.link, linkAccess: r.link_access }));
+  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; color: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; role: Role; members: number }[];
+  return rows.map((r) => ({ id: r.id, name: r.name, crest: r.crest, color: r.color, rootId: r.root_id, createdBy: r.created_by, createdAt: r.created_at, role: r.role, members: r.members, link: r.link, linkAccess: r.link_access }));
 }
 
 export function spaceFor(db: DatabaseSync, spaceId: string, username: string): Space & { memberList: Member[] } {
@@ -389,14 +400,15 @@ export function recentFiles(db: DatabaseSync, username: string, limit = 50): Dri
 
 /* ── spaces and members ── */
 
-export function createSpace(db: DatabaseSync, username: string, input: { name: unknown; crest?: unknown; members?: { username: string; role: Role }[] }, now = Date.now()): Space {
+export function createSpace(db: DatabaseSync, username: string, input: { name: unknown; crest?: unknown; color?: unknown; members?: { username: string; role: Role }[] }, now = Date.now()): Space {
   const name = cleanName(input.name, "space name");
   const crest = typeof input.crest === "string" && (crests as readonly string[]).includes(input.crest) ? input.crest : "sakura";
+  const color = typeof input.color === "string" && (crestColours as readonly string[]).includes(input.color) ? input.color : "plum";
   const owner = username.toLowerCase();
   const id = newId(), rootId = newId();
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO spaces (id, name, crest, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, name, crest, rootId, owner, now);
+    db.prepare("INSERT INTO spaces (id, name, crest, color, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, name, crest, color, rootId, owner, now);
     db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, created_by, created_at, updated_at) VALUES (?, ?, NULL, 'folder', ?, ?, ?, ?)").run(rootId, id, name, owner, now, now);
     db.prepare("INSERT INTO members (space_id, username, role, added_at) VALUES (?, ?, 'owner', ?)").run(id, owner, now);
     for (const member of input.members ?? []) {
@@ -415,7 +427,7 @@ function validRole(role: unknown): Role {
   throw new DriveProblem("A member is an owner, an editor or a viewer.");
 }
 
-export function renameSpace(db: DatabaseSync, spaceId: string, username: string, input: { name?: unknown; crest?: unknown }) {
+export function renameSpace(db: DatabaseSync, spaceId: string, username: string, input: { name?: unknown; crest?: unknown; color?: unknown }) {
   require(db, spaceId, username, "owner");
   if (input.name !== undefined) {
     const name = cleanName(input.name, "space name");
@@ -426,6 +438,10 @@ export function renameSpace(db: DatabaseSync, spaceId: string, username: string,
   if (input.crest !== undefined) {
     if (typeof input.crest !== "string" || !(crests as readonly string[]).includes(input.crest)) throw new DriveProblem("Pick one of the crests.");
     db.prepare("UPDATE spaces SET crest = ? WHERE id = ?").run(input.crest, spaceId);
+  }
+  if (input.color !== undefined) {
+    if (typeof input.color !== "string" || !(crestColours as readonly string[]).includes(input.color)) throw new DriveProblem("Pick one of the colours.");
+    db.prepare("UPDATE spaces SET color = ? WHERE id = ?").run(input.color, spaceId);
   }
 }
 
