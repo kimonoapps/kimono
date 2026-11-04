@@ -45,13 +45,14 @@ console, not as Kimono.
 ### An app's colour
 
 Inside an app, `--k-accent` and `--k-accent-pale` are set to that app's own
-colour, and the colour is permitted in exactly four places:
+colour, and the colour is permitted in exactly five places:
 
 - the **bloom** — the app's mark, and the petals of the crossing that opens it;
 - the app's **name** in the lockup;
 - the **primary action** — a seal, the tab of a compartment that wants you,
   a focus ring;
-- one **small selected marker** — a `3px` bar beside the thing that is chosen.
+- one **small selected marker** — a `3px` bar beside the thing that is chosen;
+- the **cord** under the header — the 2px line, over a 1px line of the pale.
 
 The sakura crossing blends from the current surface’s accent to the destination’s
 accent. Entering an app blends house pink into its colour; returning to Kimono

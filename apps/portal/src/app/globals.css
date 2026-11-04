@@ -71,7 +71,8 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
   backdrop-filter: blur(18px);
 }
 /* 紐 The cord: 2px plum over 1px sakura, the house colours under every
-   header — inside an app too. */
+   header. Inside an app it is dyed the app's colour, so you can tell at a
+   glance whose room you are in. */
 .top-header::after {
   content: "";
   position: absolute;
@@ -81,6 +82,10 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
   height: 2px;
   background: var(--k-plum);
   box-shadow: 0 1px 0 var(--k-sakura-soft);
+}
+.in-app .top-header::after {
+  background: var(--k-app-accent);
+  box-shadow: 0 1px 0 var(--k-accent-pale);
 }
 
 .header-inner {
