@@ -186,13 +186,17 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     var renaming by remember { mutableStateOf<DriveNode?>(null) }
     var opening by remember { mutableStateOf<Pair<DriveNode, Long>?>(null) }
     var canEdit by remember { mutableStateOf(true) }
+    /* The space's crest stays beside the name, however deep in it you go. */
+    var crest by remember { mutableStateOf<String?>(null) }
 
     suspend fun load() {
         try {
             val loaded = model.drive.folder(folderId)
             folder = loaded
             problem = null
-            canEdit = model.drive.spaces().firstOrNull { it.id == loaded.folder.spaceId }?.role != "viewer"
+            val space = model.drive.spaces().firstOrNull { it.id == loaded.folder.spaceId }
+            canEdit = space?.role != "viewer"
+            crest = space?.mark
         } catch (p: KimonoProblem) { problem = p.message }
     }
     fun act(done: String? = null, work: suspend () -> Unit) = scope.launch {
@@ -216,7 +220,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            KimonoTopBar(here?.folder?.name ?: "", onBack = back) {
+            KimonoTopBar(here?.folder?.name ?: "", onBack = back, mark = crest?.let { { SvgMark(it, 30.dp) } }) {
                 /* At the top of a space: who's in it, and its settings. */
                 if (here != null && here.path.isEmpty()) IconButton(onClick = { open("space/${here.folder.spaceId}") }) { Icon(kimonoIcon("person"), "People and settings") }
             }
@@ -279,14 +283,15 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     }, onFolder = { adding = false; naming = true })
     if (naming && here != null) NameDialog(title = "New folder", action = "Make it", initial = "", onDismiss = { naming = false }) { name ->
         model.drive.createFolder(here.folder.id, name)
-        naming = false
+        /* Reload before closing: the dialog's work stops when it goes. */
         load()
+        naming = false
     }
     renaming?.let { node ->
         NameDialog(title = "Rename", action = "Rename", initial = node.name, onDismiss = { renaming = null }) { name ->
             model.drive.rename(node.id, name)
-            renaming = null
             load()
+            renaming = null
         }
     }
 }
