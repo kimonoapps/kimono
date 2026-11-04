@@ -34,8 +34,8 @@ export type KimonoOwnApp = {
    */
   accent: string;
   glyph: GlyphName;
-  /** The mesh uses the existing appliance configuration. */
-  configuration: "mesh";
+  /** The mesh uses the existing appliance configuration; Drive needs none. */
+  configuration: "mesh" | "drive";
   managementPath: string;
   /**
    * Whether this person may see it. Omit for an app everyone gets. The Portal
@@ -45,6 +45,17 @@ export type KimonoOwnApp = {
 };
 
 export const kimonoApps: readonly KimonoOwnApp[] = [
+  {
+    id: "kimono-drive",
+    name: "Kimono Drive",
+    shortName: "Drive",
+    description: "Spaces for the files you share with the people in your household.",
+    path: "/drive",
+    accent: "#5f5596",
+    glyph: "file",
+    configuration: "drive",
+    managementPath: "/drive",
+  },
   {
     id: "kimono-vpn",
     name: "Kimono VPN",

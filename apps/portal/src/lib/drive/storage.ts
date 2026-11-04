@@ -57,7 +57,7 @@ const showsInline = (type: string) => [...inline.values()].includes(type);
  * Sends a file with HTTP ranges, so video seeks and resumes instead of
  * downloading whole. One range per request, which is all players ask for.
  */
-export async function sendFile(request: Request, path: string, file: { name: string; size: number; type: string; etag: string; shared: boolean }): Promise<Response> {
+export async function sendFile(request: Request, path: string, file: { name: string; size: number; type: string; etag: string; shared: boolean; download?: boolean }): Promise<Response> {
   const info = await stat(path).catch(() => null);
   if (!info) return new Response("Not found", { status: 404 });
   const size = info.size;
@@ -65,7 +65,8 @@ export async function sendFile(request: Request, path: string, file: { name: str
   const headers = new Headers({
     "Accept-Ranges": "bytes",
     "Content-Type": inlineOk ? file.type : "application/octet-stream",
-    "Content-Disposition": `${inlineOk ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+    /* Asked to download: always a download, even for what a browser would show. */
+    "Content-Disposition": `${inlineOk && !file.download ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
     "ETag": `"${file.etag}"`,
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",

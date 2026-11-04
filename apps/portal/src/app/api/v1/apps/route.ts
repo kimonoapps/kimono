@@ -1,15 +1,16 @@
 import { bloomSvg } from "@kimono/ui/bloom-svg";
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { appRegistry, launcherApps } from "@/lib/apps";
+import { identityOf, ownApp } from "@/lib/kimono-apps";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { holdsMeshAccess } from "@/lib/directory";
 import { getPlatformSettings } from "@/lib/settings";
 
-/* Drive lives in the Portal rather than the app catalogue; this is its bloom. */
-const drive = { id: "kimono-drive", name: "Drive", accent: "#5f5596", glyph: "file" } as const;
+/* The phone apps have Drive themselves; this is its bloom for them. */
+const drive = { ...identityOf(ownApp("kimono-drive")), glyph: "file" } as const;
 
 /* Built into the Kimono apps themselves, or not wanted on a phone. */
-const notListed = new Set(["kimono-tools"]);
+const notListed = new Set(["kimono-tools", "kimono-drive"]);
 
 /**
  * The person's other Kimono apps, for the Kimono apps' "More Kimono apps":

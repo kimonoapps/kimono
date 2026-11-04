@@ -11,7 +11,7 @@ export async function GET(request: Request, { params }: Context) {
   return drive(() => {
     const node = nodeFor(db(), id, user.username);
     if (node.kind !== "file" || !node.blob) throw new DriveProblem("That's a folder.");
-    return sendFile(request, blobPath(root, node.blob), { name: node.name, size: node.size, type: typeOf(node.name), etag: node.blob, shared: false });
+    return sendFile(request, blobPath(root, node.blob), { name: node.name, size: node.size, type: typeOf(node.name), etag: node.blob, shared: false, download: new URL(request.url).searchParams.get("download") === "1" });
   });
 }
 export const HEAD = GET;

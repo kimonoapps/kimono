@@ -51,6 +51,7 @@ export type RegisteredApp = KimonoApp & {
 export function nativeAppEnabled(app: KimonoOwnApp, settings: PlatformSettings): boolean {
   switch (app.configuration) {
     case "mesh": return Boolean(settings.meshDomain && process.env.KIMONO_MESH_API_KEY);
+    case "drive": return true;
   }
 }
 
