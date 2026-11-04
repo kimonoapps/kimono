@@ -1,12 +1,11 @@
-import { CrossingSeal } from "@/components/crossing";
-import { RunJoint } from "@/components/run-joint";
-import { Choice, Compartment, Field, Mono, Seal } from "@kimono/ui";
+import { Choice, Seal } from "@kimono/ui";
+import { Crossing, CrossingSeal } from "@/components/crossing";
+import { JointSwitch } from "@/components/joint-switch";
 import type { BackupConfig, BackupStatus } from "@/lib/backups";
-import { BackupRefresh } from "./refresh";
 
 export const when = (iso?: string) => iso ? new Date(iso).toUTCString().replace(/:\d\d GMT$/, " UTC") : null;
 
-/** One stamp says where backups stand; one line says why. */
+/** One word says where backups stand; one line says why. */
 export function backupHealth(config: BackupConfig | null, status: BackupStatus | null) {
   const busy = status?.state === "running";
   const overdue = Boolean(config?.enabled && status?.overdue);
@@ -17,65 +16,50 @@ export function backupHealth(config: BackupConfig | null, status: BackupStatus |
   return { state: "private" as const, label: "Paused", line: config.recoverySaved ? "Nothing runs on its own. Turn on nightly backups." : "Download the recovery kit, keep it off this server, then confirm it." };
 }
 
-/**
- * Kimono's own backup machinery: where copies go, when, and how to get one
- * back. What each app keeps is that app's own business, on its own page.
- */
-export function BackupMachinery({ config, status, apps, save, run, queued }: {
-  config: BackupConfig | null;
-  status: BackupStatus | null;
-  apps: Array<{ id: string; name: string }>;
-  save: (form: FormData) => Promise<void>;
-  run: (form: FormData) => Promise<void>;
-  queued: boolean;
-}) {
+/** Where copies go and when: an occasional task, so it lives in a sheet. */
+export function StorageSheet({ config, save }: { config: BackupConfig | null; save: (form: FormData) => Promise<void> }) {
+  return <div className="scrim open"><form className="sheet backup-sheet" action={save}>
+    <span className="handle" />
+    <h3>Where and when</h3>
+    <p className="lead">Copies go to Backblaze B2. Changing the storage asks you to save a new recovery kit.</p>
+    <label className="field"><small>Endpoint</small><input name="endpoint" type="url" required defaultValue={config?.endpoint || ""} placeholder="https://s3.us-west-004.backblazeb2.com" /></label>
+    <div className="sheet-pair">
+      <label className="field"><small>Bucket</small><input name="bucket" required defaultValue={config?.bucket || ""} /></label>
+      <label className="field"><small>Folder</small><input name="prefix" required defaultValue={config?.prefix || "kimono"} /></label>
+      <label className="field"><small>Key ID</small><input name="keyId" autoComplete="off" defaultValue={config?.keyId || ""} /></label>
+      <label className="field"><small>Application key</small><input name="applicationKey" type="password" autoComplete="new-password" placeholder={config ? "Kept, leave blank" : ""} /></label>
+    </div>
+    <div className="pw-switch"><span><b>Nightly backups</b><small>Missed runs catch up</small></span><JointSwitch name="enabled" defaultChecked={config?.enabled || false} label="Nightly backups" /></div>
+    <div className="pw-switch"><span><b>Keep Kimono itself</b><small>Settings, accounts and the identity provider</small></span><JointSwitch name="platform" defaultChecked={config?.platform ?? true} label="Keep Kimono itself" /></div>
+    <div className="sheet-quad">
+      <label className="field"><small>Hour, UTC</small><input type="number" name="hourUTC" min="0" max="23" required defaultValue={config?.hourUTC ?? 3} /></label>
+      <label className="field"><small>Daily kept</small><input type="number" name="daily" min="1" max="365" required defaultValue={config?.daily ?? 7} /></label>
+      <label className="field"><small>Weekly kept</small><input type="number" name="weekly" min="1" max="104" required defaultValue={config?.weekly ?? 4} /></label>
+      <label className="field"><small>Monthly kept</small><input type="number" name="monthly" min="1" max="120" required defaultValue={config?.monthly ?? 6} /></label>
+    </div>
+    {config ? <div className="pw-switch"><span><b>Recovery kit is stored off this server</b><small><Crossing kind="kakejiku" external download href="/api/backups/recovery-kit">Download the kit</Crossing> first. Nothing runs until it&rsquo;s saved.</small></span><JointSwitch name="recoverySaved" defaultChecked={config.recoverySaved} label="Recovery kit is stored off this server" /></div> : null}
+    <div className="sheet-actions">
+      <Crossing kind="kakejiku" className="k-seal k-tone-quiet" href="/admin/backups">Cancel</Crossing>
+      <Seal type="submit">Save</Seal>
+    </div>
+  </form></div>;
+}
+
+/** Restoring copies into a separate folder and never touches live data. */
+export function RestoreSheet({ status, apps, run }: { status: BackupStatus | null; apps: Array<{ id: string; name: string }>; run: (form: FormData) => Promise<void> }) {
   const busy = status?.state === "running";
-  return <>
-    <BackupRefresh active={busy || queued} />
-    <form action={save} className="backup-tray k-tray">
-      <Compartment label="Storage" wants={!config}>
-        <div className="backup-grid">
-          <Field label="Backblaze B2 endpoint"><input name="endpoint" type="url" required defaultValue={config?.endpoint || ""} placeholder="https://s3.us-west-004.backblazeb2.com" /></Field>
-          <Field label="Bucket"><input name="bucket" required defaultValue={config?.bucket || ""} /></Field>
-          <Field label="Folder"><input name="prefix" required defaultValue={config?.prefix || "kimono"} /></Field>
-          <Field label="Key ID"><input name="keyId" autoComplete="off" defaultValue={config?.keyId || ""} /></Field>
-          <Field label="Application key"><input name="applicationKey" type="password" autoComplete="new-password" placeholder={config ? "Kept — leave blank" : ""} /></Field>
-        </div>
-        {config ? <div className="backup-kit">
-          <CrossingSeal download href="/api/backups/recovery-kit" tone="quiet">Download recovery kit</CrossingSeal>
-          <label className="settings-toggle"><input name="recoverySaved" type="checkbox" defaultChecked={config.recoverySaved} /><span>Kit is stored off this server</span></label>
-        </div> : null}
-      </Compartment>
-      <Compartment label="Schedule">
-        <div className="backup-switches">
-          <RunJoint name="enabled" defaultChecked={config?.enabled || false} label="Nightly backups" />
-          <label className="settings-toggle"><input name="platform" type="checkbox" defaultChecked={config?.platform ?? true} /><span>Keep Kimono itself</span></label>
-        </div>
-        <div className="backup-grid backup-numbers">
-          <Field label="Hour, UTC"><input type="number" name="hourUTC" min="0" max="23" required defaultValue={config?.hourUTC ?? 3} /></Field>
-          <Field label="Daily kept"><input type="number" name="daily" min="1" max="365" required defaultValue={config?.daily ?? 7} /></Field>
-          <Field label="Weekly kept"><input type="number" name="weekly" min="1" max="104" required defaultValue={config?.weekly ?? 4} /></Field>
-          <Field label="Monthly kept"><input type="number" name="monthly" min="1" max="120" required defaultValue={config?.monthly ?? 6} /></Field>
-        </div>
-      </Compartment>
-      <footer><Seal type="submit">Save backups</Seal></footer>
-    </form>
-    <form action={run} className="backup-tray k-tray backup-run">
-      <Compartment label="Now">
-        <div className="backup-actions">
-          <Seal name="action" value="backup" type="submit" disabled={!config?.recoverySaved || busy}>Back up now</Seal>
-          <Seal name="action" value="check" type="submit" tone="quiet" disabled={!config?.recoverySaved || busy}>Check stored data</Seal>
-          <Mono items={[`Last upload ${when(status?.lastSuccess) || "never"}`, `Last check ${when(status?.lastCheck) || "never"}`]} />
-        </div>
-      </Compartment>
-      <Compartment label="Restore">
-        {status?.snapshots?.length ? <div className="backup-grid backup-restore">
-          <Field label="Snapshot"><Choice name="snapshot" defaultValue={status.snapshots[0]?.id} options={status.snapshots.map((snapshot) => ({ value: snapshot.id, label: `${when(snapshot.time)} · ${snapshot.id.slice(0, 8)}${snapshot.summary?.total_bytes_processed ? ` · ${(snapshot.summary.total_bytes_processed / 1024 ** 3).toFixed(2)} GiB` : ""}` }))} /></Field>
-          <Field label="Contents"><Choice name="appId" defaultValue="" options={[{ value: "", label: "Everything" }, ...apps.map((app) => ({ value: app.id, label: app.name }))]} /></Field>
-          <Seal name="action" value="restore" type="submit" tone="quiet" disabled={busy}>Restore a copy</Seal>
-        </div> : <p className="k-note">Snapshots appear here after the first backup. Restoring copies into a separate folder and never touches live data.</p>}
-        {status?.restorePath ? <Mono items={[`Latest copy ${status.restorePath}`]} className="backup-restore-path" /> : null}
-      </Compartment>
-    </form>
-  </>;
+  return <div className="scrim open"><form className="sheet" action={run}>
+    <span className="handle" />
+    <h3>Restore a copy</h3>
+    <p className="lead">Restoring copies into a separate folder and never touches live data.</p>
+    {status?.snapshots?.length ? <>
+      <label className="field choice-field"><small>Snapshot</small><Choice name="snapshot" defaultValue={status.snapshots[0]?.id} options={status.snapshots.map((snapshot) => ({ value: snapshot.id, label: `${when(snapshot.time)} · ${snapshot.id.slice(0, 6)}${snapshot.summary?.total_bytes_processed ? ` · ${(snapshot.summary.total_bytes_processed / 1024 ** 3).toFixed(1)} GiB` : ""}` }))} /></label>
+      <label className="field choice-field"><small>Contents</small><Choice name="appId" defaultValue="" options={[{ value: "", label: "Everything" }, ...apps.map((app) => ({ value: app.id, label: app.name }))]} /></label>
+    </> : <p className="lead">Snapshots appear here after the first backup.</p>}
+    {status?.restorePath ? <p className="lead">Latest copy: <code>{status.restorePath}</code></p> : null}
+    <div className="sheet-actions">
+      <CrossingSeal tone="quiet" href="/admin/backups">Cancel</CrossingSeal>
+      {status?.snapshots?.length ? <Seal name="action" value="restore" type="submit" disabled={busy}>Restore a copy</Seal> : null}
+    </div>
+  </form></div>;
 }
