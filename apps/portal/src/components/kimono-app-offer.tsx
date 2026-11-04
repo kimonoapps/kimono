@@ -15,6 +15,33 @@ export type AppOffer = {
 
 const hidden = "kimono-app-offer-hidden";
 
+type Standing = "tester" | "invited" | "no-email" | "waiting";
+const said: Record<Standing, string> = {
+  tester: "You're in. Open TestFlight and install Kimono.",
+  invited: "Apple has emailed you an invite. Accept it, then come back and tap again.",
+  "no-email": "Add an email to your Kimono account first, then tap again.",
+  waiting: "Your invite is on its way. Try again in a minute.",
+};
+
+/** Asks this Kimono to invite you to TestFlight now, and says what to do next. */
+function JoinTestflight() {
+  const [state, setState] = useState<{ busy: boolean; message: string | null }>({ busy: false, message: null });
+  async function join() {
+    setState({ busy: true, message: null });
+    try {
+      const response = await fetch("/api/v1/app/testflight", { method: "POST", credentials: "same-origin" });
+      const body = await response.json().catch(() => ({})) as { status?: Standing; error?: string };
+      setState({ busy: false, message: body.status ? said[body.status] : body.error || "That didn't work. Try again." });
+    } catch {
+      setState({ busy: false, message: "Kimono isn't answering. Try again in a moment." });
+    }
+  }
+  return <>
+    <button type="button" className="k-seal" onClick={join} disabled={state.busy}><span>{state.busy ? "Asking Apple…" : "Get my TestFlight invite"}</span></button>
+    {state.message ? <p className="app-offer-detail" role="status">{state.message}</p> : null}
+  </>;
+}
+
 /* Which phone this is, unless it has said not now. Read on the device only: the server renders nothing. */
 function phone(): MobileOS {
   try { if (window.localStorage.getItem(hidden) === "1") return null; } catch { /* private window: ask anyway */ }
@@ -60,9 +87,7 @@ export function KimonoAppOffer({ offer }: { offer: AppOffer }) {
     </> : null}
     {os === "ios" && offer.ios ? <ol>
       <li>Install <Crossing kind="hanafubuki" external href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener noreferrer">TestFlight</Crossing> from the App Store. It&apos;s how Kimono for iPhone arrives.</li>
-      <li>{offer.ios.link.startsWith("https://")
-        ? <>Open <Crossing kind="hanafubuki" external href={offer.ios.link} target="_blank" rel="noopener noreferrer">your invite</Crossing> and install Kimono.</>
-        : <>Open the TestFlight invite from whoever runs your Kimono, and install Kimono.</>}</li>
+      <li><JoinTestflight /></li>
       {address}
     </ol> : null}
     <button type="button" className="app-offer-later" onClick={notNow}>Not now</button>

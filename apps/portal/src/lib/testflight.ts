@@ -231,11 +231,11 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
 
 let running: Promise<unknown> | null = null;
 
-/** Syncs when it's been an hour, at most one at a time. Never throws. */
-export async function syncTestflightIfDue(): Promise<void> {
-  if (running) return;
+/** Syncs when it's been [every] (an hour unless said), at most one at a time. Never throws. */
+export async function syncTestflightIfDue(every = syncEvery): Promise<void> {
+  if (running) { await running; return; }
   const config = await readConfig().catch(() => null);
-  if (!config || (config.lastSync && Date.now() - config.lastSync.at < syncEvery)) return;
+  if (!config || (config.lastSync && Date.now() - config.lastSync.at < every)) return;
   running = syncTestflight().catch((error) => console.warn("TestFlight sync failed:", error instanceof Error ? error.message : error)).finally(() => { running = null; });
   await running;
 }

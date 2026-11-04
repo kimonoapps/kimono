@@ -12,4 +12,8 @@ export async function register() {
   } catch (error) {
     console.error("kimono: could not publish the deployment plan", error);
   }
+  /* TestFlight follows Kimono's accounts on its own: checked every quarter hour, synced when an hour has passed. */
+  const { syncTestflightIfDue } = await import("./lib/testflight");
+  setInterval(() => { void syncTestflightIfDue().catch(() => {}); }, 15 * 60 * 1000).unref();
+  setTimeout(() => { void syncTestflightIfDue().catch(() => {}); }, 60 * 1000).unref();
 }
