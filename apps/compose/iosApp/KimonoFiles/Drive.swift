@@ -111,6 +111,10 @@ actor Drive {
         switch response.statusCode {
         case 200..<300: return (data, response)
         case 401: access = nil; throw NSFileProviderError(.notAuthenticated)
+        case 403:
+            /* A refusal by role (a viewer adding or changing something): a kind of error Files knows, so it stops retrying. */
+            let message = (try? JSONDecoder().decode(Failure.self, from: data))?.error ?? "You can only view this space."
+            throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError, userInfo: [NSLocalizedDescriptionKey: message])
         case 404: throw NSFileProviderError(.noSuchItem)
         case 409: throw NSFileProviderError(.filenameCollision)
         case 410: throw NSFileProviderError(.syncAnchorExpired)

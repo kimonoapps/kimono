@@ -50,16 +50,31 @@ final class Item: NSObject, NSFileProviderItem {
         return NSFileProviderItemVersion(contentVersion: Data(String(node.contentVersion).utf8), metadataVersion: Data(String(node.version).utf8))
     }
 
+    /*
+     * The simulator can't lay out a read-only file or folder (its daemon fails to set metadata on
+     * the Mac's disk after making it read-only), so there everything stays writable on disk and the
+     * server refuses a viewer's change. A real iPhone gets the read-only items Files expects.
+     */
+    #if targetEnvironment(simulator)
+    private static let onDiskReadOnly = false
+    #else
+    private static let onDiskReadOnly = true
+    #endif
+
     var capabilities: NSFileProviderItemCapabilities {
         guard let node else { return [.allowsReading, .allowsContentEnumerating] }
         let canEdit = role == "owner" || role == "editor"
         let isTop = node.parentId == nil
+        let writable = canEdit || !Item.onDiskReadOnly
         if node.kind == "folder" {
             var caps: NSFileProviderItemCapabilities = [.allowsReading, .allowsContentEnumerating]
-            if canEdit { caps.formUnion([.allowsAddingSubItems]) }
+            if writable { caps.formUnion([.allowsAddingSubItems]) }
             if canEdit && !isTop { caps.formUnion([.allowsRenaming, .allowsReparenting, .allowsTrashing, .allowsDeleting]) }
             return caps
         }
-        return canEdit ? [.allowsReading, .allowsWriting, .allowsRenaming, .allowsReparenting, .allowsTrashing, .allowsDeleting] : [.allowsReading]
+        var caps: NSFileProviderItemCapabilities = [.allowsReading]
+        if writable { caps.formUnion([.allowsWriting]) }
+        if canEdit { caps.formUnion([.allowsRenaming, .allowsReparenting, .allowsTrashing, .allowsDeleting]) }
+        return caps
     }
 }
