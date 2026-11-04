@@ -21,8 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -50,6 +48,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -188,19 +191,25 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     var canEdit by remember { mutableStateOf(true) }
     /* The space's crest stays beside the name, however deep in it you go. */
     var crest by remember { mutableStateOf<String?>(null) }
+    /* Long-press picks things; while any are picked, a tap adds or drops one. */
+    val selected = remember { mutableStateListOf<String>() }
+    var acting by remember { mutableStateOf<DriveNode?>(null) }
+    var moving by remember { mutableStateOf<List<DriveNode>?>(null) }
+    val haptics = LocalHapticFeedback.current
 
     suspend fun load() {
         try {
             val loaded = model.drive.folder(folderId)
             folder = loaded
             problem = null
+            selected.retainAll(loaded.children.map { it.id }.toSet())
             val space = model.drive.spaces().firstOrNull { it.id == loaded.folder.spaceId }
             canEdit = space?.role != "viewer"
             crest = space?.mark
         } catch (p: KimonoProblem) { problem = p.message }
     }
     fun act(done: String? = null, work: suspend () -> Unit) = scope.launch {
-        try { work(); load(); done?.let { snackbar.showSnackbar(it) } } catch (p: KimonoProblem) { snackbar.showSnackbar(p.message ?: "That didn't work.") }
+        try { work(); load(); done?.let { snackbar.showSnackbar(it) } } catch (p: KimonoProblem) { load(); snackbar.showSnackbar(p.message ?: "That didn't work.") }
     }
     fun openFile(node: DriveNode): kotlinx.coroutines.Job = scope.launch {
         opening = node to 0L
@@ -214,20 +223,45 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
         }
         opening = null
     }
+    fun count(n: Int, one: String) = if (n == 1) "1 $one" else "$n ${one}s"
+    fun trash(nodes: List<DriveNode>) = act("${count(nodes.size, "item")} moved to Recently deleted.") {
+        nodes.forEach { model.drive.moveToTrash(it.id) }
+        selected.clear()
+    }
+    fun shareLinks(nodes: List<DriveNode>) = act { platform.share(nodes.filter { !it.isFolder }.map { model.drive.link(it.id) }.joinToString("\n")) }
     LaunchedEffect(folderId, model.landed) { load() }
 
     val here = folder
+    val picked = here?.children.orEmpty().filter { it.id in selected }
+    val selecting = selected.isNotEmpty()
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            KimonoTopBar(here?.folder?.name ?: "", onBack = back, mark = crest?.let { { SvgMark(it, 30.dp) } }) {
-                /* At the top of a space: who's in it, and its settings. */
-                if (here != null && here.path.isEmpty()) IconButton(onClick = { open("space/${here.folder.spaceId}") }) { Icon(kimonoIcon("person"), "People and settings") }
+            if (selecting) TopAppBar(
+                title = { Text("${selected.size} selected", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = { IconButton(onClick = { selected.clear() }) { Icon(kimonoIcon("close"), "Stop selecting") } },
+                actions = {
+                    val all = here?.children.orEmpty()
+                    if (selected.size < all.size) TextButton(onClick = { selected.clear(); selected.addAll(all.map { it.id }) }) { Text("Select all") }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            ) else KimonoTopBar(here?.folder?.name ?: "", onBack = back, mark = crest?.let { { SvgMark(it, 30.dp) } }) {
+                /* Wherever you are in a space: who's in it, what each can do, and its settings. */
+                if (here != null) IconButton(onClick = { open("space/${here.folder.spaceId}") }) { Icon(kimonoIcon("person"), "People and settings") }
+            }
+        },
+        bottomBar = {
+            if (selecting) Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
+                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    if (canEdit) BarAction("Move", "move") { moving = picked }
+                    if (canEdit && picked.any { !it.isFolder }) BarAction("Share", "share") { shareLinks(picked) }
+                    if (canEdit) BarAction("Trash", "trash", danger = true) { trash(picked) }
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            if (canEdit && here != null) ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("Add") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
+            if (canEdit && here != null && !selecting) ExtendedFloatingActionButton(onClick = { adding = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("Add") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
@@ -240,6 +274,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
                     children.isNullOrEmpty() -> Empty(problem ?: if (canEdit) "Nothing here yet. Add files with the button below." else "Nothing here yet.")
                     else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                         itemsIndexed(children, key = { _, n -> n.id }) { index, node ->
+                            val isPicked = node.id in selected
                             val row = @Composable {
                                 NodeRow(
                                     node = node,
@@ -248,22 +283,20 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
                                     count = children.size,
                                     busy = opening?.first?.id == node.id,
                                     progress = opening?.takeIf { it.first.id == node.id }?.let { if (node.size > 0) it.second.toFloat() / node.size else null },
-                                    choices = if (!canEdit) emptyList() else buildList {
-                                        add(NodeChoice("Rename") { renaming = node })
-                                        if (!node.isFolder) {
-                                            add(NodeChoice("Share link") { act { platform.share(model.drive.link(node.id)) } })
-                                            if (node.link == null) add(NodeChoice("Copy public link") { act("Link copied. Anyone with it can open the file.") { clipboard.setText(AnnotatedString(model.drive.link(node.id))) } })
-                                            else {
-                                                add(NodeChoice("Copy public link") { act("Link copied.") { clipboard.setText(AnnotatedString(model.drive.link(node.id))) } })
-                                                add(NodeChoice("Turn off public link") { act("The link no longer works.") { model.drive.unlink(node.id) } })
-                                            }
+                                    selecting = selecting,
+                                    selected = isPicked,
+                                    onClick = {
+                                        when {
+                                            selecting -> if (isPicked) selected.remove(node.id) else selected.add(node.id)
+                                            node.isFolder -> open("folder/${node.id}")
+                                            else -> openFile(node)
                                         }
-                                        add(NodeChoice("Move to trash", danger = true) { act("Moved to Recently deleted.") { model.drive.moveToTrash(node.id) } })
                                     },
-                                    onClick = { if (node.isFolder) open("folder/${node.id}") else openFile(node) },
+                                    onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); if (!isPicked) selected.add(node.id) },
+                                    onMore = { acting = node },
                                 )
                             }
-                            if (canEdit) SwipeRow("Move to trash", onAction = {
+                            if (canEdit && !selecting) SwipeRow("Move to trash", onAction = {
                                 try { model.drive.moveToTrash(node.id); load(); snackbar.showSnackbar("Moved to Recently deleted."); true }
                                 catch (p: KimonoProblem) { snackbar.showSnackbar(p.message ?: "That didn't work."); false }
                             }) { row() } else row()
@@ -274,6 +307,34 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
         }
     }
 
+    acting?.let { node ->
+        ItemSheet(
+            node = node,
+            thumbnail = { pixels -> platform.thumbnail(node, pixels) },
+            choices = buildList {
+                if (!node.isFolder) add(NodeChoice("Open", "file") { openFile(node) })
+                if (canEdit && !node.isFolder) add(NodeChoice("Share link", "share") { shareLinks(listOf(node)) })
+                if (!node.isFolder && (canEdit || node.link != null)) add(NodeChoice(if (node.link == null) "Copy public link" else "Copy link", "link") {
+                    act(if (node.link == null) "Link copied. Anyone with it can open the file." else "Link copied.") { clipboard.setText(AnnotatedString(model.drive.link(node.id))) }
+                })
+                if (canEdit && node.link != null) add(NodeChoice("Turn off public link", "close") { act("The link no longer works.") { model.drive.unlink(node.id) } })
+                if (canEdit) add(NodeChoice("Rename", "edit") { renaming = node })
+                if (canEdit) add(NodeChoice("Move to…", "move") { moving = listOf(node) })
+                add(NodeChoice("Select", "select") { selected.add(node.id) })
+                if (canEdit) add(NodeChoice("Move to trash", "trash", danger = true) { trash(listOf(node)) })
+            },
+            onDismiss = { acting = null },
+        )
+    }
+    moving?.let { nodes ->
+        if (here != null) MovePicker(model, platform, nodes, start = here.folder.id, onDismiss = { moving = null }) { target ->
+            act("${count(nodes.size, "item")} moved.") {
+                nodes.forEach { model.drive.move(it.id, target) }
+                selected.clear()
+            }
+            moving = null
+        }
+    }
     if (adding) AddSheet(onDismiss = { adding = false }, onUpload = {
         adding = false
         scope.launch {
@@ -296,54 +357,168 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     }
 }
 
-class NodeChoice(val label: String, val danger: Boolean = false, val onClick: () -> Unit)
+class NodeChoice(val label: String, val icon: String, val danger: Boolean = false, val onClick: () -> Unit)
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun NodeRow(node: DriveNode, thumbnail: suspend (Int) -> String?, index: Int, count: Int, busy: Boolean, progress: Float?, choices: List<NodeChoice>, onClick: () -> Unit) {
-    val haptics = LocalHapticFeedback.current
-    var menu by remember { mutableStateOf(false) }
-    val pixels = with(LocalDensity.current) { 40.dp.roundToPx() }
-    /* A photo, video or PDF shows a small picture of itself once one is ready; until then, its icon. */
+private fun BarAction(label: String, icon: String, danger: Boolean = false, onClick: () -> Unit) {
+    val tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+    Column(
+        Modifier.clip(RoundedCornerShape(16.dp)).combinedClickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(kimonoIcon(icon), null, tint = tint, modifier = Modifier.size(22.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = tint)
+    }
+}
+
+/** A file or folder's picture: its thumbnail once one is ready, its icon until then. */
+@Composable
+private fun NodeIcon(node: DriveNode, thumbnail: suspend (Int) -> String?, size: androidx.compose.ui.unit.Dp = 40.dp, busy: Boolean = false) {
+    val pixels = with(LocalDensity.current) { size.roundToPx() }
     val picture by produceState<String?>(null, node.id, node.contentVersion) {
         if (node.mayHaveThumbnail) value = runCatching { thumbnail(pixels) }.getOrNull()
     }
-    Box {
-        SegmentedListItem(
-            onClick = onClick,
-            onLongClick = if (choices.isEmpty()) null else ({ haptics.performHapticFeedback(HapticFeedbackType.LongPress); menu = true }),
-            shapes = ListItemDefaults.segmentedShapes(index, count),
-            colors = segmentColors(),
-            leadingContent = {
-                Box(Modifier.size(40.dp).background(if (node.isFolder) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(if (node.isFolder) 12.dp else 20.dp)), contentAlignment = Alignment.Center) {
-                    if (busy) LoadingIndicator(Modifier.size(28.dp))
-                    else if (picture != null) AsyncImage(
-                        model = "file://$picture",
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        /* A page reads from its top; a photo from its middle. */
-                        alignment = if (node.name.endsWith(".pdf", ignoreCase = true) || node.mime == "application/pdf") Alignment.TopCenter else Alignment.Center,
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp)),
-                    )
-                    else Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(20.dp), tint = if (node.isFolder) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer)
+    Box(Modifier.size(size).background(if (node.isFolder) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(if (node.isFolder) size * .3f else size / 2)), contentAlignment = Alignment.Center) {
+        if (busy) LoadingIndicator(Modifier.size(size * .7f))
+        else if (picture != null) AsyncImage(
+            model = "file://$picture",
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            /* A page reads from its top; a photo from its middle. */
+            alignment = if (node.name.endsWith(".pdf", ignoreCase = true) || node.mime == "application/pdf") Alignment.TopCenter else Alignment.Center,
+            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(size * .3f)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(size * .3f)),
+        )
+        else Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(size / 2), tint = if (node.isFolder) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun NodeRow(
+    node: DriveNode, thumbnail: suspend (Int) -> String?, index: Int, count: Int, busy: Boolean, progress: Float?,
+    selecting: Boolean, selected: Boolean, enabled: Boolean = true,
+    onClick: () -> Unit, onLongClick: (() -> Unit)?, onMore: (() -> Unit)?,
+) {
+    SegmentedListItem(
+        onClick = onClick,
+        onLongClick = onLongClick,
+        enabled = enabled,
+        shapes = ListItemDefaults.segmentedShapes(index, count),
+        colors = if (selected) ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else segmentColors(),
+        leadingContent = {
+            Box {
+                NodeIcon(node, thumbnail, busy = busy)
+                if (selected) Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                    Icon(kimonoIcon("check"), "Selected", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
                 }
-            },
-            supportingContent = {
-                Column {
-                    Text(detailOf(node), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (progress != null) LinearWavyProgressIndicator(progress = { progress }, modifier = Modifier.padding(top = 6.dp).fillMaxWidth())
+            }
+        },
+        supportingContent = {
+            Column {
+                Text(detailOf(node), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (progress != null) LinearWavyProgressIndicator(progress = { progress }, modifier = Modifier.padding(top = 6.dp).fillMaxWidth())
+            }
+        },
+        trailingContent = when {
+            selecting -> null
+            onMore != null -> ({ IconButton(onClick = onMore) { Icon(kimonoIcon("more"), "More for ${node.name}") } })
+            node.isFolder -> ({ Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) })
+            else -> null
+        },
+    ) { Text(node.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+}
+
+/** Everything you can do with one file or folder, under its picture and name. */
+@Composable
+private fun ItemSheet(node: DriveNode, thumbnail: suspend (Int) -> String?, choices: List<NodeChoice>, onDismiss: () -> Unit) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 32.dp)) {
+            Row(Modifier.padding(start = 4.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                NodeIcon(node, thumbnail, size = 56.dp)
+                Column(Modifier.weight(1f)) {
+                    Text(node.name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(detailOf(node), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-            },
-            trailingContent = if (node.isFolder) ({ Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) }) else null,
-        ) { Text(node.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-            choices.forEach { choice ->
-                DropdownMenuItem(
-                    text = { Text(choice.label, color = if (choice.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) },
-                    onClick = { menu = false; choice.onClick() },
-                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                choices.forEachIndexed { index, choice ->
+                    val tint = if (choice.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                    SegmentedListItem(
+                        onClick = { onDismiss(); choice.onClick() },
+                        shapes = ListItemDefaults.segmentedShapes(index, choices.size),
+                        colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                        leadingContent = { Icon(kimonoIcon(choice.icon), null, tint = tint) },
+                    ) { Text(choice.label, style = MaterialTheme.typography.bodyLarge, color = tint) }
+                }
             }
         }
+    }
+}
+
+/**
+ * Where to move things: the space's folders as the folder view shows them,
+ * opened the same way, with Move here at the bottom. What's being moved
+ * can't be opened, so a folder can't go inside itself.
+ */
+@Composable
+private fun MovePicker(model: DriveModel, platform: Platform, moving: List<DriveNode>, start: String, onDismiss: () -> Unit, onMove: (String) -> Unit) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+    var at by remember { mutableStateOf(start) }
+    var folder by remember { mutableStateOf<DriveFolder?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var naming by remember { mutableStateOf(false) }
+    suspend fun load() {
+        try { folder = model.drive.folder(at); problem = null } catch (p: KimonoProblem) { problem = p.message }
+    }
+    LaunchedEffect(at) { folder = null; load() }
+    val movingIds = moving.map { it.id }.toSet()
+    val alreadyHere = moving.all { it.parentId == at }
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().fillMaxHeight(.88f)) {
+            val here = folder
+            Row(Modifier.padding(horizontal = 8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                val parent = here?.path?.lastOrNull()
+                if (parent != null) IconButton(onClick = { at = parent.id }) { Icon(kimonoIcon("back"), "Up to ${parent.name}") } else Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(if (moving.size == 1) "Move “${moving[0].name}”" else "Move ${moving.size} items", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(here?.folder?.name ?: "", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(onClick = { naming = true }) { Icon(kimonoIcon("plus"), "New folder") }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                val children = here?.children
+                when {
+                    here == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                    children.isNullOrEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text(problem ?: "No folders here. Move things here, or make a new folder.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                        itemsIndexed(children, key = { _, n -> n.id }) { index, node ->
+                            /* Folders open; files and what's being moved are shown but stay put. */
+                            val opens = node.isFolder && node.id !in movingIds
+                            NodeRow(
+                                node = node, thumbnail = { pixels -> platform.thumbnail(node, pixels) }, index = index, count = children.size,
+                                busy = false, progress = null, selecting = false, selected = false, enabled = opens,
+                                onClick = { if (opens) at = node.id }, onLongClick = null, onMore = null,
+                            )
+                        }
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+                Spacer(Modifier.weight(1f))
+                Seal(if (alreadyHere) "Already here" else "Move here", enabled = here != null && !alreadyHere, onClick = { onMove(at) })
+            }
+        }
+    }
+    if (naming) NameDialog(title = "New folder", action = "Make it", initial = "", onDismiss = { naming = false }) { name ->
+        val made = model.drive.createFolder(at, name)
+        naming = false
+        at = made.id
+        scope.launch { load() }
     }
 }
 
