@@ -356,6 +356,37 @@ export function trashOf(db: DatabaseSync, username: string): DriveNode[] {
   return (db.prepare(`SELECT ${nodeColumns} FROM nodes n JOIN members m ON m.space_id = n.space_id AND m.username = ? WHERE n.trashed_at IS NOT NULL ORDER BY n.trashed_at DESC LIMIT 500`).all(username.toLowerCase()) as NodeRow[]).map(toNode);
 }
 
+/**
+ * Every live file and folder in the person's spaces, as a recursive walk down
+ * from each space's top folder: anything inside a trashed folder is left out
+ * too, though only the folder itself is marked.
+ */
+const liveNodes = `WITH RECURSIVE live(id) AS (
+    SELECT s.root_id FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
+    UNION ALL
+    SELECT c.id FROM nodes c JOIN live ON c.parent_id = live.id WHERE c.trashed_at IS NULL
+  )`;
+
+/** Files and folders whose names contain [query], ignoring case: up to [limit], closest names first. */
+export function searchNodes(db: DatabaseSync, username: string, query: string, limit = 50): DriveNode[] {
+  const words = query.trim().toLowerCase();
+  if (!words) return [];
+  const pattern = `%${words.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return (db.prepare(`${liveNodes}
+    SELECT ${nodeColumns} FROM nodes n JOIN live ON live.id = n.id
+    WHERE n.parent_id IS NOT NULL AND lower(n.name) LIKE ? ESCAPE '\\'
+    ORDER BY lower(n.name) = ? DESC, instr(lower(n.name), ?) = 1 DESC, n.updated_at DESC LIMIT ?`)
+    .all(username.toLowerCase(), pattern, words, words, Math.min(Math.max(1, limit), 200)) as NodeRow[]).map(toNode);
+}
+
+/** The person's most recently changed files, newest first. */
+export function recentFiles(db: DatabaseSync, username: string, limit = 50): DriveNode[] {
+  return (db.prepare(`${liveNodes}
+    SELECT ${nodeColumns} FROM nodes n JOIN live ON live.id = n.id
+    WHERE n.kind = 'file' ORDER BY n.updated_at DESC LIMIT ?`)
+    .all(username.toLowerCase(), Math.min(Math.max(1, limit), 200)) as NodeRow[]).map(toNode);
+}
+
 /* ── spaces and members ── */
 
 export function createSpace(db: DatabaseSync, username: string, input: { name: unknown; crest?: unknown; members?: { username: string; role: Role }[] }, now = Date.now()): Space {

@@ -276,3 +276,22 @@ test('an edit saved in place replaces the bytes, and a clashing edit is kept as 
   const theirs = drive.addFile(db, ren.rootId, 'akram', file('x.txt'));
   assert.throws(() => drive.startReplace(db, theirs.id, 'ren', 1, { size: 1, mime: null }, 100), /only view/);
 });
+
+test('search and recent files cover only live things in your own spaces', () => {
+  const db = fresh();
+  const mine = drive.createSpace(db, 'akram', { name: 'Trips', members: [{ username: 'ren', role: 'viewer' }] });
+  const other = drive.createSpace(db, 'mina', { name: 'Mina' });
+  const kyoto = drive.createFolder(db, mine.rootId, 'akram', 'Kyoto', 10);
+  drive.addFile(db, kyoto.id, 'akram', file('Temple.png'), 20);
+  drive.addFile(db, mine.rootId, 'akram', file('kyoto-map.pdf'), 30);
+  drive.addFile(db, other.rootId, 'mina', file('Kyoto secret.png'), 40);
+  const old = drive.createFolder(db, mine.rootId, 'akram', 'Old', 50);
+  drive.addFile(db, old.id, 'akram', file('kyoto-2019.png'), 60);
+  drive.trashNode(db, old.id, 'akram', 70);
+  assert.deepEqual(drive.searchNodes(db, 'akram', 'KYOTO').map((n) => n.name), ['Kyoto', 'kyoto-map.pdf']);
+  assert.deepEqual(drive.searchNodes(db, 'ren', 'temple').map((n) => n.name), ['Temple.png'], 'viewers find things too');
+  assert.deepEqual(drive.searchNodes(db, 'stranger', 'kyoto'), []);
+  assert.deepEqual(drive.searchNodes(db, 'akram', '%'), [], 'wildcards are taken literally');
+  assert.deepEqual(drive.searchNodes(db, 'akram', '  '), []);
+  assert.deepEqual(drive.recentFiles(db, 'akram').map((n) => n.name), ['kyoto-map.pdf', 'Temple.png']);
+});

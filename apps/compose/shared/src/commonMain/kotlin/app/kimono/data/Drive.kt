@@ -7,6 +7,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.content.ByteArrayContent
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.delay
@@ -56,6 +57,7 @@ private data class FileAnswer(val file: DriveNode)
 private data class SpaceList(val spaces: List<DriveSpace>)
 
 @Serializable
+/** A plain list of files and folders: the trash, search results, recent files. */
 private data class TrashList(val items: List<DriveNode>)
 
 @Serializable
@@ -129,6 +131,13 @@ class Drive(private val session: Session) {
         }
 
     suspend fun trash(): List<DriveNode> = json.decodeFromString<TrashList>(session.call("/api/v1/drive/trash")).items
+
+    /** Files and folders whose names contain [query], closest first. */
+    suspend fun search(query: String): List<DriveNode> =
+        json.decodeFromString<TrashList>(session.call("/api/v1/drive/search?q=${query.encodeURLParameter()}")).items
+
+    /** The most recently changed files, newest first. */
+    suspend fun recent(): List<DriveNode> = json.decodeFromString<TrashList>(session.call("/api/v1/drive/recent")).items
 
     suspend fun createSpace(name: String): DriveSpace = json.decodeFromString(session.call("/api/v1/drive/spaces", HttpMethod.Post) {
         contentType(ContentType.Application.Json)

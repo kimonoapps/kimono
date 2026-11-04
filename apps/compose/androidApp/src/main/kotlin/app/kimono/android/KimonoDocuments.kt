@@ -20,11 +20,9 @@ import app.kimono.data.Drive
 import app.kimono.data.DriveNode
 import app.kimono.data.DriveSpace
 import app.kimono.data.KimonoProblem
-import app.kimono.data.OFFLINE
 import app.kimono.data.PickedFile
 import app.kimono.data.Replacing
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.FileNotFoundException
@@ -43,8 +41,6 @@ class KimonoDocuments : DocumentsProvider() {
         private const val ROOT = "kimono"
         /** The top level: the person's spaces. */
         private const val SPACES = "spaces"
-        /** Read in pieces of this size, keeping the last few. */
-        private const val CHUNK = 4 * 1024 * 1024
         private val ROOT_COLUMNS = arrayOf(Root.COLUMN_ROOT_ID, Root.COLUMN_FLAGS, Root.COLUMN_ICON, Root.COLUMN_TITLE, Root.COLUMN_DOCUMENT_ID)
         private val DOCUMENT_COLUMNS = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_MIME_TYPE, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_LAST_MODIFIED, Document.COLUMN_FLAGS, Document.COLUMN_SIZE)
 
@@ -99,7 +95,7 @@ class KimonoDocuments : DocumentsProvider() {
         cursor.newRow().apply {
             add(Root.COLUMN_ROOT_ID, ROOT)
             /* Shown when saving too: folders in it take new files. */
-            add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD)
+            add(Root.COLUMN_FLAGS, Root.FLAG_SUPPORTS_CREATE or Root.FLAG_SUPPORTS_IS_CHILD or Root.FLAG_SUPPORTS_SEARCH or Root.FLAG_SUPPORTS_RECENTS)
             add(Root.COLUMN_ICON, R.mipmap.ic_launcher)
             add(Root.COLUMN_TITLE, "Kimono")
             add(Root.COLUMN_DOCUMENT_ID, SPACES)
@@ -151,9 +147,11 @@ class KimonoDocuments : DocumentsProvider() {
             /* A space itself is made, renamed and removed in the app. */
             if (!isSpace) flags = flags or Document.FLAG_SUPPORTS_DELETE or Document.FLAG_SUPPORTS_RENAME or Document.FLAG_SUPPORTS_MOVE
         }
+        val mime = if (node.isFolder) Document.MIME_TYPE_DIR else mimeOf(node)
+        if (Thumbnails.canMake(node, mime)) flags = flags or Document.FLAG_SUPPORTS_THUMBNAIL
         cursor.newRow().apply {
             add(Document.COLUMN_DOCUMENT_ID, node.id)
-            add(Document.COLUMN_MIME_TYPE, if (node.isFolder) Document.MIME_TYPE_DIR else mimeOf(node))
+            add(Document.COLUMN_MIME_TYPE, mime)
             add(Document.COLUMN_DISPLAY_NAME, if (isSpace) space!!.name else node.name)
             add(Document.COLUMN_LAST_MODIFIED, node.updatedAt.toLong().takeIf { it > 0 })
             add(Document.COLUMN_FLAGS, flags)
@@ -195,54 +193,43 @@ class KimonoDocuments : DocumentsProvider() {
     }
 
     /** A file on Kimono, read a piece at a time as the app reading it asks. */
-    private inner class RemoteFile(private val node: DriveNode) : ProxyFileDescriptorCallback() {
-        private val pieces = object : LinkedHashMap<Long, ByteArray>(8, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, ByteArray>?) = size > 4
+    private inner class RemoteFile(node: DriveNode) : ProxyFileDescriptorCallback() {
+        private val reader = RangedReader(drive, node)
+
+        override fun onGetSize(): Long = reader.size
+
+        override fun onRead(offset: Long, size: Int, data: ByteArray): Int = try {
+            reader.read(offset, data, 0, size)
+        } catch (_: java.io.IOException) {
+            throw ErrnoException("read", OsConstants.EIO)
         }
 
-        override fun onGetSize(): Long = node.size
+        override fun onRelease() = reader.clear()
+    }
 
-        override fun onRead(offset: Long, size: Int, data: ByteArray): Int {
-            var done = 0
-            while (done < size && offset + done < node.size) {
-                val at = offset + done
-                val index = at / CHUNK
-                val piece = pieces[index] ?: fetch(index)
-                val within = (at - index * CHUNK).toInt()
-                if (within >= piece.size) break
-                val take = minOf(size - done, piece.size - within)
-                System.arraycopy(piece, within, data, done, take)
-                done += take
-            }
-            return done
-        }
+    /* ── Thumbnails, search and recent files ── */
 
-        private fun fetch(index: Long): ByteArray {
-            val start = index * CHUNK
-            val length = minOf(CHUNK.toLong(), node.size - start).toInt()
-            val bytes = try {
-                runBlocking(Dispatchers.IO) { readPiece(start, length) }
-            } catch (_: Exception) {
-                throw ErrnoException("read", OsConstants.EIO)
-            }
-            pieces[index] = bytes
-            return bytes
-        }
+    private val thumbnails by lazy { Thumbnails(context!!, drive) }
 
-        /** A dropped connection gets a few quick tries before the reading app hears about it. */
-        private suspend fun readPiece(start: Long, length: Int): ByteArray {
-            var tries = 0
-            while (true) {
-                try {
-                    return drive.read(node.id, start, length)
-                } catch (problem: KimonoProblem) {
-                    if (problem.message != OFFLINE || ++tries > 3) throw problem
-                    delay(1_000L * tries)
-                }
-            }
-        }
+    override fun openDocumentThumbnail(documentId: String, sizeHint: android.graphics.Point, signal: CancellationSignal?): android.content.res.AssetFileDescriptor {
+        val file = blocking {
+            val node = nodeOf(documentId)
+            signal?.throwIfCanceled()
+            thumbnails.make(node, mimeOf(node), maxOf(sizeHint.x, sizeHint.y))
+        } ?: throw FileNotFoundException("No thumbnail for that file.")
+        return android.content.res.AssetFileDescriptor(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY), 0, android.content.res.AssetFileDescriptor.UNKNOWN_LENGTH)
+    }
 
-        override fun onRelease() = pieces.clear()
+    override fun querySearchDocuments(rootId: String, query: String, projection: Array<out String>?): Cursor {
+        val cursor = MatrixCursor(projection ?: DOCUMENT_COLUMNS)
+        blocking { drive.search(query).forEach { nodes[it.id] = it; addRow(cursor, it) } }
+        return cursor
+    }
+
+    override fun queryRecentDocuments(rootId: String, projection: Array<out String>?): Cursor {
+        val cursor = MatrixCursor(projection ?: DOCUMENT_COLUMNS)
+        blocking { drive.recent().forEach { nodes[it.id] = it; addRow(cursor, it) } }
+        return cursor
     }
 
     /**
