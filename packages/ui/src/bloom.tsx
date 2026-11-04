@@ -79,7 +79,7 @@ export function KimonoBranch({ className = "" }: { className?: string }) {
   return (
     <svg className={cx("kimono-branch", className)} viewBox="1 12 111 106" fill="currentColor" aria-hidden="true">
       <path d="M2 108 C26 98 43 84 55 66 C62 55 71 47 79 43 L81 47 C73 51 66 60 59 72 C47 90 30 106 6 116Z" />
-      <path d="M57 73 C56 63 53 54 47 47 L50 44 C57 52 60 62 61 72Z" />
+      <path d="M56 69 C55 61 52 54 47 47 L50 44 C56 51 59 59 59.5 66Z" />
       <path d="M27 97 C40 96 51 100 58 108 L55 111 C49 104 39 100 27 100Z" />
       <g transform="translate(83 41) scale(.55) translate(-50 -50)">
         {petals.map((rotation) => <path key={rotation} d={petal} transform={`rotate(${rotation} 50 50)`} />)}

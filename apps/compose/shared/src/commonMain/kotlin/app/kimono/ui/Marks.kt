@@ -24,7 +24,7 @@ val KimonoBranchVector: ImageVector by lazy {
         addGroup(translationX = -1f, translationY = -12f)
         listOf(
             "M2 108 C26 98 43 84 55 66 C62 55 71 47 79 43 L81 47 C73 51 66 60 59 72 C47 90 30 106 6 116Z",
-            "M57 73 C56 63 53 54 47 47 L50 44 C57 52 60 62 61 72Z",
+            "M56 69 C55 61 52 54 47 47 L50 44 C56 51 59 59 59.5 66Z",
             "M27 97 C40 96 51 100 58 108 L55 111 C49 104 39 100 27 100Z",
         ).forEach { addPath(addPathNodes(it), fill = SolidColor(Color.Black)) }
         addGroup(translationX = 83f - 50f * .55f, translationY = 41f - 50f * .55f, scaleX = .55f, scaleY = .55f)
@@ -71,6 +71,13 @@ private val iconPaths = mapOf(
     "edit" to "M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4",
     "select" to "M4 6.5h9M4 12h9M4 17.5h6 M15 16l2.5 2.5L21 14",
     "out" to "M14 5h5v5 M19 5l-8 8 M17 14v5H5V7h5",
+    "clip" to "M20 11.5L12.2 19.3a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4",
+    "stop" to "M6.5 6.5h11v11h-11z",
+    "branch" to "M7 3.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M7 16.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M17 5.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M7 7.5v9 M17 9.5c0 4-10 2.5-10 7",
+    "chevron" to "M9 6l6 6-6 6",
+    "send" to "M12 19V5M6 11l6-6 6 6",
+    "pr" to "M6 3.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M6 16.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M18 16.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M6 7.5v9 M18 16.5V9a2.5 2.5 0 0 0-2.5-2.5H11 M13.5 4L11 6.5 13.5 9",
+    "code" to "M9 7L4 12l5 5 M15 7l5 5-5 5 M13 5l-2 14",
 )
 
 private val iconCache = mutableMapOf<String, ImageVector>()
