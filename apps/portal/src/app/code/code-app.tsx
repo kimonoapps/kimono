@@ -19,7 +19,7 @@ import { Picker } from "./picker";
  * survives a reload and can be opened on the phone too.
  */
 
-type Tab = "chat" | "files" | "changes";
+type Tab = "chat" | "files" | "changes" | "deploy";
 const problemText = (error: unknown, fallback = "That didn't work.") => error instanceof Error ? error.message : fallback;
 const repoName = (w: Pick<Workspace, "repo">) => `${w.repo.owner}/${w.repo.name}`;
 /** Kimono Git and attachments open in their own tab; nothing here leaves the page it is on. */
@@ -70,7 +70,7 @@ function useTimeline(id: string | null, onDone: () => void) {
 export function CodeApp({ blocked }: { blocked: string | null }) {
   const params = useSearchParams();
   const current = params.get("w");
-  const tab = (["chat", "files", "changes"].includes(params.get("tab") ?? "") ? params.get("tab") : "chat") as Tab;
+  const tab = (["chat", "files", "changes", "deploy"].includes(params.get("tab") ?? "") ? params.get("tab") : "chat") as Tab;
   const path = params.get("path") ?? "";
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -92,9 +92,9 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
   }, []);
 
   return <div className="cd-page">
-    <div className="topbar cd-top"><h1>Code</h1><div className="end"><Seal type="button" className="cd-new" onClick={() => goTo({})} aria-keyshortcuts="Meta+K" title="New task (⌘K)"><Icon name="plus" />New task</Seal></div></div>
     <div className={cx("cd", current && "has-workspace")}>
-    <aside className="cd-side" aria-label="Workspaces">
+    <aside className="cd-side" aria-label="Tasks">
+      <div className="cd-side-head"><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({})} aria-keyshortcuts="Meta+K" aria-label="New task" title="New task (⌘K)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <div className="cd-skeleton-list" aria-hidden="true"><i /><i /><i /></div> : null}
       <WorkspaceList label="Working" list={workspaces?.filter((w) => w.turn?.state === "running") ?? []} current={current} now={now} />
@@ -103,7 +103,7 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
     </aside>
     <main className="cd-main">
       {current && workspace
-        ? <WorkspaceView key={workspace.id} workspace={workspace} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
+        ? <WorkspaceView key={workspace.id} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
         : current && workspaces
           ? <div className="cd-sheet cd-empty"><p>That workspace isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({})}>New task</Seal></div>
           : current
@@ -238,13 +238,11 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
 
 /* ── a workspace ── */
 
-function WorkspaceView({ workspace, tab, path, blocked, onChange, now }: { workspace: Workspace; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
+function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }: { workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
   const { events, connected } = useTimeline(workspace.id, onChange);
   const running = workspace.turn?.state === "running";
   const [publishing, setPublishing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const crossTo = useCrossTo();
   const go = (to: Partial<Record<"tab" | "path", string | null>>) => goTo({ w: workspace.id, tab: to.tab === "chat" ? null : to.tab ?? tab, path: to.path ?? null });
 
   async function publish() {
@@ -256,38 +254,69 @@ function WorkspaceView({ workspace, tab, path, blocked, onChange, now }: { works
     try { await code.remove(workspace.id); goTo({}, true); onChange(); } catch (error) { setProblem(problemText(error)); }
   }
 
-  /* One action on show; the rest wait behind ⋯. The running app has its own card in the chat. */
-  return <div className="cd-sheet cd-ws">
-    <header className="cd-ws-head">
-      <button type="button" className="cd-back" onClick={() => goTo({})} aria-label="All tasks"><Icon name="back" /></button>
-      <div className="cd-ws-id">
-        <h1>{workspace.title}</h1>
-        <p className="cd-mono">{repoName(workspace)} · {workspace.branch}
-          {workspace.pullRequest ? <> · <button type="button" className="cd-textbutton" onClick={() => openOutside(workspace.pullRequest!.url)}>#{workspace.pullRequest.number}</button></> : null}
-        </p>
-      </div>
-      {running ? <span className="cd-status running" role="status"><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</span>
-        : !connected ? <span className="cd-status">Reconnecting…</span> : null}
-      <details className="cd-more" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) { event.currentTarget.open = false; setConfirmDelete(false); } }}>
-        <summary className="cd-iconbutton" aria-label="More">⋯</summary>
-        <div className="cd-menu" role="menu">
-          <button type="button" role="menuitem" disabled={running || publishing || Boolean(blocked)} onClick={() => void publish()}><Icon name="pr" />{publishing ? "Pushing…" : workspace.pullRequest ? "Push changes" : "Open pull request"}</button>
-          {workspace.drive ? <button type="button" role="menuitem" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" />Open in Drive</button> : null}
-          {confirmDelete
-            ? <button type="button" role="menuitem" className="is-danger" onClick={() => void remove()}><Icon name="trash" />Delete the sandbox? Files stay in Drive</button>
-            : <button type="button" role="menuitem" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Delete task</button>}
+  const deployments = <Deployments workspace={workspace} others={others} running={running} blocked={blocked} publishing={publishing} onPublish={() => void publish()} onRemove={() => void remove()} />;
+  /* No header: a row of icons says where you are, and what the task has made lives in Deployments. */
+  return <div className="cd-ws-grid">
+    <div className="cd-sheet cd-ws">
+      <nav className="cd-bar" aria-label="Task">
+        <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All tasks" title="All tasks"><Icon name="back" /></button>
+        <div className="cd-iconTabs" role="tablist" aria-label="Views">
+          {([["chat", "Chat", "chat"], ["files", "Files", "folder"], ["changes", "Changes", "diff"], ["deploy", "Deployments", "rocket"]] as const).map(([id, label, icon]) => (
+            <button key={id} type="button" role="tab" className={id === "deploy" ? "cd-deploy-tab" : undefined} aria-selected={tab === id} aria-label={label} title={label} onClick={() => go({ tab: id })}><Icon name={icon} /><span>{label}</span></button>
+          ))}
         </div>
-      </details>
-    </header>
-    <nav className="cd-tabs" role="tablist" aria-label="Workspace">
-      {([["chat", "Chat"], ["files", "Files"], ["changes", "Changes"]] as const).map(([id, label]) => (
-        <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go({ tab: id })}>{label}</button>
-      ))}
-    </nav>
-    {problem ? <p className="cd-problem cd-ws-problem" role="alert">{problem}</p> : null}
-    {tab === "chat" ? <Chat workspace={workspace} events={events} running={running} blocked={blocked} />
-      : tab === "files" ? <Files workspace={workspace} path={path} onOpen={(path) => go({ tab: "files", path })} />
-        : <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />}
+        <span className="cd-bar-title" title={workspace.title}>{workspace.title}</span>
+        {running ? <span className="cd-status running" role="status"><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</span>
+          : !connected ? <span className="cd-status">Reconnecting…</span> : null}
+      </nav>
+      {problem ? <p className="cd-problem cd-ws-problem" role="alert">{problem}</p> : null}
+      {tab === "chat" ? <Chat workspace={workspace} events={events} running={running} blocked={blocked} />
+        : tab === "files" ? <Files workspace={workspace} path={path} onOpen={(path) => go({ tab: "files", path })} />
+          : tab === "changes" ? <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />
+            : <div className="cd-scroll cd-deploy-inline">{deployments}</div>}
+    </div>
+    <aside className="cd-deploy" aria-label="Deployments">{deployments}</aside>
+  </div>;
+}
+
+/** What a task has made, and where it lives: the running app, the pull request, the branch, the files. */
+function Deployments({ workspace, others, running, blocked, publishing, onPublish, onRemove }: { workspace: Workspace; others: Workspace[]; running: boolean; blocked: string | null; publishing: boolean; onPublish: () => void; onRemove: () => void }) {
+  const crossTo = useCrossTo();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  return <div className="cd-deployments">
+    <h2>Deployments</h2>
+    {workspace.preview
+      ? <PreviewCard workspace={workspace} url={workspace.preview.url} live />
+      : <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>Not running</b><small>Ask the agent to run the app and it appears here.</small></span></div>}
+    <div className="cd-dep-list">
+      <div className="cd-dep-row">
+        <span className="cd-dep-icon"><Icon name="pr" /></span>
+        <span><b>{workspace.pullRequest ? `Pull request #${workspace.pullRequest.number}` : "No pull request yet"}</b><small>{workspace.pullRequest ? "Changes are pushed as you go" : "Push the branch for review"}</small></span>
+        {workspace.pullRequest
+          ? <button type="button" className="cd-roundbutton" aria-label="Open pull request" title="Open pull request" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="open" /></button>
+          : null}
+      </div>
+      <div className="cd-dep-row">
+        <span className="cd-dep-icon"><Icon name="branch" /></span>
+        <span><b className="cd-mono">{workspace.branch}</b><small>{repoName(workspace)} · from {workspace.base}</small></span>
+        <button type="button" className="cd-roundbutton" disabled={running || publishing || Boolean(blocked)} aria-label={workspace.pullRequest ? "Push changes" : "Open a pull request"} title={workspace.pullRequest ? "Push changes" : "Open a pull request"} onClick={onPublish}>{publishing ? <i className="cd-spin" /> : <Icon name="send" />}</button>
+      </div>
+      {workspace.drive ? <div className="cd-dep-row">
+        <span className="cd-dep-icon"><Icon name="folder" /></span>
+        <span><b>Files in Drive</b><small>The sandbox, kept in step both ways</small></span>
+        <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="chevron" /></button>
+      </div> : null}
+    </div>
+    {others.length ? <>
+      <h3>Also running</h3>
+      <div className="cd-dep-list">{others.map((w) => <button type="button" key={w.id} className="cd-dep-row is-link" onClick={() => goTo({ w: w.id, tab: "deploy" })}>
+        <span className="cd-dep-icon is-live"><Icon name="rocket" /></span>
+        <span><b>{w.title}</b><small className="cd-mono">{w.preview!.url.replace(/^https?:\/\//, "")}</small></span>
+      </button>)}</div>
+    </> : null}
+    <div className="cd-dep-foot">{confirmDelete
+      ? <><span>Delete the sandbox? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={onRemove}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></>
+      : <button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(true)}><Icon name="trash" />Delete task</button>}</div>
   </div>;
 }
 
@@ -375,7 +404,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
             case "done": return <Done key={item.seq} event={item.event} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
-            case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
+            case "preview": return <p key={item.seq} className="cd-note"><Icon name="rocket" />{workspace.preview?.url === item.event.url && item.seq === lastPreview ? <>Started the app · <button type="button" className="cd-textbutton" onClick={() => goTo({ w: workspace.id, tab: "deploy" })}>see Deployments</button></> : <>The app ran at <span className="cd-mono">{item.event.url.replace(/^https?:\/\//, "")}</span></>}</p>;
             case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
           }
