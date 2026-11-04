@@ -132,6 +132,8 @@ jobs:
       - name: Build and send to TestFlight
         if: steps.key.outputs.present == 'true'
         working-directory: apps/compose/iosApp
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           IFS=. read -r MAJOR MINOR PATCH <<< "$VERSION"
@@ -162,4 +164,6 @@ jobs:
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Kimono.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" "${AUTH[@]}"
           rm -f "$KEY"
+          printf '{"version":"%s","build":%s}\n' "$VERSION" "$BUILD" > "$RUNNER_TEMP/kimono-ios.json"
+          gh release upload "$GITHUB_REF_NAME" --clobber "$RUNNER_TEMP/kimono-ios.json"
           echo "Kimono $VERSION ($BUILD) is on its way to TestFlight."

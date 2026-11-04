@@ -3,10 +3,9 @@ import { auth } from "@/auth";
 import { AdminNavigation } from "@/components/admin-navigation";
 import { AppShell } from "@/components/app-shell";
 import { getPlatformSettings } from "@/lib/settings";
-import { publishRelease, readReleases, removeRelease, setIosLink, setRequired } from "@/lib/app-releases";
-import type { AppPlatform, AppRelease } from "@/lib/app-updates";
+import { readReleases, setRequired } from "@/lib/app-releases";
+import type { AppPlatform } from "@/lib/app-updates";
 import { redirect } from "next/navigation";
-import { PublishAndroid } from "./publish-android";
 import { forgetTestflightKey, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
 import { isApiKey } from "@/lib/testflight-token";
 
@@ -32,24 +31,12 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
   if (session.user.role !== "owner" && session.user.role !== "admin") redirect("/");
   /* Keeps TestFlight in step at most hourly; the page shows the last result without waiting. */
   void syncTestflightIfDue().catch(() => {});
-  const [settings, { releases, iosLink }, query, testflight] = await Promise.all([getPlatformSettings(), readReleases(), searchParams, testflightSettings().catch(() => null)]);
-  const of = (platform: AppPlatform) => releases.filter((r) => r.platform === platform).sort((a, b) => b.build - a.build);
-  const next = (platform: AppPlatform) => Math.max(0, ...of(platform).map((r) => r.build)) + 1;
+  const [settings, { releases }, query, testflight] = await Promise.all([getPlatformSettings(), readReleases(), searchParams, testflightSettings().catch(() => null)]);
 
   async function toggleRequired(form: FormData) {
     "use server";
     await admin();
     await then(() => setRequired(form.get("platform") as AppPlatform, Number(form.get("build")), form.get("required") === "true"));
-  }
-  async function remove(form: FormData) {
-    "use server";
-    await admin();
-    await then(() => removeRelease(form.get("platform") as AppPlatform, Number(form.get("build"))));
-  }
-  async function publishIos(form: FormData) {
-    "use server";
-    const user = await admin();
-    await then(() => publishRelease({ platform: "ios", version: form.get("version"), build: form.get("build"), notes: form.get("notes"), required: form.get("required") === "on" }, user.username));
   }
   async function saveTestflight(form: FormData) {
     "use server";
@@ -62,7 +49,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
       if (!/^[0-9a-f-]{36}$/i.test(issuerId)) throw new Error("The issuer ID looks like 57246542-96fe-1a63-e053-0824d011072a.");
       if (!/^[A-Z0-9]{10}$/.test(keyId)) throw new Error("The key ID is ten letters and numbers, like 2X9R4HXF34.");
       if (!isApiKey(privateKey)) throw new Error("Choose the .p8 key file App Store Connect gave you.");
-      await saveTestflightKey({ issuerId, keyId, privateKey, groupName: String(form.get("group") || "").trim() || "Kimono" });
+      await saveTestflightKey({ issuerId, keyId, privateKey, groupName: "Kimono" });
       await syncTestflight();
     });
   }
@@ -76,63 +63,31 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
     await admin();
     await then(() => forgetTestflightKey());
   }
-  async function saveLink(form: FormData) {
-    "use server";
-    await admin();
-    await then(() => setIosLink(String(form.get("link") || "")));
-  }
 
-  const list = (platform: AppPlatform) => {
-    const items = of(platform);
-    if (!items.length) return <Note>Nothing published yet. Phones keep the version they have.</Note>;
-    return <Rows>{items.map((release, index) => <Row
-      key={release.build}
-      title={`${release.version} · build ${release.build}`}
-      lead={<>
-        {index === 0 ? <StatedSeal state="running">Latest</StatedSeal> : null}
-        {release.required ? <StatedSeal state="wants">Required</StatedSeal> : null}
-      </>}
-      action={<div className="k-seal-group">
-        <form action={toggleRequired}>
-          <input type="hidden" name="platform" value={platform} />
-          <input type="hidden" name="build" value={release.build} />
-          <input type="hidden" name="required" value={String(!release.required)} />
-          <Seal type="submit" tone="quiet" compact>{release.required ? "Make optional" : "Require"}</Seal>
-        </form>
-        <form action={remove}>
-          <input type="hidden" name="platform" value={platform} />
-          <input type="hidden" name="build" value={release.build} />
-          <Seal type="submit" tone="danger" compact>Take down</Seal>
-        </form>
-      </div>}
-    >{describe(release)}</Row>)}</Rows>;
-  };
+  const platforms: { platform: AppPlatform; label: string }[] = [{ platform: "android", label: "Android" }, { platform: "ios", label: "iPhone" }];
 
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page">
       <AdminNavigation active="phone-app" />
-      <PageHeader title="Phone app" description="Publish new versions of the Kimono app. Phones offer each one when it opens; a required version must be installed before Kimono can be used again." />
+      <PageHeader title="Phone app" description="Each Kimono release builds the phone apps. Phones offer them when opened; a required one must be installed first." />
       {query.error ? <p className="admin-notice error">{query.error}</p> : null}
 
-      <Compartment label="Android">
-        {list("android")}
-        <PublishAndroid nextBuild={next("android")} />
-      </Compartment>
-
-      <Compartment label="iPhone">
-        {list("ios")}
-        <Form action={publishIos} afterRows>
-          <Note>iPhone versions arrive through TestFlight. Publish the build here once it is there, to offer or require it.</Note>
-          <Field label="Version"><input name="version" placeholder="0.2.0" required autoComplete="off" /></Field>
-          <Field label="Build"><input name="build" type="number" min={next("ios")} defaultValue={next("ios")} required /></Field>
-          <Field label="What's new"><textarea name="notes" rows={3} placeholder="Optional." /></Field>
-          <Field label="Required"><input type="checkbox" name="required" /></Field>
-          <FormActions><Seal type="submit">Publish</Seal></FormActions>
-        </Form>
-        <Form action={saveLink} afterRows>
-          <Field label="Where iPhones update"><input name="link" defaultValue={iosLink} required /></Field>
-          <FormActions><Seal type="submit" tone="quiet">Save</Seal></FormActions>
-        </Form>
+      <Compartment label="This release">
+        {releases.length ? <Rows>{platforms.map(({ platform, label }) => {
+          const release = releases.find((r) => r.platform === platform);
+          if (!release) return <Row key={platform} title={label}>Not built for this release</Row>;
+          return <Row
+            key={platform}
+            title={`${label} · ${release.version}`}
+            lead={release.required ? <StatedSeal state="wants">Required</StatedSeal> : null}
+            action={<form action={toggleRequired}>
+              <input type="hidden" name="platform" value={platform} />
+              <input type="hidden" name="build" value={release.build} />
+              <input type="hidden" name="required" value={String(!release.required)} />
+              <Seal type="submit" tone="quiet" compact>{release.required ? "Make optional" : "Require"}</Seal>
+            </form>}
+          >{platform === "android" ? `Build ${release.build}${release.size ? ` · ${(release.size / 1_000_000).toFixed(1)} MB` : ""}` : `Build ${release.build} · TestFlight`}</Row>;
+        })}</Rows> : <Note>No phone apps were built for this release.</Note>}
       </Compartment>
 
       <Compartment label="TestFlight" wants={!testflight}>
@@ -153,7 +108,6 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
           <Field label="Issuer ID"><input name="issuerId" required autoComplete="off" placeholder="57246542-96fe-1a63-e053-0824d011072a" /></Field>
           <Field label="Key ID"><input name="keyId" required autoComplete="off" placeholder="2X9R4HXF34" /></Field>
           <Field label="Key file (.p8)"><input name="key" type="file" accept=".p8" required /></Field>
-          <Field label="Tester group"><input name="group" defaultValue="Kimono" /></Field>
           <FormActions><Seal type="submit">Save and sync</Seal></FormActions>
         </Form>}
       </Compartment>
@@ -167,11 +121,3 @@ function testerLabel(status: string) {
   return ({ added: "Added", removed: "Removed", "no email": "No email", "no Kimono access": "No access" } as Record<string, string>)[status] ?? status;
 }
 
-function describe(release: AppRelease) {
-  if (release.publishedBy === "kimono" && !release.publishedAt) {
-    return `Comes with this Kimono release, from GitHub${release.size ? ` · ${(release.size / 1_000_000).toFixed(1)} MB` : ""}`;
-  }
-  const when = new Date(release.publishedAt).toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" });
-  const size = release.size ? ` · ${(release.size / 1_000_000).toFixed(1)} MB` : "";
-  return `Published ${when} by @${release.publishedBy}${size}${release.notes ? ` · ${release.notes}` : ""}`;
-}
