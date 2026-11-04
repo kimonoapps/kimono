@@ -1,3 +1,4 @@
+import { portalOrigin } from "@/lib/account";
 import { bloomSvg } from "@kimono/ui/bloom-svg";
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { appRegistry, launcherApps } from "@/lib/apps";
@@ -15,11 +16,12 @@ const notListed = new Set(["kimono-tools", "kimono-drive"]);
  * where each lives on the web, and its own phone app when it has one. The
  * same list as the Portal's launcher.
  */
-export async function GET(request: Request) {
+export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
   const [settings, catalog] = await Promise.all([getPlatformSettings(), scanAppDefinitions()]);
-  const origin = new URL(request.url).origin;
+  /* The Portal's public address: behind the proxy, the request's own is the container's. */
+  const origin = portalOrigin();
   const apps = launcherApps(appRegistry(settings, catalog.definitions), { mesh: await holdsMeshAccess(user.username) })
     .filter((app) => !notListed.has(app.id))
     .map((app) => ({

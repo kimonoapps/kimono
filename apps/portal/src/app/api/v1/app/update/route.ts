@@ -1,3 +1,4 @@
+import { portalOrigin } from "@/lib/account";
 import { readReleases } from "@/lib/app-releases";
 import { updateFor } from "@/lib/app-updates";
 import { syncTestflightIfDue } from "@/lib/testflight";
@@ -18,7 +19,8 @@ export async function GET(request: Request) {
   if (platform === "ios") void syncTestflightIfDue().catch(() => {});
   const { releases, iosLink } = await readReleases();
   const update = updateFor(releases, platform, build);
-  const origin = new URL(request.url).origin;
+  /* The Portal's public address: behind the proxy, the request's own is the container's. */
+  const origin = portalOrigin();
   return Response.json({
     ...update,
     /* Android installs the package itself; an iPhone goes to TestFlight. */
