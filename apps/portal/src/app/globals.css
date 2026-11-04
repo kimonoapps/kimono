@@ -909,3 +909,13 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .connection-delete form { display: grid; gap: var(--k-space-3); padding-bottom: var(--k-space-4); }
 .connection-delete p { margin: 0; line-height: 1.6; }
 .connection-delete .k-seal { justify-self: start; }
+
+/* 携 The Kimono app, offered on phones (components/kimono-app-offer.tsx). */
+.app-offer { margin: 0 0 28px; padding: 22px 22px 18px; border: 1px solid var(--k-hair); border-radius: 22px; background: var(--k-lift); display: grid; gap: 12px; }
+.app-offer h2 { margin: 0; font-size: 1.25rem; }
+.app-offer p { margin: 0; color: var(--k-ink-soft); }
+.app-offer .k-seal { justify-self: start; text-decoration: none; }
+.app-offer-detail { font-size: .85rem; }
+.app-offer ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; color: var(--k-ink-soft); }
+.app-offer a:not(.k-seal) { color: var(--k-suo); text-decoration: underline; }
+.app-offer-later { justify-self: start; border: 0; background: none; padding: 4px 0; color: var(--k-faint); font: inherit; font-size: .85rem; cursor: pointer; }
