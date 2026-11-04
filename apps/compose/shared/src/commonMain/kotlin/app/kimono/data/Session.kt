@@ -133,10 +133,17 @@ class Session(private val platform: Platform, private val http: HttpClient) {
 
     private suspend fun renew(): String = renewing.withLock {
         access?.let { (token, expires) -> if (expires - now() > 60_000) return@withLock token }
-        val current = kept ?: throw KimonoProblem("Sign in to Kimono first.")
-        val got = try {
-            tokens(discover(current.issuer).tokenEndpoint, mapOf("grant_type" to "refresh_token", "client_id" to current.clientId, "refresh_token" to current.refreshToken))
+        /* The Files app extension shares this sign-in and may have renewed it since: start from what is kept now. */
+        var current = latestKept() ?: throw KimonoProblem("Sign in to Kimono first.")
+        suspend fun ask(from: Kept) = try {
+            tokens(discover(from.issuer).tokenEndpoint, mapOf("grant_type" to "refresh_token", "client_id" to from.clientId, "refresh_token" to from.refreshToken))
         } catch (_: Exception) { throw KimonoProblem("Kimono isn't answering. Check your connection and try again.") }
+        var got = ask(current)
+        if (got.accessToken == null) {
+            /* Refused, perhaps because the extension renewed at the same moment: try once more with what it kept. */
+            val again = latestKept()
+            if (again != null && again.refreshToken != current.refreshToken) { current = again; got = ask(again) }
+        }
         val token = got.accessToken
         if (token == null) {
             /* The provider said no: signed out elsewhere, expired, or switched off. */
@@ -149,6 +156,12 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         }
         access = token to now() + got.expiresIn * 1000
         token
+    }
+
+    private suspend fun latestKept(): Kept? {
+        val known = kept ?: return null
+        val refresh = platform.readKept("kimono.refresh") ?: return known
+        return known.copy(refreshToken = refresh).also { kept = it }
     }
 
     private suspend fun token(): String = access?.takeIf { it.second - now() > 60_000 }?.first ?: renew()

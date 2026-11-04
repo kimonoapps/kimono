@@ -13,8 +13,13 @@ kotlin {
         minSdk = 26
         androidResources { enable = true }
     }
-    // iosArm64() and iosSimulatorArm64() join once Xcode is installed; all
-    // shared code already lives in commonMain.
+    /* The iPhone app links this as a framework; iosApp/ builds it from Xcode. */
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
@@ -33,6 +38,9 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.okhttp)
+        }
+        iosMain.dependencies {
+            implementation(libs.ktor.darwin)
         }
     }
 }

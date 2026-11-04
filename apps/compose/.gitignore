@@ -5,3 +5,6 @@ local.properties
 *.iml
 .idea/
 dist/
+iosApp/Kimono.xcodeproj/
+iosApp/build/
+iosApp/*/Info.plist

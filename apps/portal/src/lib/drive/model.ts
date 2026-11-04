@@ -208,7 +208,7 @@ export function changesFor(db: DatabaseSync, username: string, since: number, li
   const forgotten = Number((db.prepare("SELECT value FROM meta WHERE key = 'changes_forgotten'").get() as { value?: string } | undefined)?.value ?? 0);
   if (since < forgotten) throw new DriveProblem("That's too long ago. List everything again.", 410);
   /* The log's end, even when every row before it has been forgotten. */
-  const latest = Number((db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'changes'").get() as { seq?: number } | undefined)?.seq ?? 0);
+  const latest = latestChange(db);
   if (since > latest) throw new DriveProblem("That cursor isn't from this Drive. List everything again.", 410);
   const rows = db.prepare(`
     SELECT node_id, max(seq) AS seq FROM changes
@@ -226,6 +226,11 @@ export function changesFor(db: DatabaseSync, username: string, since: number, li
   /* With no more to come, the cursor is the log's end, so others' unrelated changes aren't asked about again. */
   const cursor = more ? page[page.length - 1].seq : Math.max(latest, since);
   return { cursor, changed, removed, more, spaces: spacesOf(db, who) };
+}
+
+/** The log's end: a cursor for a device that has just listed everything. */
+export function latestChange(db: DatabaseSync): number {
+  return Number((db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'changes'").get() as { seq?: number } | undefined)?.seq ?? 0);
 }
 
 /** Forgets log entries older than [changeLogDays]. */

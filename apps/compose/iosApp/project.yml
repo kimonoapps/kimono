@@ -1,0 +1,71 @@
+# The iPhone app. Generate the Xcode project with `xcodegen` (it isn't committed).
+name: Kimono
+options:
+  bundleIdPrefix: app.kimono
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Kimono:
+    type: application
+    platform: iOS
+    sources: [Kimono]
+    dependencies:
+      - target: KimonoFiles
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.kimono.compose
+        PRODUCT_NAME: Kimono
+        CODE_SIGN_ENTITLEMENTS: Kimono/Kimono.entitlements
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: ["-framework", "Shared"]
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        # The shared framework is built for Apple silicon simulators only.
+        "ARCHS[sdk=iphonesimulator*]": arm64
+    info:
+      path: Kimono/Info.plist
+      properties:
+        CFBundleDisplayName: Kimono
+        UILaunchScreen: {}
+        CADisableMinimumFrameDurationOnPhone: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
+        NSPhotoLibraryUsageDescription: Pick a photo for your portrait.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    preBuildScripts:
+      - name: Build the shared Kotlin framework
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}"
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode
+  KimonoFiles:
+    type: app-extension
+    platform: iOS
+    sources: [KimonoFiles]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.kimono.compose.files
+        PRODUCT_NAME: KimonoFiles
+        CODE_SIGN_ENTITLEMENTS: KimonoFiles/KimonoFiles.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+    info:
+      path: KimonoFiles/Info.plist
+      properties:
+        CFBundleDisplayName: Kimono
+        KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.fileprovider-nonui
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).FileProviderExtension"
+          NSExtensionFileProviderDocumentGroup: group.app.kimono
+          NSExtensionFileProviderSupportsEnumeration: true
