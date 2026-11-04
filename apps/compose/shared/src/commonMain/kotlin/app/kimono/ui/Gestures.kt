@@ -83,15 +83,11 @@ import kotlin.random.Random
  *   KimonoRefresh pull a list down to refresh, with the morphing indicator.
  */
 
-private val petalPath: Path by lazy {
-    PathParser().parsePathString("M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z").toPath()
-}
-
 private class Petal(val x: Float, val rest: Float, val turn: Float, val size: Float, val drift: Float)
 
 /**
  * 留 Hold — the seal for things that can't be taken back. Press and hold for
- * [holdMillis]: sakura petals fall onto the seal and pile up, one with each
+ * [holdMillis]: inked sakura petals fall onto the seal and pile up, one with each
  * tick of the phone, and when it is full the action happens. Let go early and
  * the petals scatter. Reads how long you have held; tells you how close you
  * are to committing, without a countdown.
@@ -117,6 +113,9 @@ fun HoldSeal(
         val random = Random(7)
         List(14) { index -> Petal(x = .06f + .88f * random.nextFloat(), rest = .55f + .35f * random.nextFloat(), turn = random.nextFloat() * 360f, size = .8f + .5f * random.nextFloat(), drift = (random.nextFloat() - .5f) * 2f).also { index } }
     }
+
+    /* Each petal its own: washed in sakura, edged with a broken plum brush. */
+    val inked = remember { List(petals.size) { InkPetalMark(0x5a4 + it * 7919) } }
 
     /* One tick per petal as it lands. */
     LaunchedEffect(Unit) {
@@ -182,12 +181,9 @@ fun HoldSeal(
                     val x = size.width * petal.x + petal.drift * 10.dp.toPx() * (1f - local) + cos(petal.turn) * s * 60.dp.toPx()
                     val y = fallY - sin(petal.turn) * s * 40.dp.toPx() - s * 30.dp.toPx()
                     val alpha = (if (s > 0f) 1f - s else 1f) * (if (local > 0f) 1f else 0f)
-                    val scale = petal.size * 12.dp.toPx() / 50f
                     translate(x, y) {
                         rotate(petal.turn + local * 90f, pivot = Offset.Zero) {
-                            scale(scale, scale, pivot = Offset.Zero) {
-                                translate(-50f, -25f) { drawPath(petalPath, Color.White.copy(alpha = alpha * .85f)) }
-                            }
+                            drawInkPetal(inked[index], petal.size * 17.dp.toPx(), alpha)
                         }
                     }
                 }

@@ -83,6 +83,7 @@ import app.kimono.ui.Seal
 import app.kimono.ui.SealTone
 import app.kimono.ui.kimonoIcon
 import kotlinx.coroutines.launch
+import app.kimono.ui.InkLoader
 
 /**
  * The Kimono app. [shared] is whatever another app has just shared into
@@ -101,7 +102,7 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             val required = update?.takeIf { it.required }
             if (required != null) UpdateScreen(required, platform) else when (val s = state) {
-                SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 is SessionState.SignedOut -> SignInScreen(session, s.server)
                 is SessionState.SignedIn -> {
                     SignedIn(session, platform, s.me, update?.takeIf { !later }) { later = true }
@@ -151,7 +152,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) fadeOut(tween(120)) else slideOutHorizontally(tween(320)) { it } },
         ) {
             composable("home") { HomeScreen(me, model.drive, platform, update, onLater, openCode = { nav.navigate("code") }) { goTab("drive") } }
-            composable("code") { CodeScreen(code, model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.bloom) { nav.navigate(it) } }
+            composable("code") { CodeScreen(code, model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }) { nav.navigate(it) } }
             composable("code/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 WorkspaceScreen(code, model.drive, platform, id, open = { nav.navigate(it) }) { nav.popBackStack() }

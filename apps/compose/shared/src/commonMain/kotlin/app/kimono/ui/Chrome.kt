@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
+import app.kimono.theme.Kata
 
 /** A plain bar: back, a title, actions at the right edge. */
 @Composable
@@ -58,12 +59,6 @@ class GroupItem(
     val onClick: () -> Unit,
 )
 
-/* Each row's icon sits in one of Material's playful shapes, a different one per row. */
-private val iconShapes = listOf(MaterialShapes.Cookie6Sided, MaterialShapes.Clover4Leaf, MaterialShapes.Sunny, MaterialShapes.Cookie9Sided, MaterialShapes.Flower)
-
-@Composable
-fun iconShape(index: Int): Shape = iconShapes[index % iconShapes.size].toShape()
-
 /**
  * Material's grouped list: rows as rounded segments with small gaps, the
  * group's outer corners rounder than the inner ones.
@@ -80,8 +75,9 @@ fun KimonoGroup(items: List<GroupItem>, modifier: Modifier = Modifier) {
                 colors = segmentColors(),
                 leadingContent = item.icon?.let { name ->
                     {
-                        Box(Modifier.size(40.dp).background(if (item.danger) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer, iconShape(index)), contentAlignment = Alignment.Center) {
-                            Icon(kimonoIcon(name), null, tint = if (item.danger) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                        /* Each row's icon sits in its own watercolour puddle. */
+                        InkBlot(item.label, tint = if (item.danger) MaterialTheme.colorScheme.error else Kata.suo) {
+                            Icon(kimonoIcon(name), null, tint = if (item.danger) MaterialTheme.colorScheme.onErrorContainer else Kata.plum, modifier = Modifier.size(20.dp))
                         }
                     }
                 },

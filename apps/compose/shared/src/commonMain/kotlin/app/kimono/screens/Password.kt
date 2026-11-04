@@ -52,6 +52,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import app.kimono.ui.InkRing
 
 @Composable
 fun PasswordScreen(session: Session, me: AccountProfile?, back: () -> Unit) {
@@ -103,14 +104,11 @@ fun PasswordScreen(session: Session, me: AccountProfile?, back: () -> Unit) {
     }
 }
 
-/* A rule changes form when met: the empty ring fills with moss and gains a tick. */
+/* A rule changes form when met: the brushed ring fills with moss and gains a brushed tick. */
 @Composable
 private fun Rule(met: Boolean, text: String) {
-    val fill by animateColorAsState(if (met) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.surface)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(Modifier.size(20.dp).background(fill, CircleShape).border(1.5.dp, if (met) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline, CircleShape), contentAlignment = Alignment.Center) {
-            if (met) Icon(kimonoIcon("check"), null, tint = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.size(13.dp))
-        }
+        InkRing(met, size = 24.dp, seed = text)
         Text(text, style = MaterialTheme.typography.bodyMedium, color = if (met) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

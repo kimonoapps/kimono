@@ -87,11 +87,13 @@ import app.kimono.ui.Problem
 import app.kimono.ui.Seal
 import app.kimono.ui.SwipeRow
 import app.kimono.ui.kimonoIcon
-import app.kimono.ui.SvgMark
+import app.kimono.ui.InkBloom
+import app.kimono.ui.InkCrest
 import app.kimono.ui.segmentColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import app.kimono.ui.InkLoader
 
 /**
  * Drive's state that outlives a screen: uploads keep going while you move
@@ -138,7 +140,7 @@ fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
     LaunchedEffect(Unit) { if (model.drive.driveBloom.value == null) runCatching { model.drive.otherApps() } }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar("Drive", mark = { SvgMark(model.drive.driveBloom.collectAsState().value, 32.dp) }) { IconButton(onClick = { open("trash") }) { Icon(kimonoIcon("trash"), "Recently deleted") } } },
+        topBar = { KimonoTopBar("Drive", mark = { model.drive.driveBloom.collectAsState().value?.let { InkBloom(it.id, it.accent, it.glyph, 32.dp) } }) { IconButton(onClick = { open("trash") }) { Icon(kimonoIcon("trash"), "Recently deleted") } } },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { naming = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("New space") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
         },
@@ -146,7 +148,7 @@ fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
         KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.padding(padding).fillMaxSize()) {
             val list = spaces
             when {
-                list == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                list == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 list.isNullOrEmpty() -> Empty(problem ?: "Spaces hold your files. Make one, or ask someone to add you to theirs.")
                 else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                     itemsIndexed(list, key = { _, s -> s.id }) { index, space ->
@@ -155,7 +157,7 @@ fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
                             onLongClick = { open("space/${space.id}") },
                             shapes = ListItemDefaults.segmentedShapes(index, list.size),
                             colors = segmentColors(),
-                            leadingContent = { SvgMark(space.mark, 44.dp) },
+                            leadingContent = { InkCrest(space.crest, space.color, 44.dp) },
                             supportingContent = { Text(listOf(roleWord(space.role), if (space.members == 1) "Just you" else "${space.members} people").joinToString(" · ")) },
                             trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) },
                         ) { Text(space.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -189,7 +191,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     val knownSpace = remember { folder?.let { f -> model.drive.knownSpaces()?.firstOrNull { it.id == f.folder.spaceId } } }
     var canEdit by remember { mutableStateOf(knownSpace?.role != "viewer") }
     /* The space's crest stays beside the name, however deep in it you go. */
-    var crest by remember { mutableStateOf(knownSpace?.mark) }
+    var crest by remember { mutableStateOf(knownSpace?.let { it.crest to it.color }) }
     /* Long-press picks things; while any are picked, a tap adds or drops one. */
     val selected = remember { mutableStateListOf<String>() }
     var acting by remember { mutableStateOf<DriveNode?>(null) }
@@ -204,7 +206,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
             selected.retainAll(loaded.children.map { it.id }.toSet())
             val space = model.drive.spaces().firstOrNull { it.id == loaded.folder.spaceId }
             canEdit = space?.role != "viewer"
-            crest = space?.mark
+            crest = space?.let { it.crest to it.color }
         } catch (p: KimonoProblem) { problem = p.message }
     }
     fun act(done: String? = null, work: suspend () -> Unit) = scope.launch {
@@ -244,7 +246,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
                     if (selected.size < all.size) TextButton(onClick = { selected.clear(); selected.addAll(all.map { it.id }) }) { Text("Select all") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-            ) else KimonoTopBar(here?.folder?.name ?: "", onBack = back, mark = crest?.let { { SvgMark(it, 30.dp) } }) {
+            ) else KimonoTopBar(here?.folder?.name ?: "", onBack = back, mark = crest?.let { { InkCrest(it.first, it.second, 30.dp) } }) {
                 /* Wherever you are in a space: who's in it, what each can do, and its settings. */
                 if (here != null) IconButton(onClick = { open("space/${here.folder.spaceId}") }) { Icon(kimonoIcon("person"), "People and settings") }
             }
@@ -269,7 +271,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
             KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
                 val children = here?.children
                 when {
-                    here == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                    here == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                     children.isNullOrEmpty() -> Empty(problem ?: if (canEdit) "Nothing here yet. Add files with the button below." else "Nothing here yet.")
                     else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                         itemsIndexed(children, key = { _, n -> n.id }) { index, node ->
@@ -378,7 +380,7 @@ private fun NodeIcon(node: DriveNode, thumbnail: suspend (Int) -> String?, size:
         if (node.mayHaveThumbnail) value = runCatching { thumbnail(pixels) }.getOrNull()
     }
     Box(Modifier.size(size).background(if (node.isFolder) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(if (node.isFolder) size * .3f else size / 2)), contentAlignment = Alignment.Center) {
-        if (busy) LoadingIndicator(Modifier.size(size * .7f))
+        if (busy) InkLoader(size = size * .7f)
         else if (picture != null) AsyncImage(
             model = "file://$picture",
             contentDescription = null,
@@ -489,7 +491,7 @@ private fun MovePicker(model: DriveModel, platform: Platform, moving: List<Drive
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 val children = here?.children
                 when {
-                    here == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                    here == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                     children.isNullOrEmpty() -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text(problem ?: "No folders here. Move things here, or make a new folder.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -621,7 +623,7 @@ fun TrashScreen(model: DriveModel, back: () -> Unit) {
         val list = items
         Box(Modifier.padding(padding).fillMaxSize()) {
             when {
-                list == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                list == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 list.isNullOrEmpty() -> Empty(problem ?: "Nothing deleted. What you delete stays here for 30 days.")
                 else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                     itemsIndexed(list, key = { _, n -> n.id }) { index, node ->
