@@ -162,7 +162,7 @@ test('a space opened by its link: guests view, add only when allowed, and never 
   assert.throws(() => drive.uploadFor(db, 'nope', null), (e) => e.status === 404);
   const mine = drive.startUpload(db, space.rootId, 'akram', { name: 'm.png', size: 3, mime: null }, 100);
   assert.throws(() => drive.uploadFor(db, mine.id, null), (e) => e.status === 404, "a member's upload needs its member");
-  const node = drive.finishUpload(db, drive.uploadFor(db, upload.id, null), 'b-guest');
+  const { node } = drive.finishUpload(db, drive.uploadFor(db, upload.id, null), 'b-guest');
   assert.equal(node.name, 'vows (2).png');
   assert.equal(node.guest, 'Sam');
   assert.equal(node.createdBy, '');
@@ -193,4 +193,86 @@ test('guests can only have a few uploads going through one link at once', () => 
   for (let i = 0; i < drive.guestUploadsAtOnce; i += 1) drive.startGuestUpload(db, token, undefined, null, { name: `f${i}`, size: 1, mime: null }, 100);
   assert.throws(() => drive.startGuestUpload(db, token, undefined, null, { name: 'one more', size: 1, mime: null }, 100), (e) => e.status === 429);
   assert.throws(() => drive.startGuestUpload(db, token, undefined, 'x'.repeat(61), { name: 'n', size: 1, mime: null }, 100));
+});
+
+test('the change feed tells each device what to add, update and remove', () => {
+  const db = fresh();
+  const start = drive.changesFor(db, 'mina', 0);
+  assert.deepEqual([start.changed, start.removed], [[], []]);
+  const space = drive.createSpace(db, 'akram', { name: 'Family', members: [{ username: 'mina', role: 'viewer' }] });
+  const docs = drive.createFolder(db, space.rootId, 'akram', 'Docs');
+  const a = drive.addFile(db, docs.id, 'akram', file('a.pdf'));
+  let feed = drive.changesFor(db, 'mina', start.cursor);
+  assert.deepEqual(feed.changed.map((n) => n.name).sort(), ['Docs', 'Family', 'a.pdf']);
+  assert.equal(feed.spaces[0].role, 'viewer');
+  assert.equal(drive.changesFor(db, 'stranger', 0).changed.length, 0, 'strangers hear nothing');
+
+  const before = drive.nodeFor(db, a.id, 'akram').version;
+  drive.renameNode(db, a.id, 'akram', 'b.pdf');
+  drive.renameNode(db, a.id, 'akram', 'c.pdf');
+  let next = drive.changesFor(db, 'mina', feed.cursor);
+  assert.deepEqual(next.changed.map((n) => [n.name, n.version]), [['c.pdf', before + 2]], 'one entry per node, as it is now');
+
+  drive.trashNode(db, docs.id, 'akram');
+  next = drive.changesFor(db, 'mina', next.cursor);
+  assert.deepEqual(next.removed, [docs.id], 'trashing a folder removes it; its children go with it');
+  drive.restoreNode(db, docs.id, 'akram');
+  assert.deepEqual(drive.changesFor(db, 'mina', next.cursor).changed.map((n) => n.id), [docs.id]);
+
+  /* Leaving, and being brought back, as one space. */
+  const cursor = drive.changesFor(db, 'mina', 0).cursor;
+  drive.setMember(db, space.id, 'akram', 'mina', null);
+  drive.createFolder(db, space.rootId, 'akram', 'Secret');
+  next = drive.changesFor(db, 'mina', cursor);
+  assert.deepEqual([next.changed, next.removed], [[], [space.rootId]], 'a space left is removed, and nothing after leaks');
+  drive.setMember(db, space.id, 'akram', 'mina', 'editor');
+  next = drive.changesFor(db, 'mina', next.cursor);
+  assert.deepEqual(next.changed.map((n) => n.id), [space.rootId]);
+  assert.equal(next.spaces[0].role, 'editor');
+});
+
+test('a folder made into a space leaves old members and arrives for new ones', () => {
+  const db = fresh();
+  const family = drive.createSpace(db, 'akram', { name: 'Family', members: [{ username: 'mina', role: 'editor' }] });
+  const trip = drive.createFolder(db, family.rootId, 'akram', 'Trip');
+  const mina = drive.changesFor(db, 'mina', 0).cursor, jun = drive.changesFor(db, 'jun', 0).cursor, akram = drive.changesFor(db, 'akram', 0).cursor;
+  drive.folderToSpace(db, trip.id, 'akram', { members: [{ username: 'jun', role: 'viewer' }] });
+  assert.deepEqual(drive.changesFor(db, 'mina', mina).removed, [trip.id]);
+  assert.deepEqual(drive.changesFor(db, 'jun', jun).changed.map((n) => [n.id, n.parentId]), [[trip.id, null]]);
+  assert.deepEqual(drive.changesFor(db, 'akram', akram).changed.map((n) => [n.id, n.parentId]), [[trip.id, null]], 'moved to the top for its owner');
+});
+
+test('the feed pages, and a cursor older than the log asks for a fresh listing', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'S' }, 1000);
+  for (let i = 0; i < 7; i += 1) drive.createFolder(db, space.rootId, 'akram', `f${i}`, 1000);
+  const first = drive.changesFor(db, 'akram', 0, 5);
+  assert.equal(first.changed.length, 5);
+  assert.ok(first.more);
+  const second = drive.changesFor(db, 'akram', first.cursor, 5);
+  assert.equal(second.changed.length, 3);
+  assert.ok(!second.more);
+  drive.forgetOldChanges(db, 1000 + 91 * 86400000);
+  assert.throws(() => drive.changesFor(db, 'akram', first.cursor), (e) => e.status === 410);
+  assert.throws(() => drive.changesFor(db, 'akram', 99999), (e) => e.status === 410);
+  assert.equal(drive.changesFor(db, 'akram', second.cursor).changed.length, 0, 'a cursor at the end still works');
+});
+
+test('an edit saved in place replaces the bytes, and a clashing edit is kept as a copy', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'S', members: [{ username: 'mina', role: 'editor' }] });
+  const doc = drive.addFile(db, space.rootId, 'akram', file('plan.key', 'b-1'));
+  assert.equal(doc.contentVersion, 1);
+  const mine = drive.startReplace(db, doc.id, 'akram', 1, { size: 20, mime: null }, 100);
+  const hers = drive.startReplace(db, doc.id, 'mina', 1, { size: 30, mime: null }, 100);
+  const first = drive.finishUpload(db, drive.uploadFor(db, mine.id, 'akram'), 'b-2');
+  assert.deepEqual([first.conflict, first.oldBlob, first.node.id, first.node.contentVersion, first.node.size], [false, 'b-1', doc.id, 2, 20]);
+  const second = drive.finishUpload(db, drive.uploadFor(db, hers.id, 'mina'), 'b-3');
+  assert.equal(second.conflict, true);
+  assert.equal(second.oldBlob, null);
+  assert.equal(second.node.name, 'plan (edited elsewhere).key');
+  assert.deepEqual(drive.childrenOf(db, space.rootId, 'akram').children.map((n) => n.name), ['plan (edited elsewhere).key', 'plan.key']);
+  const ren = drive.createSpace(db, 'akram', { name: 'T', members: [{ username: 'ren', role: 'viewer' }] });
+  const theirs = drive.addFile(db, ren.rootId, 'akram', file('x.txt'));
+  assert.throws(() => drive.startReplace(db, theirs.id, 'ren', 1, { size: 1, mime: null }, 100), /only view/);
 });

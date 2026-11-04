@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { stateDir } from "../state";
 import { apiError } from "../api-v1";
-import { DriveProblem, emptyOldTrash, migrate, staleUploads } from "./model";
+import { DriveProblem, emptyOldTrash, forgetOldChanges, migrate, staleUploads } from "./model";
 import { driveRoot, removeBlob, removePart } from "./storage";
 
 export * from "./model";
@@ -29,13 +29,14 @@ export function db(): DatabaseSync {
   return cache.kimonoDrive;
 }
 
-/* At most hourly, on use: empty trash older than 30 days and drop abandoned uploads. */
+/* At most hourly, on use: empty trash older than 30 days, drop abandoned uploads, and forget old change-log entries. */
 function sweep(database: DatabaseSync) {
   if (cache.kimonoDriveSwept && Date.now() - cache.kimonoDriveSwept < 60 * 60 * 1000) return;
   cache.kimonoDriveSwept = Date.now();
   try {
     for (const blob of emptyOldTrash(database)) void removeBlob(root, blob);
     for (const upload of staleUploads(database)) void removePart(root, upload);
+    forgetOldChanges(database);
   } catch (error) {
     console.warn("Drive housekeeping failed:", error instanceof Error ? error.message : error);
   }

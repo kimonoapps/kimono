@@ -1,5 +1,5 @@
 import { apiError, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
-import { db, drive, DriveProblem, maxFileBytes, promisedBytes, root, startGuestUpload, startUpload, typeOf } from "@/lib/drive";
+import { db, drive, DriveProblem, maxFileBytes, promisedBytes, root, startGuestUpload, startReplace, startUpload, typeOf } from "@/lib/drive";
 import { freeBytes, reserveBytes } from "@/lib/drive/storage";
 import { tusHeaders } from "@/lib/drive/tus";
 
@@ -15,6 +15,11 @@ import { tusHeaders } from "@/lib/drive/tus";
  *   Upload-Length: <bytes>
  *   Upload-Metadata: filename <base64>, folder <base64>
  *
+ * To replace an existing file's bytes (an edit saved from another app),
+ * send `replaces <file id>` and `base <its contentVersion when the edit
+ * began>` instead of `folder`. If someone else's edit landed first, the new
+ * bytes are kept beside it as a copy (Kimono-Conflict: kept-as-copy).
+ *
  * Someone without an account adds files through a space's link instead,
  * when it lets people add: they send `link` (and `name`, if they give one)
  * in the metadata, `folder` being optional, and no sign-in.
@@ -29,10 +34,12 @@ export async function POST(request: Request) {
   return drive(async () => {
     const size = Number(request.headers.get("upload-length"));
     const file = { name: meta.filename, size, mime: typeOf(meta.filename ?? "") };
-    if (user && !meta.folder) throw new DriveProblem("Say which folder the file goes in.");
+    if (user && !meta.folder && !meta.replaces) throw new DriveProblem("Say which folder the file goes in.");
     /* Room for this file and everything already on its way, with some left over. */
     if ((await freeBytes(root)) - promisedBytes(db()) - size < reserveBytes) throw new DriveProblem("Kimono's disk is too full for that file.", 507);
-    const upload = user
+    const upload = user && meta.replaces
+      ? startReplace(db(), meta.replaces, user.username, Number(meta.base), file, maxFileBytes)
+      : user
       ? startUpload(db(), meta.folder, user.username, file, maxFileBytes)
       : startGuestUpload(db(), meta.link, meta.folder, meta.name, file, maxFileBytes);
     return new Response(null, { status: 201, headers: { ...tusHeaders, Location: `/api/v1/drive/uploads/${upload.id}`, "Upload-Offset": "0" } });

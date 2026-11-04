@@ -24,6 +24,11 @@
  *     can't rename, move or remove anything. Turning the link off ends it for
  *     good; turning it on again makes a new one.
  *   - Being a Kimono admin gives no access to other people's spaces.
+ *
+ * Every change is logged (see changesFor) so devices keep a copy in step:
+ * the Files app on iPhone and Android, and the Kimono apps' offline cache.
+ * Each node carries a version, bumped on any change, and a contentVersion,
+ * bumped only when its bytes are replaced.
  */
 import type { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
@@ -41,12 +46,16 @@ export type DriveNode = {
   trashedAt: number | null; link: string | null;
   /** The name a guest gave when adding this through the space's link (createdBy is then ""). */
   guest: string | null;
+  /** Goes up on any change to the node. */
+  version: number;
+  /** Goes up only when the file's bytes are replaced. */
+  contentVersion: number;
 };
 
 /** A refusal a person can read. Routes turn it into a 4xx with this sentence. */
 export class DriveProblem extends Error {
-  readonly status: 400 | 403 | 404 | 409 | 413 | 429 | 507;
-  constructor(message: string, status: 400 | 403 | 404 | 409 | 413 | 429 | 507 = 400) {
+  readonly status: 400 | 403 | 404 | 409 | 410 | 413 | 429 | 507;
+  constructor(message: string, status: 400 | 403 | 404 | 409 | 410 | 413 | 429 | 507 = 400) {
     super(message);
     this.status = status;
   }
@@ -133,6 +142,99 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 4) {
+    /*
+     * The change log devices sync from. A row says "this node changed" in a
+     * space (seen by its members), or for one person (they joined or left
+     * the space whose top folder it is). What changed is read from the node
+     * as it is now, so the log never has to describe it.
+     */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE nodes ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE nodes ADD COLUMN content_version INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE uploads ADD COLUMN replaces TEXT;
+      ALTER TABLE uploads ADD COLUMN base_version INTEGER;
+      CREATE TABLE changes (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT, node_id TEXT NOT NULL,
+        space_id TEXT, username TEXT, at INTEGER NOT NULL
+      );
+      CREATE INDEX changes_by_space ON changes (space_id, seq);
+      CREATE INDEX changes_by_user ON changes (username, seq);
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '4');
+      COMMIT;
+    `);
+  }
+}
+
+/* ── the change log ── */
+
+/** Records that a node changed, for everyone in its space, and bumps its version. */
+function touch(db: DatabaseSync, nodeId: string, spaceId: string, now = Date.now()) {
+  db.prepare("UPDATE nodes SET version = version + 1 WHERE id = ?").run(nodeId);
+  db.prepare("INSERT INTO changes (node_id, space_id, at) VALUES (?, ?, ?)").run(nodeId, spaceId, now);
+}
+
+/** Records, for one person, that a space appeared, disappeared or changed for them. */
+function touchFor(db: DatabaseSync, spaceId: string, username: string, now = Date.now()) {
+  const root = db.prepare("SELECT root_id FROM spaces WHERE id = ?").get(spaceId) as { root_id: string } | undefined;
+  if (root) db.prepare("INSERT INTO changes (node_id, username, at) VALUES (?, ?, ?)").run(root.root_id, username.toLowerCase(), now);
+}
+
+/** How long the log is kept. A device away for longer starts over from a full listing. */
+export const changeLogDays = 90;
+
+export type Changes = {
+  /** Where to ask from next time. */
+  cursor: number;
+  /** Nodes that are new or changed, as they are now. A space's top folder has parentId null. */
+  changed: DriveNode[];
+  /** Nodes the person can no longer see: removed, trashed, or in a space they left. Children go with them. */
+  removed: string[];
+  /** Ask again straight away: there is more. */
+  more: boolean;
+  /** The person's spaces and roles, which decide what they may do with each node. */
+  spaces: Space[];
+};
+
+/**
+ * What changed for a person since [since] (a cursor from an earlier answer;
+ * 0 to start). Throws 410 when [since] is older than the log, meaning: list
+ * everything again.
+ */
+export function changesFor(db: DatabaseSync, username: string, since: number, limit = 500): Changes {
+  const who = username.toLowerCase();
+  if (!Number.isSafeInteger(since) || since < 0) throw new DriveProblem("Give a cursor from an earlier answer.");
+  const forgotten = Number((db.prepare("SELECT value FROM meta WHERE key = 'changes_forgotten'").get() as { value?: string } | undefined)?.value ?? 0);
+  if (since < forgotten) throw new DriveProblem("That's too long ago. List everything again.", 410);
+  /* The log's end, even when every row before it has been forgotten. */
+  const latest = Number((db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'changes'").get() as { seq?: number } | undefined)?.seq ?? 0);
+  if (since > latest) throw new DriveProblem("That cursor isn't from this Drive. List everything again.", 410);
+  const rows = db.prepare(`
+    SELECT node_id, max(seq) AS seq FROM changes
+    WHERE seq > ? AND (username = ? OR space_id IN (SELECT space_id FROM members WHERE username = ?))
+    GROUP BY node_id ORDER BY seq LIMIT ?
+  `).all(since, who, who, limit + 1) as { node_id: string; seq: number }[];
+  const more = rows.length > limit;
+  const page = rows.slice(0, limit);
+  const changed: DriveNode[] = [], removed: string[] = [];
+  for (const { node_id } of page) {
+    const row = nodeRow(db, node_id);
+    if (row && roleIn(db, row.space_id, who) && !inTrash(db, node_id)) changed.push(toNode(row));
+    else removed.push(node_id);
+  }
+  /* With no more to come, the cursor is the log's end, so others' unrelated changes aren't asked about again. */
+  const cursor = more ? page[page.length - 1].seq : Math.max(latest, since);
+  return { cursor, changed, removed, more, spaces: spacesOf(db, who) };
+}
+
+/** Forgets log entries older than [changeLogDays]. */
+export function forgetOldChanges(db: DatabaseSync, now = Date.now()) {
+  const cutoff = now - changeLogDays * 24 * 60 * 60 * 1000;
+  const last = (db.prepare("SELECT max(seq) AS n FROM changes WHERE at < ?").get(cutoff) as { n: number | null }).n;
+  if (last === null) return;
+  db.prepare("DELETE FROM changes WHERE seq <= ?").run(last);
+  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('changes_forgotten', ?)").run(String(last));
 }
 
 /* ── names ── */
@@ -161,16 +263,16 @@ export function numbered(name: string, n: number): string {
 type NodeRow = {
   id: string; space_id: string; parent_id: string | null; kind: "folder" | "file"; name: string; size: number;
   mime: string | null; blob: string | null; created_by: string; created_at: number; updated_at: number;
-  trashed_at: number | null; link: string | null; guest: string | null;
+  trashed_at: number | null; link: string | null; guest: string | null; version: number; content_version: number;
 };
 
-const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.trashed_at, n.guest,
+const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.trashed_at, n.guest, n.version, n.content_version,
   (SELECT token FROM links l WHERE l.node_id = n.id AND l.revoked_at IS NULL ORDER BY l.created_at DESC LIMIT 1) AS link`;
 
 const toNode = (row: NodeRow): DriveNode => ({
   id: row.id, spaceId: row.space_id, parentId: row.parent_id, kind: row.kind, name: row.name, size: row.size,
   mime: row.mime, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
-  trashedAt: row.trashed_at, link: row.link, guest: row.guest,
+  trashedAt: row.trashed_at, link: row.link, guest: row.guest, version: row.version, contentVersion: row.content_version,
 });
 
 function nodeRow(db: DatabaseSync, id: string): (NodeRow & { blob: string | null }) | undefined {
@@ -266,6 +368,7 @@ export function createSpace(db: DatabaseSync, username: string, input: { name: u
       if (who === owner) continue;
       db.prepare("INSERT OR REPLACE INTO members (space_id, username, role, added_at) VALUES (?, ?, ?, ?)").run(id, who, validRole(member.role), now);
     }
+    touch(db, rootId, id, now);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
   return spacesOf(db, owner).find((s) => s.id === id)!;
@@ -282,6 +385,7 @@ export function renameSpace(db: DatabaseSync, spaceId: string, username: string,
     const name = cleanName(input.name, "space name");
     db.prepare("UPDATE spaces SET name = ? WHERE id = ?").run(name, spaceId);
     db.prepare("UPDATE nodes SET name = ? WHERE id = (SELECT root_id FROM spaces WHERE id = ?)").run(name, spaceId);
+    touch(db, (db.prepare("SELECT root_id FROM spaces WHERE id = ?").get(spaceId) as { root_id: string }).root_id, spaceId);
   }
   if (input.crest !== undefined) {
     if (typeof input.crest !== "string" || !(crests as readonly string[]).includes(input.crest)) throw new DriveProblem("Pick one of the crests.");
@@ -300,6 +404,9 @@ export function setMember(db: DatabaseSync, spaceId: string, username: string, w
   if (current === "owner" && role !== "owner" && owners <= 1) throw new DriveProblem("A space needs an owner. Make someone else an owner first.", 409);
   if (role === null) db.prepare("DELETE FROM members WHERE space_id = ? AND username = ?").run(spaceId, target);
   else db.prepare("INSERT INTO members (space_id, username, role, added_at) VALUES (?, ?, ?, ?) ON CONFLICT (space_id, username) DO UPDATE SET role = excluded.role").run(spaceId, target, validRole(role), now);
+  /* The space appears, disappears, or allows them something new; its version moves so devices look again. */
+  db.prepare("UPDATE nodes SET version = version + 1 WHERE id = (SELECT root_id FROM spaces WHERE id = ?)").run(spaceId);
+  touchFor(db, spaceId, target, now);
 }
 
 /* ── folders and files ── */
@@ -318,6 +425,7 @@ export function createFolder(db: DatabaseSync, parentId: string, username: strin
   if (db.prepare("SELECT 1 FROM nodes WHERE parent_id = ? AND lower(name) = lower(?) AND trashed_at IS NULL").get(parentId, name)) throw new DriveProblem("Something here already has that name.", 409);
   const id = newId();
   db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, created_by, created_at, updated_at) VALUES (?, ?, ?, 'folder', ?, ?, ?, ?)").run(id, parent.spaceId, parentId, name, username.toLowerCase(), now, now);
+  touch(db, id, parent.spaceId, now);
   return toNode(nodeRow(db, id)!);
 }
 
@@ -333,6 +441,7 @@ function insertFile(db: DatabaseSync, parent: DriveNode, createdBy: string, gues
   const id = newId();
   db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, size, mime, blob, created_by, created_at, updated_at, guest) VALUES (?, ?, ?, 'file', ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, parent.spaceId, parent.id, name, file.size, file.mime, file.blob, createdBy, now, now, guest);
+  touch(db, id, parent.spaceId, now);
   return toNode(nodeRow(db, id)!);
 }
 
@@ -346,6 +455,7 @@ export function renameNode(db: DatabaseSync, id: string, username: string, rawNa
   const name = cleanName(rawName);
   if (db.prepare("SELECT 1 FROM nodes WHERE parent_id = ? AND lower(name) = lower(?) AND trashed_at IS NULL AND id != ?").get(node.parentId, name, id)) throw new DriveProblem("Something here already has that name.", 409);
   db.prepare("UPDATE nodes SET name = ?, updated_at = ? WHERE id = ?").run(name, now, id);
+  touch(db, id, node.spaceId, now);
   return toNode(nodeRow(db, id)!);
 }
 
@@ -361,6 +471,7 @@ export function moveNode(db: DatabaseSync, id: string, username: string, toFolde
   }
   const name = freeName(db, target.id, node.name, node.id);
   db.prepare("UPDATE nodes SET parent_id = ?, name = ?, updated_at = ? WHERE id = ?").run(target.id, name, now, id);
+  touch(db, id, node.spaceId, now);
   return toNode(nodeRow(db, id)!);
 }
 
@@ -368,6 +479,7 @@ export function trashNode(db: DatabaseSync, id: string, username: string, now = 
   const node = nodeFor(db, id, username, "editor");
   if (isRoot(db, node)) throw new DriveProblem("A space's top folder can't be trashed.");
   db.prepare("UPDATE nodes SET trashed_at = ?, trashed_by = ? WHERE id = ?").run(now, username.toLowerCase(), id);
+  touch(db, id, node.spaceId, now);
 }
 
 export function restoreNode(db: DatabaseSync, id: string, username: string, now = Date.now()): DriveNode {
@@ -378,6 +490,7 @@ export function restoreNode(db: DatabaseSync, id: string, username: string, now 
   const parentId = parentGone ? (db.prepare("SELECT root_id FROM spaces WHERE id = ?").get(node.spaceId) as { root_id: string }).root_id : node.parentId!;
   const name = freeName(db, parentId, node.name, node.id);
   db.prepare("UPDATE nodes SET trashed_at = NULL, trashed_by = NULL, parent_id = ?, name = ?, updated_at = ? WHERE id = ?").run(parentId, name, now, id);
+  touch(db, id, node.spaceId, now);
   return toNode(nodeRow(db, id)!);
 }
 
@@ -406,12 +519,14 @@ export function linkFile(db: DatabaseSync, id: string, username: string, now = D
   if (node.link) return node.link;
   const token = newId(9);
   db.prepare("INSERT INTO links (token, node_id, created_by, created_at) VALUES (?, ?, ?, ?)").run(token, id, username.toLowerCase(), now);
+  touch(db, id, node.spaceId, now);
   return token;
 }
 
 export function unlinkFile(db: DatabaseSync, id: string, username: string, now = Date.now()) {
-  nodeFor(db, id, username, "editor", { trashed: true });
+  const node = nodeFor(db, id, username, "editor", { trashed: true });
   db.prepare("UPDATE links SET revoked_at = ? WHERE node_id = ? AND revoked_at IS NULL").run(now, id);
+  touch(db, id, node.spaceId, now);
 }
 
 /** What a public link points at, if it still works. No account is involved. */
@@ -496,7 +611,12 @@ export function sharedFile(db: DatabaseSync, token: string, id: string): { name:
  * only the link it came through, and its unguessable id is what lets the
  * guest carry on with it.
  */
-export type Upload = { id: string; spaceId: string; parentId: string; name: string; mime: string | null; size: number; received: number; createdBy: string; link: string | null; guest: string | null };
+export type Upload = {
+  id: string; spaceId: string; parentId: string; name: string; mime: string | null; size: number; received: number; createdBy: string;
+  link: string | null; guest: string | null;
+  /** A file whose bytes this upload replaces, and the contentVersion it was edited from. */
+  replaces: string | null; baseVersion: number | null;
+};
 
 /** Unfinished guest uploads one link may have at once, so strangers can't promise the whole disk away. */
 export const guestUploadsAtOnce = 10;
@@ -515,8 +635,31 @@ export function startUpload(db: DatabaseSync, parentId: string, username: string
   const id = newId();
   db.prepare("INSERT INTO uploads (id, space_id, parent_id, name, mime, size, received, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)")
     .run(id, parent.spaceId, parentId, name, file.mime, file.size, username.toLowerCase(), now, now);
-  return { id, spaceId: parent.spaceId, parentId, name, mime: file.mime, size: file.size, received: 0, createdBy: username.toLowerCase(), link: null, guest: null };
+  return { id, spaceId: parent.spaceId, parentId, name, mime: file.mime, size: file.size, received: 0, createdBy: username.toLowerCase(), link: null, guest: null, replaces: null, baseVersion: null };
 }
+
+/**
+ * Starts new bytes for an existing file, as when it is edited and saved in
+ * another app. [baseVersion] is the contentVersion the edit started from; if
+ * someone else's edit lands first, this one is kept beside it as a copy
+ * rather than overwriting theirs (see finishUpload).
+ */
+export function startReplace(db: DatabaseSync, fileId: string, username: string, baseVersion: number, file: { size: number; mime: string | null }, maxBytes: number, now = Date.now()): Upload {
+  const node = nodeFor(db, fileId, username, "editor");
+  if (node.kind !== "file") throw new DriveProblem("Only a file's contents can be replaced.");
+  if (!Number.isSafeInteger(baseVersion) || baseVersion < 1) throw new DriveProblem("Say which version the edit started from.");
+  checkFile({ name: node.name, size: file.size }, maxBytes);
+  const id = newId();
+  db.prepare("INSERT INTO uploads (id, space_id, parent_id, name, mime, size, received, created_by, created_at, updated_at, replaces, base_version) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)")
+    .run(id, node.spaceId, node.parentId, node.name, file.mime, file.size, username.toLowerCase(), now, now, fileId, baseVersion);
+  return { id, spaceId: node.spaceId, parentId: node.parentId!, name: node.name, mime: file.mime, size: file.size, received: 0, createdBy: username.toLowerCase(), link: null, guest: null, replaces: fileId, baseVersion };
+}
+
+/** "report.docx" → "report (edited elsewhere).docx", the name a losing edit is kept under. */
+export const conflictName = (name: string) => {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? `${name.slice(0, dot)} (edited elsewhere)${name.slice(dot)}` : `${name} (edited elsewhere)`;
+};
 
 /** Starts an upload through a space's link, by someone without an account. [guest] is the name they give, if any. */
 export function startGuestUpload(db: DatabaseSync, token: string, folderId: string | undefined, guest: unknown, file: { name: unknown; size: number; mime: string | null }, maxBytes: number, now = Date.now()): Upload {
@@ -530,7 +673,7 @@ export function startGuestUpload(db: DatabaseSync, token: string, folderId: stri
   const id = newId();
   db.prepare("INSERT INTO uploads (id, space_id, parent_id, name, mime, size, received, created_by, created_at, updated_at, link, guest) VALUES (?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?)")
     .run(id, space.id, parent.id, name, file.mime, file.size, now, now, token, who);
-  return { id, spaceId: space.id, parentId: parent.id, name, mime: file.mime, size: file.size, received: 0, createdBy: "", link: token, guest: who };
+  return { id, spaceId: space.id, parentId: parent.id, name, mime: file.mime, size: file.size, received: 0, createdBy: "", link: token, guest: who, replaces: null, baseVersion: null };
 }
 
 function guestName(raw: unknown): string | null {
@@ -546,31 +689,48 @@ function guestName(raw: unknown): string | null {
  * whoever holds its id (username null) while its link still lets people add.
  */
 export function uploadFor(db: DatabaseSync, id: string, username: string | null): Upload {
-  const row = db.prepare("SELECT id, space_id, parent_id, name, mime, size, received, created_by, link, guest FROM uploads WHERE id = ?").get(id) as { id: string; space_id: string; parent_id: string; name: string; mime: string | null; size: number; received: number; created_by: string; link: string | null; guest: string | null } | undefined;
+  const row = db.prepare("SELECT id, space_id, parent_id, name, mime, size, received, created_by, link, guest, replaces, base_version FROM uploads WHERE id = ?").get(id) as { id: string; space_id: string; parent_id: string; name: string; mime: string | null; size: number; received: number; created_by: string; link: string | null; guest: string | null; replaces: string | null; base_version: number | null } | undefined;
   const missing = new DriveProblem("That upload doesn't exist.", 404);
   if (!row) throw missing;
   if (row.link) {
     const space = linkedSpace(db, row.link);
     if (!space || space.id !== row.space_id || space.access !== "add") throw missing;
   } else if (!username || row.created_by !== username.toLowerCase()) throw missing;
-  return { id: row.id, spaceId: row.space_id, parentId: row.parent_id, name: row.name, mime: row.mime, size: row.size, received: row.received, createdBy: row.created_by, link: row.link, guest: row.guest };
+  return { id: row.id, spaceId: row.space_id, parentId: row.parent_id, name: row.name, mime: row.mime, size: row.size, received: row.received, createdBy: row.created_by, link: row.link, guest: row.guest, replaces: row.replaces, baseVersion: row.base_version };
 }
 
 /** Puts a finished upload in its folder, as its member or as the guest. */
-export function finishUpload(db: DatabaseSync, upload: Upload, blob: string, now = Date.now()): DriveNode {
+export function finishUpload(db: DatabaseSync, upload: Upload, blob: string, now = Date.now()): { node: DriveNode; conflict: boolean; oldBlob: string | null } {
   db.exec("BEGIN");
   try {
-    let node: DriveNode;
-    if (upload.link) {
+    let node: DriveNode, conflict = false, oldBlob: string | null = null;
+    const file = { name: upload.name, size: upload.size, mime: upload.mime, blob };
+    if (upload.replaces) {
+      const target = nodeRow(db, upload.replaces);
+      const live = target && target.space_id === upload.spaceId && !inTrash(db, target.id);
+      if (live && target.content_version === upload.baseVersion) {
+        db.prepare("UPDATE nodes SET blob = ?, size = ?, mime = ?, content_version = content_version + 1, updated_at = ? WHERE id = ?").run(blob, upload.size, upload.mime, now, target.id);
+        touch(db, target.id, target.space_id, now);
+        oldBlob = target.blob;
+        node = toNode(nodeRow(db, target.id)!);
+      } else {
+        /* Someone else's edit landed first, or the file went: keep this one beside it, never over it. */
+        conflict = true;
+        const folder = live ? target.parent_id! : upload.parentId;
+        const parentOk = nodeRow(db, folder) && !inTrash(db, folder);
+        const parentId = parentOk ? folder : (db.prepare("SELECT root_id FROM spaces WHERE id = ?").get(upload.spaceId) as { root_id: string }).root_id;
+        node = addFile(db, parentId, upload.createdBy, { ...file, name: live ? conflictName(upload.name) : upload.name }, now);
+      }
+    } else if (upload.link) {
       const space = guestSpace(db, upload.link, "add");
       if (space.id !== upload.spaceId) throw new DriveProblem("This link doesn't work any more.", 404);
-      node = insertFile(db, guestNode(db, space, upload.parentId), "", upload.guest, { name: upload.name, size: upload.size, mime: upload.mime, blob }, now);
+      node = insertFile(db, guestNode(db, space, upload.parentId), "", upload.guest, file, now);
     } else {
-      node = addFile(db, upload.parentId, upload.createdBy, { name: upload.name, size: upload.size, mime: upload.mime, blob }, now);
+      node = addFile(db, upload.parentId, upload.createdBy, file, now);
     }
     endUpload(db, upload.id);
     db.exec("COMMIT");
-    return node;
+    return { node, conflict, oldBlob };
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
 
@@ -620,11 +780,14 @@ export function folderToSpace(db: DatabaseSync, folderId: string, username: stri
       UPDATE nodes SET space_id = ? WHERE id IN (SELECT id FROM tree)
     `).run(folder.id, id);
     db.prepare("UPDATE nodes SET parent_id = NULL, updated_at = ? WHERE id = ?").run(now, folder.id);
+    /* Gone for the old space's members; a new space for the new one's (whose log rows follow). */
+    touch(db, folder.id, folder.spaceId, now);
     db.prepare("INSERT INTO members (space_id, username, role, added_at) VALUES (?, ?, 'owner', ?)").run(id, owner, now);
     for (const member of input.members ?? []) {
       const who = member.username.toLowerCase();
       if (who !== owner) db.prepare("INSERT OR REPLACE INTO members (space_id, username, role, added_at) VALUES (?, ?, ?, ?)").run(id, who, validRole(member.role), now);
     }
+    touch(db, folder.id, id, now);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
   return spacesOf(db, owner).find((s) => s.id === id)!;

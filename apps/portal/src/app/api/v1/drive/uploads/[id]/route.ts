@@ -108,7 +108,12 @@ export async function PATCH(request: Request, { params }: Context) {
         const blob = newId();
         await keepUpload(root, id, blob);
         try {
-          headers["Kimono-File"] = finishUpload(db(), upload, blob).id;
+          const done = finishUpload(db(), upload, blob);
+          headers["Kimono-File"] = done.node.id;
+          headers["Kimono-Version"] = String(done.node.version);
+          headers["Kimono-Content-Version"] = String(done.node.contentVersion);
+          if (done.conflict) headers["Kimono-Conflict"] = "kept-as-copy";
+          if (done.oldBlob) await removeBlob(root, done.oldBlob);
         } catch (error) {
           await removeBlob(root, blob);
           endUpload(db(), id);
