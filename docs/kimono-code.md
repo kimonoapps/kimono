@@ -1,0 +1,234 @@
+# Kimono Code
+
+Coding agents in disposable sandboxes. A **workspace** is one Kimono Git
+repository, one branch and one sandbox. You talk to Claude Code in it, browse
+its files, read its changes, and open a pull request when it is done.
+
+- **Portal** (`/code`, `apps/portal/src/lib/code`) keeps workspaces,
+  conversations and every agent event in `code/code.db`, and streams events to
+  the browser. It never runs containers (ADR 0004).
+- **`kimono node sandboxes`** (`cli/internal/sandbox`) runs on a hosting node.
+  It owns Docker there, runs each sandbox under gVisor, and brokers the model and
+  Kimono Git so no real credential enters a sandbox.
+- **The sandbox image** (`infra/sandbox`) carries git, Node, Python, Go and
+  Claude Code. It holds no credentials.
+
+## Node API
+
+Portal is the only client. Everything is JSON over HTTP on the node's mesh
+address (default port `7480`), authenticated with
+`Authorization: Bearer <node key>`. Errors are `{ "error": "sentence" }` with a
+4xx/5xx status. Workspace ids match `^[a-z0-9-]{1,63}$`.
+
+### `GET /v1/health`
+`{ "ok": true, "version": "…", "runtime": "runsc" | "runc" }`
+
+### `PUT /v1/workspaces/{id}` — ensure
+Idempotent. Portal calls it before every other workspace call that needs a
+running sandbox, so a node restart (which forgets credentials) heals itself.
+
+```json
+{
+  "repo": { "url": "https://git.example.com/akram/kimono.git", "owner": "akram", "name": "kimono",
+            "base": "main", "branch": "code/fix-login-3fa2" },
+  "git":  { "token": "<Kimono Git token>", "name": "Akram", "email": "akram@example.com" },
+  "model": { "token": "<Anthropic API key or Claude OAuth token>" }
+}
+```
+
+Creates the container if missing, clones through the broker, creates `branch`
+from `base` (or checks it out if it exists on the remote), unpauses a paused
+sandbox. Credentials stay in the node's memory only.
+Returns `{ "id", "state": "starting" | "ready" | "paused", "branch", "runtime" }`.
+
+### `GET /v1/workspaces/{id}`
+`{ "id", "state": "ready" | "paused" | "busy" | "gone", "branch" }`. `gone` = no
+container (Portal shows it as asleep and ensures on next use).
+
+### `DELETE /v1/workspaces/{id}`
+Removes the container and its volume. `204`. Already gone is fine.
+
+### `POST /v1/workspaces/{id}/turns` — run the agent
+```json
+{ "prompt": "…", "session": "<claude session id or omitted>", "attachments": ["/attachments/a.png"] }
+```
+Response is `application/x-ndjson`, streamed until the turn ends. Each line is
+one JSON object: Claude Code's own `--output-format stream-json --verbose`
+lines passed through untouched, plus Kimono lines:
+
+- `{ "type": "kimono.started", "at": <ms> }` — first line.
+- `{ "type": "kimono.stderr", "text": "…" }` — agent stderr, rate-limited.
+- `{ "type": "kimono.done", "session": "<id>", "exit": 0, "at": <ms> }` — last
+  line, always, including on failure or cancel (`"cancelled": true`).
+
+One turn per workspace at a time; a second gets `409`. Attachments are paths
+already uploaded with the attachments call and are named in the prompt by the
+node (`Attached files: …`); images among them are also readable by the agent.
+
+### `POST /v1/workspaces/{id}/cancel`
+Stops the running turn. `204`.
+
+### `GET /v1/workspaces/{id}/files?path=<dir>`
+`{ "path": "src", "entries": [{ "name", "kind": "file" | "dir" | "link", "size" }] }`
+Paths are relative to the repository root; `..` and absolute paths are
+refused. `.git` is hidden. Dirs first, then by name.
+
+### `GET /v1/workspaces/{id}/file?path=<file>`
+Raw bytes, `Content-Type: application/octet-stream`, at most 2 MB (`413` past
+that).
+
+### `PUT /v1/workspaces/{id}/attachments?name=<file name>`
+Raw body, at most 20 MB. Stored at `/attachments/<name>` in the sandbox,
+outside the repository. Returns `{ "path": "/attachments/<name>" }`.
+
+### `GET /v1/workspaces/{id}/changes`
+Everything on the branch against `base`, committed or not, untracked included:
+```json
+{ "base": "main", "branch": "code/…",
+  "files": [{ "path", "status": "added" | "modified" | "deleted" | "renamed", "additions", "deletions" }],
+  "diff": "<unified diff, truncated at 1 MB>", "truncated": false }
+```
+
+### `POST /v1/workspaces/{id}/publish`
+`{ "title": "…", "body": "…" }` — commits anything uncommitted (message =
+title), pushes the branch, and opens a pull request into `base`, or returns the
+open one. `{ "url", "number" }`.
+
+## Screenshots and previews
+
+Code is for people who don't read diffs, so the agent shows its work: it takes
+screenshots of what it built, and it can run the app and hand back a link that
+anyone with it can open.
+
+**In the sandbox** (on `PATH`, documented to the agent in the system prompt the
+node appends to every turn):
+
+- `kimono-shot <url-or-file> [caption]` — a URL is opened in headless Chromium
+  at 1280×800 and captured (`--mobile` for 390×844, `--full` for the full page);
+  a file is copied as is. The picture lands in `/outbox/shots/`.
+- `kimono-serve <port> -- <command…>` — starts the command detached (it outlives
+  the turn) with `HOST=0.0.0.0` and `PORT` set, waits up to two minutes until
+  the port answers, and publishes it. Logs go to `/outbox/serve.log`. Running it
+  again replaces the previous one and keeps the same link.
+- `kimono-unserve` — stops it and takes the link down.
+
+**On the stream**, the node adds lines as these happen:
+
+- `{ "type": "kimono.image", "name": "<file>", "caption": "…" }`
+- `{ "type": "kimono.preview", "url": "https://…", "port": 3000 }`
+- `{ "type": "kimono.preview.stopped" }`
+
+**Node API additions**
+
+- `GET /v1/workspaces/{id}/outbox/{name}` — a screenshot's bytes (PNG/JPEG/WebP, ≤ 10 MB).
+- `GET /v1/workspaces/{id}/preview` — `{ "url", "port", "state": "live" | "down" }`, or `404` when there is none.
+- `DELETE /v1/workspaces/{id}/preview` — stops the server and takes the link down. `204`.
+- The ensure and state answers carry `"preview": { "url", "port" } | null`.
+
+**How a preview is reached — one DNS record, ever.** `kimono node sandboxes
+enable --preview-domain example.dev` gives the node its own Cloudflare tunnel
+whose only rule sends everything to the node's preview proxy, and creates a
+single wildcard record, `*.example.dev`, pointing at it. That is the only DNS
+change previews ever make: a new link is just a name the proxy starts
+answering for (`<words>-<6 hex>.example.dev`), and taking one down only stops
+answering. The wildcard is first-level, so Cloudflare's free universal
+certificate covers it.
+
+Use a domain of its own for previews if you can (any cheap one). A preview runs
+whatever the agent wrote, and on a separate registrable domain it can't set
+cookies for Kimono's. On Kimono's own domain the wildcard still works — records
+Kimono already has keep winning over it — but it's the less isolated choice.
+
+The proxy reaches an app on the sandbox's own address when it listens on all
+interfaces, and otherwise (an app bound to `localhost`, or Docker running in a
+VM as on macOS) through the sandbox itself, with `socat`. WebSockets pass
+through either way, so dev servers' live reload works.
+
+Without a preview domain (or in development) the proxy listens on
+`127.0.0.1:7482` and links are `http://<name>.localhost:7482`.
+
+A sandbox with a live preview is never paused. Taking a preview down, or
+deleting the workspace, makes the proxy stop answering for its name. Previews survive a node restart:
+the node keeps them in its state directory and restarts their servers on the
+next ensure.
+
+## Inside a sandbox
+
+- Repository at `/workspace`, attachments at `/attachments`, user `agent`
+  (uid 1000), no Docker socket, CPU/memory/pid limits, gVisor where installed.
+- `ANTHROPIC_BASE_URL` points at the node's model gateway and the agent's key is
+  a per-workspace capability. The gateway swaps it for the real credential.
+- `git` reaches Kimono Git only through the node's broker (`url.insteadOf` and
+  an extra header carrying the capability). The broker allows smart-HTTP for the
+  workspace's own repository and nothing else.
+- Idle for 2 minutes → paused. Ensuring unpauses it.
+
+## Set up a node
+
+On a Linux hosting node with Docker that has joined the Kimono mesh:
+
+```bash
+sudo kimono node sandboxes enable
+```
+
+This installs gVisor and registers it with Docker as `runsc`, keeping every other
+setting in `/etc/docker/daemon.json`. It makes a node key at
+`/etc/kimono/sandboxes.key`, pulls the sandbox image, and starts the
+`kimono-sandboxes` service on the node's mesh address, port `7480`. Last, it
+prints the sandbox address and key to enter in Kimono Code's settings. Pass
+`--listen` to use another address.
+
+- `kimono node sandboxes status`: the service, and every sandbox with its repository.
+- `sudo kimono node sandboxes disable`: stops the service; `--remove` also deletes the sandboxes.
+
+Each sandbox reaches the node's gateway on the sandbox network's gateway
+address, port `7481`. A host firewall must let the `kimono-sandboxes` bridge
+reach that port.
+
+For development, `serve --dev-git-dir DIR` serves the bare repositories in
+`DIR` as `http://dev.git/OWNER/NAME.git`, and also lets the node reach a Kimono
+Git on this machine over plain HTTP (`http://localhost:PORT`), such as a
+throwaway Forgejo container. `KIMONO_SANDBOX_AGENT`
+replaces the command a turn runs. Neither belongs on a real node.
+
+## Switch it on in Portal
+
+In Admin → Applications, switch on **Kimono Code** (Kimono Git must be on too)
+and fill in:
+
+| Setting | Value |
+| --- | --- |
+| Sandbox node | the address `enable` printed, e.g. `http://100.64.0.7:7480` |
+| Node key | the key `enable` printed |
+| Kimono Git token | a Kimono Git access token with repository read and write |
+| Claude token | an Anthropic API key, or what `claude setup-token` prints |
+
+Code then appears at `/code` for administrators. The tokens go to the node with
+each ensure and live only in its memory; no sandbox ever holds them.
+
+## Try it on one machine
+
+1. Run a throwaway Forgejo (`codeberg.org/forgejo/forgejo`) on a local port,
+   make a user, a token and a repository.
+2. Build the image (`docker build -t ghcr.io/kimonoapps/kimono-sandbox:dev infra/sandbox`)
+   and run `kimono node sandboxes serve --listen 127.0.0.1:7480 --key-file KEY
+   --image ghcr.io/kimonoapps/kimono-sandbox:dev --dev-git-dir DIR`, with
+   `KIMONO_SANDBOX_AGENT` set to a fake agent if you don't want to spend tokens.
+3. In the Portal's settings, point Code at `http://127.0.0.1:7480` and set
+   *Kimono Git address* (advanced) to the Forgejo's `http://localhost:PORT`.
+
+`pnpm --filter @kimono/portal test:code` covers the timeline, turns and the
+translation of Claude Code's stream; `go test ./cli/internal/sandbox` covers
+the node.
+
+## Phone
+
+The Kimono phone app (`apps/compose`) has Code too, for administrators: a card
+on Home opens the workspaces (`screens/Code.kt`, `data/Code.kt`). It uses the
+same `/api/v1/code` endpoints with its bearer token. Instead of holding a stream
+open it asks for `events?after=<seq>` (JSON) every second while the agent works
+and every five seconds otherwise, only while the screen is in front.
+Attachments come from the system file picker. Screenshots show as a gallery (tap for full
+screen, swipe between them), and a running app gets a card with Open, Share
+(the system share sheet) and Take down, plus an Open app action in the
+workspace's header.

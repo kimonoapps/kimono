@@ -1,0 +1,5 @@
+#!/bin/sh
+# kimono-shot <url-or-file> [caption] [--mobile] [--full]
+# A picture for the chat: a URL is opened in headless Chromium and captured,
+# an image file is copied. Pictures land in /outbox/shots.
+exec node /usr/local/lib/kimono/shot.cjs "$@"

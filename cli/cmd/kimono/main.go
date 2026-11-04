@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/kimonoapps/kimono/cli/internal/node"
+	"github.com/kimonoapps/kimono/cli/internal/sandbox"
 	"github.com/kimonoapps/kimono/cli/internal/server"
 	"github.com/kimonoapps/kimono/cli/internal/system"
 	"github.com/kimonoapps/kimono/cli/internal/update"
@@ -24,6 +25,7 @@ func run(args []string) error {
 		printHelp()
 		return nil
 	}
+	sandbox.Version = version
 	runner := system.NewRunner()
 	serverManager := server.New(runner)
 	nodeManager := node.New(runner)
@@ -77,6 +79,7 @@ Node commands:
   login     Re-enroll this client with a new single-use key
   logout    Remove this machine's current mesh login
   hosting tls  Obtain and renew HTTPS for Wings; mesh enrollment is optional
+  sandboxes enable  Run Kimono Code sandboxes on this hosting node
   expose    Optionally publish a local container or HTTP port
   unexpose  Stop one optional local exposure
   list      List optional local exposures

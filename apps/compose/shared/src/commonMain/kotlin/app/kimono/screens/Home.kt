@@ -63,7 +63,7 @@ import coil3.compose.AsyncImage
  * its website when it doesn't.
  */
 @Composable
-fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: AppUpdate?, onLater: () -> Unit, openDrive: () -> Unit) {
+fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: AppUpdate?, onLater: () -> Unit, openCode: () -> Unit = {}, openDrive: () -> Unit) {
     val first = me?.name?.split(" ")?.firstOrNull()?.takeIf { it.isNotBlank() } ?: me?.username ?: "home"
     var apps by remember { mutableStateOf(drive.knownApps()) }
     val driveOn by drive.driveOn.collectAsState()
@@ -102,7 +102,26 @@ fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: Ap
                 }
             }
         }
-        val list = apps.orEmpty()
+        /* Code is in the app too, for administrators while it is new; for anyone else it isn't offered at all. */
+        val code = apps?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }
+        if (code != null && (me?.role == "owner" || me?.role == "admin")) item {
+            Card(
+                onClick = openCode,
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer, contentColor = MaterialTheme.colorScheme.onSurface),
+                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    SvgMark(code.bloom, 60.dp)
+                    Column(Modifier.weight(1f)) {
+                        Text("Code", style = MaterialTheme.typography.headlineSmall)
+                        Text(code.description, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Icon(kimonoIcon("go"), null, modifier = Modifier.size(20.dp))
+                }
+            }
+        }
+        val list = apps.orEmpty().filter { it.id != app.kimono.data.Code.APP_ID }
         if (list.isNotEmpty()) {
             item { GroupLabel("More Kimono apps") }
             itemsIndexed(list, key = { _, app -> app.id }) { index, app ->

@@ -1,0 +1,246 @@
+package sandbox
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"os/exec"
+	"path"
+	"strings"
+	"sync"
+	"time"
+)
+
+type turnRequest struct {
+	Prompt      string   `json:"prompt"`
+	Session     string   `json:"session"`
+	Attachments []string `json:"attachments"`
+}
+
+// turnWrapper records the agent's process group so cancel can stop all of it:
+// setsid makes the shell a group leader, and eval keeps the agent in it.
+const turnWrapper = `echo $$ > /tmp/kimono-turn.pid; eval "$KIMONO_AGENT"`
+
+const cancelScript = `p=$(cat /tmp/kimono-turn.pid 2>/dev/null) || exit 0
+kill -TERM "-$p" 2>/dev/null || exit 0
+for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "-$p" 2>/dev/null || exit 0; sleep 0.5; done
+kill -KILL "-$p" 2>/dev/null || true`
+
+func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) error {
+	var request turnRequest
+	if err := readJSON(r, 1<<20, &request); err != nil {
+		return err
+	}
+	if strings.TrimSpace(request.Prompt) == "" {
+		return problem(400, "Say what the agent should do.")
+	}
+	if request.Session != "" && !namePattern.MatchString(request.Session) {
+		return problem(400, "That session isn't one Kimono can resume.")
+	}
+	prompt, err := withAttachments(request.Prompt, request.Attachments)
+	if err != nil {
+		return err
+	}
+	space, err := s.remembered(id)
+	if err != nil {
+		return err
+	}
+	if _, err := s.running(r.Context(), id); err != nil {
+		return err
+	}
+
+	space.mu.Lock()
+	if space.busy {
+		space.mu.Unlock()
+		return problem(409, "The agent is already working in this workspace.")
+	}
+	var stopOnce sync.Once
+	cancelled := false
+	stop := func() {
+		stopOnce.Do(func() {
+			space.mu.Lock()
+			cancelled = true
+			space.mu.Unlock()
+			// The container keeps running the agent if only the docker CLI dies.
+			stopping, done := context.WithTimeout(context.Background(), 15*time.Second)
+			defer done()
+			_, _ = s.docker.run(stopping, nil, "exec", "-u", "agent", containerName(id), "sh", "-c", cancelScript)
+		})
+	}
+	space.busy, space.cancel, space.lastActive = true, func() { go stop() }, time.Now()
+	space.mu.Unlock()
+	defer func() {
+		space.mu.Lock()
+		space.busy, space.cancel, space.lastActive = false, nil, time.Now()
+		space.mu.Unlock()
+	}()
+
+	s.primeOutbox(space)
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + s.cfg.SystemPrompt}
+	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
+	cmd := exec.Command(s.cfg.Docker, args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// The Portal going away ends the turn; nothing else would read it.
+	finished := make(chan struct{})
+	defer close(finished)
+	go func() {
+		select {
+		case <-r.Context().Done():
+			stop()
+		case <-finished:
+		}
+	}()
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	out := &lineWriter{w: w}
+	out.json(map[string]any{"type": "kimono.started", "at": time.Now().UnixMilli()})
+
+	var wait sync.WaitGroup
+	wait.Add(1)
+	go func() {
+		defer wait.Done()
+		forwardStderr(stderr, out)
+	}()
+	// Pictures and previews are reported as they appear, and once more at the end.
+	stopWatching := make(chan struct{})
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		s.watchOutbox(space, out, stopWatching)
+	}()
+	session := request.Session
+	reader := bufio.NewReaderSize(stdout, 64<<10)
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if trimmed := strings.TrimSpace(string(line)); trimmed != "" {
+			if json.Valid([]byte(trimmed)) && strings.HasPrefix(trimmed, "{") {
+				var meta struct {
+					SessionID string `json:"session_id"`
+				}
+				if json.Unmarshal([]byte(trimmed), &meta) == nil && meta.SessionID != "" {
+					session = meta.SessionID
+				}
+				out.raw(trimmed)
+			} else {
+				out.json(map[string]any{"type": "kimono.stderr", "text": truncate(trimmed, 2000)})
+			}
+		}
+		if readErr != nil {
+			break
+		}
+		space.touch()
+	}
+	wait.Wait()
+	close(stopWatching)
+	<-watched
+	exit := 0
+	if err := cmd.Wait(); err != nil {
+		var failure *exec.ExitError
+		if errors.As(err, &failure) {
+			exit = failure.ExitCode()
+		} else {
+			exit = -1
+		}
+	}
+	space.mu.Lock()
+	wasCancelled := cancelled
+	space.mu.Unlock()
+	done := map[string]any{"type": "kimono.done", "session": session, "exit": exit, "at": time.Now().UnixMilli()}
+	if wasCancelled {
+		done["cancelled"] = true
+	}
+	out.json(done)
+	return nil
+}
+
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, id string) error {
+	s.mu.Lock()
+	space := s.spaces[id]
+	s.mu.Unlock()
+	if space != nil {
+		space.mu.Lock()
+		cancel := space.cancel
+		space.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// withAttachments names the uploaded files in the prompt, after checking they
+// are ones the attachments call could have made.
+func withAttachments(prompt string, attachments []string) (string, error) {
+	if len(attachments) == 0 {
+		return prompt, nil
+	}
+	if len(attachments) > 20 {
+		return "", problem(400, "Attach at most 20 files to one message.")
+	}
+	for _, attachment := range attachments {
+		if path.Dir(attachment) != "/attachments" || !validAttachmentName(path.Base(attachment)) {
+			return "", problem(400, "That attachment isn't one this workspace has.")
+		}
+	}
+	return prompt + "\n\nAttached files: " + strings.Join(attachments, ", "), nil
+}
+
+// forwardStderr passes the agent's stderr on, but at most 200 lines a turn.
+func forwardStderr(stderr io.Reader, out *lineWriter) {
+	scanner := bufio.NewScanner(stderr)
+	scanner.Buffer(make([]byte, 64<<10), 1<<20)
+	sent := 0
+	for scanner.Scan() {
+		text := strings.TrimSpace(scanner.Text())
+		if text == "" {
+			continue
+		}
+		if sent++; sent > 200 {
+			continue
+		}
+		out.json(map[string]any{"type": "kimono.stderr", "text": truncate(text, 2000)})
+	}
+}
+
+func truncate(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	return text[:limit] + "…"
+}
+
+// lineWriter writes whole NDJSON lines from several goroutines, flushing each.
+type lineWriter struct {
+	mu sync.Mutex
+	w  http.ResponseWriter
+}
+
+func (l *lineWriter) raw(line string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, _ = io.WriteString(l.w, line+"\n")
+	if flusher, ok := l.w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (l *lineWriter) json(value any) {
+	encoded, _ := json.Marshal(value)
+	l.raw(string(encoded))
+}

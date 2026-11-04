@@ -1,0 +1,73 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "kimono-code",
+    "name": "Kimono Code",
+    "shortName": "Code",
+    "description": "Coding agents that work on your Kimono Git repositories in their own sandbox.",
+    "category": "Development",
+    "version": "0.1.0",
+    "icon": "icon.svg",
+    "colors": [
+      "#3f6b6a",
+      "#24403f",
+      "#cfe1dc"
+    ],
+    "glyph": "code"
+  },
+  "spec": {
+    "integration": "native",
+    "services": [],
+    "volumes": [],
+    "configuration": [
+      {
+        "key": "node_address",
+        "label": "Sandbox node",
+        "kind": "text",
+        "group": "sandboxes",
+        "target": "settings",
+        "description": "The address kimono node sandboxes enable printed, such as http://100.64.0.7:7480."
+      },
+      {
+        "key": "node_key",
+        "label": "Node key",
+        "kind": "secret",
+        "group": "sandboxes",
+        "target": "settings"
+      },
+      {
+        "key": "git_token",
+        "label": "Kimono Git token",
+        "kind": "secret",
+        "group": "agent",
+        "target": "settings",
+        "description": "An access token with repository read and write."
+      },
+      {
+        "key": "model_token",
+        "label": "Claude token",
+        "kind": "secret",
+        "group": "agent",
+        "target": "settings",
+        "description": "An Anthropic API key, or the token claude setup-token prints."
+      },
+      {
+        "key": "git_address",
+        "label": "Kimono Git address",
+        "kind": "text",
+        "group": "agent",
+        "target": "settings",
+        "advanced": true,
+        "description": "Empty to use Kimono Git on this server."
+      }
+    ],
+    "managedEnvironment": [],
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    },
+    "portalPath": "/code",
+    "setupReady": true
+  }
+}

@@ -6,7 +6,7 @@
  * between them. Strokes are round and even: these are read at 20px, where a
  * thin line and a sharp corner both disappear.
  */
-export type GlyphName = "mesh" | "notes" | "play" | "image" | "shield" | "bloom" | "git" | "server" | "tools" | "file";
+export type GlyphName = "mesh" | "notes" | "play" | "image" | "shield" | "bloom" | "git" | "server" | "tools" | "file" | "code";
 
 /**
  * Each glyph as SVG markup, so the website's bloom and the one the Portal
@@ -26,6 +26,8 @@ export const glyphMarkup: Record<GlyphName, string> = {
   bloom: '<circle cx="50" cy="50" r="6"></circle>',
   /* A page with its corner folded: Drive. */
   file: '<path d="M41 36 H54 L60 42 V64 H41 Z" stroke-linejoin="round"></path><path d="M54 36 V42 H60" stroke-linejoin="round"></path>',
+  /* Two brackets and a stroke between them: Code. */
+  code: '<path d="M43 40 L34 50 L43 60"></path><path d="M57 40 L66 50 L57 60"></path><path d="M53 37 L47 63"></path>',
 };
 
 /** The glyph as markup, in the group <Glyph> draws it in. */

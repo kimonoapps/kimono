@@ -63,6 +63,8 @@ import app.kimono.screens.DriveModel
 import app.kimono.screens.DriveScreen
 import app.kimono.screens.FolderScreen
 import app.kimono.screens.HomeScreen
+import app.kimono.screens.CodeScreen
+import app.kimono.screens.WorkspaceScreen
 import app.kimono.screens.TrashScreen
 import app.kimono.screens.UpdateScreen
 import app.kimono.data.AppUpdate
@@ -117,6 +119,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val route = entry?.destination?.route
     val tab = route == "home" || route == "drive" || route == "you"
     val model = remember(session) { DriveModel(Drive(session), platform) }
+    val code = remember(session) { app.kimono.data.Code(session) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
     /* Drive is the server's to switch on: asked on opening, and the tab and the Files app entry follow. */
     val driveOn by model.drive.driveOn.collectAsState()
@@ -124,7 +127,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -147,7 +150,12 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) EnterTransition.None else slideInHorizontally(tween(320)) { -it / 4 } },
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) fadeOut(tween(120)) else slideOutHorizontally(tween(320)) { it } },
         ) {
-            composable("home") { HomeScreen(me, model.drive, platform, update, onLater) { goTab("drive") } }
+            composable("home") { HomeScreen(me, model.drive, platform, update, onLater, openCode = { nav.navigate("code") }) { goTab("drive") } }
+            composable("code") { CodeScreen(code, model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.bloom) { nav.navigate(it) } }
+            composable("code/{id}") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                WorkspaceScreen(code, platform, id) { nav.popBackStack() }
+            }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }
             composable("space/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""

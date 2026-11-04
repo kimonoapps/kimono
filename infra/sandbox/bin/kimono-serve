@@ -1,0 +1,43 @@
+#!/bin/bash
+# kimono-serve <port> -- <command…>
+# Starts the app detached (it keeps running after the turn), waits until the
+# port answers, and publishes it: Kimono shows the person a link to open.
+# Running it again replaces the app it started before.
+set -u
+usage() { echo 'usage: kimono-serve <port> -- <command…>   e.g. kimono-serve 3000 -- npm run dev -- --host 0.0.0.0' >&2; exit 2; }
+[ $# -ge 1 ] || usage
+port=$1; shift
+case $port in ''|*[!0-9]*) usage ;; esac
+[ "$port" -ge 1 ] && [ "$port" -le 65535 ] || usage
+[ "${1:-}" = "--" ] && shift
+[ $# -ge 1 ] || usage
+
+mkdir -p /outbox
+# While this runs, the node keeps the old link instead of taking it down.
+touch /outbox/.serve-restarting
+trap 'rm -f /outbox/.serve-restarting' EXIT
+kimono-unserve --quiet
+# A session of its own: the turn ending, or being stopped, leaves it running.
+HOST=0.0.0.0 PORT=$port setsid nohup "$@" > /outbox/serve.log 2>&1 < /dev/null &
+pid=$!
+for _ in $(seq 1 240); do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    # The command as a JSON array, so the node can start it again exactly.
+    command='[]'
+    for arg in "$@"; do command=$(jq -c --arg a "$arg" '. + [$a]' <<< "$command"); done
+    jq -cn --argjson port "$port" --argjson pid "$pid" --argjson command "$command" '{port: $port, pid: $pid, command: $command}' > /outbox/.serve.json
+    mv /outbox/.serve.json /outbox/serve.json
+    echo "Running on port $port. The person gets a link to it in the chat."
+    exit 0
+  fi
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "The app stopped before it answered on port $port. Its last output:" >&2
+    tail -n 30 /outbox/serve.log >&2
+    exit 1
+  fi
+  sleep 0.5
+done
+echo "Nothing answered on port $port after 2 minutes. Its last output:" >&2
+tail -n 30 /outbox/serve.log >&2
+kill -TERM -- "-$pid" 2>/dev/null
+exit 1

@@ -1,0 +1,29 @@
+import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
+import { ask, code, createWorkspace, db, workspaceFor, workspacesOf, type Attachment } from "@/lib/code";
+
+/** Your workspaces, the most recently active first. */
+export async function GET() {
+  const user = await apiUser();
+  if (!user) return unauthorized();
+  return code(user, () => apiJson({ workspaces: workspacesOf(db(), user.username) }), false);
+}
+
+/**
+ * Starts a workspace from what you ask: `{ owner, name, base, prompt }`. The
+ * sandbox is made and the agent starts on the prompt straight away. Files are
+ * attached to a workspace once it exists, so a first message carries none.
+ */
+export async function POST(request: Request) {
+  const refused = crossSite(request);
+  if (refused) return refused;
+  const user = await apiUser();
+  if (!user) return unauthorized();
+  const read = await readJson(request);
+  if ("response" in read) return read.response;
+  return code(user, (config) => {
+    const body = read.body as { owner?: unknown; name?: unknown; base?: unknown; prompt?: unknown };
+    const made = createWorkspace(db(), user.username, { repoOwner: body.owner, repoName: body.name, base: body.base, prompt: body.prompt });
+    ask(config, made, user, String(body.prompt), [] as Attachment[]);
+    return apiJson(workspaceFor(db(), made.id, user.username), 201);
+  });
+}

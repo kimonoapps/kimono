@@ -1,0 +1,105 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import * as model from '../src/lib/code/model.ts';
+import { finish, translate } from '../src/lib/code/events.ts';
+
+function fresh() {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  return db;
+}
+const start = (db, owner = 'akram', prompt = 'Fix the login redirect loop on Safari') =>
+  model.createWorkspace(db, owner, { repoOwner: 'akram', repoName: 'kimono', base: 'main', prompt });
+
+test('a workspace is named from its first line and gets its own branch', () => {
+  const db = fresh();
+  const w = start(db, 'Akram', 'Fix the login redirect loop on Safari\n\nIt happens after sign out.');
+  assert.equal(w.title, 'Fix the login redirect loop on Safari');
+  assert.match(w.branch, /^code\/fix-the-login-redirect-loop-[0-9a-f]{4}$/);
+  assert.equal(w.owner, 'akram');
+  assert.equal(w.turn, null);
+  assert.equal(model.workspacesOf(db, 'akram').length, 1);
+});
+
+test('only its owner sees a workspace', () => {
+  const db = fresh();
+  const w = start(db);
+  assert.throws(() => model.workspaceFor(db, w.id, 'mina'), (e) => e.status === 404);
+  assert.equal(model.workspacesOf(db, 'mina').length, 0);
+  assert.throws(() => model.removeWorkspace(db, w.id, 'mina'), (e) => e.status === 404);
+});
+
+test('it refuses a bad repository, branch, or an empty task', () => {
+  const db = fresh();
+  assert.throws(() => model.createWorkspace(db, 'a', { repoOwner: '../x', repoName: 'k', base: 'main', prompt: 'x' }), /repository/);
+  assert.throws(() => model.createWorkspace(db, 'a', { repoOwner: 'a', repoName: 'k', base: 'a..b', prompt: 'x' }), /branch/);
+  assert.throws(() => model.createWorkspace(db, 'a', { repoOwner: 'a', repoName: 'k', base: 'main', prompt: '  ' }), /what to do/);
+});
+
+test('one turn at a time, and the list shows the latest', () => {
+  const db = fresh();
+  const w = start(db);
+  const turn = model.startTurn(db, w.id, 1000);
+  assert.throws(() => model.startTurn(db, w.id), (e) => e.status === 409);
+  assert.equal(model.workspaceFor(db, w.id, 'akram').turn.state, 'running');
+  model.endTurn(db, turn, 'done', 2000);
+  const after = model.workspaceFor(db, w.id, 'akram');
+  assert.deepEqual([after.turn.state, after.turn.endedAt], ['done', 2000]);
+  model.startTurn(db, w.id, 3000);
+});
+
+test('events replay in order from where a reader left off', () => {
+  const db = fresh();
+  const w = start(db);
+  const a = model.appendEvent(db, w.id, null, { kind: 'started' });
+  const b = model.appendEvent(db, w.id, null, { kind: 'text', text: 'hi' });
+  assert.deepEqual([a.seq, b.seq], [1, 2]);
+  assert.deepEqual(model.eventsAfter(db, w.id, 1).map((e) => e.event.kind), ['text']);
+  assert.equal(model.workspaceFor(db, w.id, 'akram').lastSeq, 2);
+});
+
+test('a restart fails the turns nobody is driving any more', () => {
+  const db = fresh();
+  const w = start(db);
+  model.startTurn(db, w.id);
+  assert.equal(model.abandonRunningTurns(db).length, 1);
+  assert.equal(model.workspaceFor(db, w.id, 'akram').turn.state, 'failed');
+});
+
+test("Claude Code's stream becomes text, tool calls and their results", () => {
+  const assistant = translate({ type: 'assistant', session_id: 's1', message: { content: [
+    { type: 'text', text: 'Looking at the redirect.' },
+    { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/workspace/src/auth.ts' } },
+    { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'pnpm test' } },
+  ] } });
+  assert.equal(assistant.session, 's1');
+  assert.deepEqual(assistant.events, [
+    { kind: 'text', text: 'Looking at the redirect.' },
+    { kind: 'tool', id: 't1', name: 'Read', label: 'Read', detail: 'src/auth.ts' },
+    { kind: 'tool', id: 't2', name: 'Bash', label: 'Ran', detail: 'pnpm test' },
+  ]);
+  const result = translate({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', is_error: true, content: [{ type: 'text', text: '1 failing' }] }] } });
+  assert.deepEqual(result.events, [{ kind: 'tool-result', id: 't2', ok: false, output: '1 failing' }]);
+  assert.deepEqual(translate({ type: 'system', subtype: 'init', session_id: 's1' }).events, []);
+});
+
+test('a turn ends done, failed, or stopped', () => {
+  const ok = translate({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0.42, duration_ms: 61000, session_id: 's1' });
+  assert.deepEqual(finish(ok.result, { exit: 0 }), { kind: 'done', ok: true, costUsd: 0.42, durationMs: 61000 });
+  const bad = translate({ type: 'result', subtype: 'error_max_turns', is_error: true });
+  assert.equal(finish(bad.result, { exit: 1 }).ok, false);
+  assert.deepEqual(finish(null, { cancelled: true }), { kind: 'done', ok: false, cancelled: true });
+  assert.equal(finish(null, null).error, 'The sandbox stopped answering.');
+});
+
+test('a workspace remembers the app it is running, and only real links', () => {
+  const db = fresh();
+  const w = start(db);
+  model.setPreview(db, w.id, { url: 'https://notes-a1b2c3.example.dev', port: 3000 });
+  assert.deepEqual(model.workspaceFor(db, w.id, 'akram').preview, { url: 'https://notes-a1b2c3.example.dev', port: 3000 });
+  model.setPreview(db, w.id, { url: 'javascript:alert(1)', port: 3000 });
+  assert.equal(model.workspaceFor(db, w.id, 'akram').preview, null);
+  model.setPreview(db, w.id, null);
+  assert.equal(model.workspaceFor(db, w.id, 'akram').preview, null);
+});

@@ -1,0 +1,279 @@
+package sandbox
+
+import (
+	"bytes"
+	"io"
+	"net/http"
+	"path"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+const (
+	maxFileBytes       = 2 << 20
+	maxAttachmentBytes = 20 << 20
+	maxDiffBytes       = 1 << 20
+)
+
+// cleanPath turns a path the Portal sends into one relative to the repository
+// root, refusing anything that climbs out of it or into .git.
+func cleanPath(raw string) (string, bool) {
+	if strings.ContainsRune(raw, 0) || strings.HasPrefix(raw, "/") || len(raw) > 4096 {
+		return "", false
+	}
+	for _, segment := range strings.Split(raw, "/") {
+		if segment == ".." {
+			return "", false
+		}
+	}
+	cleaned := path.Clean(raw)
+	if cleaned == "." {
+		return "", true
+	}
+	if first, _, _ := strings.Cut(cleaned, "/"); first == ".git" {
+		return "", false
+	}
+	return cleaned, true
+}
+
+var attachmentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9 ._()-]{0,127}$`)
+
+func validAttachmentName(name string) bool {
+	return attachmentPattern.MatchString(name) && !strings.Contains(name, "..")
+}
+
+type entry struct {
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Size int64  `json:"size"`
+}
+
+// parseListing reads find's `%y\t%s\t%f\0` records, hiding .git.
+func parseListing(out []byte) []entry {
+	entries := []entry{}
+	for _, record := range bytes.Split(out, []byte{0}) {
+		fields := strings.SplitN(string(record), "\t", 3)
+		if len(fields) != 3 || fields[2] == "" || fields[2] == ".git" {
+			continue
+		}
+		kind := "file"
+		switch fields[0] {
+		case "d":
+			kind = "dir"
+		case "l":
+			kind = "link"
+		}
+		size, _ := strconv.ParseInt(fields[1], 10, 64)
+		if kind == "dir" {
+			size = 0
+		}
+		entries = append(entries, entry{Name: fields[2], Kind: kind, Size: size})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if (entries[i].Kind == "dir") != (entries[j].Kind == "dir") {
+			return entries[i].Kind == "dir"
+		}
+		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
+	})
+	return entries
+}
+
+func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request, id string) error {
+	dir, ok := cleanPath(r.URL.Query().Get("path"))
+	if !ok {
+		return problem(400, "That path isn't in this workspace.")
+	}
+	space, err := s.running(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	target := "./" + dir
+	if dir == "" {
+		target = "."
+	}
+	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c",
+		`[ -d "$1" ] || exit 3; find "$1" -mindepth 1 -maxdepth 1 -printf '%y\t%s\t%f\0'`, "files", target)
+	if exitCode(err) == 3 {
+		return problem(404, "That folder isn't in this workspace.")
+	}
+	if err != nil {
+		return err
+	}
+	writeJSON(w, 200, map[string]any{"path": dir, "entries": parseListing(out)})
+	return nil
+}
+
+func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, id string) error {
+	file, ok := cleanPath(r.URL.Query().Get("path"))
+	if !ok || file == "" {
+		return problem(400, "That path isn't in this workspace.")
+	}
+	space, err := s.running(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c",
+		`[ -f "$1" ] || exit 3; [ "$(stat -c %s -- "$1")" -le `+strconv.Itoa(maxFileBytes)+` ] || exit 4; cat -- "$1"`, "file", "./"+file)
+	switch exitCode(err) {
+	case 3:
+		return problem(404, "That file isn't in this workspace.")
+	case 4:
+		return problem(413, "That file is too large to show.")
+	}
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(out)))
+	w.WriteHeader(200)
+	_, _ = w.Write(out)
+	return nil
+}
+
+func (s *Server) handleAttachment(w http.ResponseWriter, r *http.Request, id string) error {
+	name := r.URL.Query().Get("name")
+	if !validAttachmentName(name) {
+		return problem(400, "That file name isn't one Kimono can use.")
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxAttachmentBytes+1))
+	if err != nil {
+		return problem(400, "The file couldn't be read.")
+	}
+	if len(body) > maxAttachmentBytes {
+		return problem(413, "Attachments can be at most 20 MB.")
+	}
+	space, err := s.running(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	if _, err := s.exec(r.Context(), space, nil, bytes.NewReader(body), "sh", "-c",
+		`mkdir -p /attachments && cat > "/attachments/$1"`, "attach", name); err != nil {
+		return err
+	}
+	writeJSON(w, 200, map[string]string{"path": "/attachments/" + name})
+	return nil
+}
+
+type changedFile struct {
+	Path      string `json:"path"`
+	Status    string `json:"status"`
+	Additions int    `json:"additions"`
+	Deletions int    `json:"deletions"`
+}
+
+// parseNameStatus reads `git diff --name-status -z`. A rename or copy carries
+// two paths; the file is listed under its new one.
+func parseNameStatus(out []byte) []changedFile {
+	fields := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	files := []changedFile{}
+	for i := 0; i < len(fields); i++ {
+		code := fields[i]
+		if code == "" {
+			continue
+		}
+		status := "modified"
+		paths := 1
+		switch code[0] {
+		case 'A':
+			status = "added"
+		case 'D':
+			status = "deleted"
+		case 'R':
+			status, paths = "renamed", 2
+		case 'C':
+			status, paths = "added", 2
+		}
+		if i+paths >= len(fields) {
+			break
+		}
+		files = append(files, changedFile{Path: fields[i+paths], Status: status})
+		i += paths
+	}
+	return files
+}
+
+// parseNumstat reads `git diff --numstat -z` into added and deleted lines by
+// path. Binary files count as zero.
+func parseNumstat(out []byte) map[string][2]int {
+	counts := map[string][2]int{}
+	fields := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	for i := 0; i < len(fields); i++ {
+		parts := strings.SplitN(fields[i], "\t", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		added, _ := strconv.Atoi(parts[0])
+		deleted, _ := strconv.Atoi(parts[1])
+		name := parts[2]
+		if name == "" { // a rename: the old and new paths follow
+			if i+2 >= len(fields) {
+				break
+			}
+			name = fields[i+2]
+			i += 2
+		}
+		counts[name] = [2]int{added, deleted}
+	}
+	return counts
+}
+
+func (s *Server) handleChanges(w http.ResponseWriter, r *http.Request, id string) error {
+	space, err := s.running(r.Context(), id)
+	if err != nil {
+		return err
+	}
+	base := r.URL.Query().Get("base")
+	branch := ""
+	space.mu.Lock()
+	if space.repo.Base != "" {
+		base, branch = space.repo.Base, space.repo.Branch
+	}
+	space.mu.Unlock()
+	if base == "" {
+		out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c", `git symbolic-ref --quiet --short refs/remotes/origin/HEAD | sed 's#^origin/##'`)
+		if err != nil {
+			return problem(409, "Ensure the workspace first.")
+		}
+		base = strings.TrimSpace(string(out))
+	}
+	if !validBranch(base) {
+		return problem(400, "That branch name isn't one Kimono can use.")
+	}
+	if branch == "" {
+		out, _ := s.exec(r.Context(), space, nil, nil, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
+		branch = strings.TrimSpace(string(out))
+	}
+	// Untracked files are listed by marking them intent-to-add; it records
+	// nothing but their names, and committing them later is unaffected.
+	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c",
+		`git add -A -N >/dev/null 2>&1; git merge-base HEAD "origin/$1"`, "changes", base)
+	if err != nil {
+		return problem(409, "This branch has nothing in common with "+base+".")
+	}
+	mergeBase := strings.TrimSpace(string(out))
+	names, err := s.exec(r.Context(), space, nil, nil, "git", "diff", "--name-status", "-z", "-M", mergeBase)
+	if err != nil {
+		return err
+	}
+	numbers, err := s.exec(r.Context(), space, nil, nil, "git", "diff", "--numstat", "-z", "-M", mergeBase)
+	if err != nil {
+		return err
+	}
+	diff, err := s.exec(r.Context(), space, nil, nil, "git", "diff", "-M", mergeBase)
+	if err != nil {
+		return err
+	}
+	files := parseNameStatus(names)
+	counts := parseNumstat(numbers)
+	for i := range files {
+		files[i].Additions, files[i].Deletions = counts[files[i].Path][0], counts[files[i].Path][1]
+	}
+	truncated := len(diff) > maxDiffBytes
+	if truncated {
+		diff = diff[:maxDiffBytes]
+	}
+	writeJSON(w, 200, map[string]any{"base": base, "branch": branch, "files": files, "diff": string(diff), "truncated": truncated})
+	return nil
+}

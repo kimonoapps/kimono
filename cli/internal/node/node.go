@@ -32,7 +32,7 @@ func New(runner *system.Runner) *Manager {
 
 func (m *Manager) Execute(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: kimono node <install|login|logout|status|doctor|hosting|expose|unexpose|list|inspect|logs>")
+		return errors.New("usage: kimono node <install|login|logout|status|doctor|hosting|sandboxes|expose|unexpose|list|inspect|logs>")
 	}
 	switch args[0] {
 	case "install":
@@ -47,6 +47,8 @@ func (m *Manager) Execute(args []string) error {
 		return m.doctor()
 	case "hosting":
 		return m.hosting(args[1:])
+	case "sandboxes":
+		return m.sandboxes(args[1:])
 	case "expose":
 		return m.expose(args[1:])
 	case "unexpose":
