@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,10 @@ type Server struct {
 	// now is the clock, replaceable in tests; started is when this node began.
 	now     func() time.Time
 	started time.Time
+	// firewall is the rule set in force, nil where none is applied; fwRun
+	// replaces iptables in tests.
+	firewall *firewallPlan
+	fwRun    fwRunner
 }
 
 // apiProblem is a refusal the Portal shows as it is.
@@ -59,10 +64,11 @@ func New(cfg Config) (*Server, error) {
 
 // Run prepares Docker, then serves the API and the gateway until ctx ends.
 func (s *Server) Run(ctx context.Context) error {
-	gatewayIP, err := s.docker.ensureNetwork(ctx, s.cfg.Network)
+	network, err := s.docker.ensureNetwork(ctx, s.cfg.Network)
 	if err != nil {
 		return err
 	}
+	gatewayIP := network.Gateway4
 	switch {
 	case s.cfg.Runtime != "":
 		s.runtime = s.cfg.Runtime
@@ -91,6 +97,15 @@ func (s *Server) Run(ctx context.Context) error {
 			host = "host.docker.internal"
 		}
 		s.gatewayURL = "http://" + net.JoinHostPort(host, port)
+	}
+
+	_, gatewayPort, err := net.SplitHostPort(gatewayListen)
+	if err != nil {
+		return fmt.Errorf("gateway address %q: %w", gatewayListen, err)
+	}
+	port, _ := strconv.Atoi(gatewayPort)
+	if err := s.guardNetwork(ctx, network, port); err != nil {
+		return err
 	}
 
 	api := &http.Server{Addr: s.cfg.Listen, Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}

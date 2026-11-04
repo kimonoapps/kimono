@@ -75,8 +75,16 @@ type Config struct {
 	PreviewDomain string
 	// SystemPrompt is appended to the agent's on every turn.
 	SystemPrompt string
-	Docker       string
-	Logf         func(format string, args ...any)
+	// AllowPrivate are private networks sandboxes may still reach, such as a
+	// LAN package mirror; everything else private is refused.
+	AllowPrivate []string
+	// AllowOpenNetwork runs sandboxes without the firewall. Development only.
+	AllowOpenNetwork bool
+	// DNS are the resolvers sandboxes use while the firewall is on, since a
+	// LAN resolver is out of their reach.
+	DNS    []string
+	Docker string
+	Logf   func(format string, args ...any)
 }
 
 func (c *Config) defaults() error {
@@ -130,6 +138,9 @@ func (c *Config) defaults() error {
 	c.PreviewDomain = strings.Trim(strings.ToLower(c.PreviewDomain), ".")
 	if c.SystemPrompt == "" {
 		c.SystemPrompt = SystemPrompt
+	}
+	if len(c.DNS) == 0 {
+		c.DNS = []string{"1.1.1.1", "9.9.9.9"}
 	}
 	if c.Docker == "" {
 		c.Docker = "docker"

@@ -72,27 +72,45 @@ func (d docker) hasRuntime(ctx context.Context, name string) bool {
 }
 
 // ensureNetwork makes the sandboxes' bridge, with containers unable to reach
-// one another, and returns its gateway address.
-func (d docker) ensureNetwork(ctx context.Context, name string) (string, error) {
-	inspect := func() ([]byte, error) {
-		return d.run(ctx, nil, "network", "inspect", "-f", "{{range .IPAM.Config}}{{.Gateway}} {{end}}", name)
-	}
-	out, err := inspect()
+// one another and no IPv6 (so the firewall has one family to keep), and
+// returns its addresses.
+func (d docker) ensureNetwork(ctx context.Context, name string) (sandboxNet, error) {
+	n, err := d.inspectNetwork(ctx, name)
 	if err != nil {
 		if _, err := d.run(ctx, nil, "network", "create", "--driver", "bridge", "--label", "kimono.sandbox=network",
-			"-o", "com.docker.network.bridge.enable_icc=false", name); err != nil {
-			return "", fmt.Errorf("create the sandbox network: %w", err)
+			"--ipv6=false", "-o", "com.docker.network.bridge.enable_icc=false", name); err != nil {
+			return sandboxNet{}, fmt.Errorf("create the sandbox network: %w", err)
 		}
-		if out, err = inspect(); err != nil {
-			return "", err
-		}
-	}
-	for _, gateway := range strings.Fields(string(out)) {
-		if !strings.Contains(gateway, ":") {
-			return gateway, nil
+		if n, err = d.inspectNetwork(ctx, name); err != nil {
+			return sandboxNet{}, err
 		}
 	}
-	return "", fmt.Errorf("the %s network has no IPv4 gateway", name)
+	if n.Gateway4 == "" {
+		return n, fmt.Errorf("the %s network has no IPv4 gateway", name)
+	}
+	return n, nil
+}
+
+// inspectNetwork reads a network's subnets and gateways, IPv4 and IPv6.
+func (d docker) inspectNetwork(ctx context.Context, name string) (sandboxNet, error) {
+	out, err := d.run(ctx, nil, "network", "inspect", "-f", "{{range .IPAM.Config}}{{.Subnet}}|{{.Gateway}} {{end}}", name)
+	if err != nil {
+		return sandboxNet{}, err
+	}
+	return parseNetwork(string(out)), nil
+}
+
+func parseNetwork(out string) sandboxNet {
+	var n sandboxNet
+	for _, field := range strings.Fields(out) {
+		subnet, gateway, _ := strings.Cut(field, "|")
+		if strings.Contains(subnet, ":") {
+			n.Subnet6, n.Gateway6 = subnet, gateway
+		} else if subnet != "" {
+			n.Subnet4, n.Gateway4 = subnet, gateway
+		}
+	}
+	return n
 }
 
 // sandboxes lists the containers Kimono made, by workspace id, with their state.

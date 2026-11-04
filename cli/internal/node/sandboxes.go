@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -74,8 +75,13 @@ func (m *Manager) sandboxesEnable(args []string) error {
 	listen := flags.String("listen", "", "API address, normally this node's mesh IP and port "+sandboxesPort)
 	image := flags.String("image", sandbox.DefaultImage, "sandbox image")
 	previewDomain := flags.String("preview-domain", "", "domain whose subdomains open previews, such as example.dev (one wildcard DNS record on Cloudflare)")
+	var allowPrivate cidrList
+	flags.Var(&allowPrivate, "allow-private", "a private network sandboxes may still reach, such as a LAN package mirror (repeatable)")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if !m.Runner.Exists("iptables") {
+		return errors.New("sandboxes need iptables to keep them off this node's private networks; install it first (apt-get install iptables)")
 	}
 	domain := strings.Trim(strings.ToLower(strings.TrimSpace(*previewDomain)), ".")
 	if domain != "" && !validHostname(domain) {
@@ -124,7 +130,7 @@ func (m *Manager) sandboxesEnable(args []string) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(sandboxesUnitPath, []byte(sandboxesUnit(executable, address, *image, domain)), 0644); err != nil {
+	if err := os.WriteFile(sandboxesUnitPath, []byte(sandboxesUnit(executable, address, *image, domain, allowPrivate...)), 0644); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Pulling the sandbox image…")
@@ -277,10 +283,13 @@ func sandboxesKey() (string, error) {
 	return key, os.WriteFile(sandboxesKeyPath, []byte(key+"\n"), 0600)
 }
 
-func sandboxesUnit(executable, address, image, previewDomain string) string {
+func sandboxesUnit(executable, address, image, previewDomain string, allowPrivate ...string) string {
 	preview := ""
 	if previewDomain != "" {
 		preview = " --preview-domain " + previewDomain
+	}
+	for _, cidr := range allowPrivate {
+		preview += " --allow-private " + cidr
 	}
 	return fmt.Sprintf(`[Unit]
 Description=Kimono Code sandboxes
@@ -316,6 +325,10 @@ func (m *Manager) sandboxesServe(args []string) error {
 	previewListen := flags.String("preview-listen", previewsListen, "preview proxy address")
 	previewDomain := flags.String("preview-domain", "", "domain whose subdomains open previews (empty: http://<name>.localhost:<port>)")
 	devGitDir := flags.String("dev-git-dir", "", "development only: serve bare repositories under this directory as http://"+sandbox.DevGitHost+"/OWNER/NAME.git")
+	var allowPrivate cidrList
+	flags.Var(&allowPrivate, "allow-private", "a private network sandboxes may still reach, such as a LAN package mirror (repeatable)")
+	allowOpen := flags.Bool("allow-open-network", false, "development only: run sandboxes without the firewall")
+	dns := flags.String("dns", "1.1.1.1,9.9.9.9", "resolvers sandboxes use behind the firewall")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -335,6 +348,7 @@ func (m *Manager) sandboxesServe(args []string) error {
 		CPUs: *cpus, Memory: *memory, Pids: *pids, PauseAfter: *pauseAfter, StopAfter: *stopAfter, RemoveAfter: *removeAfter,
 		Agent: os.Getenv("KIMONO_SANDBOX_AGENT"), DevGitDir: *devGitDir,
 		StateDir: *stateDir, PreviewListen: *previewListen, PreviewDomain: *previewDomain,
+		AllowPrivate: allowPrivate, AllowOpenNetwork: *allowOpen, DNS: splitList(*dns),
 		Logf: logger.Printf,
 	})
 	if err != nil {
@@ -358,6 +372,8 @@ func (m *Manager) sandboxesStatus(args []string) error {
 		_ = m.Runner.Run("systemctl", "--no-pager", "--lines", "5", "status", "kimono-sandboxes")
 		_, _ = fmt.Fprintln(m.Runner.Stdout)
 	}
+	_, why := sandbox.FirewallInPlace(context.Background(), "docker", "kimono-sandboxes")
+	_, _ = fmt.Fprintf(m.Runner.Stdout, "Firewall: %s\n\n", why)
 	rows, err := sandbox.Status(context.Background(), "docker", *stateDir)
 	if err != nil {
 		return err
@@ -390,6 +406,7 @@ func (m *Manager) sandboxesDisable(args []string) error {
 	_ = m.Runner.Run("sh", "-c", "docker rm -f "+previewsTunnel+" >/dev/null 2>&1 || true")
 	_ = os.Remove(sandboxesUnitPath)
 	_ = m.Runner.Run("systemctl", "daemon-reload")
+	sandbox.RemoveFirewall(context.Background())
 	if *remove {
 		script := `docker ps -aq --filter label=kimono.sandbox | xargs -r docker rm -f -v
 docker volume ls -q --filter label=kimono.sandbox | xargs -r docker volume rm -f
@@ -402,6 +419,29 @@ docker network rm kimono-sandboxes 2>/dev/null || true`
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Sandboxes are off. Existing sandboxes are kept; pass --remove to delete them.")
 	return nil
+}
+
+// cidrList is a repeatable flag of networks.
+type cidrList []string
+
+func (l *cidrList) String() string { return strings.Join(*l, ",") }
+func (l *cidrList) Set(value string) error {
+	value = strings.TrimSpace(value)
+	if _, _, err := net.ParseCIDR(value); err != nil {
+		return fmt.Errorf("%q isn't a network such as 192.168.1.0/24", value)
+	}
+	*l = append(*l, value)
+	return nil
+}
+
+func splitList(value string) []string {
+	var out []string
+	for _, item := range strings.Split(value, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func envOr(name, fallback string) string {

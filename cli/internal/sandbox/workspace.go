@@ -200,6 +200,15 @@ func (s *Server) create(ctx context.Context, id string, repo Repo) error {
 	if s.runtime == "runsc" {
 		args = append(args, "--runtime", "runsc")
 	}
+	if s.firewall != nil {
+		/* The LAN's resolver is out of reach behind the firewall. */
+		for _, resolver := range s.cfg.DNS {
+			args = append(args, "--dns", resolver)
+		}
+		if err := s.recheckFirewall(ctx); err != nil {
+			return fmt.Errorf("the sandbox firewall: %w", err)
+		}
+	}
 	args = append(args, s.cfg.Image, "sleep", "infinity")
 	if _, err := s.docker.run(ctx, nil, args...); err != nil {
 		return fmt.Errorf("start the sandbox: %w", err)
