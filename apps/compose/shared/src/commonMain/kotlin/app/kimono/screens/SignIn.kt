@@ -25,6 +25,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.platform.LocalAutofillManager
+import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import app.kimono.data.SignInNext
@@ -64,6 +68,8 @@ const val DEFAULT_SERVER = "https://www.kimonolabs.dev"
 @Composable
 fun SignInScreen(session: Session, rememberedServer: String?) {
     val scope = rememberCoroutineScope()
+    /* The phone's password manager fills these fields, and offers to save them once Kimono takes the password. */
+    val autofill = LocalAutofillManager.current
     /* Your own Kimono, if you signed in to one before; kimonolabs.dev otherwise. */
     var custom by remember { mutableStateOf(rememberedServer != null && rememberedServer.trimEnd('/') != DEFAULT_SERVER) }
     var address by remember { mutableStateOf(rememberedServer?.takeIf { custom }?.removePrefix("https://") ?: "") }
@@ -81,6 +87,7 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
         scope.launch {
             try {
                 val next = if (askingCode) session.signInCode(code) else session.signIn(target, username, password)
+                if (!askingCode) autofill?.commit()
                 askingCode = next == SignInNext.Code
                 if (askingCode) code = ""
             } catch (p: KimonoProblem) { problem = p.message } catch (_: Exception) { problem = "Signing in didn't finish. Try again." }
@@ -113,7 +120,7 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { if (ready && !busy) go() }),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).semantics { contentType = ContentType.SmsOtpCode },
                 )
             } else {
                 if (custom) OutlinedTextField(
@@ -131,7 +138,7 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
                     label = { Text("Username or email") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next, autoCorrectEnabled = false, capitalization = KeyboardCapitalization.None),
-                    modifier = Modifier.fillMaxWidth().padding(top = if (custom) 0.dp else 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = if (custom) 0.dp else 8.dp).semantics { contentType = ContentType.Username + ContentType.EmailAddress },
                 )
                 OutlinedTextField(
                     value = password,
@@ -141,7 +148,7 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go, autoCorrectEnabled = false),
                     keyboardActions = KeyboardActions(onGo = { if (ready && !busy) go() }),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Password },
                 )
             }
             if (busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
