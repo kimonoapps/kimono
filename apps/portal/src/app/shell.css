@@ -83,7 +83,7 @@
 .admin-update { display: flex; justify-content: flex-end; padding: var(--k-space-4) var(--k-shell-gutter) 0; }
 
 /* ── pages swipe in, left to right; nothing covers the screen ── */
-.page-swipe { animation: page-swipe 260ms cubic-bezier(.05, .7, .1, 1) both; }
+.page-swipe { animation: page-swipe 260ms cubic-bezier(.05, .7, .1, 1) backwards; } /* not forwards: a held transform would trap fixed bars inside the page */
 @keyframes page-swipe { from { opacity: 0; transform: translateX(-36px); } }
 
 /* ── phone: the rail is the bottom bar ── */

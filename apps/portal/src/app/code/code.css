@@ -720,3 +720,40 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-ring .track { stroke: var(--k-outline-variant); }
 .cd-ring.is-unknown .track { stroke: color-mix(in srgb, var(--k-on-surface-variant) 55%, transparent); stroke-dasharray: 2 2.6; }
 .cd-meters-btn:hover, .cd-meters-btn[aria-expanded="true"] { background: var(--k-container); }
+
+/* ── narrow: like the phone. Code opens on the task list; New task and a task are each their own screen ── */
+.cd-start-head { display: flex; align-items: center; gap: 8px; }
+.cd-start-back { display: none !important; }
+@media (max-width: 980px) {
+  .cd-page { padding-bottom: 96px; }
+  .cd { padding: 12px 12px 0; }
+  .cd:not(.has-workspace):not(.is-composing) .cd-main { display: none; }
+  .cd.is-composing .cd-side { display: none; }
+  .cd.is-composing .cd-start-back { display: inline-grid !important; }
+  .cd-start { margin-top: 4px; }
+  /* the list: one column of cards, grouped by project, not a sideways strip */
+  .cd-side { position: static; height: auto; max-height: none; padding: 16px 12px; border-radius: var(--k-r-xl); overflow: visible; }
+  .cd-side-head > span { font-size: 30px; }
+  .cd-side-head .cd-roundbutton:not(.cd-fold) { width: 52px; height: 52px; }
+  .cd-list { grid-auto-flow: row; grid-auto-columns: auto; overflow: visible; scroll-snap-type: none; padding-bottom: 0; gap: 6px; }
+  .cd-list button { border: 0; border-radius: var(--k-r-l); background: var(--k-container-lowest); min-height: 64px; padding: 14px 16px; scroll-snap-align: none; }
+  .cd-list button[aria-current] { box-shadow: inset 0 0 0 2px var(--k-primary-container); }
+  .cd-project-new { opacity: 1; }
+  .cd-ws { height: calc(100dvh - 108px); border-radius: var(--k-r-xl); }
+  .cd-ws-head { flex-wrap: wrap; }
+  .cd-ws-acts { width: 100%; justify-content: flex-start; margin-left: 40px; }
+  .cd-segs { padding: 6px 12px 8px; overflow-x: auto; }
+  .cd-seg { min-width: 340px; }
+}
+@media (max-width: 980px) {
+  /* the four views fit the width instead of scrolling under the chat */
+  .cd-segs { overflow: visible; padding: 4px 12px 8px; }
+  .cd-seg { min-width: 0; max-width: none; }
+  .cd-seg button { min-height: 38px; padding: 0 6px; gap: 4px; font-size: 13px; }
+  .cd-seg button svg.i { display: none; }
+  .cd-ws-acts .k-seal { margin-left: auto; }
+  /* the message box keeps Send on its row: the thinking chip drops its model name */
+  .cd-composer-bar { flex-wrap: nowrap; }
+  .cd-effort .k-choice-text small { display: none; }
+  .cd-ready-acts .cd-quietbutton { padding: 0 8px; }
+}

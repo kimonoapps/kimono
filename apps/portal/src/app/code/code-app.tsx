@@ -157,6 +157,8 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
 export function CodeApp({ blocked }: { blocked: string | null }) {
   const params = useSearchParams();
   const current = params.get("w");
+  /* On a narrow screen Code opens on the task list; the new-task form is its own screen, as on the phone. */
+  const composing = params.get("new") === "1";
   const tab = (["chat", "files", "changes", "app"].includes(params.get("tab") ?? "") ? params.get("tab") : "chat") as Tab;
   const path = params.get("path") ?? "";
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
@@ -173,27 +175,27 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
   /* ⌘K or / jumps to a new task from anywhere on the page. */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); goTo({}); }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); goTo({ new: "1" }); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   return <div className="cd-page">
-    <div className={cx("cd", current && "has-workspace", folded && "is-folded")}>
+    <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     <aside className="cd-side" aria-label="Tasks">
-      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({})} aria-keyshortcuts="Meta+K" aria-label="New task" title="New task (⌘K)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
+      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="Meta+K" aria-label="New task" title="New task (⌘K)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       {projectsOf(workspaces ?? []).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
-        onNew={() => { try { localStorage.setItem("kimono-code-repo", project.key); } catch { /* not remembered */ } goTo({}); }} />)}
+        onNew={() => { try { localStorage.setItem("kimono-code-repo", project.key); } catch { /* not remembered */ } goTo({ new: "1" }); }} />)}
       {workspaces && !workspaces.length ? <p className="cd-quiet cd-side-note">Nothing yet.</p> : null}
     </aside>
     <main className="cd-main">
       {current && workspace
         ? <WorkspaceView key={workspace.id} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
         : current && workspaces
-          ? <div className="cd-sheet cd-empty"><p>That workspace isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({})}>New task</Seal></div>
+          ? <div className="cd-sheet cd-empty"><p>That workspace isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({ new: "1" })}>New task</Seal></div>
           : current
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
             : <Start blocked={blocked} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
@@ -301,7 +303,7 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
   }
 
   return <section className="cd-start">
-    <h2>What should we work on?</h2>
+    <div className="cd-start-head"><button type="button" className="cd-roundbutton cd-start-back" onClick={() => goTo({})} aria-label="All tasks" title="All tasks"><Icon name="back" /></button><h2>What should we work on?</h2></div>
     {blocked ? <div className="cd-sheet cd-blocked"><p>{blocked}</p></div> : <div className="cd-sheet cd-new-task">
       {naming !== null || (repos && !repos.length) ? <div className="cd-naming">
         <label className="cd-task">
