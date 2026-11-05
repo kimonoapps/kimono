@@ -116,12 +116,12 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
         {testflight.statuses.length ? <div className="seg">
           {testflight.statuses.map((row) => <div className="row" key={row.username}>
             <InkPortraitFrame seed={row.username} weight={5}><Portrait name={row.name} username={row.username} picture={pictures.get(row.username)} size={36} /></InkPortraitFrame>
-            <span className="text"><b>{row.name}</b><small>@{row.username} · {testerLine(row.status, row.email)}</small></span>
+            <span className="text"><b>{row.name}</b><small>@{row.username} · {testerLine(row.status, row.email)}{Object.entries(row.also ?? {}).map(([app, status]) => ` · ${app}: ${status}`).join("")}</small></span>
             <span className={row.status === "tester" ? "k-ink-dot k-running" : row.status.startsWith("error") || row.status === "no email" ? "k-ink-dot k-wants" : "k-ink-dot"}>{row.status.startsWith("error") ? "Problem" : testerLabel(row.status)}</span>
           </div>)}
         </div> : <p className="lead phone-empty">Nobody has asked for the iPhone app yet. People ask from Get the app on their iPhone.</p>}
         <div className="card testflight-key">
-          <span><b>App Store Connect key {testflight.keyId}</b><small>People who ask on their iPhone are invited at their Kimono email and added once they accept. When their Kimono access ends, they&rsquo;re taken off.</small></span>
+          <span><b>App Store Connect key {testflight.keyId}</b><small>People who ask on their iPhone are invited at their Kimono email and added to {appList(testflight.lastSync?.apps)} once they accept. When their Kimono access ends, they&rsquo;re taken off.</small></span>
           <form action={forgetKey}><HoldSeal label="Hold to forget key" holdingLabel="Keep holding" /></form>
         </div>
       </> : <>
@@ -150,6 +150,12 @@ function testerLine(status: string, email?: string | null) {
   if (status === "no Kimono access") return "Their Kimono access has ended";
   if (status === "removed") return "Taken off TestFlight";
   return status;
+}
+
+/** "Kimono", "Kimono and Kimono Photos": the iPhone apps App Store Connect has. */
+function appList(apps: string[] | undefined) {
+  const names = apps?.length ? apps : ["Kimono"];
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
 }
 
 /** A tester status as a short label beside the name. */
