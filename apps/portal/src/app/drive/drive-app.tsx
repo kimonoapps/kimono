@@ -109,9 +109,10 @@ export function DriveApp({ me }: { me: Me }) {
   // Drive moves by its own address, not by page: each new space or view slides its sheet in.
   const where = `${view ?? ""}|${spaceParam ?? ""}`;
   const body = useRef<HTMLDivElement>(null);
-  const firstView = useRef(true);
+  const shownWhere = useRef(where);
   useLayoutEffect(() => {
-    if (firstView.current) { firstView.current = false; return; }
+    if (shownWhere.current === where) return;
+    shownWhere.current = where;
     const sheet = body.current?.querySelector(":scope > section") ?? null;
     slide(sheet);
     // A space's rows rise as its folder loads; the other views rise here.

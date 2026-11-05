@@ -4,7 +4,7 @@ import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type Se
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
-import { riseWhenReady } from "@/components/motion";
+import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
 
 /**
  * Going somewhere, as a promise that keeps until the page is standing.
@@ -32,11 +32,6 @@ function Arrivals({ children }: { children: ReactNode }) {
     waiting.current = null;
     if (!resolve) return;
     setMoving(false);
-    const page = document.querySelector<HTMLElement>(".main-content");
-    if (page) {
-      page.getAnimations().forEach((animation) => animation.cancel());
-      if (!still()) page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 420, easing: "cubic-bezier(.05, .7, .1, 1)" });
-    }
     resolve();
   }, []);
 
@@ -45,20 +40,35 @@ function Arrivals({ children }: { children: ReactNode }) {
   useEffect(() => { if (!pending) arrived(); }, [pending, arrived]);
   useEffect(() => { arrived(); }, [pathname, arrived]);
 
-  // Every new page, back and forward included, settles in piece by piece. The
-  // first page of a visit is already painted from the server, so it stays put.
-  const first = useRef(true);
+  // Every new page, back and forward included, settles in piece by piece. Each
+  // page builds its own shell, so the page that arrives is a new element, and
+  // it may stand a skeleton first: the arrival waits for the real page, then
+  // slides it in (when you pressed something) and rises its pieces. The first
+  // page of a visit is already painted from the server, so it stays put.
+  const shown = useRef(pathname);
+  const pushed = useRef(false);
   useLayoutEffect(() => {
-    if (first.current) { first.current = false; return; }
-    return riseWhenReady(document.querySelector(".main-content"));
+    if (shown.current === pathname) return;
+    shown.current = pathname;
+    const slideIn = pushed.current;
+    pushed.current = false;
+    let settling = () => {};
+    const stop = whenPageStands((page) => {
+      page.getAnimations().forEach((animation) => animation.cancel());
+      if (still()) return;
+      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 420, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
+      settling = riseWhenReady(page);
+    });
+    return () => { stop(); settling(); };
   }, [pathname]);
 
   useEffect(() => {
     // Release the superseded navigation promise as well as its visual cover.
-    window.addEventListener("popstate", arrived);
+    const traversed = () => { pushed.current = false; arrived(); };
+    window.addEventListener("popstate", traversed);
     window.addEventListener("pagehide", arrived);
     return () => {
-      window.removeEventListener("popstate", arrived);
+      window.removeEventListener("popstate", traversed);
       window.removeEventListener("pagehide", arrived);
       arrived();
     };
@@ -68,6 +78,7 @@ function Arrivals({ children }: { children: ReactNode }) {
     const leaving = document.querySelector<HTMLElement>(".main-content");
     if (leaving && !still()) leaving.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-32px)" }], { duration: 120, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
     setMoving(true);
+    pushed.current = true;
     waiting.current = resolve;
     startTransition(() => { router.push(href); });
   }), [router]);
