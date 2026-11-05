@@ -66,7 +66,8 @@
 .app-tile-link:focus-visible { outline: 3px solid var(--k-accent); outline-offset: 2px; }
 .app-tile-bloom.k-app-bloom { width: 76px; height: 76px; margin: -4px 0 10px -6px; transition: transform .6s var(--k-spring); }
 .app-tile-link:hover .app-tile-bloom { transform: rotate(14deg) scale(1.04); }
-.app-tile-link b { font: 600 24px/1.15 var(--k-display); color: var(--k-plum); }
+/* Names in the UI face: a grid of semibold Mincho beside the blooms reads as a wall of ink. */
+.app-tile-link b { font: 500 20px/1.25 var(--k-sans); color: var(--k-on-surface); }
 .app-tile-link small { font-size: 14px; line-height: 1.4; color: var(--k-on-surface-variant); }
 .app-tile-out { position: absolute; top: 22px; right: 62px; width: 20px; height: 20px; fill: none; stroke: var(--k-on-surface-variant); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .app-tile-pin { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--k-on-surface-variant); cursor: pointer; opacity: 0; transition: opacity var(--k-t-state), background-color var(--k-t-state), transform var(--k-t-fold) var(--k-spring); }
@@ -79,7 +80,7 @@
 .app-tiles.is-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
 .app-tiles.is-compact .app-tile-link { padding: 16px; }
 .app-tiles.is-compact .app-tile-bloom.k-app-bloom { width: 56px; height: 56px; margin: 0 0 6px -4px; }
-.app-tiles.is-compact .app-tile-link b { font-size: 19px; }
+.app-tiles.is-compact .app-tile-link b { font-size: 18px; }
 .app-tiles.is-compact .app-tile-link small { display: none; }
 
 /* sign out on the account page, and the update notice above admin pages */
