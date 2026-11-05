@@ -1,4 +1,5 @@
 import { accentRamp } from "./accent";
+import { inkFilters, inkRandom, mixHex, ringPath, washGradient } from "./ink";
 
 /*
  * 家紋 Kamon — each Drive space's crest: one flower cut from paper in a ring,
@@ -69,16 +70,36 @@ export const crestColours = {
 export type CrestColour = keyof typeof crestColours;
 export const crestColourNames = Object.keys(crestColours) as CrestColour[];
 
+/* Seeds from a string (FNV-1a), so a crest is brushed the same way everywhere. */
+function seedOf(text: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) { hash ^= text.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+  return hash >>> 0;
+}
+
 /**
- * A crest as SVG: the flower in the colour's ink on a wash of the same
- * colour, ringed in ink. Self-contained, so it draws the same in a page or
- * on a phone.
+ * A crest as SVG, painted in ink and wash (ink.ts): a disc washed in the
+ * colour's pale, the flower laid on in the colour's ink with a slight
+ * brushed wobble, and an open brush ring round it where the compass circle
+ * was. Self-contained, so it draws the same in a page or on a phone; ids are
+ * keyed by crest and colour, so the same crest twice on a page shares them.
  */
 export function crestSvg(name: string, colour: string): string {
-  const kind = crestKinds[name as CrestName] ?? crestKinds.sakura;
-  const ink = (crestColours[colour as CrestColour] ?? crestColours.plum).hex;
+  const crestName = (name in crestKinds ? name : "sakura") as CrestName;
+  const colourName = (colour in crestColours ? colour : "plum") as CrestColour;
+  const kind = crestKinds[crestName];
+  const ink = crestColours[colourName].hex;
   const paper = accentRamp(ink).tint;
+  const unique = `crest-${crestName}-${colourName}`;
+  const random = inkRandom(seedOf(unique));
   const draw = (shapes: Shape[]) => shapes.flatMap((shape) => shape.turns.map((turn) =>
     `<path d="${shape.d}"${turn ? ` transform="rotate(${turn} 50 50)"` : ""}></path>`)).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47" fill="${paper}" stroke="${ink}" stroke-width="3.5"></circle><g fill="${ink}">${draw(kind.ink)}</g><g fill="${paper}">${draw(kind.paper)}</g></svg>`;
+  const ring = ringPath(random, 46.5, .18 + random() * .25);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" style="overflow:visible"><defs>${inkFilters(unique, 1 + seedOf(unique) % 60)}`
+    + washGradient(`cw-${unique}`, mixHex(paper, "#ffffff", .55), paper, mixHex(paper, ink, .18), "62%")
+    + `<radialGradient id="cf-${unique}" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="44"><stop offset="0" stop-color="${mixHex(ink, "#ffffff", .28)}"></stop><stop offset=".7" stop-color="${ink}"></stop><stop offset="1" stop-color="${mixHex(ink, "#000000", .12)}"></stop></radialGradient></defs>`
+    + `<circle cx="50" cy="50" r="46" fill="url(#cw-${unique})" filter="url(#ink-wash-${unique})"></circle>`
+    + `<g fill="url(#cf-${unique})" opacity=".96" filter="url(#ink-fine-${unique})">${draw(kind.ink)}</g>`
+    + `<g fill="${paper}">${draw(kind.paper)}</g>`
+    + `<path d="${ring}" fill="none" stroke="${ink}" stroke-width="3.6" stroke-linecap="round" stroke-dasharray="${(120 + random() * 60).toFixed(0)} ${(5 + random() * 5).toFixed(0)}" opacity=".88" filter="url(#ink-brush-${unique})"></path></svg>`;
 }
