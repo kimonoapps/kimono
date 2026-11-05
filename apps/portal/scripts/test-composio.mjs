@@ -50,6 +50,7 @@ test('a person gets one session, made once and then reused', async () => {
     assert.equal(made.body.user_id, 'kimono:home.example.com:mina');
     assert.equal(made.body.manage_connections.enable, true);
     assert.equal(made.body.manage_connections.callback_url, 'https://home.example.com/code?connected=1');
+    assert.deepEqual(made.body.workbench, { enable: false }, 'no remote workbench: it would reach the web');
     const again = await toolSession(db, 'key-a', 'mina', origin, 2000);
     assert.equal(again.url, first.url);
     assert.equal(composio.calls.length, 1, 'a fresh stored session is used without asking');

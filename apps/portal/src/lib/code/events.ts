@@ -11,7 +11,7 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; /** Sent while the agent was working: it reads it as soon as the current step ends. */ queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
@@ -46,9 +46,65 @@ function toolChange(name: string, input: Record<string, unknown>): string | unde
 }
 
 /** The one argument worth showing beside a tool: the file it touched, the command it ran, what it searched for. */
-function toolLabel(name: string, input: Record<string, unknown>): { label: string; detail?: string; change?: string } {
+function toolLabel(name: string, input: Record<string, unknown>): { label: string; detail?: string; change?: string; app?: string; space?: string } {
+  if (name.startsWith("mcp__composio__")) return composioLabel(name.slice("mcp__composio__".length), input);
   const change = toolChange(name, input);
-  return change ? { ...toolName(name, input), change } : toolName(name, input);
+  const named = toolName(name, input);
+  const space = spaceOf(JSON.stringify(input));
+  return { ...named, ...(change ? { change } : {}), ...(space ? { space } : {}) };
+}
+
+/** The Drive space a call worked in: the first /files/<space>/ it names (or /workspace/.kimono/files/<space>/). */
+export function spaceOf(text: string): string | undefined {
+  /* A space's name may have spaces in it: up to the next slash when there is one, else up to a quote or a space. */
+  const found = /(?:^|[\s"'=(:])(?:\/workspace\/\.kimono)?\/files\/(?:([^/"'\n\\]+)\/|([^/"'\s\\]+))/.exec(text);
+  const name = found?.[1] ?? found?.[2];
+  return name ? name.trim().slice(0, 120) || undefined : undefined;
+}
+
+/*
+ * Composio's own tools (docs/kimono-ai.md, "People's own apps"). Kimono knows
+ * no toolkit: the app is whatever toolkit the call names, from a tool slug
+ * such as GMAIL_SEND_EMAIL or a toolkit field, wherever it sits in the input.
+ */
+const toolSlug = /^([A-Z][A-Z0-9]*)_[A-Z0-9_]+$/;
+function slugsIn(value: unknown, out: { tools: string[]; toolkits: string[]; text?: string }, depth = 0) {
+  if (depth > 6 || value == null) return out;
+  if (typeof value === "string") {
+    if (toolSlug.test(value) && !value.startsWith("COMPOSIO_")) out.tools.push(value);
+    return out;
+  }
+  if (Array.isArray(value)) { for (const item of value) slugsIn(item, out, depth + 1); return out; }
+  if (typeof value === "object") {
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (/^toolkits?(_slugs?)?$|^toolkit_slug$|^app(_name)?$/.test(key)) {
+        for (const t of Array.isArray(item) ? item : [item]) if (typeof t === "string" && /^[a-z0-9_-]{2,60}$/i.test(t)) out.toolkits.push(t.toLowerCase());
+      } else if (!out.text && /^(use_case|query|thought)$/.test(key) && typeof item === "string") {
+        out.text = item;
+      } else slugsIn(item, out, depth + 1);
+    }
+  }
+  return out;
+}
+/** GMAIL_SEND_EMAIL → "send email". */
+const action = (slug: string) => slug.slice(slug.indexOf("_") + 1).toLowerCase().replace(/_/g, " ");
+
+function composioLabel(meta: string, input: Record<string, unknown>): { label: string; detail?: string; app?: string } {
+  const found = slugsIn(input, { tools: [], toolkits: [] });
+  const app = found.toolkits[0] ?? (found.tools[0] ? toolSlug.exec(found.tools[0])![1].toLowerCase() : undefined);
+  const withApp = app ? { app } : {};
+  switch (meta) {
+    case "COMPOSIO_MULTI_EXECUTE_TOOL": return { label: "Used", detail: [...new Set(found.tools.map(action))].join(", ") || undefined, ...withApp };
+    case "COMPOSIO_SEARCH_TOOLS": return { label: "Looked for a way to", detail: found.text ? clip(found.text, 200) : undefined, ...withApp };
+    case "COMPOSIO_MANAGE_CONNECTIONS": case "COMPOSIO_WAIT_FOR_CONNECTIONS": return { label: "Connecting", ...withApp };
+    case "COMPOSIO_GET_TOOL_SCHEMAS": return { label: "Read how to use", detail: [...new Set(found.tools.map(action))].join(", ") || undefined, ...withApp };
+    default: {
+      /* A toolkit's own tool, called directly: GMAIL_SEND_EMAIL. */
+      const direct = toolSlug.exec(meta);
+      if (direct && !meta.startsWith("COMPOSIO_")) return { label: "Used", detail: action(meta), app: direct[1].toLowerCase() };
+      return { label: meta.replace(/^COMPOSIO_/, "").replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()), ...withApp };
+    }
+  }
 }
 
 function toolName(name: string, input: Record<string, unknown>): { label: string; detail?: string } {

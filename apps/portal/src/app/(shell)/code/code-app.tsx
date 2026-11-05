@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Choice, cx, InkCard, Seal } from "@kimono/ui";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AppBloom, Choice, cx, InkCard, Seal, type AppIdentity } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
@@ -175,8 +175,12 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
   </div>;
 }
 
-export function CodeApp({ blocked, admin }: { blocked: string | null; admin: boolean }) {
+export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; admin: boolean; driveApp: AppIdentity }) {
   const [accessOpen, setAccessOpen] = useState(false);
+  /* Drive's mark and each space's crest, for tool calls and access cards that touch the person's files. */
+  const [spaces, setSpaces] = useState<DriveSpace[]>([]);
+  useEffect(() => { drive.spaces().then(setSpaces, () => {}); }, []);
+  const marks = useMemo<Marks>(() => ({ drive: driveApp, spaces: new Map(spaces.map((space) => [space.name.toLowerCase(), space])) }), [driveApp, spaces]);
   const params = useCodeParams();
   /* Old links carried the screen in the query string: move it after the #, once. */
   useEffect(() => {
@@ -208,7 +212,7 @@ export function CodeApp({ blocked, admin }: { blocked: string | null; admin: boo
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  return <div className="cd-page">
+  return <MarksContext.Provider value={marks}><div className="cd-page">
     {accessOpen ? <AccessDialog onClose={() => setAccessOpen(false)} /> : null}
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     <aside className="cd-side" aria-label="Chats">
@@ -231,7 +235,67 @@ export function CodeApp({ blocked, admin }: { blocked: string | null; admin: boo
             : <Start blocked={blocked} admin={admin} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
-  </div>;
+  </div></MarksContext.Provider>;
+}
+
+/* ── marks: what a call or a card is about, drawn as that thing ── */
+
+type Marks = { drive: AppIdentity | null; spaces: Map<string, DriveSpace> };
+const MarksContext = createContext<Marks>({ drive: null, spaces: new Map() });
+
+/** A space's crest, as Drive draws it; nothing if the space isn't known. */
+function SpaceCrest({ name }: { name: string }) {
+  const space = useContext(MarksContext).spaces.get(name.toLowerCase());
+  if (!space?.mark) return null;
+  return <span className="cd-crest" aria-hidden="true" dangerouslySetInnerHTML={{ __html: space.mark }} />;
+}
+
+/** A space, as a chip: its crest and its name. */
+function SpaceChip({ name }: { name: string }) {
+  return <span className="cd-spacechip"><SpaceCrest name={name} />{name}</span>;
+}
+
+/** Kimono Drive's own mark. */
+function DriveMark() {
+  const drive = useContext(MarksContext).drive;
+  return drive ? <AppBloom identity={drive} size="mark" className="cd-drivemark" /> : <Icon name="folder" />;
+}
+
+type Look = { name: string; logo: string };
+const looks = new Map<string, Promise<Look>>();
+const plainName = (slug: string) => slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** How Composio names and draws a person's own app; its plain name until that arrives. */
+function useAppLook(slug: string): Look {
+  const [look, setLook] = useState<(Look & { slug: string }) | null>(null);
+  useEffect(() => {
+    let live = true;
+    let pending = looks.get(slug);
+    if (!pending) {
+      pending = code.appLook(slug).catch(() => ({ name: plainName(slug), logo: `https://logos.composio.dev/api/${encodeURIComponent(slug)}` }));
+      looks.set(slug, pending);
+    }
+    void pending.then((found) => { if (live) setLook({ ...found, slug }); });
+    return () => { live = false; };
+  }, [slug]);
+  return look?.slug === slug ? look : { name: plainName(slug), logo: "" };
+}
+
+function AppLogo({ slug }: { slug: string }) {
+  const look = useAppLook(slug);
+  // eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it
+  return look.logo ? <img className="cd-applogo" src={look.logo} alt="" /> : <Icon name="gear" />;
+}
+
+function AppName({ slug }: { slug: string }) {
+  return <>{useAppLook(slug).name}</>;
+}
+
+/** What a call is about: the app it used, Drive, or what kind of step it was. */
+function ToolMark({ tool }: { tool: Tool }) {
+  if (tool.app) return <AppLogo slug={tool.app} />;
+  if (tool.space) return <DriveMark />;
+  return <Icon name={toolIcons[tool.label] ?? "gear"} />;
 }
 
 const working = (w: Workspace) => w.turn?.state === "running" ? 1 : 0;
@@ -764,7 +828,7 @@ function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   const touched = [...new Set(tools.filter((t) => t.label === "Edited" || t.label === "Wrote").map((t) => t.detail).filter(Boolean))];
   return <details className="calls" open={open} onToggle={(event) => { const next = (event.currentTarget as HTMLDetailsElement).open; if (next !== open) setChosen(next); }}>
     <summary className="tools-used">
-      {live && pending ? <i className="cd-spin" aria-hidden="true" /> : <Icon name="gear" />}
+      {live && pending ? <i className="cd-spin" aria-hidden="true" /> : <GroupMarks tools={tools} />}
       <span>{live && pending ? "Using tools" : `Used ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`}</span>
       {touched.length ? <span className="cd-faint">· edited {touched.length === 1 ? touched[0] : `${touched.length} files`}</span> : null}
       {failed ? <span className="cd-word">{failed} failed</span> : null}
@@ -772,6 +836,14 @@ function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
     </summary>
     <div className="call-list">{tools.map((tool) => <ToolRow key={tool.id} tool={tool} />)}</div>
   </details>;
+}
+
+/** The apps and spaces a group of calls touched, side by side; a gear when it was only the sandbox. */
+function GroupMarks({ tools }: { tools: Tool[] }) {
+  const apps = [...new Set(tools.map((t) => t.app).filter((a): a is string => Boolean(a)))].slice(0, 3);
+  const drive = tools.some((t) => t.space && !t.app);
+  if (!apps.length && !drive) return <Icon name="gear" />;
+  return <span className="cd-groupmarks">{drive ? <DriveMark /> : null}{apps.map((slug) => <AppLogo key={slug} slug={slug} />)}</span>;
 }
 
 const toolIcons: Record<string, IconName> = { Read: "file", Wrote: "file", Edited: "diff", Ran: "code", "Searched for": "search", "Looked for": "search", Fetched: "link", "Searched the web for": "search", "Asked a helper": "chat" };
@@ -799,9 +871,10 @@ function ToolRow({ tool }: { tool: Tool }) {
   const output = tool.result?.output.trim();
   return <details className="call" data-state={state}>
     <summary>
-      <span className="ci" aria-hidden="true">{state === "running" ? <i className="cd-spin" /> : <Icon name={toolIcons[tool.label] ?? "gear"} />}</span>
-      <span className="cv">{tool.label}</span>
-      {tool.detail ? <code>{tool.detail.split("\n")[0]}</code> : null}
+      <span className={cx("ci", (tool.app || tool.space) && "is-mark")} aria-hidden="true">{state === "running" ? <i className="cd-spin" /> : <ToolMark tool={tool} />}</span>
+      <span className="cv">{tool.label}{tool.app && /^(Used|Connecting|Read how to use)$/.test(tool.label) ? <> <AppName slug={tool.app} /></> : null}</span>
+      {tool.space ? <SpaceChip name={tool.space} /> : null}
+      {tool.detail ? <code>{(tool.space ? tool.detail.split(`/workspace/.kimono/files/${tool.space}/`).join("").split(`/files/${tool.space}/`).join("") : tool.detail).split("\n")[0] || "\u00a0"}</code> : null}
       <span className={state === "failed" ? "cm is-failed" : "cm"}>{toolMeta(tool)}</span>
       <span className="chev" aria-hidden="true" />
     </summary>
@@ -887,7 +960,7 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
 
 /* ── asking for the person's Drive ── */
 
-const whatOf = (e: { space: string; path: string }) => e.path ? <><b>{e.path.split("/").pop()}</b> in {e.space}</> : <b>{e.space}</b>;
+const whatOf = (e: { space: string; path: string }) => e.path ? <><b>{e.path.split("/").pop()}</b> in <SpaceChip name={e.space} /></> : <SpaceChip name={e.space} />;
 
 /** Kimono AI asking for some of the person's Drive, and how they answered. */
 function AccessCard({ workspace, event, answer }: { workspace: Workspace; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> }) {
@@ -895,21 +968,21 @@ function AccessCard({ workspace, event, answer }: { workspace: Workspace; event:
   const [problem, setProblem] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const verb = event.need === "change" ? "change" : "read";
-  if (event.state === "missing") return <p className="cd-note"><Icon name="folder" /><span>It asked for {whatOf(event)}, which isn&rsquo;t in your Drive.</span></p>;
-  if (event.state === "auto") return <p className="cd-note"><Icon name="folder" /><span>Opened {whatOf(event)} to {verb}, as you allowed before.</span></p>;
+  if (event.state === "missing") return <p className="cd-note cd-access-note"><DriveMark /><span>It asked for {whatOf(event)}, which isn&rsquo;t in your Drive.</span></p>;
+  if (event.state === "auto") return <p className="cd-note cd-access-note"><DriveMark /><span>Opened {whatOf(event)} to {verb}, as you allowed before.</span></p>;
   if (answer) {
-    if (answer.state === "denied") return <p className="cd-note"><Icon name="folder" /><span>You didn&rsquo;t let it {verb} {whatOf(event)}.</span></p>;
+    if (answer.state === "denied") return <p className="cd-note cd-access-note"><DriveMark /><span>You didn&rsquo;t let it {verb} {whatOf(event)}.</span></p>;
     const scope = answer.scope === "always" ? "from now on" : "in this chat";
-    return <p className="cd-note"><Icon name="folder" /><span>You let it {answer.need === "change" ? "read and change" : "read"} {answer.scope === "file" ? "one file from " : ""}{whatOf(event)} {scope}.</span></p>;
+    return <p className="cd-note cd-access-note"><DriveMark /><span>You let it {answer.need === "change" ? "read and change" : "read"} {answer.scope === "file" ? "one file from " : ""}{whatOf(event)} {scope}.</span></p>;
   }
   const say = (choice: "file" | "chat" | "always" | "deny", file?: string) => {
     setBusy(choice); setProblem(null);
     code.answerAccess(workspace.id, event.id, choice, file).catch((error) => { setProblem(problemText(error)); setBusy(null); });
   };
   return <div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
-    <span className="cd-access-mark" aria-hidden="true"><Icon name="folder" /></span>
+    <span className="cd-access-mark" aria-hidden="true"><DriveMark /></span>
     <div className="cd-access-id">
-      <b>Kimono AI wants to {verb} {event.path ? <>{event.path.split("/").pop()} in {event.space}</> : <>files in {event.space}</>}</b>
+      <b>Kimono AI wants to {verb} {event.path ? <>{event.path.split("/").pop()} in </> : <>files in </>}<SpaceChip name={event.space} /></b>
       <span>{event.why}</span>
     </div>
     <div className="cd-access-acts">

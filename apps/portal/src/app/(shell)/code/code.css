@@ -864,3 +864,23 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 @media (max-width: 720px) { .cd-access { grid-template-columns: minmax(0, 1fr); } .cd-access-acts, .cd-access .cd-problem { grid-column: 1; } }
 .cd-hello-box:has(textarea:disabled) { opacity: .7; }
 .cd-hello-note { margin: 0; text-align: center; font-size: 14px; color: var(--k-on-surface-variant); }
+
+/* ── marks: a call or card drawn as what it touched ──
+   A person's own app shows its logo (from Composio); Drive shows its bloom,
+   and a space its crest beside its name. */
+.call .ci.is-mark { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-outline-variant); }
+.cd-applogo { width: 20px; height: 20px; display: block; object-fit: contain; }
+.cd-drivemark { width: 26px; height: 26px; flex: none; }
+.cd-crest { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; }
+.cd-crest svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.cd-spacechip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 5px; border-radius: var(--k-r-full); background: var(--k-container-high); font: 600 13px/1 var(--k-sans); color: var(--k-on-surface); vertical-align: middle; white-space: nowrap; flex: none; }
+.cd-groupmarks { display: inline-flex; align-items: center; }
+.cd-groupmarks > * { margin-left: -4px; }
+.cd-groupmarks > :first-child { margin-left: 0; }
+.cd-groupmarks .cd-applogo { width: 18px; height: 18px; padding: 2px; border-radius: 50%; background: var(--k-container-lowest); box-shadow: 0 0 0 1.5px var(--k-container-high); }
+.cd-groupmarks .cd-drivemark { width: 22px; height: 22px; }
+.cd-access-mark { background: var(--k-container-lowest); }
+.cd-access-mark .cd-drivemark { width: 32px; height: 32px; }
+.cd-access-id b .cd-spacechip { margin-left: 2px; font-size: 14px; height: 28px; }
+.cd-access-note { align-items: center; }
+.cd-access-note .cd-drivemark { width: 22px; height: 22px; }

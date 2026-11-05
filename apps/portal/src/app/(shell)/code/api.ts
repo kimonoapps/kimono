@@ -21,7 +21,7 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
@@ -99,6 +99,8 @@ export const code = {
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),
+  /** How a person's own app (a Composio toolkit) is named and drawn. */
+  appLook: (slug: string) => call<{ name: string; logo: string }>(`/apps/${encodeURIComponent(slug)}`),
   setSpaceAccess: (spaceId: string, need: "read" | "change" | null) => call<void>(`/access/spaces/${encodeURIComponent(spaceId)}`, json("PUT", { need })),
   revokeAccess: (grantId: string) => call<void>(`/access/grants/${encodeURIComponent(grantId)}`, { method: "DELETE" }),
   fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),
@@ -163,7 +165,7 @@ export function when(at: number, now = Date.now()) {
 }
 
 /* Drive, as the "From Drive" picker reads it: the same /api/v1/drive the Drive page uses. */
-export type DriveSpace = { id: string; name: string; rootId: string; role: string };
+export type DriveSpace = { id: string; name: string; rootId: string; role: string; /** The space's crest, as SVG Drive draws it. */ mark?: string };
 export type DriveItem = { id: string; kind: "folder" | "file"; name: string; size: number; mime: string | null };
 
 async function driveCall<T>(path: string): Promise<T> {

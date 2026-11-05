@@ -196,3 +196,29 @@ test('a chat needs no repository; naming one makes a project', () => {
   assert.match(project.branch, /^code\//);
   assert.throws(() => model.createWorkspace(db, 'mina', { repoOwner: 'mina', prompt: 'x' }), /Choose a repository/);
 });
+
+const call = (name, input) => translate({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name, input }] } }).events[0];
+
+test("a person's own apps: the call names the toolkit, whatever tool it is", () => {
+  const used = call('mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL', { tools: [{ tool_slug: 'GMAIL_SEND_EMAIL', arguments: { to: 'x' } }], thought: 'send it' });
+  assert.equal(used.app, 'gmail');
+  assert.equal(used.label, 'Used');
+  assert.equal(used.detail, 'send email');
+  const connecting = call('mcp__composio__COMPOSIO_MANAGE_CONNECTIONS', { toolkits: ['GoogleCalendar'] });
+  assert.equal(connecting.app, 'googlecalendar');
+  assert.equal(connecting.label, 'Connecting');
+  const searching = call('mcp__composio__COMPOSIO_SEARCH_TOOLS', { queries: [{ use_case: 'find tomorrow’s meetings' }] });
+  assert.equal(searching.label, 'Looked for a way to');
+  assert.match(searching.detail, /meetings/);
+  const direct = call('mcp__composio__NOTION_CREATE_PAGE', { title: 'x' });
+  assert.equal(direct.app, 'notion');
+});
+
+test('a call that touches /files names the Drive space', () => {
+  assert.equal(call('Read', { file_path: '/files/Photos/2026/a.jpg' }).space, 'Photos');
+  assert.equal(call('Bash', { command: 'ls /workspace/.kimono/files/Family/' }).space, 'Family');
+  assert.equal(call('Bash', { command: 'ls /workspace/src' }).space, undefined);
+  assert.equal(call('Read', { file_path: '/files/Preview test/Kyoto trip.md' }).space, 'Preview test', 'a name with a space in it');
+  assert.equal(call('Bash', { command: 'pandoc "/files/Family Photos/a.md" -o x.pdf' }).space, 'Family Photos');
+  assert.equal(call('Read', { file_path: '/workspace/files/notes.md' }).space, undefined, "a project's own files folder is not Drive");
+});

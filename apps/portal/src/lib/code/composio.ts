@@ -19,7 +19,9 @@ export type ToolSession = { url: string; headers: Record<string, string> };
 type Stored = { session_id: string; mcp_url: string; key_hash: string; checked_at: number };
 type Answer = { session_id?: string; mcp?: { type?: string; url?: string } };
 
-const hashOf = (key: string) => createHash("sha256").update(key).digest("hex").slice(0, 16);
+/* The session's settings are part of what it was made with: change them, and old sessions are made again. */
+const sessionVersion = "2";
+const hashOf = (key: string) => createHash("sha256").update(`${sessionVersion}:${key}`).digest("hex").slice(0, 16);
 
 /** Who a person is to Composio: stable, and distinct between Kimono servers sharing one Composio project. */
 export function composioUser(username: string, origin: string) {
@@ -42,6 +44,8 @@ async function create(key: string, username: string, origin: string): Promise<An
       user_id: composioUser(username, origin),
       /* Composio connects accounts itself: its tools hand the agent a link, and the link comes back here. */
       manage_connections: { enable: true, callback_url: `${origin}/code?connected=1` },
+      /* No remote workbench: it runs code on Composio's machines with the internet, around "never the web". */
+      workbench: { enable: false },
     }),
   });
   if (!response.ok) throw new Error(`Composio said ${response.status} to a new session`);
@@ -80,4 +84,34 @@ export async function toolSession(db: DatabaseSync, key: string, username: strin
     console.warn("Composio session:", error instanceof Error ? error.message : error);
     return null;
   }
+}
+
+/* ── how a toolkit looks: its name and logo, as Composio has them ── */
+
+type Look = { name: string; logo: string };
+const looks = new Map<string, { look: Look; at: number }>();
+const day = 24 * 60 * 60 * 1000;
+
+/** "googlecalendar" → "Googlecalendar": only when Composio can't be asked. */
+const plainName = (slug: string) => slug.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** A toolkit's display name and logo from Composio's toolkit API, kept a day; its logo service when the API can't be reached. */
+export async function toolkitLook(key: string, raw: string, now = Date.now()): Promise<Look> {
+  const slug = raw.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 60);
+  const fallback = { name: plainName(slug), logo: `https://logos.composio.dev/api/${encodeURIComponent(slug)}` };
+  if (!slug) return fallback;
+  const cached = looks.get(slug);
+  if (cached && now - cached.at < day) return cached.look;
+  let look = fallback;
+  if (key) {
+    try {
+      const response = await fetch(`${api().replace(/\/v3\.1$/, "/v3")}/toolkits/${encodeURIComponent(slug)}`, { headers: { "x-api-key": key }, signal: AbortSignal.timeout(8_000), cache: "no-store" });
+      if (response.ok) {
+        const toolkit = await response.json() as { name?: string; meta?: { logo?: string } };
+        look = { name: toolkit.name || fallback.name, logo: toolkit.meta?.logo?.startsWith("https://") ? toolkit.meta.logo : fallback.logo };
+      }
+    } catch { /* the fallback will do */ }
+  }
+  looks.set(slug, { look, at: now });
+  return look;
 }
