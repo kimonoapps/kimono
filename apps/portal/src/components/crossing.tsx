@@ -42,8 +42,20 @@ function Arrivals({ children }: { children: ReactNode }) {
   }, [arrived]);
 
   const navigate = useCallback((href: string) => new Promise<void>((resolve) => {
-    waiting.current = resolve;
-    startTransition(() => { router.push(href); });
+    const go = (arrivedThere: () => void) => {
+      waiting.current = arrivedThere;
+      startTransition(() => { router.push(href); });
+    };
+    /* The page moves along Material's shared x-axis (shell.css): the browser
+       pictures the page as it is, Next swaps it, and once the new one is
+       standing the two pictures slide past each other. Only the page moves;
+       the rail has a picture of its own and stays put. */
+    const start = (document as Document & { startViewTransition?: (update: () => Promise<void>) => unknown }).startViewTransition;
+    if (!start || matchMedia("(prefers-reduced-motion: reduce)").matches) { go(resolve); return; }
+    start.call(document, () => new Promise<void>((standing) => {
+      const late = setTimeout(() => { standing(); }, 3000);
+      go(() => { clearTimeout(late); standing(); resolve(); });
+    }));
   }), [router]);
 
   return <Arrival.Provider value={navigate}>{children}</Arrival.Provider>;

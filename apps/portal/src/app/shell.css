@@ -86,11 +86,11 @@
    The page you leave fades fast while it slides a little way; the next one
    slides in from the other side and fades up. Back runs the other way.
    Only the page moves; the rail and header keep still. */
-::view-transition-group(.page-axis) { animation-duration: 400ms; animation-timing-function: cubic-bezier(.05, .7, .1, 1); }
-::view-transition-old(.page-axis) { animation: 100ms cubic-bezier(.4, 0, 1, 1) both page-leave-forward; }
-::view-transition-new(.page-axis) { animation: 380ms cubic-bezier(.05, .7, .1, 1) 80ms both page-arrive-forward; }
-:root[data-nav="back"]::view-transition-old(.page-axis) { animation-name: page-leave-back; }
-:root[data-nav="back"]::view-transition-new(.page-axis) { animation-name: page-arrive-back; }
+::view-transition-group(kimono-page) { animation-duration: 400ms; animation-timing-function: cubic-bezier(.05, .7, .1, 1); }
+::view-transition-old(kimono-page) { animation: 100ms cubic-bezier(.4, 0, 1, 1) both page-leave-forward; }
+::view-transition-new(kimono-page) { animation: 380ms cubic-bezier(.05, .7, .1, 1) 80ms both page-arrive-forward; }
+:root[data-nav="back"]::view-transition-old(kimono-page) { animation-name: page-leave-back; }
+:root[data-nav="back"]::view-transition-new(kimono-page) { animation-name: page-arrive-back; }
 @keyframes page-leave-forward { to { opacity: 0; transform: translateX(-32px); } }
 @keyframes page-arrive-forward { from { opacity: 0; transform: translateX(48px); } }
 @keyframes page-leave-back { to { opacity: 0; transform: translateX(32px); } }
@@ -212,3 +212,9 @@
   --k-primary-container: color-mix(in srgb, var(--k-app-accent) 12%, #fbfaf7);
   --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 8%, #f6f4f0);
 }
+/* the rail is captured on its own during a page move, so it stays where it is */
+.rail { view-transition-name: kimono-rail; }
+
+/* the page area moves; everything else holds still under a plain crossfade that sees no change */
+.main-content { view-transition-name: kimono-page; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
