@@ -656,3 +656,43 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 /* the conversation sits on the page itself, not a white card; only the task list is a panel */
 .cd-sheet { background: var(--k-surface); box-shadow: none; }
 .cd-composer { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+
+/* ── the new-task form, in the kit's hand: filled fields, and the pickers drawn like Choice ── */
+.cd-new-task { display: grid; gap: 14px; padding: 20px; border-radius: var(--k-r-xl); background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.cd-picker-field { min-height: 56px; padding: 8px 12px 8px 16px; border-radius: var(--k-r-m) var(--k-r-m) 4px 4px; background: var(--k-container-highest); box-shadow: inset 0 -2px 0 transparent; }
+.cd-picker-field:hover:not(:disabled) { background: #e4d9d2; }
+.cd-picker.is-open .cd-picker-field, .cd-picker-field:focus-visible { background: var(--k-container-high); box-shadow: inset 0 -2px 0 var(--k-app-accent); }
+.cd-picker-label { font: 700 12px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-on-surface-variant); }
+.cd-picker.is-open .cd-picker-label { color: var(--k-app-accent); }
+.cd-picker-value { font: 400 16px/1.3 var(--k-sans); color: var(--k-on-surface); }
+/* the cue: a chevron in a round well that turns over while open */
+.cd-picker-field > svg.i { width: 24px; height: 24px; padding: 4px; border-radius: 50%; transform: rotate(90deg); transition: transform var(--k-t-seat) var(--k-spring), background-color var(--k-t-state); }
+.cd-picker.is-open .cd-picker-field > svg.i { transform: rotate(-90deg); background: var(--k-primary-container); }
+.cd-picker-sheet { top: calc(100% + 6px); padding: 6px; border: 0; border-radius: var(--k-r-l); background: var(--k-container-lowest); box-shadow: var(--k-shadow-raised); transform-origin: top center; animation: cd-picker-in var(--k-t-seat) var(--k-spring); }
+@keyframes cd-picker-in { from { opacity: 0; transform: scaleY(.88) translateY(-6px); } }
+.cd-picker-filter { margin: 0 0 6px; min-height: 44px; padding: 0 14px; border: 0; border-radius: var(--k-r-m); background: var(--k-container-high); font: 400 15px/1 var(--k-sans); }
+.cd-picker-filter:focus { background: var(--k-container); box-shadow: inset 0 -2px 0 var(--k-app-accent); }
+.cd-picker-sheet ul { padding: 0; display: grid; gap: 2px; }
+.cd-picker-sheet li { min-height: 52px; align-content: center; padding: 8px 14px 8px 22px; border-radius: var(--k-r-m); }
+.cd-picker-sheet li.is-active { background: var(--k-container-high); }
+.cd-picker-sheet li[aria-selected="true"] { background: var(--k-primary-container); }
+.cd-picker-sheet li[aria-selected="true"]::before { left: 8px; top: 50%; bottom: auto; width: 4px; height: 18px; margin-top: -9px; border-radius: 1px; }
+.cd-picker-name { font-weight: 700; color: var(--k-on-surface); }
+.cd-picker-sheet li em { display: none; }
+.cd-picker-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; margin-top: 4px; padding: 0 14px; border: 0; border-top: 1px solid var(--k-container-highest); border-radius: 0 0 var(--k-r-m) var(--k-r-m); background: none; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.cd-picker-action:hover { background: var(--k-container-high); }
+.cd-task > span { font: 700 12px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-on-surface-variant); }
+.cd-task textarea, .cd-task input { border: 0; border-radius: var(--k-r-m) var(--k-r-m) 4px 4px; background: var(--k-container-highest); box-shadow: inset 0 -2px 0 transparent; font-size: 16px; }
+.cd-task textarea:focus, .cd-task input:focus { background: var(--k-container-high); box-shadow: inset 0 -2px 0 var(--k-app-accent); }
+
+/* tasks grouped by project */
+.cd-project { display: grid; gap: 2px; }
+.cd-project-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; padding-right: 4px; }
+.cd-project-head .cd-mono { font: 700 13px/1.2 var(--k-mono); color: var(--k-suo); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-project-head small { font: 600 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-project-new { width: 30px !important; height: 30px !important; margin-left: auto; opacity: 0; transition: opacity var(--k-t-state); }
+.cd-project:hover .cd-project-new, .cd-project-new:focus-visible { opacity: 1; }
+.cd-project-new svg.i { width: 16px !important; height: 16px !important; }
+.cd-list small { justify-content: flex-start; }
+@media (hover: none) { .cd-project-new { opacity: 1; } }
+.cd-list small .cd-word, .cd-list small .cd-when { margin-left: 0; }

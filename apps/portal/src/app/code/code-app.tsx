@@ -144,8 +144,8 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({})} aria-keyshortcuts="Meta+K" aria-label="New task" title="New task (⌘K)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
-      <WorkspaceList label="Working" list={workspaces?.filter((w) => w.turn?.state === "running") ?? []} current={current} now={now} />
-      <WorkspaceList label="Recent" list={workspaces?.filter((w) => w.turn?.state !== "running") ?? []} current={current} now={now} />
+      {projectsOf(workspaces ?? []).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
+        onNew={() => { try { localStorage.setItem("kimono-code-repo", project.key); } catch { /* not remembered */ } goTo({}); }} />)}
       {workspaces && !workspaces.length ? <p className="cd-quiet cd-side-note">Nothing yet.</p> : null}
     </aside>
     <main className="cd-main">
@@ -161,16 +161,28 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
   </div>;
 }
 
-function WorkspaceList({ label, list, current, now }: { label: string; list: Workspace[]; current: string | null; now: number }) {
+/** Tasks under their project: the project with the latest activity first, and in each, a working task first, then the newest. */
+function projectsOf(list: Workspace[]) {
+  const byRepo = new Map<string, Workspace[]>();
+  for (const w of list) {
+    const key = `${w.repo.owner}/${w.repo.name}`;
+    byRepo.set(key, [...(byRepo.get(key) ?? []), w]);
+  }
+  const working = (w: Workspace) => w.turn?.state === "running" ? 1 : 0;
+  return [...byRepo.entries()]
+    .map(([key, tasks]) => ({ key, name: tasks[0].repo.name, tasks: tasks.toSorted((a, b) => working(b) - working(a) || b.updatedAt - a.updatedAt) }))
+    .toSorted((a, b) => Math.max(...b.tasks.map(working)) - Math.max(...a.tasks.map(working)) || b.tasks[0].updatedAt - a.tasks[0].updatedAt);
+}
+
+function WorkspaceList({ label, list, current, now, onNew }: { label: string; list: Workspace[]; current: string | null; now: number; onNew?: () => void }) {
   if (!list.length) return null;
-  return <div>
-    <div className="cd-side-label">{label}</div>
+  return <div className="cd-project">
+    <div className="cd-side-label cd-project-head"><span className="cd-mono">{label}</span><small>{list.length}</small>{onNew ? <button type="button" className="cd-roundbutton cd-project-new" onClick={onNew} aria-label={`New task in ${label}`} title={`New task in ${label}`}><Icon name="plus" /></button> : null}</div>
     <nav className="cd-list">{list.map((w) => {
       const state = w.turn?.state;
       return <button type="button" key={w.id} aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
         <b>{w.title}</b>
         <small>
-          <span className="cd-mono">{w.repo.name}</span>
           {/* One word, and only when it says something. */}
           {state === "running" ? <span className="cd-word running">working {elapsed(now - w.turn!.startedAt)}</span>
             : state === "failed" ? <span className="cd-word">stopped</span>
