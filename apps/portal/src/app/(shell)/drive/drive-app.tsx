@@ -5,7 +5,7 @@ import { rise, riseWhenReady, slide } from "@/components/motion";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { Choice, cx, Seal } from "@kimono/ui";
+import { AppBloom, Choice, cx, Seal } from "@kimono/ui";
 import {
   contentUrl, drive, DriveProblem, extension, kindOf, linkUrl, readableSize, shared, spaceLinkUrl, upload, when,
   type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
@@ -139,16 +139,21 @@ export function DriveApp({ me }: { me: Me }) {
 
   const go = useCallback((to: Record<string, string | null>) => goTo("/drive", to), []);
   const current = spaces?.find((s) => s.id === spaceParam) ?? (view ? null : spaces?.[0] ?? null);
-  const yours = spaces?.filter((s) => s.role === "owner") ?? [];
+  const codeSpace = spaces?.find((s) => s.code) ?? null;
+  const yours = spaces?.filter((s) => s.role === "owner" && !s.code) ?? [];
   const sharedWithYou = spaces?.filter((s) => s.role !== "owner") ?? [];
 
   return <div className="dv">
     <div className="dv-body" ref={body}>
       <aside className="dv-side">
+        {codeSpace ? <div>
+          <div className="dv-side-label">Code</div>
+          <div className="dv-nav"><SpaceLink space={codeSpace} here={!view && current?.id === codeSpace.id} people={people} onOpen={() => go({ space: codeSpace.id })} /></div>
+        </div> : null}
         <div>
           <div className="dv-side-label">Your spaces</div>
           <div className="dv-nav">{yours.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
-          {spaces && !yours.length ? <p className="dv-quiet-text dv-side-none">None yet.</p> : null}
+          {spaces && !yours.length && !codeSpace ? <p className="dv-quiet-text dv-side-none">None yet.</p> : null}
         </div>
         {sharedWithYou.length ? <div>
           <div className="dv-side-label">Shared with you</div>
@@ -218,13 +223,16 @@ export function GuestDrive({ token, space, mark }: { token: string; space: Share
 
 /* ── the sidebar ── */
 
-function Mark({ space, size = "" }: { space: Pick<Space, "mark">; size?: string }) {
+function Mark({ space, size = "" }: { space: Pick<Space, "mark" | "code">; size?: string }) {
+  if (space.code) return <span className={`dv-mark dv-code-mark ${size}`} aria-hidden="true">
+    <AppBloom identity={{ id: "kimono-code", name: "Code", accent: space.code.accent, glyph: "code" }} size="mark" />
+  </span>;
   return <span className={`dv-mark mon ${size}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: space.mark ?? "" }} />;
 }
 
 function SpaceLink({ space, here, people, onOpen }: { space: Space; here: boolean; people: Record<string, Person>; onOpen: () => void }) {
   const owner = people[space.createdBy?.toLowerCase()];
-  const meta = space.role === "owner"
+  const meta = space.code ? "Your projects, kept by Code" : space.role === "owner"
     ? space.members === 1 ? "Only you" : `${space.members} people`
     : `${owner?.name.split(" ")[0] ?? space.createdBy}'s · ${space.role === "editor" ? "you edit" : "you view"}`;
   return <button type="button" className="dv-space" aria-current={here ? "page" : undefined} onClick={onOpen}>
@@ -466,10 +474,14 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     }
   };
 
-  const subtitle = (node: DriveNode) => node.kind === "folder" ? "Folder"
+  /* In the Code space, the top level holds projects and each project its tasks. */
+  const codeRole = (node: DriveNode) => !space.code || node.kind !== "folder" || found ? undefined
+    : (folder?.path.length ?? 0) === 0 ? "project" as const : (folder?.path.length ?? 0) === 1 ? "task" as const : undefined;
+  const subtitle = (node: DriveNode) => node.kind === "folder" ? codeRole(node) === "project" ? "Project" : codeRole(node) === "task" ? "Task" : "Folder"
     : `${extension(node.name)}${!token && node.guest ? ` · added by ${node.guest}` : ""}`;
 
   return <section className="dv-sheet"
+    style={space.code ? { "--dv-code": space.code.accent } as React.CSSProperties : undefined}
     onKeyDown={onKeys}
     onKeyUp={(event) => { const target = event.target as HTMLElement; if (event.key === " " && target.closest("[data-row]") && !target.closest("input")) event.preventDefault(); }}
     onDragEnter={(event) => { if (canAdd && event.dataTransfer.types.includes("Files")) { depth.current += 1; setDragging(true); } }}
@@ -546,7 +558,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
                 setMenu({ id: node.id, top: event.clientY, bottom: event.clientY, left: event.clientX, right: event.clientX, align: "start", from: null });
               }}>
               <Check on={selected.has(node.id)} ghost={!selected.size} label={`Select ${node.name}`} onClick={(event) => { if (event.shiftKey) selectRange(node.id); else toggle(node.id); }} />
-              <Kind node={node} />
+              <Kind node={node} as={codeRole(node)} />
               <div className="nm">
                 {renaming === node.id ? <RenameField node={node} onDone={(next) => { setRenaming(null); if (next && next !== node.name) void act(() => drive.rename(node.id, next)); focusRow(node.id); }} />
                   : <button type="button"
@@ -610,8 +622,9 @@ function Check({ on, ghost, label, onClick }: { on: boolean | "part"; ghost?: bo
   </button>;
 }
 
-function Kind({ node }: { node: DriveNode }) {
+function Kind({ node, as }: { node: DriveNode; as?: "project" | "task" }) {
   const kind = kindOf(node);
+  if (kind === "folder" && as) return <span className={`dv-kind ${as}`}><Icon name={as} /></span>;
   if (kind === "folder") return <span className="dv-kind folder"><Icon name="folder" /></span>;
   return <span className="dv-kind"><span className="ext">{extension(node.name)}</span></span>;
 }

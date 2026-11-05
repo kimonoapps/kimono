@@ -10,6 +10,8 @@ export type Space = {
   id: string; name: string; crest: string; color: string; mark?: string; rootId: string;
   role: Role; members: number; createdBy: string;
   link?: string | null; linkAccess?: LinkAccess | null;
+  /** Set on your Code space: each top-level folder is a project, each folder in one a task. */
+  code?: { accent: string };
 };
 export type Member = { username: string; role: Role };
 export type SpaceDetail = Space & { memberList: Member[] };
