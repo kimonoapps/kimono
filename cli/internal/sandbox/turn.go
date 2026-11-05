@@ -89,6 +89,12 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	// What it has to work with, and whether it must make room first.
 	limits := s.limitsNow()
 	system := s.cfg.SystemPrompt + "\n\n" + limitsPrompt(limits)
+	space.mu.Lock()
+	chat := space.repo.URL == ""
+	space.mu.Unlock()
+	if chat {
+		system += "\n\nThis is a chat, not a project: there is no repository to commit to, push or open a pull request for. /workspace is this chat's own scratch space, and it is kept in the person's Drive."
+	}
 	used, measuredAt := s.diskUse(id)
 	if s.now().Sub(measuredAt) > time.Minute {
 		if fresh, err := s.measureDisk(r.Context(), id); err == nil {

@@ -3,9 +3,9 @@
   "kind": "AppDefinition",
   "metadata": {
     "id": "kimono-code",
-    "name": "Kimono Code",
-    "shortName": "Code",
-    "description": "Coding agents that work on your Kimono Git repositories in their own sandbox.",
+    "name": "Kimono AI",
+    "shortName": "AI",
+    "description": "An assistant for the household that works with your files, safely.",
     "category": "Development",
     "version": "0.1.0",
     "icon": "icon.svg",

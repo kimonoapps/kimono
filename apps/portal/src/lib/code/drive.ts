@@ -70,7 +70,7 @@ export async function taskFolder(db: DatabaseSync, workspace: Workspace): Promis
       if (!(error instanceof DriveProblem)) throw error;
     }
   }
-  const project = folderIn(space.rootId, owner, workspace.repo.name);
+  const project = folderIn(space.rootId, owner, workspace.kind === "project" ? workspace.repo.name : "Chats");
   const taken = new Set(childrenOf(driveDb(), project.id, owner).children.map((c) => c.name.toLowerCase()));
   const base = workspace.title.replace(/[\u0000-\u001f\u007f/\\]/g, " ").trim().slice(0, 120) || "Task";
   let name = base;

@@ -117,7 +117,7 @@ const effortWords: Record<Effort, string> = { low: "Low", medium: "Medium", high
 /** The thinking level, as a compact chip in the message box. Opus 5.5 is the only model. */
 function EffortPicker() {
   const effort = useEffort();
-  return <Choice compact label="Opus 5.5 ·" aria-label="How hard Opus 5.5 thinks" className="cd-effort" value={effort} onChange={(next) => setEffort(next as Effort)}
+  return <Choice compact label="Thinking ·" aria-label="How hard it thinks" className="cd-effort" value={effort} onChange={(next) => setEffort(next as Effort)}
     options={efforts.map((e) => ({ value: e, label: effortWords[e] }))} />;
 }
 
@@ -175,7 +175,7 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
   </div>;
 }
 
-export function CodeApp({ blocked }: { blocked: string | null }) {
+export function CodeApp({ blocked, admin }: { blocked: string | null; admin: boolean }) {
   const [accessOpen, setAccessOpen] = useState(false);
   const params = useCodeParams();
   /* Old links carried the screen in the query string: move it after the #, once. */
@@ -211,44 +211,53 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
   return <div className="cd-page">
     {accessOpen ? <AccessDialog onClose={() => setAccessOpen(false)} /> : null}
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
-    <aside className="cd-side" aria-label="Tasks">
-      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button><button type="button" className="cd-roundbutton" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-label="New task" title="New task (/)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
+    <aside className="cd-side" aria-label="Chats">
+      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button></div>
+      <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
+      <WorkspaceList list={chatsOf(workspaces ?? [])} current={current} now={now} />
       {projectsOf(workspaces ?? []).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
-        onNew={() => { try { localStorage.setItem("kimono-code-repo", project.key); } catch { /* not remembered */ } goTo({ new: "1" }); }} />)}
-      {workspaces && !workspaces.length ? <p className="cd-quiet cd-side-note">Nothing yet.</p> : null}
+        onNew={admin ? () => { try { localStorage.setItem("kimono-code-repo", project.key); localStorage.setItem("kimono-ai-project", "1"); } catch { /* not remembered */ } goTo({ new: "1" }); } : undefined} />)}
+      {workspaces && !workspaces.length ? <p className="cd-quiet cd-side-note">Your chats will be here.</p> : null}
     </aside>
     <main className="cd-main">
       {current && workspace
         ? <WorkspaceView key={workspace.id} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview && !w.preview.stopped) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
         : current && workspaces
-          ? <div className="cd-sheet cd-empty"><p>That workspace isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({ new: "1" })}>New task</Seal></div>
+          ? <div className="cd-sheet cd-empty"><p>That chat isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({ new: "1" })}>New chat</Seal></div>
           : current
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
-            : <Start blocked={blocked} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
+            : <Start blocked={blocked} admin={admin} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
   </div>;
 }
 
-/** Tasks under their project: the project with the latest activity first, and in each, a working task first, then the newest. */
+const working = (w: Workspace) => w.turn?.state === "running" ? 1 : 0;
+
+/** Chats, a working one first, then the newest. */
+function chatsOf(list: Workspace[]) {
+  return list.filter((w) => w.kind === "chat").toSorted((a, b) => working(b) - working(a) || b.updatedAt - a.updatedAt);
+}
+
+/** Projects' chats under their project: the project with the latest activity first, and in each, a working chat first, then the newest. */
 function projectsOf(list: Workspace[]) {
   const byRepo = new Map<string, Workspace[]>();
   for (const w of list) {
+    if (w.kind !== "project") continue;
     const key = `${w.repo.owner}/${w.repo.name}`;
     byRepo.set(key, [...(byRepo.get(key) ?? []), w]);
   }
-  const working = (w: Workspace) => w.turn?.state === "running" ? 1 : 0;
   return [...byRepo.entries()]
     .map(([key, tasks]) => ({ key, name: tasks[0].repo.name, tasks: tasks.toSorted((a, b) => working(b) - working(a) || b.updatedAt - a.updatedAt) }))
     .toSorted((a, b) => Math.max(...b.tasks.map(working)) - Math.max(...a.tasks.map(working)) || b.tasks[0].updatedAt - a.tasks[0].updatedAt);
 }
 
-function WorkspaceList({ label, list, current, now, onNew }: { label: string; list: Workspace[]; current: string | null; now: number; onNew?: () => void }) {
+function WorkspaceList({ label, list, current, now, onNew }: { label?: string; list: Workspace[]; current: string | null; now: number; onNew?: () => void }) {
   if (!list.length) return null;
   return <div className="cd-project">
-    <div className="cd-side-label cd-project-head"><span className="cd-mono">{label}</span><small>{list.length}</small>{onNew ? <button type="button" className="cd-roundbutton cd-project-new" onClick={onNew} aria-label={`New task in ${label}`} title={`New task in ${label}`}><Icon name="plus" /></button> : null}</div>
+    {label ? <div className="cd-side-label cd-project-head"><span>{label}</span><small>{list.length}</small>{onNew ? <button type="button" className="cd-roundbutton cd-project-new" onClick={onNew} aria-label={`New chat in ${label}`} title={`New chat in ${label}`}><Icon name="plus" /></button> : null}</div> : null}
     <nav className="cd-list">{list.map((w) => {
       const state = w.turn?.state;
       return <button type="button" key={w.id} aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
@@ -268,7 +277,9 @@ function WorkspaceList({ label, list, current, now, onNew }: { label: string; li
 
 /* ── a new task: which repository, which branch, and what to do ── */
 
-function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: Workspace) => Promise<void> }) {
+function Start({ blocked, admin, onStarted }: { blocked: string | null; admin: boolean; onStarted: (w: Workspace) => Promise<void> }) {
+  /* A new chat is just what you ask. Administrators can instead work on a project (a Kimono Git repository). */
+  const [onProject, setOnProject] = useState(() => { try { return admin && localStorage.getItem("kimono-ai-project") === "1"; } catch { return false; } });
   const [repos, setRepos] = useState<Repository[] | null>(null);
   const [repo, setRepo] = useState("");
   const [fetched, setFetched] = useState<{ repo: string; list: string[] } | null>(null);
@@ -279,6 +290,7 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
   const [naming, setNaming] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
+  const project = (on: boolean) => { setOnProject(on); try { localStorage.setItem("kimono-ai-project", on ? "1" : "0"); } catch { /* not remembered */ } };
 
   async function makeProject() {
     if (!naming?.trim() || making) return;
@@ -294,7 +306,7 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
   }
 
   useEffect(() => {
-    if (blocked) return;
+    if (blocked || !onProject) return;
     code.repositories().then((list) => {
       setRepos(list);
       let remembered = "";
@@ -302,9 +314,9 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
       const first = list.find((r) => `${r.owner}/${r.name}` === remembered) ?? list[0];
       if (first) setRepo(`${first.owner}/${first.name}`);
     }, (error) => setProblem(problemText(error)));
-  }, [blocked]);
+  }, [blocked, onProject]);
 
-  const chosen = repos?.find((r) => `${r.owner}/${r.name}` === repo);
+  const chosen = onProject ? repos?.find((r) => `${r.owner}/${r.name}` === repo) : undefined;
   const listed = fetched?.repo === repo ? fetched.list : [];
   const branches = chosen ? (listed.includes(chosen.defaultBranch) ? listed : [chosen.defaultBranch, ...listed]) : [];
   const base = picked?.repo === repo ? picked.branch : chosen?.defaultBranch ?? "";
@@ -317,13 +329,16 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
   }, [chosen]);
 
   useEffect(() => { field.current?.focus(); }, [repos]);
+  const ready = Boolean(prompt.trim()) && (!onProject || Boolean(chosen)) && !sending;
 
   async function send() {
-    if (!chosen || !prompt.trim() || sending) return;
+    if (!ready) return;
     setSending(true);
     setProblem(null);
     try {
-      await onStarted(await code.start({ owner: chosen.owner, name: chosen.name, base: base || chosen.defaultBranch, prompt, effort: effortNow() }));
+      await onStarted(await code.start(chosen
+        ? { owner: chosen.owner, name: chosen.name, base: base || chosen.defaultBranch, prompt, effort: effortNow() }
+        : { prompt, effort: effortNow() }));
     } catch (error) {
       setProblem(problemText(error));
       setSending(false);
@@ -331,9 +346,13 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
   }
 
   return <section className="cd-start">
-    <div className="cd-start-head"><button type="button" className="cd-roundbutton cd-start-back" onClick={() => goTo({})} aria-label="All tasks" title="All tasks"><Icon name="back" /></button><button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show tasks" title="Show tasks"><Icon name="panel" /></button><h2>What should we work on?</h2></div>
-    {blocked ? <div className="cd-sheet cd-blocked"><p>{blocked}</p></div> : <div className="cd-sheet cd-new-task">
-      {naming !== null || (repos && !repos.length) ? <div className="cd-naming">
+    <div className="cd-start-head">
+      <button type="button" className="cd-roundbutton cd-start-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+    </div>
+    <h2 className="cd-hello">{onProject ? "What should we build?" : "What can I do for you?"}</h2>
+    <>
+      {onProject && !blocked ? naming !== null || (repos && !repos.length) ? <div className="cd-naming">
         <label className="cd-task">
           <span>New project</span>
           <input autoFocus value={naming ?? ""} placeholder="Family recipes" maxLength={60}
@@ -348,28 +367,32 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
           options={(repos ?? []).map((r) => ({ value: `${r.owner}/${r.name}`, label: r.name, detail: r.description || r.owner, note: r.owner }))} />
         <Picker label="Starting from" value={base} onChange={setBase} disabled={!chosen} mono
           options={branches.map((b) => ({ value: b, label: b, detail: b === chosen?.defaultBranch ? "The main version" : undefined }))} />
-      </div>}
-      <label className="cd-task">
-        <span>Task</span>
-        <textarea ref={field} value={prompt} rows={5} placeholder="Describe what you want, in your own words. Paste screenshots or files once it starts."
+      </div> : null}
+      <div className="cd-hello-box">
+        <textarea ref={field} value={prompt} rows={3} aria-label="Message" disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
           onChange={(event) => setPrompt(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send(); } }} />
-      </label>
-      <div className="cd-new-go">
-        <span className="cd-faint">⌘↵ to start</span>
-        <Seal type="button" onClick={() => void send()} disabled={!chosen || !prompt.trim() || sending} aria-keyshortcuts="Meta+Enter">
-          {sending ? "Starting…" : "Start"}
-        </Seal>
+          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
+        <div className="cd-hello-row">
+          {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Work on a project</button> : null}
+          <span className="cd-grow" />
+          <Seal type="button" compact disabled={!ready || Boolean(blocked)} onClick={() => void send()}>{sending ? "Starting…" : "Send"}</Seal>
+        </div>
       </div>
-    </div>}
+      {blocked ? <p className="cd-hello-note">{blocked}</p> : null}
+    </>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </section>;
 }
 
 /* ── a workspace ── */
 
-function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }: { workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
+function WorkspaceView({ workspace, others, tab: asked, path, blocked, onChange, now }: { workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
   const { events, connected } = useTimeline(workspace.id, onChange);
+  /* A chat is a conversation and nothing else. Files, changes and the app (and repositories,
+     branches, pull requests) belong to a chat that is building something: a project, or one with an app. */
+  const project = workspace.kind === "project";
+  const isApp = project || Boolean(workspace.preview);
+  const tab: Tab = isApp ? asked : "chat";
   const running = workspace.turn?.state === "running";
   const [publishing, setPublishing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -391,43 +414,49 @@ function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }:
   const crossTo = useCrossTo();
   /* As on the phone: the title and repo, the few things you reach for (the running app, the
      pull request, Drive, delete) as quiet links and icons, one strong seal to publish, then the tabs. */
-  return <div className="cd-ws-grid">
+  return <div className={cx("cd-ws-grid", !isApp && "is-chat")}>
     <div className="cd-sheet cd-ws">
       <header className="cd-ws-head">
-        <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All tasks" title="All tasks"><Icon name="back" /></button>
-        <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show tasks" title="Show tasks"><Icon name="panel" /></button>
+        <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
+        <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
         <div className="cd-ws-id">
           <h1 title={workspace.title}>{workspace.title}</h1>
-          <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p>
+          {project ? <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p> : null}
         </div>
+        {!isApp && (running || !connected) ? <span className={cx("cd-status", running && "running")} role="status">{running ? <><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</> : "Reconnecting…"}</span> : null}
         {confirmDelete
-          ? <div className="cd-ws-acts"><span className="cd-faint">Delete the sandbox? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={() => void remove()}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></div>
+          ? <div className="cd-ws-acts"><span className="cd-faint">Delete this chat? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={() => void remove()}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></div>
+          : !project ? <div className="cd-ws-acts">
+              {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
+              {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
+              <button type="button" className="cd-roundbutton" aria-label="Delete chat" title="Delete chat" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>
+            </div>
           : <div className="cd-ws-acts">
               {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
               {workspace.pullRequest ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button> : null}
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
-              <button type="button" className="cd-roundbutton" aria-label="Delete task" title="Delete task" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>
+              <button type="button" className="cd-roundbutton" aria-label="Delete chat" title="Delete chat" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>
               <Seal type="button" compact tone={workspace.pullRequest ? "quiet" : "primary"} disabled={running || publishing || Boolean(blocked)} onClick={() => void publish()}>
                 {publishing ? "Pushing…" : workspace.pullRequest ? "Push changes" : "Open pull request"}
               </Seal>
             </div>}
       </header>
-      <div className="cd-segs" ref={segs}>
+      {isApp ? <div className="cd-segs" ref={segs}>
         <div className="cd-seg" role="tablist" aria-label="Views">
-          {([["chat", "Chat"], ["files", "Files"], ["changes", "Changes"], ["app", "App"]] as const).map(([id, label]) => (
+          {(project ? [["chat", "Chat"], ["files", "Files"], ["changes", "Changes"], ["app", "App"]] as const : [["chat", "Chat"], ["files", "Files"], ["app", "App"]] as const).map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go({ tab: id })}>{tab === id ? <Icon name="check" /> : id === "app" && workspace.preview && !workspace.preview.stopped ? <i className="cd-live-dot" aria-label="running" /> : null}{label}</button>
           ))}
         </div>
         {running ? <span className="cd-status running" role="status"><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</span>
           : !connected ? <span className="cd-status">Reconnecting…</span> : null}
-      </div>
+      </div> : <div ref={segs} hidden />}
       {problem ? <p className="cd-problem cd-ws-problem" role="alert">{problem}</p> : null}
       {tab === "chat" ? <Chat workspace={workspace} events={events} running={running} blocked={blocked} />
         : tab === "files" ? <Files workspace={workspace} path={path} onOpen={(path) => go({ tab: "files", path })} />
           : tab === "app" ? <AppView workspace={workspace} running={running} blocked={blocked} onChange={onChange} />
             : <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />}
     </div>
-    <aside className="cd-deploy" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></aside>
+    {isApp ? <aside className="cd-deploy" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></aside> : null}
   </div>;
 }
 
@@ -877,7 +906,7 @@ function AccessCard({ workspace, event, answer }: { workspace: Workspace; event:
     setBusy(choice); setProblem(null);
     code.answerAccess(workspace.id, event.id, choice, file).catch((error) => { setProblem(problemText(error)); setBusy(null); });
   };
-  return <InkCard colour="#8a6a3c" seed={`access-${event.id}`} className="cd-access-ink"><div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
+  return <div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
     <span className="cd-access-mark" aria-hidden="true"><Icon name="folder" /></span>
     <div className="cd-access-id">
       <b>Kimono AI wants to {verb} {event.path ? <>{event.path.split("/").pop()} in {event.space}</> : <>files in {event.space}</>}</b>
@@ -891,7 +920,7 @@ function AccessCard({ workspace, event, answer }: { workspace: Workspace; event:
     </div>
     {picking && event.node ? <OneFilePicker root={event.node} onPick={(file) => { setPicking(false); say("file", file); }} /> : null}
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
-  </div></InkCard>;
+  </div>;
 }
 
 /** The files in what it asked for, a folder at a time, to allow just one. */

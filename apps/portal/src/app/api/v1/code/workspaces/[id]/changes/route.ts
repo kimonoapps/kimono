@@ -1,5 +1,5 @@
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
-import { code, ensure, db, who, workspaceFor } from "@/lib/code";
+import { code, ensure, db, who, workspaceFor, requireProject } from "@/lib/code";
 import { sandbox } from "@/lib/code/node";
 
 type Context = { params: Promise<{ id: string }> };
@@ -11,6 +11,7 @@ export async function GET(_request: Request, { params }: Context) {
   const { id } = await params;
   return code(user, async (config) => {
     const workspace = workspaceFor(db(), id, user.username);
+    requireProject(user, workspace);
     await ensure(config, workspace, who(user));
     return apiJson(await sandbox.changes(config, workspace));
   });

@@ -817,3 +817,50 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-access-space-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 600; }
 .cd-access-space-name svg, .cd-access-row svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .cd-access-space-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Kimono AI: a chat, not a developer's tool ──
+   A chat is its title, the conversation and the composer. Tabs, the running-app
+   column, repositories and branches appear only for a chat that builds an app. */
+.cd-ws-grid.is-chat { grid-template-columns: minmax(0, 1fr); }
+.cd-ws-grid.is-chat .cd-ws { max-width: 920px; width: 100%; margin: 0 auto; }
+.cd-ws-grid.is-chat .cd-ws-head { align-items: center; padding: 16px 20px 6px; }
+.cd-ws-grid.is-chat .cd-ws-id h1 { font: 600 22px/1.25 var(--k-display); -webkit-line-clamp: 1; line-clamp: 1; }
+.cd-ws-head > .cd-status { margin: 0; padding: 0 4px; font: 600 13px/1 var(--k-sans); }
+
+/* the list: New chat first, then chats as soft rows */
+.cd-newchat { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 20px 0 16px; border: 0; border-radius: var(--k-r-l); background: var(--k-primary-container); color: var(--k-on-primary-container); font: 700 15px/1 var(--k-sans); cursor: pointer; transition: background-color var(--k-t-state), border-radius var(--k-t-seat) var(--k-spring); }
+.cd-newchat:hover { border-radius: var(--k-r-xl); background: color-mix(in srgb, var(--k-on-primary-container) 8%, var(--k-primary-container)); }
+.cd-newchat svg.i { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+.cd-newchat[aria-current] { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--k-on-primary-container) 30%, transparent); }
+.cd-project-head span { font-family: var(--k-sans); }
+
+/* a new chat: one question, one box */
+.cd-start { max-width: 760px; margin: 14vh auto 0; gap: 20px; }
+.cd-start-head { min-height: 0; }
+.cd-start .cd-hello { margin: 0 0 6px; font: 600 34px/1.15 var(--k-display); letter-spacing: -.01em; color: var(--k-plum); text-align: center; }
+.cd-hello-box { display: grid; gap: 6px; padding: 16px 16px 12px 20px; border-radius: 28px; background: var(--k-container-lowest); box-shadow: 0 1px 3px rgba(78, 43, 55, .10), 0 4px 16px rgba(78, 43, 55, .06); transition: box-shadow var(--k-t-state); }
+.cd-hello-box:focus-within { box-shadow: 0 0 0 2px var(--k-app-accent), 0 4px 16px rgba(78, 43, 55, .08); }
+.cd-hello-box textarea { width: 100%; min-height: 76px; resize: none; border: 0; outline: 0; padding: 4px 0; background: transparent; font: 400 17px/1.55 var(--k-sans); color: var(--k-on-surface); }
+.cd-hello-box textarea::placeholder { color: var(--k-on-surface-variant); opacity: .8; }
+.cd-hello-row { display: flex; align-items: center; gap: 8px; }
+.cd-chip { display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 10px; border: 1px solid var(--k-outline-variant); border-radius: 10px; background: transparent; color: var(--k-on-surface-variant); font: 600 14px/1 var(--k-sans); cursor: pointer; transition: background-color var(--k-t-state); }
+.cd-chip:hover { background: var(--k-container-high); }
+.cd-chip.is-on { border-color: transparent; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-chip svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cd-start .cd-new-pickers, .cd-start .cd-naming { padding: 0 4px; }
+@media (max-width: 720px) { .cd-start { margin-top: 6vh; } .cd-hello { font-size: 28px; } }
+
+/* asking for files: a clean tonal card; its seals and quiet buttons below the words */
+.cd-access { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px 16px; align-items: start; padding: 20px; border-radius: var(--k-r-xl); background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-access-mark { width: 44px; height: 44px; border-radius: 50%; background: var(--k-container-lowest); color: var(--k-on-secondary-container); }
+.cd-access-mark svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.cd-access-id { gap: 4px; padding-top: 2px; }
+.cd-access-id b { font: 600 17px/1.35 var(--k-sans); color: var(--k-on-surface); }
+.cd-access-id span { font-size: 15px; line-height: 1.5; color: var(--k-on-surface-variant); }
+.cd-access-acts { grid-column: 2; gap: 8px; }
+.cd-access .cd-quietbutton { height: 40px; padding: 0 14px; border-radius: var(--k-r-full); }
+.cd-access-pick { grid-column: 1 / -1; }
+.cd-access .cd-problem { grid-column: 2; margin: 0; }
+@media (max-width: 720px) { .cd-access { grid-template-columns: minmax(0, 1fr); } .cd-access-acts, .cd-access .cd-problem { grid-column: 1; } }
+.cd-hello-box:has(textarea:disabled) { opacity: .7; }
+.cd-hello-note { margin: 0; text-align: center; font-size: 14px; color: var(--k-on-surface-variant); }

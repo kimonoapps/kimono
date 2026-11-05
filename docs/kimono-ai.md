@@ -159,8 +159,11 @@ sandbox with no web.
    Image with the file tools (done) and the artifact libraries.
 2. Access (done): `kimono-access`, access cards, granted files in and out of
    the sandbox through Drive's model, the settings dialog.
-3. Chats: the `/ai` UI from Code's, with the words above; `/code` redirect;
-   migration.
+3. Chats (started): a chat needs no project, and shows only its title, the
+   conversation and the composer; Files, Changes, App, repositories and pull
+   requests appear only for a project or a chat with an app. "Kimono AI" in the
+   rail, everyone may chat, projects stay with administrators. Still to do: the
+   `/ai` address with `/code` redirecting, and the phone.
 4. Artifacts: the library set, the artifact card and page, saving to Drive,
    sharing. Then server apps for administrators, git hidden.
 5. Phone: the AI tab in the Compose app.

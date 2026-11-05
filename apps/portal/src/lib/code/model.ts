@@ -22,6 +22,8 @@ export type Preview = { url: string; port: number; kind: string | null; stopped:
 
 export type Workspace = {
   id: string; owner: string; title: string;
+  /** A chat has no project: its repo, base and branch are empty, and it never touches Kimono Git. */
+  kind: "chat" | "project";
   repo: { owner: string; name: string }; base: string; branch: string;
   session: string | null;
   pullRequest: { url: string; number: number } | null;
@@ -246,6 +248,7 @@ const selectWorkspace = `
 function toWorkspace(row: WorkspaceRow): Workspace {
   return {
     id: row.id, owner: row.owner, title: row.title,
+    kind: row.repo_name ? "project" : "chat",
     repo: { owner: row.repo_owner, name: row.repo_name }, base: row.base, branch: row.branch,
     session: row.session,
     pullRequest: row.pr_url && row.pr_number ? { url: row.pr_url, number: row.pr_number } : null,
@@ -272,18 +275,20 @@ export function branchFor(title: string, suffix = newId(2)) {
   return `code/${(words || "task").slice(0, 40).replace(/-+$/, "")}-${suffix}`;
 }
 
-export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOwner: unknown; repoName: unknown; base: unknown; prompt: unknown }, now = Date.now()): Workspace {
+/** A new chat; with a repository named, a project on it. */
+export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOwner?: unknown; repoName?: unknown; base?: unknown; prompt: unknown }, now = Date.now()): Workspace {
   const repoOwner = String(input.repoOwner ?? "");
   const repoName = String(input.repoName ?? "");
   const base = String(input.base ?? "");
   const prompt = String(input.prompt ?? "").trim();
-  if (!namePattern.test(repoOwner) || !namePattern.test(repoName)) throw new CodeProblem("Choose a repository.");
-  if (!branchPattern.test(base)) throw new CodeProblem("Choose a branch.");
+  const project = Boolean(repoOwner || repoName);
+  if (project && (!namePattern.test(repoOwner) || !namePattern.test(repoName))) throw new CodeProblem("Choose a repository.");
+  if (project && !branchPattern.test(base)) throw new CodeProblem("Choose a branch.");
   if (!prompt) throw new CodeProblem("Say what to do.");
   const id = newId();
   const title = titleFrom(prompt);
   db.prepare(`INSERT INTO workspaces (id, owner, title, repo_owner, repo_name, base, branch, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, owner.toLowerCase(), title, repoOwner, repoName, base, branchFor(title), now, now);
+    .run(id, owner.toLowerCase(), title, repoOwner, repoName, project ? base : "", project ? branchFor(title) : "", now, now);
   return workspaceFor(db, id, owner);
 }
 

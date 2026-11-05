@@ -45,3 +45,12 @@ func TestCheckoutKeepsGrantedFilesOutOfGit(t *testing.T) {
 		t.Fatal("the granted listing must look in .kimono/files")
 	}
 }
+
+func TestAChatHasNoRepository(t *testing.T) {
+	if !strings.Contains(chatScript, "git init") || !strings.Contains(chatScript, "/.kimono/") {
+		t.Fatal("a chat's sandbox must be a local repository that keeps .kimono out")
+	}
+	if (Repo{}) != (Repo{URL: ""}) {
+		t.Fatal("a chat is the empty repository")
+	}
+}

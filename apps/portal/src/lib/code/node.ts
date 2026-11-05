@@ -50,11 +50,12 @@ export const sandbox = {
     headers: { "Content-Type": "application/json" },
     timeout: 5 * 60_000,
     body: JSON.stringify({
-      repo: {
+      /* A chat has no repository, and its sandbox never gets a Kimono Git token. */
+      repo: workspace.kind === "project" ? {
         url: `${config.gitAddress}/${workspace.repo.owner}/${workspace.repo.name}.git`,
         owner: workspace.repo.owner, name: workspace.repo.name, base: workspace.base, branch: workspace.branch,
-      },
-      git: { token: config.gitToken, name: who.name, email: who.email },
+      } : {},
+      git: { token: workspace.kind === "project" ? config.gitToken : "", name: who.name, email: who.email },
       model: { token: config.modelToken },
       ...(tools ? { tools } : {}),
       owner: workspace.owner, title: workspace.title, limits: config.limits,

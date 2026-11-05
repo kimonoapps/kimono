@@ -87,7 +87,8 @@ export function appRegistry(settings: PlatformSettings, definitions: AppDefiniti
         catalogHref: `/admin/apps/${instance?.id || definition.metadata.id}`,
         launchable: enabled && Boolean(nativePath || instance?.tunnelId),
         publishable: !nativePath,
-        name: instance?.name || definition.metadata.name,
+        /* Code became Kimono AI: an install that kept the old default name takes the new one. */
+        name: (instance?.name === "Kimono Code" ? "" : instance?.name) || definition.metadata.name,
         description: definition.metadata.description,
         category: definition.metadata.category,
         version: definition.metadata.version,

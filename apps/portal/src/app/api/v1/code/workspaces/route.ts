@@ -1,5 +1,6 @@
-import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { ask, checkShare, code, createWorkspace, db, efforts, taskFolder, workspaceFor, workspacesOf, type Attachment, type Effort } from "@/lib/code";
+import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
+import { projectMissing } from "@/lib/code/config";
+import { ask, checkShare, code, requireProject, createWorkspace, db, efforts, taskFolder, workspaceFor, workspacesOf, type Attachment, type Effort } from "@/lib/code";
 
 /** Your workspaces, the most recently active first. */
 export async function GET() {
@@ -24,6 +25,11 @@ export async function POST(request: Request) {
     const body = read.body as { owner?: unknown; name?: unknown; base?: unknown; prompt?: unknown; effort?: unknown };
     /* Out of share: say so before a task is made that couldn't start. */
     checkShare(config, user);
+    if (body.owner || body.name) {
+      requireProject(user);
+      const blocked = projectMissing(config);
+      if (blocked) return apiError(409, blocked);
+    }
     const made = createWorkspace(db(), user.username, { repoOwner: body.owner, repoName: body.name, base: body.base, prompt: body.prompt });
     ask(config, made, user, String(body.prompt), [] as Attachment[], efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined);
     void taskFolder(db(), made).catch((error) => console.warn("Code couldn't make a Drive folder:", error instanceof Error ? error.message : error));

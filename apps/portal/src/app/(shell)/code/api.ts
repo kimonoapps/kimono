@@ -5,6 +5,8 @@
 
 export type TurnState = "running" | "done" | "failed" | "cancelled";
 export type Workspace = {
+  /** A chat has no project; a project works on a Kimono Git repository. */
+  kind: "chat" | "project";
   id: string; title: string; repo: { owner: string; name: string }; base: string; branch: string;
   pullRequest: { url: string; number: number } | null;
   preview: { url: string; port: number; kind: string | null; stopped: boolean } | null;
@@ -89,7 +91,7 @@ const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const code = {
   workspaces: () => call<{ workspaces: Workspace[] }>("/workspaces").then((r) => r.workspaces),
   workspace: (id: string) => call<Workspace>(ws(id)),
-  start: (input: { owner: string; name: string; base: string; prompt: string; effort?: Effort }) => call<Workspace>("/workspaces", json("POST", input)),
+  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort }) => call<Workspace>("/workspaces", json("POST", input)),
   rename: (id: string, title: string) => call<Workspace>(ws(id), json("PATCH", { title })),
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
   ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort })),

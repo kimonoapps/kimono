@@ -48,14 +48,19 @@ export type CodeConfig = ReturnType<typeof codeConfig>;
 
 /** What still stands between this server and a working Code, in the admin's words. */
 export function missing(config: CodeConfig): string | null {
-  if (!config.nodeAddress || !config.nodeKey) return "Code needs a sandbox node. An administrator adds it on Code's page in Applications.";
-  if (!config.gitAddress) return "Code works on Kimono Git repositories. Switch on Kimono Git first.";
-  if (!config.gitToken || !config.modelToken) return "Code needs its Kimono Git and Claude tokens. An administrator adds them on Code's page in Applications.";
+  if (!config.nodeAddress || !config.nodeKey || !config.modelToken) return "Kimono AI isn't set up yet. An administrator finishes it in Applications.";
+  return null;
+}
+
+/** What stands between this server and working on a project: Kimono Git, and its token. */
+export function projectMissing(config: CodeConfig): string | null {
+  if (!config.gitAddress) return "Projects need Kimono Git. Switch it on first.";
+  if (!config.gitToken) return "Projects need a Kimono Git token. Add it on Kimono AI's page in Applications.";
   return null;
 }
 
 export async function codeIdentity(settings: PlatformSettings): Promise<AppIdentity> {
   const definition = await getAppDefinition(codeAppId);
   const colors = settings.apps[codeAppId]?.colors || definition?.metadata.colors;
-  return { id: codeAppId, name: "Code", accent: colors ? accentOf(colors) : "#3f6b6a", glyph: "code" };
+  return { id: codeAppId, name: "AI", accent: colors ? accentOf(colors) : "#3f6b6a", glyph: "code" };
 }

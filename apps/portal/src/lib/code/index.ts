@@ -54,15 +54,22 @@ export function db(): DatabaseSync {
   return live.db;
 }
 
-/** Code is for administrators while it is new. */
-export const allowed = (user: ApiUser) => user.role === "owner" || user.role === "admin";
+/** Chats are for everyone; projects on Kimono Git, and publishing, are for administrators. */
+export const allowed = (user: ApiUser) => Boolean(user.username);
+export const isAdmin = (user: ApiUser) => user.role === "owner" || user.role === "admin";
+
+/** Refuses project work (repositories, branches, pull requests) to anyone but an administrator, and to a chat. */
+export function requireProject(user: ApiUser, workspace?: Workspace) {
+  if (!isAdmin(user)) throw new CodeProblem("Projects are for administrators.", 403);
+  if (workspace && workspace.kind !== "project") throw new CodeProblem("This chat isn't a project.", 400);
+}
 
 /** Runs a Code action for a signed-in user, turning refusals into the JSON errors /api/v1 answers with. */
 export async function code(user: ApiUser, work: (config: CodeConfig) => Promise<Response> | Response, needsSetup = true): Promise<Response> {
   try {
     const config = codeConfig(await getPlatformSettings());
     if (!config.enabled) return apiError(404, "Code isn't switched on.");
-    if (!allowed(user)) return apiError(403, "Code is only for administrators for now.");
+    if (!allowed(user)) return apiError(403, "Kimono AI isn't for this account.");
     const blocked = needsSetup ? missing(config) : null;
     if (blocked) return apiError(409, blocked);
     return await work(config);

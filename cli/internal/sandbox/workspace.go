@@ -146,12 +146,17 @@ func randomToken() string {
 // ensure makes the workspace's sandbox exist, run, and sit on its branch.
 func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (*workspace, string, error) {
 	dev := s.cfg.DevGitDir != ""
-	base, err := repoBase(request.Repo, dev)
-	if err != nil {
-		return nil, "", problem(400, err.Error())
-	}
-	if request.Git.Token == "" && !(dev && strings.Contains(request.Repo.URL, "://"+DevGitHost+"/")) {
-		return nil, "", problem(400, "A Kimono Git token is required.")
+	/* A chat with no project has no repository: its sandbox starts empty and never reaches Kimono Git. */
+	chat := request.Repo == (Repo{})
+	base := ""
+	if !chat {
+		var err error
+		if base, err = repoBase(request.Repo, dev); err != nil {
+			return nil, "", problem(400, err.Error())
+		}
+		if request.Git.Token == "" && !(dev && strings.Contains(request.Repo.URL, "://"+DevGitHost+"/")) {
+			return nil, "", problem(400, "A Kimono Git token is required.")
+		}
 	}
 	s.mu.Lock()
 	w := s.spaces[id]
@@ -286,6 +291,14 @@ func (s *Server) probeOffline(ctx context.Context, name string) error {
 // offlineProbe is a public address a sandbox must not reach: Cloudflare's resolver, on HTTPS.
 const offlineProbe = "1.1.1.1/443"
 
+// chatScript readies a chat's sandbox, which has no repository: a local git
+// one all the same, so its files are listed the way a project's are, with the
+// person's own files (.kimono) kept out.
+const chatScript = `set -e
+cd /workspace
+[ -d .git ] || git init --quiet
+grep -qxF '/.kimono/' .git/info/exclude 2>/dev/null || echo '/.kimono/' >> .git/info/exclude`
+
 // checkoutScript clones on first use and otherwise only moves onto the
 // workspace's branch when it is somewhere else, so the agent's work is never
 // reset under it.
@@ -305,6 +318,13 @@ if [ "$current" != "$branch" ]; then
 fi`
 
 func (s *Server) checkout(ctx context.Context, w *workspace) error {
+	if w.repo.URL == "" {
+		_, err := s.exec(ctx, w, nil, nil, "sh", "-c", chatScript)
+		if err != nil {
+			return fmt.Errorf("Couldn't get the chat's files ready: %w", err)
+		}
+		return nil
+	}
 	_, err := s.exec(ctx, w, nil, nil, "sh", "-c", checkoutScript, "checkout", w.repo.URL, w.repo.Base, w.repo.Branch)
 	if err != nil {
 		return fmt.Errorf("Couldn't get %s/%s ready: %w", w.repo.Owner, w.repo.Name, err)

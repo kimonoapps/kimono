@@ -7,19 +7,19 @@ import { getPlatformSettings } from "@/lib/settings";
 import { CodeApp } from "./code-app";
 import "./code.css";
 
-export const metadata = { title: "Kimono Code" };
+export const metadata = { title: "Kimono AI" };
 
-/** Kimono Code: coding agents working in their own sandbox on your Kimono Git repositories. */
+/** Kimono AI: one assistant for the household, in a sandbox of its own; projects on Kimono Git for administrators. */
 export default async function CodePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const settings = await getPlatformSettings();
   const config = codeConfig(settings);
   const admin = session.user.role === "owner" || session.user.role === "admin";
-  if (!config.enabled || !admin) redirect(admin ? "/admin/apps/kimono-code" : "/");
+  if (!config.enabled) redirect(admin ? "/admin/apps/kimono-code" : "/");
   return <AppShell user={session.user} brandColors={settings.brand.colors} app={await codeIdentity(settings)}>
     <Suspense>
-      <CodeApp blocked={missing(config)} />
+      <CodeApp blocked={missing(config)} admin={admin} />
     </Suspense>
   </AppShell>;
 }

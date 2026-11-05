@@ -184,3 +184,15 @@ test("the agent's context use, its window and compaction come through", () => {
   const compacted = translate({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 96201 } });
   assert.deepEqual(compacted.events, [{ kind: 'compacted', before: 96201 }]);
 });
+
+test('a chat needs no repository; naming one makes a project', () => {
+  const db = fresh();
+  const chat = model.createWorkspace(db, 'mina', { prompt: 'Sort my photos' });
+  assert.equal(chat.kind, 'chat');
+  assert.deepEqual(chat.repo, { owner: '', name: '' });
+  assert.equal(chat.branch, '');
+  const project = model.createWorkspace(db, 'mina', { repoOwner: 'mina', repoName: 'recipes', base: 'main', prompt: 'Add a search box' });
+  assert.equal(project.kind, 'project');
+  assert.match(project.branch, /^code\//);
+  assert.throws(() => model.createWorkspace(db, 'mina', { repoOwner: 'mina', prompt: 'x' }), /Choose a repository/);
+});
