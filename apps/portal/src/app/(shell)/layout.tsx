@@ -40,19 +40,19 @@ export default async function ShellLayout({ children }: { children: ReactNode })
 async function appRooms(): Promise<Record<string, RailRoom[]>> {
   const rooms: Record<string, RailRoom[]> = {
     "kimono-drive": [
-      { href: "/drive", label: "Spaces" },
-      { href: "/drive?view=recent", label: "Recent" },
-      { href: "/drive?view=trash", label: "Trash" },
+      { href: "/drive", label: "Spaces", icon: "folder" },
+      { href: "/drive?view=recent", label: "Recent", icon: "clock" },
+      { href: "/drive?view=trash", label: "Trash", icon: "trash" },
     ],
     "kimono-vpn": [
-      { href: "/vpn", label: "Devices" },
-      { href: "/vpn/people", label: "People" },
-      { href: "/vpn/connect", label: "Connect" },
+      { href: "/vpn", label: "Devices", icon: "laptop" },
+      { href: "/vpn/people", label: "People", icon: "people" },
+      { href: "/vpn/connect", label: "Connect", icon: "link" },
     ],
   };
   /* Tools' collections are its rooms, as the phone shows spaces; /tools itself opens the first. */
   const [settings, definition] = await Promise.all([getPlatformSettings(), getAppDefinition("kimono-tools")]);
   if (definition) rooms["kimono-tools"] = toolCollections(settings, definition)
-    .map((item, index) => ({ href: `/tools/${item.api.id}`, label: item.api.name, here: index === 0 }));
+    .map((item, index) => ({ href: `/tools/${item.api.id}`, label: item.api.name, here: index === 0, icon: "book" as const }));
   return rooms;
 }

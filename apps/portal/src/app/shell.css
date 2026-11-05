@@ -32,9 +32,12 @@
 .rail-dest.drop-before { box-shadow: 0 -3px 0 -1px var(--k-accent); }
 .rail-rooms { position: relative; display: grid; justify-items: center; gap: 2px; width: 100%; padding: 2px 0 6px; }
 .rail-rooms::before { content: ""; position: absolute; top: 0; bottom: 6px; left: 50%; width: 1.5px; margin-left: -34px; border-radius: var(--k-r-s); background: color-mix(in srgb, var(--k-app-accent) 40%, transparent); }
-.rail-room { min-height: 34px; align-content: center; padding: 0 4px; border-radius: var(--k-r-l); font-size: 12px; }
-.rail-room:hover { background: var(--k-container-high); }
-.rail-room[aria-current] { background: color-mix(in srgb, var(--k-app-accent) 12%, var(--k-container-lowest)); color: var(--k-on-surface); }
+/* An app's rooms are rail stops of their own, as in the mockup: an ink icon in a pill, the name beneath. */
+.rail-room { font-size: 12px; }
+.rail-room .rail-pill { height: 30px; width: 52px; }
+.rail-room .rail-pill .line-icon { width: 21px; height: 21px; color: var(--k-on-surface-variant); }
+.rail-room[aria-current] .rail-pill { background: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest)); }
+.rail-room[aria-current] .rail-pill .line-icon { color: var(--k-app-accent); }
 .rail-you .k-ink-portrait { width: 30px; height: 30px; }
 .rail-you .portrait { width: 22px; height: 22px; font-size: 11px; box-shadow: none; background: transparent; }
 
@@ -229,8 +232,8 @@
 .rail-dest:hover .rail-pill > svg, .rail-dest:hover .rail-pill > .k-app-bloom { transform: scale(1.08); }
 .rail-dest:active .rail-pill { transform: scale(.92); transition: transform .1s; }
 .rail-dest { transition: color .2s; }
-.rail-room { transition: background-color .25s var(--mo-in), color .2s; }
-.rail-room[aria-current] { animation: mo-pop .32s var(--mo-in); }
+.rail-room .rail-pill { transition: background-color .25s var(--mo-in); }
+.rail-room[aria-current] .rail-pill { animation: mo-pill .42s var(--mo-in); }
 @keyframes mo-pop { from { transform: scale(.94); } }
 
 /* Sheets: the scrim fades, the sheet rises. */
@@ -257,7 +260,7 @@
 .seg > .row { transition: background-color .2s, border-radius .35s var(--spring), transform .25s var(--mo-spring); }
 
 @media (prefers-reduced-motion: reduce) {
-  .rail-dest[aria-current] .rail-pill, .rail-room[aria-current], .scrim.open, .sheet, .cd-seg button svg.i,
+  .rail-dest[aria-current] .rail-pill, .rail-room[aria-current] .rail-pill, .scrim.open, .sheet, .cd-seg button svg.i,
   .cd-timeline > *, .cd-say, .call-list > *, .cd-start > *, .cd-side button[aria-current] { animation: none; }
 }
 

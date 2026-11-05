@@ -7,6 +7,7 @@ import { AppBloom, cx, type GlyphName } from "@kimono/ui";
 import { GridIcon } from "@/components/icons";
 import { usePins } from "@/components/pins";
 import { AppTiles } from "@/components/app-card";
+import { LineIcon, type LineIconName } from "@/components/line-icon";
 
 export type RailApp = {
   id: string;
@@ -18,7 +19,7 @@ export type RailApp = {
   glyph?: GlyphName;
   iconUrl?: string;
 };
-export type RailRoom = { href: string; label: string; here?: boolean };
+export type RailRoom = { href: string; label: string; here?: boolean; icon?: LineIconName };
 
 /**
  * Which room you're in, read from the live address: apps like Drive move by
@@ -103,7 +104,7 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
             <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" /></span>{app.name}
           </Crossing>
           {open && rooms?.length ? <div className="rail-rooms">
-            {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}>{room.label}</Crossing>)}
+            {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}><span className="rail-pill"><LineIcon name={room.icon ?? "book"} /></span>{room.label}</Crossing>)}
           </div> : null}
         </div>;
       })}
