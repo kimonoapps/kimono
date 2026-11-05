@@ -6,6 +6,7 @@ import { recordAccount, holdsMeshAccess } from "@/lib/directory";
 import { Portrait } from "@/components/portrait";
 import { picturePathFor } from "@/lib/pictures";
 import { UpdateBanner } from "@/components/update-banner";
+import { PageTransition } from "@/components/page-transition";
 import { Rail, type RailApp, type RailRoom } from "@/components/rail";
 import { defaultPins } from "@/lib/default-pins";
 import { appRegistry, launcherApps } from "@/lib/apps";
@@ -69,8 +70,10 @@ export async function AppShell({ children, user, active, app, rooms }: Props) {
         you={<InkPortraitFrame seed={user.username} weight={6}><Portrait name={displayName} username={user.username} picture={picture} size={26} /></InkPortraitFrame>}
       />
       <main className="main-content">
-        {active === "admin" && admin ? <div className="admin-update"><UpdateBanner username={user.username} /></div> : null}
-        {children}
+        <PageTransition>
+          {active === "admin" && admin ? <div className="admin-update"><UpdateBanner username={user.username} /></div> : null}
+          {children}
+        </PageTransition>
       </main>
     </div>
   );

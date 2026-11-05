@@ -82,9 +82,27 @@
 .account-signout button:hover { background: var(--k-primary-container); }
 .admin-update { display: flex; justify-content: flex-end; padding: var(--k-space-4) var(--k-shell-gutter) 0; }
 
-/* ── pages swipe in, left to right; nothing covers the screen ── */
-.page-swipe { animation: page-swipe 260ms cubic-bezier(.05, .7, .1, 1) both; }
-@keyframes page-swipe { from { opacity: 0; transform: translateX(-36px); } }
+/* ── moving between pages: Material's shared x-axis (components/page-transition.tsx) ──
+   The page you leave fades fast while it slides a little way; the next one
+   slides in from the other side and fades up. Back runs the other way.
+   Only the page moves; the rail and header keep still. */
+::view-transition-group(.page-axis) { animation-duration: 400ms; animation-timing-function: cubic-bezier(.05, .7, .1, 1); }
+::view-transition-old(.page-axis) { animation: 100ms cubic-bezier(.4, 0, 1, 1) both page-leave-forward; }
+::view-transition-new(.page-axis) { animation: 380ms cubic-bezier(.05, .7, .1, 1) 80ms both page-arrive-forward; }
+:root[data-nav="back"]::view-transition-old(.page-axis) { animation-name: page-leave-back; }
+:root[data-nav="back"]::view-transition-new(.page-axis) { animation-name: page-arrive-back; }
+@keyframes page-leave-forward { to { opacity: 0; transform: translateX(-32px); } }
+@keyframes page-arrive-forward { from { opacity: 0; transform: translateX(48px); } }
+@keyframes page-leave-back { to { opacity: 0; transform: translateX(32px); } }
+@keyframes page-arrive-back { from { opacity: 0; transform: translateX(-48px); } }
+/* without view transitions, a page still settles in as it arrives */
+@supports not (view-transition-name: none) {
+  .page-swipe { animation: page-swipe 300ms cubic-bezier(.05, .7, .1, 1) both; }
+}
+@keyframes page-swipe { from { opacity: 0; transform: translateX(32px); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
 
 /* ── phone: the rail is the bottom bar ── */
 @media (max-width: 720px) {
