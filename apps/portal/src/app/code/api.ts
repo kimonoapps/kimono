@@ -20,7 +20,8 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
-  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number }
+  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; context?: { used: number; window?: number } }
+  | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }
   | { kind: "preview"; url: string; port: number }
@@ -42,7 +43,7 @@ const base = "/api/v1/code";
 export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
 export type Effort = (typeof efforts)[number];
 export type Usage = {
-  model: string; unlimited: boolean; reported: boolean;
+  model: string; unlimited: boolean; reported: boolean; plan: { fiveHour: number | null; week: number | null };
   fiveHour: { used: number; share: number; resetsAt: number | null };
   week: { used: number; share: number; resetsAt: number | null };
 };

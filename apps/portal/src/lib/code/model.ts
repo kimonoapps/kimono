@@ -123,7 +123,7 @@ export function migrate(db: DatabaseSync) {
 
 export type UsageReport = { five_hour?: number; week?: number; five_hour_now?: number; five_hour_reset?: number; week_now?: number; week_reset?: number };
 export type PlanWindow = { used: number; resetsAt: number | null };
-export type PersonUsage = { fiveHour: PlanWindow; week: PlanWindow; reported: boolean };
+export type PersonUsage = { fiveHour: PlanWindow; week: PlanWindow; reported: boolean; /** The whole plan's use of each window, as last seen. */ plan: { fiveHour: number | null; week: number | null } };
 
 const fraction = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10 ? value : 0;
 const seconds = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
@@ -144,14 +144,18 @@ export function recordUsage(db: DatabaseSync, username: string, report: UsageRep
 
 /** How much of the current 5-hour and weekly windows a person has used, as fractions of the whole plan. */
 export function usageOf(db: DatabaseSync, username: string, now = Date.now()): PersonUsage {
-  const plan = db.prepare("SELECT five_hour_reset, week_reset FROM plan_windows WHERE id = 1").get() as { five_hour_reset: number | null; week_reset: number | null } | undefined;
+  const plan = db.prepare("SELECT five_hour, five_hour_reset, week, week_reset FROM plan_windows WHERE id = 1").get() as { five_hour: number | null; five_hour_reset: number | null; week: number | null; week_reset: number | null } | undefined;
+  const current = (value: number | null | undefined, reset: number | null | undefined) => value != null && reset && reset * 1000 > now ? value : reset ? 0 : null;
   const window = (column: "five_hour" | "week", reset: number | null | undefined): PlanWindow => {
     /* A window whose reset has passed is a fresh one: nobody has used any of it yet. */
     if (!reset || reset * 1000 <= now) return { used: 0, resetsAt: null };
     const row = db.prepare(`SELECT COALESCE(SUM(${column}), 0) AS used FROM usage WHERE username = ? AND ${column}_reset = ?`).get(username, reset) as { used: number };
     return { used: row.used, resetsAt: reset * 1000 };
   };
-  return { fiveHour: window("five_hour", plan?.five_hour_reset), week: window("week", plan?.week_reset), reported: Boolean(plan) };
+  return {
+    fiveHour: window("five_hour", plan?.five_hour_reset), week: window("week", plan?.week_reset), reported: Boolean(plan),
+    plan: { fiveHour: current(plan?.five_hour, plan?.five_hour_reset), week: current(plan?.week, plan?.week_reset) },
+  };
 }
 
 type WorkspaceRow = {

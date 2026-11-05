@@ -100,17 +100,56 @@ function EffortPicker() {
     options={efforts.map((e) => ({ value: e, label: effortWords[e] }))} />;
 }
 
-/** How much of their share of the Claude plan someone has used, in one quiet line. */
-function UsageLine({ refresh }: { refresh: unknown }) {
+/** A ring that fills as something is used: a pie chart's quieter cousin. */
+function Ring({ value, label }: { value: number | null; label: string }) {
+  const r = 8, c = 2 * Math.PI * r, v = value == null ? 0 : Math.max(0, Math.min(1, value));
+  return <svg className={cx("cd-ring", v >= .9 && "is-high", value == null && "is-unknown")} viewBox="0 0 22 22" role="img" aria-label={label}>
+    <circle cx="11" cy="11" r={r} className="track" />
+    <circle cx="11" cy="11" r={r} className="arc" strokeDasharray={`${c * v} ${c}`} transform="rotate(-90 11 11)" />
+  </svg>;
+}
+
+const fallbackWindow = 200_000;
+const kTokens = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+const resetWords = (at: number | null) => at ? new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
+
+/** Context, the 5-hour window and the week, as three rings beside Send; open them for the numbers and to compact. */
+function Meters({ workspace, context, running, blocked }: { workspace: Workspace; context: { used: number; window?: number } | null; running: boolean; blocked: string | null }) {
   const [usage, setUsage] = useState<Usage | null>(null);
-  useEffect(() => { let live = true; code.usage().then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, [refresh]);
-  if (!usage || usage.unlimited || !usage.reported) return null;
-  const part = (w: Usage["week"]) => Math.min(100, Math.round((w.used / w.share) * 100));
-  const five = part(usage.fiveHour), week = part(usage.week);
-  const full = five >= 100 || week >= 100;
-  return <span className={cx("cd-usage", full && "is-full")} title={`Your share: ${Math.round(usage.fiveHour.share * 100)}% of each 5-hour window and ${Math.round(usage.week.share * 100)}% of the week`}>
-    {five}% of your 5-hour share · {week}% of this week&rsquo;s
-  </span>;
+  const [open, setOpen] = useState(false);
+  const [compacting, setCompacting] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { let live = true; code.usage().then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, [running]);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const window = context?.window ?? fallbackWindow;
+  const ctx = context ? context.used / window : null;
+  const share = (w: Usage["week"], plan: number | null) => !usage?.reported ? null : usage.unlimited ? plan : w.used / w.share;
+  const five = usage ? share(usage.fiveHour, usage.plan?.fiveHour ?? null) : null;
+  const week = usage ? share(usage.week, usage.plan?.week ?? null) : null;
+  const whose = usage?.unlimited ? "of the plan" : "of your share";
+  return <div className="cd-meters" ref={box}>
+    <button type="button" className="cd-meters-btn" aria-expanded={open} aria-label="Context and usage" title="Context and usage" onClick={() => setOpen(!open)}>
+      <Ring value={ctx} label={ctx == null ? "Context not known yet" : `Context ${pct(ctx)} full`} />
+      <Ring value={five} label={five == null ? "5-hour use not reported" : `${pct(five)} of the 5-hour window`} />
+      <Ring value={week} label={week == null ? "Weekly use not reported" : `${pct(week)} of the week`} />
+    </button>
+    {open ? <div className="cd-meters-pop" role="dialog" aria-label="Context and usage">
+      <div className="cd-meter"><Ring value={ctx} label="Context" /><span><b>Context</b><small>{context ? `${kTokens(context.used)} of ${kTokens(window)} tokens${context.window ? "" : " (about)"}` : "Known after the next reply"}</small></span>
+        <Seal type="button" compact tone="quiet" disabled={compacting || Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); setOpen(false); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{compacting ? "Compacting…" : running ? "Compact after this" : "Compact now"}</Seal></div>
+      <p className="cd-meter-note">Compacting folds the conversation so far into a summary, so there&rsquo;s room to keep going. It also happens by itself when the context fills.</p>
+      <div className="cd-meter"><Ring value={five} label="5-hour window" /><span><b>5-hour window</b><small>{five == null ? "Not reported yet" : `${pct(five)} ${whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div>
+      <div className="cd-meter"><Ring value={week} label="This week" /><span><b>This week</b><small>{week == null ? "Not reported yet" : `${pct(week)} ${whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div>
+      {usage && !usage.unlimited ? <p className="cd-meter-note">Your share is {pct(usage.fiveHour.share)} of each 5-hour window and {pct(usage.week.share)} of the week.</p> : null}
+      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+    </div> : null}
+  </div>;
 }
 
 export function CodeApp({ blocked }: { blocked: string | null }) {
@@ -421,7 +460,8 @@ type Item =
   | { type: "published"; seq: number; event: Extract<CodeEvent, { kind: "published" }> }
   | { type: "shots"; seq: number; shots: { name: string; caption?: string }[] }
   | { type: "preview"; seq: number; event: Extract<CodeEvent, { kind: "preview" }> }
-  | { type: "preview-stopped"; seq: number };
+  | { type: "preview-stopped"; seq: number }
+  | { type: "compacted"; seq: number; before?: number };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
 function itemsOf(events: StoredEvent[]): Item[] {
@@ -444,6 +484,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "image": if (last?.type === "shots") last.shots.push(event); else items.push({ type: "shots", seq, shots: [event] }); break;
       case "preview": items.push({ type: "preview", seq, event }); break;
       case "preview-stopped": items.push({ type: "preview-stopped", seq }); break;
+      case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
     }
   }
   return items;
@@ -483,6 +524,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
   const lastAsk = items.findLastIndex((i) => i.type === "ask");
   const lastTools = items.slice(lastAsk + 1).findLast((i) => i.type === "tools");
   const lastPreview = items.findLast((i) => i.type === "preview")?.seq;
+  const lastContext = (items.findLast((i) => i.type === "done" && i.event.context) as Extract<Item, { type: "done" }> | undefined)?.event.context ?? null;
   return <div className="cd-chat">
     <div className="cd-scroll" ref={scroller} onScroll={onScroll}>
       <div className="cd-timeline" ref={timeline} aria-live="polite">
@@ -496,6 +538,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
             case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
             case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
+            case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
           }
         })}
@@ -504,12 +547,13 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
     </div>
-    <Composer workspace={workspace} running={running} blocked={blocked} />
+    <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />
   </div>;
 }
 
 function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
   const { text, attachments, queued } = item.event;
+  if (text.trim() === "/compact" && !attachments.length) return <p className="cd-note"><Icon name="diff" />You asked it to compact the conversation{queued ? " after this step" : ""}</p>;
   return <div className={cx("cd-ask", queued && "is-queued")} title={queued ? "Sent while it was working: read as soon as the current step ends" : undefined}>
     {text ? <p>{text}</p> : null}
     {attachments.length ? <div className="cd-attached">{attachments.map((a) => isPicture(a.type)
@@ -653,7 +697,7 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
 
 type Pending = { id: string; name: string; size: number; preview: string | null; attachment?: Attachment; failed?: string };
 
-function Composer({ workspace, running, blocked }: { workspace: Workspace; running: boolean; blocked: string | null }) {
+function Composer({ workspace, running, blocked, context }: { workspace: Workspace; running: boolean; blocked: string | null; context: { used: number; window?: number } | null }) {
   const draftKey = `kimono-code-draft-${workspace.id}`;
   const [text, setText] = useState(() => { try { return sessionStorage.getItem(draftKey) ?? ""; } catch { return ""; } });
   const [pending, setPending] = useState<Pending[]>([]);
@@ -725,8 +769,9 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
       <button type="button" className="cd-iconbutton" aria-label="Attach files" disabled={Boolean(blocked)} onClick={() => picker.current?.click()}><Icon name="clip" /></button>
       {workspace.drive ? <button type="button" className="cd-iconbutton" aria-label="Attach from Drive" title="Attach from Drive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" /></button> : null}
       <EffortPicker />
-      {problem ? <span className="cd-problem" role="alert">{problem}</span> : <UsageLine refresh={running} />}
+      {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />
+      <Meters workspace={workspace} context={context} running={running} blocked={blocked} />
       {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop the agent" title="Stop the agent" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
       <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Meta+Enter" title="Send (⌘↵)">Send</Seal>
     </div>

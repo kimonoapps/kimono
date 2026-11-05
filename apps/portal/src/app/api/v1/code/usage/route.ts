@@ -12,6 +12,7 @@ export async function GET() {
       model: "Opus 5.5",
       unlimited,
       reported: used.reported,
+      plan: used.plan,
       fiveHour: { used: used.fiveHour.used, share: unlimited ? 1 : config.shares.fiveHour, resetsAt: used.fiveHour.resetsAt },
       week: { used: used.week.used, share: unlimited ? 1 : config.shares.week, resetsAt: used.week.resetsAt },
     });

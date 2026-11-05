@@ -13,7 +13,8 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
-  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number }
+  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
+  | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }
   | { kind: "preview"; url: string; port: number }
@@ -64,8 +65,24 @@ function resultText(content: unknown): string {
   return "";
 }
 
-export type TurnResult = { failure?: string; costUsd?: number; durationMs?: number };
-export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult };
+export type TurnResult = { failure?: string; costUsd?: number; durationMs?: number; window?: number };
+/** `context` is what the agent's latest message held: its input, plus what it read from and wrote to the cache. */
+export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult; context?: number };
+
+const tokens = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+function contextOf(message: Record<string, unknown>): number | undefined {
+  const usage = (message.message as { usage?: Record<string, unknown> } | undefined)?.usage;
+  if (!usage) return undefined;
+  const total = tokens(usage.input_tokens) + tokens(usage.cache_creation_input_tokens) + tokens(usage.cache_read_input_tokens);
+  return total || undefined;
+}
+/** The model's context window, as Claude Code reports it per model at the end of a turn. */
+function windowOf(message: Record<string, unknown>): number | undefined {
+  const models = message.modelUsage;
+  if (!models || typeof models !== "object") return undefined;
+  const windows = Object.values(models as Record<string, { contextWindow?: unknown }>).map((m) => tokens(m?.contextWindow)).filter(Boolean);
+  return windows.length ? Math.max(...windows) : undefined;
+}
 
 /**
  * One line from the node, as zero or more timeline events. Lines it doesn't
@@ -87,7 +104,15 @@ export function translate(line: unknown): Translated {
           events.push({ kind: "tool", id: part.id, name: part.name, ...toolLabel(part.name, (part.input as Record<string, unknown>) ?? {}) });
         }
       }
-      return { events, session };
+      return { events, session, context: contextOf(message) };
+    }
+    case "system": {
+      /* Claude Code folded the conversation into a summary, by itself or because it was asked to. */
+      if (message.subtype === "compact_boundary") {
+        const before = tokens((message.compact_metadata as { pre_tokens?: unknown } | undefined)?.pre_tokens);
+        return { events: [{ kind: "compacted", ...(before ? { before } : {}) }], session };
+      }
+      return { events: [], session };
     }
     case "user": {
       const events: CodeEvent[] = [];
@@ -107,6 +132,7 @@ export function translate(line: unknown): Translated {
           ...(failed ? { failure: typeof message.result === "string" && message.result ? message.result : "The agent stopped with an error." } : {}),
           ...(typeof message.total_cost_usd === "number" ? { costUsd: message.total_cost_usd } : {}),
           ...(typeof message.duration_ms === "number" ? { durationMs: message.duration_ms } : {}),
+          ...(windowOf(message) ? { window: windowOf(message) } : {}),
         },
       };
     }
@@ -116,12 +142,13 @@ export function translate(line: unknown): Translated {
 }
 
 /** What a finished turn says about itself, gathered from Claude's result line and the node's done line. */
-export function finish(result: TurnResult | null, done: { exit?: number; cancelled?: boolean } | null, error?: string): Extract<CodeEvent, { kind: "done" }> {
+export function finish(result: TurnResult | null, done: { exit?: number; cancelled?: boolean } | null, error?: string, context?: number): Extract<CodeEvent, { kind: "done" }> {
   if (done?.cancelled) return { kind: "done", ok: false, cancelled: true };
   const failure = error ?? result?.failure ?? (done && done.exit !== 0 ? "The agent stopped with an error." : undefined) ?? (!done ? "The sandbox stopped answering." : undefined);
   return {
     kind: "done", ok: !failure, ...(failure ? { error: clip(failure, 600) } : {}),
     ...(result?.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
     ...(result?.durationMs !== undefined ? { durationMs: result.durationMs } : {}),
+    ...(context ? { context: { used: context, ...(result?.window ? { window: result.window } : {}) } } : {}),
   };
 }

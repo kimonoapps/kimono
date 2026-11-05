@@ -124,12 +124,14 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   let result: TurnResult | null = null;
   let done: { exit?: number; cancelled?: boolean } | null = null;
   let failure: string | undefined;
+  let context: number | undefined;
   try {
     await sandbox.ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
-    const changed = takeDriveNews(db(), workspace.id);
+    /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
+    const changed = prompt.startsWith("/") ? [] : takeDriveNews(db(), workspace.id);
     const told = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n${prompt}` : prompt;
     const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
@@ -170,6 +172,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         const translated = translate(line);
         if (translated.session) setSession(db(), workspace.id, translated.session);
         if (translated.result) result = translated.result;
+        if (translated.context) context = translated.context;
         for (const event of translated.events) record(workspace.id, turn, event);
       }
       if (ended) break;
@@ -179,7 +182,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     else failure = error instanceof CodeProblem ? error.message : "The sandbox stopped answering.";
   } finally {
     live.turns.delete(turn);
-    const outcome = finish(result, done, failure);
+    const outcome = finish(result, done, failure, context);
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
     /* What the agent made goes to Drive. */

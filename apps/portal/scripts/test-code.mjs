@@ -171,3 +171,13 @@ test("each person's use of the plan adds up across their turns, per window", () 
   assert.equal(later.fiveHour.used, 0);
   assert.ok(Math.abs(later.week.used - 0.05) < 1e-9);
 });
+
+test("the agent's context use, its window and compaction come through", () => {
+  const assistant = translate({ type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }], usage: { input_tokens: 2, cache_creation_input_tokens: 1448, cache_read_input_tokens: 94751, output_tokens: 162 } } });
+  assert.equal(assistant.context, 96201);
+  const result = translate({ type: 'result', subtype: 'success', total_cost_usd: 0.3, duration_ms: 8000, modelUsage: { 'claude-opus-5-5': { contextWindow: 200000 } } });
+  assert.equal(result.result.window, 200000);
+  assert.deepEqual(finish(result.result, { exit: 0 }, undefined, 96201).context, { used: 96201, window: 200000 });
+  const compacted = translate({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 96201 } });
+  assert.deepEqual(compacted.events, [{ kind: 'compacted', before: 96201 }]);
+});

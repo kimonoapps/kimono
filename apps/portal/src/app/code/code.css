@@ -696,3 +696,23 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-list small { justify-content: flex-start; }
 @media (hover: none) { .cd-project-new { opacity: 1; } }
 .cd-list small .cd-word, .cd-list small .cd-when { margin-left: 0; }
+
+/* ── rings: context, 5-hour window, week ── */
+.cd-meters { position: relative; }
+.cd-meters-btn { display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 8px; border: 0; border-radius: var(--k-r-full); background: transparent; cursor: pointer; }
+.cd-meters-btn:hover, .cd-meters-btn[aria-expanded="true"] { background: var(--k-container-high); }
+.cd-ring { width: 22px; height: 22px; flex: none; }
+.cd-ring circle { fill: none; stroke-width: 3; }
+.cd-ring .track { stroke: var(--k-container-highest); }
+.cd-ring .arc { stroke: var(--k-app-accent); stroke-linecap: round; transition: stroke-dasharray .6s var(--k-spring); }
+.cd-ring.is-high .arc { stroke: var(--k-suo-deep); }
+.cd-ring.is-unknown .track { stroke-dasharray: 2 3; }
+.cd-meters-pop { position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 30; width: min(360px, 86vw); display: grid; gap: 10px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container-lowest); box-shadow: var(--k-shadow-raised); transform-origin: bottom right; animation: cd-picker-in var(--k-t-seat) var(--k-spring); }
+.cd-meter { display: flex; align-items: center; gap: 12px; }
+.cd-meter .cd-ring { width: 30px; height: 30px; }
+.cd-meter > span { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.cd-meter b { font-size: 14px; }
+.cd-meter small { font-size: 12.5px; color: var(--k-on-surface-variant); }
+.cd-meter-note { margin: -4px 0 2px 42px; font-size: 12px; line-height: 1.45; color: var(--k-on-surface-variant); }
+.cd-compacted { color: var(--k-on-surface-variant); }
+.cd-usage { display: none; }
