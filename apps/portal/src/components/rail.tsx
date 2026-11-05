@@ -64,7 +64,8 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   const [dropBefore, setDropBefore] = useState<string | null | "end">(null);
   const byId = new Map(apps.map((app) => [app.id, app]));
   const pinned = pins.filter((id) => byId.has(id));
-  const shown = current && !pinned.includes(current) ? [...pinned, current] : pinned;
+  // Home already lays out every app, so the rail keeps its pins for inside apps.
+  const shown = active === "home" ? [] : current && !pinned.includes(current) ? [...pinned, current] : pinned;
 
   function drop(event: DragEvent) {
     event.preventDefault();
