@@ -94,6 +94,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import app.kimono.ui.InkLoader
+import app.kimono.ui.InkBlot
 
 /**
  * Drive's state that outlives a screen: uploads keep going while you move
@@ -654,8 +655,8 @@ private fun Empty(text: String) {
     /* A scrollable column, so pull-to-refresh still works on an empty page. */
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 40.dp, vertical = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         item {
-            Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()), contentAlignment = Alignment.Center) {
-                Icon(kimonoIcon("folder"), null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            InkBlot("drive-empty", size = 96.dp) {
+                Icon(kimonoIcon("folder"), null, modifier = Modifier.size(40.dp), tint = app.kimono.theme.Kata.plum)
             }
             Spacer(Modifier.height(20.dp))
             Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(280.dp))

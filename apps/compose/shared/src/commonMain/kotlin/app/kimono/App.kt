@@ -127,6 +127,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val tab = route == "home" || route == "drive" || route == "you"
     val model = remember(session) { DriveModel(Drive(session), platform) }
     val code = remember(session) { app.kimono.data.Code(session) }
+    val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
     /* Drive is the server's to switch on: asked on opening, and the tab and the Files app entry follow. */
     val driveOn by model.drive.driveOn.collectAsState()
@@ -194,6 +195,11 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
+            composable("apps") { app.kimono.screens.AppsScreen(appAdmin, back = { nav.popBackStack() }) { nav.navigate(it) } }
+            composable("apps/{id}") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                app.kimono.screens.AppScreen(appAdmin, id) { nav.popBackStack() }
+            }
         }
     }
 }

@@ -149,6 +149,11 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
                 GroupItem("Password", icon = "lock") { open("password") },
                 GroupItem("Signed-in devices", icon = "phone") { open("devices") },
             ))
+            /* Administrators look after the household's apps from here, as under Admin on the website. */
+            if (me?.role == "owner" || me?.role == "admin") {
+                GroupLabel("Kimono")
+                KimonoGroup(listOf(GroupItem("Apps", icon = "apps") { open("apps") }))
+            }
             GroupLabel("This phone")
             KimonoGroup(listOf(GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } }))
             Spacer(Modifier.height(32.dp))
