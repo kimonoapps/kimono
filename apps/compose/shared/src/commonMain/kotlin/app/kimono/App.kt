@@ -128,6 +128,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val model = remember(session) { DriveModel(Drive(session), platform) }
     val code = remember(session) { app.kimono.data.Code(session) }
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
+    val vpn = remember(session) { app.kimono.data.Vpn(session) }
     val pins = remember(session) { app.kimono.screens.Pins(platform, session.answers.server) }
     LaunchedEffect(pins) { pins.load() }
     val admin = me?.role == "owner" || me?.role == "admin"
@@ -137,6 +138,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
         when {
             target.id == "kimono-drive" -> goTab("drive")
             target.id == app.kimono.data.Code.APP_ID && admin -> nav.navigate("code")
+            target.id == "kimono-vpn" -> nav.navigate("vpn")
             else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
         }
     }
@@ -146,7 +148,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -208,6 +210,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
             composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins) { openApp(it) } }
+            composable("vpn") { app.kimono.screens.VpnScreen(vpn, platform, model.drive.launcher.value?.firstOrNull { it.id == "kimono-vpn" }) { nav.popBackStack() } }
             composable("manage") { app.kimono.screens.AppsScreen(appAdmin, back = { nav.popBackStack() }) { nav.navigate(it) } }
             composable("manage/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
