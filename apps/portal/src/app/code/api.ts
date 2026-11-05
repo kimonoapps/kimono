@@ -38,6 +38,15 @@ export class CodeProblem extends Error {
 
 const base = "/api/v1/code";
 
+/** How hard the agent thinks. The model is always Opus 5.5. */
+export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof efforts)[number];
+export type Usage = {
+  model: string; unlimited: boolean; reported: boolean;
+  fiveHour: { used: number; share: number; resetsAt: number | null };
+  week: { used: number; share: number; resetsAt: number | null };
+};
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
@@ -62,10 +71,11 @@ const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const code = {
   workspaces: () => call<{ workspaces: Workspace[] }>("/workspaces").then((r) => r.workspaces),
   workspace: (id: string) => call<Workspace>(ws(id)),
-  start: (input: { owner: string; name: string; base: string; prompt: string }) => call<Workspace>("/workspaces", json("POST", input)),
+  start: (input: { owner: string; name: string; base: string; prompt: string; effort?: Effort }) => call<Workspace>("/workspaces", json("POST", input)),
   rename: (id: string, title: string) => call<Workspace>(ws(id), json("PATCH", { title })),
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
-  ask: (id: string, text: string, attachments: Attachment[]) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments })),
+  ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort })),
+  usage: () => call<Usage>("/usage"),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),
   stopPreview: (id: string) => call<void>(`${ws(id)}/preview`, { method: "DELETE" }),

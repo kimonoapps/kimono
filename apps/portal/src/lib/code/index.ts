@@ -10,10 +10,11 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, translate, type Attachment, type CodeEvent, type TurnResult } from "./events";
 import {
-  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, runningTurn, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, recordUsage, runningTurn, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
-import { sandbox } from "./node";
+import { sandbox, type Effort } from "./node";
+export { efforts, type Effort } from "./node";
 import { shotToDrive, syncDrive } from "./drive";
 
 export * from "./model";
@@ -28,7 +29,7 @@ type Live = {
   listeners: Map<string, Set<(event: StoredEvent) => void>>;
   turns: Map<string, AbortController>;
   /** Messages sent while a turn was running, per workspace: the next turn reads them. */
-  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[] }[]>;
+  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[]; effort?: Effort }[]>;
 };
 /* One connection and one set of listeners for the process, kept across hot reloads in development. */
 const cache = globalThis as unknown as { kimonoCode?: Live };
@@ -87,25 +88,36 @@ export function listen(workspaceId: string, listener: (event: StoredEvent) => vo
 
 const who = (user: ApiUser) => ({ name: user.name || user.username, email: user.email || `${user.username}@users.kimono` });
 
+const clock = (at: number) => new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" });
+
+/** Refuses a person who has used their share of the plan's 5-hour or weekly window. The owner has no share: it's their plan. */
+export function checkShare(config: CodeConfig, user: ApiUser) {
+  if (user.role === "owner") return;
+  const used = usageOf(db(), user.username);
+  if (used.fiveHour.used >= config.shares.fiveHour) throw new CodeProblem(`You've used your share of this 5-hour window. It opens again ${clock(used.fiveHour.resetsAt!)}.`, 429);
+  if (used.week.used >= config.shares.week) throw new CodeProblem(`You've used your share for this week. It opens again ${clock(used.week.resetsAt!)}.`, 429);
+}
+
 /** Sends a message to the agent and returns at once; the turn runs on, recording as it goes. */
-export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[]) {
+export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[], effort?: Effort) {
   const prompt = text.trim();
   if (!prompt && !attachments.length) throw new CodeProblem("Say what to do.");
   if (prompt.length > 32_000) throw new CodeProblem("That message is too long.");
+  checkShare(config, user);
   /* Steering: while the agent works, a message waits in line and the next turn starts with it. */
   const busy = runningTurn(db(), workspace.id);
   if (busy) {
     const queue = (live.queued ??= new Map());
-    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments }]);
+    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments, effort }]);
     return record(workspace.id, busy, { kind: "ask", by: user.username, text: prompt, attachments, queued: true });
   }
   const turn = startTurn(db(), workspace.id);
   const asked = record(workspace.id, turn, { kind: "ask", by: user.username, text: prompt, attachments });
-  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments);
+  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments, effort);
   return asked;
 }
 
-async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[]) {
+async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort) {
   const controller = new AbortController();
   live.turns.set(turn, controller);
   record(workspace.id, turn, { kind: "started" });
@@ -119,7 +131,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
     const changed = takeDriveNews(db(), workspace.id);
     const told = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n${prompt}` : prompt;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path) }, controller.signal);
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -138,6 +150,11 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (line.type === "kimono.preview" && typeof line.url === "string" && typeof line.port === "number") {
           setPreview(db(), workspace.id, { url: line.url, port: line.port });
           record(workspace.id, turn, { kind: "preview", url: line.url, port: line.port });
+          continue;
+        }
+        if (line.type === "kimono.usage") {
+          /* What this turn used of the Claude plan, credited to whoever asked. */
+          try { recordUsage(db(), user.username, line); } catch (error) { console.warn("Code couldn't record usage:", error instanceof Error ? error.message : error); }
           continue;
         }
         if (line.type === "kimono.preview.stopped") {
@@ -172,8 +189,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     if (waiting?.length) {
       live.queued!.delete(workspace.id);
       try {
+        checkShare(config, waiting[0].user);
         const next = startTurn(db(), workspace.id);
-        void run(config, workspace, waiting[0].user, next, waiting.map((m) => m.prompt).filter(Boolean).join("\n\n") || "Look at the attached files.", waiting.flatMap((m) => m.attachments));
+        void run(config, workspace, waiting[0].user, next, waiting.map((m) => m.prompt).filter(Boolean).join("\n\n") || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort);
       } catch (error) { console.warn("Code couldn't start the queued message:", error instanceof Error ? error.message : error); }
     }
   }

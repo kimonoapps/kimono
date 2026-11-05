@@ -5,6 +5,11 @@ import { appHostname, type PlatformSettings } from "../settings";
 
 export const codeAppId = "kimono-code";
 
+const percent = (raw: string, fallback: number) => {
+  const n = raw === "" ? fallback : Number(raw);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0), 100) / 100 : fallback / 100;
+};
+
 /** Code as the Applications admin sets it up: the sandbox node, and the two tokens the node uses on the agent's behalf. */
 export function codeConfig(settings: PlatformSettings) {
   const instance = settings.apps[codeAppId];
@@ -18,6 +23,8 @@ export function codeConfig(settings: PlatformSettings) {
     gitToken: value("git_token"),
     modelToken: value("model_token"),
     gitAddress,
+    /* Each person's share of the Claude plan, as fractions; the owner isn't limited. */
+    shares: { week: percent(value("share_week"), 20), fiveHour: percent(value("share_five_hour"), 75) },
     colors: instance?.colors,
   };
 }

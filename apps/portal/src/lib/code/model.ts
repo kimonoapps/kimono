@@ -103,6 +103,55 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 5) {
+    /* What each turn used of the Claude plan's 5-hour and weekly windows, and the windows as last seen. */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE usage (
+        username TEXT NOT NULL, at INTEGER NOT NULL,
+        five_hour REAL NOT NULL, five_hour_reset INTEGER, week REAL NOT NULL, week_reset INTEGER
+      );
+      CREATE INDEX usage_by_person ON usage (username, at);
+      CREATE TABLE plan_windows (id INTEGER PRIMARY KEY CHECK (id = 1), five_hour REAL, five_hour_reset INTEGER, week REAL, week_reset INTEGER, at INTEGER NOT NULL);
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '5');
+      COMMIT;
+    `);
+  }
+}
+
+/* ── usage: each person's share of the Claude plan behind Kimono Code ── */
+
+export type UsageReport = { five_hour?: number; week?: number; five_hour_now?: number; five_hour_reset?: number; week_now?: number; week_reset?: number };
+export type PlanWindow = { used: number; resetsAt: number | null };
+export type PersonUsage = { fiveHour: PlanWindow; week: PlanWindow; reported: boolean };
+
+const fraction = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10 ? value : 0;
+const seconds = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+
+/** Records what a turn used, as the node reported it, and the plan's windows as it last saw them. */
+export function recordUsage(db: DatabaseSync, username: string, report: UsageReport, now = Date.now()) {
+  const fiveReset = seconds(report.five_hour_reset), weekReset = seconds(report.week_reset);
+  db.prepare("INSERT INTO usage (username, at, five_hour, five_hour_reset, week, week_reset) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(username, now, fraction(report.five_hour), fiveReset, fraction(report.week), weekReset);
+  if (fiveReset || weekReset) {
+    db.prepare(`INSERT INTO plan_windows (id, five_hour, five_hour_reset, week, week_reset, at) VALUES (1, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        five_hour = COALESCE(excluded.five_hour, five_hour), five_hour_reset = COALESCE(excluded.five_hour_reset, five_hour_reset),
+        week = COALESCE(excluded.week, week), week_reset = COALESCE(excluded.week_reset, week_reset), at = excluded.at`)
+      .run(fiveReset ? fraction(report.five_hour_now) : null, fiveReset, weekReset ? fraction(report.week_now) : null, weekReset, now);
+  }
+}
+
+/** How much of the current 5-hour and weekly windows a person has used, as fractions of the whole plan. */
+export function usageOf(db: DatabaseSync, username: string, now = Date.now()): PersonUsage {
+  const plan = db.prepare("SELECT five_hour_reset, week_reset FROM plan_windows WHERE id = 1").get() as { five_hour_reset: number | null; week_reset: number | null } | undefined;
+  const window = (column: "five_hour" | "week", reset: number | null | undefined): PlanWindow => {
+    /* A window whose reset has passed is a fresh one: nobody has used any of it yet. */
+    if (!reset || reset * 1000 <= now) return { used: 0, resetsAt: null };
+    const row = db.prepare(`SELECT COALESCE(SUM(${column}), 0) AS used FROM usage WHERE username = ? AND ${column}_reset = ?`).get(username, reset) as { used: number };
+    return { used: row.used, resetsAt: reset * 1000 };
+  };
+  return { fiveHour: window("five_hour", plan?.five_hour_reset), week: window("week", plan?.week_reset), reported: Boolean(plan) };
 }
 
 type WorkspaceRow = {

@@ -99,6 +99,10 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request) {
 			out.Out.Host = upstream.Host
 			swapModelCredential(out.Out.Header, real)
 		},
+		ModifyResponse: func(response *http.Response) error {
+			s.usage.credit(space.id, readUsage(response.Header))
+			return nil
+		},
 		FlushInterval: -1,
 	}
 	proxy.ServeHTTP(w, r)

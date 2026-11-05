@@ -36,6 +36,10 @@ async function call(config: CodeConfig, path: string, init: RequestInit & { time
 const json = async <T>(response: Response) => (await response.json()) as T;
 const at = (workspace: Workspace) => `/v1/workspaces/${workspace.id}`;
 
+/** How hard the agent thinks on a turn. The model is always Opus 5.5. */
+export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof efforts)[number];
+
 export const sandbox = {
   health: (config: CodeConfig) => call(config, "/v1/health", { timeout: 5_000 }).then(json<{ ok: boolean; version: string; runtime: string }>),
 
@@ -57,10 +61,10 @@ export const sandbox = {
   state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string }>),
 
   /** Starts a turn; the body is the node's NDJSON stream, read until it ends. */
-  turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[] }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
+  turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[]; effort?: Effort }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: input.prompt, ...(input.session ? { session: input.session } : {}), attachments: input.attachments }),
+    body: JSON.stringify({ prompt: input.prompt, ...(input.session ? { session: input.session } : {}), attachments: input.attachments, ...(input.effort ? { effort: input.effort } : {}) }),
     signal,
   }),
 

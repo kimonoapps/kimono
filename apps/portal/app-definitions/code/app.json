@@ -60,6 +60,24 @@
         "target": "settings",
         "advanced": true,
         "description": "Empty to use Kimono Git on this server."
+      },
+      {
+        "key": "share_week",
+        "label": "Each person's share of the week",
+        "kind": "number",
+        "group": "sharing",
+        "target": "settings",
+        "default": "20",
+        "description": "Percent of the weekly usage of the Claude plan behind the token. The owner isn't limited."
+      },
+      {
+        "key": "share_five_hour",
+        "label": "Each person's share of a 5-hour window",
+        "kind": "number",
+        "group": "sharing",
+        "target": "settings",
+        "default": "75",
+        "description": "Percent of the plan's 5-hour window. The owner isn't limited."
       }
     ],
     "managedEnvironment": [],

@@ -21,6 +21,9 @@ type Server struct {
 	runtime    string
 	gatewayURL string
 
+	// usage meters the plan's 5-hour and weekly windows across workspaces.
+	usage meter
+
 	mu           sync.Mutex
 	spaces       map[string]*workspace
 	byCapability map[string]*workspace

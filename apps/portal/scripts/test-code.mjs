@@ -155,3 +155,19 @@ test('when both sides changed, Drive wins and the agent keeps a copy', () => {
   assert.equal(agentCopyName('site/index.html'), 'site/index (agent).html');
   assert.equal(agentCopyName('Makefile'), 'Makefile (agent)');
 });
+
+test("each person's use of the plan adds up across their turns, per window", () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  const now = 1_000_000_000_000, fiveReset = now / 1000 + 3600, weekReset = now / 1000 + 86400;
+  model.recordUsage(db, 'sara', { five_hour: 0.2, week: 0.03, five_hour_now: 0.4, five_hour_reset: fiveReset, week_now: 0.1, week_reset: weekReset }, now);
+  model.recordUsage(db, 'sara', { five_hour: 0.15, week: 0.02, five_hour_now: 0.6, five_hour_reset: fiveReset, week_now: 0.12, week_reset: weekReset }, now + 1);
+  model.recordUsage(db, 'yusuf', { five_hour: 0.05, week: 0.01, five_hour_now: 0.65, five_hour_reset: fiveReset, week_now: 0.13, week_reset: weekReset }, now + 2);
+  const sara = model.usageOf(db, 'sara', now + 3);
+  assert.ok(Math.abs(sara.fiveHour.used - 0.35) < 1e-9 && Math.abs(sara.week.used - 0.05) < 1e-9);
+  assert.equal(sara.fiveHour.resetsAt, fiveReset * 1000);
+  /* Once the 5-hour window resets, nobody has used any of the new one; the week carries on. */
+  const later = model.usageOf(db, 'sara', fiveReset * 1000 + 1);
+  assert.equal(later.fiveHour.used, 0);
+  assert.ok(Math.abs(later.week.used - 0.05) < 1e-9);
+});

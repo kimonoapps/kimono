@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { cx, InkCard, Seal } from "@kimono/ui";
+import { Choice, cx, InkCard, Seal } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import {
-  code, drive, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace,
+  code, drive, efforts, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
+  type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -78,6 +78,39 @@ function setFolded(folded: boolean) {
 }
 function useFolded() {
   return useSyncExternalStore((listener) => { foldListeners.add(listener); return () => { foldListeners.delete(listener); }; }, foldedNow, () => false);
+}
+
+/* How hard the agent thinks: each person's own choice, remembered in this browser. */
+const effortKey = "kimono-code-effort";
+const effortListeners = new Set<() => void>();
+function effortNow(): Effort { try { const v = window.localStorage.getItem(effortKey); return (efforts as readonly string[]).includes(v ?? "") ? v as Effort : "high"; } catch { return "high"; } }
+function setEffort(effort: Effort) {
+  try { window.localStorage.setItem(effortKey, effort); } catch { /* private window: this page only */ }
+  effortListeners.forEach((listener) => listener());
+}
+function useEffort() {
+  return useSyncExternalStore((listener) => { effortListeners.add(listener); return () => { effortListeners.delete(listener); }; }, effortNow, () => "high" as Effort);
+}
+const effortWords: Record<Effort, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
+
+/** The thinking level, as a compact chip in the message box. Opus 5.5 is the only model. */
+function EffortPicker() {
+  const effort = useEffort();
+  return <Choice compact label="Opus 5.5 ·" aria-label="How hard Opus 5.5 thinks" className="cd-effort" value={effort} onChange={(next) => setEffort(next as Effort)}
+    options={efforts.map((e) => ({ value: e, label: effortWords[e] }))} />;
+}
+
+/** How much of their share of the Claude plan someone has used, in one quiet line. */
+function UsageLine({ refresh }: { refresh: unknown }) {
+  const [usage, setUsage] = useState<Usage | null>(null);
+  useEffect(() => { let live = true; code.usage().then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, [refresh]);
+  if (!usage || usage.unlimited || !usage.reported) return null;
+  const part = (w: Usage["week"]) => Math.min(100, Math.round((w.used / w.share) * 100));
+  const five = part(usage.fiveHour), week = part(usage.week);
+  const full = five >= 100 || week >= 100;
+  return <span className={cx("cd-usage", full && "is-full")} title={`Your share: ${Math.round(usage.fiveHour.share * 100)}% of each 5-hour window and ${Math.round(usage.week.share * 100)}% of the week`}>
+    {five}% of your 5-hour share · {week}% of this week&rsquo;s
+  </span>;
 }
 
 export function CodeApp({ blocked }: { blocked: string | null }) {
@@ -207,7 +240,7 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
     setSending(true);
     setProblem(null);
     try {
-      await onStarted(await code.start({ owner: chosen.owner, name: chosen.name, base: base || chosen.defaultBranch, prompt }));
+      await onStarted(await code.start({ owner: chosen.owner, name: chosen.name, base: base || chosen.defaultBranch, prompt, effort: effortNow() }));
     } catch (error) {
       setProblem(problemText(error));
       setSending(false);
@@ -335,7 +368,7 @@ function AppView({ workspace, running, blocked }: { workspace: Workspace; runnin
       <span className="cd-dep-icon"><Icon name="rocket" /></span>
       <b>Nothing is running</b>
       <p className="cd-faint">The agent runs the app when it changes something you can see. You can ask it to now.</p>
-      <Seal type="button" disabled={asking || Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", []).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{asking ? "Asking…" : running ? "Run it after this step" : "Run the app"}</Seal>
+      <Seal type="button" disabled={asking || Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{asking ? "Asking…" : running ? "Run it after this step" : "Run the app"}</Seal>
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div>
   </div>;
@@ -652,7 +685,7 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
     setSending(true);
     setProblem(null);
     try {
-      await code.ask(workspace.id, text, ready);
+      await code.ask(workspace.id, text, ready, effortNow());
       setText("");
       setPending([]);
     } catch (error) { setProblem(problemText(error)); } finally { setSending(false); field.current?.focus(); }
@@ -679,7 +712,8 @@ function Composer({ workspace, running, blocked }: { workspace: Workspace; runni
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <button type="button" className="cd-iconbutton" aria-label="Attach files" disabled={Boolean(blocked)} onClick={() => picker.current?.click()}><Icon name="clip" /></button>
       {workspace.drive ? <button type="button" className="cd-iconbutton" aria-label="Attach from Drive" title="Attach from Drive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" /></button> : null}
-      {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
+      <EffortPicker />
+      {problem ? <span className="cd-problem" role="alert">{problem}</span> : <UsageLine refresh={running} />}
       <span className="cd-grow" />
       {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop the agent" title="Stop the agent" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
       <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Meta+Enter" title="Send (⌘↵)">Send</Seal>
