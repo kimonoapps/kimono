@@ -27,31 +27,14 @@ function Arrivals({ children }: { children: ReactNode }) {
      the page moves: the rail stays where it is. */
   const [moving, setMoving] = useState(false);
   const still = () => typeof window === "undefined" || matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const arrived = useCallback(() => {
-    const resolve = waiting.current;
-    waiting.current = null;
-    if (!resolve) return;
-    setMoving(false);
-    resolve();
-  }, []);
-
-  // React ending the transition is the page standing. The pathname is the
-  // second witness, for a navigation that never had to suspend.
-  useEffect(() => { if (!pending) arrived(); }, [pending, arrived]);
-  useEffect(() => { arrived(); }, [pathname, arrived]);
-
-  // Every new page, back and forward included, settles in piece by piece. Each
-  // page builds its own shell, so the page that arrives is a new element, and
-  // it may stand a skeleton first: the arrival waits for the real page, then
-  // slides it in (when you pressed something) and rises its pieces. The first
-  // page of a visit is already painted from the server, so it stays put.
-  const shown = useRef(pathname);
-  const pushed = useRef(false);
-  useLayoutEffect(() => {
-    if (shown.current === pathname) return;
-    shown.current = pathname;
-    const slideIn = pushed.current;
-    pushed.current = false;
+  /* A page settling in. The frame persists between pages (app/(shell)/layout),
+     so the page element is the same one that just dissolved: the arrival
+     waits for the real page to stand (past the route's loading skeleton),
+     clears the dissolve, slides it in when you pressed something, and rises
+     its pieces once any in-page skeleton gives way. */
+  const landing = useRef<() => void>(() => {});
+  const settle = useCallback((slideIn: boolean) => {
+    landing.current();
     let settling = () => {};
     const stop = whenPageStands((page) => {
       page.getAnimations().forEach((animation) => animation.cancel());
@@ -59,8 +42,38 @@ function Arrivals({ children }: { children: ReactNode }) {
       if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
       settling = riseWhenReady(page);
     });
-    return () => { stop(); settling(); };
-  }, [pathname]);
+    landing.current = () => { stop(); settling(); };
+  }, []);
+  useEffect(() => () => landing.current(), []);
+
+  // A press marks the move as ours; whichever witness sees it land settles it.
+  const pushed = useRef(false);
+  const arrived = useCallback(() => {
+    const resolve = waiting.current;
+    waiting.current = null;
+    if (!resolve) return;
+    setMoving(false);
+    resolve();
+    // Same path (a room like ?view=recent, or the page you're on): no path
+    // change will settle it, so settle it here.
+    if (pushed.current) { pushed.current = false; settle(true); }
+  }, [settle]);
+
+  // A new path settles in, back and forward included. The first page of a
+  // visit is already painted from the server, so it stays put.
+  const shown = useRef(pathname);
+  useLayoutEffect(() => {
+    if (shown.current === pathname) return;
+    shown.current = pathname;
+    const slideIn = pushed.current;
+    pushed.current = false;
+    settle(slideIn);
+  }, [pathname, settle]);
+
+  // React ending the transition is the page standing. The pathname is the
+  // second witness, for a navigation that never had to suspend.
+  useEffect(() => { if (!pending) arrived(); }, [pending, arrived]);
+  useEffect(() => { arrived(); }, [pathname, arrived]);
 
   useEffect(() => {
     // Release the superseded navigation promise as well as its visual cover.
@@ -84,14 +97,28 @@ function Arrivals({ children }: { children: ReactNode }) {
     setMoving(true);
     pushed.current = true;
     waiting.current = resolve;
-    const handOver = () => startTransition(() => { router.push(href); });
+    const handOver = () => {
+      startTransition(() => { router.push(href); });
+      /* A move served from cache can finish inside one render, so React never
+         reports it pending and a move that keeps the path changes no path
+         either. The third witness is the address itself: Next writes it once
+         the new page is committed. */
+      const target = new URL(href, location.href);
+      const started = performance.now();
+      const watch = () => {
+        if (waiting.current !== resolve) return;
+        if (location.pathname === target.pathname && location.search === target.search) { arrived(); return; }
+        if (performance.now() - started < 15000) requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
+    };
     if (!leaving || still()) { handOver(); return; }
     const dissolve = leaving.animate([
       { opacity: 1, transform: "none", filter: "blur(0)" },
       { opacity: 0, transform: "translateX(-24px) scale(.985)", filter: "blur(6px)" },
     ], { duration: 240, easing: "cubic-bezier(.4, 0, .9, .7)", fill: "forwards" });
     dissolve.finished.then(handOver, handOver);
-  }), [router]);
+  }), [router, arrived]);
 
   return <Arrival.Provider value={navigate}>
     {children}

@@ -7,8 +7,8 @@ import { crestSvg } from "@kimono/ui/crest";
 import { db, DriveProblem, linkedSpace } from "@/lib/drive";
 import { driveConfig, driveIdentity } from "@/lib/drive/config";
 import { getPlatformSettings } from "@/lib/settings";
-import { GuestDrive } from "../../drive/drive-app";
-import "../../drive/drive.css";
+import { GuestDrive } from "../../(shell)/drive/drive-app";
+import "../../(shell)/drive/drive.css";
 
 type Props = { params: Promise<{ token: string }> };
 

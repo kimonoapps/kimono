@@ -260,3 +260,7 @@
   .rail-dest[aria-current] .rail-pill, .rail-room[aria-current], .scrim.open, .sheet, .cd-seg button svg.i,
   .cd-timeline > *, .cd-say, .call-list > *, .cd-start > *, .cd-side button[aria-current] { animation: none; }
 }
+
+/* Pages slide sideways as they come and go; what slides past the edge is
+   clipped, never scrolled to. clip (not hidden) keeps the rail sticky. */
+html, body, .app-frame { overflow-x: clip; }
