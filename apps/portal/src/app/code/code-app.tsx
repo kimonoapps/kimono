@@ -303,7 +303,7 @@ function Start({ blocked, onStarted }: { blocked: string | null; onStarted: (w: 
   }
 
   return <section className="cd-start">
-    <div className="cd-start-head"><button type="button" className="cd-roundbutton cd-start-back" onClick={() => goTo({})} aria-label="All tasks" title="All tasks"><Icon name="back" /></button><h2>What should we work on?</h2></div>
+    <div className="cd-start-head"><button type="button" className="cd-roundbutton cd-start-back" onClick={() => goTo({})} aria-label="All tasks" title="All tasks"><Icon name="back" /></button><button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show tasks" title="Show tasks"><Icon name="panel" /></button><h2>What should we work on?</h2></div>
     {blocked ? <div className="cd-sheet cd-blocked"><p>{blocked}</p></div> : <div className="cd-sheet cd-new-task">
       {naming !== null || (repos && !repos.length) ? <div className="cd-naming">
         <label className="cd-task">
