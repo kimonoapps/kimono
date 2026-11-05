@@ -1,0 +1,41 @@
+#!/bin/bash
+# supervise <command…> — what kimono-serve runs the app under. It starts the
+# command, and starts it again whenever it exits (after 1s, doubling to 30s
+# while it keeps failing). Output goes to /outbox/serve.log, kept under 1 MB
+# with one older copy; /outbox/serve-status.json says how it is doing.
+# kimono-unserve stops it by killing its whole process group.
+set -u
+log=/outbox/serve.log
+status=/outbox/serve-status.json
+restarts=0 delay=1 child=
+
+say() { echo "[kimono] $(date -u +%H:%M:%S) $*" >> "$log"; }
+trap '[ -n "$child" ] && kill -TERM "$child" 2>/dev/null; say stopped; exit 0' TERM INT HUP
+note() {
+  jq -cn --arg state "$1" --argjson restarts "$restarts" --argjson since "$(date +%s)" --argjson exit "${2:-null}" \
+    '{state: $state, restarts: $restarts, since: $since, exit: $exit}' > "$status.tmp" && mv "$status.tmp" "$status"
+}
+rotate() {
+  if [ "$(stat -c %s "$log" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+    cp "$log" "$log.1" && : > "$log"
+  fi
+}
+( while sleep 10; do rotate; done ) &
+
+while :; do
+  rotate
+  say "starting: $*"
+  started=$(date +%s)
+  "$@" >> "$log" 2>&1 < /dev/null &
+  child=$!
+  note running
+  wait "$child"
+  code=$?
+  child=
+  [ $(( $(date +%s) - started )) -ge 30 ] && delay=1
+  restarts=$((restarts + 1))
+  say "exited with code $code; starting again in ${delay}s"
+  note restarting "$code"
+  sleep "$delay" & wait $!
+  delay=$(( delay * 2 > 30 ? 30 : delay * 2 ))
+done

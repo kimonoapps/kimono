@@ -1,15 +1,38 @@
 #!/bin/bash
-# kimono-serve <port> -- <command…>
-# Starts the app detached (it keeps running after the turn), waits until the
-# port answers, and publishes it: Kimono shows the person a link to open.
-# Running it again replaces the app it started before.
+# kimono-serve <port> [--kind <what it is>] -- <command…>
+# kimono-serve <port> --static <folder>
+# Publishes an app at the task's link. The command runs detached under a
+# supervisor (it keeps running after the turn, and starts again if it crashes);
+# this waits until the port answers. Running it again replaces the app.
 set -u
-usage() { echo 'usage: kimono-serve <port> -- <command…>   e.g. kimono-serve 3000 -- npm run dev -- --host 0.0.0.0' >&2; exit 2; }
+usage() {
+  cat >&2 <<'EOF'
+usage: kimono-serve <port> [--kind <what it is>] -- <command…>
+       kimono-serve <port> --static <folder>
+e.g.   kimono-serve 3000 --kind "Node API with SQLite" -- node server.js
+       kimono-serve 5173 --kind "Vite dev server" -- npm run dev -- --host 0.0.0.0
+       kimono-serve 8000 --static ./dist
+EOF
+  exit 2
+}
 [ $# -ge 1 ] || usage
 port=$1; shift
 case $port in ''|*[!0-9]*) usage ;; esac
 [ "$port" -ge 1 ] && [ "$port" -le 65535 ] || usage
-[ "${1:-}" = "--" ] && shift
+kind=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --kind) [ $# -ge 2 ] || usage; kind=$2; shift 2 ;;
+    --static)
+      [ $# -ge 2 ] && [ -d "$2" ] || { echo "kimono-serve: --static needs a folder" >&2; exit 2; }
+      folder=$(cd "$2" && pwd); shift 2
+      [ -n "$kind" ] || kind="Static site"
+      set -- python3 -m http.server "$port" --bind 0.0.0.0 --directory "$folder"
+      break ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
 [ $# -ge 1 ] || usage
 
 mkdir -p /outbox
@@ -18,21 +41,26 @@ touch /outbox/.serve-restarting
 trap 'rm -f /outbox/.serve-restarting' EXIT
 kimono-unserve --quiet
 # A session of its own: the turn ending, or being stopped, leaves it running.
-HOST=0.0.0.0 PORT=$port setsid nohup "$@" > /outbox/serve.log 2>&1 < /dev/null &
+HOST=0.0.0.0 PORT=$port setsid nohup /usr/local/lib/kimono/supervise "$@" > /dev/null 2>&1 < /dev/null &
 pid=$!
 for _ in $(seq 1 240); do
   if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
     # The command as a JSON array, so the node can start it again exactly.
     command='[]'
     for arg in "$@"; do command=$(jq -c --arg a "$arg" '. + [$a]' <<< "$command"); done
-    jq -cn --argjson port "$port" --argjson pid "$pid" --argjson command "$command" '{port: $port, pid: $pid, command: $command}' > /outbox/.serve.json
+    jq -cn --argjson port "$port" --argjson pid "$pid" --argjson command "$command" --arg kind "$kind" --arg cwd "$PWD" \
+      '{port: $port, pid: $pid, command: $command, kind: $kind, cwd: $cwd}' > /outbox/.serve.json
     mv /outbox/.serve.json /outbox/serve.json
     echo "Running on port $port. The person gets a link to it in the chat."
     exit 0
   fi
-  if ! kill -0 "$pid" 2>/dev/null; then
+  # A first start that fails is a bug to fix now, not one to retry forever.
+  restarts=$(jq -r '.restarts // 0' /outbox/serve-status.json 2>/dev/null) || restarts=0
+  if ! kill -0 "$pid" 2>/dev/null || [ "${restarts:-0}" != 0 ]; then
     echo "The app stopped before it answered on port $port. Its last output:" >&2
     tail -n 30 /outbox/serve.log >&2
+    kill -TERM -- "-$pid" 2>/dev/null
+    rm -f /outbox/serve-status.json
     exit 1
   fi
   sleep 0.5
@@ -40,4 +68,5 @@ done
 echo "Nothing answered on port $port after 2 minutes. Its last output:" >&2
 tail -n 30 /outbox/serve.log >&2
 kill -TERM -- "-$pid" 2>/dev/null
+rm -f /outbox/serve-status.json
 exit 1

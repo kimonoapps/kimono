@@ -41,6 +41,8 @@ type Server struct {
 	// replaces iptables in tests.
 	firewall *firewallPlan
 	fwRun    fwRunner
+	// dial replaces dialSandbox in tests.
+	dial func(ctx context.Context, id string, port int) (net.Conn, error)
 }
 
 // apiProblem is a refusal the Portal shows as it is.
@@ -171,6 +173,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/workspaces/{id}/preview", s.workspaceCall(s.handlePreview))
 	mux.HandleFunc("DELETE /v1/workspaces/{id}/preview", s.workspaceCall(s.handleStopPreview))
 	mux.HandleFunc("PATCH /v1/workspaces/{id}/preview", s.workspaceCall(s.handleRenamePreview))
+	mux.HandleFunc("GET /v1/workspaces/{id}/preview/logs", s.workspaceCall(s.handlePreviewLogs))
+	mux.HandleFunc("POST /v1/workspaces/{id}/preview/restart", s.workspaceCall(s.handleRestartPreview))
+	mux.HandleFunc("POST /v1/workspaces/{id}/preview/stop", s.workspaceCall(s.handlePausePreview))
 	return s.authorized(mux)
 }
 

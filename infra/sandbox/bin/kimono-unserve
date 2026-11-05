@@ -1,5 +1,6 @@
 #!/bin/bash
 # kimono-unserve — stops the app kimono-serve started and takes its link down.
+# Its log stays in /outbox/serve.log.
 if [ -f /outbox/serve.json ]; then
   pid=$(jq -r '.pid // empty' /outbox/serve.json)
   rm -f /outbox/serve.json
@@ -9,5 +10,6 @@ if [ -f /outbox/serve.json ]; then
     kill -KILL -- "-$pid" 2>/dev/null
   fi
 fi
+rm -f /outbox/serve-status.json
 [ "${1:-}" = "--quiet" ] || echo "Stopped. The link no longer works."
 exit 0

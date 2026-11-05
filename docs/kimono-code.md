@@ -106,24 +106,45 @@ node appends to every turn):
 - `kimono-shot <url-or-file> [caption]` — a URL is opened in headless Chromium
   at 1280×800 and captured (`--mobile` for 390×844, `--full` for the full page);
   a file is copied as is. The picture lands in `/outbox/shots/`.
-- `kimono-serve <port> -- <command…>` — starts the command detached (it outlives
-  the turn) with `HOST=0.0.0.0` and `PORT` set, waits up to two minutes until
-  the port answers, and publishes it. Logs go to `/outbox/serve.log`. Running it
-  again replaces the previous one and keeps the same link.
+- `kimono-serve <port> [--kind "<what it is>"] -- <command…>` — publishes any
+  server: an API, websockets, server-side rendering, a framework's dev or
+  production server. The command runs detached (it outlives the turn) under a
+  small supervisor, with `HOST=0.0.0.0` and `PORT` set; it waits up to two
+  minutes until the port answers, and publishes it. A first start that fails
+  is reported to the agent with the log's tail. After that the supervisor
+  starts the app again whenever it exits (after 1 s, doubling to 30 s while it
+  keeps failing). Output goes to `/outbox/serve.log` (kept under 1 MB, with one
+  older copy), and `/outbox/serve-status.json` says how it is doing. `--kind`
+  is what the person is told they got ("Node API with SQLite"); without it the
+  node guesses from the command. Running it again replaces the previous app and
+  keeps the same link.
+- `kimono-serve <port> --static <folder>` — a static site: plain files served
+  from the folder.
 - `kimono-unserve` — stops it and takes the link down.
 
 **On the stream**, the node adds lines as these happen:
 
 - `{ "type": "kimono.image", "name": "<file>", "caption": "…" }`
-- `{ "type": "kimono.preview", "url": "https://…", "port": 3000 }`
+- `{ "type": "kimono.preview", "url": "https://…", "port": 3000, "kind": "Node API with SQLite" }`
 - `{ "type": "kimono.preview.stopped" }`
 
 **Node API additions**
 
 - `GET /v1/workspaces/{id}/outbox/{name}` — a screenshot's bytes (PNG/JPEG/WebP, ≤ 10 MB).
-- `GET /v1/workspaces/{id}/preview` — `{ "url", "port", "state": "live" | "down" }`, or `404` when there is none.
+- `GET /v1/workspaces/{id}/preview` — `{ "url", "port", "kind", "stopped", "health": { "state", "restarts", "exit"? } }`,
+  or `404` when there is none. `state` is `running`, `starting`, `crashed`
+  (it keeps exiting and is being started again), `stopped` (by its owner),
+  `asleep` (opening the link wakes it) or `down`. Asking doesn't wake anything.
+- `GET /v1/workspaces/{id}/preview/logs` — the end of `/outbox/serve.log`, as text.
+- `POST /v1/workspaces/{id}/preview/restart` — starts the app again as it was
+  published (same folder, command and kind), keeping its link; also starts one
+  its owner stopped.
+- `POST /v1/workspaces/{id}/preview/stop` — stops the app but keeps its link
+  and how to start it. The proxy answers "isn't running" without waking the
+  sandbox, and a sandbox woken later doesn't start it, until it is restarted or
+  the agent publishes again.
 - `DELETE /v1/workspaces/{id}/preview` — stops the server and takes the link down. `204`.
-- The ensure and state answers carry `"preview": { "url", "port" } | null`.
+- The ensure and state answers carry `"preview": { "url", "port", "kind", "stopped" } | null`.
 
 **How a preview is reached — one DNS record, ever.** `kimono node sandboxes
 enable --preview-domain example.dev` gives the node its own Cloudflare tunnel
@@ -142,7 +163,8 @@ Kimono already has keep winning over it — but it's the less isolated choice.
 The proxy reaches an app on the sandbox's own address when it listens on all
 interfaces, and otherwise (an app bound to `localhost`, or Docker running in a
 VM as on macOS) through the sandbox itself, with `socat`. WebSockets pass
-through either way, so dev servers' live reload works.
+through either way, so dev servers' live reload works, and responses are
+streamed as they are written (server-sent events, streamed rendering).
 
 Without a preview domain (or in development) the proxy listens on
 `127.0.0.1:7482` and links are `http://<name>.localhost:7482`.
