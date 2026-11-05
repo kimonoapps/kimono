@@ -95,14 +95,21 @@ Add `spec.mobileApp` to an app definition to show a step-by-step tutorial when a
     "androidUrl": "https://play.google.com/store/apps/details?id=com.example.app",
     "steps": [
       { "id": "download", "kind": "download", "title": "Download the app", "description": "Install the app, then return here." },
-      { "id": "connect", "kind": "server", "title": "Connect to your server", "description": "Enter this address in the app." },
+      { "id": "connect", "kind": "open", "title": "Open the app", "description": "Tap below to connect the app.", "href": "example://connect?server={{server}}", "label": "Open the app" },
       { "id": "sign-in", "kind": "instruction", "title": "Sign in", "description": "Choose Sign in with Kimono." }
     ]
   }
 }
 ```
 
-Steps appear in manifest order. Each needs a unique `id`, a `title`, a `description`, and a `kind`: `download` shows OS-specific store buttons; `server` shows the current app address and a copy button; `instruction` shows the text alone. Store URLs are optional, but a download step requires at least one. All links must use HTTPS. iOS detection includes iPads using desktop mode; an unknown OS shows both available stores. Legacy string steps remain supported.
+Steps appear in manifest order. Each needs a unique `id`, a `title`, a `description`, and a `kind`:
+
+- `download` shows OS-specific download buttons.
+- `server` shows the current app address and a copy button, for apps where people type it in.
+- `open` shows one button, worded by `label`, that opens `href` on the phone. `href` is the phone app's own link (any scheme but web, `javascript:`, `data:` or `file:`), and `{{server}}` in it becomes the app's address (its `https://` origin, URL-encoded). Use it for apps that learn their address from Kimono rather than from the person, as Kimono Photos does with `kimono-photos://connect?server={{server}}`. On a computer the step says to open the page on a phone instead.
+- `instruction` shows the text alone.
+
+Download links are optional, but a download step requires at least one. They are HTTPS URLs or Portal paths: `/get-app?for=ios` sends iPhones through the Portal's TestFlight steps, for apps in Kimono's own App Store Connect team (the TestFlight sync in `apps/portal/src/lib/testflight.ts` lists their bundle IDs). The button wording follows the link: App Store, Google Play, TestFlight, or a plain download for anything else (an `.apk` downloads in place). `guideUrl` is optional and, when given, must be HTTPS. iOS detection includes iPads using desktop mode; an unknown OS shows both. Legacy string steps remain supported.
 
 Next and Back move between steps. Skip opens the app in the browser from any step; the final action also opens the browser. Closing returns to the launcher, and reopening starts at step one. Downloads and the setup guide open in another tab so the tutorial stays available.
 

@@ -13,7 +13,7 @@ function load(file) {
   new Function('module', 'exports', 'require', code)(loaded, loaded.exports, require);
   return loaded.exports;
 }
-const { planSync, nameParts } = load('testflight-plan.ts');
+const { planSync, planAlso, nameParts } = load('testflight-plan.ts');
 const { appStoreToken, isApiKey } = load('testflight-token.ts');
 
 const account = (username, email, active = true, name = username) => ({ username, name, email, active });
@@ -63,6 +63,16 @@ test("when the directory can't say, nobody is removed", () => {
   const plan = planSync({ ...base, accounts: [account('mina', 'mina@kimono.test', null)], users: [{ id: 'u-mina', email: 'mina@kimono.test', roles: ['CUSTOMER_SUPPORT'] }], testers: [{ id: 't', email: 'mina@kimono.test' }], invited: { 'mina@kimono.test': { at: 1 } } });
   assert.deepEqual(plan.steps, []);
   assert.equal(plan.statuses[0].status, 'tester');
+});
+
+test("another app's group gets the same people, without inviting or removing anyone", () => {
+  const also = planAlso({
+    accounts: [account('mina', 'mina@kimono.test', true, 'Mina Sato'), account('ren', 'ren@kimono.test'), account('sora', 'sora@kimono.test'), account('kai', null), account('jun', 'jun@kimono.test', false)],
+    users: [{ id: 'u-mina', email: 'mina@kimono.test', roles: ['CUSTOMER_SUPPORT'] }, { id: 'u-sora', email: 'sora@kimono.test', roles: ['CUSTOMER_SUPPORT'] }, { id: 'u-jun', email: 'jun@kimono.test', roles: ['CUSTOMER_SUPPORT'] }],
+    testers: [{ id: 't-sora', email: 'sora@kimono.test' }],
+  });
+  assert.deepEqual(also.steps, [{ kind: 'add', email: 'mina@kimono.test', firstName: 'Mina', lastName: 'Sato' }]);
+  assert.deepEqual([...also.statuses], [['mina', 'added'], ['ren', 'invited (waiting to accept)'], ['sora', 'tester']], 'nobody without an email or Kimono access');
 });
 
 test('names split for Apple', () => {

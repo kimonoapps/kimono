@@ -19,27 +19,28 @@
   "spec": {
     "integration": "connected",
     "mobileApp": {
-      "name": "Immich",
-      "guideUrl": "https://docs.immich.app/features/mobile-app/",
-      "iosUrl": "https://apps.apple.com/app/immich/id1613945652",
-      "androidUrl": "https://play.google.com/store/apps/details?id=app.alextran.immich",
+      "name": "Kimono Photos",
+      "iosUrl": "/get-app?for=ios",
+      "androidUrl": "https://github.com/kimonoapps/repatches/releases/download/immich%2Fv3.1.0-kimono.1/kimono-photos-3.1.0-kimono.1.apk",
       "steps": [
         {
           "id": "download",
-          "title": "Download Immich",
-          "description": "Install Immich on your phone, then return here to continue.",
+          "title": "Get Kimono Photos",
+          "description": "Install Kimono Photos on this phone, then come back here.",
           "kind": "download"
         },
         {
           "id": "connect",
-          "title": "Connect to your server",
-          "description": "Open Immich and enter this server address.",
-          "kind": "server"
+          "title": "Open Kimono Photos",
+          "description": "Tap below. Kimono Photos opens and asks you to sign in with Kimono.",
+          "kind": "open",
+          "href": "kimono-photos://connect?server={{server}}",
+          "label": "Open Kimono Photos"
         },
         {
-          "id": "sign-in",
-          "title": "Sign in with Kimono",
-          "description": "Choose the Kimono sign-in option and sign in with your Kimono account. Then choose which albums to back up.",
+          "id": "back-up",
+          "title": "Choose what to back up",
+          "description": "Once you're signed in, pick the albums to back up.",
           "kind": "instruction"
         }
       ]
@@ -47,7 +48,7 @@
     "services": [
       {
         "id": "server",
-        "image": "ghcr.io/immich-app/immich-server:v3.1.0",
+        "image": "ghcr.io/kimonoapps/kimono-photos-server:3.1.0-kimono.1",
         "dependsOn": [
           "database",
           "redis",
@@ -126,7 +127,8 @@
       "redirectUris": [
         "https://{{hostname}}/auth/login",
         "https://{{hostname}}/user-settings",
-        "app.immich:///oauth-callback"
+        "app.immich:///oauth-callback",
+        "app.kimono.photos:///oauth-callback"
       ],
       "delivery": "settings"
     },
@@ -289,7 +291,7 @@
         "group": "sign-in",
         "target": "settings",
         "default": "on",
-        "description": "Send people to Kimono sign-in without showing the Immich form first."
+        "description": "Send people to Kimono sign-in without showing the Photos sign-in form first."
       },
       {
         "key": "CREATE_ACCOUNTS",

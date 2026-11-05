@@ -24,6 +24,15 @@ A mosque can be a slug or a Mawaqit mosque URL. Calendar data is extracted as JS
 
 Based on [mawaqit-gnome at commit 0e0a730](https://github.com/akramboussanni/mawaqit-gnome/tree/0e0a730b217b463b704f9c72e465e5124b78b5cf). The canonical `/en/{slug}` page URL is used because the reference's `/en/m/{slug}` now redirects.
 
+## RateMyProfessors
+
+- `GET /api/tools/rmp/schools?q=ottawa` searches schools by name.
+- `GET /api/tools/rmp/professor?school=1452&name=Steve%20Desjardins` returns the best-matching professor at a school, with courses (most common first) and tags. Add `ratings=true` for the 20 latest student ratings and `related=true` for related professors.
+
+`school` is a numeric legacy ID or RateMyProfessors' base64 school ID from the search result. A professor that is not found returns `{ "found": false }`. Requests go to RateMyProfessors' public GraphQL endpoint with a ten-second timeout, a two-megabyte response cap, and no redirects. No upstream key is required.
+
+Based on [rmp-api at commit 4e83474](https://github.com/akramboussanni/rmp-api/tree/4e834742fb27782ca5b4bd521899135ca7b4e6a9). Related professors use `name` instead of the reference's `d`. The reference's per-IP rate limit is not reproduced; use endpoint access to restrict callers.
+
 ## Register another API
 
 Add a descriptor to `spec.apiCollection` in `apps/portal/app-definitions/tools/app.json`: unique `id`, `name`, `description`, `source`, `upstreamAuth` (`none` or `api-key`), and `operations`. Each operation supplies a unique `id`, `name`, `description`, `parameters` (name, description, required, example), response description, and example query.

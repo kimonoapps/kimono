@@ -106,6 +106,68 @@
             }
           }
         ]
+      },
+      {
+        "id": "rmp",
+        "name": "RateMyProfessors",
+        "description": "Find schools and read professor ratings.",
+        "source": "https://github.com/akramboussanni/rmp-api/tree/4e834742fb27782ca5b4bd521899135ca7b4e6a9",
+        "upstreamAuth": "none",
+        "operations": [
+          {
+            "id": "schools",
+            "name": "Search schools",
+            "description": "Search schools by name.",
+            "parameters": [
+              {
+                "name": "q",
+                "description": "School name, 2 to 120 characters.",
+                "example": "ottawa",
+                "required": true
+              }
+            ],
+            "response": "JSON object with a schools array. Each result has id, legacyId, name, city, state, numRatings, and avgRatingRounded.",
+            "example": {
+              "q": "ottawa"
+            }
+          },
+          {
+            "id": "professor",
+            "name": "Professor ratings",
+            "description": "Read the best-matching professor at a school, with courses and tags.",
+            "parameters": [
+              {
+                "name": "school",
+                "description": "Numeric school ID or RateMyProfessors school ID from Search schools.",
+                "example": "1452",
+                "required": true
+              },
+              {
+                "name": "name",
+                "description": "Professor name, 2 to 120 characters.",
+                "example": "Steve Desjardins",
+                "required": true
+              },
+              {
+                "name": "ratings",
+                "description": "true to include the 20 latest student ratings.",
+                "example": "false",
+                "required": false
+              },
+              {
+                "name": "related",
+                "description": "true to include related professors at the same school.",
+                "example": "false",
+                "required": false
+              }
+            ],
+            "response": "JSON object with found. When found: id, name, department, school, avgRating, avgDifficulty, numRatings, wouldTakeAgainPercent, courses, tags, and optional ratings and relatedProfessors.",
+            "example": {
+              "school": "1452",
+              "name": "Steve Desjardins"
+            }
+          }
+        ]
       }
     ]
   }

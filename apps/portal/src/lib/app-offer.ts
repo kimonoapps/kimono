@@ -8,6 +8,8 @@ import { testflightSettings } from "./testflight";
 export type AppOffer = {
   android: { version: string; build: number; size: number | null } | null;
   ios: boolean;
+  /** The iPhone apps waiting in TestFlight once someone's in: Kimono, and Kimono Photos when it's there. */
+  iosApps: string[];
   address: string | null;
 };
 
@@ -23,6 +25,7 @@ export async function appOffer(): Promise<AppOffer> {
     android: android ? { version: android.version, build: android.build, size: android.size ?? null } : null,
     /* Every iPhone is offered it once TestFlight is set up, so anyone can ask for their invite. */
     ios: Boolean(testflight || newest("ios")),
+    iosApps: testflight?.lastSync?.apps?.length ? testflight.lastSync.apps : ["Kimono"],
     address: appDefault.includes(host) ? null : host,
   };
 }

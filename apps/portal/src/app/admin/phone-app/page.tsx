@@ -92,13 +92,13 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
 
       <Compartment label="TestFlight" wants={!testflight}>
         {testflight ? <>
-          <Note>People who ask on their iPhone are invited at their Kimono email, and added once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId}.</Note>
+          <Note>People who ask on their iPhone are invited at their Kimono email, and added to {appList(testflight.lastSync?.apps)} once they accept. People whose Kimono access ends are taken off again. Key {testflight.keyId}.</Note>
           {testflight.lastSync ? <p className={`admin-notice ${testflight.lastSync.ok ? "success" : "error"}`}>Last checked {new Date(testflight.lastSync.at).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" })}: {testflight.lastSync.message}</p> : null}
           {testflight.statuses.length ? <Rows>{testflight.statuses.map((row) => <Row
             key={row.username}
             title={row.name}
             lead={row.status === "tester" ? <StatedSeal state="running">Tester</StatedSeal> : row.status.startsWith("error") ? <StatedSeal state="wants">Problem</StatedSeal> : <StatedSeal state="quiet">{testerLabel(row.status)}</StatedSeal>}
-          >@{row.username}{row.email ? ` · ${row.email}` : ""} · {row.status}</Row>)}</Rows> : null}
+          >@{row.username}{row.email ? ` · ${row.email}` : ""} · {row.status}{Object.entries(row.also ?? {}).map(([app, status]) => ` · ${app}: ${status}`).join("")}</Row>)}</Rows> : null}
           <div className="k-seal-group" style={{ marginTop: 12 }}>
             <form action={syncNow}><Seal type="submit" compact>Sync now</Seal></form>
             <form action={forgetKey}><Seal type="submit" tone="danger" compact>Forget key</Seal></form>
@@ -113,6 +113,12 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
       </Compartment>
     </div>
   </AppShell>;
+}
+
+/** "Kimono", "Kimono and Kimono Photos": the iPhone apps App Store Connect has. */
+function appList(apps: string[] | undefined) {
+  const names = apps?.length ? apps : ["Kimono"];
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
 }
 
 /** A tester status as a short label beside the name. */
