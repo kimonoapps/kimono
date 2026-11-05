@@ -660,3 +660,11 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-kind.project svg.i, .dv-kind.task svg.i { width: 22px; height: 22px; stroke-width: 1.7; }
 .dv-code-mark { display: grid; place-items: center; background: none; }
 .dv-code-mark .k-app-bloom { width: 100%; height: 100%; }
+
+/* A space opened by its public link: no rail, one centred column. */
+.share-frame { display: block; }
+.share-bar { display: flex; align-items: center; max-width: 1180px; margin: 0 auto; padding: 20px 24px 4px; }
+.share-bar .k-app-lockup { gap: 10px; }
+.share-main { min-width: 0; }
+.share-main .dv-body.solo { padding-top: 8px; }
+@media (max-width: 720px) { .share-bar { padding: 14px 16px 0; } }
