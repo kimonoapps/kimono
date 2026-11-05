@@ -7,7 +7,7 @@ import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
   code, drive, efforts, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  type AppHealth, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -218,7 +218,7 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
     </aside>
     <main className="cd-main">
       {current && workspace
-        ? <WorkspaceView key={workspace.id} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
+        ? <WorkspaceView key={workspace.id} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview && !w.preview.stopped) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
         : current && workspaces
           ? <div className="cd-sheet cd-empty"><p>That workspace isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({ new: "1" })}>New task</Seal></div>
           : current
@@ -254,7 +254,7 @@ function WorkspaceList({ label, list, current, now, onNew }: { label: string; li
           {/* One word, and only when it says something. */}
           {state === "running" ? <span className="cd-word running">working {elapsed(now - w.turn!.startedAt)}</span>
             : state === "failed" ? <span className="cd-word">stopped</span>
-              : w.preview ? <span className="cd-word">live</span>
+              : w.preview && !w.preview.stopped ? <span className="cd-word">live</span>
               : w.pullRequest ? <span className="cd-word">#{w.pullRequest.number}</span>
                 : <span className="cd-when">{when(w.updatedAt, now)}</span>}
         </small>
@@ -400,7 +400,7 @@ function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }:
         {confirmDelete
           ? <div className="cd-ws-acts"><span className="cd-faint">Delete the sandbox? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={() => void remove()}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></div>
           : <div className="cd-ws-acts">
-              {workspace.preview ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
+              {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
               {workspace.pullRequest ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button> : null}
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
               <button type="button" className="cd-roundbutton" aria-label="Delete task" title="Delete task" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>
@@ -412,7 +412,7 @@ function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }:
       <div className="cd-segs" ref={segs}>
         <div className="cd-seg" role="tablist" aria-label="Views">
           {([["chat", "Chat"], ["files", "Files"], ["changes", "Changes"], ["app", "App"]] as const).map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go({ tab: id })}>{tab === id ? <Icon name="check" /> : id === "app" && workspace.preview ? <i className="cd-live-dot" aria-label="running" /> : null}{label}</button>
+            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go({ tab: id })}>{tab === id ? <Icon name="check" /> : id === "app" && workspace.preview && !workspace.preview.stopped ? <i className="cd-live-dot" aria-label="running" /> : null}{label}</button>
           ))}
         </div>
         {running ? <span className="cd-status running" role="status"><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</span>
@@ -432,7 +432,9 @@ function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }:
 function Deployments({ workspace, others }: { workspace: Workspace; others: Workspace[] }) {
   return <div className="cd-deployments">
     <h2>Running apps</h2>
-    {workspace.preview
+    {workspace.preview?.stopped
+      ? <button type="button" className="cd-dep-row is-link" onClick={() => goTo({ w: workspace.id, tab: "app" })}><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This task&rsquo;s app is stopped</b><small>Start it again from the App tab.</small></span></button>
+      : workspace.preview
       ? <PreviewCard workspace={workspace} url={workspace.preview.url} live />
       : <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This task isn&rsquo;t running an app</b><small>Ask the agent to run it and it appears here.</small></span></div>}
     {others.length ? <div className="cd-dep-list">{others.map((w) => <button type="button" key={w.id} className="cd-dep-row is-link" onClick={() => goTo({ w: w.id })}>
@@ -456,13 +458,72 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
     </div>
   </div>;
   return <div className="cd-scroll cd-appview">
-    <AppReady workspace={workspace} url={workspace.preview.url} />
+    {workspace.preview.stopped ? null : <AppReady workspace={workspace} url={workspace.preview.url} />}
+    <AppRunning key={workspace.id} workspace={workspace} onChange={onChange} />
     <LinkName key={workspace.preview.url} workspace={workspace} url={workspace.preview.url} onRenamed={onChange} />
-    <div className="cd-app-frame">
+    {workspace.preview.stopped ? null : <div className="cd-app-frame">
       <div className="cd-app-bar"><i /><i /><i /><span className="cd-mono">{workspace.preview.url.replace(/^https?:\/\//, "")}</span></div>
       <iframe src={workspace.preview.url} title="The running app" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
-    </div>
+    </div>}
   </div>;
+}
+
+const healthWords: Record<AppHealth["state"], string> = {
+  running: "Running", starting: "Starting", crashed: "Crashing", stopped: "Stopped", asleep: "Asleep", down: "Not answering",
+};
+
+/** How the app is doing, what it printed last, and starting or stopping it. Looked at every few seconds while the tab is open. */
+function AppRunning({ workspace, onChange }: { workspace: Workspace; onChange: () => void }) {
+  const [status, setStatus] = useState<{ health: AppHealth; log: string } | null>(null);
+  const [acting, setActing] = useState<"restart" | "stop" | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const log = useRef<HTMLPreElement>(null);
+  const filled = useRef(false);
+  const stopped = workspace.preview?.stopped ?? false;
+  const look = useCallback(() => code.previewStatus(workspace.id).then(setStatus, () => {}), [workspace.id]);
+  useEffect(() => {
+    void look();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 4000);
+    return () => clearInterval(timer);
+  }, [look, stopped]);
+  /* The newest output is what matters: keep the log at its end unless someone scrolled up to read. */
+  useLayoutEffect(() => {
+    const box = log.current;
+    if (!box || !status) return;
+    if (!filled.current || box.scrollHeight - box.scrollTop - box.clientHeight < 48) box.scrollTop = box.scrollHeight;
+    filled.current = true;
+  }, [status]);
+  async function act(what: "restart" | "stop") {
+    setActing(what); setProblem(null);
+    try {
+      await (what === "restart" ? code.restartPreview(workspace.id) : code.pausePreview(workspace.id));
+      onChange();
+      await look();
+    } catch (error) { setProblem(problemText(error)); await look(); } finally { setActing(null); }
+  }
+  const health = status?.health;
+  const state = stopped ? "stopped" : health?.state;
+  const word = acting === "restart" ? (stopped ? "Starting" : "Restarting") : acting === "stop" ? "Stopping" : state ? healthWords[state] : "Looking";
+  const detail = state === "crashed" ? `Exited${health?.exit != null ? ` with code ${health.exit}` : ""}, restarted ${health!.restarts} ${health!.restarts === 1 ? "time" : "times"}`
+    : state === "asleep" ? "Wakes when someone opens the link"
+      : state === "stopped" ? "The link stays. Start it again any time."
+        : state === "running" && health?.restarts ? `Restarted ${health.restarts} ${health.restarts === 1 ? "time" : "times"}` : null;
+  return <section className="cd-run" aria-label="The app" data-state={acting ? "starting" : state ?? "starting"}>
+    <div className="cd-run-head">
+      <span className="cd-run-state" role="status"><i aria-hidden="true" /><b>{word}</b>{detail ? <small>{detail}</small> : null}</span>
+      {stopped && workspace.preview?.kind ? <span className="cd-run-kind">{workspace.preview.kind}</span> : null}
+      <div className="cd-run-acts">
+        {stopped
+          ? <Seal type="button" compact disabled={Boolean(acting)} onClick={() => void act("restart")}><Icon name="play" />Start</Seal>
+          : <>
+              <button type="button" className="cd-quietbutton" disabled={Boolean(acting)} onClick={() => void act("restart")}><Icon name="restart" />Restart</button>
+              <button type="button" className="cd-quietbutton" disabled={Boolean(acting)} onClick={() => void act("stop")}><Icon name="stop" />Stop</button>
+            </>}
+      </div>
+    </div>
+    {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+    <pre ref={log} className="cd-run-log" aria-label="What the app printed" tabIndex={0}>{status ? status.log.trimEnd() || "Nothing printed yet." : " "}</pre>
+  </section>;
 }
 
 /** The app's link, renamed by its owner: [recipes].example.dev. */
@@ -499,7 +560,7 @@ function AppReady({ workspace, url }: { workspace: Workspace; url: string }) {
   const [problem, setProblem] = useState<string | null>(null);
   return <InkCard colour="#5c7150" seed={`ready-${workspace.id}`} className="cd-ready-ink"><div className="cd-ready">
     <span className="cd-ready-mark" aria-hidden="true"><Icon name="open" /></span>
-    <span className="cd-ready-text"><b>Your app is ready</b><span className="cd-mono">{url.replace(/^https?:\/\//, "")}</span></span>
+    <span className="cd-ready-text"><b>Your app is ready</b>{workspace.preview?.kind ? <small>{workspace.preview.kind}</small> : null}<span className="cd-mono">{url.replace(/^https?:\/\//, "")}</span></span>
     <div className="cd-ready-acts">
       <Seal type="button" className="cd-ready-open" onClick={() => openOutside(url)}><Icon name="open" />Open app</Seal>
       <button type="button" className="cd-quietbutton" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => setProblem("Couldn't copy. Select the address above.")); }}>{copied ? "Copied" : "Copy link"}</button>
@@ -603,7 +664,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
           }
         })}
         {running && items.at(-1)?.type !== "tools" ? <p className="cd-thinking"><i aria-hidden="true" />Working</p> : null}
-        {!running && workspace.preview && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
+        {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
     </div>

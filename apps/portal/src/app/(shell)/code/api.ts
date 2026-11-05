@@ -7,7 +7,7 @@ export type TurnState = "running" | "done" | "failed" | "cancelled";
 export type Workspace = {
   id: string; title: string; repo: { owner: string; name: string }; base: string; branch: string;
   pullRequest: { url: string; number: number } | null;
-  preview: { url: string; port: number } | null;
+  preview: { url: string; port: number; kind: string | null; stopped: boolean } | null;
   previewName?: string | null;
   drive: { spaceId: string; folderId: string } | null;
   createdAt: number; updatedAt: number; lastSeq: number;
@@ -25,8 +25,10 @@ export type CodeEvent =
   | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }
-  | { kind: "preview"; url: string; port: number }
+  | { kind: "preview"; url: string; port: number; app?: string }
   | { kind: "preview-stopped" };
+/** How a published app is doing, as the sandbox's supervisor reports it. */
+export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };
 export type StoredEvent = { seq: number; turn: string | null; at: number; event: CodeEvent };
 export type Entry = { name: string; kind: "file" | "dir" | "link"; size: number };
 export type Changes = {
@@ -82,6 +84,9 @@ export const code = {
   fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),
   stopPreview: (id: string) => call<void>(`${ws(id)}/preview`, { method: "DELETE" }),
   renamePreview: (id: string, name: string) => call<{ url: string; port: number }>(`${ws(id)}/preview`, json("PATCH", { name })),
+  previewStatus: (id: string) => call<{ health: AppHealth; log: string }>(`${ws(id)}/preview`),
+  restartPreview: (id: string) => call<unknown>(`${ws(id)}/preview/restart`, { method: "POST" }),
+  pausePreview: (id: string) => call<unknown>(`${ws(id)}/preview/stop`, { method: "POST" }),
   shotUrl: (id: string, name: string) => `${base}${ws(id)}/shots/${encodeURIComponent(name)}`,
   files: (id: string, path: string) => call<{ path: string; entries: Entry[] }>(`${ws(id)}/files?path=${encodeURIComponent(path)}`),
   changes: (id: string) => call<Changes>(`${ws(id)}/changes`),

@@ -17,7 +17,7 @@ export type CodeEvent =
   | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }
-  | { kind: "preview"; url: string; port: number }
+  | { kind: "preview"; url: string; port: number; /** What kind of app it is: "Node API with SQLite", "Static site". */ app?: string }
   | { kind: "preview-stopped" };
 
 const clip = (value: string, max: number) => value.length > max ? `${value.slice(0, max)}\n…` : value;

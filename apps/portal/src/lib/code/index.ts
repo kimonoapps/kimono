@@ -13,7 +13,7 @@ import {
   abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
-import { sandbox, type Effort } from "./node";
+import { sandbox, type Effort, type NodePreview } from "./node";
 export { efforts, type Effort } from "./node";
 import { shotToDrive, syncDrive } from "./drive";
 
@@ -152,12 +152,13 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (line.type === "kimono.preview" && typeof line.url === "string" && typeof line.port === "number") {
           /* The owner named this app before: give the new link that name again. */
           const chosen = workspaceFor(db(), workspace.id, workspace.owner).previewName;
-          let preview = { url: line.url, port: line.port };
+          const app = typeof line.kind === "string" && line.kind ? line.kind.slice(0, 60) : undefined;
+          let preview: NodePreview = { url: line.url, port: line.port, kind: app };
           if (chosen && new URL(line.url).hostname.split(".")[0] !== chosen) {
             preview = await sandbox.renamePreview(config, workspace, chosen).catch(() => preview);
           }
           setPreview(db(), workspace.id, preview);
-          record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port });
+          record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port, ...(app ? { app } : {}) });
           continue;
         }
         if (line.type === "kimono.usage") {
@@ -213,7 +214,34 @@ export async function renamePreview(config: CodeConfig, workspace: Workspace, na
   const preview = await sandbox.renamePreview(config, workspace, clean);
   setPreview(db(), workspace.id, preview);
   setPreviewName(db(), workspace.id, clean);
-  record(workspace.id, runningTurn(db(), workspace.id), { kind: "preview", url: preview.url, port: preview.port });
+  record(workspace.id, runningTurn(db(), workspace.id), { kind: "preview", url: preview.url, port: preview.port, ...(preview.kind ? { app: preview.kind } : {}) });
+  return preview;
+}
+
+/** How the app is doing now, and the end of its log. What the node says is kept, so the list agrees. */
+export async function previewStatus(config: CodeConfig, workspace: Workspace) {
+  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  const [status, log] = await Promise.all([
+    sandbox.preview(config, workspace),
+    sandbox.previewLogs(config, workspace).catch(() => ""),
+  ]);
+  if (status.kind !== (workspace.preview.kind ?? undefined) || Boolean(status.stopped) !== workspace.preview.stopped) setPreview(db(), workspace.id, status);
+  return { health: status.health, log };
+}
+
+/** Starts the app again (or for the first time since it was stopped), keeping its link. */
+export async function restartPreview(config: CodeConfig, workspace: Workspace) {
+  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  const preview = await sandbox.restartPreview(config, workspace);
+  setPreview(db(), workspace.id, preview);
+  return preview;
+}
+
+/** Stops the app but keeps its link and name; opening the link says it isn't running. */
+export async function pausePreview(config: CodeConfig, workspace: Workspace) {
+  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  const preview = await sandbox.pausePreview(config, workspace);
+  setPreview(db(), workspace.id, preview);
   return preview;
 }
 

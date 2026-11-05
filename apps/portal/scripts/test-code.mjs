@@ -106,7 +106,10 @@ test('a workspace remembers the app it is running, and only real links', () => {
   const db = fresh();
   const w = start(db);
   model.setPreview(db, w.id, { url: 'https://notes-a1b2c3.example.dev', port: 3000 });
-  assert.deepEqual(model.workspaceFor(db, w.id, 'akram').preview, { url: 'https://notes-a1b2c3.example.dev', port: 3000 });
+  assert.deepEqual(model.workspaceFor(db, w.id, 'akram').preview, { url: 'https://notes-a1b2c3.example.dev', port: 3000, kind: null, stopped: false });
+  // What kind of app it is, and its owner stopping it while keeping the link.
+  model.setPreview(db, w.id, { url: 'https://notes-a1b2c3.example.dev', port: 3000, kind: ' Node API with SQLite ', stopped: true });
+  assert.deepEqual(model.workspaceFor(db, w.id, 'akram').preview, { url: 'https://notes-a1b2c3.example.dev', port: 3000, kind: 'Node API with SQLite', stopped: true });
   model.setPreview(db, w.id, { url: 'javascript:alert(1)', port: 3000 });
   assert.equal(model.workspaceFor(db, w.id, 'akram').preview, null);
   model.setPreview(db, w.id, null);

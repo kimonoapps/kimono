@@ -15,6 +15,8 @@ export const icons = {
   panel: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>',
   rocket: '<path d="M12 3.5c3 2 4.5 5 4.5 8.5l-2 4h-5l-2-4c0-3.5 1.5-6.5 4.5-8.5z"/><circle cx="12" cy="10" r="1.6"/><path d="M9.5 16 7 19.5M14.5 16l2.5 3.5M12 16v4"/>',
   code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/>',
+  restart: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4v4h-4"/>',
+  play: '<path d="M8 5.5v13l10-6.5z"/>',
 } as const;
 
 export type IconName = keyof typeof icons;

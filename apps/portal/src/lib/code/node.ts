@@ -102,8 +102,17 @@ export const sandbox = {
 
   renamePreview: (config: CodeConfig, workspace: Workspace, name: string) => call(config, `${at(workspace)}/preview`, {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }), timeout: 20_000,
-  }).then(json<{ url: string; port: number }>),
+  }).then(json<NodePreview>),
   stopPreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { method: "DELETE", timeout: 20_000 }).then(() => undefined),
+
+  /** How the published app is doing, without waking the sandbox. */
+  preview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { timeout: 15_000 }).then(json<NodePreview & { health: AppHealth }>),
+  /** The end of what the app printed, across its restarts. */
+  previewLogs: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview/logs`, { timeout: 15_000 }).then((r) => r.text()),
+  /** Starts the app again as the agent published it, keeping its link. */
+  restartPreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview/restart`, { method: "POST", timeout: 3 * 60_000 }).then(json<NodePreview>),
+  /** Stops the app but keeps its link, to start again later. */
+  pausePreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview/stop`, { method: "POST", timeout: 30_000 }).then(json<NodePreview>),
 
   changes: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/changes`).then(json<Changes>),
 
@@ -111,6 +120,9 @@ export const sandbox = {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), timeout: 2 * 60_000,
   }).then(json<{ url: string; number: number }>),
 };
+
+export type NodePreview = { url: string; port: number; kind?: string; stopped?: boolean };
+export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };
 
 export type Changes = {
   base: string; branch: string; truncated: boolean; diff: string;

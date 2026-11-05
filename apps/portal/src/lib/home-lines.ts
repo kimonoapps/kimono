@@ -23,7 +23,7 @@ export function homeLines(username: string, ids: string[]): Record<string, strin
     try {
       const workspaces = workspacesOf(codeDb(), username);
       const working = workspaces.filter((w) => w.turn?.state === "running").length;
-      const live = workspaces.filter((w) => w.preview).length;
+      const live = workspaces.filter((w) => w.preview && !w.preview.stopped).length;
       lines["kimono-code"] = working ? `Working on ${plural(working, "task")}` : live ? `${plural(live, "app")} running` : workspaces.length ? plural(workspaces.length, "task") : "Start a task";
     } catch { /* Code not set up here */ }
   }
