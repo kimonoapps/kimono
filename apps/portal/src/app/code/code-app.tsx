@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { Choice, cx, InkCard, Seal } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
+import { swap } from "@/components/motion";
 import {
   code, drive, efforts, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
@@ -370,6 +371,9 @@ function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }:
   const [publishing, setPublishing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const go = (to: Partial<Record<"tab" | "path", string | null>>) => goTo({ w: workspace.id, tab: to.tab === "chat" ? null : to.tab ?? tab, path: to.path ?? null });
+  // A new tab, or a new task, lifts its view into place.
+  const segs = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { swap(segs.current?.parentElement?.lastElementChild ?? null); }, [tab, workspace.id]);
 
   async function publish() {
     setPublishing(true);
@@ -405,7 +409,7 @@ function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }:
               </Seal>
             </div>}
       </header>
-      <div className="cd-segs">
+      <div className="cd-segs" ref={segs}>
         <div className="cd-seg" role="tablist" aria-label="Views">
           {([["chat", "Chat"], ["files", "Files"], ["changes", "Changes"], ["app", "App"]] as const).map(([id, label]) => (
             <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => go({ tab: id })}>{tab === id ? <Icon name="check" /> : id === "app" && workspace.preview ? <i className="cd-live-dot" aria-label="running" /> : null}{label}</button>

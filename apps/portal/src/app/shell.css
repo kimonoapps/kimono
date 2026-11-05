@@ -216,3 +216,47 @@
 /* while a slow page loads: the painted loader in the page's space, beside the rail */
 .nav-loading { position: fixed; inset: 0 0 0 96px; z-index: 15; display: grid; place-items: center; pointer-events: none; }
 @media (max-width: 720px) { .nav-loading { inset: 0 0 76px 0; } }
+
+/* ── Motion ──
+   Material's emphasized curves: things arriving decelerate hard, things
+   leaving accelerate away. Every state change moves; none of it is slow. */
+:root { --mo-in: cubic-bezier(.05, .7, .1, 1); --mo-out: cubic-bezier(.3, 0, .8, .15); --mo-spring: cubic-bezier(.34, 1.4, .64, 1); }
+
+/* The rail's pill grows out from its icon when its page becomes current. */
+.rail-dest[aria-current] .rail-pill { animation: mo-pill .42s var(--mo-in); }
+@keyframes mo-pill { from { transform: scaleX(.35); opacity: .2; } }
+.rail-pill > svg, .rail-pill > .k-app-bloom { transition: transform .3s var(--mo-spring); }
+.rail-dest:hover .rail-pill > svg, .rail-dest:hover .rail-pill > .k-app-bloom { transform: scale(1.08); }
+.rail-dest:active .rail-pill { transform: scale(.92); transition: transform .1s; }
+.rail-dest { transition: color .2s; }
+.rail-room { transition: background-color .25s var(--mo-in), color .2s; }
+.rail-room[aria-current] { animation: mo-pop .32s var(--mo-in); }
+@keyframes mo-pop { from { transform: scale(.94); } }
+
+/* Sheets: the scrim fades, the sheet rises. */
+.scrim.open { animation: mo-fade .22s ease-out; }
+@keyframes mo-fade { from { opacity: 0; } }
+@media (max-width: 720px) { .sheet { animation: mo-sheet-up .42s var(--mo-in); } }
+@keyframes mo-sheet-up { from { transform: translateY(60%); opacity: .4; } }
+
+/* Code's view tabs: the chosen one fills in and its tick draws. */
+.cd-seg button { transition: background-color .28s var(--mo-in), color .2s; }
+.cd-seg button[aria-selected="true"] svg.i { animation: mo-tick .34s var(--mo-spring); }
+@keyframes mo-tick { from { transform: scale(0) rotate(-30deg); opacity: 0; } }
+
+/* Code's conversation: each new turn lifts in as it lands. */
+.cd-timeline > *, .cd-say, .call-list > * { animation: mo-lift .36s var(--mo-in) backwards; }
+@keyframes mo-lift { from { opacity: 0; translate: 0 10px; } }
+.cd-start > * { animation: mo-lift .5s var(--mo-in) backwards; }
+.cd-start > :nth-child(2) { animation-delay: 40ms; } .cd-start > :nth-child(3) { animation-delay: 80ms; }
+.cd-start > :nth-child(4) { animation-delay: 120ms; } .cd-start > :nth-child(n+5) { animation-delay: 160ms; }
+.cd-side button[aria-current] { animation: mo-pop .3s var(--mo-in); }
+
+/* Pressing anything round gives a little. */
+.seg > .row:active, .cd-dep-row:active, .cd-side button:active { transform: scale(.985); transition: transform .1s; }
+.seg > .row { transition: background-color .2s, border-radius .35s var(--spring), transform .25s var(--mo-spring); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-dest[aria-current] .rail-pill, .rail-room[aria-current], .scrim.open, .sheet, .cd-seg button svg.i,
+  .cd-timeline > *, .cd-say, .call-list > *, .cd-start > *, .cd-side button[aria-current] { animation: none; }
+}

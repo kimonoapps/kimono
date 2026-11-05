@@ -2,8 +2,9 @@
 
 import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type SealTone, type CrossingKind } from "@kimono/ui";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
+import { rise } from "@/components/motion";
 
 /**
  * Going somewhere, as a promise that keeps until the page is standing.
@@ -34,7 +35,7 @@ function Arrivals({ children }: { children: ReactNode }) {
     const page = document.querySelector<HTMLElement>(".main-content");
     if (page) {
       page.getAnimations().forEach((animation) => animation.cancel());
-      if (!still()) page.animate([{ opacity: 0, transform: "translateX(48px)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.05, .7, .1, 1)" });
+      if (!still()) page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 420, easing: "cubic-bezier(.05, .7, .1, 1)" });
     }
     resolve();
   }, []);
@@ -43,6 +44,21 @@ function Arrivals({ children }: { children: ReactNode }) {
   // second witness, for a navigation that never had to suspend.
   useEffect(() => { if (!pending) arrived(); }, [pending, arrived]);
   useEffect(() => { arrived(); }, [pathname, arrived]);
+
+  // Every new page, back and forward included, settles in piece by piece. The
+  // first page of a visit is already painted from the server, so it stays put.
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    if (first.current) { first.current = false; return; }
+    const page = document.querySelector(".main-content");
+    if (!page) return;
+    // A slow page, or a list still fetching, stands a skeleton first; the rise belongs to what replaces it.
+    if (!page.querySelector(".skel-wait")) { rise(page); return; }
+    const watch = new MutationObserver(() => { if (!page.querySelector(".skel-wait")) { watch.disconnect(); rise(page); } });
+    watch.observe(page, { childList: true, subtree: true });
+    const giveUp = setTimeout(() => watch.disconnect(), 15000);
+    return () => { watch.disconnect(); clearTimeout(giveUp); };
+  }, [pathname]);
 
   useEffect(() => {
     // Release the superseded navigation promise as well as its visual cover.
