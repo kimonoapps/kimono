@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""kimono-access ask --space NAME [--path PATH] (--read | --change) --why "WHY"
+
+Asks the person for some of their Drive: a whole space, or a folder or file in
+it. Nothing opens until they say yes in the chat. When they do, a new message
+arrives and the files are under /files/<space>/ (change lets you edit and add
+there; it all goes back to their Drive). Ask, then end your turn.
+"""
+import argparse, json, os, secrets, sys, time
+
+parser = argparse.ArgumentParser(prog="kimono-access", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+sub = parser.add_subparsers(dest="command", required=True)
+ask = sub.add_parser("ask", help="ask the person for part of their Drive")
+ask.add_argument("--space", required=True, help="the space's name, as the person calls it")
+ask.add_argument("--path", default="", help="a folder or file in it; leave out for the whole space")
+need = ask.add_mutually_exclusive_group(required=True)
+need.add_argument("--read", action="store_const", dest="need", const="read")
+need.add_argument("--change", action="store_const", dest="need", const="change")
+ask.add_argument("--why", required=True, help="one plain sentence they'll read")
+args = parser.parse_args()
+
+request = {"space": args.space.strip()[:120], "path": args.path.strip().strip("/")[:1000], "need": args.need, "why": " ".join(args.why.split())[:300]}
+if not request["space"] or not request["why"]:
+    sys.exit("kimono-access: --space and --why can't be empty")
+os.makedirs("/outbox/access", exist_ok=True)
+name = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}.json"
+with open(f"/outbox/access/.{name}", "w") as f:
+    json.dump(request, f)
+os.rename(f"/outbox/access/.{name}", f"/outbox/access/{name}")
+what = f"{request['path']} in {request['space']}" if request["path"] else f"their {request['space']} space"
+print(f"Asked to {'change' if args.need == 'change' else 'read'} {what}. End your turn now with one short line saying what you asked for. "
+      f"If they say yes, a new message will tell you, and the files will be in /files/{request['space']}/.")

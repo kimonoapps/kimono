@@ -294,6 +294,8 @@ url=$1 base=$2 branch=$3
 cd /workspace
 if [ ! -d .git ]; then git clone --quiet "$url" /workspace; fi
 git remote set-url origin "$url"
+# Files a person lets the agent use live in .kimono/files: never committed, never mirrored as the task's own.
+grep -qxF '/.kimono/' .git/info/exclude 2>/dev/null || echo '/.kimono/' >> .git/info/exclude
 git fetch --quiet --prune origin
 current=$(git symbolic-ref --quiet --short HEAD || true)
 if [ "$current" != "$branch" ]; then

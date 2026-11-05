@@ -15,6 +15,7 @@ import {
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
 import { toolSession } from "./composio";
+import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
 export { efforts, type Effort } from "./node";
 import { shotToDrive, syncDrive } from "./drive";
@@ -32,6 +33,8 @@ type Live = {
   turns: Map<string, AbortController>;
   /** Messages sent while a turn was running, per workspace: the next turn reads them. */
   queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[]; effort?: Effort }[]>;
+  /** What to tell the agent when it should carry on by itself (an access answer), once the current turn ends. */
+  carryOn?: Map<string, { user: ApiUser; notes: string[] }>;
 };
 /* One connection and one set of listeners for the process, kept across hot reloads in development. */
 const cache = globalThis as unknown as { kimonoCode?: Live };
@@ -144,9 +147,13 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
+    /* Files the person let it use follow Drive, and what is no longer allowed goes. */
+    const openedNews = await syncOpened(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
-    const changed = prompt.startsWith("/") ? [] : takeDriveNews(db(), workspace.id);
-    const told = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n${prompt}` : prompt;
+    const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
+    const access = prompt.startsWith("/") ? "" : accessPrompt(db(), workspace);
+    const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
+    const told = `${access ? `${access}\n\n` : ""}${news}${prompt}`;
     const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
@@ -173,6 +180,14 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           }
           setPreview(db(), workspace.id, preview);
           record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port, ...(app ? { app } : {}) });
+          continue;
+        }
+        if (line.type === "kimono.access" && typeof line.id === "string" && typeof line.space === "string" && typeof line.why === "string" && (line.need === "read" || line.need === "change")) {
+          try {
+            const asked = await onRequest(db(), config, workspace, turn, { id: line.id, space: line.space, path: typeof line.path === "string" ? line.path : "", need: line.need, why: line.why });
+            record(workspace.id, turn, asked.event);
+            if (asked.carryOn) noteCarryOn(workspace.id, user, asked.carryOn);
+          } catch (error) { console.warn("Kimono AI couldn't take an access request:", error instanceof Error ? error.message : error); }
           continue;
         }
         if ((line.type === "kimono.disk" || line.type === "kimono.disk.full") && typeof line.used === "number" && typeof line.quota === "number") {
@@ -210,19 +225,52 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const outcome = finish(result, done, failure, context);
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
-    /* What the agent made goes to Drive. */
+    /* What the agent made goes to Drive, and what it changed in the person's own files goes back to them. */
     void syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync to Drive:", error instanceof Error ? error.message : error));
-    /* Anything sent while it worked starts the next turn straight away. */
-    const waiting = live.queued?.get(workspace.id);
-    if (waiting?.length) {
-      live.queued!.delete(workspace.id);
-      try {
-        checkShare(config, waiting[0].user);
-        const next = startTurn(db(), workspace.id);
-        void run(config, workspace, waiting[0].user, next, waiting.map((m) => m.prompt).filter(Boolean).join("\n\n") || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort);
-      } catch (error) { console.warn("Code couldn't start the queued message:", error instanceof Error ? error.message : error); }
+    const wroteBack = syncOpened(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't write back opened files:", error instanceof Error ? error.message : error); return []; });
+    /* Anything sent while it worked starts the next turn straight away, after any note it should carry on with. */
+    const waiting = live.queued?.get(workspace.id) ?? [];
+    const carry = live.carryOn?.get(workspace.id);
+    live.queued?.delete(workspace.id);
+    live.carryOn?.delete(workspace.id);
+    if (waiting.length || carry) {
+      void wroteBack.then(() => {
+        try {
+          const by = waiting[0]?.user ?? carry!.user;
+          checkShare(config, by);
+          const next = startTurn(db(), workspace.id);
+          const said = [...(carry?.notes ?? []), ...waiting.map((m) => m.prompt)].filter(Boolean).join("\n\n");
+          void run(config, workspace, by, next, said || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort);
+        } catch (error) { console.warn("Code couldn't start the next turn:", error instanceof Error ? error.message : error); }
+      });
     }
   }
+}
+
+/* ── access to the person's Drive ── */
+
+function noteCarryOn(workspaceId: string, user: ApiUser, note: string) {
+  const map = (live.carryOn ??= new Map());
+  const now = map.get(workspaceId) ?? { user, notes: [] };
+  now.notes.push(note);
+  map.set(workspaceId, now);
+}
+
+/** The person answers a request for their files; the agent carries on with what they said. */
+export async function answerAccess(config: CodeConfig, workspace: Workspace, user: ApiUser, requestId: string, choice: unknown, fileId: unknown) {
+  if (choice !== "file" && choice !== "chat" && choice !== "always" && choice !== "deny") throw new CodeProblem("Answer with file, chat, always or deny.");
+  await ensure(config, workspace, who(user));
+  const answered = await answerAccess_(db(), config, workspace, user.username, requestId, choice, typeof fileId === "string" ? fileId : undefined);
+  const busy = runningTurn(db(), workspace.id);
+  const recorded = record(workspace.id, busy, answered.event);
+  if (busy) {
+    noteCarryOn(workspace.id, user, answered.carryOn);
+  } else {
+    checkShare(config, user);
+    const next = startTurn(db(), workspace.id);
+    void run(config, workspace, user, next, answered.carryOn, []);
+  }
+  return recorded;
 }
 
 /** Gives a task's app link a name its owner chose; the old link stops answering. */

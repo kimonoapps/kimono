@@ -7,7 +7,7 @@ import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
   code, drive, efforts, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  type AccessSettings, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -176,6 +176,7 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
 }
 
 export function CodeApp({ blocked }: { blocked: string | null }) {
+  const [accessOpen, setAccessOpen] = useState(false);
   const params = useCodeParams();
   /* Old links carried the screen in the query string: move it after the #, once. */
   useEffect(() => {
@@ -208,9 +209,10 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
   }, []);
 
   return <div className="cd-page">
+    {accessOpen ? <AccessDialog onClose={() => setAccessOpen(false)} /> : null}
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     <aside className="cd-side" aria-label="Tasks">
-      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-label="New task" title="New task (/)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
+      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button><button type="button" className="cd-roundbutton" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-label="New task" title="New task (/)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       {projectsOf(workspaces ?? []).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
@@ -611,12 +613,15 @@ type Item =
   | { type: "preview-stopped"; seq: number }
   | { type: "slept"; seq: number; for: string }
   | { type: "disk"; seq: number; event: Extract<CodeEvent, { kind: "disk" }> }
-  | { type: "compacted"; seq: number; before?: number };
+  | { type: "compacted"; seq: number; before?: number }
+  | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
 function itemsOf(events: StoredEvent[]): Item[] {
   const items: Item[] = [];
   const tools = new Map<string, Tool>();
+  const answers = new Map<string, Extract<CodeEvent, { kind: "access-answer" }>>();
+  for (const { event } of events) if (event.kind === "access-answer") answers.set(event.id, event);
   for (const { seq, at, event } of events) {
     const last = items.at(-1);
     switch (event.kind) {
@@ -637,6 +642,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "slept": items.push({ type: "slept", seq, for: event.for }); break;
       case "disk": items.push({ type: "disk", seq, event }); break;
       case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
+      case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
     }
   }
   return items;
@@ -694,6 +700,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
               ? `Stopped: this task's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask the agent to free space.`
               : `This task's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. The agent was asked to free space first.`}</p>;
+            case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
           }
@@ -849,6 +856,65 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
   </div></InkCard>;
 }
 
+/* ── asking for the person's Drive ── */
+
+const whatOf = (e: { space: string; path: string }) => e.path ? <><b>{e.path.split("/").pop()}</b> in {e.space}</> : <b>{e.space}</b>;
+
+/** Kimono AI asking for some of the person's Drive, and how they answered. */
+function AccessCard({ workspace, event, answer }: { workspace: Workspace; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const verb = event.need === "change" ? "change" : "read";
+  if (event.state === "missing") return <p className="cd-note"><Icon name="folder" /><span>It asked for {whatOf(event)}, which isn&rsquo;t in your Drive.</span></p>;
+  if (event.state === "auto") return <p className="cd-note"><Icon name="folder" /><span>Opened {whatOf(event)} to {verb}, as you allowed before.</span></p>;
+  if (answer) {
+    if (answer.state === "denied") return <p className="cd-note"><Icon name="folder" /><span>You didn&rsquo;t let it {verb} {whatOf(event)}.</span></p>;
+    const scope = answer.scope === "always" ? "from now on" : "in this chat";
+    return <p className="cd-note"><Icon name="folder" /><span>You let it {answer.need === "change" ? "read and change" : "read"} {answer.scope === "file" ? "one file from " : ""}{whatOf(event)} {scope}.</span></p>;
+  }
+  const say = (choice: "file" | "chat" | "always" | "deny", file?: string) => {
+    setBusy(choice); setProblem(null);
+    code.answerAccess(workspace.id, event.id, choice, file).catch((error) => { setProblem(problemText(error)); setBusy(null); });
+  };
+  return <InkCard colour="#8a6a3c" seed={`access-${event.id}`} className="cd-access-ink"><div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
+    <span className="cd-access-mark" aria-hidden="true"><Icon name="folder" /></span>
+    <div className="cd-access-id">
+      <b>Kimono AI wants to {verb} {event.path ? <>{event.path.split("/").pop()} in {event.space}</> : <>files in {event.space}</>}</b>
+      <span>{event.why}</span>
+    </div>
+    <div className="cd-access-acts">
+      <Seal type="button" compact disabled={busy !== null} onClick={() => say("chat")}>{busy === "chat" ? "Allowing…" : event.file ? "Allow" : "Allow for this chat"}</Seal>
+      {!event.file && event.node ? <button type="button" className="cd-quietbutton" disabled={busy !== null} onClick={() => setPicking((p) => !p)}>Only one file…</button> : null}
+      <button type="button" className="cd-quietbutton" disabled={busy !== null} onClick={() => say("always")}>{busy === "always" ? "Allowing…" : "Always allow"}</button>
+      <button type="button" className="cd-quietbutton" disabled={busy !== null} onClick={() => say("deny")}>{busy === "deny" ? "…" : "Don\u2019t allow"}</button>
+    </div>
+    {picking && event.node ? <OneFilePicker root={event.node} onPick={(file) => { setPicking(false); say("file", file); }} /> : null}
+    {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+  </div></InkCard>;
+}
+
+/** The files in what it asked for, a folder at a time, to allow just one. */
+function OneFilePicker({ root, onPick }: { root: string; onPick: (file: string) => void }) {
+  const [at, setAt] = useState(root);
+  const [stack, setStack] = useState<string[]>([]);
+  /* What was loaded, and for which folder: a list for another folder is still loading. */
+  const [loaded, setLoaded] = useState<{ at: string; items: DriveItem[] } | null>(null);
+  const items = loaded?.at === at ? loaded.items : null;
+  useEffect(() => {
+    let live = true;
+    drive.folder(at).then((f) => { if (live) setLoaded({ at, items: f.children }); }, () => { if (live) setLoaded({ at, items: [] }); });
+    return () => { live = false; };
+  }, [at]);
+  return <div className="cd-access-pick">
+    {stack.length ? <button type="button" className="cd-access-row" onClick={() => { setAt(stack.at(-1)!); setStack((s) => s.slice(0, -1)); }}><Icon name="back" />Back</button> : null}
+    {items === null ? <p className="cd-note">Looking…</p> : !items.length ? <p className="cd-note">Nothing here.</p> : items.map((item) =>
+      <button key={item.id} type="button" className="cd-access-row" onClick={() => { if (item.kind === "folder") { setStack((s) => [...s, at]); setAt(item.id); } else onPick(item.id); }}>
+        <Icon name={item.kind === "folder" ? "folder" : "file"} /><span>{item.name}</span>
+      </button>)}
+  </div>;
+}
+
 /* ── the composer: what to say next, and what to show it ── */
 
 type Pending = { id: string; name: string; size: number; preview: string | null; attachment?: Attachment; failed?: string };
@@ -949,6 +1015,47 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       }
     }} /> : null}
   </div>;
+}
+
+/** What Kimono AI may use without asking: each space, and the folders and files always allowed. */
+function AccessDialog({ onClose }: { onClose: () => void }) {
+  const box = useRef<HTMLDialogElement>(null);
+  const [settings, setSettings] = useState<AccessSettings | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const load = useCallback(() => code.access().then((next) => { setSettings(next); setProblem(null); }, (error) => setProblem(problemText(error))), []);
+  useEffect(() => { box.current?.showModal(); }, []);
+  useEffect(() => { void load(); }, [load]);
+  const setSpace = (id: string, value: string) => {
+    const need = value === "read" || value === "change" ? value : null;
+    setSettings((s) => s && { ...s, spaces: s.spaces.map((x) => x.id === id ? { ...x, auto: need } : x) });
+    code.setSpaceAccess(id, need).catch((error) => { setProblem(problemText(error)); void load(); });
+  };
+  const takeBack = (id: string) => {
+    setSettings((s) => s && { ...s, grants: s.grants.filter((g) => g.id !== id) });
+    code.revokeAccess(id).catch((error) => { setProblem(problemText(error)); void load(); });
+  };
+  return <dialog ref={box} className="cd-drivepick cd-accessdialog" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+    <header>
+      <b>What Kimono AI can use</b>
+      <span className="cd-grow" />
+      <button type="button" className="cd-iconbutton" aria-label="Close" onClick={() => box.current?.close()}><Icon name="close" /></button>
+    </header>
+    <ul>
+      {settings?.spaces.map((space) => <li key={space.id} className="cd-access-space">
+        <span className="cd-access-space-name"><Icon name="space" /><span>{space.name}</span></span>
+        <Choice compact aria-label={`Kimono AI and ${space.name}`} value={space.auto ?? "ask"} onChange={(value) => setSpace(space.id, value)}
+          options={[{ value: "ask", label: "Asks first" }, { value: "read", label: "May read" }, ...(space.canChange ? [{ value: "change", label: "May read and change" }] : [])]} />
+      </li>)}
+      {settings?.grants.length ? <li className="cd-faint cd-drivepick-note">Always allowed</li> : null}
+      {settings?.grants.map((grant) => <li key={grant.id} className="cd-access-space">
+        <span className="cd-access-space-name"><Icon name="folder" /><span>{grant.path.split("/").pop()} <small className="cd-faint">in {grant.spaceName} · {grant.need === "change" ? "read and change" : "read"}</small></span></span>
+        <button type="button" className="cd-quietbutton" onClick={() => takeBack(grant.id)}>Take back</button>
+      </li>)}
+      {settings && !settings.spaces.length ? <li className="cd-faint cd-drivepick-note">You have no spaces in Drive.</li> : null}
+      {!settings && !problem ? <li className="cd-faint cd-drivepick-note">…</li> : null}
+    </ul>
+    <footer>{problem ? <span className="cd-problem">{problem}</span> : <span className="cd-faint">Anything else, it asks you first.</span>}</footer>
+  </dialog>;
 }
 
 /** Files from Drive: spaces, then folders, then files to tick. */

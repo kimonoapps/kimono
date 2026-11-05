@@ -151,6 +151,39 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 9) {
+    /*
+     * Asking for a person's Drive (docs/kimono-ai.md, "Your files, and asking"):
+     * what the agent asked for, what the person allowed (for a chat, or always),
+     * what each chat has open and where, and each open file's last agreed state.
+     */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE access_requests (
+        id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, turn_id TEXT,
+        space_name TEXT NOT NULL, path TEXT NOT NULL, need TEXT NOT NULL, why TEXT NOT NULL,
+        space_id TEXT, node_id TEXT,
+        state TEXT NOT NULL CHECK (state IN ('pending', 'allowed', 'denied', 'missing', 'auto')),
+        created_at INTEGER NOT NULL, answered_at INTEGER
+      );
+      CREATE TABLE grants (
+        id TEXT PRIMARY KEY, username TEXT NOT NULL, workspace_id TEXT REFERENCES workspaces(id) ON DELETE CASCADE,
+        space_id TEXT NOT NULL, node_id TEXT NOT NULL, need TEXT NOT NULL CHECK (need IN ('read', 'change')), created_at INTEGER NOT NULL
+      );
+      CREATE INDEX grants_by_person ON grants (username);
+      CREATE TABLE opened (
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, node_id TEXT NOT NULL,
+        space_id TEXT NOT NULL, dir TEXT NOT NULL, PRIMARY KEY (workspace_id, node_id)
+      );
+      CREATE TABLE opened_files (
+        workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        path TEXT NOT NULL, node_id TEXT NOT NULL, sha1 TEXT NOT NULL, content_version INTEGER NOT NULL,
+        PRIMARY KEY (workspace_id, path)
+      );
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '9');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */

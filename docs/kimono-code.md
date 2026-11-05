@@ -233,6 +233,8 @@ the phone, and the Files app on iPhone and Android.
 - **From Drive** in the composer copies files from any space you can see
   into the task folder and attaches them to the message. **Open in Drive** in
   a task's header goes to its folder. Deleting a task leaves its folder.
+- `GET /v1/workspaces/{id}/tree?dir=granted` lists the files a person let the
+  agent use, under `.kimono/files` (Kimono AI, "Your files, and asking").
 - Node calls used: `GET /v1/workspaces/{id}/tree` (`{ files: [{ path, size,
   sha1 }], truncated }`), `GET …/file?full=1&path=` (up to 50 MB), `PUT
   …/file?path=` and `DELETE …/file?path=`. Portal API for the phone: workspace

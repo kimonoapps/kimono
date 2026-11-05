@@ -78,30 +78,45 @@ person, no code in Kimono for any one toolkit.
 
 ## Your files, and asking
 
-The agent starts with **no** access to anyone's Drive. It can see the names of
-the spaces you are in (so it can ask sensibly) and nothing inside them.
+The agent starts with **no** access to anyone's Drive. Each message begins with
+a line naming the spaces the person is in and what is open in this chat; it can
+see nothing inside a space until it is allowed.
 
-- It asks with a tool, `kimono_request_access { target, need: read | change, why }`.
-  Target is a space, folder or file it found by name or that you mentioned.
-- The chat shows an access card:
+- It asks by running `kimono-access ask --space Photos [--path 2026] --read|--change
+  --why "…"` in its sandbox, then ends its turn. The helper leaves the request in
+  `/outbox/access`; the node reports it (`kimono.access`) and removes it, so it is
+  asked once. Waiting for a person never holds a tool call open.
+- Portal finds what it named in the person's Drive (`lib/code/access.ts`). If it
+  isn't there, or isn't theirs, the chat says so and nothing opens. If an earlier
+  answer already covers it (always, or earlier in this chat), it opens at once and
+  the agent is told when its turn ends. Otherwise the chat shows a card:
 
   > **Kimono AI wants to change files in Photos**
-  > To sort last week's pictures into folders by day.
-  > [Only "IMG_2041.jpg"] [Allow for this chat] [Always allow] [Don't allow]
+  > To sort last week's pictures into a folder for each day.
+  > [Allow for this chat] [Only one file…] [Always allow] [Don't allow]
 
-  "Only …" appears when it asked about one file, or you can pick files from
-  a picker. Read and change are asked separately; read is implied by change.
-- Granted items appear in the sandbox at `/files/<space>/<path>` (read-only
-  for read grants). Changes go back through Drive's own model after each
-  step, so versions, the trash and the phone's Files app all see them.
-  Deleting moves to Drive's trash and always says so in the timeline.
-- **Auto permissions**: in AI settings, per space, "Kimono AI may read" or
-  "may read and change" without asking. Always-allow grants are listed there
-  and can be taken back; taking one back removes the files from every
-  sandbox at once.
-- Grants are the person's own: AI can never reach further than its user
-  can in Drive, and a shared space's other members are not asked.
-- Files you attach to a message are a one-file read grant.
+  "Only one file…" picks one file from inside what it asked for.
+- Answering starts the next turn by itself: "They allowed you to read and change
+  2026 in Photos, for this chat. It's in /files/Photos/2026." Or that they didn't.
+- Allowed files are copied into the sandbox at `/workspace/.kimono/files/<space>/…`,
+  which `/files` points to. Git ignores the folder (the checkout adds it to
+  `.git/info/exclude`) and Code's own Drive mirror never sees it.
+- Before each turn the open files follow Drive (the agent is told what changed);
+  after each turn, with change, its edits become new versions, new files are
+  added, and deleted ones go to Drive's trash, through Drive's own model. With
+  read, nothing goes out, and anything it changed is put back from Drive. Both
+  sides changing one file: the person's copy wins, the agent's is kept beside it.
+- An agent never reaches past its person: in a space they can only view, change
+  becomes read, and leaving a space closes it.
+- **What Kimono AI can use** (the key button by Tasks): per space, "Asks first",
+  "May read" or "May read and change" without asking, and the folders and files
+  always allowed, each with "Take back". Taking one back empties every chat's
+  sandbox of it at once.
+- Security rests on what Portal copies in, never on the sandbox: a request it
+  fakes, or an answer it fakes in its own outbox, opens nothing.
+- Tables: `access_requests`, `grants` (a chat's, or always when it has no chat),
+  `opened` (what a chat has open, and where) and `opened_files` (each file's last
+  agreed state). Tests: `pnpm --filter @kimono/portal test:access`.
 
 ## Artifacts, and apps
 
@@ -140,11 +155,10 @@ sandbox with no web.
 
 ## Build order
 
-1. Network: internal sandbox network, no DNS, web tools off, the probe. Image
-   with the file tools and the artifact libraries.
-2. Access: grants table, `kimono_request_access` (served by the node's gateway
-   as an MCP tool, answered by Portal), access cards, mounting granted files,
-   settings page.
+1. Network (done): no way out but the gateway, no DNS, web tools off, the probe.
+   Image with the file tools (done) and the artifact libraries.
+2. Access (done): `kimono-access`, access cards, granted files in and out of
+   the sandbox through Drive's model, the settings dialog.
 3. Chats: the `/ai` UI from Code's, with the words above; `/code` redirect;
    migration.
 4. Artifacts: the library set, the artifact card and page, saving to Drive,

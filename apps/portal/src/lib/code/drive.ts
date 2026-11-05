@@ -104,14 +104,14 @@ function parentFor(folderId: string, owner: string, path: string): string {
   return at;
 }
 
-async function driveBytes(nodeId: string, owner: string) {
+export async function driveBytes(nodeId: string, owner: string) {
   const node = nodeFor(driveDb(), nodeId, owner, "viewer");
   if (node.kind !== "file" || !node.blob) throw new CodeProblem("That isn't a file.");
   return { node, bytes: new Uint8Array(await readFile(blobPath(driveRoot, node.blob))) };
 }
 
 /** New bytes for a Drive file, as a new version of the same file, the way Drive takes an edit. */
-async function replaceInDrive(nodeId: string, owner: string, name: string, bytes: Uint8Array): Promise<DriveNode> {
+export async function replaceInDrive(nodeId: string, owner: string, name: string, bytes: Uint8Array): Promise<DriveNode> {
   const db = driveDb();
   const node = nodeFor(db, nodeId, owner, "editor");
   const upload = startReplace(db, nodeId, owner, node.contentVersion, { size: bytes.byteLength, mime: typeOf(name) }, maxFileBytes);
@@ -120,7 +120,7 @@ async function replaceInDrive(nodeId: string, owner: string, name: string, bytes
   return done;
 }
 
-async function addToDrive(folderId: string, owner: string, path: string, bytes: Uint8Array): Promise<DriveNode> {
+export async function addToDrive(folderId: string, owner: string, path: string, bytes: Uint8Array): Promise<DriveNode> {
   const name = path.split("/").pop()!;
   const blob = await storeBlob(bytes);
   return addFile(driveDb(), parentFor(folderId, owner, path), owner, { name, size: bytes.byteLength, mime: typeOf(name), blob });

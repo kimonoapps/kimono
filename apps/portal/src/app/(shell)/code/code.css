@@ -797,3 +797,23 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-limits.is-full .cd-limits-disk { color: var(--k-suo-deep); font-weight: 700; }
 .cd-limits.is-full .cd-limits-disk b { background: var(--k-suo-deep); }
 .cd-limits em { flex-basis: 100%; font-style: normal; color: var(--k-suo-deep); }
+
+/* asking for the person's Drive: a card in kraft brown, its answer a quiet note */
+.cd-access-ink { display: block; }
+.cd-access { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 14px; padding: 16px; border-radius: var(--k-r-l); background: color-mix(in srgb, #8a6a3c 14%, var(--k-container-lowest)); color: var(--k-ink); }
+.cd-access-mark { width: 44px; height: 44px; display: grid; place-items: center; flex: none; border-radius: 14px; background: #8a6a3c; color: #fff; }
+.cd-access-mark svg { width: 22px; height: 22px; }
+.cd-access-id { display: grid; gap: 4px; flex: 1 1 220px; min-width: 0; }
+.cd-access-id b { font-weight: 600; overflow-wrap: anywhere; }
+.cd-access-id span { color: var(--k-on-surface-variant); font-size: 14px; }
+.cd-access-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cd-access-pick { flex-basis: 100%; display: grid; max-height: 260px; overflow: auto; padding: 4px; border-radius: var(--k-r-m); background: var(--k-container-lowest); }
+.cd-access-row { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; border: 0; border-radius: var(--k-r-s); background: transparent; font: inherit; text-align: left; color: var(--k-ink); cursor: pointer; }
+.cd-access-row:hover { background: var(--k-hover); }
+.cd-access-row svg { width: 18px; height: 18px; flex: none; }
+.cd-access-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-accessdialog ul { padding: 8px 12px; }
+.cd-access-space { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 4px 8px; }
+.cd-access-space-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 600; }
+.cd-access-space-name svg, .cd-access-row svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cd-access-space-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

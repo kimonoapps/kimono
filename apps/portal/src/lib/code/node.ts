@@ -84,6 +84,8 @@ export const sandbox = {
 
   /** Every file git would keep, with its sha1: what the Drive mirror compares. */
   tree: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/tree`).then(json<{ files: { path: string; size: number; sha1: string }[]; truncated: boolean }>),
+  /** The files a person let the agent use, under .kimono/files, by their path there. */
+  granted: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/tree?dir=granted`).then(json<{ files: { path: string; size: number; sha1: string }[]; truncated: boolean }>),
 
   /** A file's bytes, up to 50 MB, to copy into Drive. */
   readFull: (config: CodeConfig, workspace: Workspace, path: string) =>

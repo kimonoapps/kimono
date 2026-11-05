@@ -28,7 +28,14 @@ export type CodeEvent =
   | { kind: "preview"; url: string; port: number; app?: string }
   | { kind: "preview-stopped" }
   | { kind: "slept"; for: string }
-  | { kind: "disk"; used: number; quota: number; full?: boolean };
+  | { kind: "disk"; used: number; quota: number; full?: boolean }
+  | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
+  | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
+/** What Kimono AI may use without asking. */
+export type AccessSettings = {
+  spaces: { id: string; name: string; crest: string; color: string; canChange: boolean; auto: "read" | "change" | null }[];
+  grants: { id: string; spaceId: string; spaceName: string; path: string; need: "read" | "change" }[];
+};
 /** What a task's sandbox may use, and its disk as last measured (bytes). */
 export type SandboxStatus = {
   limits: { cpus: number; memoryMb: number; awakePerPerson: number; awakePerNode: number; diskGb: number };
@@ -88,6 +95,10 @@ export const code = {
   ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort })),
   usage: () => call<Usage>("/usage"),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
+  answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
+  access: () => call<AccessSettings>("/access"),
+  setSpaceAccess: (spaceId: string, need: "read" | "change" | null) => call<void>(`/access/spaces/${encodeURIComponent(spaceId)}`, json("PUT", { need })),
+  revokeAccess: (grantId: string) => call<void>(`/access/grants/${encodeURIComponent(grantId)}`, { method: "DELETE" }),
   fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),
   stopPreview: (id: string) => call<void>(`${ws(id)}/preview`, { method: "DELETE" }),
   renamePreview: (id: string, name: string) => call<{ url: string; port: number }>(`${ws(id)}/preview`, json("PATCH", { name })),

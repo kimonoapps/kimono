@@ -22,7 +22,14 @@ export type CodeEvent =
   /** Put to sleep to make room for another task; its files and link stay. */
   | { kind: "slept"; for: string }
   /** The sandbox's files reached its disk quota; full is a turn stopped for going past it. */
-  | { kind: "disk"; used: number; quota: number; full?: boolean };
+  | { kind: "disk"; used: number; quota: number; full?: boolean }
+  /**
+   * The agent asked for some of the person's Drive. "pending" waits for them; "auto" was already
+   * allowed (always, or earlier in this chat); "missing" names something that isn't there.
+   */
+  | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; /** The Drive folder or file asked for, so the person can pick one file in it. */ node?: string }
+  /** How the person answered an access request. */
+  | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 
 const clip = (value: string, max: number) => value.length > max ? `${value.slice(0, max)}\n…` : value;
 

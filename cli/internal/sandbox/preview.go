@@ -281,7 +281,9 @@ func equalArgs(a, b []string) bool {
 
 type outbox struct {
 	shots []string
-	serve *serveState
+	// access are the agent's requests for some of the person's Drive (kimono-access), by file name.
+	access []accessRequest
+	serve  *serveState
 	// restarting is kimono-serve replacing the app: the link stays as it is.
 	restarting bool
 }
@@ -296,6 +298,7 @@ type serveState struct {
 
 const outboxScript = `cd /outbox 2>/dev/null || exit 0
 for f in shots/*; do [ -f "$f" ] && echo "shot ${f#shots/}"; done
+for f in access/*.json; do [ -f "$f" ] && printf 'access %s ' "${f#access/}" && head -c 4000 "$f" | tr -d '\n' && echo; done
 if [ -f serve.json ]; then printf 'serve '; tr -d '\n' < serve.json; echo; fi
 [ -f .serve-restarting ] && echo restarting
 exit 0`
@@ -311,6 +314,11 @@ func parseOutbox(out []byte) outbox {
 			}
 		case "restarting":
 			box.restarting = true
+		case "access":
+			name, body, _ := strings.Cut(rest, " ")
+			if request, ok := parseAccess(name, body); ok {
+				box.access = append(box.access, request)
+			}
 		case "serve":
 			var state serveState
 			if json.Unmarshal([]byte(rest), &state) == nil && state.Port > 0 && state.Port < 65536 {
@@ -384,6 +392,13 @@ func (s *Server) reportOutbox(space *workspace, out *lineWriter) {
 	}
 	branch := space.repo.Branch
 	space.mu.Unlock()
+	for _, request := range box.access {
+		/* Taken out of the outbox once reported, so it is asked once. */
+		if _, err := s.docker.run(ctx, nil, "exec", "-u", "agent", containerName(space.id), "rm", "-f", "/outbox/access/"+request.ID); err != nil {
+			continue
+		}
+		out.json(map[string]any{"type": "kimono.access", "id": strings.TrimSuffix(request.ID, ".json"), "space": request.Space, "path": request.Path, "need": request.Need, "why": request.Why})
+	}
 	for _, name := range fresh {
 		line := map[string]any{"type": "kimono.image", "name": name}
 		if caption := s.caption(ctx, space.id, name); caption != "" {
@@ -934,3 +949,32 @@ type pipeAddr struct{}
 
 func (pipeAddr) Network() string { return "docker-exec" }
 func (pipeAddr) String() string  { return "sandbox" }
+
+/* ── asking for the person's files ── */
+
+// accessRequest is what kimono-access wrote: some of the person's Drive, and why.
+type accessRequest struct {
+	ID    string `json:"-"`
+	Space string `json:"space"`
+	Path  string `json:"path"`
+	Need  string `json:"need"`
+	Why   string `json:"why"`
+}
+
+var accessNamePattern = regexp.MustCompile(`^[0-9]{1,16}-[0-9a-f]{8}\.json$`)
+
+func parseAccess(name, body string) (accessRequest, bool) {
+	var request accessRequest
+	if !accessNamePattern.MatchString(name) || json.Unmarshal([]byte(body), &request) != nil {
+		return request, false
+	}
+	request.ID = name
+	request.Space, request.Path, request.Why = strings.TrimSpace(request.Space), strings.Trim(strings.TrimSpace(request.Path), "/"), strings.TrimSpace(request.Why)
+	if request.Space == "" || len(request.Space) > 120 || len(request.Path) > 1000 || request.Why == "" || len(request.Why) > 300 {
+		return request, false
+	}
+	if request.Need != "read" && request.Need != "change" {
+		return request, false
+	}
+	return request, true
+}

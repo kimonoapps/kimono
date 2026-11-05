@@ -233,12 +233,27 @@ for f; do
   printf "%s\t%s\t%s\0" "$n" "$(sha1sum -- "$f" | cut -c1-40)" "$f"
 done' tree | head -c 4000000`
 
+// grantedScript lists the files a person let the agent use, under
+// .kimono/files, the way treeScript lists the task's own (git ignores them).
+const grantedScript = `cd .kimono/files 2>/dev/null || exit 0
+find . -type f -print0 | sed -z 's|^\./||' | xargs -0 -r sh -c '
+for f; do
+  [ ! -L "$f" ] || continue
+  n=$(stat -c %s -- "$f")
+  if [ "$n" -gt ` + "52428800" + ` ]; then printf "%s\t%s\t%s\0" "$n" x "$f"; continue; fi
+  printf "%s\t%s\t%s\0" "$n" "$(sha1sum -- "$f" | cut -c1-40)" "$f"
+done' tree | head -c 4000000`
+
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request, id string) error {
 	space, err := s.running(r.Context(), id)
 	if err != nil {
 		return err
 	}
-	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c", treeScript)
+	script := treeScript
+	if r.URL.Query().Get("dir") == "granted" {
+		script = grantedScript
+	}
+	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c", script)
 	if err != nil {
 		return err
 	}
