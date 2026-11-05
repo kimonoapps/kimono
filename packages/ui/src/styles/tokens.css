@@ -105,6 +105,7 @@
   --k-r-1: 0px;
   --k-r-seal: 2px;
   --k-r-round: 999px;
+  --k-r-full: 999px;             /* M3 name for the same */
   /* Material's corner scale, for containers. Seals keep their own 2px cut. */
   --k-r-s: 8px;
   --k-r-m: 12px;

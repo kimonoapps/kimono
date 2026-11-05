@@ -557,3 +557,32 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
   .cd { grid-template-columns: minmax(0, 1fr); }
   .cd.has-workspace .cd-side { display: none; }
 }
+
+/* ── the task header, as on the phone (apps/compose … screens/Code.kt) ── */
+.cd-ws-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 16px 16px 6px 20px; }
+.cd-ws-head .cd-back { display: none; }
+.cd-ws-id { flex: 1 1 220px; min-width: 0; display: grid; gap: 3px; }
+.cd-ws-id h1 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 18px/1.3 var(--k-sans); color: var(--k-on-surface); }
+.cd-ws-id p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--k-on-surface-variant); }
+.cd-ws-acts { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 2px 4px; margin-left: auto; }
+.cd-ws-acts .cd-faint { margin-right: 6px; font-size: 13px; }
+.cd-ws-acts .k-seal { margin-left: 8px; }
+.cd-linkbutton { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; white-space: nowrap; }
+.cd-linkbutton:hover { background: var(--k-secondary-container); }
+.cd-linkbutton svg.i { width: 16px; height: 16px; }
+/* the three views as one segmented control across the card */
+.cd-segs { display: flex; align-items: center; gap: 12px; padding: 6px 16px 10px 20px; }
+.cd-seg { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 560px; border: 1px solid var(--k-outline, #8a7c77); border-radius: var(--k-r-full); overflow: hidden; }
+.cd-seg button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 12px; border: 0; background: transparent; color: var(--k-on-surface); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.cd-seg button + button { border-left: 1px solid var(--k-outline, #8a7c77); }
+.cd-seg button:hover { background: var(--k-container-high); }
+.cd-seg button[aria-selected="true"] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-seg button svg.i { width: 16px; height: 16px; stroke-width: 2.2; }
+.cd-segs .cd-status { margin: 0 0 0 auto; }
+.cd-bar, .cd-iconTabs { display: none; }
+@media (max-width: 980px) {
+  .cd-ws-head { padding-left: 8px; }
+  .cd-ws-head .cd-back { display: inline-grid; }
+  .cd-seg { max-width: none; }
+}
+@media (max-width: 1240px) { .cd-deploy { display: none; } }
