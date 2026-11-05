@@ -1,4 +1,5 @@
 import { InkPortraitFrame, Seal } from "@kimono/ui";
+import { JointSwitch } from "@/components/joint-switch";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { Crossing } from "@/components/crossing";
@@ -40,7 +41,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
   async function toggleRequired(form: FormData) {
     "use server";
     await admin();
-    await then(() => setRequired(form.get("platform") as AppPlatform, Number(form.get("build")), form.get("required") === "true"));
+    await then(() => setRequired(form.get("platform") as AppPlatform, Number(form.get("build")), form.get("required") === "on"));
   }
   async function saveTestflight(form: FormData) {
     "use server";
@@ -98,9 +99,8 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
             <form action={toggleRequired} className="release-required">
               <input type="hidden" name="platform" value={platform} />
               <input type="hidden" name="build" value={release.build} />
-              <input type="hidden" name="required" value={String(!release.required)} />
               <span><b>Required</b><small>{release.required ? "Phones must install it before going on" : "Phones offer it; people can wait"}</small></span>
-              <button className="joint" role="switch" type="submit" aria-checked={release.required} aria-label={`Require ${label} ${release.version}`} />
+              <JointSwitch name="required" defaultChecked={release.required} label={`Require ${label} ${release.version}`} submit />
             </form>
           </div>;
         })}

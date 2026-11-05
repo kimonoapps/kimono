@@ -111,6 +111,37 @@
 .joint::after { content: ""; position: absolute; top: 4px; left: 4px; width: 28px; height: 28px; border-radius: 6px; background: #c9b39a; box-shadow: inset 0 -2px 0 #a8916f; transition: transform .45s var(--spring-fast), background-color .25s; }
 .joint[aria-checked="true"] { background: var(--tertiary-container); }
 .joint[aria-checked="true"]::after { transform: translateX(28px); background: var(--tertiary); box-shadow: inset 0 -2px 0 var(--on-tertiary-container); }
+/* Pressing gives the block a little give; flipping seats or parts the joint. */
+.joint:not(:disabled):active::after { transform: scaleX(1.18); transform-origin: left; }
+.joint[aria-checked="true"]:not(:disabled):active::after { transform: translateX(28px) scaleX(1.18); transform-origin: right; }
+.joint.seating::after { animation: joint-seat .52s cubic-bezier(.3, 0, .2, 1) both; }
+.joint.parting::after { animation: joint-part .34s cubic-bezier(.3, 0, .2, 1) both; }
+.joint.seating { animation: joint-knock .52s ease-out both; }
+@keyframes joint-seat {
+  0% { transform: translateX(0) scaleX(1); }
+  22% { transform: translateX(-3px) scaleX(.9); }
+  58% { transform: translateX(31px) scaleX(1.14); }
+  76% { transform: translateX(27px) scaleX(.94); }
+  100% { transform: translateX(28px) scaleX(1); }
+}
+@keyframes joint-part {
+  0% { transform: translateX(28px) scaleX(1); }
+  45% { transform: translateX(10px) scaleX(1.16); }
+  100% { transform: translateX(0) scaleX(1); }
+}
+@keyframes joint-knock { 0%, 50% { scale: 1; } 62% { scale: 1.06 .94; } 100% { scale: 1; } }
+/* The pin shows where the pieces meet: a small suō burst as it seats. */
+.joint-burst { position: absolute; top: 50%; left: 46px; width: 0; height: 0; opacity: 0; pointer-events: none; }
+.joint-burst i { position: absolute; width: 9px; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--k-suo, #a84d63); transform-origin: 0 50%; }
+.joint-burst i:nth-child(1) { rotate: -60deg; } .joint-burst i:nth-child(2) { rotate: -20deg; } .joint-burst i:nth-child(3) { rotate: 20deg; }
+.joint-burst i:nth-child(4) { rotate: 60deg; } .joint-burst i:nth-child(5) { rotate: -100deg; } .joint-burst i:nth-child(6) { rotate: 100deg; }
+.joint.seating .joint-burst { animation: joint-burst .36s ease-out .26s both; }
+.joint.seating .joint-burst i { animation: joint-fly .36s ease-out .26s both; }
+@keyframes joint-burst { 0% { opacity: 0; } 25% { opacity: .9; } 100% { opacity: 0; } }
+@keyframes joint-fly { from { translate: 6px 0; scale: .4 1; } to { translate: 20px 0; scale: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .joint.seating, .joint.parting, .joint.seating::after, .joint.parting::after, .joint.seating .joint-burst, .joint.seating .joint-burst i { animation: none; }
+}
 /* hold to confirm */
 .hold { min-height: 72px; border-radius: var(--r-full); font-size: 16px; --base: transparent; background: var(--error-container); color: var(--on-error-container); }
 .hold::before { display: none; }

@@ -1,7 +1,6 @@
 import { Command, Reveal, Rows, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { vpnRoomList } from "@/components/app-rooms";
 import { Panel, PanelEmpty, Panels, SectionHeading, Workspace } from "@/components/panel";
 import { createEnrolmentKey } from "@/lib/mesh";
 import { meshContext } from "../shared";
@@ -26,7 +25,7 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
   }
 
   if (!member) {
-    return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity} rooms={vpnRoomList("connect")}>
+    return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity}>
       <div className="page admin-page">
         <Workspace>
           <PanelEmpty title="Kimono VPN is not switched on">
@@ -37,7 +36,7 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
     </AppShell>;
   }
 
-  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity} rooms={vpnRoomList("connect")}>
+  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity}>
     <div className="page admin-page">
 
       {query.error ? <p className="admin-notice error">{query.error}</p> : null}
