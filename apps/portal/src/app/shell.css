@@ -189,44 +189,9 @@
   --on-secondary-container: var(--k-on-secondary-container);
 }
 
-/* ── inside an app, the neutrals lean to the app's colour, not to pink ──
-   Material tints every surface from the theme; here the theme is the app.
-   The old Kata paper tokens point at the same tones so older rules follow. */
-.app-frame.in-app {
-  --k-paper: #f6f6f4;
-  --k-surface: color-mix(in srgb, var(--k-app-accent) 3%, #fcfcfb);
-  --k-container-lowest: #ffffff;
-  --k-container-low: color-mix(in srgb, var(--k-app-accent) 4%, #f8f8f6);
-  --k-container: color-mix(in srgb, var(--k-app-accent) 6%, #f2f2f0);
-  --k-container-high: color-mix(in srgb, var(--k-app-accent) 8%, #ececea);
-  --k-container-highest: color-mix(in srgb, var(--k-app-accent) 10%, #e6e6e3);
-  --k-on-surface-variant: color-mix(in srgb, var(--k-app-accent) 18%, #4a4a47);
-  --k-outline-variant: color-mix(in srgb, var(--k-app-accent) 20%, #cfcfcb);
-  --k-sheet: var(--k-container-lowest);
-  --k-ground: var(--k-surface);
-  --k-fold: var(--k-container-high);
-  --k-hover: var(--k-container-high);
-  --k-lift: var(--k-container-lowest);
-  --k-hair: var(--k-outline-variant);
-  --k-hair-deep: color-mix(in srgb, var(--k-app-accent) 28%, #bdbdb8);
-  --k-ink-soft: var(--k-on-surface-variant);
-  background: var(--k-surface);
-}
-
-/* Too blue with the app's colour mixed in: inside an app the neutrals are plain
-   warm stone, neither pink nor blue, and the app's colour stays an accent. */
-.app-frame.in-app {
-  --k-surface: #fbfaf7;
-  --k-container-low: #f6f4f0;
-  --k-container: #f1efea;
-  --k-container-high: #ebe8e3;
-  --k-container-highest: #e5e2dc;
-  --k-on-surface-variant: #57524b;
-  --k-outline-variant: #d3cec6;
-  --k-hair-deep: #bfb9af;
-  --k-primary-container: color-mix(in srgb, var(--k-app-accent) 12%, #fbfaf7);
-  --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 8%, #f6f4f0);
-}
+/* Inside an app the page is the same paper as Home, so moving between them
+   never changes the ground under you; only the accent roles above change. */
+.app-frame.in-app { background: var(--k-surface); }
 
 /* while a slow page loads: the painted loader in the page's space, beside the rail */
 .nav-loading { position: fixed; inset: 0 0 0 96px; z-index: 15; display: grid; place-items: center; pointer-events: none; }
