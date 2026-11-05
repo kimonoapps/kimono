@@ -19,6 +19,16 @@ export type RailApp = {
   glyph?: GlyphName;
   iconUrl?: string;
 };
+/**
+ * A rail stop's name. Joined words (RateMyProfessors) may break where they join, so a long name
+ * takes two lines ("RateMy / Professors") instead of being cut; the CSS ends anything longer in an
+ * ellipsis, and the whole name shows on hover.
+ */
+function RailLabel({ text }: { text: string }) {
+  const parts = text.split(/(?<=[a-z])(?=[A-Z])/);
+  return <span className="rail-label" title={text}>{parts.map((part, index) => <span key={index}>{index ? <wbr /> : null}{part}</span>)}</span>;
+}
+
 export type RailRoom = { href: string; label: string; here?: boolean; icon?: LineIconName };
 
 /**
@@ -102,10 +112,10 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
             onDragOver={(event) => { const r = event.currentTarget.getBoundingClientRect(); setDropBefore(event.clientY < r.top + r.height / 2 ? id : shown[shown.indexOf(id) + 1] ?? "end"); }}
             onDragEnd={() => { setDragging(null); setDropBefore(null); }}
           >
-            <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" /></span><span className="rail-label" title={app.name}>{app.name}</span>
+            <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" /></span><RailLabel text={app.name} />
           </Crossing>
           {open && rooms?.length ? <div className="rail-rooms">
-            {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}><span className="rail-pill"><LineIcon name={room.icon ?? "book"} /></span><span className="rail-label" title={room.label}>{room.label}</span></Crossing>)}
+            {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}><span className="rail-pill"><LineIcon name={room.icon ?? "book"} /></span><RailLabel text={room.label} /></Crossing>)}
           </div> : null}
         </div>;
       })}

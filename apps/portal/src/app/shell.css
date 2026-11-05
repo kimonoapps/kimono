@@ -13,8 +13,8 @@
 .rail-mark { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 14px; color: var(--k-plum); }
 .rail-mark svg { width: 34px; height: 32px; }
 .rail-dest { display: grid; justify-items: center; gap: 4px; width: 80px; padding: 4px 0 8px; border: 0; background: none; color: var(--k-on-surface-variant); font: 700 12px/1.2 var(--k-sans); text-align: center; text-decoration: none; cursor: pointer; }
-/* A name too long for the rail ends in an ellipsis; the whole name shows on hover. */
-.rail-label { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A long name takes two lines, breaking where joined words meet (RailLabel); anything longer ends in an ellipsis, the whole name on hover. */
+.rail-label { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 72px; overflow: hidden; overflow-wrap: anywhere; }
 .rail-dest:focus-visible { outline: 2px solid var(--k-accent); outline-offset: -2px; border-radius: var(--k-r-l); }
 .rail-pill { display: grid; place-items: center; width: 56px; height: 32px; border-radius: var(--k-r-round); color: var(--k-plum); transition: background-color var(--k-t-state) var(--k-ease-settle); }
 .rail-pill > svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
