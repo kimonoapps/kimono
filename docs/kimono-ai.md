@@ -75,6 +75,13 @@ person, no code in Kimono for any one toolkit.
   agent passes on, and waits for), and run it. Connections belong to the
   person's Composio user, so they last across chats.
 - No key, or Composio down: the agent simply has no outside apps that turn.
+- **Connections** (in the chat list): the apps a person has connected, from
+  their session's toolkits, each with Disconnect (or Connect again when it
+  failed), and "Connect an app" to search Composio's toolkits and get a connect
+  link from the session. Disconnecting checks the account is in the person's
+  own list first. The connect link comes back to Connections.
+- Sessions are made without Composio's remote workbench, which would run code
+  with the internet on Composio's side.
 
 ## Your files, and asking
 

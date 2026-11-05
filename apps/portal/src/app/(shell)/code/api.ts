@@ -33,6 +33,9 @@ export type CodeEvent =
   | { kind: "disk"; used: number; quota: number; full?: boolean }
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
+/** An app the person connected through Composio. */
+export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
+export type ConnectableApp = { app: string; name: string; logo: string; description: string; connected: boolean };
 /** What Kimono AI may use without asking. */
 export type AccessSettings = {
   spaces: { id: string; name: string; crest: string; color: string; canChange: boolean; auto: "read" | "change" | null }[];
@@ -99,6 +102,11 @@ export const code = {
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),
+  /** The apps this person has connected through Composio, and whether connections are set up at all. */
+  connections: () => call<{ available: boolean; connections: Connection[] }>("/connections"),
+  findApps: (q: string) => call<{ apps: ConnectableApp[] }>(`/connections/apps?q=${encodeURIComponent(q)}`).then((r) => r.apps),
+  connect: (app: string) => call<{ url: string }>("/connections", json("POST", { app })).then((r) => r.url),
+  disconnect: (account: string) => call<void>(`/connections/${encodeURIComponent(account)}`, { method: "DELETE" }),
   /** How a person's own app (a Composio toolkit) is named and drawn. */
   appLook: (slug: string) => call<{ name: string; logo: string }>(`/apps/${encodeURIComponent(slug)}`),
   setSpaceAccess: (spaceId: string, need: "read" | "change" | null) => call<void>(`/access/spaces/${encodeURIComponent(spaceId)}`, json("PUT", { need })),

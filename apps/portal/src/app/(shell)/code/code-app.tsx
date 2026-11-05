@@ -7,7 +7,7 @@ import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
   code, drive, efforts, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type AccessSettings, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  type AccessSettings, type ConnectableApp, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -187,6 +187,8 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
     if (window.location.search) goTo(Object.fromEntries(new URLSearchParams(window.location.search)), true);
   }, []);
   const current = params.get("w");
+  /* Connections: the apps this person has connected, a page of its own in the list. */
+  const showingConnections = !current && params.get("connections") === "1";
   /* On a narrow screen Code opens on the task list; the new-task form is its own screen, as on the phone. */
   const composing = params.get("new") === "1";
   const tab = (["chat", "files", "changes", "app"].includes(params.get("tab") ?? "") ? params.get("tab") : "chat") as Tab;
@@ -217,7 +219,10 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button></div>
-      <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
+      <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
+      <nav className="cd-sidenav" aria-label="More">
+        <button type="button" aria-current={showingConnections ? "page" : undefined} onClick={() => goTo({ connections: "1" })}><Icon name="link" /><span>Connections</span></button>
+      </nav>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       <WorkspaceList list={chatsOf(workspaces ?? [])} current={current} now={now} />
@@ -232,10 +237,75 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
           ? <div className="cd-sheet cd-empty"><p>That chat isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({ new: "1" })}>New chat</Seal></div>
           : current
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
+            : showingConnections ? <ConnectionsView now={now} />
             : <Start blocked={blocked} admin={admin} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
   </div></MarksContext.Provider>;
+}
+
+/* ── connections: the person's own apps, as Composio keeps them ── */
+
+function ConnectionsView({ now }: { now: number }) {
+  const [state, setState] = useState<{ available: boolean; connections: Connection[] } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<{ q: string; apps: ConnectableApp[] } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const load = useCallback(() => code.connections().then((next) => { setState(next); setProblem(null); }, (error) => setProblem(problemText(error))), []);
+  /* Connecting happens in another tab: coming back here shows it. */
+  useEffect(() => {
+    void load();
+    const back = () => { void load(); };
+    window.addEventListener("focus", back);
+    return () => window.removeEventListener("focus", back);
+  }, [load]);
+  useEffect(() => {
+    if (!state?.available) return;
+    const wait = setTimeout(() => { code.findApps(query).then((apps) => setFound({ q: query, apps }), (error) => setProblem(problemText(error))); }, query ? 250 : 0);
+    return () => clearTimeout(wait);
+  }, [query, state?.available]);
+  const connect = (app: string) => {
+    setBusy(app); setProblem(null);
+    const opened = window.open("about:blank", "_blank");
+    code.connect(app).then((url) => { if (opened) opened.location.href = url; else window.location.href = url; }, (error) => { opened?.close(); setProblem(problemText(error)); }).finally(() => setBusy(null));
+  };
+  const remove = (c: Connection) => {
+    setBusy(c.account); setProblem(null);
+    code.disconnect(c.account).then(() => { setConfirming(null); return load(); }, (error) => setProblem(problemText(error))).finally(() => setBusy(null));
+  };
+  const apps = found && found.q === query ? found.apps : null;
+  return <section className="cd-sheet cd-conn">
+    <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+      <h1>Connections</h1>
+    </header>
+    <div className="cd-conn-body">
+      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+      {state === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
+      {state && !state.available ? <p className="cd-conn-empty">Connections aren&rsquo;t available on this Kimono yet.</p> : null}
+      {state?.available ? <>
+        {state.connections.length ? <ul className="cd-conn-list">{state.connections.map((c) => <li key={c.account} className="cd-conn-card">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
+          <span className="cd-conn-logo"><img src={c.logo} alt="" /></span>
+          <span className="cd-conn-id"><b>{c.name}</b><small>{c.status === "ACTIVE" ? c.since ? `Connected ${when(Date.parse(c.since), now).replace(/^(Today|Yesterday)/, (word) => word.toLowerCase())}` : "Connected" : c.status === "FAILED" ? "Needs connecting again" : "Connecting…"}</small></span>
+          {confirming === c.account
+            ? <span className="cd-conn-acts"><button type="button" className="cd-quietbutton is-danger" disabled={busy === c.account} onClick={() => remove(c)}>{busy === c.account ? "Disconnecting…" : "Disconnect"}</button><button type="button" className="cd-quietbutton" onClick={() => setConfirming(null)}>Keep</button></span>
+            : <span className="cd-conn-acts">{c.status === "FAILED" ? <Seal type="button" compact onClick={() => connect(c.app)}>Connect again</Seal> : null}<button type="button" className="cd-quietbutton" onClick={() => setConfirming(c.account)}>Disconnect</button></span>}
+        </li>)}</ul> : state ? <p className="cd-conn-empty">Nothing connected yet.</p> : null}
+        <h2 className="cd-conn-sub">Connect an app</h2>
+        <label className="cd-conn-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search apps" aria-label="Search apps" /></label>
+        {apps === null ? <SkeletonRows rows={2} mark={false} /> : !apps.length ? <p className="cd-conn-empty">No app by that name.</p> : <ul className="cd-conn-grid">{apps.map((a) => <li key={a.app} className="cd-conn-tile">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
+          <span className="cd-conn-logo"><img src={a.logo} alt="" /></span>
+          <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
+          {a.connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span> : <Seal type="button" compact tone="quiet" disabled={busy === a.app} onClick={() => connect(a.app)}>{busy === a.app ? "Opening…" : "Connect"}</Seal>}
+        </li>)}</ul>}
+      </> : null}
+    </div>
+  </section>;
 }
 
 /* ── marks: what a call or a card is about, drawn as that thing ── */
