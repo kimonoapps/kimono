@@ -40,6 +40,10 @@ interface Platform {
      * problem to show, or null when it's under way.
      */
     suspend fun installUpdate(url: String, sha256: String?, progress: (Float) -> Unit): String? { openUrl(url); return null }
+    /** Whether the app with [packageId] is on this phone; null where the phone won't say (an iPhone). */
+    fun isInstalled(packageId: String): Boolean? = null
+    /** Opens the installed app with [packageId]; false if it couldn't. */
+    fun openInstalled(packageId: String): Boolean = false
     /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */
     fun share(text: String) {}
     /** Drive was switched on or off on the server: the Files app entry follows. */

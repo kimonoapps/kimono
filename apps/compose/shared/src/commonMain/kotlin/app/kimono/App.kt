@@ -143,6 +143,8 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             target.id == "kimono-drive" -> goTab("drive")
             target.id == app.kimono.data.Code.APP_ID && admin -> goTab("code")
             target.id == "kimono-vpn" -> goTab("vpn")
+            /* An app with a phone app of its own is looked after here: whether it's installed, getting it, setting it up. */
+            target.phoneApp != null -> nav.navigate("app/${target.id}")
             else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
         }
     }
@@ -152,7 +154,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -160,7 +162,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = { codeStarting = true }, openApps = { appsOpen = true })
         },
     ) { padding ->
-        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, pins, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
+        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, pins, installed = { app.kimono.screens.installedHere(it, platform) }, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
         /*
          * Material's own motion between screens. Tabs fade through: the old one
          * fades quickly, the new one settles in from just smaller. A screen
@@ -207,7 +209,11 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
-            composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins) { openApp(it) } }
+            composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins, installed = { app.kimono.screens.installedHere(it, platform) }) { openApp(it) } }
+            composable("app/{id}") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                model.drive.launcher.collectAsState().value?.firstOrNull { it.id == id }?.let { found -> app.kimono.screens.PhoneAppScreen(found, platform) { nav.popBackStack() } }
+            }
             listOf("vpn", "vpn/people", "vpn/connect").forEach { room ->
                 composable(room) { app.kimono.screens.VpnScreen(vpn, platform, model.drive.launcher.value?.firstOrNull { it.id == "kimono-vpn" }, room, go = { goTab(it) }) { nav.popBackStack() } }
             }

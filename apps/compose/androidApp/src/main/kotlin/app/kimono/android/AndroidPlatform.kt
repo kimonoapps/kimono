@@ -111,6 +111,15 @@ class AndroidPlatform(private val context: Context) : Platform {
         runCatching { (context.applicationContext as KimonoApplication).thumbnails.make(node, mime, pixels)?.absolutePath }.getOrNull()
     }
 
+    override fun isInstalled(packageId: String): Boolean? =
+        runCatching { context.packageManager.getPackageInfo(packageId, 0); true }.getOrDefault(false)
+
+    override fun openInstalled(packageId: String): Boolean {
+        val intent = context.packageManager.getLaunchIntentForPackage(packageId) ?: return false
+        if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { (activity ?: context).startActivity(intent) }.isSuccess
+    }
+
     override fun openUrl(url: String) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
         if (activity == null) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

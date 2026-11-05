@@ -239,7 +239,7 @@ private fun PeopleRoom(view: VpnView, set: (VpnPerson, Boolean) -> Unit) {
 
 /** A line to copy: the mesh's address, a key, a command. */
 @Composable
-private fun Copyable(text: String) {
+internal fun Copyable(text: String) {
     @Suppress("DEPRECATION") val clipboard = LocalClipboardManager.current
     Row(
         Modifier.fillMaxWidth().background(Kata.urushi, RoundedCornerShape(16.dp)).padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
@@ -251,7 +251,7 @@ private fun Copyable(text: String) {
 }
 
 @Composable
-private fun Step(number: Int, text: String, content: @Composable () -> Unit = {}) {
+internal fun Step(number: Int, text: String, content: @Composable () -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         InkBlot("vpn-step-$number", size = 30.dp) { Text("$number", style = MaterialTheme.typography.labelLarge, color = Kata.plum) }
         Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -1,4 +1,5 @@
 import { portalOrigin } from "@/lib/account";
+import { mobileAppSteps } from "@/lib/mobile-app";
 import { bloomSvg } from "@kimono/ui/bloom-svg";
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { appRegistry, launcherApps } from "@/lib/apps";
@@ -54,6 +55,13 @@ export async function GET() {
     web: new URL(app.href, origin).toString(),
     ios: app.mobileApp?.iosUrl ?? null,
     android: app.mobileApp?.androidUrl ?? null,
+    /* An app with a phone app of its own: how to get it and set it up, as the website's tutorial shows it. */
+    phoneApp: app.mobileApp ? {
+      name: app.mobileApp.name,
+      guide: app.mobileApp.guideUrl,
+      androidPackage: app.mobileApp.androidUrl ? new URL(app.mobileApp.androidUrl).searchParams.get("id") : null,
+      steps: mobileAppSteps(app.mobileApp).map((step) => ({ title: step.title, description: step.description, kind: step.kind })),
+    } : null,
   }));
   /* The phone apps have Drive themselves; this is its bloom for them, while it is switched on. */
   const driveOn = driveConfig(settings).enabled;

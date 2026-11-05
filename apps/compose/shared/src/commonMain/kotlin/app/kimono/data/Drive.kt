@@ -135,7 +135,15 @@ private data class AppList(val apps: List<KimonoAppLink>, val launcher: List<Lau
 data class LauncherApp(
     val id: String, val name: String, val fullName: String = name, val description: String = "", val accent: String, val glyph: String? = null,
     val icon: String? = null, val own: Boolean = false, val web: String, val ios: String? = null, val android: String? = null,
+    val phoneApp: PhoneApp? = null,
 )
+
+/** An app's own phone app (Immich for Photos): where to get it, and the website's steps for setting it up. */
+@Serializable
+data class PhoneApp(val name: String, val guide: String = "", val androidPackage: String? = null, val steps: List<PhoneAppStep> = emptyList())
+
+@Serializable
+data class PhoneAppStep(val title: String, val description: String, val kind: String)
 
 private val json = Json { ignoreUnknownKeys = true }
 
