@@ -1,0 +1,5 @@
+Drive's file-type icons come from:
+Material Icon Theme, Copyright (c) Material Extensions and contributors, MIT License: https://github.com/material-extensions/vscode-material-icon-theme/blob/main/LICENSE
+vscode-icons, Copyright (c) Roberto Huertas and contributors, MIT License: https://github.com/vscode-icons/vscode-icons/blob/master/LICENSE
+SVG Logos by Gil Barbara, CC0: https://github.com/gilbarbara/logos
+Product logos are trademarks of their owners and are used here only to name file types.

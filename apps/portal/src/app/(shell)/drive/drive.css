@@ -674,3 +674,40 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .share-main { min-width: 0; }
 .share-main .dv-body.solo { padding-top: 8px; }
 @media (max-width: 720px) { .share-bar { padding: 14px 16px 0; } }
+
+/* Pictures of files: a thumbnail or a video's opening frame fills the row's mark;
+   in the drawer an image sharpens over its small thumbnail, and a text file shows its opening. */
+.dv-kind.pic { position: relative; background: var(--k-container-high); }
+.dv-kind.pic img, .dv-kind.pic video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.dv-kind.pic i { width: 100%; height: 100%; }
+.dv-kind.pic.vid::after { filter: drop-shadow(0 0 2px rgba(36, 34, 31, .6)); }
+.dv-kind.typed { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.dv-kind .dv-type { width: 58%; height: 58%; display: block; }
+.dv-preview.plain { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.dv-type-big { display: grid; place-items: center; }
+.dv-preview .dv-type-big img.dv-type { width: 72px; height: 72px; background: none; object-fit: contain; }
+.dv-preview.plain .ext { color: var(--k-on-surface-variant); }
+
+.dv-drawer.wide .dv-drawer-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+.dv-drawer.wide .dv-preview { aspect-ratio: 4/3; max-height: 62vh; }
+.dv-preview img.blur { position: absolute; inset: 0; object-fit: contain; filter: blur(14px); transform: scale(1.04); opacity: .7; }
+.dv-preview img.full { position: relative; object-fit: contain; opacity: 0; transition: opacity var(--k-t-state, .2s) ease; }
+.dv-preview img.full.ready { opacity: 1; }
+.dv-preview.text { place-items: stretch; background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.dv-preview.text .ext { color: var(--k-on-surface-variant); }
+.dv-preview pre { margin: 0; padding: 14px 16px; overflow: auto; font: 500 12.5px/1.55 var(--k-mono); color: var(--k-ink); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+@media (max-width: 1100px) { .dv-drawer.wide .dv-drawer-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .dv-preview img.full { transition: none; } }
+
+/* Code: numbered lines in the margin, quiet colours from Kimono's own inks. */
+.dv-preview.code { background: #2a2326; box-shadow: none; }
+.dv-code { position: absolute; inset: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; overflow: auto; padding: 14px 0 18px; font: 500 12.5px/1.6 var(--k-mono); color: #ece4dc; tab-size: 2; }
+.dv-code:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: -2px; }
+.dv-code ol { margin: 0; padding: 0 12px 0 14px; list-style: none; text-align: right; color: #8a7d78; user-select: none; position: sticky; left: 0; background: #2a2326; }
+.dv-code pre { margin: 0; padding: 0 16px 0 4px; white-space: pre; font: inherit; color: inherit; }
+.dv-code-lang .dv-type { width: 13px; height: 13px; }
+.dv-code-lang { display: inline-flex; align-items: center; gap: 6px; position: absolute; top: 10px; right: 12px; padding: 4px 8px; border-radius: var(--k-r-s); background: #2a2326; font: 600 10.5px/1 var(--k-sans); letter-spacing: .06em; text-transform: uppercase; color: #b8aaa2; z-index: 1; }
+.dv-code .t-com { color: #8f8a80; font-style: italic; }
+.dv-code .t-str { color: #b9cf94; }
+.dv-code .t-num { color: #e6b07a; }
+.dv-code .t-key { color: #e79bb0; }

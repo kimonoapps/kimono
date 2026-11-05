@@ -1,7 +1,7 @@
 "use client";
 
 import { Crossing } from "@/components/crossing";
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { AppBloom, cx, type GlyphName } from "@kimono/ui";
 import { usePins } from "@/components/pins";
@@ -83,8 +83,8 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   const [dropBefore, setDropBefore] = useState<string | null | "end">(null);
   const byId = new Map(apps.map((app) => [app.id, app]));
   const pinned = pins.filter((id) => byId.has(id));
-  // Home already lays out every app, so the rail keeps its pins for inside apps.
-  const shown = active === "home" ? [] : current && !pinned.includes(current) ? [...pinned, current] : pinned;
+  const shown = current && !pinned.includes(current) ? [...pinned, current] : pinned;
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   function drop(event: DragEvent) {
     event.preventDefault();
@@ -117,8 +117,9 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
             onDragStart={(event) => { setDragging(id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/kimono-app", id); }}
             onDragOver={(event) => { const r = event.currentTarget.getBoundingClientRect(); setDropBefore(event.clientY < r.top + r.height / 2 ? id : shown[shown.indexOf(id) + 1] ?? "end"); }}
             onDragEnd={() => { setDragging(null); setDropBefore(null); }}
+            onContextMenu={(event) => { event.preventDefault(); setMenu({ id, x: event.clientX, y: event.clientY }); }}
           >
-            <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" /></span><RailLabel text={app.name} />
+            <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" />{app.external ? <span className="rail-away" title="Opens another website"><LineIcon name="out" /></span> : null}</span><RailLabel text={app.name} />
           </Crossing>
           {open && rooms?.length ? <div className="rail-rooms">
             {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}><span className="rail-pill"><LineIcon name={room.icon ?? "book"} /></span><RailLabel text={room.label} /></Crossing>)}
@@ -132,6 +133,18 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
     {admin ? <Crossing kind="kakejiku" className="rail-dest rail-admin" href="/admin" aria-current={active === "admin" ? "page" : undefined}>
       <span className="rail-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6.5v5.5c0 4-3 7-7 8.5-4-1.5-7-4.5-7-8.5V6.5z"/></svg></span>Admin
     </Crossing> : null}
+    {menu && byId.has(menu.id) ? (() => {
+      const app = byId.get(menu.id)!, at = pinned.indexOf(menu.id);
+      const move = (by: number) => { const next = [...pinned]; next.splice(at, 1); next.splice(at + by, 0, menu.id); setPins(next); };
+      return <PinMenu x={menu.x} y={menu.y} label={app.name} onClose={() => setMenu(null)}>
+        {!app.external ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => window.open(app.href, "_blank", "noopener")}><LineIcon name="out" />Open in new tab</button> : null}
+        {at > 0 ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => move(-1)}><LineIcon name="up" />Move up</button> : null}
+        {at >= 0 && at < pinned.length - 1 ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => move(1)}><LineIcon name="down" />Move down</button> : null}
+        {at >= 0
+          ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => setPins(pinned.filter((pin) => pin !== menu.id))}><LineIcon name="unpin" />Unpin</button>
+          : <button type="button" role="menuitem" tabIndex={-1} onClick={() => setPins([...pinned, menu.id])}><LineIcon name="pin" />Pin</button>}
+      </PinMenu>;
+    })() : null}
     {sheet ? <div className="rail-scrim" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setSheet(false); }} onKeyDown={(event) => { if (event.key === "Escape") setSheet(false); }}>
       <div className="rail-sheet" role="dialog" aria-modal="true" aria-label="Your apps">
         <div className="rail-sheet-head"><h2>Your apps</h2><button className="rail-sheet-close" type="button" onClick={() => setSheet(false)} aria-label="Close">×</button></div>
@@ -139,6 +152,45 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
       </div>
     </div> : null}
   </nav>;
+}
+
+/** A pin's right-click menu, placed at the pointer and kept on screen. */
+function PinMenu({ x, y, label, onClose, children }: { x: number; y: number; label: string; onClose: () => void; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const edge = 8, { width, height } = element.getBoundingClientRect();
+    element.style.left = `${Math.min(x, window.innerWidth - width - edge)}px`;
+    element.style.top = `${Math.max(edge, Math.min(y, window.innerHeight - height - edge))}px`;
+    element.querySelector<HTMLElement>("[role=menuitem]")?.focus({ preventScroll: true });
+  }, [x, y]);
+  useEffect(() => {
+    const away = (event: Event) => { if (!box.current?.contains(event.target as Node)) onClose(); };
+    const keys = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); onClose(); } };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", keys);
+    window.addEventListener("blur", onClose);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("keydown", keys);
+      window.removeEventListener("blur", onClose);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [onClose]);
+  return <div ref={box} className="rail-menu" role="menu" aria-label={label}
+    onKeyDown={(event) => {
+      const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[role=menuitem]"));
+      const index = items.indexOf(document.activeElement as HTMLElement);
+      const go = (to: number) => { event.preventDefault(); items[(to + items.length) % items.length]?.focus(); };
+      if (event.key === "ArrowDown") go(index + 1);
+      else if (event.key === "ArrowUp") go(index - 1);
+      else if (event.key === "Tab") onClose();
+    }}
+    onClick={(event) => { if ((event.target as HTMLElement).closest("[role=menuitem]")) onClose(); }}>
+    {children}
+  </div>;
 }
 
 /** Kimono's ink branch, small, for the top of the rail. */

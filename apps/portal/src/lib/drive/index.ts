@@ -12,6 +12,7 @@ import { driveRoot, removeBlob, removePart } from "./storage";
 
 export * from "./model";
 export { blobPath, sendFile, typeOf } from "./storage";
+export { sendThumb } from "./thumbs";
 
 export const root = driveRoot(stateDir);
 /** The largest single file: 150 GB. Drive as a whole is limited only by the disk. */

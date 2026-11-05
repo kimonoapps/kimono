@@ -8,10 +8,11 @@ import { useSearchParams } from "next/navigation";
 import { AppBloom, Choice, cx, InkPortraitFrame, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
-  contentUrl, drive, DriveProblem, extension, kindOf, linkUrl, readableSize, shared, spaceLinkUrl, upload, when,
+  contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
   type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
 } from "./api";
 import { Icon, type IconName } from "./icons";
+import { CodePeek, codeLanguage, TypeMark } from "./peek";
 
 /*
  * 帳 Kimono Drive on the web, layout A (Ledger). One page: the sidebar of
@@ -560,7 +561,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
                 setMenu({ id: node.id, top: event.clientY, bottom: event.clientY, left: event.clientX, right: event.clientX, align: "start", from: null });
               }}>
               <Check on={selected.has(node.id)} ghost={!selected.size} label={`Select ${node.name}`} onClick={(event) => { if (event.shiftKey) selectRange(node.id); else toggle(node.id); }} />
-              <Kind node={node} as={codeRole(node)} />
+              <Kind node={node} as={codeRole(node)} token={token} />
               <div className="nm">
                 {renaming === node.id ? <RenameField node={node} onDone={(next) => { setRenaming(null); if (next && next !== node.name) void act(() => drive.rename(node.id, next)); focusRow(node.id); }} />
                   : <button type="button"
@@ -581,7 +582,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
                   onClick={(event) => openMenu(node, event.currentTarget)}><Icon name="more" /></button>
               </span>
             </div>
-            {opened?.id === node.id ? <Drawer node={node} url={fileUrl(node)} guest={Boolean(guest)} canEdit={canEdit} people={people}
+            {opened?.id === node.id ? <Drawer node={node} url={fileUrl(node)} token={token} guest={Boolean(guest)} canEdit={canEdit} people={people}
               onSave={() => save([node])} onShare={() => void share(node)} onUnlink={() => void unlink(node)} onClose={() => onGo(here)} /> : null}
           </Fragment>)}
     </div>
@@ -624,11 +625,36 @@ function Check({ on, ghost, label, onClick }: { on: boolean | "part"; ghost?: bo
   </button>;
 }
 
-function Kind({ node, as }: { node: DriveNode; as?: "project" | "task" }) {
+/**
+ * A row's mark: a folder, or the file itself when it can be pictured (a
+ * thumbnail for images, the opening frame for video), else its extension.
+ * [token] reads a link-opened space's files; [plain] keeps to the extension.
+ */
+function Kind({ node, as, token, plain }: { node: DriveNode; as?: "project" | "task"; token?: string | null; plain?: boolean }) {
   const kind = kindOf(node);
+  const [failed, setFailed] = useState(false);
   if (kind === "folder" && as) return <span className={`dv-kind ${as}`}><Icon name={as} /></span>;
   if (kind === "folder") return <span className="dv-kind folder"><Icon name="folder" /></span>;
-  return <span className="dv-kind"><span className="ext">{extension(node.name)}</span></span>;
+  const ext = <span className="ext">{extension(node.name)}</span>;
+  if (!plain && !failed && hasThumb(node)) return <span className="dv-kind pic">
+    {/* eslint-disable-next-line @next/next/no-img-element -- Drive's own thumbnail of the file */}
+    <img src={thumbUrl(node, 256, token)} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />
+  </span>;
+  if (!plain && !failed && kind === "video") return <span className="dv-kind pic vid"><Frame src={token ? shared.fileUrl(token, node.id) : contentUrl(node)} onFail={() => setFailed(true)} /></span>;
+  return <span className="dv-kind typed"><TypeMark name={node.name} fallback={ext} /></span>;
+}
+
+/** A video's opening frame, fetched only once its row scrolls into view. */
+function Frame({ src, onFail }: { src: string; onFail: () => void }) {
+  const [near, setNear] = useState(false);
+  const watch = useCallback((element: HTMLElement | null) => {
+    if (!element) return;
+    const seen = new IntersectionObserver(([entry]) => { if (entry?.isIntersecting) { setNear(true); seen.disconnect(); } }, { rootMargin: "200px" });
+    seen.observe(element);
+  }, []);
+  return near
+    ? <video src={`${src}#t=0.5`} muted playsInline preload="metadata" tabIndex={-1} aria-hidden="true" onError={onFail} />
+    : <i ref={watch} aria-hidden="true" />;
 }
 
 function RenameField({ node, onDone }: { node: DriveNode; onDone: (name: string | null) => void }) {
@@ -709,21 +735,23 @@ function MenuItem({ icon, danger, onPick, children }: { icon: IconName; danger?:
 
 /* ── a file's drawer: preview and its public link ── */
 
-function Drawer({ node, url, guest, canEdit, people, onSave, onShare, onUnlink, onClose }: {
-  node: DriveNode; url: string; guest: boolean; canEdit: boolean; people: Record<string, Person>;
+function Drawer({ node, url, token, guest, canEdit, people, onSave, onShare, onUnlink, onClose }: {
+  node: DriveNode; url: string; token: string | null; guest: boolean; canEdit: boolean; people: Record<string, Person>;
   onSave: () => void; onShare: () => void; onUnlink: () => void; onClose: () => void;
 }) {
   const kind = kindOf(node);
   const by = people[node.createdBy?.toLowerCase()];
   const address = guest ? null : linkUrl(node);
   const byline = guest ? null : by?.name.split(" ")[0] ?? (node.createdBy || node.guest);
-  return <div className="dv-drawer"><div className="dv-drawer-grid">
-    <div className="dv-preview">
-      {/* eslint-disable-next-line @next/next/no-img-element -- a preview of the file itself, from Drive */}
-      {kind === "image" ? <img src={url} alt="" />
-        : kind === "video" ? <video src={url} controls preload="metadata" />
+  const text = isText(node);
+  const shown = kind === "image" || kind === "video" || text;
+  return <div className={cx("dv-drawer", shown && "wide")}><div className="dv-drawer-grid">
+    <div className={cx("dv-preview", text && "text", text && codeLanguage(extension(node.name)) && "code", !shown && kind !== "audio" && "plain")}>
+      {kind === "image" ? <Picture node={node} url={url} token={token} />
+        : kind === "video" ? <video src={url} controls preload="metadata" playsInline />
         : kind === "audio" ? <audio src={url} controls />
-        : <span className="ext">{extension(node.name)}</span>}
+        : text ? <TextPeek url={url} name={extension(node.name)} />
+        : <span className="dv-type-big"><TypeMark name={node.name} fallback={<span className="ext">{extension(node.name)}</span>} /></span>}
     </div>
     <div className="dv-drawer-text">
       <div className="dv-head">
@@ -748,6 +776,47 @@ function Drawer({ node, url, guest, canEdit, people, onSave, onShare, onUnlink, 
       </div> : canEdit ? <div className="k-seal-group"><Seal type="button" onClick={onShare}><Icon name="link" />Make public link</Seal></div> : null}
     </div>
   </div></div>;
+}
+
+/**
+ * An image in the drawer: the row's small thumbnail at once, blurred, with the
+ * large one sharpening over it. GIFs play from the file itself; a picture the
+ * server can't make falls back to the file.
+ */
+function Picture({ node, url, token }: { node: DriveNode; url: string; token: string | null }) {
+  const own = !hasThumb(node) || extension(node.name) === "GIF";
+  const [src, setSrc] = useState(own ? url : thumbUrl(node, 1280, token));
+  const [ready, setReady] = useState(false);
+  return <>
+    {/* eslint-disable-next-line @next/next/no-img-element -- Drive's own picture of the file */}
+    {!own ? <img className="blur" src={thumbUrl(node, 256, token)} alt="" aria-hidden="true" /> : null}
+    {/* eslint-disable-next-line @next/next/no-img-element -- a preview of the file itself, from Drive */}
+    <img className={cx("full", ready && "ready")} src={src} alt={node.name} decoding="async"
+      onLoad={() => setReady(true)} onError={() => { if (src !== url) setSrc(url); }} />
+  </>;
+}
+
+/** The opening of a text or code file: its first 24 KB, read with a range. */
+function TextPeek({ url, name }: { url: string; name: string }) {
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    const stop = new AbortController();
+    fetch(url, { headers: { Range: "bytes=0-24575" }, signal: stop.signal })
+      .then((response) => response.ok ? response.arrayBuffer() : Promise.reject(new Error(String(response.status))))
+      .then((bytes) => {
+        const view = new Uint8Array(bytes);
+        if (view.includes(0)) { setText(""); return; }
+        let read = new TextDecoder("utf-8", { fatal: false }).decode(view);
+        if (view.length >= 24576) read = read.replace(/\uFFFD?[^\n]*$/, "");
+        setText(read);
+      })
+      .catch(() => { if (!stop.signal.aborted) setText(""); });
+    return () => stop.abort();
+  }, [url]);
+  if (text === null) return <span className="ext">{name}</span>;
+  if (!text.trim()) return <span className="ext">{name}</span>;
+  if (codeLanguage(name)) return <CodePeek text={text} ext={name} />;
+  return <pre tabIndex={0}>{text}</pre>;
 }
 
 /* ── dialogs ── */
@@ -988,7 +1057,7 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
           const space = spaceOf(node.spaceId);
           const left = node.trashedAt ? Math.max(0, 30 - Math.floor((now - node.trashedAt) / 86400000)) : null;
           return <div className="dv-r trashed" key={node.id}>
-            <Kind node={node} />
+            <Kind node={node} plain />
             <div className="nm"><b>{node.name}</b><small>{space?.name ?? ""}{left !== null ? ` · ${left === 1 ? "1 day" : `${left} days`} left` : ""}</small></div>
             <span className="num c-size">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
             {space && space.role !== "viewer" ? <Seal type="button" tone="quiet" compact onClick={async () => {

@@ -184,6 +184,20 @@ export function extension(name: string) {
   return dot > 0 ? name.slice(dot + 1).toUpperCase().slice(0, 4) : "FILE";
 }
 
+/* Files the server can make a picture of (lib/drive/thumbs.ts). */
+const pictured = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "heic", "heif", "tif", "tiff"]);
+const texts = new Set(["txt", "md", "markdown", "csv", "tsv", "json", "log", "yaml", "yml", "toml", "xml", "ini", "conf", "cfg", "env", "sh", "zsh", "bash",
+  "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "rs", "swift", "kt", "kts", "java", "c", "h", "cc", "cpp", "hpp", "cs", "css", "scss", "html", "htm",
+  "sql", "rb", "php", "lua", "r", "tex", "srt", "vtt", "gradle", "properties", "dockerfile", "makefile"]);
+const lowerExt = (name: string) => { const dot = name.lastIndexOf("."); return dot > 0 ? name.slice(dot + 1).toLowerCase() : name.toLowerCase(); };
+
+export const hasThumb = (node: DriveNode) => node.kind === "file" && pictured.has(lowerExt(node.name));
+export const isText = (node: DriveNode) => node.kind === "file" && (texts.has(lowerExt(node.name)) || (node.mime ?? "").startsWith("text/"));
+
+/** A picture of an image file, [width] 256 for rows or 1280 for the drawer; the address changes when the file does. */
+export const thumbUrl = (node: DriveNode, width: 256 | 1280, token?: string | null) =>
+  `${token ? shared.fileUrl(token, node.id) : `/api/v1/drive/nodes/${node.id}`}/thumb?w=${width}&v=${node.updatedAt}`;
+
 export function kindOf(node: DriveNode): "folder" | "image" | "video" | "pdf" | "audio" | "file" {
   if (node.kind === "folder") return "folder";
   const mime = node.mime || "";

@@ -22,7 +22,12 @@ export async function keepUpload(root: string, upload: string, blob: string) {
   await rename(partPath(root, upload), target);
 }
 
-export async function removeBlob(root: string, blob: string) { await rm(blobPath(root, blob), { force: true }); }
+/* Thumbnails of a blob (thumbs.ts), by width; they go with it. */
+export const thumbWidths = [256, 1280] as const;
+export const thumbPath = (root: string, blob: string, width: number) => join(root, "thumbs", blob.slice(0, 2), `${blob}-${width}.webp`);
+export async function removeBlob(root: string, blob: string) {
+  await Promise.all([blobPath(root, blob), ...thumbWidths.map((width) => thumbPath(root, blob, width))].map((path) => rm(path, { force: true })));
+}
 export async function removePart(root: string, upload: string) { await rm(partPath(root, upload), { force: true }); }
 
 /** Bytes free for Drive, keeping some back so the server itself never fills up. */
