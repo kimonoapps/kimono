@@ -1,4 +1,5 @@
-import { DoorBack } from "@/components/door-back";
+import { Crossing } from "@/components/crossing";
+import { LineIcon } from "@/components/line-icon";
 import { Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
@@ -41,16 +42,11 @@ export default async function CloudflareConnectionPage({ searchParams }: { searc
 
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page cloudflare-connect-page">
-      {/* Same composition as an app's settings: a rail for context, a tray for work. */}
-      <div className="app-workspace">
-        <aside className="app-rail">
-          <DoorBack href={returnHref} label="Back" />
-          <div className="rail-identity">
-            <h1>{app ? `Publish ${app.name}` : "Connect Cloudflare"}</h1>
-            <p>{app ? "Kimono will create a secure connection, then bring you back to choose the app\u2019s address." : "Create a secure connection for apps you want to publish."}</p>
-          </div>
-        </aside>
-
+      <div className="topbar">
+        <Crossing kind="kakejiku" className="back" href={returnHref} aria-label="Back"><LineIcon name="back" /></Crossing>
+        <span><h1>{app ? `Publish ${app.name}` : "Connect Cloudflare"}</h1><p className="sub">{app ? "Kimono will create a secure connection, then bring you back to choose the app\u2019s address." : "Create a secure connection for apps you want to publish."}</p></span>
+      </div>
+      <div className="cloudflare-flow">
         <div className="app-panel">
           {query.saved ? <p className="admin-notice success">Cloudflare created and connected the tunnel.</p> : null}
           {query.error ? <p className="admin-notice error">{query.error}</p> : null}

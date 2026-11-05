@@ -99,10 +99,11 @@
   --k-rule: 2px;                      /* survives only as a focus ring and a code rule */
   --k-frame: 1px;                     /* the 3px frame is retired; kept as an alias */
 
-  /* radius: sheets, controls, chips. A seal is a carved block: 2px, nearly square. */
-  --k-r-3: 2px;
-  --k-r-2: 1px;
-  --k-r-1: 0px;
+  /* radius: sheets, controls, chips. Everything is rounded (ADR 0006): the old
+     square steps now follow Material's corner scale below. */
+  --k-r-3: 28px;
+  --k-r-2: 12px;
+  --k-r-1: 8px;
   --k-r-seal: 12px;             /* M3: a carved block with rounded corners */
   --k-r-round: 999px;
   --k-r-full: 999px;             /* M3 name for the same */

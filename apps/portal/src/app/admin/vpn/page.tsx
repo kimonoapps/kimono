@@ -1,6 +1,7 @@
-import { Choice, Compartment, Field, Form, FormActions, Note, PageHeader, Row, Rows, Seal } from "@kimono/ui";
+import { Choice, Compartment, Field, Form, FormActions, Note, Row, Rows, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
-import { AdminNavigation } from "@/components/admin-navigation";
+import { Crossing } from "@/components/crossing";
+import { LineIcon } from "@/components/line-icon";
 import { AppShell } from "@/components/app-shell";
 import { getPlatformSettings } from "@/lib/settings";
 import { readMesh } from "@/lib/mesh";
@@ -51,8 +52,10 @@ export default async function AdminVpnPage({ searchParams }: { searchParams: Pro
 
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">
     <div className="page admin-page">
-      <AdminNavigation active="vpn" />
-      <PageHeader title="Kimono VPN" description="Who may build a private mesh. Each member reaches only their own devices, and the ones they are invited to." />
+      <div className="topbar">
+        <Crossing kind="kakejiku" className="back" href="/admin" aria-label="Back to Admin"><LineIcon name="back" /></Crossing>
+        <span><h1>Kimono VPN</h1><p className="sub">Who may build a private mesh. Each member reaches only their own devices, and the ones they are invited to.</p></span>
+      </div>
 
       {query.error ? <p className="admin-notice error">{query.error}</p> : null}
       {!mesh.available ? <p className="admin-notice error">{mesh.reason}</p> : null}

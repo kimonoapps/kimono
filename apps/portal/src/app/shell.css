@@ -19,7 +19,7 @@
 .rail-dest:hover .rail-pill { background: var(--k-container-high); }
 .rail-dest[aria-current] { color: var(--k-on-surface); }
 .rail-dest[aria-current] .rail-pill { background: var(--k-secondary-container); }
-.rail-divider { flex: none; width: 36px; height: 1.5px; margin: 8px 0; border-radius: 1px; background: color-mix(in srgb, var(--k-plum) 28%, transparent); }
+.rail-divider { flex: none; width: 36px; height: 1.5px; margin: 8px 0; border-radius: var(--k-r-s); background: color-mix(in srgb, var(--k-plum) 28%, transparent); }
 .rail-spacer { flex: 1; }
 .rail-pins { display: grid; justify-items: center; gap: 2px; width: 100%; }
 .rail-pin { display: grid; justify-items: center; width: 100%; }
@@ -31,7 +31,7 @@
 .rail-dest.is-dragging { opacity: .35; }
 .rail-dest.drop-before { box-shadow: 0 -3px 0 -1px var(--k-accent); }
 .rail-rooms { position: relative; display: grid; justify-items: center; gap: 2px; width: 100%; padding: 2px 0 6px; }
-.rail-rooms::before { content: ""; position: absolute; top: 0; bottom: 6px; left: 50%; width: 1.5px; margin-left: -34px; border-radius: 1px; background: color-mix(in srgb, var(--k-app-accent) 40%, transparent); }
+.rail-rooms::before { content: ""; position: absolute; top: 0; bottom: 6px; left: 50%; width: 1.5px; margin-left: -34px; border-radius: var(--k-r-s); background: color-mix(in srgb, var(--k-app-accent) 40%, transparent); }
 .rail-room { min-height: 34px; align-content: center; padding: 0 4px; border-radius: var(--k-r-l); font-size: 12px; }
 .rail-room:hover { background: var(--k-container-high); }
 .rail-room[aria-current] { background: color-mix(in srgb, var(--k-app-accent) 12%, var(--k-container-lowest)); color: var(--k-on-surface); }

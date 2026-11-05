@@ -37,7 +37,7 @@
 /* The chosen collection carries the marker and the wash — the two places
    besides the bloom and the lockup where the app's colour may appear. */
 .tools-collection[aria-current="page"] { background: color-mix(in srgb, var(--k-app-accent) 8%, transparent); }
-.tools-collection[aria-current="page"]::before { content: ""; position: absolute; top: 12px; bottom: 12px; left: 0; width: 3px; border-radius: 2px; background: var(--k-app-accent); }
+.tools-collection[aria-current="page"]::before { content: ""; position: absolute; top: 12px; bottom: 12px; left: 0; width: 3px; border-radius: var(--k-r-s); background: var(--k-app-accent); }
 .tools-collection:focus-visible { outline-offset: -3px; }
 .tools-collection-bloom { width: 28px; height: 28px; }
 .tools-collection-bloom > svg { width: 100%; height: 100%; display: block; }
@@ -303,7 +303,7 @@
 .tools-parameter-table { border-collapse: separate; border-spacing: 0 4px; }
 .tools-parameter-table td { border: 0; background: var(--k-container); padding: 10px 12px; }
 .tools-parameter-table td:first-child { border-radius: 12px 0 0 12px; }
-.tools-parameter-table td:last-child { border-radius: 0 12px 12px 0; }
+.tools-parameter-table td:last-child { border-radius: var(--k-r-s) 12px 12px 0; }
 .tools-foot { margin: 18px 8px 0; font-size: 14px; color: var(--k-on-surface-variant); }
 .tools-foot a { color: var(--k-suo); font-weight: 700; }
 .tools-operation-summary .k-method { flex: none; display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: var(--k-r-s); background: var(--k-container-highest); font: 700 12px/1 var(--k-mono); color: var(--k-on-surface-variant); }

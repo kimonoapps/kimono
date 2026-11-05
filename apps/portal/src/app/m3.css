@@ -239,7 +239,7 @@ details[open] > summary .chev { transform: rotate(-135deg); margin-top: 3px; }
   .fab { right: 16px; bottom: 96px; }
   .scrim { place-items: end center; padding: 0; }
   .sheet { width: 100%; border-radius: 28px 28px 0 0; padding-top: 12px; }
-  .sheet .handle { display: block; width: 32px; height: 4px; margin: 0 auto 8px; border-radius: 2px; background: var(--outline-variant); }
+  .sheet .handle { display: block; width: 32px; height: 4px; margin: 0 auto 8px; border-radius: var(--k-r-s); background: var(--outline-variant); }
   .label { margin-left: 20px; }
   .domain { grid-template-columns: 1fr; padding-left: 18px; }
   .apps-grid { grid-template-columns: 1fr; }
@@ -444,3 +444,17 @@ label.opt { margin: 0; }
 .vpn-none a { color: var(--primary); font-weight: 700; }
 .seg .row .reveal { margin: 0; }
 @media (max-width: 720px) { .vpn-page .fab { bottom: 96px; right: 16px; } }
+
+/* Useful links: errands as rows, the way out on the right */
+.links-seg .row.links-row { cursor: default; gap: 16px; padding: 16px 16px 16px 20px; }
+.links-row .text { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.links-row .text b { font-size: 16px; font-weight: 700; }
+.links-row .text small { font-size: 14px; line-height: 1.45; color: var(--on-surface-variant); }
+.links-go { flex: none; gap: 8px; }
+.links-go .line-icon { width: 16px; height: 16px; }
+.links-missing { max-width: 640px; }
+@media (max-width: 720px) {
+  .links-seg .row.links-row { flex-wrap: wrap; }
+  .links-go { margin-left: 56px; }
+}
+.links-row .text b, .links-row .text small { white-space: normal; overflow: visible; text-overflow: clip; }

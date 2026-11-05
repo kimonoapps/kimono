@@ -49,7 +49,7 @@
 .k-choice-option small { color: var(--k-on-surface-variant); font-size: 13px; }
 .k-choice-option.is-active { background: var(--k-container-high); }
 .k-choice-option.is-chosen { background: color-mix(in srgb, var(--k-accent) 13%, var(--k-container-lowest)); color: var(--k-on-surface); font-weight: 700; }
-.k-choice-option.is-chosen::before { content: ""; position: absolute; left: 8px; top: 50%; width: 4px; height: 18px; margin-top: -9px; border-radius: 1px; background: var(--k-accent); animation: k-choice-tick var(--k-t-fold) var(--k-spring); }
+.k-choice-option.is-chosen::before { content: ""; position: absolute; left: 8px; top: 50%; width: 4px; height: 18px; margin-top: -9px; border-radius: var(--k-r-s); background: var(--k-accent); animation: k-choice-tick var(--k-t-fold) var(--k-spring); }
 @keyframes k-choice-tick { from { transform: scaleY(0); } }
 .k-choice-option.is-disabled { color: var(--k-faint); cursor: default; }
 

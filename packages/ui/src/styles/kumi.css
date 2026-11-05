@@ -54,3 +54,14 @@
 @media (max-width: 900px) {
   .k-compartment { grid-template-columns: 1fr; gap: var(--k-space-3); padding: var(--k-space-4); }
 }
+
+/* M3 (ADR 0006): a tray is a soft tonal panel with rounded corners, like the rest
+   of Kimono, not a hair-edged sheet of paper. */
+.k-tray, .k-sheet, .k-compartment:not(.k-tray > *) {
+  border: 0;
+  border-radius: var(--k-r-xl);
+  background-color: var(--k-container-low);
+  background-image: none;
+  box-shadow: none;
+}
+.k-tray > * + * { border-top-color: var(--k-container-highest); }
