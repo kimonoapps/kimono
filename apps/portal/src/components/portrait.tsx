@@ -17,6 +17,6 @@ export function Portrait({ name, username, picture, size = 34, className }: {
   const label = name?.trim() || username || "Someone";
   return picture
     // eslint-disable-next-line @next/next/no-img-element -- a 512px square served by the Portal itself
-    ? <img className={["portrait", className].filter(Boolean).join(" ")} style={style} src={picture} alt={label} width={size} height={size} />
-    : <span className={["portrait portrait-initial", className].filter(Boolean).join(" ")} style={style} role="img" aria-label={label}>{initialOf(name, username)}</span>;
+    ? <img className={["portrait", className].filter(Boolean).join(" ")} style={style} src={picture} alt={label} data-name={label} width={size} height={size} />
+    : <span className={["portrait portrait-initial", className].filter(Boolean).join(" ")} style={style} role="img" aria-label={label} data-name={label}>{initialOf(name, username)}</span>;
 }

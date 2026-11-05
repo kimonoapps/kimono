@@ -244,8 +244,8 @@ function Portrait({ person, username, size = 28 }: { person?: Person; username: 
   const style = { "--s": `${size}px` } as React.CSSProperties;
   const name = person?.name || username;
   // eslint-disable-next-line @next/next/no-img-element -- a portrait from this Portal, already sized
-  if (person?.picture) return <span className="pfp" style={style} role="img" aria-label={name}><img src={person.picture} alt="" /></span>;
-  return <span className="pfp initials" style={style} role="img" aria-label={name}>{name.slice(0, 1).toUpperCase()}</span>;
+  if (person?.picture) return <span className="pfp" style={style} role="img" aria-label={name} data-name={name}><img src={person.picture} alt="" /></span>;
+  return <span className="pfp initials" style={style} role="img" aria-label={name} data-name={name}>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
 /* ── a space ── */
