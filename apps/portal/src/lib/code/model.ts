@@ -197,6 +197,12 @@ export function setPreview(db: DatabaseSync, id: string, preview: { url: string;
   db.prepare("UPDATE workspaces SET preview_url = ?, preview_port = ?, updated_at = ? WHERE id = ?").run(ok ? preview.url : null, ok ? preview.port : null, Date.now(), id);
 }
 
+/** The turn running in a workspace now, if any. */
+export function runningTurn(db: DatabaseSync, workspaceId: string): string | null {
+  const row = db.prepare("SELECT id FROM turns WHERE workspace_id = ? AND state = 'running'").get(workspaceId) as { id: string } | undefined;
+  return row?.id ?? null;
+}
+
 /** Starts a turn, refusing while another is running in the same workspace. */
 export function startTurn(db: DatabaseSync, workspaceId: string, now = Date.now()): string {
   const running = db.prepare("SELECT id FROM turns WHERE workspace_id = ? AND state = 'running'").get(workspaceId);

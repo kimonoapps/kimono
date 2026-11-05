@@ -15,7 +15,7 @@ export type Workspace = {
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };
 export type Attachment = { name: string; path: string; size: number; type: string };
 export type CodeEvent =
-  | { kind: "ask"; by: string; text: string; attachments: Attachment[] }
+  | { kind: "ask"; by: string; text: string; attachments: Attachment[]; queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }

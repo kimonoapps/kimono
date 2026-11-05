@@ -10,7 +10,7 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, translate, type Attachment, type CodeEvent, type TurnResult } from "./events";
 import {
-  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, runningTurn, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox } from "./node";
@@ -27,6 +27,8 @@ type Live = {
   db?: DatabaseSync;
   listeners: Map<string, Set<(event: StoredEvent) => void>>;
   turns: Map<string, AbortController>;
+  /** Messages sent while a turn was running, per workspace: the next turn reads them. */
+  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[] }[]>;
 };
 /* One connection and one set of listeners for the process, kept across hot reloads in development. */
 const cache = globalThis as unknown as { kimonoCode?: Live };
@@ -90,6 +92,13 @@ export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, tex
   const prompt = text.trim();
   if (!prompt && !attachments.length) throw new CodeProblem("Say what to do.");
   if (prompt.length > 32_000) throw new CodeProblem("That message is too long.");
+  /* Steering: while the agent works, a message waits in line and the next turn starts with it. */
+  const busy = runningTurn(db(), workspace.id);
+  if (busy) {
+    const queue = (live.queued ??= new Map());
+    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments }]);
+    return record(workspace.id, busy, { kind: "ask", by: user.username, text: prompt, attachments, queued: true });
+  }
   const turn = startTurn(db(), workspace.id);
   const asked = record(workspace.id, turn, { kind: "ask", by: user.username, text: prompt, attachments });
   void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments);
@@ -158,6 +167,15 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
     /* What the agent made goes to Drive. */
     void syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync to Drive:", error instanceof Error ? error.message : error));
+    /* Anything sent while it worked starts the next turn straight away. */
+    const waiting = live.queued?.get(workspace.id);
+    if (waiting?.length) {
+      live.queued!.delete(workspace.id);
+      try {
+        const next = startTurn(db(), workspace.id);
+        void run(config, workspace, waiting[0].user, next, waiting.map((m) => m.prompt).filter(Boolean).join("\n\n") || "Look at the attached files.", waiting.flatMap((m) => m.attachments));
+      } catch (error) { console.warn("Code couldn't start the queued message:", error instanceof Error ? error.message : error); }
+    }
   }
 }
 

@@ -586,3 +586,60 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
   .cd-seg { max-width: none; }
 }
 @media (max-width: 1240px) { .cd-deploy { display: none; } }
+
+/* ── the task list folds away; the conversation is the light sheet, the list sits on a darker tone ── */
+.cd { transition: grid-template-columns var(--k-t-seat) var(--k-spring); }
+.cd-side { align-content: start; height: calc(100vh - 56px); padding: 14px 10px 14px; border-radius: var(--k-r-xl); background: var(--k-container); }
+.cd-side-head { padding: 0 4px; gap: 4px; }
+.cd-side-head > span { flex: 1; }
+.cd-side-head .cd-fold { width: 40px; height: 40px; border-radius: 50%; background: transparent; color: var(--k-on-surface-variant); }
+.cd-side-head .cd-fold:hover { background: var(--k-container-highest); border-radius: 50%; }
+.cd-list button:hover { background: var(--k-container-high); }
+.cd-list button[aria-current] { background: var(--k-container-lowest); box-shadow: 0 1px 2px rgba(78, 43, 55, .08); }
+.cd-unfold { display: none !important; }
+@media (min-width: 981px) {
+  .cd.is-folded { grid-template-columns: 0 minmax(0, 1fr); gap: 0; }
+  .cd.is-folded .cd-side { visibility: hidden; padding: 0; overflow: hidden; }
+  .cd.is-folded .cd-unfold { display: inline-grid !important; }
+}
+@media (max-width: 980px) { .cd-side .cd-fold { display: none; } .cd-side { height: auto; } }
+/* the conversation: the lightest surface on the page, and what sits on it one step darker */
+.cd-sheet { background: var(--k-container-lowest); box-shadow: 0 1px 3px rgba(78, 43, 55, .06); }
+.cd-composer { background: var(--k-container-low); box-shadow: none; }
+.call { background: var(--k-container-low); }
+.call > summary:hover { background: var(--k-container); }
+.tools-used { background: var(--k-container); }
+.cd-seg button:hover { background: var(--k-container-low); }
+
+/* four views now: Chat, Files, Changes, App */
+.cd-seg { grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 680px; }
+.cd-live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--k-moss); box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-moss) 25%, transparent); }
+
+/* the app, ready: one big card */
+.cd-ready-ink { display: block; margin: 6px 0; }
+.cd-ready { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 14px 18px; padding: 22px 24px; border-radius: var(--k-r-xl); background: var(--k-tertiary-container); color: var(--k-on-tertiary-container); }
+.cd-ready-mark { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 18px; background: var(--k-moss); color: #fff; }
+.cd-ready-mark svg.i { width: 26px; height: 26px; }
+.cd-ready-text { display: grid; gap: 4px; min-width: 0; }
+.cd-ready-text b { font: 600 22px/1.2 var(--k-display); color: var(--k-moss-deep); }
+.cd-ready-text .cd-mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.cd-ready-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cd-ready-open { --k-accent: var(--k-moss); min-height: 52px; padding: 0 28px; font-size: 16px; }
+.cd-ready .cd-quietbutton:hover { background: rgba(255, 255, 255, .5); }
+
+/* the App tab */
+.cd-appview { display: grid; gap: 16px; align-content: start; padding: 18px 24px 28px; }
+.cd-app-frame { border-radius: var(--k-r-xl); overflow: hidden; background: var(--k-container-high); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.cd-app-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; }
+.cd-app-bar i { width: 9px; height: 9px; border-radius: 50%; background: var(--k-container-highest); }
+.cd-app-bar .cd-mono { margin-left: 8px; color: var(--k-on-surface-variant); }
+.cd-app-frame iframe { display: block; width: 100%; height: min(62vh, 640px); border: 0; background: #fff; }
+.cd-app-empty { display: grid; justify-items: center; gap: 10px; padding: 64px 24px; text-align: center; }
+.cd-app-empty b { font-size: 18px; }
+.cd-app-empty p { margin: 0 0 6px; max-width: 42ch; }
+
+/* steering: a message sent while it works waits, faintly, until it's read */
+.cd-ask.is-queued { opacity: .7; }
+.cd-ask.is-queued::after { content: "Queued · read when this step ends"; justify-self: end; font-size: 12px; color: var(--k-on-primary-container); }
+.cd-stop { color: var(--k-suo-deep); }
+.cd-stop:hover { background: var(--k-primary-container) !important; }

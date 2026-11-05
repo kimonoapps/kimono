@@ -138,3 +138,20 @@
 .app-offer-card small { font-size: 14px; color: var(--k-on-surface-variant); }
 .app-offer-card .k-seal { pointer-events: none; }
 @media (max-width: 720px) { .app-offer-card { grid-template-columns: auto minmax(0, 1fr); } .app-offer-card .k-seal { display: none; } }
+
+/* ── inside an app, the app's colour takes the pink roles ──
+   Home, You and Admin are the house and wear suō. Inside Code, Drive, Tools or
+   VPN, every tint, link, selection and seal comes from that app's own colour,
+   so nothing on the page is pink beside teal. Danger stays suō-deep. */
+.app-frame.in-app {
+  --k-suo: color-mix(in srgb, var(--k-app-accent) 88%, var(--k-ink));
+  --k-primary-container: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest));
+  --k-on-primary-container: color-mix(in srgb, var(--k-app-accent) 62%, var(--k-ink));
+  --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 11%, var(--k-container-lowest));
+  --k-on-secondary-container: color-mix(in srgb, var(--k-app-accent) 55%, var(--k-ink));
+  --primary: var(--k-suo);
+  --primary-container: var(--k-primary-container);
+  --on-primary-container: var(--k-on-primary-container);
+  --secondary-container: var(--k-secondary-container);
+  --on-secondary-container: var(--k-on-secondary-container);
+}

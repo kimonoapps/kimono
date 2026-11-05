@@ -8,7 +8,7 @@
 export type Attachment = { name: string; path: string; size: number; type: string };
 
 export type CodeEvent =
-  | { kind: "ask"; by: string; text: string; attachments: Attachment[] }
+  | { kind: "ask"; by: string; text: string; attachments: Attachment[]; /** Sent while the agent was working: it reads it as soon as the current step ends. */ queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string }
