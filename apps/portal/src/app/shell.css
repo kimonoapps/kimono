@@ -36,6 +36,8 @@
 .rail-rooms::before { content: ""; position: absolute; top: 0; bottom: 6px; left: 50%; width: 1.5px; margin-left: -34px; border-radius: var(--k-r-s); background: color-mix(in srgb, var(--k-app-accent) 40%, transparent); }
 /* An app's rooms are rail stops of their own, as in the mockup: an ink icon in a pill, the name beneath. */
 .rail-room { font-size: 12px; }
+/* A room sits beside its app's line (14px in from the rail's edge): its name stays clear of it. */
+.rail-room .rail-label { max-width: 58px; }
 .rail-room .rail-pill { height: 30px; width: 52px; }
 .rail-room .rail-pill .line-icon { width: 21px; height: 21px; color: var(--k-on-surface-variant); }
 .rail-room[aria-current] .rail-pill { background: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest)); }
