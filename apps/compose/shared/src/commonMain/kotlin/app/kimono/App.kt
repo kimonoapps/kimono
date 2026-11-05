@@ -158,7 +158,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -197,6 +197,12 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
                     WorkspaceScreen(code, model.drive, platform, id, open = { nav.navigate(it) }) { nav.popBackStack() }
+                }
+            }
+            composable("code/{id}/app") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                    WorkspaceScreen(code, model.drive, platform, id, showApp = true, open = { nav.navigate(it) }) { nav.popBackStack() }
                 }
             }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }

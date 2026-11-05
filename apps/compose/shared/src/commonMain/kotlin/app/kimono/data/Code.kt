@@ -32,10 +32,21 @@ data class CodeRepo(val owner: String, val name: String)
 data class CodePullRequest(val url: String, val number: Int)
 
 @Serializable
-data class CodePreview(val url: String, val port: Int) {
+data class CodePreview(val url: String, val port: Int, val kind: String? = null, val stopped: Boolean = false) {
     /** The address without its scheme, as the cards show it. */
     val host get() = url.substringAfter("://")
+    /** The link's own name, the first part of its host: recipes in recipes.example.dev. */
+    val name get() = host.substringBefore(".")
+    /** What follows the name: .example.dev, and a port if it has one. */
+    val suffix get() = host.removePrefix(name).substringBefore("/")
 }
+
+/** How a published app is doing, as the node says: running, starting, crashed, stopped, asleep or down. */
+@Serializable
+data class AppHealth(val state: String = "down", val restarts: Int = 0, val exit: Int? = null, val since: Long? = null)
+
+@Serializable
+data class AppStatus(val health: AppHealth = AppHealth(), val log: String = "")
 
 @Serializable
 data class CodeTurn(val id: String, val state: String, val startedAt: Long, val endedAt: Long? = null)
@@ -49,6 +60,7 @@ data class CodeWorkspace(
     val id: String, val title: String, val repo: CodeRepo, val base: String, val branch: String,
     val pullRequest: CodePullRequest? = null,
     val preview: CodePreview? = null,
+    val previewName: String? = null,
     val drive: CodeDrive? = null,
     val createdAt: Long = 0, val updatedAt: Long = 0, val lastSeq: Long = 0,
     val turn: CodeTurn? = null,
@@ -168,6 +180,19 @@ class Code(private val session: Session) {
 
     /** Takes the app's link down. */
     suspend fun stopPreview(id: String) { session.call("${ws(id)}/preview", HttpMethod.Delete) }
+
+    /** How the app is doing and the end of its log. Asking doesn't wake a sleeping sandbox. */
+    suspend fun previewStatus(id: String): AppStatus = json.decodeFromString(session.call("${ws(id)}/preview"))
+
+    /** Names the app's link: [name] becomes https://name.<domain>; the old link stops answering. */
+    suspend fun renamePreview(id: String, name: String): CodePreview =
+        json.decodeFromString(session.call("${ws(id)}/preview", HttpMethod.Patch, jsonBody(buildJsonObject { put("name", name) })))
+
+    /** Starts the app again, or for the first time since it was stopped; the link stays. */
+    suspend fun restartPreview(id: String) { session.call("${ws(id)}/preview/restart", HttpMethod.Post) }
+
+    /** Stops the app but keeps its link, to start again later. */
+    suspend fun pausePreview(id: String) { session.call("${ws(id)}/preview/stop", HttpMethod.Post) }
 
     /** A screenshot the agent took. */
     suspend fun shot(id: String, name: String): ByteArray = bytes("${ws(id)}/shots/${name.encodeURLParameter()}")

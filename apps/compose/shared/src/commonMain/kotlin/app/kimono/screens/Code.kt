@@ -108,6 +108,8 @@ import app.kimono.data.CodeEntry
 import app.kimono.data.CodeEvent
 import app.kimono.data.CodeRepository
 import app.kimono.data.CodeWorkspace
+import app.kimono.data.AppStatus
+import androidx.compose.foundation.verticalScroll
 import app.kimono.data.KimonoProblem
 import app.kimono.data.PickedFile
 import app.kimono.data.Platform
@@ -173,16 +175,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
     var list by remember { mutableStateOf(code.knownWorkspaces()) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    /* The projects you've made: each one is an app to change by giving it a task. */
-    var apps by remember { mutableStateOf<List<CodeRepository>>(emptyList()) }
-    var changing by remember { mutableStateOf<CodeRepository?>(null) }
-    /* The apps arrive after the tasks; keep the top in view when they do. */
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    LaunchedEffect(apps.isNotEmpty()) { if (apps.isNotEmpty() && listState.firstVisibleItemIndex < 3) listState.scrollToItem(0) }
-    suspend fun load() {
-        try { list = code.workspaces(); problem = null } catch (p: KimonoProblem) { problem = p.message }
-        runCatching { code.repositories() }.getOrNull()?.let { apps = it }
-    }
+    suspend fun load() { try { list = code.workspaces(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     val anyRunning = list?.any { it.running } == true
     WhileShown(Unit) { while (true) { load(); delay(if (list?.any { it.running } == true) 3000 else 10_000) } }
     val time = ticking(anyRunning)
@@ -194,20 +187,20 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
             val shown = list
             when {
                 shown == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-                shown.isNullOrEmpty() && apps.isEmpty() -> Quiet(problem ?: "Give the agent a task on one of your repositories.")
-                else -> LazyColumn(state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                shown.isNullOrEmpty() -> Quiet(problem ?: "Give the agent a task on one of your repositories.")
+                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                     if (problem != null) item { Problem(problem) }
+                    /* The apps your tasks published: each one to rename, stop or start. */
+                    val apps = shown.filter { it.preview != null }
                     if (apps.isNotEmpty()) {
                         item(key = "apps-label") { Text("Your apps", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) }
                         item(key = "apps") {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 18.dp)) {
-                                items(apps, key = { "${it.owner}/${it.name}" }) { r -> ProjectCard(r) { changing = r } }
+                                items(apps, key = { it.id }) { w -> AppCard(w) { open("code/${w.id}/app") } }
                             }
                         }
-                        if (!shown.isNullOrEmpty()) item(key = "tasks-label") { Text("Tasks", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) }
-                        else item(key = "no-tasks") { Text("Tap an app to change it.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
+                        item(key = "tasks-label") { Text("Tasks", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) }
                     }
-                    val shown = shown ?: emptyList()
                     itemsIndexed(shown, key = { _, w -> w.id }) { index, w ->
                         SegmentedListItem(
                             onClick = { open("code/${w.id}") },
@@ -225,24 +218,19 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
         setStarting(false)
         open("code/${made.id}")
     }
-    changing?.let { r ->
-        NewTaskSheet(code, project = r, onDismiss = { changing = null }) { made ->
-            changing = null
-            open("code/${made.id}")
-        }
-    }
 }
 
-/** One of your projects, as an app you can change: its blot, its name, and Change. */
+/** One published app: its link's name, whether it's up, and where its settings are. */
 @Composable
-private fun ProjectCard(r: CodeRepository, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.width(148.dp)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            InkBlot("project-${r.owner}/${r.name}", size = 44.dp) { Icon(kimonoIcon("code"), null, modifier = Modifier.size(20.dp), tint = Kata.plum) }
-            Text(r.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(kimonoIcon("edit"), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                Text("Change", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+private fun AppCard(w: CodeWorkspace, onClick: () -> Unit) {
+    val preview = w.preview ?: return
+    Surface(onClick = onClick, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.width(168.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            InkBlot("app-${w.id}", size = 44.dp) { Icon(kimonoIcon("out"), null, modifier = Modifier.size(20.dp), tint = Kata.plum) }
+            Text(preview.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                InkDot(if (preview.stopped) Color(0xFFB9A8A2) else Kata.moss, size = 9.dp, seed = w.id)
+                Text(if (preview.stopped) "Stopped" else "Live", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -258,6 +246,7 @@ private fun StatusWord(w: CodeWorkspace, time: Long) {
             Text("working ${elapsedText(time - turn.startedAt)}", fontFamily = mono, fontSize = 12.sp, color = Kata.mossDeep, fontWeight = FontWeight.SemiBold)
         }
         turn?.state == "failed" -> Text("stopped", fontFamily = mono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        w.preview?.stopped == true -> Text("stopped", fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         w.preview != null -> Text("live", fontFamily = mono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         w.pullRequest != null -> Text("#${w.pullRequest.number}", fontFamily = mono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         else -> Text(whenText(w.updatedAt, time), fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -280,12 +269,11 @@ private fun Quiet(text: String) {
 /* ── a new task ── */
 
 @Composable
-/* With [project], it changes that app: the project is set and you only say what should change. */
-private fun NewTaskSheet(code: Code, project: CodeRepository? = null, onDismiss: () -> Unit, started: (CodeWorkspace) -> Unit) {
+private fun NewTaskSheet(code: Code, onDismiss: () -> Unit, started: (CodeWorkspace) -> Unit) {
     val scope = rememberCoroutineScope()
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var repos by remember { mutableStateOf<List<CodeRepository>?>(null) }
-    var repo by remember { mutableStateOf(project) }
+    var repo by remember { mutableStateOf<CodeRepository?>(null) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }
     var base by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("") }
@@ -297,7 +285,6 @@ private fun NewTaskSheet(code: Code, project: CodeRepository? = null, onDismiss:
     var loadFailed by remember { mutableStateOf(false) }
     val taskFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
-        if (project != null) { repos = listOf(project); runCatching { taskFocus.requestFocus() }; return@LaunchedEffect }
         try { repos = code.repositories().also { repo = it.firstOrNull() } } catch (p: KimonoProblem) { problem = p.message; repos = emptyList(); loadFailed = true }
     }
     fun makeProject() {
@@ -325,9 +312,8 @@ private fun NewTaskSheet(code: Code, project: CodeRepository? = null, onDismiss:
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(if (project != null) "Change ${project.name}" else "New task", style = MaterialTheme.typography.headlineSmall)
-            if (project != null) Picker("Starting from", base.ifEmpty { "—" }, branches) { base = it }
-            else if (naming != null || noProjects) {
+            Text("New task", style = MaterialTheme.typography.headlineSmall)
+            if (naming != null || noProjects) {
                 OutlinedTextField(
                     naming ?: "", { naming = it }, label = { Text("New project") }, placeholder = { Text("Family recipes") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { makeProject() }),
@@ -341,7 +327,7 @@ private fun NewTaskSheet(code: Code, project: CodeRepository? = null, onDismiss:
                 Picker("Project", repo?.name ?: if (repos == null) "Loading…" else "None", (repos ?: emptyList()).map { "${it.owner}/${it.name}" }, action = "New project" to { naming = ""; problem = null }) { chosen -> repo = repos?.firstOrNull { "${it.owner}/${it.name}" == chosen } }
                 Picker("Starting from", base.ifEmpty { "—" }, branches) { base = it }
             }
-            OutlinedTextField(prompt, { prompt = it }, label = { Text(if (project != null) "What should change?" else "Task") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth().focusRequester(taskFocus))
+            OutlinedTextField(prompt, { prompt = it }, label = { Text("Task") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth().focusRequester(taskFocus))
             Problem(problem)
             Seal("Start", busy = busy, enabled = repo != null && prompt.isNotBlank(), modifier = Modifier.fillMaxWidth(), onClick = {
                 val r = repo ?: return@Seal
@@ -387,12 +373,13 @@ private fun Picker(label: String, value: String, options: List<String>, action: 
 /* ── a workspace ── */
 
 @Composable
-fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, open: (String) -> Unit, back: () -> Unit) {
+/* [showApp] opens it on its App tab: the published app's link, state and log. */
+fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, showApp: Boolean = false, open: (String) -> Unit, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     var workspace by remember { mutableStateOf(code.knownWorkspaces()?.firstOrNull { it.id == id }) }
     val events = remember { mutableStateListOf<StoredCodeEvent>() }
     var problem by remember { mutableStateOf<String?>(null) }
-    var tab by remember { mutableStateOf(0) }
+    var tab by remember { mutableStateOf(if (showApp) 3 else 0) }
     var publishing by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
 
@@ -449,7 +436,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, op
                 })
             }
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
-                val tabs = listOf("Chat", "Files", "Changes")
+                val tabs = listOf("Chat", "Files", "Changes") + listOfNotNull("App".takeIf { w?.preview != null })
                 tabs.forEachIndexed { index, label ->
                     SegmentedButton(selected = tab == index, onClick = { tab = index }, shape = SegmentedButtonDefaults.itemShape(index, tabs.size)) { Text(label) }
                 }
@@ -460,7 +447,8 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, op
                 else when (tab) {
                     0 -> Chat(code, drive, platform, w, events)
                     1 -> Files(code, w)
-                    else -> Changes(code, w, events.lastOrNull()?.seq ?: 0)
+                    2 -> Changes(code, w, events.lastOrNull()?.seq ?: 0)
+                    else -> if (w.preview != null) AppPanel(code, platform, w) { workspace = it } else Changes(code, w, events.lastOrNull()?.seq ?: 0)
                 }
             }
         }
@@ -623,6 +611,111 @@ private fun ShotViewer(code: Code, w: CodeWorkspace, shots: List<CodeEvent.Image
             HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth().navigationBarsPadding()) { page ->
                 ShotImage(code, w, shots[page], Modifier.fillMaxSize().background(Kata.ink), ContentScale.Fit)
             }
+        }
+    }
+}
+
+/* ── the app a task published ── */
+
+private val healthWords = mapOf("running" to "Running", "starting" to "Starting", "crashed" to "Crashing", "stopped" to "Stopped", "asleep" to "Asleep", "down" to "Not answering")
+
+/**
+ * The published app, as the website's App tab has it: its link and the name in
+ * it, whether it's running, the end of what it printed, and starting, stopping
+ * or taking it down. Looked at every few seconds while it's shown.
+ */
+@Composable
+private fun AppPanel(code: Code, platform: Platform, w: CodeWorkspace, changed: (CodeWorkspace) -> Unit) {
+    val preview = w.preview ?: return
+    val scope = rememberCoroutineScope()
+    var status by remember(w.id) { mutableStateOf<AppStatus?>(null) }
+    var acting by remember { mutableStateOf<String?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var name by remember(preview.url) { mutableStateOf(preview.name) }
+    var renaming by remember { mutableStateOf(false) }
+    var renameProblem by remember { mutableStateOf<String?>(null) }
+    var takingDown by remember { mutableStateOf(false) }
+    suspend fun look() { runCatching { code.previewStatus(w.id) }.onSuccess { status = it } }
+    WhileShown(w.id to preview.stopped) { while (true) { look(); delay(4000) } }
+    fun act(what: String) {
+        acting = what; problem = null
+        scope.launch {
+            try { if (what == "restart") code.restartPreview(w.id) else code.pausePreview(w.id); runCatching { code.events(w.id, w.lastSeq) }.onSuccess { changed(it.first) } } catch (p: KimonoProblem) { problem = p.message }
+            look(); acting = null
+        }
+    }
+    val clean = name.trim().lowercase()
+    val health = status?.health
+    val state = if (preview.stopped) "stopped" else health?.state
+    val word = when (acting) { "restart" -> if (preview.stopped) "Starting" else "Restarting"; "stop" -> "Stopping"; else -> state?.let { healthWords[it] } ?: "Looking" }
+    val times = { n: Int -> if (n == 1) "1 time" else "$n times" }
+    val detail = when {
+        state == "crashed" && health != null -> "Exited${health.exit?.let { " with code $it" } ?: ""}, restarted ${times(health.restarts)}"
+        state == "asleep" -> "Wakes when someone opens the link"
+        state == "stopped" -> "The link stays. Start it again any time."
+        state == "running" && (health?.restarts ?: 0) > 0 -> "Restarted ${times(health!!.restarts)}"
+        else -> null
+    }
+    val dot = when { acting != null || state == "starting" -> Kata.suoDeep; state == "running" -> Kata.moss; state == "crashed" || state == "down" -> MaterialTheme.colorScheme.error; else -> Color(0xFFB9A8A2) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 10.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        /* Its link: open it, share it, or take it down for good. */
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(if (preview.stopped) "Your app is stopped" else "Your app is ready", style = MaterialTheme.typography.titleMedium)
+                preview.kind?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Text(preview.host, fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Seal("Open app", compact = true, enabled = !preview.stopped, onClick = { platform.openUrl(preview.url) })
+                    Seal("Share", compact = true, tone = SealTone.Quiet, onClick = { platform.share(preview.url) })
+                    Seal(if (takingDown) "Taking down\u2026" else "Take down", compact = true, tone = SealTone.Quiet, busy = takingDown, onClick = {
+                        takingDown = true
+                        scope.launch { try { code.stopPreview(w.id); runCatching { code.events(w.id, w.lastSeq) }.onSuccess { changed(it.first) } } catch (p: KimonoProblem) { problem = p.message }; takingDown = false }
+                    })
+                }
+            }
+        }
+        /* The name in its link: [recipes].example.dev. */
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Link name", style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    name, { name = it.lowercase().replace(Regex("[^a-z0-9-]"), "-").take(50) }, singleLine = true,
+                    suffix = { Text(preview.suffix, fontFamily = mono, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = mono),
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                    modifier = Modifier.weight(1f),
+                )
+                Seal("Rename", compact = true, busy = renaming, enabled = clean.isNotEmpty() && clean != preview.name, onClick = {
+                    renaming = true; renameProblem = null
+                    scope.launch {
+                        try { code.renamePreview(w.id, clean); runCatching { code.events(w.id, w.lastSeq) }.onSuccess { changed(it.first) } } catch (p: KimonoProblem) { renameProblem = p.message }
+                        renaming = false
+                    }
+                })
+            }
+            if (renameProblem != null) Problem(renameProblem)
+            else Text("The old link stops working. Anyone with the link can open the app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        /* Whether it's running, and turning it off and on. */
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InkDot(dot, size = 12.dp, seed = "app-${w.id}")
+            Column(Modifier.weight(1f)) {
+                Text(word, style = MaterialTheme.typography.titleSmall)
+                detail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            if (preview.stopped) Seal("Start", compact = true, enabled = acting == null, onClick = { act("restart") })
+            else {
+                Seal("Restart", compact = true, tone = SealTone.Quiet, enabled = acting == null, onClick = { act("restart") })
+                Seal("Stop", compact = true, tone = SealTone.Quiet, enabled = acting == null, onClick = { act("stop") })
+            }
+        }
+        Problem(problem)
+        /* What it printed last, newest at the bottom. */
+        val logScroll = rememberScrollState()
+        val log = status?.log?.trimEnd()
+        LaunchedEffect(log) { logScroll.scrollTo(logScroll.maxValue) }
+        Box(Modifier.fillMaxWidth().heightIn(min = 120.dp, max = 320.dp).background(Kata.ink, RoundedCornerShape(12.dp)).verticalScroll(logScroll).padding(12.dp)) {
+            Text(if (status == null) " " else log?.ifEmpty { "Nothing printed yet." } ?: "", fontFamily = mono, fontSize = 11.sp, lineHeight = 15.sp, color = Kata.lift)
         }
     }
 }

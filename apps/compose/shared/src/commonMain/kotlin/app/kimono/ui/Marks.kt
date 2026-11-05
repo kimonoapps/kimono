@@ -72,6 +72,8 @@ private val iconPaths = mapOf(
     "select" to "M4 6.5h9M4 12h9M4 17.5h6 M15 16l2.5 2.5L21 14",
     "out" to "M14 5h5v5 M19 5l-8 8 M17 14v5H5V7h5",
     "clip" to "M20 11.5L12.2 19.3a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4",
+    "play" to "M8 5.5v13l10.5-6.5z",
+    "restart" to "M4.5 12a7.5 7.5 0 1 0 2.2-5.3 M4.5 4.5v4h4",
     "stop" to "M6.5 6.5h11v11h-11z",
     "branch" to "M7 3.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M7 16.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M17 5.5a2 2 0 1 0 0 4 2 2 0 1 0 0-4z M7 7.5v9 M17 9.5c0 4-10 2.5-10 7",
     "chevron" to "M9 6l6 6-6 6",
