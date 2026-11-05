@@ -1,5 +1,5 @@
 import { portalOrigin } from "@/lib/account";
-import { mobileAppSteps } from "@/lib/mobile-app";
+import { androidPackageOf, androidRelease, mobileAppSteps, openLink } from "@/lib/mobile-app";
 import { bloomSvg } from "@kimono/ui/bloom-svg";
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { appRegistry, launcherApps } from "@/lib/apps";
@@ -53,14 +53,19 @@ export async function GET() {
     /* Kimono's own apps live inside Kimono; the phone opens the ones it has natively. */
     own: !app.external,
     web: new URL(app.href, origin).toString(),
-    ios: app.mobileApp?.iosUrl ?? null,
-    android: app.mobileApp?.androidUrl ?? null,
+    ios: app.mobileApp?.iosUrl ? new URL(app.mobileApp.iosUrl, origin).toString() : null,
+    android: app.mobileApp?.androidUrl ? new URL(app.mobileApp.androidUrl, origin).toString() : null,
     /* An app with a phone app of its own: how to get it and set it up, as the website's tutorial shows it. */
     phoneApp: app.mobileApp ? {
       name: app.mobileApp.name,
-      guide: app.mobileApp.guideUrl,
-      androidPackage: app.mobileApp.androidUrl ? new URL(app.mobileApp.androidUrl).searchParams.get("id") : null,
-      steps: mobileAppSteps(app.mobileApp).map((step) => ({ title: step.title, description: step.description, kind: step.kind })),
+      guide: app.mobileApp.guideUrl ?? "",
+      androidPackage: androidPackageOf(app.mobileApp),
+      /* Kimono hands out this one itself: the version to be on, and where to get it. */
+      release: androidRelease(app.mobileApp),
+      steps: mobileAppSteps(app.mobileApp).map((step) => ({
+        title: step.title, description: step.description, kind: step.kind,
+        href: step.kind === "open" ? openLink(step, new URL(app.href, origin).toString()) : null, label: step.label ?? null,
+      })),
     } : null,
   }));
   /* The phone apps have Drive themselves; this is its bloom for them, while it is switched on. */

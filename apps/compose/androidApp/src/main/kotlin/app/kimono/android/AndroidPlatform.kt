@@ -111,6 +111,11 @@ class AndroidPlatform(private val context: Context) : Platform {
         runCatching { (context.applicationContext as KimonoApplication).thumbnails.make(node, mime, pixels)?.absolutePath }.getOrNull()
     }
 
+    override fun installedVersion(packageId: String): String? =
+        runCatching { context.packageManager.getPackageInfo(packageId, 0).versionName }.getOrNull()
+
+    override suspend fun installApp(url: String, packageId: String, progress: (Float) -> Unit): String? = SelfUpdate.install(context, url, null, progress, packageId)
+
     override fun isInstalled(packageId: String): Boolean? =
         runCatching { context.packageManager.getPackageInfo(packageId, 0); true }.getOrDefault(false)
 

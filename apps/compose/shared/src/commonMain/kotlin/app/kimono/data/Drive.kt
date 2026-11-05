@@ -140,10 +140,31 @@ data class LauncherApp(
 
 /** An app's own phone app (Immich for Photos): where to get it, and the website's steps for setting it up. */
 @Serializable
-data class PhoneApp(val name: String, val guide: String = "", val androidPackage: String? = null, val steps: List<PhoneAppStep> = emptyList())
+data class PhoneApp(val name: String, val guide: String = "", val androidPackage: String? = null, val release: PhoneAppRelease? = null, val steps: List<PhoneAppStep> = emptyList())
+
+/** A phone app Kimono hands out itself (an APK, not a store): the version to be on, and where it is. */
+@Serializable
+data class PhoneAppRelease(val url: String, val version: String)
 
 @Serializable
-data class PhoneAppStep(val title: String, val description: String, val kind: String)
+data class PhoneAppStep(val title: String, val description: String, val kind: String, val href: String? = null, val label: String? = null)
+
+/**
+ * Whether version [offered] is newer than [installed] ("3.1.0-kimono.2" over
+ * "3.1.0-kimono.1"): compared part by part, numbers as numbers.
+ */
+fun newerVersion(offered: String, installed: String): Boolean {
+    val a = Regex("[0-9]+|[A-Za-z]+").findAll(offered).map { it.value }.toList()
+    val b = Regex("[0-9]+|[A-Za-z]+").findAll(installed).map { it.value }.toList()
+    for (i in 0 until maxOf(a.size, b.size)) {
+        val x = a.getOrNull(i) ?: return false
+        val y = b.getOrNull(i) ?: return true
+        val nx = x.toLongOrNull(); val ny = y.toLongOrNull()
+        val order = if (nx != null && ny != null) nx.compareTo(ny) else x.compareTo(y)
+        if (order != 0) return order > 0
+    }
+    return false
+}
 
 private val json = Json { ignoreUnknownKeys = true }
 

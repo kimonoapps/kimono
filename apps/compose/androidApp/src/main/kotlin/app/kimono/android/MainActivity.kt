@@ -39,6 +39,10 @@ class MainActivity : ComponentActivity() {
             }
             filePicker.launch(arrayOf("*/*"))
         }
+        /* Updates and uploads are told as notifications; Android 13 asks once. */
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            notifications.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         handle(intent)
         val session = (application as KimonoApplication).session
         setContent { KimonoApp(session, platform, shared.value) { shared.value = null } }
@@ -64,6 +68,8 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         intent ?: return
+        /* From an update notification: the screen to open. */
+        intent.getStringExtra(AppUpdates.ROUTE)?.let { app.kimono.Opening.route.value = it; intent.removeExtra(AppUpdates.ROUTE) }
         val data = intent.data
         if (intent.action == Intent.ACTION_VIEW && data?.scheme == "kimono" && data.host == "auth") {
             platform.signInReturned(data)

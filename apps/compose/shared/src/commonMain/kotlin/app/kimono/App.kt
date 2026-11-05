@@ -132,6 +132,8 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
     val pins = remember(session) { app.kimono.screens.Pins(platform, session.answers.server) }
     LaunchedEffect(pins) { pins.load() }
+    /* Opened from a notification: go where it said. */
+    LaunchedEffect(nav) { Opening.route.collect { to -> if (to != null) { nav.navigate(to); Opening.route.value = null } } }
     val admin = me?.role == "owner" || me?.role == "admin"
     /* The bar's own actions: Code's New task, and the Apps grid that the bloom in the middle brings up. */
     var codeStarting by remember { mutableStateOf(false) }
@@ -162,7 +164,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = { codeStarting = true }, openApps = { appsOpen = true })
         },
     ) { padding ->
-        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, pins, installed = { app.kimono.screens.installedHere(it, platform) }, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
+        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, pins, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
         /*
          * Material's own motion between screens. Tabs fade through: the old one
          * fades quickly, the new one settles in from just smaller. A screen
@@ -209,7 +211,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
-            composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins, installed = { app.kimono.screens.installedHere(it, platform) }) { openApp(it) } }
+            composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins, here = { app.kimono.screens.phoneAppHere(it, platform) }) { openApp(it) } }
             composable("app/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 model.drive.launcher.collectAsState().value?.firstOrNull { it.id == id }?.let { found -> app.kimono.screens.PhoneAppScreen(found, platform) { nav.popBackStack() } }

@@ -23,6 +23,8 @@ class KimonoApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        /* Twice a day, a look for updates to Kimono and the apps it hands out. */
+        AppUpdates.schedule(this)
         /* Kimono shows in the Files app only while signed in. */
         CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
             session.state.distinctUntilChangedBy { it is SessionState.SignedIn }.collect { KimonoDocuments.rootsChanged(this@KimonoApplication) }

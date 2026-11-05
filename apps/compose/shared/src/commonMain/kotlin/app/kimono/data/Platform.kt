@@ -40,8 +40,12 @@ interface Platform {
      * problem to show, or null when it's under way.
      */
     suspend fun installUpdate(url: String, sha256: String?, progress: (Float) -> Unit): String? { openUrl(url); return null }
+    /** Installs or updates another of Kimono's apps ([packageId]) from a package Kimono hands out; a problem to show, or null. */
+    suspend fun installApp(url: String, packageId: String, progress: (Float) -> Unit): String? { openUrl(url); return null }
     /** Whether the app with [packageId] is on this phone; null where the phone won't say (an iPhone). */
     fun isInstalled(packageId: String): Boolean? = null
+    /** The version name of the installed app with [packageId] ("3.1.0-kimono.1"); null if it isn't installed or the phone won't say. */
+    fun installedVersion(packageId: String): String? = null
     /** Opens the installed app with [packageId]; false if it couldn't. */
     fun openInstalled(packageId: String): Boolean = false
     /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */

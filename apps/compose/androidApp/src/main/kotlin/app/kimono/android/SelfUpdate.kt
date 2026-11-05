@@ -28,10 +28,11 @@ internal object SelfUpdate {
         return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
     }
 
-    suspend fun install(context: Context, url: String, sha256: String?, progress: (Float) -> Unit): String? = withContext(Dispatchers.IO) {
+    /** Kimono itself, or (with [packageId]) another of Kimono's apps it hands out. */
+    suspend fun install(context: Context, url: String, sha256: String?, progress: (Float) -> Unit, packageId: String? = null): String? = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
             context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            return@withContext "Allow Kimono to install updates, then tap Update again."
+            return@withContext "Allow Kimono to install apps, then tap again."
         }
         val file = File(context.cacheDir, "update.apk")
         val digest = MessageDigest.getInstance("SHA-256")
@@ -68,9 +69,9 @@ internal object SelfUpdate {
         try {
             val installer = context.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
-                setAppPackageName(context.packageName)
-                /* Kimono installed itself last time: Android can skip asking again. */
-                if (Build.VERSION.SDK_INT >= 31) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+                setAppPackageName(packageId ?: context.packageName)
+                /* Kimono installed itself last time: Android can skip asking again. Another app always asks. */
+                if (Build.VERSION.SDK_INT >= 31 && packageId == null) setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
             }
             val id = installer.createSession(params)
             installer.openSession(id).use { session ->

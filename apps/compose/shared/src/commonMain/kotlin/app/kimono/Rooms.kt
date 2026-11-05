@@ -39,6 +39,9 @@ import app.kimono.ui.kimonoIcon
  * up every app, to go to another. Inside an app the bar wears its colour.
  */
 
+/** A screen to open from outside the app (an update notification, say), taken up once signed in. */
+object Opening { val route = kotlinx.coroutines.flow.MutableStateFlow<String?>(null) }
+
 /** One place in the bar: a room to go to, or (for Code's New task) something to do. */
 class Room(val route: String, val label: String, val icon: String, val action: Boolean = false)
 

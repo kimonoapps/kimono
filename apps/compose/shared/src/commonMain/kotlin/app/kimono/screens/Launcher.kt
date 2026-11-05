@@ -86,7 +86,7 @@ class Pins(private val platform: Platform, private val server: String?) {
  * screens here, the rest their phone app or their website.
  */
 @Composable
-fun LauncherScreen(drive: Drive, pins: Pins, installed: (LauncherApp) -> Boolean? = { null }, open: (LauncherApp) -> Unit) {
+fun LauncherScreen(drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) }, open: (LauncherApp) -> Unit) {
     val apps by drive.launcher.collectAsState()
     val pinned by pins.pinned.collectAsState()
     var problem by remember { mutableStateOf<String?>(null) }
@@ -114,11 +114,11 @@ fun LauncherScreen(drive: Drive, pins: Pins, installed: (LauncherApp) -> Boolean
                     ) {
                         if (first.isNotEmpty()) {
                             item(span = { GridItemSpan(2) }) { Label("Pinned") }
-                            items(first, key = { "pin-" + it.id }) { app -> AppTile(app, pinned = true, installed = installed(app), onPin = { toggle(app) }) { open(app) } }
+                            items(first, key = { "pin-" + it.id }) { app -> AppTile(app, pinned = true, here = here(app), onPin = { toggle(app) }) { open(app) } }
                         }
                         if (rest.isNotEmpty()) {
                             item(span = { GridItemSpan(2) }) { Label(if (first.isEmpty()) "Your apps" else "Everything else") }
-                            items(rest, key = { it.id }) { app -> AppTile(app, pinned = false, installed = installed(app), onPin = { toggle(app) }) { open(app) } }
+                            items(rest, key = { it.id }) { app -> AppTile(app, pinned = false, here = here(app), onPin = { toggle(app) }) { open(app) } }
                         }
                     }
                 }
@@ -134,7 +134,7 @@ private fun Label(text: String) {
 
 /** One app: its bloom, its name, one line; marked when it opens outside Kimono. Hold for Pin. */
 @Composable
-private fun AppTile(app: LauncherApp, pinned: Boolean, installed: Boolean?, onPin: () -> Unit, onClick: () -> Unit) {
+private fun AppTile(app: LauncherApp, pinned: Boolean, here: PhoneAppHere, onPin: () -> Unit, onClick: () -> Unit) {
     HoldMenu(listOf(MenuChoice(if (pinned) "Unpin" else "Pin", onClick = onPin)), onClick = onClick, modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.extraLarge)) {
         Column(
             Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(16.dp),
@@ -149,7 +149,8 @@ private fun AppTile(app: LauncherApp, pinned: Boolean, installed: Boolean?, onPi
                 Spacer(Modifier.weight(1f))
                 /* An app with a phone app of its own says whether it's here; any other outside app, that it opens outside. */
                 when {
-                    installed != null -> Text(if (installed) "Installed" else "Not installed", style = MaterialTheme.typography.labelSmall, color = if (installed) Kata.mossDeep else MaterialTheme.colorScheme.onSurfaceVariant)
+                    here.update != null -> Text("Update", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    here.installed != null -> Text(if (here.installed) "Installed" else "Not installed", style = MaterialTheme.typography.labelSmall, color = if (here.installed) Kata.mossDeep else MaterialTheme.colorScheme.onSurfaceVariant)
                     !app.own && app.phoneApp == null -> Icon(kimonoIcon("out"), "Opens outside Kimono", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 }
             }
@@ -164,8 +165,8 @@ private fun AppTile(app: LauncherApp, pinned: Boolean, installed: Boolean?, onPi
 
 /** Every app, risen from the bloom in the middle of the bar: pick one to go there. */
 @Composable
-fun AppsSheet(drive: Drive, pins: Pins, installed: (LauncherApp) -> Boolean?, onDismiss: () -> Unit, open: (LauncherApp) -> Unit) {
+fun AppsSheet(drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, open: (LauncherApp) -> Unit) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
-        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, pins, installed, open) }
+        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, pins, here, open) }
     }
 }

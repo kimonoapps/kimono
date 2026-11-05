@@ -15,8 +15,34 @@ export type MobileApp = {
   guideUrl?: string;
   iosUrl?: string;
   androidUrl?: string;
+  /**
+   * The Android app's package (app.kimono.photos), so the Kimono phone app can
+   * tell whether it's installed, and which version. Taken from a Play Store
+   * link when there is one.
+   */
+  androidPackage?: string;
   steps: (MobileAppStep | string)[];
 };
+
+/** The Android package an app's phone app installs as, if known. */
+export function androidPackageOf(app: MobileApp): string | null {
+  if (app.androidPackage) return app.androidPackage;
+  try { return app.androidUrl ? new URL(app.androidUrl).searchParams.get("id") : null; } catch { return null; }
+}
+
+/**
+ * When Kimono hands out the Android app itself (a package link, not a store):
+ * the package and its version, from the release's file name
+ * (kimono-photos-3.1.0-kimono.1.apk). The Kimono phone app offers it as an
+ * update to anyone on an older version.
+ */
+export function androidRelease(app: MobileApp): { url: string; version: string } | null {
+  const url = app.androidUrl;
+  if (!url || !/\.apk(\?|$)/.test(url)) return null;
+  const file = decodeURIComponent(url.split("?")[0].split("/").pop() ?? "");
+  const version = /-(\d+\.\d+(?:\.\d+)?(?:[-+.][\w.]+)?)\.apk$/.exec(file)?.[1];
+  return version ? { url, version } : null;
+}
 
 export type MobileOS = "ios" | "android" | null;
 
@@ -58,6 +84,7 @@ export function validateMobileApp(value: unknown): asserts value is MobileApp {
     try { return new URL(value).protocol === "https:"; } catch { return false; }
   };
   if (!app || !text(app.name) || (app.guideUrl !== undefined && !https(app.guideUrl)) || !Array.isArray(app.steps) || !app.steps.length) throw new Error("spec.mobileApp requires a name and tutorial steps, and its guide URL must be HTTPS");
+  if (app.androidPackage !== undefined && !/^[a-z][\w]*(\.[a-z][\w]*)+$/i.test(app.androidPackage)) throw new Error("spec.mobileApp.androidPackage must be an Android package name such as app.kimono.photos");
   for (const link of [app.iosUrl, app.androidUrl]) {
     if (link !== undefined && !https(link) && !(typeof link === "string" && isPortalPath(link))) throw new Error("mobile app download links must be HTTPS URLs or Portal paths");
   }
