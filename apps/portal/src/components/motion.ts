@@ -20,12 +20,12 @@ const PIECES = [
  */
 export function afterPaint(animations: Animation[]) {
   animations.forEach((animation) => animation.pause());
-  requestAnimationFrame(() => requestAnimationFrame(() => animations.forEach((animation) => animation.play())));
+  requestAnimationFrame(() => animations.forEach((animation) => animation.play()));
 }
 
 const still = () => typeof window === "undefined" || matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export function rise(root: Element | null, { step = 32, limit = 14, distance = 18 } = {}) {
+export function rise(root: Element | null, { step = 20, limit = 12, distance = 14 } = {}) {
   if (!root || still()) return;
   const bottom = window.innerHeight;
   const pieces = [...root.querySelectorAll<HTMLElement>(PIECES)].filter((element) => {
@@ -41,7 +41,7 @@ export function rise(root: Element | null, { step = 32, limit = 14, distance = 1
   chosen.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top || a.getBoundingClientRect().left - b.getBoundingClientRect().left);
   afterPaint(chosen.map((element, index) => element.animate(
     [{ opacity: 0, translate: `0 ${distance}px` }, { opacity: 1, translate: "0 0" }],
-    { duration: 460, delay: index * step, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" },
+    { duration: 340, delay: index * step, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" },
   )));
 }
 

@@ -56,7 +56,7 @@ function Arrivals({ children }: { children: ReactNode }) {
     const stop = whenPageStands((page) => {
       page.getAnimations().forEach((animation) => animation.cancel());
       if (still()) return;
-      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 420, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
+      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
       settling = riseWhenReady(page);
     });
     return () => { stop(); settling(); };
@@ -76,7 +76,7 @@ function Arrivals({ children }: { children: ReactNode }) {
 
   const navigate = useCallback((href: string) => new Promise<void>((resolve) => {
     const leaving = document.querySelector<HTMLElement>(".main-content");
-    if (leaving && !still()) leaving.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-32px)" }], { duration: 120, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
+    if (leaving && !still()) leaving.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-32px)" }], { duration: 90, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
     setMoving(true);
     pushed.current = true;
     waiting.current = resolve;
@@ -109,7 +109,7 @@ export function useCrossTo() {
   const router = useRouter();
 
   return useCallback((kind: CrossingKind, href: string, external = false, destinationAccent?: string) => {
-    if (!external) router.prefetch(href);
+    if (!external) router.prefetch(href, whole);
     const source = getComputedStyle(document.querySelector(".app-frame") || document.documentElement);
     const portal = getComputedStyle(document.documentElement);
     const destination = destinationAccent ? accentRamp(destinationAccent) : null;
@@ -140,13 +140,21 @@ export function useCrossTo() {
  *   shoji       passing through a door you operated
  *   kakejiku    page to page inside one surface
  */
+/*
+ * Warm the whole page, not just its loading shell. Every page here is dynamic,
+ * and the default prefetch stops at the nearest loading boundary, which for
+ * these pages is the root's skeleton: nothing worth having. A full prefetch
+ * on hover means the press usually finds the page already fetched.
+ */
+const whole = { kind: "full" } as unknown as Parameters<ReturnType<typeof useRouter>["prefetch"]>[1];
+
 /**
  * Warm a destination before the press. Kimono navigates with plain anchors and
  * doors rather than next/link, so nothing is fetched ahead unless we say so.
  */
 export function useWarm() {
   const router = useRouter();
-  return (href: string, external = false) => () => { if (!external) router.prefetch(href); };
+  return (href: string, external = false) => () => { if (!external) router.prefetch(href, whole); };
 }
 
 export function Crossing({ href, kind, external = false, destinationAccent, children, className, onClick, ...rest }: {
