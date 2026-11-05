@@ -7,7 +7,7 @@
     "shortName": "Photos",
     "description": "The household photo and video library",
     "category": "Media",
-    "version": "3.1.0",
+    "version": "3.3.6",
     "icon": "icon.svg",
     "colors": [
       "#8d7fb5",
@@ -49,7 +49,7 @@
     "services": [
       {
         "id": "server",
-        "image": "ghcr.io/kimonoapps/kimono-photos-server:3.1.0-kimono.1",
+        "image": "ghcr.io/kimonoapps/kimono-photos-server:3.3.6-kimono.1",
         "dependsOn": [
           "database",
           "redis",
@@ -75,7 +75,7 @@
       },
       {
         "id": "machine-learning",
-        "image": "ghcr.io/immich-app/immich-machine-learning:v3.1.0",
+        "image": "ghcr.io/immich-app/immich-machine-learning:v3.3.6",
         "internal": true,
         "environment": {
           "MACHINE_LEARNING_WORKERS": "1"
