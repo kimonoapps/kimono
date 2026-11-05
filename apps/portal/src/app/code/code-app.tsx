@@ -105,12 +105,12 @@ function Ring({ value, label }: { value: number | null; label: string }) {
   const r = 8, c = 2 * Math.PI * r, v = value == null ? 0 : Math.max(0, Math.min(1, value));
   return <svg className={cx("cd-ring", v >= .9 && "is-high", value == null && "is-unknown")} viewBox="0 0 22 22" role="img" aria-label={label}>
     <circle cx="11" cy="11" r={r} className="track" />
-    <circle cx="11" cy="11" r={r} className="arc" strokeDasharray={`${c * v} ${c}`} transform="rotate(-90 11 11)" />
+    {v > 0 ? <circle cx="11" cy="11" r={r} className="arc" strokeDasharray={`${c * v} ${c}`} transform="rotate(-90 11 11)" /> : null}
   </svg>;
 }
 
 const fallbackWindow = 200_000;
-const kTokens = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+const kTokens = (n: number) => n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 const resetWords = (at: number | null) => at ? new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
 

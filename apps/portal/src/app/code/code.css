@@ -716,3 +716,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-meter-note { margin: -4px 0 2px 42px; font-size: 12px; line-height: 1.45; color: var(--k-on-surface-variant); }
 .cd-compacted { color: var(--k-on-surface-variant); }
 .cd-usage { display: none; }
+/* rings stay readable on hover: a firmer track, a lighter hover */
+.cd-ring .track { stroke: var(--k-outline-variant); }
+.cd-ring.is-unknown .track { stroke: color-mix(in srgb, var(--k-on-surface-variant) 55%, transparent); stroke-dasharray: 2 2.6; }
+.cd-meters-btn:hover, .cd-meters-btn[aria-expanded="true"] { background: var(--k-container); }
