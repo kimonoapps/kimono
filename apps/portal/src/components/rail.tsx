@@ -1,10 +1,9 @@
 "use client";
 
 import { Crossing } from "@/components/crossing";
-import { useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { AppBloom, cx, type GlyphName } from "@kimono/ui";
-import { GridIcon } from "@/components/icons";
 import { usePins } from "@/components/pins";
 import { AppTiles } from "@/components/app-card";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
@@ -53,7 +52,8 @@ function useHereRoom(rooms: RailRoom[] | undefined) {
 }
 
 /*
- * The rail (ADR 0006): Home, Apps, then the apps you pinned in your order;
+ * The rail (ADR 0006): Home, then the apps you pinned in your order (every
+ * app comes up with ⌘K / Ctrl+K);
  * the app you're in opens its own rooms beneath it, in place. You and Admin
  * sit at the foot. On a phone it becomes the bottom bar.
  */
@@ -70,6 +70,15 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   const [pins, setPins] = usePins(defaultPins);
   const [sheet, setSheet] = useState(false);
   const hereRoom = useHereRoom(rooms);
+  /* ⌘K / Ctrl+K brings up every app, from anywhere; again, or Escape, puts it away. */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "k") { event.preventDefault(); setSheet((open) => !open); }
+      else if (event.key === "Escape") setSheet(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropBefore, setDropBefore] = useState<string | null | "end">(null);
   const byId = new Map(apps.map((app) => [app.id, app]));
@@ -93,9 +102,6 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
     <Crossing kind="kakejiku" className="rail-dest" href="/" aria-current={active === "home" ? "page" : undefined}>
       <span className="rail-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5M10 20v-5h4v5"/></svg></span>Home
     </Crossing>
-    <button className="rail-dest" type="button" aria-haspopup="dialog" onClick={() => setSheet(true)}>
-      <span className="rail-pill"><GridIcon /></span>Apps
-    </button>
     {shown.length ? <span className="rail-divider" aria-hidden="true" /> : null}
     <div className="rail-pins" onDragOver={(event) => { if (dragging || event.dataTransfer.types.includes("text/kimono-app")) { event.preventDefault(); } }} onDrop={drop}>
       {shown.map((id) => {

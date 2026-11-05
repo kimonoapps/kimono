@@ -197,10 +197,11 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
   const running = workspaces?.some((w) => w.turn?.state === "running") ?? false;
   const now = useNow(running);
 
-  /* ⌘K or / jumps to a new task from anywhere on the page. */
+  /* / jumps to a new task from anywhere on the page, unless you're typing. (⌘K is every app's.) */
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); goTo({ new: "1" }); }
+      const typing = event.target instanceof HTMLElement && (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName));
+      if (event.key === "/" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); goTo({ new: "1" }); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -209,7 +210,7 @@ export function CodeApp({ blocked }: { blocked: string | null }) {
   return <div className="cd-page">
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     <aside className="cd-side" aria-label="Tasks">
-      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="Meta+K" aria-label="New task" title="New task (⌘K)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
+      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide tasks" title="Hide tasks"><Icon name="panel" /></button><span>Tasks</span><button type="button" className="cd-roundbutton" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-label="New task" title="New task (/)" aria-current={!current ? "page" : undefined}><Icon name="plus" /></button></div>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       {projectsOf(workspaces ?? []).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}

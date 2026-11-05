@@ -247,9 +247,9 @@
 /* toast: the snackbar on inverse surface */
 /* inside an app: Apps, then the app's own tabs, then your pins under a hairline */
 /* the open app sits right under Apps; its own tabs hang beneath it, indented by a thread */
-/* rail dividers: a short brush stroke between groups (Home and Apps · the open app · pins · you) */
+/* rail dividers: a short brush stroke between groups (Home · the open app · pins · you) */
 /* the open app's own tabs hang beneath it, in place, on a thin thread */
-/* pins: apps you pin sit in the rail, under Apps, on every page */
+/* pins: apps you pin sit in the rail, under Home, on every page */
 /* ── 墨 Ink and wash (specimen 13): Kimono's art and marks are brushed; controls stay clean ── */
 /* 墨 circles: status dots, radios and the password rule rings are brushed, not drawn with a compass */
 /* Code: tool calls open to show what happened */
