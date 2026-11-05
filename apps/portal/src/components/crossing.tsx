@@ -74,13 +74,23 @@ function Arrivals({ children }: { children: ReactNode }) {
     };
   }, [arrived]);
 
+  /* The page you leave dissolves like ink lifting off paper: it fades, softens
+     and drifts back. A fetched page would otherwise replace it within a frame
+     and cut the dissolve short, so the hand-over waits for the dissolve to
+     finish. The next page is already being fetched meanwhile (useCrossTo
+     prefetches on press), so the wait costs nothing on a slow page. */
   const navigate = useCallback((href: string) => new Promise<void>((resolve) => {
     const leaving = document.querySelector<HTMLElement>(".main-content");
-    if (leaving && !still()) leaving.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-32px)" }], { duration: 90, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
     setMoving(true);
     pushed.current = true;
     waiting.current = resolve;
-    startTransition(() => { router.push(href); });
+    const handOver = () => startTransition(() => { router.push(href); });
+    if (!leaving || still()) { handOver(); return; }
+    const dissolve = leaving.animate([
+      { opacity: 1, transform: "none", filter: "blur(0)" },
+      { opacity: 0, transform: "translateX(-24px) scale(.985)", filter: "blur(6px)" },
+    ], { duration: 240, easing: "cubic-bezier(.4, 0, .9, .7)", fill: "forwards" });
+    dissolve.finished.then(handOver, handOver);
   }), [router]);
 
   return <Arrival.Provider value={navigate}>
