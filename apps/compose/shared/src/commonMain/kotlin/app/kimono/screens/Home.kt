@@ -53,7 +53,12 @@ import app.kimono.data.Vpn
 import app.kimono.data.VpnView
 import app.kimono.theme.Kata
 import app.kimono.ui.InkBlot
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.RoundedCornerShape
 import app.kimono.ui.FileTypeMark
+import app.kimono.ui.fileMarkUri
 import app.kimono.ui.InkBloom
 import app.kimono.ui.InkCrest
 import app.kimono.ui.InkDot
@@ -146,7 +151,14 @@ fun HomeScreen(
                     newFiles.forEach { file ->
                         val space = spaces.firstOrNull { it.id == file.spaceId }
                         Line(
-                            lead = { if (space != null) InkCrest(space.crest, space.color, 32.dp) else InkBlot(file.id, size = 32.dp) { FileTypeMark(file.name, Modifier.size(17.dp)) { Icon(kimonoIcon("file"), null, tint = Kata.plum, modifier = Modifier.size(16.dp)) } } },
+                            /* The file's own mark when it has one (the space is named underneath), else the space's crest. */
+                            lead = {
+                                if (fileMarkUri(file.name) != null) Box(Modifier.size(32.dp).background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(10.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                                    FileTypeMark(file.name, Modifier.size(19.dp)) { Icon(kimonoIcon("file"), null, tint = Kata.plum, modifier = Modifier.size(16.dp)) }
+                                }
+                                else if (space != null) InkCrest(space.crest, space.color, 32.dp)
+                                else InkBlot(file.id, size = 32.dp) { Icon(kimonoIcon("file"), null, tint = Kata.plum, modifier = Modifier.size(16.dp)) }
+                            },
                             title = file.name,
                             detail = listOfNotNull(space?.name, whenAgo(file.updatedAt.toLong())).joinToString(" · "),
                         ) { file.parentId?.let { go("folder/$it") } }

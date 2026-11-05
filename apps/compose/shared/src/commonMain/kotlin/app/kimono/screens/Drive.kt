@@ -83,6 +83,8 @@ import app.kimono.data.readableSize
 import app.kimono.ui.KimonoRefresh
 import app.kimono.ui.InkProgress
 import app.kimono.ui.CodeView
+import app.kimono.ui.MarkdownView
+import app.kimono.ui.isMarkdown
 import app.kimono.ui.FileTypeMark
 import app.kimono.ui.Urushi
 import app.kimono.ui.codeLanguage
@@ -391,7 +393,7 @@ private fun TextReader(node: DriveNode, text: String, onOpenElsewhere: () -> Uni
     run {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Urushi,
+            containerColor = if (isMarkdown(node.name)) MaterialTheme.colorScheme.surfaceContainerLowest else Urushi,
             topBar = {
                 TopAppBar(
                     title = {
@@ -405,7 +407,10 @@ private fun TextReader(node: DriveNode, text: String, onOpenElsewhere: () -> Uni
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                 )
             },
-        ) { padding -> CodeView(text, node.name, Modifier.padding(padding).fillMaxSize()) }
+        ) { padding ->
+            if (isMarkdown(node.name)) MarkdownView(text, Modifier.padding(padding).fillMaxSize())
+            else CodeView(text, node.name, Modifier.padding(padding).fillMaxSize())
+        }
     }
 }
 

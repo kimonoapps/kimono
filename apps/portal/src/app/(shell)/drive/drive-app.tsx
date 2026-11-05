@@ -3,7 +3,7 @@
 import { SkeletonRows } from "@/components/skeleton";
 import { rise, riseWhenReady, slide } from "@/components/motion";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppBloom, Choice, cx, InkPortraitFrame, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
@@ -13,6 +13,9 @@ import {
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { CodePeek, codeLanguage, TypeMark } from "./peek";
+
+/* Markdown's reader loads only when a Markdown file is opened. */
+const MarkdownPeek = lazy(() => import("./markdown"));
 
 /*
  * 帳 Kimono Drive on the web, layout A (Ledger). One page: the sidebar of
@@ -746,7 +749,7 @@ function Drawer({ node, url, token, guest, canEdit, people, onSave, onShare, onU
   const text = isText(node);
   const shown = kind === "image" || kind === "video" || text;
   return <div className={cx("dv-drawer", shown && "wide")}><div className="dv-drawer-grid">
-    <div className={cx("dv-preview", text && "text", text && codeLanguage(extension(node.name)) && "code", !shown && kind !== "audio" && "plain")}>
+    <div className={cx("dv-preview", text && "text", text && codeLanguage(extension(node.name)) && "code", text && ["MD", "MARK", "MDX"].includes(extension(node.name)) && "md", !shown && kind !== "audio" && "plain")}>
       {kind === "image" ? <Picture node={node} url={url} token={token} />
         : kind === "video" ? <video src={url} controls preload="metadata" playsInline />
         : kind === "audio" ? <audio src={url} controls />
@@ -815,6 +818,7 @@ function TextPeek({ url, name }: { url: string; name: string }) {
   }, [url]);
   if (text === null) return <span className="ext">{name}</span>;
   if (!text.trim()) return <span className="ext">{name}</span>;
+  if (["MD", "MARK", "MDX"].includes(name)) return <Suspense fallback={<span className="ext">{name}</span>}><MarkdownPeek text={text} /></Suspense>;
   if (codeLanguage(name)) return <CodePeek text={text} ext={name} />;
   return <pre tabIndex={0}>{text}</pre>;
 }

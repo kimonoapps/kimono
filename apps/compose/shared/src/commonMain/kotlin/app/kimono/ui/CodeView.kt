@@ -105,15 +105,21 @@ private fun highlight(text: String, name: String): AnnotatedString {
 /** A text or code file's words, numbered, on urushi; selectable, scrolling both ways. */
 @Composable
 fun CodeView(text: String, name: String, modifier: Modifier = Modifier) {
+    Box(modifier.background(Urushi).verticalScroll(rememberScrollState())) {
+        CodeLines(text, name, Modifier.padding(vertical = 14.dp))
+    }
+}
+
+/** Numbered, coloured lines that scroll sideways; [name] gives the language ("x.py"). */
+@Composable
+fun CodeLines(text: String, name: String, modifier: Modifier = Modifier) {
     val marked = remember(text, name) { highlight(text, name) }
     val lines = remember(text) { (1..text.count { it == '\n' } + 1).joinToString("\n") }
     val style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 20.sp)
-    Box(modifier.background(Urushi).verticalScroll(rememberScrollState())) {
-        Row(Modifier.padding(vertical = 14.dp)) {
-            Text(lines, style = style.copy(color = Color(0xFF8A7D78), textAlign = TextAlign.End), modifier = Modifier.padding(start = 12.dp, end = 12.dp))
-            SelectionContainer(Modifier.horizontalScroll(rememberScrollState())) {
-                Text(marked, style = style.copy(color = Color(0xFFECE4DC)), softWrap = false, modifier = Modifier.padding(end = 20.dp))
-            }
+    Row(modifier) {
+        Text(lines, style = style.copy(color = Color(0xFF8A7D78), textAlign = TextAlign.End), modifier = Modifier.padding(start = 12.dp, end = 12.dp))
+        SelectionContainer(Modifier.horizontalScroll(rememberScrollState())) {
+            Text(marked, style = style.copy(color = Color(0xFFECE4DC)), softWrap = false, modifier = Modifier.padding(end = 20.dp))
         }
     }
 }

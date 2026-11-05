@@ -711,3 +711,27 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-code .t-str { color: #b9cf94; }
 .dv-code .t-num { color: #e6b07a; }
 .dv-code .t-key { color: #e79bb0; }
+
+/* Markdown, read: paper, Kimono's faces, code blocks on urushi. */
+.dv-preview.md { background: var(--k-container-lowest); }
+.dv-md { position: absolute; inset: 0; overflow: auto; padding: 18px 22px 24px; font: 400 14px/1.6 var(--k-sans); color: var(--k-ink); }
+.dv-md:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: -2px; }
+.dv-md > :first-child { margin-top: 0; }
+.dv-md h1, .dv-md h2, .dv-md h3, .dv-md h4 { margin: 1.1em 0 .4em; font-family: var(--k-display); font-weight: 600; line-height: 1.25; color: var(--k-plum); }
+.dv-md h1 { font-size: 24px; } .dv-md h2 { font-size: 20px; } .dv-md h3 { font-size: 17px; } .dv-md h4 { font-size: 15px; }
+.dv-md p, .dv-md ul, .dv-md ol, .dv-md blockquote, .dv-md table, .dv-md-pre { margin: 0 0 .8em; }
+.dv-md ul, .dv-md ol { padding-left: 1.4em; }
+.dv-md li { margin: .15em 0; }
+.dv-md li input[type="checkbox"] { margin: 0 6px 0 -1.2em; accent-color: var(--k-app-accent); }
+.dv-md a { color: var(--k-app-accent); text-decoration: underline; text-underline-offset: 2px; }
+.dv-md code { padding: 1px 5px; border-radius: var(--k-r-s); background: var(--k-container-high); font: 500 12.5px/1.5 var(--k-mono); }
+.dv-md blockquote { padding: 2px 0 2px 14px; border-left: 3px solid var(--k-container-highest); color: var(--k-on-surface-variant); }
+.dv-md hr { margin: 1.2em 0; border: 0; border-top: 1px solid var(--k-container-highest); }
+.dv-md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
+.dv-md th, .dv-md td { padding: 6px 10px; border: 1px solid var(--k-container-highest); text-align: left; }
+.dv-md th { background: var(--k-container); font-weight: 600; }
+.dv-md-pic { font-style: italic; color: var(--k-on-surface-variant); }
+.dv-md-pre { border-radius: var(--k-r-m); background: #2a2326; overflow: hidden; }
+.dv-md-pre > code { display: block; padding: 12px 14px; overflow-x: auto; background: none; color: #ece4dc; white-space: pre; }
+.dv-md-code .dv-code { position: relative; inset: auto; padding: 12px 0; }
+.dv-md-code .dv-code-lang { top: 6px; right: 8px; }
