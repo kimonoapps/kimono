@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useSearchParams } from "next/navigation";
 import { Choice, cx, InkCard, Seal } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
@@ -26,11 +25,32 @@ const repoName = (w: Pick<Workspace, "repo">) => `${w.repo.owner}/${w.repo.name}
 /** Kimono Git and attachments open in their own tab; nothing here leaves the page it is on. */
 const openOutside = (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); };
 
+/*
+ * Code's screens (which task, which view, a new task) live after the # in the
+ * address. Back and forward then move between screens inside this page; a
+ * query string would make Next.js treat each one as a new page to fetch, and
+ * going back would wait on that.
+ */
+const codeNav = "kimono-code-nav";
 function goTo(to: Record<string, string | null>, replace = false) {
   const next = new URLSearchParams();
   for (const [key, value] of Object.entries(to)) if (value) next.set(key, value);
-  const url = `/code${next.size ? `?${next}` : ""}`;
-  if (replace) window.history.replaceState(null, "", url); else window.history.pushState(null, "", url);
+  const url = `/code${next.size ? `#${next}` : ""}`;
+  /* Keep Next.js's own history state, so its back button handling sees this as the same page. */
+  if (replace) window.history.replaceState(window.history.state, "", url); else window.history.pushState(window.history.state, "", url);
+  window.dispatchEvent(new Event(codeNav));
+}
+
+function hashNow() { return window.location.hash.slice(1); }
+function subscribeNav(listener: () => void) {
+  window.addEventListener("hashchange", listener);
+  window.addEventListener("popstate", listener);
+  window.addEventListener(codeNav, listener);
+  return () => { window.removeEventListener("hashchange", listener); window.removeEventListener("popstate", listener); window.removeEventListener(codeNav, listener); };
+}
+function useCodeParams() {
+  const hash = useSyncExternalStore(subscribeNav, hashNow, () => "");
+  return useMemo(() => new URLSearchParams(hash), [hash]);
 }
 
 /** A clock that ticks once a second while something is running. */
@@ -155,7 +175,11 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
 }
 
 export function CodeApp({ blocked }: { blocked: string | null }) {
-  const params = useSearchParams();
+  const params = useCodeParams();
+  /* Old links carried the screen in the query string: move it after the #, once. */
+  useEffect(() => {
+    if (window.location.search) goTo(Object.fromEntries(new URLSearchParams(window.location.search)), true);
+  }, []);
   const current = params.get("w");
   /* On a narrow screen Code opens on the task list; the new-task form is its own screen, as on the phone. */
   const composing = params.get("new") === "1";
