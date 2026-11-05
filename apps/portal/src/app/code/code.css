@@ -650,3 +650,9 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-usage { font-size: 12.5px; color: var(--k-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cd-usage.is-full { color: var(--k-suo-deep); font-weight: 700; }
 @media (max-width: 720px) { .cd-usage { display: none; } }
+/* the message box is the same paper as the conversation, held by a faint rule */
+.cd-composer { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.cd-composer:focus-within { box-shadow: inset 0 0 0 1.5px var(--k-app-accent); }
+/* the conversation sits on the page itself, not a white card; only the task list is a panel */
+.cd-sheet { background: var(--k-surface); box-shadow: none; }
+.cd-composer { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
