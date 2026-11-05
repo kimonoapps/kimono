@@ -166,7 +166,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = { codeStarting = true }, openApps = { appsOpen = true })
         },
     ) { padding ->
-        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, order, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
+        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, order, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }, home = { appsOpen = false; goTab("home") }) { appsOpen = false; openApp(it) }
         /*
          * Material's own motion between screens. Tabs fade through: the old one
          * fades quickly, the new one settles in from just smaller. A screen

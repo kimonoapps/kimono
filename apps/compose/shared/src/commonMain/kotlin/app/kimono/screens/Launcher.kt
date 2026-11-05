@@ -60,6 +60,7 @@ import app.kimono.ui.InkBloom
 import app.kimono.ui.InkLoader
 import app.kimono.ui.KimonoRefresh
 import app.kimono.ui.KimonoTopBar
+import app.kimono.ui.KimonoBranch
 import app.kimono.ui.Problem
 import app.kimono.ui.kimonoIcon
 import coil3.compose.AsyncImage
@@ -101,13 +102,15 @@ class AppOrder(private val platform: Platform, private val server: String?) {
 
 /**
  * 庫 Every app you can open, as the website's rail lists them: its bloom,
- * its name and what it's for. Hold one and drag it to move it.
+ * its name and what it's for. Hold one and drag it to move it. With [home],
+ * Kimono itself comes first, always, to go back to Home from any app.
  */
 @Composable
 fun LauncherScreen(
     drive: Drive, order: AppOrder, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) },
     /* What sits above the apps, scrolling with them. */
     header: @Composable () -> Unit = { KimonoTopBar("Apps") },
+    home: (() -> Unit)? = null,
     open: (LauncherApp) -> Unit,
 ) {
     val apps by drive.launcher.collectAsState()
@@ -184,7 +187,9 @@ fun LauncherScreen(
             when {
                 shown == null && problem == null -> item(span = { GridItemSpan(2) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                 shown == null -> item(span = { GridItemSpan(2) }) { Problem(problem) }
-                else -> items(shown, key = { "app:" + it.id }) { app ->
+                else -> {
+                if (home != null) item(key = "home") { HomeTile(onClick = home) }
+                items(shown, key = { "app:" + it.id }) { app ->
                     val tileShape = MaterialTheme.shapes.extraLarge
                     val lifted = held == app.id
                     AppTile(
@@ -193,7 +198,24 @@ fun LauncherScreen(
                         else Modifier.animateItem(),
                     ) { open(app) }
                 }
+                }
             }
+        }
+    }
+}
+
+/** Kimono itself, first among the apps: its branch, and the way back Home. */
+@Composable
+private fun HomeTile(onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(MaterialTheme.shapes.extraLarge).background(MaterialTheme.colorScheme.surfaceContainer).clickable(onClick = onClick).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(Modifier.size(58.dp), contentAlignment = Alignment.Center) { KimonoBranch(50.dp) }
+        Column {
+            Text("Kimono", style = MaterialTheme.typography.titleLarge, maxLines = 1)
+            Spacer(Modifier.height(2.dp))
+            Text("Home", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }
@@ -229,8 +251,8 @@ private fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = M
 
 /** Every app, risen from the flower in the middle of the bar: pick one to go there. */
 @Composable
-fun AppsSheet(drive: Drive, order: AppOrder, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, open: (LauncherApp) -> Unit) {
+fun AppsSheet(drive: Drive, order: AppOrder, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, home: () -> Unit, open: (LauncherApp) -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
-        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, order, here, open = open) }
+        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, order, here, home = home, open = open) }
     }
 }
