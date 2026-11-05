@@ -173,7 +173,16 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
     var list by remember { mutableStateOf(code.knownWorkspaces()) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    suspend fun load() { try { list = code.workspaces(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
+    /* The projects you've made: each one is an app to change by giving it a task. */
+    var apps by remember { mutableStateOf<List<CodeRepository>>(emptyList()) }
+    var changing by remember { mutableStateOf<CodeRepository?>(null) }
+    /* The apps arrive after the tasks; keep the top in view when they do. */
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(apps.isNotEmpty()) { if (apps.isNotEmpty() && listState.firstVisibleItemIndex < 3) listState.scrollToItem(0) }
+    suspend fun load() {
+        try { list = code.workspaces(); problem = null } catch (p: KimonoProblem) { problem = p.message }
+        runCatching { code.repositories() }.getOrNull()?.let { apps = it }
+    }
     val anyRunning = list?.any { it.running } == true
     WhileShown(Unit) { while (true) { load(); delay(if (list?.any { it.running } == true) 3000 else 10_000) } }
     val time = ticking(anyRunning)
@@ -185,9 +194,20 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
             val shown = list
             when {
                 shown == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-                shown.isNullOrEmpty() -> Quiet(problem ?: "Give the agent a task on one of your repositories.")
-                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                shown.isNullOrEmpty() && apps.isEmpty() -> Quiet(problem ?: "Give the agent a task on one of your repositories.")
+                else -> LazyColumn(state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                     if (problem != null) item { Problem(problem) }
+                    if (apps.isNotEmpty()) {
+                        item(key = "apps-label") { Text("Your apps", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) }
+                        item(key = "apps") {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 18.dp)) {
+                                items(apps, key = { "${it.owner}/${it.name}" }) { r -> ProjectCard(r) { changing = r } }
+                            }
+                        }
+                        if (!shown.isNullOrEmpty()) item(key = "tasks-label") { Text("Tasks", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) }
+                        else item(key = "no-tasks") { Text("Tap an app to change it.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp)) }
+                    }
+                    val shown = shown ?: emptyList()
                     itemsIndexed(shown, key = { _, w -> w.id }) { index, w ->
                         SegmentedListItem(
                             onClick = { open("code/${w.id}") },
@@ -204,6 +224,27 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
     if (starting) NewTaskSheet(code, onDismiss = { setStarting(false) }) { made ->
         setStarting(false)
         open("code/${made.id}")
+    }
+    changing?.let { r ->
+        NewTaskSheet(code, project = r, onDismiss = { changing = null }) { made ->
+            changing = null
+            open("code/${made.id}")
+        }
+    }
+}
+
+/** One of your projects, as an app you can change: its blot, its name, and Change. */
+@Composable
+private fun ProjectCard(r: CodeRepository, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.width(148.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            InkBlot("project-${r.owner}/${r.name}", size = 44.dp) { Icon(kimonoIcon("code"), null, modifier = Modifier.size(20.dp), tint = Kata.plum) }
+            Text(r.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(kimonoIcon("edit"), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                Text("Change", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+        }
     }
 }
 
@@ -239,11 +280,12 @@ private fun Quiet(text: String) {
 /* ── a new task ── */
 
 @Composable
-private fun NewTaskSheet(code: Code, onDismiss: () -> Unit, started: (CodeWorkspace) -> Unit) {
+/* With [project], it changes that app: the project is set and you only say what should change. */
+private fun NewTaskSheet(code: Code, project: CodeRepository? = null, onDismiss: () -> Unit, started: (CodeWorkspace) -> Unit) {
     val scope = rememberCoroutineScope()
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var repos by remember { mutableStateOf<List<CodeRepository>?>(null) }
-    var repo by remember { mutableStateOf<CodeRepository?>(null) }
+    var repo by remember { mutableStateOf(project) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }
     var base by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("") }
@@ -255,6 +297,7 @@ private fun NewTaskSheet(code: Code, onDismiss: () -> Unit, started: (CodeWorksp
     var loadFailed by remember { mutableStateOf(false) }
     val taskFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
+        if (project != null) { repos = listOf(project); runCatching { taskFocus.requestFocus() }; return@LaunchedEffect }
         try { repos = code.repositories().also { repo = it.firstOrNull() } } catch (p: KimonoProblem) { problem = p.message; repos = emptyList(); loadFailed = true }
     }
     fun makeProject() {
@@ -282,8 +325,9 @@ private fun NewTaskSheet(code: Code, onDismiss: () -> Unit, started: (CodeWorksp
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("New task", style = MaterialTheme.typography.headlineSmall)
-            if (naming != null || noProjects) {
+            Text(if (project != null) "Change ${project.name}" else "New task", style = MaterialTheme.typography.headlineSmall)
+            if (project != null) Picker("Starting from", base.ifEmpty { "—" }, branches) { base = it }
+            else if (naming != null || noProjects) {
                 OutlinedTextField(
                     naming ?: "", { naming = it }, label = { Text("New project") }, placeholder = { Text("Family recipes") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { makeProject() }),
@@ -297,7 +341,7 @@ private fun NewTaskSheet(code: Code, onDismiss: () -> Unit, started: (CodeWorksp
                 Picker("Project", repo?.name ?: if (repos == null) "Loading…" else "None", (repos ?: emptyList()).map { "${it.owner}/${it.name}" }, action = "New project" to { naming = ""; problem = null }) { chosen -> repo = repos?.firstOrNull { "${it.owner}/${it.name}" == chosen } }
                 Picker("Starting from", base.ifEmpty { "—" }, branches) { base = it }
             }
-            OutlinedTextField(prompt, { prompt = it }, label = { Text("Task") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth().focusRequester(taskFocus))
+            OutlinedTextField(prompt, { prompt = it }, label = { Text(if (project != null) "What should change?" else "Task") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth().focusRequester(taskFocus))
             Problem(problem)
             Seal("Start", busy = busy, enabled = repo != null && prompt.isNotBlank(), modifier = Modifier.fillMaxWidth(), onClick = {
                 val r = repo ?: return@Seal
