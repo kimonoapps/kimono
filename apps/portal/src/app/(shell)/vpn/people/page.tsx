@@ -2,7 +2,6 @@ import { CrossingSeal } from "@/components/crossing";
 import { Choice, Seal } from "@kimono/ui";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { vpnRoomList } from "@/components/app-rooms";
 import { Panel, PanelEmpty, PanelForm, Panels, SectionHeading, Workspace } from "@/components/panel";
 import { listAccounts, readMeshMembers, setMeshGuests, type MeshMember } from "@/lib/directory";
 import { publishDesiredState } from "@/lib/desired-state";
@@ -58,7 +57,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         .map((other) => ({ username: other.username, name: accounts.find((a) => a.username === other.username)?.name || other.displayName }))
     : [];
 
-  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity} rooms={vpnRoomList("people")}>
+  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity}>
     <div className="page admin-page">
 
       {query.error ? <p className="admin-notice error">{query.error}</p> : null}

@@ -3,7 +3,6 @@ import { InkBlot, Seal } from "@kimono/ui";
 import { LineIcon } from "@/components/line-icon";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
-import { vpnRoomList } from "@/components/app-rooms";
 import { describeLastSeen, devicesFor, disconnectDevice, readMesh, removeDevice } from "@/lib/mesh";
 import { meshContext } from "./shared";
 import { redirect } from "next/navigation";
@@ -51,7 +50,7 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
   const isPhone = (name: string) => /phone|pixel|ipad|android|galaxy|mobile/i.test(name);
 
   /* design/mockups/m3-everywhere.html, VPN: one list, a moss dot for online, sign out on hover, Connect as the floating button. */
-  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity} rooms={vpnRoomList("devices")}>
+  return <AppShell user={session.user} brandColors={settings.brand.colors} app={identity}>
     <div className="page vpn-page">
       <div className="topbar"><span><h1>Your devices</h1><p className="sub">These reach each other directly, wherever they are.{devices.length ? ` ${connected} of ${devices.length} connected.` : ""}</p></span></div>
       {query.error ? <p role="alert" className="app-notice is-error">{query.error}</p> : null}
