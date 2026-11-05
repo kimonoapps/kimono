@@ -4,7 +4,7 @@ import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type Se
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
-import { rise } from "@/components/motion";
+import { riseWhenReady } from "@/components/motion";
 
 /**
  * Going somewhere, as a promise that keeps until the page is standing.
@@ -50,14 +50,7 @@ function Arrivals({ children }: { children: ReactNode }) {
   const first = useRef(true);
   useLayoutEffect(() => {
     if (first.current) { first.current = false; return; }
-    const page = document.querySelector(".main-content");
-    if (!page) return;
-    // A slow page, or a list still fetching, stands a skeleton first; the rise belongs to what replaces it.
-    if (!page.querySelector(".skel-wait")) { rise(page); return; }
-    const watch = new MutationObserver(() => { if (!page.querySelector(".skel-wait")) { watch.disconnect(); rise(page); } });
-    watch.observe(page, { childList: true, subtree: true });
-    const giveUp = setTimeout(() => watch.disconnect(), 15000);
-    return () => { watch.disconnect(); clearTimeout(giveUp); };
+    return riseWhenReady(document.querySelector(".main-content"));
   }, [pathname]);
 
   useEffect(() => {

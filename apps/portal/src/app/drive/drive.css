@@ -644,3 +644,12 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-newspace svg.i { width: 18px; height: 18px; }
 .dv-tools { flex-wrap: nowrap; }
 .dv-toolbar .dv-tools { flex: 1 1 auto; }
+
+/* Motion: a file's drawer unfolds under its row; the chosen space settles. */
+.dv-drawer { animation: dv-unfold .34s cubic-bezier(.05, .7, .1, 1); transform-origin: top; }
+@keyframes dv-unfold { from { opacity: 0; transform: scaleY(.9) translateY(-8px); } }
+.dv-space { transition: background-color .25s cubic-bezier(.05, .7, .1, 1); }
+.dv-space[aria-current] { animation: mo-pop .3s cubic-bezier(.05, .7, .1, 1); }
+.dv-r { transition: background-color .2s, transform .25s cubic-bezier(.34, 1.4, .64, 1); }
+.dv-r:active { transform: scale(.992); }
+@media (prefers-reduced-motion: reduce) { .dv-drawer, .dv-space[aria-current] { animation: none; } }

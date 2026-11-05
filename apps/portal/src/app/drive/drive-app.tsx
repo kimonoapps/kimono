@@ -1,8 +1,9 @@
 "use client";
 
 import { SkeletonRows } from "@/components/skeleton";
+import { rise, riseWhenReady, slide } from "@/components/motion";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { Choice, cx, Seal } from "@kimono/ui";
 import {
@@ -105,6 +106,17 @@ export function DriveApp({ me }: { me: Me }) {
   const view = params.get("view");
   const spaceParam = params.get("space");
   const folderParam = params.get("folder");
+  // Drive moves by its own address, not by page: each new space or view slides its sheet in.
+  const where = `${view ?? ""}|${spaceParam ?? ""}`;
+  const body = useRef<HTMLDivElement>(null);
+  const firstView = useRef(true);
+  useLayoutEffect(() => {
+    if (firstView.current) { firstView.current = false; return; }
+    const sheet = body.current?.querySelector(":scope > section") ?? null;
+    slide(sheet);
+    // A space's rows rise as its folder loads; the other views rise here.
+    return view ? riseWhenReady(sheet) : undefined;
+  }, [where, view]);
 
   const [spaces, setSpaces] = useState<Space[] | null>(null);
   const [people, setPeople] = useState<Record<string, Person>>({});
@@ -130,7 +142,7 @@ export function DriveApp({ me }: { me: Me }) {
   const sharedWithYou = spaces?.filter((s) => s.role !== "owner") ?? [];
 
   return <div className="dv">
-    <div className="dv-body">
+    <div className="dv-body" ref={body}>
       <aside className="dv-side">
         <div>
           <div className="dv-side-label">Your spaces</div>
@@ -289,6 +301,17 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   const list = useRef<HTMLDivElement>(null);
   const pivot = useRef<string | null>(null);
   const depth = useRef(0);
+  // A folder opening: its rows rise into place once they've arrived.
+  // Deeper slides in from the right, back out from the left.
+  const shownFolder = folder?.folder.id;
+  const shownDepth = folder?.path.length ?? 0;
+  const lastDepth = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (!shownFolder) return;
+    if (lastDepth.current !== null && lastDepth.current !== shownDepth) slide(list.current, shownDepth > lastDepth.current ? 1 : -1);
+    lastDepth.current = shownDepth;
+    rise(list.current, { step: 24, limit: 16 });
+  }, [shownFolder, shownDepth]);
 
   const fetchFolder = useCallback((id: string) => token ? shared.folder(token, id) : drive.folder(id), [token]);
   const fileUrl = useCallback((node: DriveNode) => token ? shared.fileUrl(token, node.id) : contentUrl(node), [token]);

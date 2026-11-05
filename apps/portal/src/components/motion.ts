@@ -7,7 +7,7 @@
 
 const PIECES = [
   ".page > *", ".seg > *", ".app-tiles > *", ".cards > *", ".grid > *",
-  ".dv-list > *", ".dv-grid > *", ".tl-list > *", ".rail-rooms > *",
+  ".dv-sheet > *", ".dv-list > *", ".dv-grid > *", ".dv-feed > *", ".dv-folders > *", ".tl-list > *", ".rail-rooms > *",
   ".cd-list > *", ".cd-tasks > *", ".cd-timeline > *", ".cd-start > *",
 ].join(", ");
 
@@ -39,4 +39,20 @@ export function rise(root: Element | null, { step = 32, limit = 14, distance = 1
 export function swap(element: Element | null) {
   if (!element || still()) return;
   element.animate([{ opacity: 0, translate: "0 10px" }, { opacity: 1, translate: "0 0" }], { duration: 280, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" });
+}
+
+/** Rise once any skeleton inside has given way to what it stood for. Returns a cleanup. */
+export function riseWhenReady(root: Element | null, options?: Parameters<typeof rise>[1]) {
+  if (!root) return () => {};
+  if (!root.querySelector(".skel-wait")) { rise(root, options); return () => {}; }
+  const watch = new MutationObserver(() => { if (!root.querySelector(".skel-wait")) { watch.disconnect(); rise(root, options); } });
+  watch.observe(root, { childList: true, subtree: true });
+  const giveUp = setTimeout(() => watch.disconnect(), 15000);
+  return () => { watch.disconnect(); clearTimeout(giveUp); };
+}
+
+/** Moving sideways between views of one app: the new view slides in from the side it came from. */
+export function slide(element: Element | null, from: 1 | -1 = 1) {
+  if (!element || still()) return;
+  element.animate([{ opacity: 0, translate: `${from * 28}px 0` }, { opacity: 1, translate: "0 0" }], { duration: 380, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" });
 }
