@@ -3,6 +3,9 @@
 package app.kimono.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +22,14 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -35,21 +41,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.layout
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import app.kimono.data.Drive
-import app.kimono.theme.Kata
 import app.kimono.data.KimonoProblem
 import app.kimono.data.LauncherApp
 import app.kimono.data.Platform
-import app.kimono.ui.GroupLabel
-import app.kimono.ui.HoldMenu
+import app.kimono.theme.Kata
 import app.kimono.ui.InkBloom
 import app.kimono.ui.InkLoader
 import app.kimono.ui.KimonoRefresh
 import app.kimono.ui.KimonoTopBar
-import app.kimono.ui.MenuChoice
 import app.kimono.ui.Problem
 import app.kimono.ui.kimonoIcon
 import coil3.compose.AsyncImage
@@ -60,125 +70,167 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
 /**
- * Apps pinned on this phone, in order. The website keeps its pins in each
- * browser too, so the phone's are its own: pinning here doesn't move the
- * website's rail. Until someone pins, the first two of Kimono's own apps,
- * as on the website.
+ * The order of your apps, as you dragged them, kept on this phone. Until
+ * you move one: the apps inside Kimono, then those with a phone app of
+ * their own, then those that are a website only.
  */
-class Pins(private val platform: Platform, private val server: String?) {
-    private val key get() = "pins:${server ?: ""}"
+class AppOrder(private val platform: Platform, private val server: String?) {
+    private val key get() = "app-order:${server ?: ""}"
     private val list = ListSerializer(String.serializer())
-    val pinned = MutableStateFlow<List<String>?>(null)
+    val saved = MutableStateFlow<List<String>?>(null)
 
-    suspend fun load() { pinned.value = platform.readKept(key)?.let { runCatching { Json.decodeFromString(list, it) }.getOrNull() } }
-
-    fun orDefault(apps: List<LauncherApp>): List<String> = pinned.value ?: apps.filter { it.own }.take(2).map { it.id }
+    suspend fun load() { saved.value = platform.readKept(key)?.let { runCatching { Json.decodeFromString(list, it) }.getOrNull() } }
 
     suspend fun set(ids: List<String>) {
-        pinned.value = ids
+        saved.value = ids
         platform.keep(key, Json.encodeToString(list, ids))
+    }
+
+    companion object {
+        private fun kind(app: LauncherApp) = when { app.own -> 0; app.phoneApp != null -> 1; else -> 2 }
+
+        /** [apps] in [saved] order; any not placed yet keep the default order, after them. */
+        fun arrange(apps: List<LauncherApp>, saved: List<String>?): List<LauncherApp> {
+            val byDefault = apps.withIndex().sortedWith(compareBy({ kind(it.value) }, { it.index })).map { it.value }
+            if (saved == null) return byDefault
+            val placed = saved.mapNotNull { id -> apps.firstOrNull { it.id == id } }
+            return placed + byDefault.filter { app -> placed.none { it.id == app.id } }
+        }
     }
 }
 
 /**
- * 庫 Apps: every app you can open, as the website's rail and Apps grid list
- * them. Each is its bloom, its name and a line of what it's for. Pinned apps
- * come first; hold one to pin or unpin it. Kimono's own apps open their
- * screens here, the rest their phone app or their website.
+ * 庫 Every app you can open, as the website's rail lists them: its bloom,
+ * its name and what it's for. Hold one and drag it to move it.
  */
 @Composable
 fun LauncherScreen(
-    drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) },
-    /* What sits above the apps, scrolling with them: Home's welcome. */
+    drive: Drive, order: AppOrder, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) },
+    /* What sits above the apps, scrolling with them. */
     header: @Composable () -> Unit = { KimonoTopBar("Apps") },
     open: (LauncherApp) -> Unit,
 ) {
     val apps by drive.launcher.collectAsState()
-    val pinned by pins.pinned.collectAsState()
+    val saved by order.saved.collectAsState()
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    val grid = rememberLazyGridState()
     suspend fun load() { try { drive.otherApps(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(Unit) { if (drive.launcher.value == null) drive.knownApps(); load() }
+
+    /* While a tile is held: the list as it is being rearranged, which tile, and how far it has moved. */
+    var moving by remember { mutableStateOf<List<LauncherApp>?>(null) }
+    var held by remember { mutableStateOf<String?>(null) }
+    var drift by remember { mutableStateOf(Offset.Zero) }
+    val shown = moving ?: apps?.let { AppOrder.arrange(it, saved) }
+
     KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
-        val all = apps
-        val pinnedIds = all?.let { list -> (pinned ?: pins.orDefault(list)).filter { id -> list.any { it.id == id } } }.orEmpty()
-        val first = pinnedIds.mapNotNull { id -> all?.firstOrNull { it.id == id } }
-        val rest = all.orEmpty().filter { it.id !in pinnedIds }
-        fun toggle(app: LauncherApp) = scope.launch { pins.set(if (app.id in pinnedIds) pinnedIds - app.id else pinnedIds + app.id) }
         LazyVerticalGrid(
             GridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize(),
+            state = grid,
+            modifier = Modifier.fillMaxSize().pointerInput(shown != null) {
+                if (shown == null) return@pointerInput
+                fun tileAt(point: Offset, except: String? = null) = grid.layoutInfo.visibleItemsInfo.firstOrNull { item ->
+                    val key = item.key as? String ?: return@firstOrNull false
+                    key.startsWith("app:") && key != except &&
+                        point.x >= item.offset.x && point.x < item.offset.x + item.size.width && point.y >= item.offset.y && point.y < item.offset.y + item.size.height
+                }
+                /* Watched ahead of the tiles (the first pass), so a held tile is picked up even though tiles take taps. */
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val letGo = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+                        while (true) {
+                            val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                            if (!change.pressed || (change.position - down.position).getDistance() > viewConfiguration.touchSlop) return@withTimeoutOrNull true
+                        }
+                        @Suppress("UNREACHABLE_CODE") true
+                    }
+                    if (letGo != null) return@awaitEachGesture
+                    val hit = tileAt(down.position) ?: return@awaitEachGesture
+                    val id = (hit.key as String).removePrefix("app:")
+                    moving = AppOrder.arrange(drive.launcher.value.orEmpty(), order.saved.value)
+                    held = id
+                    drift = Offset.Zero
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    while (true) {
+                        val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                        val amount = change.positionChange()
+                        change.consume()
+                        if (!change.pressed) break
+                        drift += amount
+                        val mine = grid.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "app:$id" } ?: continue
+                        val centre = Offset(mine.offset.x + mine.size.width / 2f + drift.x, mine.offset.y + mine.size.height / 2f + drift.y)
+                        val over = tileAt(centre, except = "app:$id") ?: continue
+                        val list = moving ?: break
+                        val from = list.indexOfFirst { it.id == id }
+                        val to = list.indexOfFirst { "app:${it.id}" == over.key }
+                        if (from < 0 || to < 0) continue
+                        moving = list.toMutableList().apply { add(to, removeAt(from)) }
+                        /* The tile now sits where the other one was: keep it under the finger. */
+                        drift -= Offset((over.offset.x - mine.offset.x).toFloat(), (over.offset.y - mine.offset.y).toFloat())
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    moving?.let { done -> scope.launch { order.set(done.map { it.id }) } }
+                    moving = null; held = null; drift = Offset.Zero
+                }
+            },
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            /* The header spans the page edge to edge, out of the grid's side margins. */
-            item(span = { GridItemSpan(2) }) {
-                Box(Modifier.layout { measurable, constraints ->
-                    val out = 16.dp.roundToPx()
-                    val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + 2 * out, minWidth = constraints.maxWidth + 2 * out))
-                    layout(constraints.maxWidth, placeable.height) { placeable.place(-out, 0) }
-                }) { header() }
-            }
+            item(span = { GridItemSpan(2) }, key = "header") { header() }
             when {
-                all == null && problem == null -> item(span = { GridItemSpan(2) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
-                all == null -> item(span = { GridItemSpan(2) }) { Problem(problem) }
-                else -> {
-                    if (first.isNotEmpty()) {
-                        item(span = { GridItemSpan(2) }) { Label("Pinned") }
-                        items(first, key = { "pin-" + it.id }) { app -> AppTile(app, pinned = true, here = here(app), onPin = { toggle(app) }) { open(app) } }
-                    }
-                    if (rest.isNotEmpty()) {
-                        item(span = { GridItemSpan(2) }) { Label(if (first.isEmpty()) "Your apps" else "Everything else") }
-                        items(rest, key = { it.id }) { app -> AppTile(app, pinned = false, here = here(app), onPin = { toggle(app) }) { open(app) } }
-                    }
+                shown == null && problem == null -> item(span = { GridItemSpan(2) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
+                shown == null -> item(span = { GridItemSpan(2) }) { Problem(problem) }
+                else -> items(shown, key = { "app:" + it.id }) { app ->
+                    val tileShape = MaterialTheme.shapes.extraLarge
+                    val lifted = held == app.id
+                    AppTile(
+                        app, here(app),
+                        modifier = if (lifted) Modifier.zIndex(1f).graphicsLayer { translationX = drift.x; translationY = drift.y; scaleX = 1.05f; scaleY = 1.05f; shadowElevation = 12f; shape = tileShape; clip = false }
+                        else Modifier.animateItem(),
+                    ) { open(app) }
                 }
             }
         }
     }
 }
 
+/** One app: its bloom, its name, one line; and whether it's on this phone, needs updating, or opens in the browser. */
 @Composable
-private fun Label(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 12.dp, top = 14.dp, bottom = 2.dp))
-}
-
-/** One app: its bloom, its name, one line; marked when it opens outside Kimono. Hold for Pin. */
-@Composable
-private fun AppTile(app: LauncherApp, pinned: Boolean, here: PhoneAppHere, onPin: () -> Unit, onClick: () -> Unit) {
-    HoldMenu(listOf(MenuChoice(if (pinned) "Unpin" else "Pin", onClick = onPin)), onClick = onClick, modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.extraLarge)) {
-        Column(
-            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                Box(Modifier.size(58.dp), contentAlignment = Alignment.Center) {
-                    InkBloom(app.id, app.accent, app.glyph, 58.dp)
-                    /* An app without one of Kimono's glyphs wears its own icon in the heart, as on the website. */
-                    if (app.glyph == null && app.icon != null) AsyncImage(model = app.icon, contentDescription = null, modifier = Modifier.size(58.dp * .3f))
-                }
-                Spacer(Modifier.weight(1f))
-                /* An app with a phone app of its own says whether it's here; any other outside app, that it opens outside. */
-                when {
-                    here.update != null -> Text("Update", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                    here.installed != null -> Text(if (here.installed) "Installed" else "Not installed", style = MaterialTheme.typography.labelSmall, color = if (here.installed) Kata.mossDeep else MaterialTheme.colorScheme.onSurfaceVariant)
-                    !app.own && app.phoneApp == null -> Icon(kimonoIcon("out"), "Opens outside Kimono", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                }
+private fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Column(
+        modifier.fillMaxWidth().clip(MaterialTheme.shapes.extraLarge).background(MaterialTheme.colorScheme.surfaceContainer).clickable(onClick = onClick).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Box(Modifier.size(58.dp), contentAlignment = Alignment.Center) {
+                InkBloom(app.id, app.accent, app.glyph, 58.dp)
+                /* An app without one of Kimono's glyphs wears its own icon in the heart, as on the website. */
+                if (app.glyph == null && app.icon != null) AsyncImage(model = app.icon, contentDescription = null, modifier = Modifier.size(58.dp * .3f))
             }
-            Column {
-                Text(app.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(2.dp))
-                Text(app.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.weight(1f))
+            when {
+                here.update != null -> Text("Update", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                here.installed == false -> Text("Not installed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                here.installed == true -> Text("Installed", style = MaterialTheme.typography.labelSmall, color = Kata.mossDeep)
+                !app.own && app.phoneApp == null -> Icon(kimonoIcon("out"), "Opens in the browser", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
             }
+        }
+        Column {
+            Text(app.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(2.dp))
+            Text(app.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 /** Every app, risen from the flower in the middle of the bar: pick one to go there. */
 @Composable
-fun AppsSheet(drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, open: (LauncherApp) -> Unit) {
-    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
-        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, pins, here, open = open) }
+fun AppsSheet(drive: Drive, order: AppOrder, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, open: (LauncherApp) -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
+        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, order, here, open = open) }
     }
 }

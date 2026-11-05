@@ -129,8 +129,8 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val code = remember(session) { app.kimono.data.Code(session) }
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
-    val pins = remember(session) { app.kimono.screens.Pins(platform, session.answers.server) }
-    LaunchedEffect(pins) { pins.load() }
+    val order = remember(session) { app.kimono.screens.AppOrder(platform, session.answers.server) }
+    LaunchedEffect(order) { order.load() }
     /* Opened from a notification: go where it said. */
     LaunchedEffect(nav) { Opening.route.collect { to -> if (to != null) { nav.navigate(to); Opening.route.value = null } } }
     val admin = me?.role == "owner" || me?.role == "admin"
@@ -144,8 +144,11 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             target.id == "kimono-drive" -> goTab("drive")
             target.id == app.kimono.data.Code.APP_ID && admin -> goTab("code")
             target.id == "kimono-vpn" -> goTab("vpn")
-            /* An app with a phone app of its own is looked after here: whether it's installed, getting it, setting it up. */
-            target.phoneApp != null -> nav.navigate("app/${target.id}")
+            /* An app with a phone app of its own: open it when it's here, and when it isn't, its page here to get it. Never its website. */
+            target.phoneApp != null -> {
+                val pkg = target.phoneApp.androidPackage?.takeIf { platform.os == "android" }
+                if (pkg == null || platform.isInstalled(pkg) != true || !platform.openInstalled(pkg)) nav.navigate("app/${target.id}")
+            }
             else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
         }
     }
@@ -163,7 +166,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = { codeStarting = true }, openApps = { appsOpen = true })
         },
     ) { padding ->
-        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, pins, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
+        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, order, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
         /*
          * Material's own motion between screens. Tabs fade through: the old one
          * fades quickly, the new one settles in from just smaller. A screen

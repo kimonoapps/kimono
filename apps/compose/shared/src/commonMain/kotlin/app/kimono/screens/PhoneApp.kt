@@ -128,7 +128,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, back: () -> Unit) {
                     }
                     Problem(problem)
                 }
-                Text("Set it up", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
+                if (phone.steps.isNotEmpty()) Text("Set it up", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
                 phone.steps.forEachIndexed { index, step ->
                     Step(index + 1, step.title) {
                         Text(step.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

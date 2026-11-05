@@ -342,7 +342,17 @@ class Drive(private val session: Session) {
     private fun olderLauncher(list: AppList): List<LauncherApp> = buildList {
         val drive = list.drive
         if (list.driveOn && drive?.accent != null) add(LauncherApp(drive.id, "Drive", "Kimono Drive", "Your spaces and files.", drive.accent, drive.glyph ?: "file", own = true, web = ""))
-        list.apps.forEach { add(LauncherApp(it.id, it.shortName, it.name, it.description, it.accent, it.glyph, it.icon, own = it.id == Code.APP_ID, web = it.web, ios = it.ios, android = it.android)) }
+        list.apps.forEach { add(LauncherApp(it.id, it.shortName, it.name, it.description, it.accent, it.glyph, it.icon, own = it.id == Code.APP_ID, web = it.web, ios = it.ios, android = it.android, phoneApp = phoneAppFrom(it))) }
+    }
+
+    /* An app with a phone app of its own, worked out from its download links: the package from a Play link, the version from an APK's name. */
+    private fun phoneAppFrom(app: KimonoAppLink): PhoneApp? {
+        if (app.ios == null && app.android == null) return null
+        val android = app.android
+        val playId = android?.let { Regex("[?&]id=([\\w.]+)").find(it)?.groupValues?.get(1) }
+        val apk = android?.takeIf { Regex("\\.apk(\\?|$)").containsMatchIn(it) }
+        val version = apk?.let { Regex("-(\\d+\\.\\d+(?:\\.\\d+)?(?:[-+.][\\w.]+)?)\\.apk").find(it.substringBefore('?').substringAfterLast('/'))?.groupValues?.get(1) }
+        return PhoneApp(name = app.name, androidPackage = playId, release = if (apk != null && version != null) PhoneAppRelease(apk, version) else null)
     }
 
     /* Drive's tab and bloom are there from the first frame, as they were last time. */
