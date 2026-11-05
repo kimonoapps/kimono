@@ -35,7 +35,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.kimono.data.LauncherApp
+import app.kimono.data.PhoneApp
 import app.kimono.data.Platform
+import app.kimono.data.connectLink
 import app.kimono.data.newerVersion
 import app.kimono.theme.Kata
 import app.kimono.ui.AppAccentTheme
@@ -89,7 +91,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, back: () -> Unit) {
             progress = null
         }
     }
-    fun open() { if (phone.androidPackage == null || !platform.openInstalled(phone.androidPackage)) get() }
+    fun open() { if (!openPhoneApp(phone, platform)) get() }
 
     AppAccentTheme(app.accent) {
         Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar(app.name, onBack = back) }) { padding ->
@@ -150,4 +152,16 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, back: () -> Unit) {
             }
         }
     }
+}
+
+/**
+ * Opens an app's own phone app when it's here: through its connect link when it has one, so it
+ * starts already pointed at its server (it ignores the link once signed in), else plainly.
+ * False when it isn't installed (or this phone can't tell).
+ */
+fun openPhoneApp(phone: PhoneApp, platform: Platform): Boolean {
+    val pkg = phone.androidPackage?.takeIf { platform.os == "android" } ?: return false
+    if (platform.isInstalled(pkg) != true) return false
+    val link = phone.connectLink ?: return platform.openInstalled(pkg)
+    return runCatching { platform.openUrl(link) }.isSuccess || platform.openInstalled(pkg)
 }

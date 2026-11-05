@@ -146,8 +146,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             target.id == "kimono-vpn" -> goTab("vpn")
             /* An app with a phone app of its own: open it when it's here, and when it isn't, its page here to get it. Never its website. */
             target.phoneApp != null -> {
-                val pkg = target.phoneApp.androidPackage?.takeIf { platform.os == "android" }
-                if (pkg == null || platform.isInstalled(pkg) != true || !platform.openInstalled(pkg)) nav.navigate("app/${target.id}")
+                if (!app.kimono.screens.openPhoneApp(target.phoneApp, platform)) nav.navigate("app/${target.id}")
             }
             else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
         }
