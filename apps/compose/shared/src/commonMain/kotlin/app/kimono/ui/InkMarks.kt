@@ -34,7 +34,7 @@ import app.kimono.theme.Kata
  * [strong] is full colour, for a swatch rather than a tile.
  */
 @Composable
-fun InkBlot(seed: String, modifier: Modifier = Modifier, tint: Color = Kata.suo, size: Dp = 40.dp, strong: Boolean = false, content: @Composable BoxScope.() -> Unit = {}) {
+fun InkBlot(seed: String, modifier: Modifier = Modifier, tint: Color = LocalInkTint.current ?: Kata.suo, size: Dp = 40.dp, strong: Boolean = false, content: @Composable BoxScope.() -> Unit = {}) {
     val marks = remember(seed) {
         val random = InkRandom(inkSeed(seed))
         val blot = inkBlot(random, 50f, 50f, 45f)

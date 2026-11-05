@@ -167,7 +167,7 @@ private fun whenText(at: Long, now: Long): String {
 /* ── the workspaces ── */
 
 @Composable
-fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, open: (String) -> Unit) {
+fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, back: () -> Unit, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf(code.knownWorkspaces()) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -179,7 +179,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, open: (String) -
     val time = ticking(anyRunning)
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar("Code", mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
+        topBar = { KimonoTopBar("Code", onBack = back, mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { starting = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("New task") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
         },

@@ -69,6 +69,10 @@ private val loaderRim = Color(0xFF8F3C52)
 /** The painted loader, for a screen that is slow to arrive. */
 @Composable
 fun InkLoader(modifier: Modifier = Modifier, size: Dp = 48.dp) {
+    /* Suō in Kimono; inside an app, the app's own colour. */
+    val tint = LocalInkTint.current
+    val wash = remember(tint) { if (tint == null) loaderWash else inkWash(mix(tint, Color.White, .5f), tint, mix(tint, Color.Black, .3f), Offset(50f, 60f), 70f) }
+    val rim = tint?.let { mix(it, Color.Black, .3f) } ?: loaderRim
     var now by remember { mutableLongStateOf(0L) }
     var angle by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
@@ -93,7 +97,7 @@ fun InkLoader(modifier: Modifier = Modifier, size: Dp = 48.dp) {
         val edge = inkBrush(path, InkRandom(21), 3.2f, closed = true, lift = 160f..220f, gap = 8f..12f, swell = .3f, wander = .15f, step = 1.4f)
         inBox(.79f) {
             rotate(angle, Offset(50f, 50f)) {
-                drawWash(path, loaderWash, loaderRim, alpha = .95f, pool = .7f)
+                drawWash(path, wash, rim, alpha = .95f, pool = .7f)
                 drawPath(edge, InkPlum, alpha = .8f)
             }
         }
