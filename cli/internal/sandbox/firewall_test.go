@@ -9,7 +9,7 @@ import (
 )
 
 func TestPlanFirewallIPv4(t *testing.T) {
-	plan, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16", Gateway4: "172.30.0.1"}, 7481, []string{"192.168.1.10/32"})
+	plan, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16", Gateway4: "172.30.0.1"}, 7481)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,30 +24,19 @@ func TestPlanFirewallIPv4(t *testing.T) {
 	for i, rule := range forward.Rules {
 		lines[i] = strings.Join(rule, " ")
 	}
-	if lines[0] != "-m conntrack --ctstate RELATED,ESTABLISHED -j RETURN" {
-		t.Fatalf("replies must pass first, got %q", lines[0])
+	/* Never the web: nothing a sandbox starts is let through, and nothing RETURNs to Docker's NAT. */
+	want := []string{
+		"-m conntrack --ctstate RELATED,ESTABLISHED -j RETURN",
+		"-j REJECT --reject-with icmp-port-unreachable",
 	}
-	if lines[1] != "-d 192.168.1.10/32 -j RETURN" {
-		t.Fatalf("an allowed private network must come before the refusals, got %q", lines[1])
-	}
-	for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "127.0.0.0/8", "0.0.0.0/8", "224.0.0.0/4", "240.0.0.0/4"} {
-		want := "-d " + cidr + " -j REJECT --reject-with icmp-port-unreachable"
-		found := false
-		for _, line := range lines {
-			found = found || line == want
-		}
-		if !found {
-			t.Errorf("missing refusal for %s", cidr)
-		}
-	}
-	if lines[len(lines)-1] != "-j RETURN" {
-		t.Fatalf("the internet must be allowed last, got %q", lines[len(lines)-1])
+	if !reflect.DeepEqual(lines, want) {
+		t.Fatalf("forward chain:\n%v\nwant\n%v", lines, want)
 	}
 	in := make([]string, len(input.Rules))
 	for i, rule := range input.Rules {
 		in[i] = strings.Join(rule, " ")
 	}
-	want := []string{
+	want = []string{
 		"-m conntrack --ctstate RELATED,ESTABLISHED -j RETURN",
 		"-d 172.30.0.1 -p tcp --dport 7481 -j RETURN",
 		"-j REJECT --reject-with icmp-port-unreachable",
@@ -64,38 +53,30 @@ func TestPlanFirewallIPv4(t *testing.T) {
 }
 
 func TestPlanFirewallIPv6Mirrors(t *testing.T) {
-	plan, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16", Gateway4: "172.30.0.1", Subnet6: "fd00:1::/64", Gateway6: "fd00:1::1"}, 7481, []string{"fd12::/64"})
+	plan, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16", Gateway4: "172.30.0.1", Subnet6: "fd00:1::/64", Gateway6: "fd00:1::1"}, 7481)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(plan.Chains) != 4 || plan.Chains[2].Bin != "ip6tables" {
 		t.Fatalf("want ip6tables chains too, got %+v", plan.Chains)
 	}
-	joined := ""
 	for _, rule := range plan.Chains[2].Rules {
-		joined += strings.Join(rule, " ") + "\n"
-	}
-	for _, want := range []string{"-d fd12::/64 -j RETURN", "-d fc00::/7 -j REJECT", "-d fd7a:115c:a1e0::/48 -j REJECT", "-d fe80::/10 -j REJECT"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("ip6tables chain lacks %q", want)
+		line := strings.Join(rule, " ")
+		if strings.Contains(line, "icmp-port-unreachable") {
+			t.Error("IPv6 rejects must not name an IPv4 ICMP type")
 		}
-	}
-	if strings.Contains(joined, "icmp-port-unreachable") {
-		t.Error("IPv6 rejects must not name an IPv4 ICMP type")
-	}
-	for _, rule := range plan.Chains[0].Rules {
-		if strings.Contains(strings.Join(rule, " "), "fd12::") {
-			t.Error("an IPv6 allowance leaked into the IPv4 chain")
+		if strings.HasSuffix(line, "-j RETURN") && !strings.Contains(line, "conntrack") {
+			t.Errorf("the IPv6 forward chain lets something out: %q", line)
 		}
 	}
 }
 
 func TestPlanFirewallRefusesBadInput(t *testing.T) {
-	if _, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16", Gateway4: "172.30.0.1"}, 7481, []string{"lan"}); err == nil {
-		t.Error("a bad --allow-private must be refused")
-	}
-	if _, err := planFirewall(sandboxNet{}, 7481, nil); err == nil {
+	if _, err := planFirewall(sandboxNet{}, 7481); err == nil {
 		t.Error("a network without IPv4 must be refused")
+	}
+	if _, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16"}, 7481); err == nil {
+		t.Error("a network without a gateway must be refused")
 	}
 }
 
@@ -140,7 +121,7 @@ func (f *fakeTables) run(_ context.Context, bin string, args ...string) error {
 }
 
 func TestFirewallApplyIsIdempotent(t *testing.T) {
-	plan, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16", Gateway4: "172.30.0.1"}, 7481, nil)
+	plan, err := planFirewall(sandboxNet{Subnet4: "172.30.0.0/16", Gateway4: "172.30.0.1"}, 7481)
 	if err != nil {
 		t.Fatal(err)
 	}

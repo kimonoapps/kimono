@@ -230,11 +230,9 @@ func (s *Server) create(ctx context.Context, id string, repo Repo) error {
 	if s.runtime == "runsc" {
 		args = append(args, "--runtime", "runsc")
 	}
+	/* No names: Docker's own resolver would otherwise look them up from inside, past the firewall. */
+	args = append(args, "--dns", "127.0.0.1")
 	if s.firewall != nil {
-		/* The LAN's resolver is out of reach behind the firewall. */
-		for _, resolver := range s.cfg.DNS {
-			args = append(args, "--dns", resolver)
-		}
 		if err := s.recheckFirewall(ctx); err != nil {
 			return fmt.Errorf("the sandbox firewall: %w", err)
 		}
@@ -243,8 +241,31 @@ func (s *Server) create(ctx context.Context, id string, repo Repo) error {
 	if _, err := s.docker.run(ctx, nil, args...); err != nil {
 		return fmt.Errorf("start the sandbox: %w", err)
 	}
-	return nil
+	return s.probeOffline(ctx, name)
 }
+
+// probeOffline tries the web from inside a new sandbox, and removes the
+// sandbox if it gets through: a sandbox that can reach the web never runs.
+// Without the firewall (Docker Desktop, development) it only says so.
+func (s *Server) probeOffline(ctx context.Context, name string) error {
+	probe := `timeout 3 bash -c 'exec 3<>/dev/tcp/` + offlineProbe + `' 2>/dev/null && echo reached || echo blocked`
+	out, err := s.docker.run(ctx, nil, "exec", name, "sh", "-c", probe)
+	if err != nil {
+		return fmt.Errorf("check the sandbox is offline: %w", err)
+	}
+	if strings.TrimSpace(string(out)) != "reached" {
+		return nil
+	}
+	if s.firewall == nil {
+		s.cfg.Logf("sandbox %s can reach the web (no firewall here); development only", name)
+		return nil
+	}
+	_, _ = s.docker.run(ctx, nil, "rm", "-f", name)
+	return fmt.Errorf("the sandbox could reach the web, so Kimono won't run it; check this node's firewall (kimono node sandboxes status)")
+}
+
+// offlineProbe is a public address a sandbox must not reach: Cloudflare's resolver, on HTTPS.
+const offlineProbe = "1.1.1.1/443"
 
 // checkoutScript clones on first use and otherwise only moves onto the
 // workspace's branch when it is somewhere else, so the agent's work is never

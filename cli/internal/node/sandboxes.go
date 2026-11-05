@@ -76,7 +76,7 @@ func (m *Manager) sandboxesEnable(args []string) error {
 	image := flags.String("image", sandbox.DefaultImage, "sandbox image")
 	previewDomain := flags.String("preview-domain", "", "domain whose subdomains open previews, such as example.dev (one wildcard DNS record on Cloudflare)")
 	var allowPrivate cidrList
-	flags.Var(&allowPrivate, "allow-private", "a private network sandboxes may still reach, such as a LAN package mirror (repeatable)")
+	flags.Var(&allowPrivate, "allow-private", "ignored: sandboxes never reach any network but the gateway")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (m *Manager) sandboxesEnable(args []string) error {
 			return err
 		}
 	}
-	if err := os.WriteFile(sandboxesUnitPath, []byte(sandboxesUnit(executable, address, *image, domain, allowPrivate...)), 0644); err != nil {
+	if err := os.WriteFile(sandboxesUnitPath, []byte(sandboxesUnit(executable, address, *image, domain)), 0644); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Pulling the sandbox image…")
@@ -283,13 +283,10 @@ func sandboxesKey() (string, error) {
 	return key, os.WriteFile(sandboxesKeyPath, []byte(key+"\n"), 0600)
 }
 
-func sandboxesUnit(executable, address, image, previewDomain string, allowPrivate ...string) string {
+func sandboxesUnit(executable, address, image, previewDomain string) string {
 	preview := ""
 	if previewDomain != "" {
 		preview = " --preview-domain " + previewDomain
-	}
-	for _, cidr := range allowPrivate {
-		preview += " --allow-private " + cidr
 	}
 	return fmt.Sprintf(`[Unit]
 Description=Kimono Code sandboxes
@@ -328,10 +325,11 @@ func (m *Manager) sandboxesServe(args []string) error {
 	previewListen := flags.String("preview-listen", previewsListen, "preview proxy address")
 	previewDomain := flags.String("preview-domain", "", "domain whose subdomains open previews (empty: http://<name>.localhost:<port>)")
 	devGitDir := flags.String("dev-git-dir", "", "development only: serve bare repositories under this directory as http://"+sandbox.DevGitHost+"/OWNER/NAME.git")
+	/* Older units pass these; sandboxes now never reach the web, so they are read and ignored. */
 	var allowPrivate cidrList
-	flags.Var(&allowPrivate, "allow-private", "a private network sandboxes may still reach, such as a LAN package mirror (repeatable)")
-	allowOpen := flags.Bool("allow-open-network", false, "development only: run sandboxes without the firewall")
-	dns := flags.String("dns", "1.1.1.1,9.9.9.9", "resolvers sandboxes use behind the firewall")
+	flags.Var(&allowPrivate, "allow-private", "ignored: sandboxes never reach any network but the gateway")
+	allowOpen := flags.Bool("allow-open-network", false, "ignored: sandboxes never reach the web")
+	flags.String("dns", "", "ignored: sandboxes have no resolver")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -345,13 +343,15 @@ func (m *Manager) sandboxesServe(args []string) error {
 		}
 	}
 	logger := log.New(m.Runner.Stderr, "", log.LstdFlags)
+	if len(allowPrivate) > 0 || *allowOpen {
+		logger.Printf("--allow-private and --allow-open-network are ignored: sandboxes reach the gateway and nothing else")
+	}
 	server, err := sandbox.New(sandbox.Config{
 		Listen: *listen, Key: strings.TrimSpace(string(key)), Image: *image,
 		GatewayListen: *gatewayListen, GatewayURL: *gatewayURL, Runtime: *runtimeName,
 		CPUs: *cpus, Memory: *memory, Pids: *pids, AwakePerPerson: *awakePerPerson, AwakePerNode: *awakePerNode, DiskGB: *diskGB, PauseAfter: *pauseAfter, StopAfter: *stopAfter, RemoveAfter: *removeAfter,
 		Agent: os.Getenv("KIMONO_SANDBOX_AGENT"), DevGitDir: *devGitDir,
 		StateDir: *stateDir, PreviewListen: *previewListen, PreviewDomain: *previewDomain,
-		AllowPrivate: allowPrivate, AllowOpenNetwork: *allowOpen, DNS: splitList(*dns),
 		Logf: logger.Printf,
 	})
 	if err != nil {

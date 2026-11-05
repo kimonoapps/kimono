@@ -246,21 +246,18 @@ the phone, and the Files app on iPhone and Android.
 
 ## Network
 
-A sandbox reaches the public internet and the node's gateway port (`7481`, the
-model gateway and Git broker), and nothing else: not the node's other ports
-(the API, the preview proxy, SSH), not the LAN, not the Kimono mesh, not other
-sandboxes, not cloud metadata.
+A sandbox reaches the node's gateway port (`7481`, the model gateway and Git
+broker) and nothing else: not the web, not the node's other ports (the API, the
+preview proxy, SSH), not the LAN, not the Kimono mesh, not other sandboxes, not
+cloud metadata. See "Never the web" in `docs/kimono-ai.md`.
 
 - The sandbox network is a bridge with inter-container traffic off and IPv6
-  off. Sandboxes resolve names through public resolvers (`--dns`, default
-  `1.1.1.1,9.9.9.9`), since a LAN resolver is out of their reach.
+  off. Sandboxes have no resolver (`--dns 127.0.0.1`), so not even Docker's
+  own resolver looks a name up for them.
 - The node keeps two iptables chains of its own, entered only by traffic from
   the sandbox subnet:
   - `DOCKER-USER → KIMONO-SANDBOX` — what a sandbox sends through the node.
-    Replies pass; `0.0.0.0/8`, `10.0.0.0/8`, `100.64.0.0/10` (the mesh),
-    `127.0.0.0/8`, `169.254.0.0/16` (metadata), `172.16.0.0/12`,
-    `192.168.0.0/16`, `224.0.0.0/4` and `240.0.0.0/4` are refused; everything
-    else carries on to Docker's own rules and NAT.
+    Replies pass; everything else is refused, before Docker's NAT.
   - `INPUT → KIMONO-SANDBOX-IN` — what a sandbox sends to the node itself, on
     any of its addresses. Replies pass, the gateway port on the gateway address
     passes, everything else is refused.
@@ -268,11 +265,14 @@ sandboxes, not cloud metadata.
   time (so a restart never duplicates them), and a missing jump is restored
   before any sandbox starts. `disable` removes them.
   `kimono node sandboxes status` says whether they are in place.
-- `--allow-private CIDR` (repeatable, on `enable` or `serve`) lets sandboxes
-  reach one private network anyway, such as a LAN package mirror.
-- Without `iptables` the node refuses to run sandboxes. `--allow-open-network`
-  runs them without the firewall, for development only. On macOS (Docker
-  Desktop) the firewall isn't applied, and the node says so when it starts.
+- Every new sandbox tries `1.1.1.1:443` from inside before it is used. If it
+  gets through, the node removes it and refuses.
+- Claude Code runs without `WebFetch` and `WebSearch`, and its instructions say
+  there is no internet.
+- Without `iptables` the node refuses to run sandboxes. On macOS (Docker
+  Desktop) the firewall isn't applied; the node and the probe say so.
+- `--allow-private`, `--allow-open-network` and `--dns` are still accepted, so
+  older service files keep working, and are ignored.
 
 ## Sleep
 

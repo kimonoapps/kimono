@@ -23,7 +23,7 @@ const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.2.0"
 //
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
-const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --dangerously-skip-permissions --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
+const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
 
 // Model is the one model Kimono Code runs. People choose how hard it thinks, not which it is.
 const Model = "claude-opus-5-5"
@@ -32,6 +32,8 @@ const Model = "claude-opus-5-5"
 // asking may not be technical, so the agent shows its work instead of
 // describing it.
 const SystemPrompt = `The person you are working for may not be technical. Explain what you did in plain, short words, without jargon or code unless they ask for it.
+
+This computer has no internet. Nothing can be downloaded or installed, from npm, pip or anywhere else, and there is no web search: work with the tools and libraries already here. If something truly needs the internet, say so plainly instead of trying.
 
 Do what they ask, and finish it. Don't stop to offer the next step or ask "would you like me to…" for something they asked for or would obviously want: do it, then say what you did. Ask only when the choice is genuinely theirs (two reasonable ways, or something that can't be undone). When they say "save it", commit your work on this branch with a short, plain message; Kimono's "Open pull request" button pushes it.
 
@@ -93,16 +95,8 @@ type Config struct {
 	PreviewDomain string
 	// SystemPrompt is appended to the agent's on every turn.
 	SystemPrompt string
-	// AllowPrivate are private networks sandboxes may still reach, such as a
-	// LAN package mirror; everything else private is refused.
-	AllowPrivate []string
-	// AllowOpenNetwork runs sandboxes without the firewall. Development only.
-	AllowOpenNetwork bool
-	// DNS are the resolvers sandboxes use while the firewall is on, since a
-	// LAN resolver is out of their reach.
-	DNS    []string
-	Docker string
-	Logf   func(format string, args ...any)
+	Docker       string
+	Logf         func(format string, args ...any)
 }
 
 func (c *Config) defaults() error {
@@ -165,9 +159,6 @@ func (c *Config) defaults() error {
 	c.PreviewDomain = strings.Trim(strings.ToLower(c.PreviewDomain), ".")
 	if c.SystemPrompt == "" {
 		c.SystemPrompt = SystemPrompt
-	}
-	if len(c.DNS) == 0 {
-		c.DNS = []string{"1.1.1.1", "9.9.9.9"}
 	}
 	if c.Docker == "" {
 		c.Docker = "docker"

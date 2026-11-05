@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os/exec"
 	"strconv"
 	"strings"
 )
 
 /*
- * The sandbox firewall. A sandbox may reach the public internet, and the
- * node's gateway port — the model gateway and Git broker — and nothing else:
- * not the node's other ports, not the LAN, not the mesh, not cloud metadata.
+ * The sandbox firewall. A sandbox reaches the node's gateway port — the model
+ * gateway and Git broker — and nothing else: not the web, not the node's other
+ * ports, not the LAN, not the mesh, not cloud metadata (docs/kimono-ai.md,
+ * "Never the web").
  *
  * Two chains of Kimono's own, entered only by traffic from the sandbox
  * network's subnet:
@@ -22,7 +22,7 @@ import (
  *   INPUT       → KIMONO-SANDBOX-IN  traffic a sandbox sends to the node itself
  *
  * Docker leaves DOCKER-USER alone and evaluates it before its own rules, so
- * its NAT keeps working: an allowed packet RETURNs and Docker carries on.
+ * a connection a sandbox starts is refused there before NAT could carry it out.
  * Anything addressed to the node — its LAN, public or mesh addresses alike —
  * is local delivery and goes through INPUT, so KIMONO-SANDBOX-IN covers the
  * node's own addresses whatever they are.
@@ -32,15 +32,6 @@ const (
 	forwardChain = "KIMONO-SANDBOX"
 	inputChain   = "KIMONO-SANDBOX-IN"
 )
-
-// blockedV4 are the destinations no sandbox reaches through the node.
-var blockedV4 = []string{
-	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
-	"172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4",
-}
-
-// blockedV6 mirrors them when the sandbox network has IPv6.
-var blockedV6 = []string{"::1/128", "fc00::/7", "fe80::/10", "fd7a:115c:a1e0::/48", "ff00::/8"}
 
 // sandboxNet is what the firewall needs to know about the sandbox network.
 type sandboxNet struct {
@@ -68,9 +59,9 @@ type fwRule struct {
 	Spec       []string
 }
 
-func planFirewall(n sandboxNet, gatewayPort int, allow []string) (firewallPlan, error) {
+func planFirewall(n sandboxNet, gatewayPort int) (firewallPlan, error) {
 	var plan firewallPlan
-	family := func(bin, subnet, gateway string, blocked []string, v6 bool) error {
+	family := func(bin, subnet, gateway string, v6 bool) error {
 		if subnet == "" {
 			return nil
 		}
@@ -81,16 +72,12 @@ func planFirewall(n sandboxNet, gatewayPort int, allow []string) (firewallPlan, 
 		if !v6 {
 			reject = append(reject, "--reject-with", "icmp-port-unreachable")
 		}
-		forward := [][]string{{"-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "RETURN"}}
-		for _, cidr := range allow {
-			if isV6(cidr) == v6 {
-				forward = append(forward, []string{"-d", cidr, "-j", "RETURN"})
-			}
+		/* Nothing a sandbox starts goes through the node: the web, the LAN and the mesh alike. */
+		forward := [][]string{
+			/* Replies to what was let in pass; a sandbox can start nothing, so it has nothing else to reply to. */
+			{"-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "RETURN"},
+			append([]string{}, reject...),
 		}
-		for _, cidr := range blocked {
-			forward = append(forward, append([]string{"-d", cidr}, reject...))
-		}
-		forward = append(forward, []string{"-j", "RETURN"})
 		input := [][]string{
 			{"-m", "conntrack", "--ctstate", "RELATED,ESTABLISHED", "-j", "RETURN"},
 			{"-d", gateway, "-p", "tcp", "--dport", strconv.Itoa(gatewayPort), "-j", "RETURN"},
@@ -103,24 +90,17 @@ func planFirewall(n sandboxNet, gatewayPort int, allow []string) (firewallPlan, 
 		)
 		return nil
 	}
-	for _, cidr := range allow {
-		if _, _, err := net.ParseCIDR(cidr); err != nil {
-			return plan, fmt.Errorf("--allow-private %q isn't a network such as 192.168.1.0/24", cidr)
-		}
-	}
 	if n.Subnet4 == "" {
 		return plan, errors.New("the sandbox network has no IPv4 subnet")
 	}
-	if err := family("iptables", n.Subnet4, n.Gateway4, blockedV4, false); err != nil {
+	if err := family("iptables", n.Subnet4, n.Gateway4, false); err != nil {
 		return plan, err
 	}
-	if err := family("ip6tables", n.Subnet6, n.Gateway6, blockedV6, true); err != nil {
+	if err := family("ip6tables", n.Subnet6, n.Gateway6, true); err != nil {
 		return plan, err
 	}
 	return plan, nil
 }
-
-func isV6(cidr string) bool { return strings.Contains(cidr, ":") }
 
 // fwRunner runs iptables; tests replace it.
 type fwRunner func(ctx context.Context, bin string, args ...string) error
@@ -220,31 +200,27 @@ func FirewallInPlace(ctx context.Context, dockerBin, network string) (bool, stri
 	if err != nil || n.Subnet4 == "" {
 		return false, "the sandbox network doesn't exist yet"
 	}
-	plan, err := planFirewall(n, 0, nil)
+	plan, err := planFirewall(n, 0)
 	if err != nil {
 		return false, err.Error()
 	}
 	if !plan.inPlace(ctx, execFirewall) {
-		return false, "missing: sandboxes can reach private networks"
+		return false, "missing: sandboxes could reach the web and private networks"
 	}
-	return true, "in place: sandboxes reach the internet and the gateway only"
+	return true, "in place: sandboxes reach the gateway only, never the web"
 }
 
 // guardNetwork puts the firewall in place, or explains why the node refuses
 // to run sandboxes without it.
 func (s *Server) guardNetwork(ctx context.Context, n sandboxNet, gatewayPort int) error {
 	if dockerDesktop {
-		s.cfg.Logf("firewall not applied on macOS (Docker Desktop): sandboxes can reach this machine's networks; development only")
-		return nil
-	}
-	if s.cfg.AllowOpenNetwork {
-		s.cfg.Logf("firewall off (--allow-open-network): sandboxes can reach private networks; development only")
+		s.cfg.Logf("firewall not applied on macOS (Docker Desktop): sandboxes can reach the web; development only")
 		return nil
 	}
 	if _, err := exec.LookPath("iptables"); err != nil {
-		return errors.New("sandboxes need iptables to keep them off this node's private networks; install it (apt-get install iptables), or pass --allow-open-network for development")
+		return errors.New("sandboxes need iptables to keep them off the web; install it (apt-get install iptables)")
 	}
-	plan, err := planFirewall(n, gatewayPort, s.cfg.AllowPrivate)
+	plan, err := planFirewall(n, gatewayPort)
 	if err != nil {
 		return err
 	}
@@ -256,11 +232,7 @@ func (s *Server) guardNetwork(ctx context.Context, n sandboxNet, gatewayPort int
 		return fmt.Errorf("put the sandbox firewall in place: %w", err)
 	}
 	s.firewall = &plan
-	what := "internet and gateway only"
-	if len(s.cfg.AllowPrivate) > 0 {
-		what += ", plus " + strings.Join(s.cfg.AllowPrivate, ", ")
-	}
-	s.cfg.Logf("firewall in place for %s (%s)", strings.TrimSpace(n.Subnet4+" "+n.Subnet6), what)
+	s.cfg.Logf("firewall in place for %s (gateway only, never the web)", strings.TrimSpace(n.Subnet4+" "+n.Subnet6))
 	return nil
 }
 
