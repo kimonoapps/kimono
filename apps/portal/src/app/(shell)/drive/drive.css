@@ -52,13 +52,14 @@
 .dv-mark.mon { background: none; box-shadow: none; border-radius: 50%; }
 .dv-mark.mon.photo { overflow: hidden; box-shadow: 0 0 0 1.5px var(--k-plum), inset 0 0 0 2px var(--k-lift); }
 .dv-markwrap { position: relative; display: inline-grid; flex: none; }
-.dv-markwrap > .pfp { position: absolute; right: -5px; bottom: -4px; }
+.dv-markwrap > .pfp-ink { position: absolute; right: -5px; bottom: -4px; }
 /* portraits: the Authentik profile picture, or the name's initial in ink on fold paper */
-.pfp { --s: 28px; width: var(--s); height: var(--s); flex: none; display: inline-block; border-radius: 50%; overflow: hidden; vertical-align: middle; box-shadow: 0 0 0 2px var(--k-lift); background: var(--k-fold); }
-.pfp svg { display: block; width: 100%; height: 100%; }
-.pfp.initials { display: inline-grid; place-items: center; background: var(--k-primary-container); color: var(--k-on-primary-container); font: 600 calc(var(--s) * .46)/1 var(--k-display); box-shadow: 0 0 0 2px var(--k-surface); }
 .pfps { display: inline-flex; align-items: center; }
-.pfps > .pfp + .pfp { margin-left: -7px; }
+.pfps > * + .pfp-ink { margin-left: -7px; }
+/* A person: the shared portrait in its ink ring (components/portrait.tsx, InkPortraitFrame). */
+.pfp-ink { --s: 28px; width: var(--s); height: var(--s); flex: none; display: inline-grid; vertical-align: middle; }
+.pfp-ink > .k-ink-portrait { width: 100%; height: 100%; }
+.pfp-ink .portrait { box-shadow: none; background: transparent; }
 .pfps > .more { margin-left: 8px; font-size: 12.5px; font-weight: 600; color: var(--k-ink-soft); }
 .who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .who > span { min-width: 0; }
@@ -528,7 +529,6 @@
 .dv-guestname { margin: 0; }
 .dv-guestname input { width: 200px; min-height: var(--k-control); }
 .dv-kind.lg { width: 56px; height: 56px; }
-.pfp > img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* column heads sort when pressed */
 .dv-sorthead { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; cursor: pointer; }

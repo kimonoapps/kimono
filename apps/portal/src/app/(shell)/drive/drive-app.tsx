@@ -5,7 +5,8 @@ import { rise, riseWhenReady, slide } from "@/components/motion";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { AppBloom, Choice, cx, Seal } from "@kimono/ui";
+import { AppBloom, Choice, cx, InkPortraitFrame, Seal } from "@kimono/ui";
+import { Portrait as Face } from "@/components/portrait";
 import {
   contentUrl, drive, DriveProblem, extension, kindOf, linkUrl, readableSize, shared, spaceLinkUrl, upload, when,
   type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
@@ -240,12 +241,13 @@ function SpaceLink({ space, here, people, onOpen }: { space: Space; here: boolea
   </button>;
 }
 
+/** Drive's people wear the house portrait: the shared face in its ink ring, as in the rail and on You. */
 function Portrait({ person, username, size = 28 }: { person?: Person; username: string; size?: number }) {
-  const style = { "--s": `${size}px` } as React.CSSProperties;
-  const name = person?.name || username;
-  // eslint-disable-next-line @next/next/no-img-element -- a portrait from this Portal, already sized
-  if (person?.picture) return <span className="pfp" style={style} role="img" aria-label={name} data-name={name}><img src={person.picture} alt="" /></span>;
-  return <span className="pfp initials" style={style} role="img" aria-label={name} data-name={name}>{name.slice(0, 1).toUpperCase()}</span>;
+  return <span className="pfp-ink" style={{ "--s": `${size}px` } as React.CSSProperties}>
+    <InkPortraitFrame seed={username} weight={size < 30 ? 6 : 4}>
+      <Face name={person?.name} username={username} picture={person?.picture} size={Math.round(size * .82)} />
+    </InkPortraitFrame>
+  </span>;
 }
 
 /* ── a space ── */
