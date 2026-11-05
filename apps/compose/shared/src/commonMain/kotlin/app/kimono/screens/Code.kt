@@ -167,12 +167,12 @@ private fun whenText(at: Long, now: Long): String {
 /* ── the workspaces ── */
 
 @Composable
-fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, back: () -> Unit, open: (String) -> Unit) {
+/* New task is in the bottom bar now, so whether its sheet is up comes from there. */
+fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolean, setStarting: (Boolean) -> Unit, back: () -> Unit, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf(code.knownWorkspaces()) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    var starting by remember { mutableStateOf(false) }
     suspend fun load() { try { list = code.workspaces(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     val anyRunning = list?.any { it.running } == true
     WhileShown(Unit) { while (true) { load(); delay(if (list?.any { it.running } == true) 3000 else 10_000) } }
@@ -180,9 +180,6 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, back: () -> Unit
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = { KimonoTopBar("Code", onBack = back, mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { starting = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("New task") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
-        },
     ) { padding ->
         KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.padding(padding).fillMaxSize()) {
             val shown = list
@@ -204,8 +201,8 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, back: () -> Unit
             }
         }
     }
-    if (starting) NewTaskSheet(code, onDismiss = { starting = false }) { made ->
-        starting = false
+    if (starting) NewTaskSheet(code, onDismiss = { setStarting(false) }) { made ->
+        setStarting(false)
         open("code/${made.id}")
     }
 }

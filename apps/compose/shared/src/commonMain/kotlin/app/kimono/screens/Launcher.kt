@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -153,5 +154,13 @@ private fun AppTile(app: LauncherApp, pinned: Boolean, onPin: () -> Unit, onClic
                 Text(app.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+/** Every app, risen from the bloom in the middle of the bar: pick one to go there. */
+@Composable
+fun AppsSheet(drive: Drive, pins: Pins, onDismiss: () -> Unit, open: (LauncherApp) -> Unit) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
+        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, pins, open) }
     }
 }

@@ -76,17 +76,18 @@ import kotlinx.coroutines.launch
  */
 
 private const val VPN_ACCENT = "#2f6b7a"
-private enum class VpnRoom(val label: String) { Devices("Devices"), People("People"), Connect("Connect") }
+private enum class VpnRoom(val title: String) { Devices("Devices"), People("People"), Connect("Connect") }
 
 private const val TAILSCALE_ANDROID = "https://play.google.com/store/apps/details?id=com.tailscale.ipn"
 private const val TAILSCALE_IOS = "https://apps.apple.com/app/tailscale/id1470499037"
 
 @Composable
-fun VpnScreen(vpn: Vpn, platform: Platform, app: LauncherApp?, back: () -> Unit) {
+/** [room] is the bar's: "vpn" (Devices), "vpn/people" or "vpn/connect"; [go] moves between them. */
+fun VpnScreen(vpn: Vpn, platform: Platform, app: LauncherApp?, roomRoute: String, go: (String) -> Unit, back: () -> Unit) {
     var view by remember { mutableStateOf(vpn.known()) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    var room by remember { mutableStateOf(VpnRoom.Devices) }
+    val room = when (roomRoute) { "vpn/people" -> VpnRoom.People; "vpn/connect" -> VpnRoom.Connect; else -> VpnRoom.Devices }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     suspend fun load() { try { view = vpn.view(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
@@ -98,7 +99,7 @@ fun VpnScreen(vpn: Vpn, platform: Platform, app: LauncherApp?, back: () -> Unit)
     AppAccentTheme(app?.accent ?: VPN_ACCENT) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.surface,
-            topBar = { KimonoTopBar("VPN", onBack = back, mark = { InkBloom(app?.id ?: "kimono-vpn", app?.accent ?: VPN_ACCENT, app?.glyph ?: "mesh", 32.dp) }) },
+            topBar = { KimonoTopBar(room.title, onBack = back, mark = { InkBloom(app?.id ?: "kimono-vpn", app?.accent ?: VPN_ACCENT, app?.glyph ?: "mesh", 32.dp) }) },
             snackbarHost = { SnackbarHost(snackbar) },
         ) { padding ->
             val shown = view
@@ -107,14 +108,11 @@ fun VpnScreen(vpn: Vpn, platform: Platform, app: LauncherApp?, back: () -> Unit)
                 shown == null -> Box(Modifier.padding(padding).padding(24.dp)) { Problem(problem) }
                 !shown.member -> Quietly(Modifier.padding(padding), "mesh", "Kimono VPN isn't on for you yet", "Ask whoever runs this Kimono to switch it on for you, and your devices will appear here.")
                 else -> Column(Modifier.padding(padding).fillMaxSize()) {
-                    PrimaryTabRow(selectedTabIndex = room.ordinal, containerColor = MaterialTheme.colorScheme.surface) {
-                        VpnRoom.entries.forEach { each -> Tab(selected = room == each, onClick = { room = each }, text = { Text(each.label, style = MaterialTheme.typography.labelLarge) }) }
-                    }
                     KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
                         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 40.dp)) {
                             Problem(problem)
                             when (room) {
-                                VpnRoom.Devices -> DevicesRoom(shown, onConnect = { room = VpnRoom.Connect }, onPeople = { room = VpnRoom.People }) { device, intent ->
+                                VpnRoom.Devices -> DevicesRoom(shown, onConnect = { go("vpn/connect") }, onPeople = { go("vpn/people") }) { device, intent ->
                                     change(if (intent == "remove") "${device.name} was removed." else "${device.name} was signed out.") { vpn.device(device.id, intent) }
                                 }
                                 VpnRoom.People -> PeopleRoom(shown) { person, invited ->

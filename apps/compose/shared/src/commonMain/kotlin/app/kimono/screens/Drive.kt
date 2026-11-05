@@ -141,7 +141,7 @@ fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
     LaunchedEffect(Unit) { if (model.drive.driveBloom.value == null) runCatching { model.drive.otherApps() } }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar("Drive", mark = { model.drive.driveBloom.collectAsState().value?.let { InkBloom(it.id, it.accent, it.glyph, 32.dp) } }) { IconButton(onClick = { open("trash") }) { Icon(kimonoIcon("trash"), "Recently deleted") } } },
+        topBar = { KimonoTopBar("Drive", mark = { model.drive.driveBloom.collectAsState().value?.let { InkBloom(it.id, it.accent, it.glyph, 32.dp) } }) },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { naming = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("New space") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
         },

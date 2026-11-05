@@ -124,7 +124,8 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    val tab = route == "home" || route == "apps" || route == "drive" || route == "you"
+    val roomApp = appOfRoom(route)
+    val tab = roomApp != null
     val model = remember(session) { DriveModel(Drive(session), platform) }
     val code = remember(session) { app.kimono.data.Code(session) }
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
@@ -132,13 +133,16 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val pins = remember(session) { app.kimono.screens.Pins(platform, session.answers.server) }
     LaunchedEffect(pins) { pins.load() }
     val admin = me?.role == "owner" || me?.role == "admin"
+    /* The bar's own actions: Code's New task, and the Apps grid that the bloom in the middle brings up. */
+    var codeStarting by remember { mutableStateOf(false) }
+    var appsOpen by remember { mutableStateOf(false) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
     /* Kimono's own apps open their screens here when the phone has them; anything else, its phone app or its website. */
     fun openApp(target: app.kimono.data.LauncherApp) {
         when {
             target.id == "kimono-drive" -> goTab("drive")
-            target.id == app.kimono.data.Code.APP_ID && admin -> nav.navigate("code")
-            target.id == "kimono-vpn" -> nav.navigate("vpn")
+            target.id == app.kimono.data.Code.APP_ID && admin -> goTab("code")
+            target.id == "kimono-vpn" -> goTab("vpn")
             else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
         }
     }
@@ -148,20 +152,15 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
-            if (tab) ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                val colors = ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = MaterialTheme.colorScheme.secondaryContainer, selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.onSurface, unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant)
-                ShortNavigationBarItem(selected = route == "home", onClick = { goTab("home") }, icon = { Icon(kimonoIcon("home"), null) }, label = { Text("Home") }, colors = colors)
-                ShortNavigationBarItem(selected = route == "apps", onClick = { goTab("apps") }, icon = { Icon(kimonoIcon("apps"), null) }, label = { Text("Apps") }, colors = colors)
-                if (driveOn != false) ShortNavigationBarItem(selected = route == "drive", onClick = { goTab("drive") }, icon = { Icon(kimonoIcon("folder"), null) }, label = { Text("Drive") }, colors = colors)
-                ShortNavigationBarItem(selected = route == "you", onClick = { goTab("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors)
-            }
+            if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = { codeStarting = true }, openApps = { appsOpen = true })
         },
     ) { padding ->
+        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, pins, onDismiss = { appsOpen = false }) { appsOpen = false; openApp(it) }
         /*
          * Material's own motion between screens. Tabs fade through: the old one
          * fades quickly, the new one settles in from just smaller. A screen
@@ -169,8 +168,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
          * short way and cross-fade, forward to the left and back to the right,
          * and Android's predictive back gesture scrubs the same motion.
          */
-        val tabs = setOf("home", "apps", "drive", "you")
-        fun between(from: String?, to: String?) = from in tabs && to in tabs
+        fun between(from: String?, to: String?) = appOfRoom(from) != null && appOfRoom(to) != null
         val settle = CubicBezierEasing(.05f, .7f, .1f, 1f)
         val axis = tween<IntOffset>(400, easing = settle)
         val arrive = fadeIn(tween(250, delayMillis = 100, easing = LinearOutSlowInEasing))
@@ -183,11 +181,11 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
-            composable("home") { HomeScreen(me, model.drive, platform, update, onLater, openCode = { nav.navigate("code") }) { goTab("drive") } }
+            composable("home") { HomeScreen(me, model.drive, platform, update, onLater, openCode = { goTab("code") }) { goTab("drive") } }
             /* Code's screens wear Code's colour, as its pages do on the website. */
             composable("code") {
                 val codeApp = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }
-                AppAccentTheme(codeApp?.accent) { CodeScreen(code, codeApp, back = { nav.popBackStack() }) { nav.navigate(it) } }
+                AppAccentTheme(codeApp?.accent) { CodeScreen(code, codeApp, starting = codeStarting, setStarting = { codeStarting = it }, back = { nav.popBackStack() }) { nav.navigate(it) } }
             }
             composable("code/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
@@ -210,7 +208,9 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
             composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins) { openApp(it) } }
-            composable("vpn") { app.kimono.screens.VpnScreen(vpn, platform, model.drive.launcher.value?.firstOrNull { it.id == "kimono-vpn" }) { nav.popBackStack() } }
+            listOf("vpn", "vpn/people", "vpn/connect").forEach { room ->
+                composable(room) { app.kimono.screens.VpnScreen(vpn, platform, model.drive.launcher.value?.firstOrNull { it.id == "kimono-vpn" }, room, go = { goTab(it) }) { nav.popBackStack() } }
+            }
             composable("manage") { app.kimono.screens.AppsScreen(appAdmin, back = { nav.popBackStack() }) { nav.navigate(it) } }
             composable("manage/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
