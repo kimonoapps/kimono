@@ -35,8 +35,8 @@ import app.kimono.ui.kimonoIcon
 /*
  * 間 The bottom bar is the room you're in. Its middle is the app you're in,
  * its bloom (Kimono's branch on Kimono's own pages); either side are that
- * app's rooms, and You sits at the end everywhere. Pressing the bloom brings
- * up every app, to go to another. Inside an app the bar wears its colour.
+ * app's rooms; on Kimono's own pages, Home and You. Pressing the bloom
+ * brings up every app, to go to another. Inside an app the bar wears its colour.
  */
 
 /** A screen to open from outside the app (an update notification, say), taken up once signed in. */
@@ -49,15 +49,15 @@ class RoomApp(val id: String, val name: String, val accent: String?, val glyph: 
     val rooms get() = before + after
 }
 
-/* Kimono's own pages: Home, the flower (every app), You. */
+/* Kimono's own pages: Home (what's happening), the flower (every app), You. */
 private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home")))
-private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder"), Room("trash", "Trash", "trash")))
-private val code = RoomApp("kimono-code", "Code", "#2c7783", "code", listOf(Room("code", "Tasks", "select"), Room("code:new", "New task", "plus", action = true)))
+private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder")), listOf(Room("trash", "Trash", "trash")))
+private val code = RoomApp("kimono-code", "Code", "#2c7783", "code", listOf(Room("code", "Tasks", "select")), listOf(Room("code:new", "New task", "plus", action = true)))
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
 
 /** Which app's bar a screen shows, or null for a screen opened from a room (it has its own back). */
 fun appOfRoom(route: String?): RoomApp? = when (route) {
-    "home", "apps", "you" -> kimono
+    "home", "you" -> kimono
     "drive", "trash" -> drive
     "code" -> code
     "vpn", "vpn/people", "vpn/connect" -> vpn
@@ -89,7 +89,8 @@ fun RoomBar(app: RoomApp, route: String?, launcherApp: LauncherApp?, me: Account
                 }
                 Row(Modifier.weight(1f)) {
                     app.after.forEach { place(it) }
-                    ShortNavigationBarItem(selected = route == "you", onClick = { go("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors, modifier = Modifier.weight(1f))
+                    /* You is Kimono's: inside an app the bar is that app's alone. */
+                    if (app === kimono) ShortNavigationBarItem(selected = route == "you", onClick = { go("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors, modifier = Modifier.weight(1f))
                 }
             }
         }

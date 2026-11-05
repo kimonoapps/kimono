@@ -67,7 +67,6 @@ import app.kimono.screens.DetailsScreen
 import app.kimono.screens.DriveModel
 import app.kimono.screens.DriveScreen
 import app.kimono.screens.FolderScreen
-import app.kimono.screens.HomeScreen
 import app.kimono.screens.CodeScreen
 import app.kimono.screens.WorkspaceScreen
 import app.kimono.screens.TrashScreen
@@ -156,7 +155,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -185,7 +184,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
-            composable("home") { HomeScreen(me, model.drive, platform, update, onLater, openCode = { goTab("code") }) { goTab("drive") } }
+            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, model.drive, code, vpn, admin, here = { app.kimono.screens.phoneAppHere(it, platform) }) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
             /* Code's screens wear Code's colour, as its pages do on the website. */
             composable("code") {
                 val codeApp = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }
@@ -211,7 +210,6 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
-            composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins, here = { app.kimono.screens.phoneAppHere(it, platform) }) { openApp(it) } }
             composable("app/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 model.drive.launcher.collectAsState().value?.firstOrNull { it.id == id }?.let { found -> app.kimono.screens.PhoneAppScreen(found, platform) { nav.popBackStack() } }

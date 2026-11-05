@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.kimono.data.Drive
@@ -86,7 +87,12 @@ class Pins(private val platform: Platform, private val server: String?) {
  * screens here, the rest their phone app or their website.
  */
 @Composable
-fun LauncherScreen(drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) }, open: (LauncherApp) -> Unit) {
+fun LauncherScreen(
+    drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) },
+    /* What sits above the apps, scrolling with them: Home's welcome. */
+    header: @Composable () -> Unit = { KimonoTopBar("Apps") },
+    open: (LauncherApp) -> Unit,
+) {
     val apps by drive.launcher.collectAsState()
     val pinned by pins.pinned.collectAsState()
     var problem by remember { mutableStateOf<String?>(null) }
@@ -94,32 +100,38 @@ fun LauncherScreen(drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere
     val scope = rememberCoroutineScope()
     suspend fun load() { try { drive.otherApps(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(Unit) { if (drive.launcher.value == null) drive.knownApps(); load() }
-    Column(Modifier.fillMaxSize()) {
-        KimonoTopBar("Apps")
-        KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
-            val all = apps
+    KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
+        val all = apps
+        val pinnedIds = all?.let { list -> (pinned ?: pins.orDefault(list)).filter { id -> list.any { it.id == id } } }.orEmpty()
+        val first = pinnedIds.mapNotNull { id -> all?.firstOrNull { it.id == id } }
+        val rest = all.orEmpty().filter { it.id !in pinnedIds }
+        fun toggle(app: LauncherApp) = scope.launch { pins.set(if (app.id in pinnedIds) pinnedIds - app.id else pinnedIds + app.id) }
+        LazyVerticalGrid(
+            GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            /* The header spans the page edge to edge, out of the grid's side margins. */
+            item(span = { GridItemSpan(2) }) {
+                Box(Modifier.layout { measurable, constraints ->
+                    val out = 16.dp.roundToPx()
+                    val placeable = measurable.measure(constraints.copy(maxWidth = constraints.maxWidth + 2 * out, minWidth = constraints.maxWidth + 2 * out))
+                    layout(constraints.maxWidth, placeable.height) { placeable.place(-out, 0) }
+                }) { header() }
+            }
             when {
-                all == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-                all == null -> Box(Modifier.padding(24.dp)) { Problem(problem) }
+                all == null && problem == null -> item(span = { GridItemSpan(2) }) { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
+                all == null -> item(span = { GridItemSpan(2) }) { Problem(problem) }
                 else -> {
-                    val pinnedIds = (pinned ?: pins.orDefault(all)).filter { id -> all.any { it.id == id } }
-                    val first = pinnedIds.mapNotNull { id -> all.firstOrNull { it.id == id } }
-                    val rest = all.filter { it.id !in pinnedIds }
-                    fun toggle(app: LauncherApp) = scope.launch { pins.set(if (app.id in pinnedIds) pinnedIds - app.id else pinnedIds + app.id) }
-                    LazyVerticalGrid(
-                        GridCells.Fixed(2),
-                        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        if (first.isNotEmpty()) {
-                            item(span = { GridItemSpan(2) }) { Label("Pinned") }
-                            items(first, key = { "pin-" + it.id }) { app -> AppTile(app, pinned = true, here = here(app), onPin = { toggle(app) }) { open(app) } }
-                        }
-                        if (rest.isNotEmpty()) {
-                            item(span = { GridItemSpan(2) }) { Label(if (first.isEmpty()) "Your apps" else "Everything else") }
-                            items(rest, key = { it.id }) { app -> AppTile(app, pinned = false, here = here(app), onPin = { toggle(app) }) { open(app) } }
-                        }
+                    if (first.isNotEmpty()) {
+                        item(span = { GridItemSpan(2) }) { Label("Pinned") }
+                        items(first, key = { "pin-" + it.id }) { app -> AppTile(app, pinned = true, here = here(app), onPin = { toggle(app) }) { open(app) } }
+                    }
+                    if (rest.isNotEmpty()) {
+                        item(span = { GridItemSpan(2) }) { Label(if (first.isEmpty()) "Your apps" else "Everything else") }
+                        items(rest, key = { it.id }) { app -> AppTile(app, pinned = false, here = here(app), onPin = { toggle(app) }) { open(app) } }
                     }
                 }
             }
@@ -163,10 +175,10 @@ private fun AppTile(app: LauncherApp, pinned: Boolean, here: PhoneAppHere, onPin
     }
 }
 
-/** Every app, risen from the bloom in the middle of the bar: pick one to go there. */
+/** Every app, risen from the flower in the middle of the bar: pick one to go there. */
 @Composable
 fun AppsSheet(drive: Drive, pins: Pins, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, open: (LauncherApp) -> Unit) {
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
-        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, pins, here, open) }
+        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, pins, here, open = open) }
     }
 }
