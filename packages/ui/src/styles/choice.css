@@ -18,7 +18,7 @@
   font: 16px/1.5 var(--k-sans); text-align: left; cursor: pointer;
   transition: background-color var(--k-t-state) var(--k-ease-settle), box-shadow var(--k-t-state) var(--k-ease-settle), border-radius var(--k-t-seat) var(--k-spring);
 }
-.k-choice-button:hover { background: #e4d9d2; }
+.k-choice-button:hover { background: color-mix(in srgb, var(--k-on-surface) 6%, var(--k-container-highest)); }
 .k-choice-button:focus-visible, .k-choice.is-open .k-choice-button {
   outline: 0; background: var(--k-container-high);
   box-shadow: inset 0 -2px 0 var(--k-accent);
@@ -67,7 +67,7 @@
 /* Compact: a tonal chip for toolbars that opens the same sheet. */
 .k-choice.is-compact { width: auto; max-width: none; }
 .k-choice.is-compact .k-choice-button { min-height: 40px; padding: 0 8px 0 14px; gap: 6px; border-radius: var(--k-r-s); background: var(--k-secondary-container); color: var(--k-on-secondary-container); box-shadow: none; }
-.k-choice.is-compact .k-choice-button:hover { background: #f0d3d6; }
+.k-choice.is-compact .k-choice-button:hover { background: color-mix(in srgb, var(--k-on-secondary-container) 9%, var(--k-secondary-container)); }
 .k-choice.is-compact.is-open .k-choice-button { border-radius: var(--k-r-s); box-shadow: none; }
 .k-choice.is-compact .k-choice-text { display: flex; gap: 6px; align-items: baseline; }
 .k-choice.is-compact .k-choice-text small { font-size: 13px; font-weight: 500; letter-spacing: 0; color: inherit; opacity: .75; }

@@ -30,7 +30,7 @@
     box-shadow var(--k-t-state) var(--k-ease-settle);
 }
 .k-field textarea { padding: var(--k-space-3) var(--k-space-4); resize: vertical; }
-.k-field input:hover, .k-field select:hover, .k-field textarea:hover, .k-input:hover { background: #e4d9d2; }
+.k-field input:hover, .k-field select:hover, .k-field textarea:hover, .k-input:hover { background: color-mix(in srgb, var(--k-on-surface) 6%, var(--k-container-highest)); }
 .k-field input:focus-visible, .k-field select:focus-visible, .k-field textarea:focus-visible, .k-input:focus-visible {
   outline: 0;
   background: var(--k-container-high);

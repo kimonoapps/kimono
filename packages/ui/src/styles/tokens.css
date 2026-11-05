@@ -103,7 +103,7 @@
   --k-r-3: 2px;
   --k-r-2: 1px;
   --k-r-1: 0px;
-  --k-r-seal: 2px;
+  --k-r-seal: 12px;             /* M3: a carved block with rounded corners */
   --k-r-round: 999px;
   --k-r-full: 999px;             /* M3 name for the same */
   /* Material's corner scale, for containers. Seals keep their own 2px cut. */
