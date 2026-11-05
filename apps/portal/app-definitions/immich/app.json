@@ -21,7 +21,7 @@
     "mobileApp": {
       "name": "Kimono Photos",
       "iosUrl": "/get-app?for=ios",
-      "androidUrl": "https://github.com/kimonoapps/repatches/releases/download/immich%2Fv3.1.0-kimono.1/kimono-photos-3.1.0-kimono.1.apk",
+      "androidUrl": "https://github.com/kimonoapps/repatches/releases/download/immich%2Fv3.3.6-kimono.1/kimono-photos-3.3.6-kimono.1.apk",
       "androidPackage": "app.kimono.photos",
       "steps": [
         {
