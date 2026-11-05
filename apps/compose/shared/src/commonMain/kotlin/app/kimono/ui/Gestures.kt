@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,7 +32,6 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -46,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -80,7 +79,7 @@ import kotlin.random.Random
  *   HoldSeal      press and hold to confirm something that can't be undone.
  *   SwipeRow      swipe a row left to act on it; the action is drawn underneath.
  *   holdMenu      long-press anything for a menu of what you can do with it.
- *   KimonoRefresh pull a list down to refresh, with the morphing indicator.
+ *   KimonoRefresh pull a list down to refresh, with the ink loader.
  */
 
 private class Petal(val x: Float, val rest: Float, val turn: Float, val size: Float, val drift: Float)
@@ -196,12 +195,7 @@ fun HoldSeal(
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(if (holding) holdingLabel else label, style = MaterialTheme.typography.titleSmall, color = textColor)
             /* Material's squiggle, filling as you hold. */
-            LinearWavyProgressIndicator(
-                progress = { progress.value },
-                color = textColor,
-                trackColor = textColor.copy(alpha = .22f),
-                modifier = Modifier.width(140.dp),
-            )
+            InkProgress(progress = { progress.value }, color = textColor, modifier = Modifier.width(140.dp))
         }
     }
 }
@@ -276,7 +270,7 @@ fun HoldMenu(choices: List<MenuChoice>, onClick: () -> Unit = {}, modifier: Modi
     }
 }
 
-/** Pull down to refresh, with Material's morphing indicator in Kimono's colours. */
+/** Pull down to refresh, with Kimono's ink loader. */
 @Composable
 fun KimonoRefresh(refreshing: Boolean, onRefresh: () -> Unit, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val state = rememberPullToRefreshState()
@@ -286,12 +280,15 @@ fun KimonoRefresh(refreshing: Boolean, onRefresh: () -> Unit, modifier: Modifier
         state = state,
         modifier = modifier,
         indicator = {
-            PullToRefreshDefaults.LoadingIndicator(
-                state = state,
-                isRefreshing = refreshing,
-                modifier = Modifier.align(Alignment.TopCenter),
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            /* The ink loader comes down with your finger, growing in, and keeps turning while it loads. */
+            val pulled = if (refreshing) 1f else state.distanceFraction.coerceIn(0f, 1.4f)
+            if (pulled > 0f) InkLoader(
+                size = 44.dp,
+                modifier = Modifier.align(Alignment.TopCenter).graphicsLayer {
+                    translationY = (pulled.coerceAtMost(1f) * 72.dp.toPx()) - 28.dp.toPx()
+                    val grown = pulled.coerceAtMost(1f)
+                    scaleX = .4f + .6f * grown; scaleY = .4f + .6f * grown; alpha = grown
+                },
             )
         },
         content = content,

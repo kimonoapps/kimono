@@ -53,6 +53,7 @@ import app.kimono.data.Vpn
 import app.kimono.data.VpnView
 import app.kimono.theme.Kata
 import app.kimono.ui.InkBlot
+import app.kimono.ui.FileTypeMark
 import app.kimono.ui.InkBloom
 import app.kimono.ui.InkCrest
 import app.kimono.ui.InkDot
@@ -145,7 +146,7 @@ fun HomeScreen(
                     newFiles.forEach { file ->
                         val space = spaces.firstOrNull { it.id == file.spaceId }
                         Line(
-                            lead = { if (space != null) InkCrest(space.crest, space.color, 32.dp) else InkBlot(file.id, size = 32.dp) { Icon(kimonoIcon("file"), null, tint = Kata.plum, modifier = Modifier.size(16.dp)) } },
+                            lead = { if (space != null) InkCrest(space.crest, space.color, 32.dp) else InkBlot(file.id, size = 32.dp) { FileTypeMark(file.name, Modifier.size(17.dp)) { Icon(kimonoIcon("file"), null, tint = Kata.plum, modifier = Modifier.size(16.dp)) } } },
                             title = file.name,
                             detail = listOfNotNull(space?.name, whenAgo(file.updatedAt.toLong())).joinToString(" · "),
                         ) { file.parentId?.let { go("folder/$it") } }

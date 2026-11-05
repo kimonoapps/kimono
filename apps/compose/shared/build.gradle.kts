@@ -27,6 +27,7 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
             implementation(libs.compose.resources)
+            implementation(libs.compose.backhandler)
             implementation(libs.material3)
             implementation(libs.lifecycle.viewmodel)
             implementation(libs.lifecycle.runtime)

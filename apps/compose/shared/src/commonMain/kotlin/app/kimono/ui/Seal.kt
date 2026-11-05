@@ -12,7 +12,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,7 +40,7 @@ fun Seal(
     val sized = modifier.heightIn(min = if (compact) 40.dp else 52.dp)
     val content: @Composable RowScope.() -> Unit = {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (busy) LoadingIndicator(modifier = Modifier.size(22.dp), color = MaterialTheme.colorScheme.onPrimary)
+            if (busy) InkLoader(size = 24.dp)
             Text(label, style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall, maxLines = 1)
         }
     }

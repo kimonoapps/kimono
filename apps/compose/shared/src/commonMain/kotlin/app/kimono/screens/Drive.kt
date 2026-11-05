@@ -26,7 +26,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialShapes
@@ -82,6 +81,15 @@ import app.kimono.data.Uploads
 import app.kimono.data.Platform
 import app.kimono.data.readableSize
 import app.kimono.ui.KimonoRefresh
+import app.kimono.ui.InkProgress
+import app.kimono.ui.CodeView
+import app.kimono.ui.FileTypeMark
+import app.kimono.ui.Urushi
+import app.kimono.ui.codeLanguage
+import app.kimono.ui.fileMarkUri
+import app.kimono.ui.readsAsText
+import kotlinx.io.buffered
+import kotlinx.io.readByteArray
 import app.kimono.ui.KimonoTopBar
 import app.kimono.ui.Problem
 import app.kimono.ui.Seal
@@ -189,6 +197,8 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     var naming by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<DriveNode?>(null) }
     var opening by remember { mutableStateOf<Pair<DriveNode, Long>?>(null) }
+    /* A text or code file Kimono shows itself: the file, where it was saved, and its opening. */
+    var reading by remember { mutableStateOf<Triple<DriveNode, String, String>?>(null) }
     val knownSpace = remember { folder?.let { f -> model.drive.knownSpaces()?.firstOrNull { it.id == f.folder.spaceId } } }
     var canEdit by remember { mutableStateOf(knownSpace?.role != "viewer") }
     /* The space's crest stays beside the name, however deep in it you go. */
@@ -217,7 +227,8 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
         opening = node to 0L
         try {
             val path = model.drive.download(node, platform.cacheDir()) { opening = node to it }
-            platform.openFile(path, node.mime)
+            val text = if (readsAsText(node.name, node.mime)) readText(path) else null
+            if (text != null) reading = Triple(node, path, text) else platform.openFile(path, node.mime)
         } catch (p: KimonoProblem) {
             opening = null
             /* What arrived is kept, so trying again carries on from there. */
@@ -350,12 +361,51 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
         load()
         naming = false
     }
+    reading?.let { (node, path, text) ->
+        TextReader(node, text, onOpenElsewhere = { platform.openFile(path, node.mime) }, onClose = { reading = null })
+    }
     renaming?.let { node ->
         NameDialog(title = "Rename", action = "Rename", initial = node.name, onDismiss = { renaming = null }) { name ->
             model.drive.rename(node.id, name)
             load()
             renaming = null
         }
+    }
+}
+
+/** Up to 256 KB of a downloaded file as text, or null when it isn't text after all. */
+private fun readText(path: String): String? = runCatching {
+    val file = kotlinx.io.files.Path(path)
+    val size = kotlinx.io.files.SystemFileSystem.metadataOrNull(file)?.size ?: return null
+    val bytes = kotlinx.io.files.SystemFileSystem.source(file).buffered().use { it.readByteArray(minOf(size, 256L * 1024).toInt()) }
+    if (bytes.any { it == 0.toByte() }) return null
+    bytes.decodeToString().let { if (size > bytes.size) it.substringBeforeLast('\n') else it }
+}.getOrNull()
+
+/** A text or code file, read in Kimono: numbered and coloured, with a way to open it in another app. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun TextReader(node: DriveNode, text: String, onOpenElsewhere: () -> Unit, onClose: () -> Unit) {
+    /* Over the folder, edge to edge; back closes it rather than leaving the folder. */
+    androidx.compose.ui.backhandler.BackHandler(onBack = onClose)
+    run {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Urushi,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(node.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(listOfNotNull(codeLanguage(node.name), readableSize(node.size)).joinToString(" · "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    },
+                    navigationIcon = { IconButton(onClick = onClose) { Icon(kimonoIcon("close"), "Close") } },
+                    actions = { IconButton(onClick = onOpenElsewhere) { Icon(kimonoIcon("share"), "Open in another app") } },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                )
+            },
+        ) { padding -> CodeView(text, node.name, Modifier.padding(padding).fillMaxSize()) }
     }
 }
 
@@ -380,7 +430,15 @@ private fun NodeIcon(node: DriveNode, thumbnail: suspend (Int) -> String?, size:
     val picture by produceState<String?>(null, node.id, node.contentVersion) {
         if (node.mayHaveThumbnail) value = runCatching { thumbnail(pixels) }.getOrNull()
     }
-    Box(Modifier.size(size).background(if (node.isFolder) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer, RoundedCornerShape(if (node.isFolder) size * .3f else size / 2)), contentAlignment = Alignment.Center) {
+    /* A file with a type mark (TypeScript, Android, Excel…) sits on paper, like the website's rows. */
+    val marked = !node.isFolder && picture == null && !busy && remember(node.name) { fileMarkUri(node.name) != null }
+    val shape = RoundedCornerShape(if (node.isFolder || marked) size * .3f else size / 2)
+    Box(
+        Modifier.size(size)
+            .background(if (node.isFolder) MaterialTheme.colorScheme.secondaryContainer else if (marked) MaterialTheme.colorScheme.surfaceContainerLowest else MaterialTheme.colorScheme.tertiaryContainer, shape)
+            .then(if (marked) Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape) else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
         if (busy) InkLoader(size = size * .7f)
         else if (picture != null) AsyncImage(
             model = "file://$picture",
@@ -390,7 +448,10 @@ private fun NodeIcon(node: DriveNode, thumbnail: suspend (Int) -> String?, size:
             alignment = if (node.name.endsWith(".pdf", ignoreCase = true) || node.mime == "application/pdf") Alignment.TopCenter else Alignment.Center,
             modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(size * .3f)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(size * .3f)),
         )
-        else Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(size / 2), tint = if (node.isFolder) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer)
+        else {
+            val plain = @Composable { Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(size / 2), tint = if (node.isFolder) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onTertiaryContainer) }
+            if (node.isFolder) plain() else FileTypeMark(node.name, Modifier.size(size * .58f), fallback = plain)
+        }
     }
 }
 
@@ -418,7 +479,7 @@ private fun NodeRow(
         supportingContent = {
             Column {
                 Text(detailOf(node), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (progress != null) LinearWavyProgressIndicator(progress = { progress }, modifier = Modifier.padding(top = 6.dp).fillMaxWidth())
+                if (progress != null) InkProgress(progress = { progress }, modifier = Modifier.padding(top = 6.dp).fillMaxWidth())
             }
         },
         trailingContent = when {
@@ -550,7 +611,7 @@ private fun UploadRow(task: UploadStatus, retry: () -> Unit, dismiss: () -> Unit
             else {
                 Spacer(Modifier.height(4.dp))
                 val share = if (task.size > 0) task.sent.toFloat() / task.size else if (task.done) 1f else 0f
-                LinearWavyProgressIndicator(progress = { share }, modifier = Modifier.fillMaxWidth())
+                InkProgress(progress = { share }, modifier = Modifier.fillMaxWidth())
                 Text(
                     when {
                         task.done -> "Uploaded"

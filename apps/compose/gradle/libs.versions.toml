@@ -20,6 +20,7 @@ work = "2.12.0"
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
+compose-backhandler = { module = "org.jetbrains.compose.ui:ui-backhandler", version.ref = "compose" }
 compose-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose" }
 material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "material3" }
 lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
