@@ -152,7 +152,7 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
             /* Administrators look after the household's apps from here, as under Admin on the website. */
             if (me?.role == "owner" || me?.role == "admin") {
                 GroupLabel("Kimono")
-                KimonoGroup(listOf(GroupItem("Apps", icon = "apps") { open("apps") }))
+                KimonoGroup(listOf(GroupItem("Manage apps", icon = "apps") { open("manage") }))
             }
             GroupLabel("This phone")
             KimonoGroup(listOf(GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } }))

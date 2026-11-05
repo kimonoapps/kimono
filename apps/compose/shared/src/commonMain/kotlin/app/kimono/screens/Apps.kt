@@ -106,7 +106,7 @@ fun AppsScreen(admin: AppAdmin, back: () -> Unit, open: (String) -> Unit) {
                 apps == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 apps == null -> Box(Modifier.padding(24.dp)) { Problem(problem) }
                 else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
-                    itemsIndexed(apps, key = { _, app -> app.id }) { index, app -> AppRow(app, index, apps.size) { open("apps/${app.id}") } }
+                    itemsIndexed(apps, key = { _, app -> app.id }) { index, app -> AppRow(app, index, apps.size) { open("manage/${app.id}") } }
                 }
             }
         }

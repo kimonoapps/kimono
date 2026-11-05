@@ -124,18 +124,29 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
-    val tab = route == "home" || route == "drive" || route == "you"
+    val tab = route == "home" || route == "apps" || route == "drive" || route == "you"
     val model = remember(session) { DriveModel(Drive(session), platform) }
     val code = remember(session) { app.kimono.data.Code(session) }
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
+    val pins = remember(session) { app.kimono.screens.Pins(platform, session.answers.server) }
+    LaunchedEffect(pins) { pins.load() }
+    val admin = me?.role == "owner" || me?.role == "admin"
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
+    /* Kimono's own apps open their screens here when the phone has them; anything else, its phone app or its website. */
+    fun openApp(target: app.kimono.data.LauncherApp) {
+        when {
+            target.id == "kimono-drive" -> goTab("drive")
+            target.id == app.kimono.data.Code.APP_ID && admin -> nav.navigate("code")
+            else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
+        }
+    }
     /* Drive is the server's to switch on: asked on opening, and the tab and the Files app entry follow. */
     val driveOn by model.drive.driveOn.collectAsState()
     LaunchedEffect(model) { runCatching { model.drive.otherApps() } }
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "apps", "you", "details", "devices", "password", "code", "code/{id}", "manage", "manage/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -143,6 +154,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             if (tab) ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 val colors = ShortNavigationBarItemDefaults.colors(selectedIndicatorColor = MaterialTheme.colorScheme.secondaryContainer, selectedIconColor = MaterialTheme.colorScheme.primary, selectedTextColor = MaterialTheme.colorScheme.onSurface, unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant, unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant)
                 ShortNavigationBarItem(selected = route == "home", onClick = { goTab("home") }, icon = { Icon(kimonoIcon("home"), null) }, label = { Text("Home") }, colors = colors)
+                ShortNavigationBarItem(selected = route == "apps", onClick = { goTab("apps") }, icon = { Icon(kimonoIcon("apps"), null) }, label = { Text("Apps") }, colors = colors)
                 if (driveOn != false) ShortNavigationBarItem(selected = route == "drive", onClick = { goTab("drive") }, icon = { Icon(kimonoIcon("folder"), null) }, label = { Text("Drive") }, colors = colors)
                 ShortNavigationBarItem(selected = route == "you", onClick = { goTab("you") }, icon = { Portrait(me?.picture, me?.name, me?.username, 24.dp) }, label = { Text("You") }, colors = colors)
             }
@@ -155,7 +167,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
          * short way and cross-fade, forward to the left and back to the right,
          * and Android's predictive back gesture scrubs the same motion.
          */
-        val tabs = setOf("home", "drive", "you")
+        val tabs = setOf("home", "apps", "drive", "you")
         fun between(from: String?, to: String?) = from in tabs && to in tabs
         val settle = CubicBezierEasing(.05f, .7f, .1f, 1f)
         val axis = tween<IntOffset>(400, easing = settle)
@@ -195,8 +207,9 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
-            composable("apps") { app.kimono.screens.AppsScreen(appAdmin, back = { nav.popBackStack() }) { nav.navigate(it) } }
-            composable("apps/{id}") { backStack ->
+            composable("apps") { app.kimono.screens.LauncherScreen(model.drive, pins) { openApp(it) } }
+            composable("manage") { app.kimono.screens.AppsScreen(appAdmin, back = { nav.popBackStack() }) { nav.navigate(it) } }
+            composable("manage/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 app.kimono.screens.AppScreen(appAdmin, id) { nav.popBackStack() }
             }

@@ -128,7 +128,14 @@ private data class DriveLook(val id: String = "kimono-drive", val accent: String
 data class BloomLook(val id: String, val accent: String, val glyph: String?)
 
 @Serializable
-private data class AppList(val apps: List<KimonoAppLink>, val drive: DriveLook? = null, val driveOn: Boolean = true)
+private data class AppList(val apps: List<KimonoAppLink>, val launcher: List<LauncherApp>? = null, val drive: DriveLook? = null, val driveOn: Boolean = true)
+
+/** An app this person can open, as the website's rail and Apps grid list it. [own] apps live inside Kimono. */
+@Serializable
+data class LauncherApp(
+    val id: String, val name: String, val fullName: String = name, val description: String = "", val accent: String, val glyph: String? = null,
+    val icon: String? = null, val own: Boolean = false, val web: String, val ios: String? = null, val android: String? = null,
+)
 
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -293,9 +300,20 @@ class Drive(private val session: Session) {
 
     suspend fun otherApps(): List<KimonoAppLink> = json.decodeFromString<AppList>(session.fetch(APPS)).also(::heard).apps
 
+    /** Every app this person can open, for the Apps tab; null until the Portal has answered once. */
+    val launcher = kotlinx.coroutines.flow.MutableStateFlow<List<LauncherApp>?>(null)
+
     private fun heard(list: AppList) {
         list.drive?.let { look -> look.accent?.let { driveBloom.value = BloomLook(look.id, it, look.glyph ?: "file") } }
         driveOn.value = list.driveOn
+        launcher.value = list.launcher ?: olderLauncher(list)
+    }
+
+    /* A Portal from before the Apps tab sends no launcher list: make one from what it does send. */
+    private fun olderLauncher(list: AppList): List<LauncherApp> = buildList {
+        val drive = list.drive
+        if (list.driveOn && drive?.accent != null) add(LauncherApp(drive.id, "Drive", "Kimono Drive", "Your spaces and files.", drive.accent, drive.glyph ?: "file", own = true, web = ""))
+        list.apps.forEach { add(LauncherApp(it.id, it.shortName, it.name, it.description, it.accent, it.glyph, it.icon, own = it.id == Code.APP_ID, web = it.web, ios = it.ios, android = it.android)) }
     }
 
     /* Drive's tab and bloom are there from the first frame, as they were last time. */

@@ -22,7 +22,8 @@ export async function GET() {
   const [settings, catalog] = await Promise.all([getPlatformSettings(), scanAppDefinitions()]);
   /* The Portal's public address: behind the proxy, the request's own is the container's. */
   const origin = portalOrigin();
-  const apps = launcherApps(appRegistry(settings, catalog.definitions), { mesh: await holdsMeshAccess(user.username) })
+  const opened = launcherApps(appRegistry(settings, catalog.definitions), { mesh: await holdsMeshAccess(user.username) });
+  const apps = opened
     .filter((app) => !notListed.has(app.id))
     .map((app) => ({
       id: app.id,
@@ -39,11 +40,27 @@ export async function GET() {
       ios: app.mobileApp?.iosUrl ?? null,
       android: app.mobileApp?.androidUrl ?? null,
     }));
+  /* Every app this person can open, as the website's rail and Apps grid list them (railApps), for the phone's Apps tab. */
+  const launcher = opened.map((app) => ({
+    id: app.id,
+    name: app.shortName,
+    fullName: app.name,
+    description: app.description,
+    accent: app.accent,
+    glyph: app.glyph ?? null,
+    icon: app.iconUrl ? new URL(app.iconUrl, origin).toString() : null,
+    /* Kimono's own apps live inside Kimono; the phone opens the ones it has natively. */
+    own: !app.external,
+    web: new URL(app.href, origin).toString(),
+    ios: app.mobileApp?.iosUrl ?? null,
+    android: app.mobileApp?.androidUrl ?? null,
+  }));
   /* The phone apps have Drive themselves; this is its bloom for them, while it is switched on. */
   const driveOn = driveConfig(settings).enabled;
   const drive = driveOn ? await driveIdentity(settings) : null;
   return apiJson({
     apps,
+    launcher,
     driveOn,
     drive: drive ? { ...drive, bloom: bloomSvg(drive, { glyph: drive.glyph, standalone: true, unique: drive.id }) } : null,
   });
