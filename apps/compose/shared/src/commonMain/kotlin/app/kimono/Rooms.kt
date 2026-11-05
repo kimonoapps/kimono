@@ -49,7 +49,8 @@ class RoomApp(val id: String, val name: String, val accent: String?, val glyph: 
     val rooms get() = before + after
 }
 
-private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home"), Room("apps", "Apps", "apps")))
+/* Kimono's own pages: Home, the flower (every app), You. */
+private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home")))
 private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder"), Room("trash", "Trash", "trash")))
 private val code = RoomApp("kimono-code", "Code", "#2c7783", "code", listOf(Room("code", "Tasks", "select"), Room("code:new", "New task", "plus", action = true)))
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
