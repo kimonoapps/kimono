@@ -55,10 +55,11 @@ export const sandbox = {
       },
       git: { token: config.gitToken, name: who.name, email: who.email },
       model: { token: config.modelToken },
+      owner: workspace.owner, title: workspace.title, limits: config.limits,
     }),
-  }).then(json<{ id: string; state: string; branch: string; runtime?: string }>),
+  }).then(json<{ id: string; state: string; branch: string; runtime?: string; slept?: string[] | null }>),
 
-  state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string }>),
+  state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string; limits: SandboxLimits; disk: Disk }>),
 
   /** Starts a turn; the body is the node's NDJSON stream, read until it ends. */
   turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[]; effort?: Effort }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
@@ -106,7 +107,7 @@ export const sandbox = {
   stopPreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { method: "DELETE", timeout: 20_000 }).then(() => undefined),
 
   /** How the published app is doing, without waking the sandbox. */
-  preview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { timeout: 15_000 }).then(json<NodePreview & { health: AppHealth }>),
+  preview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { timeout: 15_000 }).then(json<NodePreview & { health: AppHealth; disk?: Disk }>),
   /** The end of what the app printed, across its restarts. */
   previewLogs: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview/logs`, { timeout: 15_000 }).then((r) => r.text()),
   /** Starts the app again as the agent published it, keeping its link. */
@@ -120,6 +121,10 @@ export const sandbox = {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), timeout: 2 * 60_000,
   }).then(json<{ url: string; number: number }>),
 };
+
+export type SandboxLimits = { cpus: number; memoryMb: number; awakePerPerson: number; awakePerNode: number; diskGb: number };
+/** What a sandbox's files took when last measured, against its quota, in bytes. */
+export type Disk = { used?: number; quota: number; at?: number };
 
 export type NodePreview = { url: string; port: number; kind?: string; stopped?: boolean };
 export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };

@@ -174,6 +174,35 @@ answering for its name. Previews survive a node restart: the node keeps them in
 its state directory. A sandbox with a live preview sleeps like any other (see
 "Sleep" below); opening its link wakes it.
 
+## Limits
+
+A node is shared with the Portal and the rest of the house, so each sandbox
+gets a share and only so many are awake at once. The node's flags set the
+defaults (`--cpus 1 --memory 2g --pids 1024 --awake-per-person 2
+--awake-per-node 6 --disk-gb 10`); Code's settings in Applications override
+them, sent with every ensure.
+
+- **Each sandbox:** CPUs, memory with no swap on top (`--memory-swap` equals
+  `--memory`), and a process count. A sandbox woken from a stop starts under
+  the current limits.
+- **Awake caps:** running or paused sandboxes, per person and per node.
+  Waking one past a cap stops that person's (or, for the node cap, anyone's)
+  least recently used sandbox that isn't working; its timeline says it was put
+  to sleep. When every sandbox holding a slot is working, waking is refused
+  (`429`) with the tasks named; the preview proxy shows a "server is busy" page.
+- **Disk:** Docker can't cap a volume here (the local volume driver has no
+  size; overlay2 quotas need XFS with pquota), so the node measures each awake
+  sandbox's repository, home and `/tmp` every five minutes and at each turn.
+  Past the quota, a turn starts by telling the agent to free space. Past the
+  quota plus a tenth (at least 1 GB), the turn is stopped and the published
+  app is stopped. The App tab shows the use against the quota.
+- The agent is told its limits on every turn.
+
+The ensure answer carries `"limits"`, `"disk": { "used"?, "quota", "at"? }`
+and `"slept": [ids]`; the state answer and `GET …/preview` carry `disk` too.
+The stream adds `{ "type": "kimono.disk", "used", "quota" }` and
+`kimono.disk.full`.
+
 ## Code in Drive
 
 Every task's files are in Drive, so they show up wherever Drive does — the web,

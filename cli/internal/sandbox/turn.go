@@ -86,7 +86,20 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}()
 
 	s.primeOutbox(space)
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + s.cfg.SystemPrompt, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Model}
+	// What it has to work with, and whether it must make room first.
+	limits := s.limitsNow()
+	system := s.cfg.SystemPrompt + "\n\n" + limitsPrompt(limits)
+	used, measuredAt := s.diskUse(id)
+	if s.now().Sub(measuredAt) > time.Minute {
+		if fresh, err := s.measureDisk(r.Context(), id); err == nil {
+			used = fresh
+		}
+	}
+	full := diskNote(used, limits)
+	if full != "" {
+		system += "\n\n" + full
+	}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Model}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()
@@ -116,6 +129,29 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	w.WriteHeader(http.StatusOK)
 	out := &lineWriter{w: w}
 	out.json(map[string]any{"type": "kimono.started", "at": time.Now().UnixMilli()})
+	if full != "" {
+		out.json(map[string]any{"type": "kimono.disk", "used": used, "quota": limits.diskQuota()})
+	}
+	// Writing past the ceiling stops the turn: nothing else stops a full disk.
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-ticker.C:
+				check, done := context.WithTimeout(context.Background(), 20*time.Second)
+				used, err := s.measureDisk(check, id)
+				done()
+				if err == nil && used > limits.diskCeiling() {
+					out.json(map[string]any{"type": "kimono.disk.full", "used": used, "quota": limits.diskQuota()})
+					stop()
+					return
+				}
+			}
+		}
+	}()
 
 	var wait sync.WaitGroup
 	wait.Add(1)

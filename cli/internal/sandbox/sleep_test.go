@@ -86,11 +86,11 @@ func TestRecordsSurviveRestart(t *testing.T) {
 	dir := t.TempDir()
 	clock := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	first := &Server{cfg: Config{StateDir: dir, Logf: func(string, ...any) {}}, records: map[string]*record{}, now: func() time.Time { return clock }}
-	first.remember("abc", Repo{URL: "https://git.example.com/a/b.git", Owner: "a", Name: "b", Base: "main", Branch: "code/x"})
+	first.remember("abc", Repo{URL: "https://git.example.com/a/b.git", Owner: "a", Name: "b", Base: "main", Branch: "code/x"}, "akram", "Recipes")
 	second := &Server{cfg: Config{StateDir: dir, Logf: func(string, ...any) {}}, records: map[string]*record{}}
 	second.loadRecords()
 	r := second.records["abc"]
-	if r == nil || r.Repo.Owner != "a" || r.Repo.Branch != "code/x" || !r.Last.Equal(clock) {
+	if r == nil || r.Repo.Owner != "a" || r.Repo.Branch != "code/x" || r.Owner != "akram" || r.Title != "Recipes" || !r.Last.Equal(clock) {
 		t.Fatalf("record after restart: %+v", r)
 	}
 	second.now = time.Now

@@ -315,9 +315,12 @@ func (m *Manager) sandboxesServe(args []string) error {
 	gatewayListen := flags.String("gateway-listen", "", "model gateway and Git broker address (default: the sandbox network's gateway)")
 	gatewayURL := flags.String("gateway-url", "", "that address as containers reach it (default: derived)")
 	runtimeName := flags.String("runtime", "", "container runtime (default: runsc when installed)")
-	cpus := flags.String("cpus", "4", "CPUs per sandbox")
-	memory := flags.String("memory", "8g", "memory per sandbox")
-	pids := flags.Int("pids", 2048, "processes per sandbox")
+	cpus := flags.String("cpus", "1", "CPUs per sandbox (Code's settings can change it)")
+	memory := flags.String("memory", "2g", "memory per sandbox, with no swap on top (Code's settings can change it)")
+	pids := flags.Int("pids", 1024, "processes per sandbox")
+	awakePerPerson := flags.Int("awake-per-person", 2, "sandboxes one person may have running or paused at once (Code's settings can change it)")
+	awakePerNode := flags.Int("awake-per-node", 6, "sandboxes running or paused at once on this node (Code's settings can change it)")
+	diskGB := flags.Int("disk-gb", 10, "disk each sandbox may use, in GB (Code's settings can change it)")
 	pauseAfter := flags.Duration("pause-after", time.Minute, "pause a sandbox after this long without use (it resumes instantly)")
 	stopAfter := flags.Duration("stop-after", 15*time.Minute, "stop a sandbox after this long without use (frees its memory; files kept)")
 	removeAfter := flags.Duration("remove-after", 7*24*time.Hour, "remove a sandbox's container after this long without use (files kept on its volume; 0 never)")
@@ -345,7 +348,7 @@ func (m *Manager) sandboxesServe(args []string) error {
 	server, err := sandbox.New(sandbox.Config{
 		Listen: *listen, Key: strings.TrimSpace(string(key)), Image: *image,
 		GatewayListen: *gatewayListen, GatewayURL: *gatewayURL, Runtime: *runtimeName,
-		CPUs: *cpus, Memory: *memory, Pids: *pids, PauseAfter: *pauseAfter, StopAfter: *stopAfter, RemoveAfter: *removeAfter,
+		CPUs: *cpus, Memory: *memory, Pids: *pids, AwakePerPerson: *awakePerPerson, AwakePerNode: *awakePerNode, DiskGB: *diskGB, PauseAfter: *pauseAfter, StopAfter: *stopAfter, RemoveAfter: *removeAfter,
 		Agent: os.Getenv("KIMONO_SANDBOX_AGENT"), DevGitDir: *devGitDir,
 		StateDir: *stateDir, PreviewListen: *previewListen, PreviewDomain: *previewDomain,
 		AllowPrivate: allowPrivate, AllowOpenNetwork: *allowOpen, DNS: splitList(*dns),

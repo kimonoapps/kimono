@@ -26,7 +26,14 @@ export type CodeEvent =
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }
   | { kind: "preview"; url: string; port: number; app?: string }
-  | { kind: "preview-stopped" };
+  | { kind: "preview-stopped" }
+  | { kind: "slept"; for: string }
+  | { kind: "disk"; used: number; quota: number; full?: boolean };
+/** What a task's sandbox may use, and its disk as last measured (bytes). */
+export type SandboxStatus = {
+  limits: { cpus: number; memoryMb: number; awakePerPerson: number; awakePerNode: number; diskGb: number };
+  disk: { used?: number; quota: number; at?: number };
+};
 /** How a published app is doing, as the sandbox's supervisor reports it. */
 export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };
 export type StoredEvent = { seq: number; turn: string | null; at: number; event: CodeEvent };
@@ -84,6 +91,7 @@ export const code = {
   fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),
   stopPreview: (id: string) => call<void>(`${ws(id)}/preview`, { method: "DELETE" }),
   renamePreview: (id: string, name: string) => call<{ url: string; port: number }>(`${ws(id)}/preview`, json("PATCH", { name })),
+  sandbox: (id: string) => call<SandboxStatus>(`${ws(id)}/sandbox`),
   previewStatus: (id: string) => call<{ health: AppHealth; log: string }>(`${ws(id)}/preview`),
   restartPreview: (id: string) => call<unknown>(`${ws(id)}/preview/restart`, { method: "POST" }),
   pausePreview: (id: string) => call<unknown>(`${ws(id)}/preview/stop`, { method: "POST" }),
@@ -119,6 +127,12 @@ export function readableSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
+
+/** Gigabytes, as limits are spoken of: "2 GB", "3.4 GB". */
+export function gigabytes(bytes: number) {
+  const value = bytes / 1024 ** 3;
+  return `${Number.isInteger(value) ? value : value.toFixed(1)} GB`;
 }
 
 export function elapsed(ms: number) {

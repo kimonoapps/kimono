@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -518,6 +519,7 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request, id string
 	}
 	body := s.previewBody(p)
 	body["health"] = s.health(r.Context(), id, p)
+	body["disk"] = s.diskJSON(id)
 	writeJSON(w, 200, body)
 	return nil
 }
@@ -814,6 +816,11 @@ func (s *Server) PreviewHandler() http.Handler {
 			case <-wk.done:
 				if wk.err != nil {
 					s.cfg.Logf("wake %s for its preview: %v", id, wk.err)
+					var refused *apiProblem
+					if errors.As(wk.err, &refused) && refused.status == http.StatusTooManyRequests {
+						serverFull(w)
+						return
+					}
 					notRunning(w, http.StatusBadGateway)
 					return
 				}
@@ -835,6 +842,20 @@ func stillWaking(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", "2")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	_, _ = io.WriteString(w, wakingPage)
+}
+
+const serverFullPage = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Busy</title>
+<body style="font:16px/1.5 system-ui,sans-serif;background:#faf7f1;color:#24221f;display:grid;place-items:center;min-height:90vh;margin:0">
+<div style="max-width:28em;padding:24px"><h1 style="font-weight:600;font-size:22px;margin:0 0 8px">This app is asleep, and the server is busy</h1>
+<p style="margin:0;color:#5b524d">Every slot is taken by work in progress. Try again in a few minutes.</p></div>`
+
+// serverFull is a sleeping app that can't wake: the awake caps are full of working sandboxes.
+func serverFull(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "60")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = io.WriteString(w, serverFullPage)
 }
 
 func notRunning(w http.ResponseWriter, status int) {

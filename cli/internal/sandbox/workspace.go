@@ -37,6 +37,12 @@ type ensureRequest struct {
 	Repo  Repo      `json:"repo"`
 	Git   GitAuth   `json:"git"`
 	Model ModelAuth `json:"model"`
+	// Owner is the person the task belongs to and Title its name, for the
+	// awake caps and for saying which tasks hold the slots.
+	Owner string `json:"owner"`
+	Title string `json:"title"`
+	// Limits are the Portal's own; unset fields keep the node's.
+	Limits *Limits `json:"limits"`
 }
 
 // workspace is what the node remembers about one sandbox. Credentials live
@@ -59,6 +65,8 @@ type workspace struct {
 	busy       bool
 	cancel     func()
 	lastActive time.Time
+	// slept are the sandboxes the last ensure put to sleep to make room.
+	slept []string
 }
 
 func (w *workspace) touch() {
@@ -159,18 +167,39 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 	if label := s.repoLabel(ctx, id); state != "" && label != "" && label != request.Repo.Owner+"/"+request.Repo.Name {
 		return nil, "", problem(409, "This workspace already belongs to another repository.")
 	}
-	s.remember(id, request.Repo)
+	s.mu.Lock()
+	s.limits = s.limits.merge(request.Limits)
+	s.mu.Unlock()
+	owner, title := strings.TrimSpace(request.Owner), strings.TrimSpace(request.Title)
+	if len(owner) > 100 {
+		owner = owner[:100]
+	}
+	if runes := []rune(title); len(runes) > 120 {
+		title = string(runes[:120])
+	}
+	s.remember(id, request.Repo, owner, title)
 	// Waking covers every sleep, a removed container included; only a sandbox
 	// that never existed (or lost its files) is made from scratch.
-	if _, err := s.wake(ctx, id); err != nil {
+	_, slept, err := s.wakeFor(ctx, id)
+	if err != nil {
 		var refused *apiProblem
 		if !errors.As(err, &refused) || refused.status != 404 {
 			return nil, "", err
 		}
-		if err := s.create(ctx, id, request.Repo); err != nil {
+		s.room.Lock()
+		more, err := s.makeRoom(ctx, id)
+		slept = append(slept, more...)
+		if err == nil {
+			err = s.create(ctx, id, request.Repo)
+		}
+		s.room.Unlock()
+		if err != nil {
 			return nil, "", err
 		}
 	}
+	w.mu.Lock()
+	w.slept = slept
+	w.mu.Unlock()
 	if err := s.checkout(ctx, w); err != nil {
 		return nil, "", err
 	}
@@ -193,10 +222,11 @@ func (s *Server) create(ctx context.Context, id string, repo Repo) error {
 	args := []string{"run", "-d", "--name", name,
 		"--label", "kimono.sandbox=" + id, "--label", "kimono.repo=" + repo.Owner + "/" + repo.Name,
 		"--hostname", "sandbox", "--network", s.cfg.Network,
-		"--cpus", s.cfg.CPUs, "--memory", s.cfg.Memory, "--pids-limit", strconv.Itoa(s.cfg.Pids),
+		"--pids-limit", strconv.Itoa(s.cfg.Pids),
 		"--init", "--security-opt", "no-new-privileges", "--cap-drop", "ALL",
 		"--user", "agent", "--workdir", "/workspace",
 		"-v", name + ":/workspace"}
+	args = append(args, s.limitsNow().dockerArgs()...)
 	if s.runtime == "runsc" {
 		args = append(args, "--runtime", "runsc")
 	}

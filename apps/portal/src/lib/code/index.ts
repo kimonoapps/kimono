@@ -86,6 +86,18 @@ export function listen(workspaceId: string, listener: (event: StoredEvent) => vo
   return () => { set.delete(listener); if (!set.size) live.listeners.delete(workspaceId); };
 }
 
+/**
+ * Makes sure a task's sandbox is awake. Waking one past the awake caps puts
+ * another task to sleep; that task's timeline says so.
+ */
+export async function ensure(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }) {
+  const answer = await sandbox.ensure(config, workspace, person);
+  for (const id of answer.slept ?? []) {
+    try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }
+  }
+  return answer;
+}
+
 const who = (user: ApiUser) => ({ name: user.name || user.username, email: user.email || `${user.username}@users.kimono` });
 
 const clock = (at: number) => new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" });
@@ -126,7 +138,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   let failure: string | undefined;
   let context: number | undefined;
   try {
-    await sandbox.ensure(config, workspace, who(user));
+    await ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
@@ -159,6 +171,10 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           }
           setPreview(db(), workspace.id, preview);
           record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port, ...(app ? { app } : {}) });
+          continue;
+        }
+        if ((line.type === "kimono.disk" || line.type === "kimono.disk.full") && typeof line.used === "number" && typeof line.quota === "number") {
+          record(workspace.id, turn, { kind: "disk", used: line.used, quota: line.quota, ...(line.type === "kimono.disk.full" ? { full: true } : {}) });
           continue;
         }
         if (line.type === "kimono.usage") {
@@ -216,6 +232,12 @@ export async function renamePreview(config: CodeConfig, workspace: Workspace, na
   setPreviewName(db(), workspace.id, clean);
   record(workspace.id, runningTurn(db(), workspace.id), { kind: "preview", url: preview.url, port: preview.port, ...(preview.kind ? { app: preview.kind } : {}) });
   return preview;
+}
+
+/** What the task's sandbox may use, and its disk as last measured. Doesn't wake it. */
+export async function sandboxStatus(config: CodeConfig, workspace: Workspace) {
+  const state = await sandbox.state(config, workspace);
+  return { limits: state.limits, disk: state.disk };
 }
 
 /** How the app is doing now, and the end of its log. What the node says is kept, so the list agrees. */
@@ -297,7 +319,7 @@ const safeName = (name: string) => name.normalize("NFC").replace(/[\\/\0-\x1f]/g
 
 export async function attach(config: CodeConfig, workspace: Workspace, user: ApiUser, name: string, type: string, body: Uint8Array): Promise<Attachment> {
   const stored = `${newId(3)}-${safeName(name)}`;
-  await sandbox.ensure(config, workspace, who(user));
+  await ensure(config, workspace, who(user));
   const { path } = await sandbox.attach(config, workspace, stored, body);
   await mkdir(attachmentDir(workspace.id), { recursive: true, mode: 0o700 });
   await writeFile(join(attachmentDir(workspace.id), stored), body, { mode: 0o600 });

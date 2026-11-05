@@ -78,6 +78,50 @@
         "target": "settings",
         "default": "75",
         "description": "Percent of the plan's 5-hour window, on plans that have one. The owner isn't limited."
+      },
+      {
+        "key": "awake_per_person",
+        "label": "Tasks awake per person",
+        "kind": "number",
+        "group": "limits",
+        "target": "settings",
+        "default": "2",
+        "description": "Sandboxes one person can have running at once. Waking another puts their least recently used one to sleep."
+      },
+      {
+        "key": "awake_per_node",
+        "label": "Tasks awake on the server",
+        "kind": "number",
+        "group": "limits",
+        "target": "settings",
+        "default": "6",
+        "description": "Sandboxes running at once across everyone. Leave room for the rest of the house."
+      },
+      {
+        "key": "sandbox_cpus",
+        "label": "CPUs per task",
+        "kind": "number",
+        "group": "limits",
+        "target": "settings",
+        "default": "1"
+      },
+      {
+        "key": "sandbox_memory_gb",
+        "label": "Memory per task (GB)",
+        "kind": "number",
+        "group": "limits",
+        "target": "settings",
+        "default": "2",
+        "description": "With no swap. An app that needs more is stopped."
+      },
+      {
+        "key": "sandbox_disk_gb",
+        "label": "Disk per task (GB)",
+        "kind": "number",
+        "group": "limits",
+        "target": "settings",
+        "default": "10",
+        "description": "Past it, the agent is told to free space; a little past it, work stops and the task's app is stopped."
       }
     ],
     "managedEnvironment": [],

@@ -41,6 +41,10 @@ type Server struct {
 	// replaces iptables in tests.
 	firewall *firewallPlan
 	fwRun    fwRunner
+	// limits are what each sandbox and person may use: the node's flags, then
+	// whatever the Portal last sent. room serialises waking past the caps.
+	limits Limits
+	room   sync.Mutex
 	// dial replaces dialSandbox in tests.
 	dial func(ctx context.Context, id string, port int) (net.Conn, error)
 }
@@ -62,6 +66,9 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{cfg: cfg, docker: docker{bin: cfg.Docker}, spaces: map[string]*workspace{}, byCapability: map[string]*workspace{}, previews: map[string]*preview{},
 		records: map[string]*record{}, wakeLocks: map[string]*sync.Mutex{}, wakings: map[string]*waking{}, now: time.Now}
 	s.started = s.now()
+	cpus, _ := strconv.ParseFloat(s.cfg.CPUs, 64)
+	memory, _ := parseMemory(s.cfg.Memory)
+	s.limits = Limits{CPUs: cpus, MemoryMB: memory, AwakePerPerson: s.cfg.AwakePerPerson, AwakePerNode: s.cfg.AwakePerNode, DiskGB: s.cfg.DiskGB}
 	s.loadPreviews()
 	s.loadRecords()
 	return s, nil
@@ -221,7 +228,8 @@ func (s *Server) handleEnsure(w http.ResponseWriter, r *http.Request, id string)
 		return err
 	}
 	s.reviveServe(id)
-	writeJSON(w, 200, map[string]any{"id": id, "state": state, "branch": space.repo.Branch, "runtime": s.runtime, "preview": s.previewJSON(id)})
+	writeJSON(w, 200, map[string]any{"id": id, "state": state, "branch": space.repo.Branch, "runtime": s.runtime, "preview": s.previewJSON(id),
+		"slept": space.slept, "limits": s.limitsNow(), "disk": s.diskJSON(id)})
 	return nil
 }
 
@@ -244,7 +252,7 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request, id string) 
 	if busy && state == "ready" {
 		state = "busy"
 	}
-	writeJSON(w, 200, map[string]any{"id": id, "state": state, "branch": branch, "preview": s.previewJSON(id)})
+	writeJSON(w, 200, map[string]any{"id": id, "state": state, "branch": branch, "preview": s.previewJSON(id), "limits": s.limitsNow(), "disk": s.diskJSON(id)})
 	return nil
 }
 

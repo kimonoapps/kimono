@@ -7,6 +7,7 @@ package sandbox
 import (
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -60,9 +61,16 @@ type Config struct {
 	// GatewayURL is that listener as a container reaches it; empty derives it.
 	GatewayURL string
 	Network    string
-	CPUs       string
-	Memory     string
-	Pids       int
+	// CPUs, Memory and Pids are each sandbox's share: Docker's notation, such as
+	// "1" and "2g". Memory has no swap on top. The Portal may send its own.
+	CPUs   string
+	Memory string
+	Pids   int
+	// AwakePerPerson and AwakePerNode cap the sandboxes running or paused at
+	// once; DiskGB is each sandbox's disk quota. See limits.go.
+	AwakePerPerson int
+	AwakePerNode   int
+	DiskGB         int
 	// PauseAfter, StopAfter and RemoveAfter are how long a sandbox stays
 	// quiet before it is paused, stopped, and its container removed (its files
 	// stay on their volume). RemoveAfter 0 never removes.
@@ -110,14 +118,23 @@ func (c *Config) defaults() error {
 	if c.Network == "" {
 		c.Network = "kimono-sandboxes"
 	}
-	if c.CPUs == "" {
-		c.CPUs = "4"
+	if cpus, err := strconv.ParseFloat(c.CPUs, 64); err != nil || cpus <= 0 {
+		c.CPUs = "1"
 	}
-	if c.Memory == "" {
-		c.Memory = "8g"
+	if _, ok := parseMemory(c.Memory); !ok {
+		c.Memory = "2g"
 	}
-	if c.Pids == 0 {
-		c.Pids = 2048
+	if c.Pids <= 0 {
+		c.Pids = 1024
+	}
+	if c.AwakePerPerson <= 0 {
+		c.AwakePerPerson = 2
+	}
+	if c.AwakePerNode <= 0 {
+		c.AwakePerNode = 6
+	}
+	if c.DiskGB <= 0 {
+		c.DiskGB = 10
 	}
 	if c.PauseAfter <= 0 {
 		c.PauseAfter = time.Minute

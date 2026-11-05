@@ -6,8 +6,8 @@ import { useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
-  code, drive, efforts, elapsed, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type AppHealth, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  code, drive, efforts, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
+  type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -456,16 +456,42 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
       <Seal type="button" disabled={asking || Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{asking ? "Asking…" : running ? "Run it after this step" : "Run the app"}</Seal>
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div>
+    <SandboxLimits workspace={workspace} />
   </div>;
   return <div className="cd-scroll cd-appview">
     {workspace.preview.stopped ? null : <AppReady workspace={workspace} url={workspace.preview.url} />}
     <AppRunning key={workspace.id} workspace={workspace} onChange={onChange} />
+    <SandboxLimits workspace={workspace} />
     <LinkName key={workspace.preview.url} workspace={workspace} url={workspace.preview.url} onRenamed={onChange} />
     {workspace.preview.stopped ? null : <div className="cd-app-frame">
       <div className="cd-app-bar"><i /><i /><i /><span className="cd-mono">{workspace.preview.url.replace(/^https?:\/\//, "")}</span></div>
       <iframe src={workspace.preview.url} title="The running app" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
     </div>}
   </div>;
+}
+
+/** What the task's sandbox may use: its CPUs and memory, and its disk against the quota. */
+function SandboxLimits({ workspace }: { workspace: Workspace }) {
+  const [status, setStatus] = useState<SandboxStatus | null>(null);
+  useEffect(() => {
+    const look = () => code.sandbox(workspace.id).then(setStatus, () => {});
+    void look();
+    const timer = setInterval(() => { if (document.visibilityState === "visible") void look(); }, 60_000);
+    return () => clearInterval(timer);
+  }, [workspace.id]);
+  if (!status) return null;
+  const { limits, disk } = status;
+  const share = disk.used != null ? Math.min(disk.used / disk.quota, 1) : null;
+  const full = disk.used != null && disk.used > disk.quota;
+  return <p className={cx("cd-limits", full && "is-full")}>
+    <span>{limits.cpus} {limits.cpus === 1 ? "CPU" : "CPUs"}</span>
+    <span>{gigabytes(limits.memoryMb * 1024 ** 2)} memory</span>
+    <span className="cd-limits-disk">
+      {share != null ? <i aria-hidden="true"><b style={{ width: `${Math.round(share * 100)}%` }} /></i> : null}
+      {disk.used != null ? `${gigabytes(disk.used)} of ${gigabytes(disk.quota)} disk` : `${gigabytes(disk.quota)} disk`}
+    </span>
+    {full ? <em>Full. Ask the agent to free space; a little past this, work stops.</em> : null}
+  </p>;
 }
 
 const healthWords: Record<AppHealth["state"], string> = {
@@ -582,6 +608,8 @@ type Item =
   | { type: "shots"; seq: number; shots: { name: string; caption?: string }[] }
   | { type: "preview"; seq: number; event: Extract<CodeEvent, { kind: "preview" }> }
   | { type: "preview-stopped"; seq: number }
+  | { type: "slept"; seq: number; for: string }
+  | { type: "disk"; seq: number; event: Extract<CodeEvent, { kind: "disk" }> }
   | { type: "compacted"; seq: number; before?: number };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
@@ -605,6 +633,8 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "image": if (last?.type === "shots") last.shots.push(event); else items.push({ type: "shots", seq, shots: [event] }); break;
       case "preview": items.push({ type: "preview", seq, event }); break;
       case "preview-stopped": items.push({ type: "preview-stopped", seq }); break;
+      case "slept": items.push({ type: "slept", seq, for: event.for }); break;
+      case "disk": items.push({ type: "disk", seq, event }); break;
       case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
     }
   }
@@ -659,6 +689,10 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
             case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
             case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
+            case "slept": return <p key={item.seq} className="cd-note">Put to sleep to make room for &ldquo;{item.for}&rdquo;. It wakes when you open it.</p>;
+            case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
+              ? `Stopped: this task's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask the agent to free space.`
+              : `This task's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. The agent was asked to free space first.`}</p>;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
           }
