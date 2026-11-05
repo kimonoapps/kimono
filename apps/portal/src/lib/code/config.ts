@@ -27,6 +27,8 @@ export function codeConfig(settings: PlatformSettings) {
     nodeKey: value("node_key"),
     gitToken: value("git_token"),
     modelToken: value("model_token"),
+    /* Composio's Tool Router: one session per person, its MCP reached through the node's gateway. Optional. */
+    composioKey: value("composio_api_key"),
     gitAddress,
     /* Each person's share of the Claude plan, as fractions; the owner isn't limited. */
     shares: { week: percent(value("share_week"), 20), fiveHour: percent(value("share_five_hour"), 75) },

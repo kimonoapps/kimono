@@ -18,13 +18,15 @@ import (
 	"strings"
 )
 
-// GatewayHandler is what sandboxes reach: the model under /anthropic/ and
-// Kimono Git under /git/. Each request carries a workspace's capability, which
+// GatewayHandler is what sandboxes reach: the model under /anthropic/, Kimono
+// Git under /git/, and the person's tools (an MCP server) at /mcp. Each request carries a workspace's capability, which
 // is exchanged here for the real credential and never leaves this node.
 func (s *Server) GatewayHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/anthropic/", http.HandlerFunc(s.serveModel))
 	mux.Handle("/git/", http.HandlerFunc(s.serveGit))
+	mux.Handle("/mcp", http.HandlerFunc(s.serveTools))
+	mux.Handle("/mcp/", http.HandlerFunc(s.serveTools))
 	return mux
 }
 
@@ -102,6 +104,50 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request) {
 		ModifyResponse: func(response *http.Response) error {
 			s.usage.credit(space.id, readUsage(response.Header))
 			return nil
+		},
+		FlushInterval: -1,
+	}
+	proxy.ServeHTTP(w, r)
+}
+
+/* ── tools ── */
+
+// serveTools carries a sandbox's MCP calls to its person's tool session, with
+// the session's own headers in place of the sandbox's capability. Streams
+// (server-sent events) pass as they arrive; the session id header passes both ways.
+func (s *Server) serveTools(w http.ResponseWriter, r *http.Request) {
+	space := s.byToken(bearer(r.Header))
+	if space == nil {
+		writeError(w, 401, "This sandbox has no tools.")
+		return
+	}
+	space.mu.Lock()
+	tools := space.tools
+	space.mu.Unlock()
+	if tools.URL == "" {
+		writeError(w, 404, "No tools are connected for this person.")
+		return
+	}
+	upstream, err := url.Parse(tools.URL)
+	if err != nil {
+		writeError(w, 502, "The tools address is misconfigured.")
+		return
+	}
+	s.touch(space.id)
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(out *httputil.ProxyRequest) {
+			out.SetURL(upstream)
+			out.Out.URL.Path = strings.TrimRight(upstream.Path, "/") + strings.TrimPrefix(r.URL.Path, "/mcp")
+			if out.Out.URL.Path == "" {
+				out.Out.URL.Path = "/"
+			}
+			out.Out.URL.RawPath = ""
+			out.Out.Host = upstream.Host
+			out.Out.Header.Del("Authorization")
+			out.Out.Header.Del("X-Api-Key")
+			for name, value := range tools.Headers {
+				out.Out.Header.Set(name, value)
+			}
 		},
 		FlushInterval: -1,
 	}

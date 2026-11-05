@@ -32,9 +32,15 @@ running sandbox, so a node restart (which forgets credentials) heals itself.
   "repo": { "url": "https://git.example.com/akram/kimono.git", "owner": "akram", "name": "kimono",
             "base": "main", "branch": "code/fix-login-3fa2" },
   "git":  { "token": "<Kimono Git token>", "name": "Akram", "email": "akram@example.com" },
-  "model": { "token": "<Anthropic API key or Claude OAuth token>" }
+  "model": { "token": "<Anthropic API key or Claude OAuth token>" },
+  "tools": { "url": "<the person's Composio Tool Router MCP URL>", "headers": { "x-api-key": "<Composio API key>" } }
 }
 ```
+
+`tools` is optional. With it, Claude Code gets one MCP server, `composio`, at the
+gateway's `/mcp`, opened with the workspace's capability; the gateway puts the
+session's own headers in its place and streams the answer back. Neither the
+address nor the key enters the sandbox.
 
 Creates the container if missing, clones through the broker, creates `branch`
 from `base` (or checks it out if it exists on the remote), unpauses a paused

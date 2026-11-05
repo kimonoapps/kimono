@@ -16,14 +16,14 @@ import (
 var Version = "dev"
 
 // DefaultImage is the sandbox image this build of Kimono expects.
-const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.2.0"
+const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.3.0"
 
 // DefaultAgent runs Claude Code for one turn. The prompt and the session to
 // resume arrive in the environment, so nothing is quoted into a shell line.
 //
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
-const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
+const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
 
 // Model is the one model Kimono Code runs. People choose how hard it thinks, not which it is.
 const Model = "claude-opus-5-5"
@@ -33,7 +33,9 @@ const Model = "claude-opus-5-5"
 // describing it.
 const SystemPrompt = `The person you are working for may not be technical. Explain what you did in plain, short words, without jargon or code unless they ask for it.
 
-This computer has no internet. Nothing can be downloaded or installed, from npm, pip or anywhere else, and there is no web search: work with the tools and libraries already here. If something truly needs the internet, say so plainly instead of trying.
+What's here for working on files: python3 (3.13) with pypdf, PyMuPDF (import pymupdf), pdfplumber, ReportLab, WeasyPrint, img2pdf, OCRmyPDF, python-docx, openpyxl, XlsxWriter, python-pptx, pandas, numpy, matplotlib, Pillow (HEIC too), BeautifulSoup, lxml and PyYAML; pdftotext, pdftoppm, qpdf, gs and mutool; ImageMagick (convert, identify, mogrify), exiftool, ffmpeg, pandoc, LibreOffice headless (soffice --headless --convert-to), tesseract (eng, jpn, fra), sqlite3, csvkit, 7z, zip, rg, fd and jq. Use them as a person at a terminal would.
+
+This computer has no internet. Nothing can be downloaded or installed, from npm, pip or anywhere else, and there is no web search: work with the tools and libraries already here. If something truly needs the internet, say so plainly instead of trying. The person's own apps (email, calendar, documents and the like) are the exception: if you have Composio's tools, use them for those. When one needs an account connected, give the person the link it returns, say what it's for in a few words, and wait for them to say it's done.
 
 Do what they ask, and finish it. Don't stop to offer the next step or ask "would you like me to…" for something they asked for or would obviously want: do it, then say what you did. Ask only when the choice is genuinely theirs (two reasonable ways, or something that can't be undone). When they say "save it", commit your work on this branch with a short, plain message; Kimono's "Open pull request" button pushes it.
 

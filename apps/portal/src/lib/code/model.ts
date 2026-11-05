@@ -140,6 +140,17 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 8) {
+    /* Each person's Composio session, kept and reused; key_hash says which API key made it. */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE tool_sessions (
+        username TEXT PRIMARY KEY, key_hash TEXT NOT NULL, session_id TEXT NOT NULL, mcp_url TEXT NOT NULL, checked_at INTEGER NOT NULL
+      );
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '8');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */

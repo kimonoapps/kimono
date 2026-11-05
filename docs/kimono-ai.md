@@ -39,14 +39,42 @@ nothing else. Code allowed the public internet; Kimono AI does not.
 - No DNS: sandboxes get no resolver at all.
 - Claude Code runs with `WebFetch` and `WebSearch` disallowed, so it doesn't
   try and fail.
-- Tools come in the image, pinned, with Kimono's artifact libraries and, for
+- Tools come in the image, pinned: PDF tools (poppler, qpdf, Ghostscript,
+  MuPDF, OCRmyPDF), ImageMagick, ExifTool, ffmpeg, pandoc, LibreOffice
+  headless, Tesseract (English, Japanese, French), SQLite, and Python 3.13 with
+  pypdf, PyMuPDF, pdfplumber, ReportLab, WeasyPrint, python-docx, openpyxl,
+  python-pptx, pandas, matplotlib, Pillow (with HEIC) and more, first on PATH;
+  Kimono's artifact libraries and, for
   administrators' server apps, an offline package set (a pip wheelhouse and an
   npm cache of an agreed list).
-- The model gateway only speaks to Anthropic's API, and only for that chat's
-  capability; it is not a proxy to anywhere else.
+- The gateway speaks to Anthropic's API (the model) and to the person's own
+  Composio session (their apps), each only for that chat's capability; it is
+  not a proxy to anywhere else.
 - `kimono node sandboxes status` reports "no outside network" per sandbox,
   checked by a probe from inside, and refuses to start sandboxes if the probe
   gets out.
+
+## People's own apps (Composio)
+
+Email, calendar, documents and the rest of a person's own accounts come through
+Composio's Tool Router, the way Composio intends it to be used: one session per
+person, no code in Kimono for any one toolkit.
+
+- Admin → Applications → Kimono AI takes a **Composio API key** (optional).
+- Portal makes each person one Tool Router session (`POST
+  /api/v3.1/tool_router/session`, `user_id` = `kimono:<portal host>:<username>`,
+  `manage_connections` on, its callback back to Kimono), stores the session id
+  and its MCP address, and reuses it. It asks Composio again at most hourly
+  whether the session still exists, and makes a new one only if not, or if the
+  key changed (`lib/code/composio.ts`, table `tool_sessions`).
+- The session goes to the node with each ensure. Claude Code sees one MCP
+  server, `composio`, at the node gateway's `/mcp`; the gateway swaps the
+  sandbox's capability for the session's key and carries the stream. The
+  sandbox never has the key or Composio's address, and still has no web.
+- Composio's own tools find the right tool, connect an account (a link the
+  agent passes on, and waits for), and run it. Connections belong to the
+  person's Composio user, so they last across chats.
+- No key, or Composio down: the agent simply has no outside apps that turn.
 
 ## Your files, and asking
 

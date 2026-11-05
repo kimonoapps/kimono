@@ -53,6 +53,14 @@
         "description": "An Anthropic API key, or the token claude setup-token prints."
       },
       {
+        "key": "composio_api_key",
+        "label": "Composio API key",
+        "kind": "secret",
+        "group": "agent",
+        "target": "settings",
+        "description": "Optional. Lets it use people's own apps, such as Gmail or Calendar, once they connect them."
+      },
+      {
         "key": "git_address",
         "label": "Kimono Git address",
         "kind": "text",

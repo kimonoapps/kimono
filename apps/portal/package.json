@@ -16,7 +16,8 @@
     "test:marks": "node --test scripts/test-marks.mjs",
     "test:app-updates": "node --test scripts/test-app-updates.mjs",
     "test:testflight": "node --test scripts/test-testflight.mjs",
-    "test:code": "node --test scripts/test-code.mjs"
+    "test:code": "node --test scripts/test-code.mjs",
+    "test:composio": "node --test scripts/test-composio.mjs"
   },
   "dependencies": {
     "@kimono/account": "workspace:*",

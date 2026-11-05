@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,10 +34,20 @@ type ModelAuth struct {
 	Token string `json:"token"`
 }
 
+// ToolsAuth is a person's tool session (Composio's Tool Router): an MCP
+// endpoint and the headers that open it. The sandbox never sees either; the
+// gateway's /mcp carries its calls there.
+type ToolsAuth struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+}
+
 type ensureRequest struct {
 	Repo  Repo      `json:"repo"`
 	Git   GitAuth   `json:"git"`
 	Model ModelAuth `json:"model"`
+	// Tools is optional: without it the agent has no outside tools.
+	Tools *ToolsAuth `json:"tools"`
 	// Owner is the person the task belongs to and Title its name, for the
 	// awake caps and for saying which tasks hold the slots.
 	Owner string `json:"owner"`
@@ -52,6 +63,7 @@ type workspace struct {
 	repo       Repo
 	git        GitAuth
 	model      ModelAuth
+	tools      ToolsAuth
 	capability string
 	// base is the repository's server root, such as https://git.example.com,
 	// which the broker forwards to.
@@ -155,8 +167,15 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 	if w.repo.URL != "" && (w.repo.URL != request.Repo.URL || w.repo.Branch != request.Repo.Branch) {
 		return nil, "", problem(409, "This workspace already belongs to another repository or branch.")
 	}
+	tools := ToolsAuth{}
+	if request.Tools != nil && request.Tools.URL != "" {
+		if !strings.HasPrefix(request.Tools.URL, "https://") && !dev {
+			return nil, "", problem(400, "The tools address must be https.")
+		}
+		tools = *request.Tools
+	}
 	w.mu.Lock()
-	w.repo, w.git, w.model, w.base = request.Repo, request.Git, request.Model, base
+	w.repo, w.git, w.model, w.tools, w.base = request.Repo, request.Git, request.Model, tools, base
 	w.lastActive = time.Now()
 	w.mu.Unlock()
 
@@ -312,6 +331,9 @@ func (s *Server) environment(w *workspace) []string {
 		"DISABLE_AUTOUPDATER=1",
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
 	}
+	if w.tools.URL != "" {
+		env = append(env, "KIMONO_MCP="+mcpConfig(gateway, w.capability))
+	}
 	if w.git.Name != "" {
 		env = append(env, "GIT_AUTHOR_NAME="+w.git.Name, "GIT_COMMITTER_NAME="+w.git.Name)
 	}
@@ -401,4 +423,13 @@ func (s *Server) remove(ctx context.Context, id string) error {
 
 func isLoopbackHost(host string) bool {
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+// mcpConfig is Claude Code's --mcp-config for a sandbox: one server, the
+// gateway's /mcp, opened with the workspace's capability.
+func mcpConfig(gateway, capability string) string {
+	config, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{
+		"composio": map[string]any{"type": "http", "url": gateway + "/mcp", "headers": map[string]string{"Authorization": "Bearer " + capability}},
+	}})
+	return string(config)
 }

@@ -2,6 +2,7 @@ import "server-only";
 
 import { CodeProblem, type Workspace } from "./model";
 import type { CodeConfig } from "./config";
+import type { ToolSession } from "./composio";
 
 /*
  * The sandbox node, as Portal calls it (docs/kimono-code.md, "Node API").
@@ -44,7 +45,7 @@ export const sandbox = {
   health: (config: CodeConfig) => call(config, "/v1/health", { timeout: 5_000 }).then(json<{ ok: boolean; version: string; runtime: string }>),
 
   /** Makes sure the sandbox exists, holds the repository and is awake. Safe to call before anything. */
-  ensure: (config: CodeConfig, workspace: Workspace, who: Who) => call(config, at(workspace), {
+  ensure: (config: CodeConfig, workspace: Workspace, who: Who, tools: ToolSession | null = null) => call(config, at(workspace), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     timeout: 5 * 60_000,
@@ -55,6 +56,7 @@ export const sandbox = {
       },
       git: { token: config.gitToken, name: who.name, email: who.email },
       model: { token: config.modelToken },
+      ...(tools ? { tools } : {}),
       owner: workspace.owner, title: workspace.title, limits: config.limits,
     }),
   }).then(json<{ id: string; state: string; branch: string; runtime?: string; slept?: string[] | null }>),
