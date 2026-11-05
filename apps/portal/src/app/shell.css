@@ -179,3 +179,18 @@
   --k-ink-soft: var(--k-on-surface-variant);
   background: var(--k-surface);
 }
+
+/* Too blue with the app's colour mixed in: inside an app the neutrals are plain
+   warm stone, neither pink nor blue, and the app's colour stays an accent. */
+.app-frame.in-app {
+  --k-surface: #fbfaf7;
+  --k-container-low: #f6f4f0;
+  --k-container: #f1efea;
+  --k-container-high: #ebe8e3;
+  --k-container-highest: #e5e2dc;
+  --k-on-surface-variant: #57524b;
+  --k-outline-variant: #d3cec6;
+  --k-hair-deep: #bfb9af;
+  --k-primary-container: color-mix(in srgb, var(--k-app-accent) 12%, #fbfaf7);
+  --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 8%, #f6f4f0);
+}
