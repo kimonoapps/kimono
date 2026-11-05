@@ -149,6 +149,9 @@ data class PhoneAppRelease(val url: String, val version: String)
 @Serializable
 data class PhoneAppStep(val title: String, val description: String, val kind: String, val href: String? = null, val label: String? = null)
 
+/** The link that opens this phone app already pointed at its server (kimono-photos://connect?server=…), when it has one. */
+val PhoneApp.connectLink: String? get() = steps.firstOrNull { it.kind == "open" }?.href
+
 /**
  * Whether version [offered] is newer than [installed] ("3.1.0-kimono.2" over
  * "3.1.0-kimono.1"): compared part by part, numbers as numbers.
@@ -352,7 +355,11 @@ class Drive(private val session: Session) {
         val playId = android?.let { Regex("[?&]id=([\\w.]+)").find(it)?.groupValues?.get(1) }
         val apk = android?.takeIf { Regex("\\.apk(\\?|$)").containsMatchIn(it) }
         val version = apk?.let { Regex("-(\\d+\\.\\d+(?:\\.\\d+)?(?:[-+.][\\w.]+)?)\\.apk").find(it.substringBefore('?').substringAfterLast('/'))?.groupValues?.get(1) }
-        return PhoneApp(name = app.name, androidPackage = playId, release = if (apk != null && version != null) PhoneAppRelease(apk, version) else null)
+        /* Kimono Photos from a Portal that doesn't describe it: its package, and the link that hands it its address. */
+        val photos = apk?.substringBefore('?')?.substringAfterLast('/')?.startsWith("kimono-photos-") == true
+        val origin = Regex("^https://[^/]+").find(app.web)?.value
+        val connect = if (photos && origin != null) listOf(PhoneAppStep("Open ${app.name}", "", "open", "kimono-photos://connect?server=" + origin.encodeURLParameter())) else emptyList()
+        return PhoneApp(name = app.name, androidPackage = playId ?: "app.kimono.photos".takeIf { photos }, release = if (apk != null && version != null) PhoneAppRelease(apk, version) else null, steps = connect)
     }
 
     /* Drive's tab and bloom are there from the first frame, as they were last time. */
