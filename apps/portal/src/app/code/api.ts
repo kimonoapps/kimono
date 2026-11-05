@@ -8,6 +8,7 @@ export type Workspace = {
   id: string; title: string; repo: { owner: string; name: string }; base: string; branch: string;
   pullRequest: { url: string; number: number } | null;
   preview: { url: string; port: number } | null;
+  previewName?: string | null;
   drive: { spaceId: string; folderId: string } | null;
   createdAt: number; updatedAt: number; lastSeq: number;
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
@@ -80,6 +81,7 @@ export const code = {
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),
   stopPreview: (id: string) => call<void>(`${ws(id)}/preview`, { method: "DELETE" }),
+  renamePreview: (id: string, name: string) => call<{ url: string; port: number }>(`${ws(id)}/preview`, json("PATCH", { name })),
   shotUrl: (id: string, name: string) => `${base}${ws(id)}/shots/${encodeURIComponent(name)}`,
   files: (id: string, path: string) => call<{ path: string; entries: Entry[] }>(`${ws(id)}/files?path=${encodeURIComponent(path)}`),
   changes: (id: string) => call<Changes>(`${ws(id)}/changes`),

@@ -10,7 +10,7 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, translate, type Attachment, type CodeEvent, type TurnResult } from "./events";
 import {
-  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, recordUsage, runningTurn, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort } from "./node";
@@ -150,8 +150,14 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           continue;
         }
         if (line.type === "kimono.preview" && typeof line.url === "string" && typeof line.port === "number") {
-          setPreview(db(), workspace.id, { url: line.url, port: line.port });
-          record(workspace.id, turn, { kind: "preview", url: line.url, port: line.port });
+          /* The owner named this app before: give the new link that name again. */
+          const chosen = workspaceFor(db(), workspace.id, workspace.owner).previewName;
+          let preview = { url: line.url, port: line.port };
+          if (chosen && new URL(line.url).hostname.split(".")[0] !== chosen) {
+            preview = await sandbox.renamePreview(config, workspace, chosen).catch(() => preview);
+          }
+          setPreview(db(), workspace.id, preview);
+          record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port });
           continue;
         }
         if (line.type === "kimono.usage") {
@@ -198,6 +204,17 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
       } catch (error) { console.warn("Code couldn't start the queued message:", error instanceof Error ? error.message : error); }
     }
   }
+}
+
+/** Gives a task's app link a name its owner chose; the old link stops answering. */
+export async function renamePreview(config: CodeConfig, workspace: Workspace, name: string) {
+  const clean = name.trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/.test(clean) || clean.includes("--")) throw new CodeProblem("Use letters, numbers and single dashes, up to 50 characters.");
+  const preview = await sandbox.renamePreview(config, workspace, clean);
+  setPreview(db(), workspace.id, preview);
+  setPreviewName(db(), workspace.id, clean);
+  record(workspace.id, runningTurn(db(), workspace.id), { kind: "preview", url: preview.url, port: preview.port });
+  return preview;
 }
 
 /** Stops the turn that is running, if there is one. */

@@ -100,6 +100,9 @@ export const sandbox = {
   outbox: (config: CodeConfig, workspace: Workspace, name: string) =>
     call(config, `${at(workspace)}/outbox/${encodeURIComponent(name)}`).then(async (r) => new Uint8Array(await r.arrayBuffer())),
 
+  renamePreview: (config: CodeConfig, workspace: Workspace, name: string) => call(config, `${at(workspace)}/preview`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }), timeout: 20_000,
+  }).then(json<{ url: string; port: number }>),
   stopPreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { method: "DELETE", timeout: 20_000 }).then(() => undefined),
 
   changes: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/changes`).then(json<Changes>),

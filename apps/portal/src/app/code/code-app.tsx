@@ -417,7 +417,7 @@ function WorkspaceView({ workspace, others, tab, path, blocked, onChange, now }:
       {problem ? <p className="cd-problem cd-ws-problem" role="alert">{problem}</p> : null}
       {tab === "chat" ? <Chat workspace={workspace} events={events} running={running} blocked={blocked} />
         : tab === "files" ? <Files workspace={workspace} path={path} onOpen={(path) => go({ tab: "files", path })} />
-          : tab === "app" ? <AppView workspace={workspace} running={running} blocked={blocked} />
+          : tab === "app" ? <AppView workspace={workspace} running={running} blocked={blocked} onChange={onChange} />
             : <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />}
     </div>
     <aside className="cd-deploy" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></aside>
@@ -439,7 +439,7 @@ function Deployments({ workspace, others }: { workspace: Workspace; others: Work
 }
 
 /** The App tab: the running app, big, with everything you do to it, and the app itself below. */
-function AppView({ workspace, running, blocked }: { workspace: Workspace; running: boolean; blocked: string | null }) {
+function AppView({ workspace, running, blocked, onChange }: { workspace: Workspace; running: boolean; blocked: string | null; onChange: () => void }) {
   const [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   if (!workspace.preview) return <div className="cd-scroll cd-appview">
@@ -453,11 +453,39 @@ function AppView({ workspace, running, blocked }: { workspace: Workspace; runnin
   </div>;
   return <div className="cd-scroll cd-appview">
     <AppReady workspace={workspace} url={workspace.preview.url} />
+    <LinkName key={workspace.preview.url} workspace={workspace} url={workspace.preview.url} onRenamed={onChange} />
     <div className="cd-app-frame">
       <div className="cd-app-bar"><i /><i /><i /><span className="cd-mono">{workspace.preview.url.replace(/^https?:\/\//, "")}</span></div>
       <iframe src={workspace.preview.url} title="The running app" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
     </div>
   </div>;
+}
+
+/** The app's link, renamed by its owner: [recipes].example.dev. */
+function LinkName({ workspace, url, onRenamed }: { workspace: Workspace; url: string; onRenamed: () => void }) {
+  const address = new URL(url);
+  const [label, ...rest] = address.hostname.split(".");
+  const suffix = `.${rest.join(".")}${address.port ? `:${address.port}` : ""}`;
+  const [name, setName] = useState(label);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const clean = name.trim().toLowerCase();
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (!clean || clean === label || saving) return;
+    setSaving(true); setProblem(null);
+    try { await code.renamePreview(workspace.id, clean); onRenamed(); } catch (error) { setProblem(problemText(error)); setSaving(false); }
+  }
+  return <form className="cd-linkname" onSubmit={(event) => void save(event)}>
+    <label className="cd-linkname-field">
+      <small>Link name</small>
+      <span><input value={name} maxLength={50} spellCheck={false} autoCapitalize="off" aria-label="Link name" style={{ width: `${Math.max(4, name.length + 1)}ch` }}
+        onChange={(event) => setName(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} /><em>{suffix}</em></span>
+    </label>
+    <Seal type="submit" compact disabled={!clean || clean === label || saving}>{saving ? "Saving…" : "Rename"}</Seal>
+    {problem ? <p className="cd-problem" role="alert">{problem}</p>
+      : <p className="cd-faint">The old link stops working. A name of your own is easier to share, and easier to guess: anyone with the link can open the app.</p>}
+  </form>;
 }
 
 /** The app, ready: one big card to open it, copy its link or take it down. */

@@ -384,6 +384,50 @@ func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request, id string
 	return nil
 }
 
+// reservedPreviewNames are names no app may take: they read as the domain's own.
+var reservedPreviewNames = map[string]bool{"www": true, "mail": true, "api": true, "admin": true, "kimono": true, "auth": true, "login": true}
+
+// renamePreview gives a workspace's app the name its owner chose. Names are
+// unique across the node; the old link stops answering at once.
+func (s *Server) renamePreview(id, name string) (*preview, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if !previewNamePattern.MatchString(name) || strings.Contains(name, "--") {
+		return nil, problem(400, "Use letters, numbers and single dashes, up to 50 characters.")
+	}
+	if reservedPreviewNames[name] {
+		return nil, problem(409, "That name is kept for the domain itself. Choose another.")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.previews[id]
+	if p == nil {
+		return nil, problem(404, "This workspace has no app running to name.")
+	}
+	for other, q := range s.previews {
+		if other != id && q.Name == name {
+			return nil, problem(409, "Another app already has that name.")
+		}
+	}
+	p.Name = name
+	s.savePreviews()
+	return p, nil
+}
+
+func (s *Server) handleRenamePreview(w http.ResponseWriter, r *http.Request, id string) error {
+	var request struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, 4<<10, &request); err != nil {
+		return err
+	}
+	p, err := s.renamePreview(id, request.Name)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, 200, map[string]any{"url": s.previewURL(p), "port": p.Port})
+	return nil
+}
+
 func (s *Server) handleStopPreview(w http.ResponseWriter, r *http.Request, id string) error {
 	if containerState, err := s.docker.containerState(r.Context(), id); err == nil && containerState != "" {
 		if _, err := s.running(r.Context(), id); err == nil {

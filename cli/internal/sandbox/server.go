@@ -170,6 +170,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/workspaces/{id}/outbox/{name}", s.workspaceCall(s.handleOutbox))
 	mux.HandleFunc("GET /v1/workspaces/{id}/preview", s.workspaceCall(s.handlePreview))
 	mux.HandleFunc("DELETE /v1/workspaces/{id}/preview", s.workspaceCall(s.handleStopPreview))
+	mux.HandleFunc("PATCH /v1/workspaces/{id}/preview", s.workspaceCall(s.handleRenamePreview))
 	return s.authorized(mux)
 }
 

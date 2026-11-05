@@ -25,6 +25,8 @@ export type Workspace = {
   pullRequest: { url: string; number: number } | null;
   /** The app the agent is running, open to anyone with the link while it's up. */
   preview: { url: string; port: number } | null;
+  /** The name its owner chose for the app's link, if they chose one. */
+  previewName: string | null;
   /** Where the task's files are in Drive: the Code space, and the task's own folder there. */
   drive: { spaceId: string; folderId: string } | null;
   createdAt: number; updatedAt: number;
@@ -117,6 +119,15 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 6) {
+    /* The name its owner chose for a task's app link, given back whenever the app is started again. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE workspaces ADD COLUMN preview_name TEXT;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '6');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
@@ -167,7 +178,7 @@ export function usageOf(db: DatabaseSync, username: string, now = Date.now()): P
 
 type WorkspaceRow = {
   id: string; owner: string; title: string; repo_owner: string; repo_name: string; base: string; branch: string;
-  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; drive_folder: string | null; drive_space: string | null; created_at: number; updated_at: number; last_seq: number;
+  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; drive_folder: string | null; drive_space: string | null; created_at: number; updated_at: number; last_seq: number;
   turn_id: string | null; turn_state: TurnState | null; turn_started: number | null; turn_ended: number | null;
 };
 
@@ -183,6 +194,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
     session: row.session,
     pullRequest: row.pr_url && row.pr_number ? { url: row.pr_url, number: row.pr_number } : null,
     preview: row.preview_url && row.preview_port ? { url: row.preview_url, port: row.preview_port } : null,
+    previewName: row.preview_name ?? null,
     drive: row.drive_space && row.drive_folder ? { spaceId: row.drive_space, folderId: row.drive_folder } : null,
     createdAt: row.created_at, updatedAt: row.updated_at, lastSeq: row.last_seq,
     turn: row.turn_id ? { id: row.turn_id, state: row.turn_state!, startedAt: row.turn_started!, endedAt: row.turn_ended } : null,
@@ -261,6 +273,10 @@ export function setPreview(db: DatabaseSync, id: string, preview: { url: string;
 export function runningTurn(db: DatabaseSync, workspaceId: string): string | null {
   const row = db.prepare("SELECT id FROM turns WHERE workspace_id = ? AND state = 'running'").get(workspaceId) as { id: string } | undefined;
   return row?.id ?? null;
+}
+
+export function setPreviewName(db: DatabaseSync, id: string, name: string | null) {
+  db.prepare("UPDATE workspaces SET preview_name = ? WHERE id = ?").run(name, id);
 }
 
 /** Starts a turn, refusing while another is running in the same workspace. */

@@ -122,3 +122,21 @@ func TestPreviewProxyUnknownHost(t *testing.T) {
 		}
 	}
 }
+
+func TestAnAppCanBeGivenAChosenName(t *testing.T) {
+	s := &Server{previews: map[string]*preview{"a": {Name: "make-a-simple-2f827d", Port: 3000}, "b": {Name: "recipes", Port: 3000}}, cfg: Config{StateDir: t.TempDir()}}
+	if _, err := s.renamePreview("a", "Family-Kitchen"); err != nil {
+		t.Fatal(err)
+	}
+	if s.previews["a"].Name != "family-kitchen" {
+		t.Fatalf("got %q", s.previews["a"].Name)
+	}
+	for _, bad := range []string{"recipes", "www", "-x", "a--b", "has space", "x.y", ""} {
+		if _, err := s.renamePreview("a", bad); err == nil {
+			t.Fatalf("%q should be refused", bad)
+		}
+	}
+	if _, err := s.renamePreview("none", "fresh"); err == nil {
+		t.Fatal("a workspace with no app has nothing to name")
+	}
+}
