@@ -2,7 +2,8 @@
 
 import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type SealTone, type CrossingKind } from "@kimono/ui";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useTransition, type MouseEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
+import { InkLoader } from "@/components/ink-loader";
 
 /**
  * Going somewhere, as a promise that keeps until the page is standing.
@@ -19,10 +20,23 @@ function Arrivals({ children }: { children: ReactNode }) {
   const [pending, startTransition] = useTransition();
   const waiting = useRef<(() => void) | null>(null);
 
+  /* Moving between pages, Material's shared x-axis: the page you leave slides a
+     little left and fades at once; if the next is slow, the painted shape-morph
+     loader holds the space; when it stands, it slides in from the right. Only
+     the page moves: the rail stays where it is. */
+  const [moving, setMoving] = useState(false);
+  const still = () => typeof window === "undefined" || matchMedia("(prefers-reduced-motion: reduce)").matches;
   const arrived = useCallback(() => {
     const resolve = waiting.current;
     waiting.current = null;
-    resolve?.();
+    if (!resolve) return;
+    setMoving(false);
+    const page = document.querySelector<HTMLElement>(".main-content");
+    if (page) {
+      page.getAnimations().forEach((animation) => animation.cancel());
+      if (!still()) page.animate([{ opacity: 0, transform: "translateX(48px)" }, { opacity: 1, transform: "none" }], { duration: 380, easing: "cubic-bezier(.05, .7, .1, 1)" });
+    }
+    resolve();
   }, []);
 
   // React ending the transition is the page standing. The pathname is the
@@ -42,23 +56,18 @@ function Arrivals({ children }: { children: ReactNode }) {
   }, [arrived]);
 
   const navigate = useCallback((href: string) => new Promise<void>((resolve) => {
-    const go = (arrivedThere: () => void) => {
-      waiting.current = arrivedThere;
-      startTransition(() => { router.push(href); });
-    };
-    /* The page moves along Material's shared x-axis (shell.css): the browser
-       pictures the page as it is, Next swaps it, and once the new one is
-       standing the two pictures slide past each other. Only the page moves;
-       the rail has a picture of its own and stays put. */
-    const start = (document as Document & { startViewTransition?: (update: () => Promise<void>) => unknown }).startViewTransition;
-    if (!start || matchMedia("(prefers-reduced-motion: reduce)").matches) { go(resolve); return; }
-    start.call(document, () => new Promise<void>((standing) => {
-      const late = setTimeout(() => { standing(); }, 3000);
-      go(() => { clearTimeout(late); standing(); resolve(); });
-    }));
+    const leaving = document.querySelector<HTMLElement>(".main-content");
+    if (leaving && !still()) leaving.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateX(-32px)" }], { duration: 120, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" });
+    setMoving(true);
+    waiting.current = resolve;
+    startTransition(() => { router.push(href); });
   }), [router]);
 
-  return <Arrival.Provider value={navigate}>{children}</Arrival.Provider>;
+  return <Arrival.Provider value={navigate}>
+    {children}
+    {/* The loader itself waits a quarter second before it shows, so a quick page never flashes it. */}
+    {moving ? <div className="nav-loading" aria-hidden="true"><InkLoader /></div> : null}
+  </Arrival.Provider>;
 }
 
 /** Wrap the app once, in the root layout. */

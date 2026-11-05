@@ -212,9 +212,7 @@
   --k-primary-container: color-mix(in srgb, var(--k-app-accent) 12%, #fbfaf7);
   --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 8%, #f6f4f0);
 }
-/* the rail is captured on its own during a page move, so it stays where it is */
-.rail { view-transition-name: kimono-rail; }
 
-/* the page area moves; everything else holds still under a plain crossfade that sees no change */
-.main-content { view-transition-name: kimono-page; }
-::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+/* while a slow page loads: the painted loader in the page's space, beside the rail */
+.nav-loading { position: fixed; inset: 0 0 0 96px; z-index: 15; display: grid; place-items: center; pointer-events: none; }
+@media (max-width: 720px) { .nav-loading { inset: 0 0 76px 0; } }
