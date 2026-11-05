@@ -39,6 +39,19 @@
 	handle {
 		reverse_proxy portal:3000
 	}
+
+	# On a first boot the Portal waits minutes for Authentik's migrations.
+	# Until it answers, show a page that reloads itself once it does.
+	handle_errors 502 503 504 {
+		root * /srv/kimono-brand
+		rewrite * /kimono-starting.html
+		header Cache-Control "no-store"
+		header X-Kimono-Starting "1"
+		header Retry-After "5"
+		file_server {
+			status 503
+		}
+	}
 }
 
 http://{$MESH_DOMAIN} {

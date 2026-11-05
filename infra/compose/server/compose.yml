@@ -190,9 +190,11 @@ services:
       AUTHENTIK_DOMAIN: ${AUTHENTIK_DOMAIN:?Authentik domain required}
       MESH_DOMAIN: ${MESH_DOMAIN:?mesh domain required}
       KIMONO_PORTAL_DOMAIN: ${KIMONO_PORTAL_DOMAIN:?portal domain required}
+    # Not gated on Authentik: Caddy answers from the first second of a boot
+    # with the starting page, rather than refusing connections for minutes.
     depends_on:
       authentik-server:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "80:80"
       - "443:443"
