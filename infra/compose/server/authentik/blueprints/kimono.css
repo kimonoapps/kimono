@@ -663,3 +663,194 @@ html:has(ak-flow-executor) *::after,
 :host([part~="challenge"]) *::after,
 :host([part~="flow-card"]) *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   M3 foundations (ADR 0006), as the Portal now has them, and the sign-in
+   from design/mockups/m3-everywhere.html: "Welcome back" over the title,
+   one line of promise under it, filled fields (rounded top, no outline,
+   a suō rule while focused), the who-is-this row as a soft card, and the
+   seal at the kit's size. Later rules here win over the Kata ones above.
+   ═══════════════════════════════════════════════════════════════ */
+html:has(ak-flow-executor) {
+  --k-container: #f5ece8;
+  --k-container-high: #efe5e0;
+  --k-container-highest: #e9ded8;
+  --k-on-surface-variant: #5b524d;
+  --k-primary-container: #ffd9df;
+  --k-r-m: 12px;
+  --k-r-l: 16px;
+  --k-r-xl: 28px;
+}
+
+/* the eyebrow and the promise around the title */
+:host(ak-flow-executor) .pf-c-title.ak-m-clamped::before,
+:host([part~="challenge"]) .pf-c-title.ak-m-clamped::before,
+:host([part~="flow-card"]) .pf-c-title.ak-m-clamped::before {
+  content: "Welcome back";
+  display: block;
+  margin-bottom: 14px;
+  color: var(--k-suo);
+  font: 700 13px/1.2 var(--k-sans);
+  letter-spacing: .03em;
+}
+:host(ak-flow-executor) .pf-c-title.ak-m-clamped::after,
+:host([part~="challenge"]) .pf-c-title.ak-m-clamped::after,
+:host([part~="flow-card"]) .pf-c-title.ak-m-clamped::after {
+  content: "One private place for your household's people, tools and shared memories.";
+  display: block;
+  max-width: 34ch;
+  margin-top: 18px;
+  color: var(--k-on-surface-variant);
+  font: 400 17px/1.5 var(--k-sans);
+  letter-spacing: 0;
+}
+
+/* labels sit small and suō above a filled field */
+:host([part~="flow-card"]) label,
+:host([part~="challenge"]) label,
+:host(ak-flow-executor) label {
+  color: var(--k-on-surface-variant) !important;
+  font: 700 12px/1.2 var(--k-sans) !important;
+  letter-spacing: .03em !important;
+}
+:host(ak-flow-executor) .pf-c-form-control,
+:host([part~="challenge"]) .pf-c-form-control,
+:host([part~="flow-card"]) .pf-c-form-control,
+:host(ak-flow-executor) .pf-v5-c-form-control,
+:host([part~="challenge"]) .pf-v5-c-form-control,
+:host([part~="flow-card"]) .pf-v5-c-form-control,
+:host(ak-flow-executor) input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+:host([part~="challenge"]) input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+:host([part~="flow-card"]) input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
+  min-height: 56px !important;
+  border: 0 !important;
+  border-radius: var(--k-r-m) var(--k-r-m) 4px 4px !important;
+  background: var(--k-container-highest) !important;
+  box-shadow: inset 0 -2px 0 transparent !important;
+  font-size: 16px !important;
+}
+:host(ak-flow-executor) input:not([type="checkbox"]):not([type="radio"]):hover,
+:host([part~="challenge"]) input:not([type="checkbox"]):not([type="radio"]):hover,
+:host([part~="flow-card"]) input:not([type="checkbox"]):not([type="radio"]):hover { background: #e4d9d2 !important; }
+:host(ak-flow-executor) input:focus,
+:host([part~="challenge"]) input:focus,
+:host([part~="flow-card"]) input:focus,
+:host(ak-flow-executor) .pf-c-form-control:focus,
+:host([part~="challenge"]) .pf-c-form-control:focus,
+:host([part~="flow-card"]) .pf-c-form-control:focus {
+  background: var(--k-container-high) !important;
+  box-shadow: inset 0 -2px 0 var(--k-suo) !important;
+}
+:host(ak-flow-executor) input[aria-invalid="true"],
+:host([part~="challenge"]) input[aria-invalid="true"],
+:host([part~="flow-card"]) input[aria-invalid="true"] { background: var(--k-primary-container) !important; box-shadow: inset 0 -2px 0 var(--k-suo-deep) !important; }
+
+/* the seal at the kit's size: 48px on a 3px base */
+:host(ak-flow-executor) .pf-c-button.pf-m-primary,
+:host([part~="challenge"]) .pf-c-button.pf-m-primary,
+:host([part~="flow-card"]) .pf-c-button.pf-m-primary,
+:host(ak-flow-executor) .pf-v5-c-button.pf-m-primary,
+:host([part~="challenge"]) .pf-v5-c-button.pf-m-primary,
+:host([part~="flow-card"]) .pf-v5-c-button.pf-m-primary {
+  min-height: 48px !important;
+  box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--k-suo) 72%, var(--k-ink)), inset 0 0 0 3px var(--k-suo), inset 0 0 0 4px rgba(255, 253, 248, .32) !important;
+}
+
+/* "who is signing in": the avatar, the name and Not you?, on a soft card */
+:host(ak-flow-executor) .pf-c-login__main-body .pf-c-form__group.pf-m-action ~ *,
+:host([part~="challenge"]) ak-form-static,
+:host([part~="flow-card"]) ak-form-static {
+  display: block;
+  padding: 10px 12px 10px 14px;
+  border-radius: var(--k-r-l);
+  background: var(--k-container);
+}
+:host(ak-form-static) .form-control-static,
+:host([part~="challenge"]) .form-control-static {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  font: 700 15px/1.2 var(--k-sans) !important;
+}
+:host(ak-form-static) img,
+:host([part~="challenge"]) .form-control-static img { width: 36px !important; height: 36px !important; border-radius: 50% !important; }
+:host(ak-form-static) a,
+:host([part~="challenge"]) .form-control-static a { margin-left: auto; color: var(--k-suo) !important; font-weight: 700 !important; }
+/* Authentik colours the label's text itself for its dark theme; on paper that is invisible */
+:host(ak-flow-executor) .pf-c-form__label-text,
+:host([part~="challenge"]) .pf-c-form__label-text,
+:host([part~="flow-card"]) .pf-c-form__label-text,
+:host(ak-flow-executor) .pf-v5-c-form__label-text,
+:host([part~="challenge"]) .pf-v5-c-form__label-text,
+:host([part~="flow-card"]) .pf-v5-c-form__label-text { color: var(--k-on-surface-variant) !important; }
+
+/* Later stages (password, consent…) render their card without part="flow-card":
+   the same header, title and spacing must reach them by the element's name. */
+:host(ak-flow-card) .pf-c-login__main-header,
+:host(ak-flow-card) .pf-v5-c-login__main-header,
+:host(ak-flow-card) .pf-c-login__main-body,
+:host(ak-flow-card) .pf-v5-c-login__main-body,
+:host(ak-flow-card) .pf-c-login__main-footer,
+:host(ak-flow-card) .pf-v5-c-login__main-footer { padding: 0 !important; background: transparent !important; }
+:host(ak-flow-card) .pf-c-login__main-header,
+:host(ak-flow-card) .pf-v5-c-login__main-header { margin-bottom: 28px !important; }
+:host(ak-flow-card) .pf-c-title,
+:host(ak-flow-card) .pf-v5-c-title,
+:host(ak-flow-card) h1 {
+  margin: 0;
+  color: var(--k-plum) !important;
+  font: 600 clamp(40px, 4.4vw, 64px)/1 var(--k-display) !important;
+  letter-spacing: -.02em;
+  text-wrap: balance;
+  -webkit-line-clamp: unset !important;
+  overflow: visible !important;
+}
+:host(ak-flow-card) .pf-c-title.ak-m-clamped::before {
+  content: "Welcome back";
+  display: block;
+  margin-bottom: 14px;
+  color: var(--k-suo);
+  font: 700 13px/1.2 var(--k-sans);
+  letter-spacing: .03em;
+}
+
+/* who is signing in: one row, the name and Not you? on the same line */
+ak-form-static { display: block; padding: 10px 14px; border-radius: var(--k-r-l); background: var(--k-container); }
+ak-form-static > div { display: flex !important; align-items: center; gap: 12px; flex-wrap: nowrap; }
+ak-form-static > div > a { margin-left: auto; color: var(--k-suo) !important; font: 700 14px/1 var(--k-sans) !important; white-space: nowrap; }
+:host(ak-form-static) .form-control-static { display: flex !important; align-items: center; gap: 12px; }
+:host(ak-form-static) { display: flex !important; align-items: center; gap: 12px; }
+:host(ak-form-static) .primary-content { flex: 1; min-width: 0; display: flex !important; align-items: center; gap: 12px; font: 700 15px/1.2 var(--k-sans); color: var(--k-ink); }
+:host(ak-form-static) .pf-c-avatar { width: 36px !important; height: 36px !important; border-radius: 50%; }
+:host(ak-form-static) .links { margin-left: auto; flex: none; }
+
+/* The art beside the form, as on the Portal's /login (apps/portal/src/app/globals.css
+   .login-art): seigaiha on a sakura ground, the sun with its pale halo, and the four
+   colour folds along the foot. Drawn here so the page needs no image. */
+html:has(ak-flow-executor) body::after {
+  --sun: min(13.5vw, 195px);
+  background:
+    linear-gradient(90deg, #ad696b 0 25%, #e3cdb6 25% 50%, #6d7969 50% 75%, #465f74 75%) left bottom / 100% 20% no-repeat,
+    radial-gradient(circle at 51% 48%, color-mix(in srgb, #d77b8c 82%, white) 0 var(--sun), rgba(255, 255, 255, .22) var(--sun) calc(var(--sun) + 30px), transparent calc(var(--sun) + 30.5px)),
+    radial-gradient(circle at 50% 100%, transparent 0 34px, rgba(78, 43, 55, .25) 35px 36px, transparent 37px 49px, rgba(78, 43, 55, .25) 50px 51px, transparent 52px) 0 0 / 72px 36px,
+    #f5dfe3 !important;
+}
+html:has(ak-flow-executor) body::before {
+  position: fixed;
+  z-index: 1;
+  top: 7%;
+  right: 7%;
+  bottom: 7%;
+  left: calc(var(--kimono-panel) + 7vw);
+  content: "";
+  pointer-events: none;
+  border: 1px solid rgba(43, 29, 34, .16);
+  /* Authentik paints its flow background on this same layer; Kimono's art replaces it. */
+  background: none !important;
+  background-image: none !important;
+  width: auto !important;
+  height: auto !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+@media (max-width: 820px) { html:has(ak-flow-executor) body::before { display: none; } }

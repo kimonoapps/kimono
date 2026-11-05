@@ -22,7 +22,7 @@ entries:
     attrs:
       name: Default - Authentication flow
       designation: authentication
-      title: Welcome to Kimono
+      title: Come home.
 
   # The Portal lists accounts so an administrator can grant Kimono VPN to a real
   # person, and lets each person edit their own name, email, picture and
