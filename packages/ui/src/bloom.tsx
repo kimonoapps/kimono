@@ -22,7 +22,8 @@ export function BloomMark({ identity: input, children, centre = 20, ...props }: 
   /* Drawn in ink and wash by the same function the server uses (bloom-svg.ts). */
   return <svg viewBox="0 0 100 100" aria-hidden="true" {...props}>
     <g dangerouslySetInnerHTML={{ __html: inkBloomMarkup(input, centre, unique) }}/>
-    <g className="app-bloom-glyph" clipPath={`url(#bloom-centre-clip-${unique})`}>{children}</g>
+    {/* The glyph is brushed too: the bloom's fine ink wobble, inside the heart. */}
+    <g className="app-bloom-glyph" clipPath={`url(#bloom-centre-clip-${unique})`}><g filter={`url(#ink-fine-${unique})`}>{children}</g></g>
   </svg>;
 }
 

@@ -120,7 +120,10 @@ import app.kimono.ui.KimonoTopBar
 import app.kimono.ui.Problem
 import app.kimono.ui.Seal
 import app.kimono.ui.SealTone
-import app.kimono.ui.SvgMark
+import app.kimono.ui.InkBloom
+import app.kimono.ui.InkBlot
+import app.kimono.ui.InkDot
+import app.kimono.ui.InkLoader
 import app.kimono.ui.kimonoIcon
 import app.kimono.ui.segmentColors
 import coil3.compose.AsyncImage
@@ -164,7 +167,7 @@ private fun whenText(at: Long, now: Long): String {
 /* ── the workspaces ── */
 
 @Composable
-fun CodeScreen(code: Code, bloom: String?, open: (String) -> Unit) {
+fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, back: () -> Unit, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf(code.knownWorkspaces()) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -176,7 +179,7 @@ fun CodeScreen(code: Code, bloom: String?, open: (String) -> Unit) {
     val time = ticking(anyRunning)
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar("Code", mark = { SvgMark(bloom, 32.dp) }) },
+        topBar = { KimonoTopBar("Code", onBack = back, mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
         floatingActionButton = {
             ExtendedFloatingActionButton(onClick = { starting = true }, icon = { Icon(kimonoIcon("plus"), null) }, text = { Text("New task") }, containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer)
         },
@@ -184,7 +187,7 @@ fun CodeScreen(code: Code, bloom: String?, open: (String) -> Unit) {
         KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.padding(padding).fillMaxSize()) {
             val shown = list
             when {
-                shown == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                shown == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 shown.isNullOrEmpty() -> Quiet(problem ?: "Give the agent a task on one of your repositories.")
                 else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                     if (problem != null) item { Problem(problem) }
@@ -213,7 +216,7 @@ private fun StatusWord(w: CodeWorkspace, time: Long) {
     val turn = w.turn
     when {
         turn?.state == "running" -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.size(7.dp).background(Kata.moss, RoundedCornerShape(1.dp)))
+            InkDot(Kata.moss, size = 10.dp, seed = "working")
             Text("working ${elapsedText(time - turn.startedAt)}", fontFamily = mono, fontSize = 12.sp, color = Kata.mossDeep, fontWeight = FontWeight.SemiBold)
         }
         turn?.state == "failed" -> Text("stopped", fontFamily = mono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -227,8 +230,8 @@ private fun StatusWord(w: CodeWorkspace, time: Long) {
 private fun Quiet(text: String) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 40.dp, vertical = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         item {
-            Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.secondaryContainer, MaterialShapes.Cookie9Sided.toShape()), contentAlignment = Alignment.Center) {
-                Icon(kimonoIcon("code"), null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+            InkBlot("code-quiet", size = 96.dp) {
+                Icon(kimonoIcon("code"), null, modifier = Modifier.size(40.dp), tint = Kata.plum)
             }
             Spacer(Modifier.size(20.dp))
             Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(280.dp))
@@ -378,7 +381,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, op
                 navigationIcon = { IconButton(onClick = back) { Icon(kimonoIcon("back"), "Back") } },
                 actions = {
                     if (w?.preview != null) TextButton(onClick = { platform.openUrl(w.preview.url) }) {
-                        Icon(kimonoIcon("open"), null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("Open app")
+                        Icon(kimonoIcon("out"), null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("Open app")
                     }
                     if (w?.drive != null) IconButton(onClick = { open("folder/${w.drive.folderId}") }) { Icon(kimonoIcon("folder"), "Open in Drive") }
                     IconButton(onClick = { deleting = true }) { Icon(kimonoIcon("trash"), "Delete workspace") }
@@ -394,7 +397,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, op
                 }
                 Spacer(Modifier.weight(1f))
                 if (w?.running == true) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(8.dp).background(Kata.moss, RoundedCornerShape(1.dp)))
+                    InkDot(Kata.moss, size = 11.dp, seed = "working")
                     Text("Working ${elapsedText(time - w.turn!!.startedAt)}", fontFamily = mono, fontSize = 12.sp, color = Kata.mossDeep, fontWeight = FontWeight.SemiBold)
                 } else if (w != null) Seal(if (w.pullRequest != null) "Push changes" else "Open pull request", compact = true, busy = publishing, tone = if (w.pullRequest != null) SealTone.Quiet else SealTone.Primary, onClick = {
                     publishing = true
@@ -412,7 +415,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, op
             }
             if (problem != null) Box(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) { Problem(problem) }
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                if (w == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                if (w == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 else when (tab) {
                     0 -> Chat(code, drive, platform, w, events)
                     1 -> Files(code, w)
@@ -509,7 +512,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, w: CodeWorkspace,
                 }
                 item(key = "tail") {
                     if (w.running && items.lastOrNull() !is Item.Tools) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Box(Modifier.size(8.dp).background(Kata.moss, RoundedCornerShape(1.dp)))
+                        InkDot(Kata.moss, size = 11.dp, seed = "working")
                         Text("Working", fontFamily = mono, fontSize = 12.sp, color = Kata.mossDeep, fontWeight = FontWeight.SemiBold)
                     }
                 }
@@ -671,7 +674,7 @@ private fun ToolRow(call: ToolCall) {
         Row(Modifier.fillMaxWidth().heightIn(min = 36.dp).clickable(enabled = !result?.output.isNullOrBlank()) { open = !open }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
                 when {
-                    result == null -> Box(Modifier.size(7.dp).background(Kata.moss, RoundedCornerShape(1.dp)))
+                    result == null -> InkDot(Kata.moss, size = 10.dp, seed = "working")
                     result.ok -> Icon(kimonoIcon("check"), "Done", modifier = Modifier.size(14.dp))
                     else -> Icon(kimonoIcon("close"), "Failed", modifier = Modifier.size(14.dp), tint = Kata.suoDeep)
                 }
@@ -798,7 +801,7 @@ private fun FromDriveSheet(drive: Drive, onDismiss: () -> Unit, onAdd: (List<Dri
                 if (here == null) {
                     val result = spaces
                     when {
-                        result == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
+                        result == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                         result.isFailure -> item { Problem(result.exceptionOrNull()?.message ?: "Drive isn't answering.") }
                         else -> {
                             val list = result.getOrThrow()
@@ -815,7 +818,7 @@ private fun FromDriveSheet(drive: Drive, onDismiss: () -> Unit, onAdd: (List<Dri
                 } else {
                     val result = folder
                     when {
-                        result == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
+                        result == null -> item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                         result.isFailure -> item { Problem(result.exceptionOrNull()?.message ?: "That folder couldn't be opened.") }
                         else -> {
                             val list = result.getOrThrow().children.sortedWith(compareBy({ !it.isFolder }, { it.name.lowercase() }))
@@ -862,7 +865,7 @@ private fun Files(code: Code, w: CodeWorkspace) {
         }
         val result = entries
         when {
-            result == null -> item { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
+            result == null -> item { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
             result.isFailure -> item { Problem(result.exceptionOrNull()?.message ?: "Those files couldn't be listed.") }
             else -> {
                 val list = result.getOrThrow()
@@ -893,7 +896,7 @@ private fun FileViewer(code: Code, w: CodeWorkspace, path: String, close: () -> 
         }
         val result = bytes
         when {
-            result == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+            result == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
             result.isFailure -> Box(Modifier.padding(20.dp)) { Problem(result.exceptionOrNull()?.message) }
             path.substringAfterLast('.').lowercase() in pictureTypes -> AsyncImage(model = result.getOrThrow(), contentDescription = path, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().background(Kata.fold).padding(16.dp))
             else -> {
@@ -944,7 +947,7 @@ private fun Changes(code: Code, w: CodeWorkspace, lastSeq: Long) {
     val c = changes
     when {
         c == null && problem != null -> Box(Modifier.padding(20.dp)) { Problem(problem) }
-        c == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+        c == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
         c.files.isEmpty() -> Text("No changes from ${c.base} yet.", modifier = Modifier.padding(20.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         else -> {
             val diffs = remember(c.diff) { splitDiff(c.diff) }

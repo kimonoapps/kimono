@@ -60,7 +60,7 @@ import app.kimono.ui.GroupLabel
 import app.kimono.ui.GroupItem
 import app.kimono.ui.KimonoGroup
 import app.kimono.ui.KimonoTopBar
-import app.kimono.ui.iconShape
+import app.kimono.ui.InkBlot
 import app.kimono.ui.segmentColors
 import app.kimono.ui.Portrait
 import app.kimono.ui.Problem
@@ -81,6 +81,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import app.kimono.ui.InkLoader
 
 /** Uploads a 512×512 PNG as the signed-in person's picture. */
 suspend fun Session.usePicture(png: ByteArray) {
@@ -131,7 +132,7 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
                 /* Long-press your picture for everything you can do with it. */
                 HoldMenu(listOfNotNull(MenuChoice("Choose a photo", onClick = choose), if (me?.picture != null) MenuChoice("Remove picture", danger = true, onClick = remove) else null), onClick = choose) {
                     Portrait(me?.picture, me?.name, me?.username, 128.dp)
-                    if (busy) Box(Modifier.size(128.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                    if (busy) Box(Modifier.size(128.dp), contentAlignment = Alignment.Center) { InkLoader() }
                     FilledIconButton(
                         onClick = choose,
                         shapes = IconButtonDefaults.shapes(),
@@ -148,6 +149,11 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
                 GroupItem("Password", icon = "lock") { open("password") },
                 GroupItem("Signed-in devices", icon = "phone") { open("devices") },
             ))
+            /* Administrators look after the household's apps from here, as under Admin on the website. */
+            if (me?.role == "owner" || me?.role == "admin") {
+                GroupLabel("Kimono")
+                KimonoGroup(listOf(GroupItem("Apps", icon = "apps") { open("apps") }))
+            }
             GroupLabel("This phone")
             KimonoGroup(listOf(GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } }))
             Spacer(Modifier.height(32.dp))
@@ -212,7 +218,7 @@ fun DevicesScreen(session: Session, back: () -> Unit) {
         KimonoRefresh(refreshing, onRefresh = { scope.launch { refreshing = true; load(); refreshing = false } }, modifier = Modifier.padding(padding).fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize()) {
                 item { Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { Problem(problem) } }
-                if (list == null && problem == null) item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { LoadingIndicator() } }
+                if (list == null && problem == null) item { Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                 val sessions = list?.sessions ?: emptyList()
                 itemsIndexed(sessions, key = { _, it -> it.id }) { index, item ->
                     val on = listOf(item.device, item.os).filter { it.isNotBlank() }.joinToString(", ")
@@ -232,8 +238,8 @@ fun DevicesScreen(session: Session, back: () -> Unit) {
                             shapes = shapes,
                             colors = segmentColors(),
                             leadingContent = {
-                                Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.secondaryContainer, iconShape(index)), contentAlignment = Alignment.Center) {
-                                    Icon(kimonoIcon(if (phone) "phone" else "laptop"), null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(20.dp))
+                                InkBlot(item.id) {
+                                    Icon(kimonoIcon(if (phone) "phone" else "laptop"), null, tint = Kata.plum, modifier = Modifier.size(20.dp))
                                 }
                             },
                             supportingContent = { Text(listOfNotNull(item.place, item.ip).joinToString(" · ")) },

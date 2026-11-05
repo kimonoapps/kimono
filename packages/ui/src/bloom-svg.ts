@@ -26,7 +26,7 @@ export type BloomSvgOptions = {
 
 export function bloomSvg(input: BloomIdentityInput, options: BloomSvgOptions = {}): string {
   const { centre = 20, glyph, glyphScale = .72, unique = "b", standalone = false } = options;
-  const markup = `<svg viewBox="0 0 100 100" aria-hidden="true"><g>${inkBloomMarkup(input, centre, unique)}</g><g class="app-bloom-glyph" clip-path="url(#bloom-centre-clip-${unique})">${glyph ? glyphSvg(glyph, glyphScale, "#fffdf8") : ""}</g></svg>`;
+  const markup = `<svg viewBox="0 0 100 100" aria-hidden="true"><g>${inkBloomMarkup(input, centre, unique)}</g><g class="app-bloom-glyph" clip-path="url(#bloom-centre-clip-${unique})"><g filter="url(#ink-fine-${unique})">${glyph ? glyphSvg(glyph, glyphScale, "#fffdf8") : ""}</g></g></svg>`;
   return standalone ? selfContained(markup) : markup;
 }
 

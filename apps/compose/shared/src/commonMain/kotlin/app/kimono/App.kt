@@ -42,7 +42,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -83,6 +88,8 @@ import app.kimono.ui.Seal
 import app.kimono.ui.SealTone
 import app.kimono.ui.kimonoIcon
 import kotlinx.coroutines.launch
+import app.kimono.ui.InkLoader
+import app.kimono.ui.AppAccentTheme
 
 /**
  * The Kimono app. [shared] is whatever another app has just shared into
@@ -101,7 +108,7 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             val required = update?.takeIf { it.required }
             if (required != null) UpdateScreen(required, platform) else when (val s = state) {
-                SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 is SessionState.SignedOut -> SignInScreen(session, s.server)
                 is SessionState.SignedIn -> {
                     SignedIn(session, platform, s.me, update?.takeIf { !later }) { later = true }
@@ -120,6 +127,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val tab = route == "home" || route == "drive" || route == "you"
     val model = remember(session) { DriveModel(Drive(session), platform) }
     val code = remember(session) { app.kimono.data.Code(session) }
+    val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
     /* Drive is the server's to switch on: asked on opening, and the tab and the Files app entry follow. */
     val driveOn by model.drive.driveOn.collectAsState()
@@ -140,21 +148,38 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             }
         },
     ) { padding ->
-        /* Tabs swap in place; a screen opened from one slides over it and back, as on iOS. The default crossfade left both showing at once. */
+        /*
+         * Material's own motion between screens. Tabs fade through: the old one
+         * fades quickly, the new one settles in from just smaller. A screen
+         * opened from another moves along the shared x-axis: both slide a
+         * short way and cross-fade, forward to the left and back to the right,
+         * and Android's predictive back gesture scrubs the same motion.
+         */
         val tabs = setOf("home", "drive", "you")
         fun between(from: String?, to: String?) = from in tabs && to in tabs
+        val settle = CubicBezierEasing(.05f, .7f, .1f, 1f)
+        val axis = tween<IntOffset>(400, easing = settle)
+        val arrive = fadeIn(tween(250, delayMillis = 100, easing = LinearOutSlowInEasing))
+        val leave = fadeOut(tween(100, easing = FastOutLinearInEasing))
+        val throughIn = arrive + scaleIn(tween(300, delayMillis = 100, easing = settle), initialScale = .94f)
         NavHost(
             nav, startDestination = "home", modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp),
-            enterTransition = { if (between(initialState.destination.route, targetState.destination.route)) fadeIn(tween(120)) else slideInHorizontally(tween(320)) { it } },
-            exitTransition = { if (between(initialState.destination.route, targetState.destination.route)) ExitTransition.None else slideOutHorizontally(tween(320)) { -it / 4 } + fadeOut(tween(320), .6f) },
-            popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) EnterTransition.None else slideInHorizontally(tween(320)) { -it / 4 } },
-            popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) fadeOut(tween(120)) else slideOutHorizontally(tween(320)) { it } },
+            enterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { it / 8 } + arrive },
+            exitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { -it / 8 } + leave },
+            popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
+            popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
             composable("home") { HomeScreen(me, model.drive, platform, update, onLater, openCode = { nav.navigate("code") }) { goTab("drive") } }
-            composable("code") { CodeScreen(code, model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.bloom) { nav.navigate(it) } }
+            /* Code's screens wear Code's colour, as its pages do on the website. */
+            composable("code") {
+                val codeApp = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }
+                AppAccentTheme(codeApp?.accent) { CodeScreen(code, codeApp, back = { nav.popBackStack() }) { nav.navigate(it) } }
+            }
             composable("code/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
-                WorkspaceScreen(code, model.drive, platform, id, open = { nav.navigate(it) }) { nav.popBackStack() }
+                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                    WorkspaceScreen(code, model.drive, platform, id, open = { nav.navigate(it) }) { nav.popBackStack() }
+                }
             }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }
             composable("space/{id}") { backStack ->
@@ -170,6 +195,11 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
+            composable("apps") { app.kimono.screens.AppsScreen(appAdmin, back = { nav.popBackStack() }) { nav.navigate(it) } }
+            composable("apps/{id}") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                app.kimono.screens.AppScreen(appAdmin, id) { nav.popBackStack() }
+            }
         }
     }
 }

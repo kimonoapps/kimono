@@ -31,8 +31,6 @@ data class DriveSpace(
     val id: String, val name: String, val crest: String, val rootId: String, val role: String, val members: Int,
     val createdBy: String = "",
     val color: String = "plum",
-    /** The crest, drawn by the Portal as SVG. */
-    val mark: String? = null,
 )
 
 @Serializable
@@ -118,15 +116,16 @@ data class KimonoAppLink(
     /** The mark at the centre of its bloom, when it has one of Kimono's own. */
     val glyph: String? = null,
     val icon: String? = null,
-    /** Its bloom in its colours as set now, drawn by the Portal as SVG. */
-    val bloom: String? = null,
     val web: String,
     val ios: String? = null,
     val android: String? = null,
 )
 
 @Serializable
-private data class DriveLook(val bloom: String? = null)
+private data class DriveLook(val id: String = "kimono-drive", val accent: String? = null, val glyph: String? = null)
+
+/** What an app's bloom is drawn from: its id, its one colour and the glyph at its heart. */
+data class BloomLook(val id: String, val accent: String, val glyph: String?)
 
 @Serializable
 private data class AppList(val apps: List<KimonoAppLink>, val drive: DriveLook? = null, val driveOn: Boolean = true)
@@ -287,15 +286,15 @@ class Drive(private val session: Session) {
 
     suspend fun unlink(id: String) { session.call("/api/v1/drive/nodes/$id/link", HttpMethod.Delete) }
 
-    /** Drive's own bloom, as the Portal draws it; arrives with the list of apps. */
-    val driveBloom = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    /** What Drive's own bloom is drawn from; arrives with the list of apps. */
+    val driveBloom = kotlinx.coroutines.flow.MutableStateFlow<BloomLook?>(null)
     /** Whether the household's Kimono has Drive switched on; null until asked. */
     val driveOn = kotlinx.coroutines.flow.MutableStateFlow<Boolean?>(null)
 
     suspend fun otherApps(): List<KimonoAppLink> = json.decodeFromString<AppList>(session.fetch(APPS)).also(::heard).apps
 
     private fun heard(list: AppList) {
-        list.drive?.bloom?.let { driveBloom.value = it }
+        list.drive?.let { look -> look.accent?.let { driveBloom.value = BloomLook(look.id, it, look.glyph ?: "file") } }
         driveOn.value = list.driveOn
     }
 

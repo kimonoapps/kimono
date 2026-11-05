@@ -63,7 +63,7 @@ import app.kimono.data.KimonoProblem
 import app.kimono.data.Person
 import app.kimono.data.SpaceDetail
 import app.kimono.data.SpaceMember
-import app.kimono.ui.SvgMark
+import app.kimono.ui.InkCrest
 import app.kimono.ui.GroupLabel
 import app.kimono.ui.KimonoTopBar
 import app.kimono.ui.Portrait
@@ -73,6 +73,9 @@ import app.kimono.ui.SealTone
 import app.kimono.ui.kimonoIcon
 import app.kimono.ui.segmentColors
 import kotlinx.coroutines.launch
+import app.kimono.ui.InkLoader
+import app.kimono.ui.inkChosen
+import app.kimono.ui.InkBlot
 
 /* Roles, as the website words them. */
 private val roleOrder = listOf("owner", "editor", "viewer")
@@ -117,12 +120,12 @@ fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Uni
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         when {
-            here == null && problem == null -> Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) { LoadingIndicator() }
+            here == null && problem == null -> Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
             here == null -> Box(Modifier.padding(padding).padding(24.dp)) { Problem(problem) }
             else -> LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        SvgMark(here.mark, 88.dp)
+                        InkCrest(here.crest, here.color, 88.dp)
                         Spacer(Modifier.height(12.dp))
                         Text(here.name, style = MaterialTheme.typography.headlineSmall)
                         Text(if (here.memberList.size == 1) "Only you" else "${here.memberList.size} people", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -239,16 +242,15 @@ fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Uni
 fun CrestPicker(model: DriveModel, crest: String, colour: String, onPick: (crest: String, colour: String) -> Unit) {
     var catalogue by remember { mutableStateOf<CrestCatalogue?>(null) }
     LaunchedEffect(Unit) { catalogue = runCatching { model.drive.crests() }.getOrNull() }
-    val choices = catalogue ?: return Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
+    val choices = catalogue ?: return Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) { InkLoader() }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             choices.colors.forEach { each ->
                 val on = each.id == colour
-                Box(
-                    Modifier.size(40.dp).clip(CircleShape).clickable { if (!on) onPick(crest, each.id) }
-                        .then(if (on) Modifier.border(2.5.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
-                        .padding(5.dp).clip(CircleShape).background(hex(each.hex)),
-                )
+                /* Each colour a puddle of its dye; the chosen one ringed with the brush. */
+                Box(Modifier.size(38.dp).inkChosen(on, seed = "colour:${each.id}").clip(CircleShape).clickable { if (!on) onPick(crest, each.id) }, contentAlignment = Alignment.Center) {
+                    InkBlot("colour:${each.id}", tint = hex(each.hex), size = 26.dp, strong = true)
+                }
             }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -259,9 +261,9 @@ fun CrestPicker(model: DriveModel, crest: String, colour: String, onPick: (crest
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Box(
-                        Modifier.size(52.dp).then(if (on) Modifier.border(2.5.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier),
+                        Modifier.size(56.dp).inkChosen(on, colour = MaterialTheme.colorScheme.primary, seed = "crest:${kind.id}"),
                         contentAlignment = Alignment.Center,
-                    ) { SvgMark(choices.mark(kind.id, colour), 44.dp) }
+                    ) { InkCrest(kind.id, colour, 44.dp) }
                     Text(kind.jp, style = MaterialTheme.typography.labelMedium, color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -291,7 +293,7 @@ private fun PeopleSheet(model: DriveModel, already: Set<String>, me: String?, on
             val list = everyone?.filter { it.username.lowercase() !in before && !it.username.equals(me, ignoreCase = true) }
                 ?.filter { search.isBlank() || it.name.contains(search, ignoreCase = true) || it.username.contains(search, ignoreCase = true) }
             when {
-                everyone == null && problem == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { LoadingIndicator() }
+                everyone == null && problem == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader() }
                 list.isNullOrEmpty() -> Text(
                     if (search.isBlank()) "Everyone with a Kimono account is already here." else "No one called that has a Kimono account.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp),

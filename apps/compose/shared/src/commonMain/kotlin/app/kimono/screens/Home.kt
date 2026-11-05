@@ -53,7 +53,7 @@ import app.kimono.data.Platform
 import app.kimono.ui.GroupLabel
 import app.kimono.ui.KimonoBranch
 import app.kimono.ui.kimonoIcon
-import app.kimono.ui.SvgMark
+import app.kimono.ui.InkBloom
 import app.kimono.ui.segmentColors
 import coil3.compose.AsyncImage
 
@@ -93,7 +93,7 @@ fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: Ap
                 modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
             ) {
                 Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SvgMark(drive.driveBloom.collectAsState().value, 60.dp)
+                    drive.driveBloom.collectAsState().value.let { if (it != null) InkBloom(it.id, it.accent, it.glyph, 60.dp) else Box(Modifier.size(60.dp)) }
                     Column(Modifier.weight(1f)) {
                         Text("Drive", style = MaterialTheme.typography.headlineSmall)
                         Text("Your spaces and files, and what others share with you.", style = MaterialTheme.typography.bodyMedium)
@@ -112,7 +112,7 @@ fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: Ap
                 modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp).fillMaxWidth(),
             ) {
                 Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    SvgMark(code.bloom, 60.dp)
+                    InkBloom(code.id, code.accent, code.glyph, 60.dp)
                     Column(Modifier.weight(1f)) {
                         Text("Code", style = MaterialTheme.typography.headlineSmall)
                         Text(code.description, style = MaterialTheme.typography.bodyMedium)
@@ -144,9 +144,9 @@ fun HomeScreen(me: AccountProfile?, drive: Drive, platform: Platform, update: Ap
 /** An app's glyph on its own colour, in a blossom like its tile on the web. */
 @Composable
 private fun AppMark(app: KimonoAppLink) {
-    /* The app's bloom as the Portal's launcher draws it; an app without a glyph of Kimono's wears its own icon in the heart. */
+    /* The app's bloom as the Portal's launcher draws it, inked; an app without a glyph of Kimono's wears its own icon in the heart. */
     Box(Modifier.size(46.dp), contentAlignment = Alignment.Center) {
-        SvgMark(app.bloom, 46.dp)
+        InkBloom(app.id, app.accent, app.glyph, 46.dp)
         if (app.glyph == null && app.icon != null) AsyncImage(model = app.icon, contentDescription = null, modifier = Modifier.size(46.dp * .3f))
     }
 }
