@@ -123,7 +123,13 @@ export function migrate(db: DatabaseSync) {
 
 export type UsageReport = { five_hour?: number; week?: number; five_hour_now?: number; five_hour_reset?: number; week_now?: number; week_reset?: number };
 export type PlanWindow = { used: number; resetsAt: number | null };
-export type PersonUsage = { fiveHour: PlanWindow; week: PlanWindow; reported: boolean; /** The whole plan's use of each window, as last seen. */ plan: { fiveHour: number | null; week: number | null } };
+export type PersonUsage = {
+  fiveHour: PlanWindow; week: PlanWindow; reported: boolean;
+  /** The whole plan's use of each window, as last seen. */
+  plan: { fiveHour: number | null; week: number | null };
+  /** Some plans have no 5-hour window: usage is reported, but never a 5-hour figure. */
+  fiveHourLimited: boolean;
+};
 
 const fraction = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10 ? value : 0;
 const seconds = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
@@ -155,6 +161,7 @@ export function usageOf(db: DatabaseSync, username: string, now = Date.now()): P
   return {
     fiveHour: window("five_hour", plan?.five_hour_reset), week: window("week", plan?.week_reset), reported: Boolean(plan),
     plan: { fiveHour: current(plan?.five_hour, plan?.five_hour_reset), week: current(plan?.week, plan?.week_reset) },
+    fiveHourLimited: Boolean(plan?.five_hour_reset),
   };
 }
 

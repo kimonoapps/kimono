@@ -134,19 +134,21 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
   const five = usage ? share(usage.fiveHour, usage.plan?.fiveHour ?? null) : null;
   const week = usage ? share(usage.week, usage.plan?.week ?? null) : null;
   const whose = usage?.unlimited ? "of the plan" : "of your share";
+  /* Usage arrives but never a 5-hour figure: this plan has no 5-hour window, so there's no ring for it. */
+  const noFiveHour = Boolean(usage?.reported && usage.fiveHourLimited === false);
   return <div className="cd-meters" ref={box}>
     <button type="button" className="cd-meters-btn" aria-expanded={open} aria-label="Context and usage" title="Context and usage" onClick={() => setOpen(!open)}>
       <Ring value={ctx} label={ctx == null ? "Context not known yet" : `Context ${pct(ctx)} full`} />
-      <Ring value={five} label={five == null ? "5-hour use not reported" : `${pct(five)} of the 5-hour window`} />
+      {noFiveHour ? null : <Ring value={five} label={five == null ? "5-hour use not reported" : `${pct(five)} of the 5-hour window`} />}
       <Ring value={week} label={week == null ? "Weekly use not reported" : `${pct(week)} of the week`} />
     </button>
     {open ? <div className="cd-meters-pop" role="dialog" aria-label="Context and usage">
       <div className="cd-meter"><Ring value={ctx} label="Context" /><span><b>Context</b><small>{context ? `${kTokens(context.used)} of ${kTokens(window)} tokens${context.window ? "" : " (about)"}` : "Known after the next reply"}</small></span>
         <Seal type="button" compact tone="quiet" disabled={compacting || Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); setOpen(false); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{compacting ? "Compacting…" : running ? "Compact after this" : "Compact now"}</Seal></div>
       <p className="cd-meter-note">Compacting folds the conversation so far into a summary, so there&rsquo;s room to keep going. It also happens by itself when the context fills.</p>
-      <div className="cd-meter"><Ring value={five} label="5-hour window" /><span><b>5-hour window</b><small>{five == null ? "Not reported yet" : `${pct(five)} ${whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div>
+      <div className="cd-meter"><Ring value={five} label="5-hour window" /><span><b>5-hour window</b><small>{noFiveHour ? "This plan has no 5-hour limit" : five == null ? "Not reported yet" : `${pct(five)} ${whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div>
       <div className="cd-meter"><Ring value={week} label="This week" /><span><b>This week</b><small>{week == null ? "Not reported yet" : `${pct(week)} ${whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div>
-      {usage && !usage.unlimited ? <p className="cd-meter-note">Your share is {pct(usage.fiveHour.share)} of each 5-hour window and {pct(usage.week.share)} of the week.</p> : null}
+      {usage && !usage.unlimited ? <p className="cd-meter-note">Your share is {noFiveHour ? `${pct(usage.week.share)} of the week` : `${pct(usage.fiveHour.share)} of each 5-hour window and ${pct(usage.week.share)} of the week`}.</p> : null}
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div> : null}
   </div>;

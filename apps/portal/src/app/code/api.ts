@@ -43,7 +43,7 @@ const base = "/api/v1/code";
 export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
 export type Effort = (typeof efforts)[number];
 export type Usage = {
-  model: string; unlimited: boolean; reported: boolean; plan: { fiveHour: number | null; week: number | null };
+  model: string; unlimited: boolean; reported: boolean; plan: { fiveHour: number | null; week: number | null }; fiveHourLimited?: boolean;
   fiveHour: { used: number; share: number; resetsAt: number | null };
   week: { used: number; share: number; resetsAt: number | null };
 };

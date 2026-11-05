@@ -77,7 +77,7 @@
         "group": "sharing",
         "target": "settings",
         "default": "75",
-        "description": "Percent of the plan's 5-hour window. The owner isn't limited."
+        "description": "Percent of the plan's 5-hour window, on plans that have one. The owner isn't limited."
       }
     ],
     "managedEnvironment": [],

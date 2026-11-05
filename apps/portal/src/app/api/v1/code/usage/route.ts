@@ -13,6 +13,7 @@ export async function GET() {
       unlimited,
       reported: used.reported,
       plan: used.plan,
+      fiveHourLimited: used.fiveHourLimited,
       fiveHour: { used: used.fiveHour.used, share: unlimited ? 1 : config.shares.fiveHour, resetsAt: used.fiveHour.resetsAt },
       week: { used: used.week.used, share: unlimited ? 1 : config.shares.week, resetsAt: used.week.resetsAt },
     });
