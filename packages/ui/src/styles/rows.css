@@ -43,7 +43,7 @@
   padding: var(--k-space-3) var(--k-space-4);
   overflow: auto;
   border-left: var(--k-rule) solid var(--k-ink);
-  border-radius: 0 var(--k-r-2) var(--k-r-2) 0;
+  border-radius: var(--k-r-s) var(--k-r-2) var(--k-r-2) 0;
   background: var(--k-fold);
   color: var(--k-ink);
   font: 500 13px/1.6 var(--k-mono);

@@ -3,10 +3,10 @@ import { accentRamp, Choice, KimonoMark, AppLockup, Field, Form, FormActions, Se
 import { notFound } from "next/navigation";
 import { getAppDefinition } from "@/lib/definitions";
 import { AppTiles } from "@/components/app-card";
-import { AppsCatalog } from "../admin/apps/apps-catalog";
+import { AppsCatalog } from "../(shell)/admin/apps/apps-catalog";
 import type { RegisteredApp } from "@/lib/apps";
-import { ToolsDocumentation } from "../tools/tools-documentation";
-import "../tools/tools.css";
+import { ToolsDocumentation } from "../(shell)/tools/tools-documentation";
+import "../(shell)/tools/tools.css";
 export default async function ToolsPreview({ searchParams }: { searchParams: Promise<{view?: string}> }) {
   const { view } = await searchParams;
   if (process.env.NODE_ENV !== "development") notFound();

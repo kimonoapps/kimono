@@ -1,0 +1,40 @@
+/* 携 Getting the Kimono app (get-app/): the steps for this phone. */
+.get-app-page { max-width: 640px; margin: 0 auto; }
+.get-app-head { margin: 8px 0 24px; }
+.get-app-kicker { margin: 0 0 4px; color: var(--k-ink-soft); font-size: .9rem; }
+.get-app-head h1 { margin: 0; font-family: var(--k-display); font-weight: 500; font-size: clamp(1.9rem, 6vw, 2.6rem); }
+.get-app-switch { display: inline-flex; margin-top: 16px; border: 1px solid var(--k-hair); }
+.get-app-switch button { border: 0; background: none; padding: 8px 16px; font: inherit; color: var(--k-ink-soft); cursor: pointer; }
+.get-app-switch button + button { border-left: 1px solid var(--k-hair); }
+.get-app-switch button.is-here { background: var(--k-lift); color: var(--k-ink); font-weight: 600; }
+
+.get-app-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--k-hair); }
+.get-app-step { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 16px; padding: 20px 0; border-bottom: 1px solid var(--k-hair); }
+.get-app-n { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--k-hair-deep, var(--k-hair)); font-family: var(--k-mono); font-size: .9rem; color: var(--k-ink); }
+.get-app-step.is-done .get-app-n { background: var(--k-ink); color: var(--k-lift); border-color: var(--k-ink); }
+.get-app-step h2 { margin: 4px 0 6px; font-size: 1.1rem; font-weight: 600; }
+.get-app-step p { margin: 0 0 12px; color: var(--k-ink-soft); line-height: 1.5; }
+.get-app-step .k-seal { text-decoration: none; display: inline-flex; }
+.get-app-problem { color: var(--k-suo-deep, #8a2f3c) !important; margin-top: 10px !important; }
+.get-app-none { color: var(--k-ink-soft); }
+
+/* ── to the mockup (design/mockups/m3-everywhere.html, Get the app) ── */
+.get-app-page { padding-top: 24px; }
+.get-app-kicker { font: 700 13px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-suo); }
+.get-app-head h1 { font-weight: 600; color: var(--k-plum); font-size: 36px; }
+.get-app-switch { gap: 4px; padding: 4px; border: 0; border-radius: var(--k-r-full); background: var(--k-container-high); }
+.get-app-switch button { min-height: 40px; padding: 0 18px; border-radius: var(--k-r-full); font-weight: 700; font-size: 14px; }
+.get-app-switch button + button { border-left: 0; }
+.get-app-switch button.is-here { background: var(--k-container-lowest); box-shadow: 0 1px 3px rgba(78, 43, 55, .14); }
+.get-app-steps { gap: 3px; border-top: 0; }
+.get-app-step { grid-template-columns: 44px minmax(0, 1fr); gap: 16px; padding: 18px 20px; border: 0; border-radius: 6px; background: var(--k-container); transition: opacity .3s, background-color .3s; }
+.get-app-step:first-child { border-top-left-radius: 24px; border-top-right-radius: 24px; }
+.get-app-step:last-child { border-bottom-left-radius: 24px; border-bottom-right-radius: 24px; }
+.get-app-n { width: 44px; height: 44px; border: 0; border-radius: 42% 58% 50% 50% / 50% 45% 55% 50%; background: var(--k-container-highest); font: 700 15px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.get-app-step.is-done .get-app-n { background: var(--k-tertiary-container); color: var(--k-moss-deep); border: 0; }
+/* the step you're on lifts onto white with a pink rim; the ones after it rest faded */
+.get-app-steps > .get-app-step:first-child:not(.is-done), .get-app-step.is-done + .get-app-step:not(.is-done) { background: var(--k-container-lowest); box-shadow: inset 0 0 0 2px var(--k-primary-container); border-radius: 24px; margin: 4px 0; }
+.get-app-steps > .get-app-step:first-child:not(.is-done) .get-app-n, .get-app-step.is-done + .get-app-step:not(.is-done) .get-app-n { background: var(--k-primary-container); color: var(--k-on-primary-container); }
+.get-app-step:not(.is-done) ~ .get-app-step:not(.is-done) { opacity: .55; }
+.get-app-step h2 { font-size: 16px; font-weight: 700; margin: 2px 0 4px; }
+.get-app-step p { font-size: 14px; color: var(--k-on-surface-variant); }

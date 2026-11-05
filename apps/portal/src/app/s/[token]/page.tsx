@@ -7,8 +7,8 @@ import { crestSvg } from "@kimono/ui/crest";
 import { db, DriveProblem, linkedSpace } from "@/lib/drive";
 import { driveConfig, driveIdentity } from "@/lib/drive/config";
 import { getPlatformSettings } from "@/lib/settings";
-import { GuestDrive } from "../../drive/drive-app";
-import "../../drive/drive.css";
+import { GuestDrive } from "../../(shell)/drive/drive-app";
+import "../../(shell)/drive/drive.css";
 
 type Props = { params: Promise<{ token: string }> };
 
@@ -48,11 +48,11 @@ export default async function SharedSpacePage({ params }: Props) {
     "--k-accent-deep": `color-mix(in srgb, ${ramp.deep} 82%, #24221f)`,
     "--k-accent-pale": ramp.tint,
   } as CSSProperties;
-  return <div className="app-frame in-app" style={palette}>
-    <header className="top-header">
-      <div className="header-inner"><span className="brand-link in-app-brand"><AppLockup identity={app} /></span></div>
-    </header>
-    <main className="main-content">
+  /* No rail here: someone opening a link isn't in the house. Drive's name sits
+     in a slim bar above the sheet, both on one centred column. */
+  return <div className="app-frame in-app share-frame" style={palette}>
+    <header className="share-bar"><AppLockup identity={app} /></header>
+    <main className="share-main">
       {space ? <Suspense>
         <GuestDrive token={token} space={space} mark={crestSvg(space.crest, space.color)} />
       </Suspense> : <div className="dv"><div className="dv-body solo"><section className="dv-sheet"><div className="dv-empty">

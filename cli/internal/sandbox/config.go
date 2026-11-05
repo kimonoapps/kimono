@@ -7,6 +7,7 @@ package sandbox
 import (
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,24 +16,31 @@ import (
 var Version = "dev"
 
 // DefaultImage is the sandbox image this build of Kimono expects.
-const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.1.0"
+const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.2.0"
 
 // DefaultAgent runs Claude Code for one turn. The prompt and the session to
 // resume arrive in the environment, so nothing is quoted into a shell line.
 //
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
-const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --output-format stream-json --verbose --dangerously-skip-permissions --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
+const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --dangerously-skip-permissions --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
+
+// Model is the one model Kimono Code runs. People choose how hard it thinks, not which it is.
+const Model = "claude-opus-5-5"
 
 // SystemPrompt is appended to Claude Code's own on every turn. The people
 // asking may not be technical, so the agent shows its work instead of
 // describing it.
 const SystemPrompt = `The person you are working for may not be technical. Explain what you did in plain, short words, without jargon or code unless they ask for it.
 
+Do what they ask, and finish it. Don't stop to offer the next step or ask "would you like me to…" for something they asked for or would obviously want: do it, then say what you did. Ask only when the choice is genuinely theirs (two reasonable ways, or something that can't be undone). When they say "save it", commit your work on this branch with a short, plain message; Kimono's "Open pull request" button pushes it.
+
 When you change anything people can see, show it:
-- Run the app with ` + "`kimono-serve <port> -- <command>`" + `, for example ` + "`kimono-serve 3000 -- npm run dev -- --host 0.0.0.0`" + `. It keeps running after you finish and gives the person a link to open. Listen on 0.0.0.0 when the tool allows it.
+- Publish the app with ` + "`kimono-serve <port> --kind \"<what it is>\" -- <command>`" + `. Any server works: an API, websockets, server-side rendering, a small database, a framework's dev or production server. For example ` + "`kimono-serve 3000 --kind \"Node API with SQLite\" -- node server.js`" + ` or ` + "`kimono-serve 5173 --kind \"Vite app\" -- npm run dev -- --host 0.0.0.0`" + `. Plain files: ` + "`kimono-serve 8000 --static <folder>`" + `.
+- It keeps running after you finish, starts again if it crashes, and gives the person a link to the app's root, so make ` + "`/`" + ` the app's front page. Listen on 0.0.0.0 and $PORT when the tool allows it. Keep data in files under /workspace so it survives restarts. Its output is in /outbox/serve.log.
 - Then take screenshots with ` + "`kimono-shot http://localhost:<port> \"what this shows\"`" + ` and again with ` + "`--mobile`" + `. They appear in the chat.
-- ` + "`kimono-unserve`" + ` stops the app.
+- When you're done, say in one line what you published: what kind of app it is and what it does.
+- ` + "`kimono-unserve`" + ` stops the app and takes the link down.
 
 Never print, log or commit secrets, tokens or keys.`
 
@@ -53,9 +61,16 @@ type Config struct {
 	// GatewayURL is that listener as a container reaches it; empty derives it.
 	GatewayURL string
 	Network    string
-	CPUs       string
-	Memory     string
-	Pids       int
+	// CPUs, Memory and Pids are each sandbox's share: Docker's notation, such as
+	// "1" and "2g". Memory has no swap on top. The Portal may send its own.
+	CPUs   string
+	Memory string
+	Pids   int
+	// AwakePerPerson and AwakePerNode cap the sandboxes running or paused at
+	// once; DiskGB is each sandbox's disk quota. See limits.go.
+	AwakePerPerson int
+	AwakePerNode   int
+	DiskGB         int
 	// PauseAfter, StopAfter and RemoveAfter are how long a sandbox stays
 	// quiet before it is paused, stopped, and its container removed (its files
 	// stay on their volume). RemoveAfter 0 never removes.
@@ -103,14 +118,23 @@ func (c *Config) defaults() error {
 	if c.Network == "" {
 		c.Network = "kimono-sandboxes"
 	}
-	if c.CPUs == "" {
-		c.CPUs = "4"
+	if cpus, err := strconv.ParseFloat(c.CPUs, 64); err != nil || cpus <= 0 {
+		c.CPUs = "1"
 	}
-	if c.Memory == "" {
-		c.Memory = "8g"
+	if _, ok := parseMemory(c.Memory); !ok {
+		c.Memory = "2g"
 	}
-	if c.Pids == 0 {
-		c.Pids = 2048
+	if c.Pids <= 0 {
+		c.Pids = 1024
+	}
+	if c.AwakePerPerson <= 0 {
+		c.AwakePerPerson = 2
+	}
+	if c.AwakePerNode <= 0 {
+		c.AwakePerNode = 6
+	}
+	if c.DiskGB <= 0 {
+		c.DiskGB = 10
 	}
 	if c.PauseAfter <= 0 {
 		c.PauseAfter = time.Minute

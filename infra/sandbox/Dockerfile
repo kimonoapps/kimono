@@ -29,9 +29,10 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && npm cache clean --force
 
 # What the agent shows people: screenshots (kimono-shot) and a running app
-# behind a link (kimono-serve, kimono-unserve). See docs/kimono-code.md.
+# behind a link (kimono-serve, kimono-unserve, which run it under supervise).
+# See docs/kimono-code.md.
 COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve /usr/local/bin/
-COPY bin/shot.cjs /usr/local/lib/kimono/shot.cjs
+COPY bin/shot.cjs bin/supervise /usr/local/lib/kimono/
 
 ENV PATH=/home/agent/go/bin:/usr/local/go/bin:$PATH \
     GOPATH=/home/agent/go \

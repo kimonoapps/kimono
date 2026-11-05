@@ -1,14 +1,8 @@
-import { accentRamp, InkPortraitFrame, type AppIdentity } from "@kimono/ui";
+import type { AppIdentity } from "@kimono/ui";
 import type { Palette } from "@/lib/settings";
-import { cx } from "@kimono/ui";
-import type { CSSProperties } from "react";
-import { recordAccount, holdsMeshAccess } from "@/lib/directory";
-import { Portrait } from "@/components/portrait";
-import { picturePathFor } from "@/lib/pictures";
+import { holdsMeshAccess } from "@/lib/directory";
 import { UpdateBanner } from "@/components/update-banner";
-import { PageTransition } from "@/components/page-transition";
-import { Rail, type RailApp, type RailRoom } from "@/components/rail";
-import { defaultPins } from "@/lib/default-pins";
+import type { RailApp, RailRoom } from "@/components/rail";
 import { appRegistry, launcherApps } from "@/lib/apps";
 import { getPlatformSettings } from "@/lib/settings";
 import { scanAppDefinitions } from "@/lib/definitions";
@@ -25,22 +19,11 @@ type Props = {
   brandColors?: Palette;
   /** Which of the house's own places this is. */
   active?: "home" | "admin" | "account";
-  /** When set, the page belongs to this app: its pin opens and takes the app's colour. */
+  /** The app this page belongs to. The frame reads it from the address; kept so pages say what they are. */
   app?: AppIdentity;
-  /** The app's own rooms, shown beneath its pin in the rail. */
+  /** Unused: the frame lists each app's rooms (app/(shell)/layout.tsx). */
   rooms?: RailRoom[];
 };
-
-/** Derive app actions from the app's own colour. */
-function appPalette(app: AppIdentity): CSSProperties {
-  const ramp = accentRamp(app.accent);
-  return {
-    "--k-app-accent": ramp.deep,
-    "--k-accent": ramp.deep,
-    "--k-accent-deep": `color-mix(in srgb, ${ramp.deep} 82%, #24221f)`,
-    "--k-accent-pale": ramp.tint,
-  } as CSSProperties;
-}
 
 /** The apps someone can open, in the shape the rail and the grid need. */
 export async function railApps(username: string): Promise<(RailApp & { mobileApp?: import("@/lib/apps").KimonoApp["mobileApp"] })[]> {
@@ -49,32 +32,16 @@ export async function railApps(username: string): Promise<(RailApp & { mobileApp
     .map((app) => ({ id: app.id, name: app.shortName, description: app.description, href: app.href, external: app.external, accent: app.accent, glyph: app.glyph, iconUrl: app.iconUrl, mobileApp: app.mobileApp }));
 }
 
-export async function AppShell({ children, user, active, app, rooms }: Props) {
-  /* Recording who signs in is what lets an administrator grant Kimono VPN to a
-     real account instead of typing a username and hoping. */
-  await recordAccount(user);
-  const displayName = user.name?.trim() || user.username;
-  /* Kimono's own picture first; the identity provider's only if none was set here. */
-  const picture = await picturePathFor(user.username) ?? user.image ?? null;
-  const apps = await railApps(user.username);
+/**
+ * A signed-in page's part of the frame. The rail and the frame around the page
+ * live in app/(shell)/layout.tsx so they persist between pages; which app this
+ * is, its colour and its rooms are read there from the address. What's left
+ * here is the page's own: the update notice on admin pages.
+ */
+export async function AppShell({ children, user, active }: Props) {
   const admin = user.role === "owner" || user.role === "admin";
-  return (
-    <div className={cx("app-frame", app && "in-app")} style={app ? appPalette(app) : undefined}>
-      <Rail
-        apps={apps}
-        current={app?.id}
-        rooms={rooms}
-        active={active}
-        admin={admin}
-        defaultPins={defaultPins(apps)}
-        you={<InkPortraitFrame seed={user.username} weight={6}><Portrait name={displayName} username={user.username} picture={picture} size={26} /></InkPortraitFrame>}
-      />
-      <main className="main-content">
-        <PageTransition>
-          {active === "admin" && admin ? <div className="admin-update"><UpdateBanner username={user.username} /></div> : null}
-          {children}
-        </PageTransition>
-      </main>
-    </div>
-  );
+  return <>
+    {active === "admin" && admin ? <div className="admin-update"><UpdateBanner username={user.username} /></div> : null}
+    {children}
+  </>;
 }

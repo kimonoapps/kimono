@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, ViewTransition, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 /*
  * 移 Moving between pages, as Material's shared x-axis and as the phone app
@@ -24,7 +24,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
       const ghost = main.cloneNode(true) as HTMLElement;
       ghost.setAttribute("aria-hidden", "true");
       ghost.inert = true;
-      Object.assign(ghost.style, { position: "fixed", left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: "0", pointerEvents: "none", zIndex: "5" });
+      Object.assign(ghost.style, { position: "fixed", left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: "0", pointerEvents: "none", zIndex: "5", viewTransitionName: "none" });
       document.body.appendChild(ghost);
       ghost.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateX(${back ? 32 : -32}px)` }], { duration: 120, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }).finished.finally(() => ghost.remove());
       /* The page arrives once Next has put it in place, often as a new element. */
@@ -59,5 +59,6 @@ export function PageTransition({ children }: { children: ReactNode }) {
       else removeEventListener("popstate", onPop);
     };
   }, []);
-  return <ViewTransition name="kimono-page" default="page-axis" enter="page-axis" exit="page-axis" share="page-axis">{children}</ViewTransition>;
+  /* Forward moves are drawn by the template's <ViewTransition>; this keeps the direction and draws history moves. */
+  return <>{children}</>;
 }

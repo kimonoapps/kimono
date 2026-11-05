@@ -38,9 +38,10 @@ export function InkLoader() {
     const HOLD = 120, MORPH = 520, start = performance.now();
     let angle = 0, last = start, raf = 0;
     const frame = (now: number) => {
-      const elapsed = now - start, phase = elapsed % (HOLD + MORPH), mix = phase < HOLD ? 0 : ease((phase - HOLD) / MORPH);
+      /* A frame's timestamp can come from just before the effect ran; never go below zero. */
+      const elapsed = Math.max(0, now - start), phase = elapsed % (HOLD + MORPH), mix = phase < HOLD ? 0 : ease((phase - HOLD) / MORPH);
       const current = Math.floor(elapsed / (HOLD + MORPH)) % SHAPES.length;
-      angle += (now - last) * (.18 + .5 * (phase < HOLD ? 0 : Math.sin(mix * Math.PI))); last = now;
+      angle += Math.max(0, now - last) * (.18 + .5 * (phase < HOLD ? 0 : Math.sin(mix * Math.PI))); last = now;
       const d = shapePath(current, (current + 1) % SHAPES.length, mix);
       paths.forEach((p) => p.setAttribute("d", d));
       root.style.transform = `rotate(${angle.toFixed(1)}deg)`;

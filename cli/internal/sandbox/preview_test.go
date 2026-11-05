@@ -61,12 +61,12 @@ func TestShotNames(t *testing.T) {
 }
 
 func TestParseOutbox(t *testing.T) {
-	out := "shot 2-b.png\nshot 1-a.png\nshot 1-a.txt\nshot ../x.png\nserve {\"port\":3000,\"pid\":42,\"command\":[\"python3\",\"-m\",\"http.server\",\"3000\"]}\n"
+	out := "shot 2-b.png\nshot 1-a.png\nshot 1-a.txt\nshot ../x.png\nserve {\"port\":3000,\"pid\":42,\"command\":[\"python3\",\"-m\",\"http.server\",\"3000\"],\"kind\":\"Static site\",\"cwd\":\"/workspace/site\"}\n"
 	box := parseOutbox([]byte(out))
 	if !reflect.DeepEqual(box.shots, []string{"1-a.png", "2-b.png"}) {
 		t.Errorf("shots %v", box.shots)
 	}
-	if box.serve == nil || box.serve.Port != 3000 || !reflect.DeepEqual(box.serve.Command, []string{"python3", "-m", "http.server", "3000"}) {
+	if box.serve == nil || box.serve.Port != 3000 || box.serve.Kind != "Static site" || box.serve.Cwd != "/workspace/site" || !reflect.DeepEqual(box.serve.Command, []string{"python3", "-m", "http.server", "3000"}) {
 		t.Errorf("serve %+v", box.serve)
 	}
 	if !parseOutbox([]byte("restarting\n")).restarting {
@@ -85,29 +85,78 @@ func TestPreviewTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, changed := s.setPreview("ws1", 3000, []string{"npm", "start"}, "code/notes-app-3fa2")
-	if !changed || !strings.HasPrefix(p.Name, "notes-app-") {
+	npm := serveState{Port: 3000, Command: []string{"npm", "start"}, Cwd: "/workspace/web"}
+	p, changed := s.setPreview("ws1", npm, "code/notes-app-3fa2")
+	if !changed || !strings.HasPrefix(p.Name, "notes-app-") || p.Kind != "Node server" || p.Dir != "/workspace/web" {
 		t.Fatalf("new preview %+v, %v", p, changed)
 	}
-	if again, changed := s.setPreview("ws1", 3000, []string{"npm", "start"}, "code/notes-app-3fa2"); changed || again.Name != p.Name {
+	if again, changed := s.setPreview("ws1", npm, "code/notes-app-3fa2"); changed || again.Name != p.Name {
 		t.Errorf("same preview reported as changed: %+v", again)
 	}
-	if moved, changed := s.setPreview("ws1", 5173, nil, "code/notes-app-3fa2"); !changed || moved.Name != p.Name {
+	if moved, changed := s.setPreview("ws1", serveState{Port: 5173, Cwd: "relative"}, "code/notes-app-3fa2"); !changed || moved.Name != p.Name || moved.Dir != "/workspace" {
 		t.Errorf("a new port should keep the name and report a change: %+v %v", moved, changed)
 	}
 	if url := s.previewURL(p); url != "http://"+p.Name+".localhost:7482" {
 		t.Errorf("dev url %s", url)
 	}
+	// Stopped by its owner, then published again by the agent: the person hears of it.
+	s.setStopped("ws1", true)
+	if !s.isStopped("ws1") {
+		t.Fatal("stop wasn't kept")
+	}
 	// What a restart reads back.
 	reloaded, _ := New(Config{Key: "k", StateDir: s.cfg.StateDir, PreviewDomain: "Example.Dev."})
-	if got := reloaded.previews["ws1"]; got == nil || got.Name != p.Name || got.Port != 5173 {
+	if got := reloaded.previews["ws1"]; got == nil || got.Name != p.Name || got.Port != 5173 || !got.Stopped {
 		t.Fatalf("reloaded %+v", got)
 	}
 	if url := reloaded.previewURL(reloaded.previews["ws1"]); url != "https://"+p.Name+".example.dev" {
 		t.Errorf("domain url %s", url)
 	}
+	if again, changed := s.setPreview("ws1", serveState{Port: 5173, Cwd: "/workspace"}, "code/notes-app-3fa2"); !changed || again.Stopped {
+		t.Errorf("serving a stopped app again should start it and say so: %+v %v", again, changed)
+	}
 	if !s.clearPreview("ws1") || s.clearPreview("ws1") {
 		t.Error("clearPreview should report only the first removal")
+	}
+}
+
+func TestAppKind(t *testing.T) {
+	for _, c := range []struct {
+		command []string
+		told    string
+		want    string
+	}{
+		{[]string{"python3", "-m", "http.server", "8000", "--bind", "0.0.0.0"}, "", "Static site"},
+		{[]string{"npm", "run", "dev"}, "", "Node server"},
+		{[]string{"npx", "next", "start", "-p", "3000"}, "", "Next.js app"},
+		{[]string{"./node_modules/.bin/vite", "--host"}, "", "Vite app"},
+		{[]string{"sh", "-c", "uvicorn main:app --host 0.0.0.0"}, "", "Python server"},
+		{[]string{"/usr/local/go/bin/go", "run", "."}, "", "Go server"},
+		{[]string{"./server"}, "", "Web app"},
+		{[]string{"node", "server.js"}, "  Recipe  API\nwith SQLite ", "Recipe API with SQLite"},
+		{nil, "Node guestbook with SQLite and live updates", "Node guestbook with SQLite and live updates"},
+		{nil, strings.Repeat("long ", 20), "long long long long long long long long long long long long"},
+	} {
+		if got := appKind(c.command, c.told); got != c.want {
+			t.Errorf("appKind(%q, %q) = %q; want %q", c.command, c.told, got, c.want)
+		}
+	}
+}
+
+func TestParseHealth(t *testing.T) {
+	for out, want := range map[string]string{
+		`{"state":"running","restarts":0,"since":1,"exit":null}` + "\nup\n": "running",
+		`{"state":"running","restarts":0,"since":1,"exit":null}` + "\n":     "starting",
+		`{"state":"restarting","restarts":3,"since":1,"exit":1}` + "\n":     "crashed",
+		"\nup\n": "running",
+		"\n":     "down",
+	} {
+		if got := parseHealth([]byte(out)); got.State != want {
+			t.Errorf("%q: %q; want %q", out, got.State, want)
+		}
+	}
+	if got := parseHealth([]byte(`{"state":"restarting","restarts":3,"since":9,"exit":137}` + "\n")); got.Restarts != 3 || got.Exit == nil || *got.Exit != 137 {
+		t.Errorf("crash details %+v", got)
 	}
 }
 
@@ -120,5 +169,23 @@ func TestPreviewProxyUnknownHost(t *testing.T) {
 		if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), "isn't running") {
 			t.Errorf("%s: %d %q", host, recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestAnAppCanBeGivenAChosenName(t *testing.T) {
+	s := &Server{previews: map[string]*preview{"a": {Name: "make-a-simple-2f827d", Port: 3000}, "b": {Name: "recipes", Port: 3000}}, cfg: Config{StateDir: t.TempDir()}}
+	if _, err := s.renamePreview("a", "Family-Kitchen"); err != nil {
+		t.Fatal(err)
+	}
+	if s.previews["a"].Name != "family-kitchen" {
+		t.Fatalf("got %q", s.previews["a"].Name)
+	}
+	for _, bad := range []string{"recipes", "www", "-x", "a--b", "has space", "x.y", ""} {
+		if _, err := s.renamePreview("a", bad); err == nil {
+			t.Fatalf("%q should be refused", bad)
+		}
+	}
+	if _, err := s.renamePreview("none", "fresh"); err == nil {
+		t.Fatal("a workspace with no app has nothing to name")
 	}
 }

@@ -2,10 +2,12 @@
 
 import { Crossing } from "@/components/crossing";
 import { useState, type DragEvent, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { AppBloom, cx, type GlyphName } from "@kimono/ui";
 import { GridIcon } from "@/components/icons";
 import { usePins } from "@/components/pins";
 import { AppTiles } from "@/components/app-card";
+import { LineIcon, type LineIconName } from "@/components/line-icon";
 
 export type RailApp = {
   id: string;
@@ -17,7 +19,28 @@ export type RailApp = {
   glyph?: GlyphName;
   iconUrl?: string;
 };
-export type RailRoom = { href: string; label: string; here?: boolean };
+export type RailRoom = { href: string; label: string; here?: boolean; icon?: LineIconName };
+
+/**
+ * Which room you're in, read from the live address: apps like Drive move by
+ * their own history entries, so what the server said on arrival goes stale.
+ * The room whose path and query both match wins; a room with no query is the
+ * fallback for its path.
+ */
+function useHereRoom(rooms: RailRoom[] | undefined) {
+  const pathname = usePathname();
+  const search = useSearchParams();
+  if (!rooms?.length) return null;
+  let best: { href: string; score: number } | null = null;
+  for (const room of rooms) {
+    const url = new URL(room.href, "http://x");
+    if (url.pathname !== pathname) continue;
+    const wanted = [...url.searchParams];
+    if (!wanted.every(([key, value]) => search.get(key) === value)) continue;
+    if (!best || wanted.length > best.score) best = { href: room.href, score: wanted.length };
+  }
+  return best?.href ?? rooms.find((room) => room.here)?.href ?? null;
+}
 
 /*
  * The rail (ADR 0006): Home, Apps, then the apps you pinned in your order;
@@ -36,6 +59,7 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
 }) {
   const [pins, setPins] = usePins(defaultPins);
   const [sheet, setSheet] = useState(false);
+  const hereRoom = useHereRoom(rooms);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropBefore, setDropBefore] = useState<string | null | "end">(null);
   const byId = new Map(apps.map((app) => [app.id, app]));
@@ -80,7 +104,7 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
             <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" /></span>{app.name}
           </Crossing>
           {open && rooms?.length ? <div className="rail-rooms">
-            {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.here ? "page" : undefined}>{room.label}</Crossing>)}
+            {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}><span className="rail-pill"><LineIcon name={room.icon ?? "book"} /></span>{room.label}</Crossing>)}
           </div> : null}
         </div>;
       })}

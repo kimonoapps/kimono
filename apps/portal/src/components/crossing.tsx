@@ -2,7 +2,9 @@
 
 import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type SealTone, type CrossingKind } from "@kimono/ui";
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useTransition, type MouseEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
+import { InkLoader } from "@/components/ink-loader";
+import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
 
 /**
  * Going somewhere, as a promise that keeps until the page is standing.
@@ -19,11 +21,54 @@ function Arrivals({ children }: { children: ReactNode }) {
   const [pending, startTransition] = useTransition();
   const waiting = useRef<(() => void) | null>(null);
 
+  /* Moving between pages, Material's shared x-axis: the page you leave slides a
+     little left and fades at once; if the next is slow, the painted shape-morph
+     loader holds the space; when it stands, it slides in from the right. Only
+     the page moves: the rail stays where it is. */
+  const [moving, setMoving] = useState(false);
+  const still = () => typeof window === "undefined" || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  /* A page settling in. The frame persists between pages (app/(shell)/layout),
+     so the page element is the same one that just dissolved: the arrival
+     waits for the real page to stand (past the route's loading skeleton),
+     clears the dissolve, slides it in when you pressed something, and rises
+     its pieces once any in-page skeleton gives way. */
+  const landing = useRef<() => void>(() => {});
+  const settle = useCallback((slideIn: boolean) => {
+    landing.current();
+    let settling = () => {};
+    const stop = whenPageStands((page) => {
+      page.getAnimations().forEach((animation) => animation.cancel());
+      if (still()) return;
+      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
+      settling = riseWhenReady(page);
+    });
+    landing.current = () => { stop(); settling(); };
+  }, []);
+  useEffect(() => () => landing.current(), []);
+
+  // A press marks the move as ours; whichever witness sees it land settles it.
+  const pushed = useRef(false);
   const arrived = useCallback(() => {
     const resolve = waiting.current;
     waiting.current = null;
-    resolve?.();
-  }, []);
+    if (!resolve) return;
+    setMoving(false);
+    resolve();
+    // Same path (a room like ?view=recent, or the page you're on): no path
+    // change will settle it, so settle it here.
+    if (pushed.current) { pushed.current = false; settle(true); }
+  }, [settle]);
+
+  // A new path settles in, back and forward included. The first page of a
+  // visit is already painted from the server, so it stays put.
+  const shown = useRef(pathname);
+  useLayoutEffect(() => {
+    if (shown.current === pathname) return;
+    shown.current = pathname;
+    const slideIn = pushed.current;
+    pushed.current = false;
+    settle(slideIn);
+  }, [pathname, settle]);
 
   // React ending the transition is the page standing. The pathname is the
   // second witness, for a navigation that never had to suspend.
@@ -32,21 +77,54 @@ function Arrivals({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Release the superseded navigation promise as well as its visual cover.
-    window.addEventListener("popstate", arrived);
+    const traversed = () => { pushed.current = false; arrived(); };
+    window.addEventListener("popstate", traversed);
     window.addEventListener("pagehide", arrived);
     return () => {
-      window.removeEventListener("popstate", arrived);
+      window.removeEventListener("popstate", traversed);
       window.removeEventListener("pagehide", arrived);
       arrived();
     };
   }, [arrived]);
 
+  /* The page you leave dissolves like ink lifting off paper: it fades, softens
+     and drifts back. A fetched page would otherwise replace it within a frame
+     and cut the dissolve short, so the hand-over waits for the dissolve to
+     finish. The next page is already being fetched meanwhile (useCrossTo
+     prefetches on press), so the wait costs nothing on a slow page. */
   const navigate = useCallback((href: string) => new Promise<void>((resolve) => {
+    const leaving = document.querySelector<HTMLElement>(".main-content");
+    setMoving(true);
+    pushed.current = true;
     waiting.current = resolve;
-    startTransition(() => { router.push(href); });
-  }), [router]);
+    const handOver = () => {
+      startTransition(() => { router.push(href); });
+      /* A move served from cache can finish inside one render, so React never
+         reports it pending and a move that keeps the path changes no path
+         either. The third witness is the address itself: Next writes it once
+         the new page is committed. */
+      const target = new URL(href, location.href);
+      const started = performance.now();
+      const watch = () => {
+        if (waiting.current !== resolve) return;
+        if (location.pathname === target.pathname && location.search === target.search) { arrived(); return; }
+        if (performance.now() - started < 15000) requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
+    };
+    if (!leaving || still()) { handOver(); return; }
+    const dissolve = leaving.animate([
+      { opacity: 1, transform: "none", filter: "blur(0)" },
+      { opacity: 0, transform: "translateX(-24px) scale(.985)", filter: "blur(6px)" },
+    ], { duration: 240, easing: "cubic-bezier(.4, 0, .9, .7)", fill: "forwards" });
+    dissolve.finished.then(handOver, handOver);
+  }), [router, arrived]);
 
-  return <Arrival.Provider value={navigate}>{children}</Arrival.Provider>;
+  return <Arrival.Provider value={navigate}>
+    {children}
+    {/* The loader itself waits a quarter second before it shows, so a quick page never flashes it. */}
+    {moving ? <div className="nav-loading" aria-hidden="true"><InkLoader /></div> : null}
+  </Arrival.Provider>;
 }
 
 /** Wrap the app once, in the root layout. */
@@ -68,7 +146,7 @@ export function useCrossTo() {
   const router = useRouter();
 
   return useCallback((kind: CrossingKind, href: string, external = false, destinationAccent?: string) => {
-    if (!external) router.prefetch(href);
+    if (!external) router.prefetch(href, whole);
     const source = getComputedStyle(document.querySelector(".app-frame") || document.documentElement);
     const portal = getComputedStyle(document.documentElement);
     const destination = destinationAccent ? accentRamp(destinationAccent) : null;
@@ -99,13 +177,21 @@ export function useCrossTo() {
  *   shoji       passing through a door you operated
  *   kakejiku    page to page inside one surface
  */
+/*
+ * Warm the whole page, not just its loading shell. Every page here is dynamic,
+ * and the default prefetch stops at the nearest loading boundary, which for
+ * these pages is the root's skeleton: nothing worth having. A full prefetch
+ * on hover means the press usually finds the page already fetched.
+ */
+const whole = { kind: "full" } as unknown as Parameters<ReturnType<typeof useRouter>["prefetch"]>[1];
+
 /**
  * Warm a destination before the press. Kimono navigates with plain anchors and
  * doors rather than next/link, so nothing is fetched ahead unless we say so.
  */
 export function useWarm() {
   const router = useRouter();
-  return (href: string, external = false) => () => { if (!external) router.prefetch(href); };
+  return (href: string, external = false) => () => { if (!external) router.prefetch(href, whole); };
 }
 
 export function Crossing({ href, kind, external = false, destinationAccent, children, className, onClick, ...rest }: {

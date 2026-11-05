@@ -67,6 +67,15 @@ test('a restart fails the turns nobody is driving any more', () => {
   assert.equal(model.workspaceFor(db, w.id, 'akram').turn.state, 'failed');
 });
 
+test("a write or an edit carries what it changed", () => {
+  const { events } = translate({ type: 'assistant', message: { content: [
+    { type: 'tool_use', id: 'w', name: 'Write', input: { file_path: '/workspace/NOTES.md', content: '# Notes\nHello' } },
+    { type: 'tool_use', id: 'e', name: 'Edit', input: { file_path: '/workspace/a.ts', old_string: 'let x = 1', new_string: 'const x = 1' } },
+  ] } });
+  assert.equal(events[0].change, '+ # Notes\n+ Hello');
+  assert.equal(events[1].change, '- let x = 1\n+ const x = 1');
+});
+
 test("Claude Code's stream becomes text, tool calls and their results", () => {
   const assistant = translate({ type: 'assistant', session_id: 's1', message: { content: [
     { type: 'text', text: 'Looking at the redirect.' },
@@ -97,7 +106,10 @@ test('a workspace remembers the app it is running, and only real links', () => {
   const db = fresh();
   const w = start(db);
   model.setPreview(db, w.id, { url: 'https://notes-a1b2c3.example.dev', port: 3000 });
-  assert.deepEqual(model.workspaceFor(db, w.id, 'akram').preview, { url: 'https://notes-a1b2c3.example.dev', port: 3000 });
+  assert.deepEqual(model.workspaceFor(db, w.id, 'akram').preview, { url: 'https://notes-a1b2c3.example.dev', port: 3000, kind: null, stopped: false });
+  // What kind of app it is, and its owner stopping it while keeping the link.
+  model.setPreview(db, w.id, { url: 'https://notes-a1b2c3.example.dev', port: 3000, kind: ' Node API with SQLite ', stopped: true });
+  assert.deepEqual(model.workspaceFor(db, w.id, 'akram').preview, { url: 'https://notes-a1b2c3.example.dev', port: 3000, kind: 'Node API with SQLite', stopped: true });
   model.setPreview(db, w.id, { url: 'javascript:alert(1)', port: 3000 });
   assert.equal(model.workspaceFor(db, w.id, 'akram').preview, null);
   model.setPreview(db, w.id, null);
@@ -145,4 +157,30 @@ test('when both sides changed, Drive wins and the agent keeps a copy', () => {
   assert.deepEqual(planSync([row('a.txt')], [], []), [{ kind: 'forget', path: 'a.txt' }]);
   assert.equal(agentCopyName('site/index.html'), 'site/index (agent).html');
   assert.equal(agentCopyName('Makefile'), 'Makefile (agent)');
+});
+
+test("each person's use of the plan adds up across their turns, per window", () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  const now = 1_000_000_000_000, fiveReset = now / 1000 + 3600, weekReset = now / 1000 + 86400;
+  model.recordUsage(db, 'sara', { five_hour: 0.2, week: 0.03, five_hour_now: 0.4, five_hour_reset: fiveReset, week_now: 0.1, week_reset: weekReset }, now);
+  model.recordUsage(db, 'sara', { five_hour: 0.15, week: 0.02, five_hour_now: 0.6, five_hour_reset: fiveReset, week_now: 0.12, week_reset: weekReset }, now + 1);
+  model.recordUsage(db, 'yusuf', { five_hour: 0.05, week: 0.01, five_hour_now: 0.65, five_hour_reset: fiveReset, week_now: 0.13, week_reset: weekReset }, now + 2);
+  const sara = model.usageOf(db, 'sara', now + 3);
+  assert.ok(Math.abs(sara.fiveHour.used - 0.35) < 1e-9 && Math.abs(sara.week.used - 0.05) < 1e-9);
+  assert.equal(sara.fiveHour.resetsAt, fiveReset * 1000);
+  /* Once the 5-hour window resets, nobody has used any of the new one; the week carries on. */
+  const later = model.usageOf(db, 'sara', fiveReset * 1000 + 1);
+  assert.equal(later.fiveHour.used, 0);
+  assert.ok(Math.abs(later.week.used - 0.05) < 1e-9);
+});
+
+test("the agent's context use, its window and compaction come through", () => {
+  const assistant = translate({ type: 'assistant', message: { content: [{ type: 'text', text: 'hi' }], usage: { input_tokens: 2, cache_creation_input_tokens: 1448, cache_read_input_tokens: 94751, output_tokens: 162 } } });
+  assert.equal(assistant.context, 96201);
+  const result = translate({ type: 'result', subtype: 'success', total_cost_usd: 0.3, duration_ms: 8000, modelUsage: { 'claude-opus-5-5': { contextWindow: 200000 } } });
+  assert.equal(result.result.window, 200000);
+  assert.deepEqual(finish(result.result, { exit: 0 }, undefined, 96201).context, { used: 96201, window: 200000 });
+  const compacted = translate({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 96201 } });
+  assert.deepEqual(compacted.events, [{ kind: 'compacted', before: 96201 }]);
 });

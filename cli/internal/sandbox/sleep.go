@@ -30,6 +30,12 @@ import (
 type record struct {
 	Repo Repo      `json:"repo"`
 	Last time.Time `json:"last"`
+	// Owner and Title are who the task belongs to and its name, as the Portal said.
+	Owner string `json:"owner,omitempty"`
+	Title string `json:"title,omitempty"`
+	// Disk is what its files took when last measured, in bytes.
+	Disk   int64     `json:"disk,omitempty"`
+	DiskAt time.Time `json:"diskAt,omitempty"`
 }
 
 type sleepAction string
@@ -113,7 +119,7 @@ func (s *Server) saveRecords() {
 }
 
 // remember keeps a sandbox's repository, so a removed container can be made again.
-func (s *Server) remember(id string, repo Repo) {
+func (s *Server) remember(id string, repo Repo, owner, title string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r := s.records[id]
@@ -122,6 +128,12 @@ func (s *Server) remember(id string, repo Repo) {
 		s.records[id] = r
 	}
 	r.Repo, r.Last = repo, s.now()
+	if owner != "" {
+		r.Owner = owner
+	}
+	if title != "" {
+		r.Title = title
+	}
 	s.saveRecords()
 }
 
@@ -248,6 +260,7 @@ func (s *Server) sweep(ctx context.Context) {
 			s.cfg.Logf("%s %s after %s quiet", action, id, quiet.Round(time.Second))
 		}
 	}
+	s.checkDisks(ctx, found)
 	s.mu.Lock()
 	if now.Sub(s.recordsSaved) > 30*time.Second {
 		s.saveRecords()
@@ -291,33 +304,55 @@ func (s *Server) volumeExists(ctx context.Context, id string) bool {
 // wake brings a sandbox's container back to running from whatever sleep it is
 // in. It reports whether the container had stopped (so its apps need starting).
 func (s *Server) wake(ctx context.Context, id string) (restarted bool, err error) {
+	restarted, _, err = s.wakeFor(ctx, id)
+	return restarted, err
+}
+
+// wakeFor is wake, also returning the sandboxes put to sleep to make room:
+// a stopped or removed sandbox takes a slot under the awake caps.
+func (s *Server) wakeFor(ctx context.Context, id string) (restarted bool, slept []string, err error) {
 	lock := s.wakeLock(id)
 	lock.Lock()
 	defer lock.Unlock()
 	s.touch(id)
 	state, err := s.docker.containerState(ctx, id)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	name := containerName(id)
 	switch state {
 	case "running":
-		return false, nil
+		return false, nil, nil
 	case "paused":
+		// Paused already holds its slot.
 		_, err = s.docker.run(ctx, nil, "unpause", name)
-		return false, err
+		return false, nil, err
 	case "":
 		s.mu.Lock()
 		r := s.records[id]
 		s.mu.Unlock()
 		if r == nil || r.Repo.Owner == "" || !s.volumeExists(ctx, id) {
-			return false, problem(404, "This workspace's sandbox is gone. Open it again to start a new one.")
+			return false, nil, problem(404, "This workspace's sandbox is gone. Open it again to start a new one.")
+		}
+		s.room.Lock()
+		defer s.room.Unlock()
+		if slept, err = s.makeRoom(ctx, id); err != nil {
+			return false, slept, err
 		}
 		// Removed while quiet: the same volume in a new container.
-		return true, s.create(ctx, id, r.Repo)
+		return true, slept, s.create(ctx, id, r.Repo)
 	default:
+		s.room.Lock()
+		defer s.room.Unlock()
+		if slept, err = s.makeRoom(ctx, id); err != nil {
+			return false, slept, err
+		}
+		// Limits may have changed while it slept: it starts under today's.
+		if _, err := s.docker.run(ctx, nil, append(append([]string{"update"}, s.limitsNow().dockerArgs()...), name)...); err != nil {
+			s.cfg.Logf("limits for %s: %v", id, err)
+		}
 		_, err = s.docker.run(ctx, nil, "start", name)
-		return true, err
+		return true, slept, err
 	}
 }
 

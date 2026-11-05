@@ -10,10 +10,11 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, translate, type Attachment, type CodeEvent, type TurnResult } from "./events";
 import {
-  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
-import { sandbox } from "./node";
+import { sandbox, type Effort, type NodePreview } from "./node";
+export { efforts, type Effort } from "./node";
 import { shotToDrive, syncDrive } from "./drive";
 
 export * from "./model";
@@ -27,6 +28,8 @@ type Live = {
   db?: DatabaseSync;
   listeners: Map<string, Set<(event: StoredEvent) => void>>;
   turns: Map<string, AbortController>;
+  /** Messages sent while a turn was running, per workspace: the next turn reads them. */
+  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[]; effort?: Effort }[]>;
 };
 /* One connection and one set of listeners for the process, kept across hot reloads in development. */
 const cache = globalThis as unknown as { kimonoCode?: Live };
@@ -83,34 +86,66 @@ export function listen(workspaceId: string, listener: (event: StoredEvent) => vo
   return () => { set.delete(listener); if (!set.size) live.listeners.delete(workspaceId); };
 }
 
+/**
+ * Makes sure a task's sandbox is awake. Waking one past the awake caps puts
+ * another task to sleep; that task's timeline says so.
+ */
+export async function ensure(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }) {
+  const answer = await sandbox.ensure(config, workspace, person);
+  for (const id of answer.slept ?? []) {
+    try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }
+  }
+  return answer;
+}
+
 const who = (user: ApiUser) => ({ name: user.name || user.username, email: user.email || `${user.username}@users.kimono` });
 
+const clock = (at: number) => new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" });
+
+/** Refuses a person who has used their share of the plan's 5-hour or weekly window. The owner has no share: it's their plan. */
+export function checkShare(config: CodeConfig, user: ApiUser) {
+  if (user.role === "owner") return;
+  const used = usageOf(db(), user.username);
+  if (used.fiveHour.used >= config.shares.fiveHour) throw new CodeProblem(`You've used your share of this 5-hour window. It opens again ${clock(used.fiveHour.resetsAt!)}.`, 429);
+  if (used.week.used >= config.shares.week) throw new CodeProblem(`You've used your share for this week. It opens again ${clock(used.week.resetsAt!)}.`, 429);
+}
+
 /** Sends a message to the agent and returns at once; the turn runs on, recording as it goes. */
-export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[]) {
+export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[], effort?: Effort) {
   const prompt = text.trim();
   if (!prompt && !attachments.length) throw new CodeProblem("Say what to do.");
   if (prompt.length > 32_000) throw new CodeProblem("That message is too long.");
+  checkShare(config, user);
+  /* Steering: while the agent works, a message waits in line and the next turn starts with it. */
+  const busy = runningTurn(db(), workspace.id);
+  if (busy) {
+    const queue = (live.queued ??= new Map());
+    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments, effort }]);
+    return record(workspace.id, busy, { kind: "ask", by: user.username, text: prompt, attachments, queued: true });
+  }
   const turn = startTurn(db(), workspace.id);
   const asked = record(workspace.id, turn, { kind: "ask", by: user.username, text: prompt, attachments });
-  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments);
+  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments, effort);
   return asked;
 }
 
-async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[]) {
+async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort) {
   const controller = new AbortController();
   live.turns.set(turn, controller);
   record(workspace.id, turn, { kind: "started" });
   let result: TurnResult | null = null;
   let done: { exit?: number; cancelled?: boolean } | null = null;
   let failure: string | undefined;
+  let context: number | undefined;
   try {
-    await sandbox.ensure(config, workspace, who(user));
+    await ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
-    const changed = takeDriveNews(db(), workspace.id);
+    /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
+    const changed = prompt.startsWith("/") ? [] : takeDriveNews(db(), workspace.id);
     const told = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n${prompt}` : prompt;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path) }, controller.signal);
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -127,8 +162,24 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           continue;
         }
         if (line.type === "kimono.preview" && typeof line.url === "string" && typeof line.port === "number") {
-          setPreview(db(), workspace.id, { url: line.url, port: line.port });
-          record(workspace.id, turn, { kind: "preview", url: line.url, port: line.port });
+          /* The owner named this app before: give the new link that name again. */
+          const chosen = workspaceFor(db(), workspace.id, workspace.owner).previewName;
+          const app = typeof line.kind === "string" && line.kind ? line.kind.slice(0, 60) : undefined;
+          let preview: NodePreview = { url: line.url, port: line.port, kind: app };
+          if (chosen && new URL(line.url).hostname.split(".")[0] !== chosen) {
+            preview = await sandbox.renamePreview(config, workspace, chosen).catch(() => preview);
+          }
+          setPreview(db(), workspace.id, preview);
+          record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port, ...(app ? { app } : {}) });
+          continue;
+        }
+        if ((line.type === "kimono.disk" || line.type === "kimono.disk.full") && typeof line.used === "number" && typeof line.quota === "number") {
+          record(workspace.id, turn, { kind: "disk", used: line.used, quota: line.quota, ...(line.type === "kimono.disk.full" ? { full: true } : {}) });
+          continue;
+        }
+        if (line.type === "kimono.usage") {
+          /* What this turn used of the Claude plan, credited to whoever asked. */
+          try { recordUsage(db(), user.username, line); } catch (error) { console.warn("Code couldn't record usage:", error instanceof Error ? error.message : error); }
           continue;
         }
         if (line.type === "kimono.preview.stopped") {
@@ -144,6 +195,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         const translated = translate(line);
         if (translated.session) setSession(db(), workspace.id, translated.session);
         if (translated.result) result = translated.result;
+        if (translated.context) context = translated.context;
         for (const event of translated.events) record(workspace.id, turn, event);
       }
       if (ended) break;
@@ -153,12 +205,66 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     else failure = error instanceof CodeProblem ? error.message : "The sandbox stopped answering.";
   } finally {
     live.turns.delete(turn);
-    const outcome = finish(result, done, failure);
+    const outcome = finish(result, done, failure, context);
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
     /* What the agent made goes to Drive. */
     void syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync to Drive:", error instanceof Error ? error.message : error));
+    /* Anything sent while it worked starts the next turn straight away. */
+    const waiting = live.queued?.get(workspace.id);
+    if (waiting?.length) {
+      live.queued!.delete(workspace.id);
+      try {
+        checkShare(config, waiting[0].user);
+        const next = startTurn(db(), workspace.id);
+        void run(config, workspace, waiting[0].user, next, waiting.map((m) => m.prompt).filter(Boolean).join("\n\n") || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort);
+      } catch (error) { console.warn("Code couldn't start the queued message:", error instanceof Error ? error.message : error); }
+    }
   }
+}
+
+/** Gives a task's app link a name its owner chose; the old link stops answering. */
+export async function renamePreview(config: CodeConfig, workspace: Workspace, name: string) {
+  const clean = name.trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,48}[a-z0-9])?$/.test(clean) || clean.includes("--")) throw new CodeProblem("Use letters, numbers and single dashes, up to 50 characters.");
+  const preview = await sandbox.renamePreview(config, workspace, clean);
+  setPreview(db(), workspace.id, preview);
+  setPreviewName(db(), workspace.id, clean);
+  record(workspace.id, runningTurn(db(), workspace.id), { kind: "preview", url: preview.url, port: preview.port, ...(preview.kind ? { app: preview.kind } : {}) });
+  return preview;
+}
+
+/** What the task's sandbox may use, and its disk as last measured. Doesn't wake it. */
+export async function sandboxStatus(config: CodeConfig, workspace: Workspace) {
+  const state = await sandbox.state(config, workspace);
+  return { limits: state.limits, disk: state.disk };
+}
+
+/** How the app is doing now, and the end of its log. What the node says is kept, so the list agrees. */
+export async function previewStatus(config: CodeConfig, workspace: Workspace) {
+  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  const [status, log] = await Promise.all([
+    sandbox.preview(config, workspace),
+    sandbox.previewLogs(config, workspace).catch(() => ""),
+  ]);
+  if (status.kind !== (workspace.preview.kind ?? undefined) || Boolean(status.stopped) !== workspace.preview.stopped) setPreview(db(), workspace.id, status);
+  return { health: status.health, log };
+}
+
+/** Starts the app again (or for the first time since it was stopped), keeping its link. */
+export async function restartPreview(config: CodeConfig, workspace: Workspace) {
+  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  const preview = await sandbox.restartPreview(config, workspace);
+  setPreview(db(), workspace.id, preview);
+  return preview;
+}
+
+/** Stops the app but keeps its link and name; opening the link says it isn't running. */
+export async function pausePreview(config: CodeConfig, workspace: Workspace) {
+  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  const preview = await sandbox.pausePreview(config, workspace);
+  setPreview(db(), workspace.id, preview);
+  return preview;
 }
 
 /** Stops the turn that is running, if there is one. */
@@ -213,7 +319,7 @@ const safeName = (name: string) => name.normalize("NFC").replace(/[\\/\0-\x1f]/g
 
 export async function attach(config: CodeConfig, workspace: Workspace, user: ApiUser, name: string, type: string, body: Uint8Array): Promise<Attachment> {
   const stored = `${newId(3)}-${safeName(name)}`;
-  await sandbox.ensure(config, workspace, who(user));
+  await ensure(config, workspace, who(user));
   const { path } = await sandbox.attach(config, workspace, stored, body);
   await mkdir(attachmentDir(workspace.id), { recursive: true, mode: 0o700 });
   await writeFile(join(attachmentDir(workspace.id), stored), body, { mode: 0o600 });

@@ -36,6 +36,10 @@ async function call(config: CodeConfig, path: string, init: RequestInit & { time
 const json = async <T>(response: Response) => (await response.json()) as T;
 const at = (workspace: Workspace) => `/v1/workspaces/${workspace.id}`;
 
+/** How hard the agent thinks on a turn. The model is always Opus 5.5. */
+export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof efforts)[number];
+
 export const sandbox = {
   health: (config: CodeConfig) => call(config, "/v1/health", { timeout: 5_000 }).then(json<{ ok: boolean; version: string; runtime: string }>),
 
@@ -51,16 +55,17 @@ export const sandbox = {
       },
       git: { token: config.gitToken, name: who.name, email: who.email },
       model: { token: config.modelToken },
+      owner: workspace.owner, title: workspace.title, limits: config.limits,
     }),
-  }).then(json<{ id: string; state: string; branch: string; runtime?: string }>),
+  }).then(json<{ id: string; state: string; branch: string; runtime?: string; slept?: string[] | null }>),
 
-  state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string }>),
+  state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string; limits: SandboxLimits; disk: Disk }>),
 
   /** Starts a turn; the body is the node's NDJSON stream, read until it ends. */
-  turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[] }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
+  turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[]; effort?: Effort }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: input.prompt, ...(input.session ? { session: input.session } : {}), attachments: input.attachments }),
+    body: JSON.stringify({ prompt: input.prompt, ...(input.session ? { session: input.session } : {}), attachments: input.attachments, ...(input.effort ? { effort: input.effort } : {}) }),
     signal,
   }),
 
@@ -96,7 +101,19 @@ export const sandbox = {
   outbox: (config: CodeConfig, workspace: Workspace, name: string) =>
     call(config, `${at(workspace)}/outbox/${encodeURIComponent(name)}`).then(async (r) => new Uint8Array(await r.arrayBuffer())),
 
+  renamePreview: (config: CodeConfig, workspace: Workspace, name: string) => call(config, `${at(workspace)}/preview`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }), timeout: 20_000,
+  }).then(json<NodePreview>),
   stopPreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { method: "DELETE", timeout: 20_000 }).then(() => undefined),
+
+  /** How the published app is doing, without waking the sandbox. */
+  preview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview`, { timeout: 15_000 }).then(json<NodePreview & { health: AppHealth; disk?: Disk }>),
+  /** The end of what the app printed, across its restarts. */
+  previewLogs: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview/logs`, { timeout: 15_000 }).then((r) => r.text()),
+  /** Starts the app again as the agent published it, keeping its link. */
+  restartPreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview/restart`, { method: "POST", timeout: 3 * 60_000 }).then(json<NodePreview>),
+  /** Stops the app but keeps its link, to start again later. */
+  pausePreview: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/preview/stop`, { method: "POST", timeout: 30_000 }).then(json<NodePreview>),
 
   changes: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/changes`).then(json<Changes>),
 
@@ -104,6 +121,13 @@ export const sandbox = {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), timeout: 2 * 60_000,
   }).then(json<{ url: string; number: number }>),
 };
+
+export type SandboxLimits = { cpus: number; memoryMb: number; awakePerPerson: number; awakePerNode: number; diskGb: number };
+/** What a sandbox's files took when last measured, against its quota, in bytes. */
+export type Disk = { used?: number; quota: number; at?: number };
+
+export type NodePreview = { url: string; port: number; kind?: string; stopped?: boolean };
+export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };
 
 export type Changes = {
   base: string; branch: string; truncated: boolean; diff: string;

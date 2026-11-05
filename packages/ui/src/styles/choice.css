@@ -18,7 +18,7 @@
   font: 16px/1.5 var(--k-sans); text-align: left; cursor: pointer;
   transition: background-color var(--k-t-state) var(--k-ease-settle), box-shadow var(--k-t-state) var(--k-ease-settle), border-radius var(--k-t-seat) var(--k-spring);
 }
-.k-choice-button:hover { background: #e4d9d2; }
+.k-choice-button:hover { background: color-mix(in srgb, var(--k-on-surface) 6%, var(--k-container-highest)); }
 .k-choice-button:focus-visible, .k-choice.is-open .k-choice-button {
   outline: 0; background: var(--k-container-high);
   box-shadow: inset 0 -2px 0 var(--k-accent);
@@ -49,10 +49,27 @@
 .k-choice-option small { color: var(--k-on-surface-variant); font-size: 13px; }
 .k-choice-option.is-active { background: var(--k-container-high); }
 .k-choice-option.is-chosen { background: color-mix(in srgb, var(--k-accent) 13%, var(--k-container-lowest)); color: var(--k-on-surface); font-weight: 700; }
-.k-choice-option.is-chosen::before { content: ""; position: absolute; left: 8px; top: 50%; width: 4px; height: 18px; margin-top: -9px; border-radius: 1px; background: var(--k-accent); animation: k-choice-tick var(--k-t-fold) var(--k-spring); }
+.k-choice-option.is-chosen::before { content: ""; position: absolute; left: 8px; top: 50%; width: 4px; height: 18px; margin-top: -9px; border-radius: var(--k-r-s); background: var(--k-accent); animation: k-choice-tick var(--k-t-fold) var(--k-spring); }
 @keyframes k-choice-tick { from { transform: scaleY(0); } }
 .k-choice-option.is-disabled { color: var(--k-faint); cursor: default; }
 
 /* Inside a labelled field it fills the field's measure like an input does. */
 .k-field .k-choice { max-width: 420px; }
 @media (prefers-reduced-motion: reduce) { .k-choice-list, .k-choice-option.is-chosen::before { animation: none; } .k-choice-cue, .k-choice-button { transition: none; } }
+
+/* With its label inside, as a filled field: 56px, the name small above the value. */
+.k-choice.has-label .k-choice-button { min-height: 56px; padding: 8px 14px 8px 16px; }
+.k-choice-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.k-choice-text small { font: 700 12px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-on-surface-variant); }
+.k-choice.is-open .k-choice-text small, .k-choice-button:focus-visible .k-choice-text small { color: var(--k-accent); }
+.k-choice-text .k-choice-value { font-size: 16px; }
+
+/* Compact: a tonal chip for toolbars that opens the same sheet. */
+.k-choice.is-compact { width: auto; max-width: none; }
+.k-choice.is-compact .k-choice-button { min-height: 40px; padding: 0 8px 0 14px; gap: 6px; border-radius: var(--k-r-s); background: var(--k-secondary-container); color: var(--k-on-secondary-container); box-shadow: none; }
+.k-choice.is-compact .k-choice-button:hover { background: color-mix(in srgb, var(--k-on-secondary-container) 9%, var(--k-secondary-container)); }
+.k-choice.is-compact.is-open .k-choice-button { border-radius: var(--k-r-s); box-shadow: none; }
+.k-choice.is-compact .k-choice-text { display: flex; gap: 6px; align-items: baseline; }
+.k-choice.is-compact .k-choice-text small { font-size: 13px; font-weight: 500; letter-spacing: 0; color: inherit; opacity: .75; }
+.k-choice.is-compact .k-choice-value { font-size: 14px; font-weight: 700; }
+.k-choice.is-compact .k-choice-cue::before { border-color: currentColor; }

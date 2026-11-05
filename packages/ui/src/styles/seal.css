@@ -47,7 +47,7 @@
   position: absolute;
   inset: 4px;
   border: 1px solid rgba(255, 253, 248, .32);
-  border-radius: 1px;
+  border-radius: calc(var(--k-r-seal) - 3px);
   pointer-events: none;
   transition: inset var(--k-t-tap) var(--k-ease-settle), border-color var(--k-t-state) var(--k-ease-settle), opacity var(--k-t-state) var(--k-ease-settle);
 }
@@ -66,13 +66,13 @@
 /* Quiet: the same block, uninked. Paper on a hair base; no ring, because
    there is no pigment to carve into. Reaching for it inks the lettering plum. */
 .k-seal.k-tone-quiet {
-  --k-seal-base: #d6c3b8;
+  --k-seal-base: color-mix(in srgb, var(--k-on-surface) 16%, var(--k-container-highest));
   --k-seal-impression: color-mix(in srgb, var(--k-ink) 22%, transparent);
   color: var(--k-on-surface);
   background: var(--k-container-highest);
 }
 .k-seal.k-tone-quiet::before { display: none; }
-.k-seal.k-tone-quiet:hover { color: var(--k-plum); background: #e3d6cd; }
+.k-seal.k-tone-quiet:hover { color: var(--k-on-surface); background: var(--k-container-highest); }
 
 /* Danger: the consequence in words and in suō, filled only once you reach for it. */
 .k-seal.k-tone-danger {

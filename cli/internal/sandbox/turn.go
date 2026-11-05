@@ -18,7 +18,11 @@ type turnRequest struct {
 	Prompt      string   `json:"prompt"`
 	Session     string   `json:"session"`
 	Attachments []string `json:"attachments"`
+	// Effort is how hard the agent thinks: low, medium, high, xhigh or max; empty is Claude Code's default.
+	Effort string `json:"effort"`
 }
+
+var efforts = map[string]bool{"": true, "low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
 // turnWrapper records the agent's process group so cancel can stop all of it:
 // setsid makes the shell a group leader, and eval keeps the agent in it.
@@ -36,6 +40,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}
 	if strings.TrimSpace(request.Prompt) == "" {
 		return problem(400, "Say what the agent should do.")
+	}
+	if !efforts[request.Effort] {
+		return problem(400, "Effort is low, medium, high, xhigh or max.")
 	}
 	if request.Session != "" && !namePattern.MatchString(request.Session) {
 		return problem(400, "That session isn't one Kimono can resume.")
@@ -79,7 +86,20 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}()
 
 	s.primeOutbox(space)
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + s.cfg.SystemPrompt}
+	// What it has to work with, and whether it must make room first.
+	limits := s.limitsNow()
+	system := s.cfg.SystemPrompt + "\n\n" + limitsPrompt(limits)
+	used, measuredAt := s.diskUse(id)
+	if s.now().Sub(measuredAt) > time.Minute {
+		if fresh, err := s.measureDisk(r.Context(), id); err == nil {
+			used = fresh
+		}
+	}
+	full := diskNote(used, limits)
+	if full != "" {
+		system += "\n\n" + full
+	}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Model}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()
@@ -109,6 +129,29 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	w.WriteHeader(http.StatusOK)
 	out := &lineWriter{w: w}
 	out.json(map[string]any{"type": "kimono.started", "at": time.Now().UnixMilli()})
+	if full != "" {
+		out.json(map[string]any{"type": "kimono.disk", "used": used, "quota": limits.diskQuota()})
+	}
+	// Writing past the ceiling stops the turn: nothing else stops a full disk.
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-ticker.C:
+				check, done := context.WithTimeout(context.Background(), 20*time.Second)
+				used, err := s.measureDisk(check, id)
+				done()
+				if err == nil && used > limits.diskCeiling() {
+					out.json(map[string]any{"type": "kimono.disk.full", "used": used, "quota": limits.diskQuota()})
+					stop()
+					return
+				}
+			}
+		}
+	}()
 
 	var wait sync.WaitGroup
 	wait.Add(1)
@@ -160,6 +203,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	space.mu.Lock()
 	wasCancelled := cancelled
 	space.mu.Unlock()
+	/* What this turn used of the plan's windows, before the turn is called done. */
+	credit, fiveHour, week := s.usage.take(id)
+	out.json(usageLine(credit, fiveHour, week))
 	done := map[string]any{"type": "kimono.done", "session": session, "exit": exit, "at": time.Now().UnixMilli()}
 	if wasCancelled {
 		done["cancelled"] = true

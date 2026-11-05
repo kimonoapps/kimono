@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -31,11 +32,17 @@ import (
  * changes per preview: one wildcard record covers every name.
  */
 
-// preview is one workspace's published app.
+// preview is one workspace's published app: the command kimono-serve runs
+// under its supervisor, where it runs, and what kind of app it is.
 type preview struct {
 	Name string   `json:"name"`
 	Port int      `json:"port"`
 	Args []string `json:"args,omitempty"`
+	Kind string   `json:"kind,omitempty"`
+	Dir  string   `json:"dir,omitempty"`
+	// Stopped is the owner stopping the app but keeping its link: the proxy
+	// says it isn't running instead of waking it, until it starts again.
+	Stopped bool `json:"stopped,omitempty"`
 }
 
 var (
@@ -117,7 +124,13 @@ func (s *Server) previewJSON(id string) any {
 	if p == nil {
 		return nil
 	}
-	return map[string]any{"url": s.previewURL(p), "port": p.Port}
+	return s.previewBody(p)
+}
+
+// previewBody is a preview as the API and the stream describe it; the caller
+// holds s.mu or owns p.
+func (s *Server) previewBody(p *preview) map[string]any {
+	return map[string]any{"url": s.previewURL(p), "port": p.Port, "kind": p.Kind, "stopped": p.Stopped}
 }
 
 func (s *Server) hasPreview(id string) bool {
@@ -165,23 +178,80 @@ func (s *Server) savePreviews() {
 	}
 }
 
-// setPreview records a workspace's app on a port, keeping its name if it had one.
-// It reports whether anything changed.
-func (s *Server) setPreview(id string, port int, args []string, branch string) (*preview, bool) {
+// setPreview records the app kimono-serve published, keeping its name if it
+// had one. It reports whether the person should hear of it: a new link, a new
+// kind of app, or one stopped before that runs again.
+func (s *Server) setPreview(id string, serve serveState, branch string) (*preview, bool) {
+	kind := appKind(serve.Command, serve.Kind)
+	dir := serve.Cwd
+	if !filepath.IsAbs(dir) || strings.ContainsRune(dir, 0) {
+		dir = "/workspace"
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p := s.previews[id]
-	if p != nil && p.Port == port && equalArgs(p.Args, args) {
+	if p != nil && p.Port == serve.Port && equalArgs(p.Args, serve.Command) && p.Kind == kind && p.Dir == dir && !p.Stopped {
 		return p, false
 	}
 	if p == nil {
 		p = &preview{Name: previewName(branch)}
 		s.previews[id] = p
 	}
-	changed := p.Port != port
-	p.Port, p.Args = port, args
+	changed := p.Port != serve.Port || p.Kind != kind || p.Stopped
+	p.Port, p.Args, p.Kind, p.Dir, p.Stopped = serve.Port, serve.Command, kind, dir, false
 	s.savePreviews()
 	return p, changed
+}
+
+// setStopped marks an app stopped by its owner, or started again.
+func (s *Server) setStopped(id string, stopped bool) *preview {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.previews[id]
+	if p != nil && p.Stopped != stopped {
+		p.Stopped = stopped
+		s.savePreviews()
+	}
+	return p
+}
+
+func (s *Server) isStopped(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.previews[id] != nil && s.previews[id].Stopped
+}
+
+// appKind is what the person is told they got: the agent's own words when it
+// gave some (kimono-serve --kind), or a guess from the command.
+func appKind(command []string, told string) string {
+	if told = strings.Join(strings.Fields(told), " "); told != "" {
+		// Kept short, and cut between words.
+		if runes := []rune(told); len(runes) > 60 {
+			told = string(runes[:60])
+			if cut := strings.LastIndex(told, " "); cut > 0 {
+				told = told[:cut]
+			}
+		}
+		return told
+	}
+	words := map[string]bool{}
+	for _, arg := range command {
+		for _, word := range strings.Fields(strings.ToLower(arg)) {
+			words[filepath.Base(word)] = true
+		}
+	}
+	for _, guess := range []struct{ word, kind string }{
+		{"http.server", "Static site"}, {"next", "Next.js app"}, {"vite", "Vite app"}, {"astro", "Astro site"}, {"nuxt", "Nuxt app"},
+		{"uvicorn", "Python server"}, {"gunicorn", "Python server"}, {"flask", "Python server"}, {"streamlit", "Streamlit app"}, {"manage.py", "Django app"},
+		{"python3", "Python server"}, {"python", "Python server"},
+		{"node", "Node server"}, {"npm", "Node server"}, {"npx", "Node server"}, {"pnpm", "Node server"}, {"yarn", "Node server"}, {"bun", "Node server"}, {"tsx", "Node server"}, {"deno", "Deno server"},
+		{"go", "Go server"},
+	} {
+		if words[guess.word] {
+			return guess.kind
+		}
+	}
+	return "Web app"
 }
 
 func (s *Server) clearPreview(id string) bool {
@@ -220,6 +290,8 @@ type serveState struct {
 	Port    int      `json:"port"`
 	Pid     int      `json:"pid"`
 	Command []string `json:"command"`
+	Kind    string   `json:"kind"`
+	Cwd     string   `json:"cwd"`
 }
 
 const outboxScript = `cd /outbox 2>/dev/null || exit 0
@@ -322,9 +394,11 @@ func (s *Server) reportOutbox(space *workspace, out *lineWriter) {
 	switch {
 	case box.restarting:
 	case box.serve != nil:
-		if p, changed := s.setPreview(space.id, box.serve.Port, box.serve.Command, branch); changed {
-			out.json(map[string]any{"type": "kimono.preview", "url": s.previewURL(p), "port": p.Port})
+		if p, changed := s.setPreview(space.id, *box.serve, branch); changed {
+			out.json(map[string]any{"type": "kimono.preview", "url": s.previewURL(p), "port": p.Port, "kind": p.Kind})
 		}
+	case s.isStopped(space.id):
+		// Its owner stopped it and kept the link.
 	case s.clearPreview(space.id):
 		out.json(map[string]any{"type": "kimono.preview.stopped"})
 	}
@@ -366,21 +440,200 @@ func (s *Server) handleOutbox(w http.ResponseWriter, r *http.Request, id string)
 	return nil
 }
 
-func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request, id string) error {
+// previewCopy is a workspace's preview as it is now, safe to read unlocked.
+func (s *Server) previewCopy(id string) *preview {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	p := s.previews[id]
-	s.mu.Unlock()
+	if p == nil {
+		return nil
+	}
+	c := *p
+	c.Args = append([]string(nil), p.Args...)
+	return &c
+}
+
+// appHealth is how a published app is doing, as the supervisor reports it.
+type appHealth struct {
+	// State is running, starting, crashed (it keeps exiting and the supervisor
+	// keeps starting it), stopped (by its owner), asleep (opening the link
+	// wakes it) or down.
+	State    string `json:"state"`
+	Restarts int    `json:"restarts"`
+	Exit     *int   `json:"exit,omitempty"`
+	Since    int64  `json:"since,omitempty"`
+}
+
+const healthScript = `cat /outbox/serve-status.json 2>/dev/null; echo
+(exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && echo up
+exit 0`
+
+func parseHealth(out []byte) appHealth {
+	status, rest, _ := strings.Cut(string(out), "\n")
+	var health appHealth
+	var supervised struct {
+		State    string `json:"state"`
+		Restarts int    `json:"restarts"`
+		Since    int64  `json:"since"`
+		Exit     *int   `json:"exit"`
+	}
+	known := json.Unmarshal([]byte(status), &supervised) == nil && supervised.State != ""
+	health.Restarts, health.Since, health.Exit = supervised.Restarts, supervised.Since, supervised.Exit
+	switch {
+	case strings.TrimSpace(rest) == "up":
+		health.State = "running"
+	case known && supervised.State == "restarting":
+		health.State = "crashed"
+	case known:
+		health.State = "starting"
+	default:
+		health.State = "down"
+	}
+	return health
+}
+
+// health looks without waking anything: a sleeping sandbox's link still
+// works, because opening it wakes the app.
+func (s *Server) health(ctx context.Context, id string, p *preview) appHealth {
+	if p.Stopped {
+		return appHealth{State: "stopped"}
+	}
+	containerState, err := s.docker.containerState(ctx, id)
+	switch {
+	case err != nil || containerState == "" && s.sleepState(ctx, id, "") == "gone":
+		return appHealth{State: "down"}
+	case containerState != "running":
+		return appHealth{State: "asleep"}
+	}
+	out, err := s.docker.run(ctx, nil, "exec", "-u", "agent", containerName(id), "bash", "-c", healthScript, "health", strconv.Itoa(p.Port))
+	if err != nil {
+		return appHealth{State: "down"}
+	}
+	return parseHealth(out)
+}
+
+func (s *Server) handlePreview(w http.ResponseWriter, r *http.Request, id string) error {
+	p := s.previewCopy(id)
 	if p == nil {
 		return problem(404, "This workspace has no preview.")
 	}
-	// Asking doesn't wake it. A sleeping sandbox's link still works: opening it wakes the app.
-	state := "live"
-	if containerState, err := s.docker.containerState(r.Context(), id); err != nil || containerState == "" && s.sleepState(r.Context(), id, "") == "gone" {
-		state = "down"
-	} else if containerState == "running" && !s.portAnswers(r.Context(), id, p.Port) {
-		state = "down"
+	body := s.previewBody(p)
+	body["health"] = s.health(r.Context(), id, p)
+	body["disk"] = s.diskJSON(id)
+	writeJSON(w, 200, body)
+	return nil
+}
+
+// handlePreviewLogs is the end of what the app printed, kept across restarts.
+func (s *Server) handlePreviewLogs(w http.ResponseWriter, r *http.Request, id string) error {
+	if s.previewCopy(id) == nil {
+		return problem(404, "This workspace has no preview.")
 	}
-	writeJSON(w, 200, map[string]any{"url": s.previewURL(p), "port": p.Port, "state": state})
+	var out []byte
+	if state, err := s.docker.containerState(r.Context(), id); err == nil && state == "running" {
+		out, _ = s.docker.run(r.Context(), nil, "exec", "-u", "agent", containerName(id), "sh", "-c", "tail -n 400 /outbox/serve.log 2>/dev/null | tail -c 65536")
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(out)
+	return nil
+}
+
+// handleRestartPreview starts the app again as it was published, even when it
+// is running, and keeps its link.
+func (s *Server) handleRestartPreview(w http.ResponseWriter, r *http.Request, id string) error {
+	p := s.previewCopy(id)
+	if p == nil {
+		return problem(404, "This workspace has no app to start.")
+	}
+	if len(p.Args) == 0 {
+		return problem(409, "Kimono doesn't know how to start this app. Ask the agent to run it.")
+	}
+	if _, err := s.running(r.Context(), id); err != nil {
+		return err
+	}
+	lock := s.serveLock(id)
+	lock.Lock()
+	err := s.startServe(r.Context(), id, p)
+	lock.Unlock()
+	if err != nil {
+		s.cfg.Logf("restart app for %s: %v", id, err)
+		return problem(502, "The app didn't start. Its log says why.")
+	}
+	s.setStopped(id, false)
+	s.mu.Lock()
+	body := s.previewBody(s.previews[id])
+	s.mu.Unlock()
+	writeJSON(w, 200, body)
+	return nil
+}
+
+// handlePausePreview stops the app but keeps its link and how to start it.
+func (s *Server) handlePausePreview(w http.ResponseWriter, r *http.Request, id string) error {
+	if s.previewCopy(id) == nil {
+		return problem(404, "This workspace has no app running.")
+	}
+	// Marked first, so a turn watching the outbox doesn't take the link down.
+	p := s.setStopped(id, true)
+	if state, err := s.docker.containerState(r.Context(), id); err == nil && state != "" && state != "exited" && state != "created" {
+		if _, err := s.running(r.Context(), id); err != nil {
+			return err
+		}
+		if _, err := s.docker.run(r.Context(), nil, "exec", "-u", "agent", containerName(id), "kimono-unserve", "--quiet"); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	body := s.previewBody(p)
+	s.mu.Unlock()
+	writeJSON(w, 200, body)
+	return nil
+}
+
+// reservedPreviewNames are names no app may take: they read as the domain's own.
+var reservedPreviewNames = map[string]bool{"www": true, "mail": true, "api": true, "admin": true, "kimono": true, "auth": true, "login": true}
+
+// renamePreview gives a workspace's app the name its owner chose. Names are
+// unique across the node; the old link stops answering at once.
+func (s *Server) renamePreview(id, name string) (*preview, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if !previewNamePattern.MatchString(name) || strings.Contains(name, "--") {
+		return nil, problem(400, "Use letters, numbers and single dashes, up to 50 characters.")
+	}
+	if reservedPreviewNames[name] {
+		return nil, problem(409, "That name is kept for the domain itself. Choose another.")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.previews[id]
+	if p == nil {
+		return nil, problem(404, "This workspace has no app running to name.")
+	}
+	for other, q := range s.previews {
+		if other != id && q.Name == name {
+			return nil, problem(409, "Another app already has that name.")
+		}
+	}
+	p.Name = name
+	s.savePreviews()
+	return p, nil
+}
+
+func (s *Server) handleRenamePreview(w http.ResponseWriter, r *http.Request, id string) error {
+	var request struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, 4<<10, &request); err != nil {
+		return err
+	}
+	p, err := s.renamePreview(id, request.Name)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	body := s.previewBody(p)
+	s.mu.Unlock()
+	writeJSON(w, 200, body)
 	return nil
 }
 
@@ -416,27 +669,35 @@ func (s *Server) reviveServe(id string) {
 	}()
 }
 
-// restartServe runs a preview's app again unless it already answers. A stopped
-// container keeps kimono-serve's notes but not the process, so the port decides.
+// restartServe runs a preview's app again unless it already answers or its
+// owner stopped it. A stopped container keeps kimono-serve's notes but not the
+// process, so the port decides.
 func (s *Server) restartServe(ctx context.Context, id string) error {
-	s.mu.Lock()
-	p := s.previews[id]
-	var port int
-	var args []string
-	if p != nil {
-		port, args = p.Port, append([]string(nil), p.Args...)
-	}
-	s.mu.Unlock()
-	if p == nil || len(args) == 0 || s.portAnswers(ctx, id, port) {
+	p := s.previewCopy(id)
+	if p == nil || p.Stopped || len(p.Args) == 0 || s.portAnswers(ctx, id, p.Port) {
 		return nil
 	}
 	lock := s.serveLock(id)
 	lock.Lock()
 	defer lock.Unlock()
-	if s.portAnswers(ctx, id, port) {
+	if s.portAnswers(ctx, id, p.Port) {
 		return nil
 	}
-	command := append([]string{"exec", "-u", "agent", "-w", "/workspace", containerName(id), "kimono-serve", strconv.Itoa(port), "--"}, args...)
+	return s.startServe(ctx, id, p)
+}
+
+// startServe runs kimono-serve as the agent did: same folder, command and kind.
+// The caller holds serveLock.
+func (s *Server) startServe(ctx context.Context, id string, p *preview) error {
+	dir := p.Dir
+	if dir == "" {
+		dir = "/workspace"
+	}
+	command := []string{"exec", "-u", "agent", "-w", dir, containerName(id), "kimono-serve", strconv.Itoa(p.Port)}
+	if p.Kind != "" {
+		command = append(command, "--kind", p.Kind)
+	}
+	command = append(append(command, "--"), p.Args...)
 	_, err := s.docker.run(ctx, nil, command...)
 	return err
 }
@@ -471,6 +732,9 @@ func (s *Server) PreviewHandler() http.Handler {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			t, _ := ctx.Value(targetKey{}).(target)
+			if s.dial != nil {
+				return s.dial(ctx, t.id, t.port)
+			}
 			return s.dialSandbox(ctx, t.id, t.port)
 		},
 		MaxIdleConnsPerHost:   8,
@@ -479,6 +743,8 @@ func (s *Server) PreviewHandler() http.Handler {
 	}
 	proxy := &httputil.ReverseProxy{
 		Transport: transport,
+		// Streams (server-sent events, streamed rendering) reach the browser as written.
+		FlushInterval: -1,
 		Rewrite: func(r *httputil.ProxyRequest) {
 			t, _ := r.In.Context().Value(targetKey{}).(target)
 			// One pool per sandbox and port: the address is only a key; the dial picks the sandbox.
@@ -498,11 +764,12 @@ func (s *Server) PreviewHandler() http.Handler {
 		label, ok := previewLabel(r.Host, s.cfg.PreviewDomain)
 		var id string
 		var port int
+		var stopped bool
 		if ok {
 			s.mu.Lock()
 			for workspaceID, p := range s.previews {
 				if p.Name == label {
-					id, port = workspaceID, p.Port
+					id, port, stopped = workspaceID, p.Port, p.Stopped
 					break
 				}
 			}
@@ -510,6 +777,10 @@ func (s *Server) PreviewHandler() http.Handler {
 		}
 		if id == "" {
 			notRunning(w, http.StatusNotFound)
+			return
+		}
+		if stopped {
+			notRunning(w, http.StatusServiceUnavailable)
 			return
 		}
 		s.touch(id)
@@ -545,6 +816,11 @@ func (s *Server) PreviewHandler() http.Handler {
 			case <-wk.done:
 				if wk.err != nil {
 					s.cfg.Logf("wake %s for its preview: %v", id, wk.err)
+					var refused *apiProblem
+					if errors.As(wk.err, &refused) && refused.status == http.StatusTooManyRequests {
+						serverFull(w)
+						return
+					}
 					notRunning(w, http.StatusBadGateway)
 					return
 				}
@@ -566,6 +842,20 @@ func stillWaking(w http.ResponseWriter) {
 	w.Header().Set("Retry-After", "2")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	_, _ = io.WriteString(w, wakingPage)
+}
+
+const serverFullPage = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Busy</title>
+<body style="font:16px/1.5 system-ui,sans-serif;background:#faf7f1;color:#24221f;display:grid;place-items:center;min-height:90vh;margin:0">
+<div style="max-width:28em;padding:24px"><h1 style="font-weight:600;font-size:22px;margin:0 0 8px">This app is asleep, and the server is busy</h1>
+<p style="margin:0;color:#5b524d">Every slot is taken by work in progress. Try again in a few minutes.</p></div>`
+
+// serverFull is a sleeping app that can't wake: the awake caps are full of working sandboxes.
+func serverFull(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", "60")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = io.WriteString(w, serverFullPage)
 }
 
 func notRunning(w http.ResponseWriter, status int) {

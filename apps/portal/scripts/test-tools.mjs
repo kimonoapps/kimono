@@ -114,7 +114,7 @@ test('key rotation preserves access and revocation closes only protected endpoin
   catalog.validateApiSettings([api], revoked);
 });
 test('key action requires admin, prevents silent replacement, and creates server-generated keys', async () => {
-  const source = ts.transpileModule(readFileSync('src/app/tools/actions.ts', 'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+  const source = ts.transpileModule(readFileSync('src/app/(shell)/tools/actions.ts', 'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
   let session = null; let saved = null;
   const current = instance('public');
   const actions = {exports:{}};

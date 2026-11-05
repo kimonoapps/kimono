@@ -5,6 +5,16 @@ import { appHostname, type PlatformSettings } from "../settings";
 
 export const codeAppId = "kimono-code";
 
+const whole = (raw: string, fallback: number, max: number, min = 1) => {
+  const n = raw === "" ? fallback : Number(raw);
+  return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : fallback;
+};
+
+const percent = (raw: string, fallback: number) => {
+  const n = raw === "" ? fallback : Number(raw);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0), 100) / 100 : fallback / 100;
+};
+
 /** Code as the Applications admin sets it up: the sandbox node, and the two tokens the node uses on the agent's behalf. */
 export function codeConfig(settings: PlatformSettings) {
   const instance = settings.apps[codeAppId];
@@ -18,6 +28,16 @@ export function codeConfig(settings: PlatformSettings) {
     gitToken: value("git_token"),
     modelToken: value("model_token"),
     gitAddress,
+    /* Each person's share of the Claude plan, as fractions; the owner isn't limited. */
+    shares: { week: percent(value("share_week"), 20), fiveHour: percent(value("share_five_hour"), 75) },
+    /* What each task's sandbox may use, and how many may be awake at once; the node enforces them. */
+    limits: {
+      cpus: whole(value("sandbox_cpus"), 1, 64, 0.25),
+      memoryMb: Math.round(whole(value("sandbox_memory_gb"), 2, 256, 0.25) * 1024),
+      awakePerPerson: Math.round(whole(value("awake_per_person"), 2, 100)),
+      awakePerNode: Math.round(whole(value("awake_per_node"), 6, 200)),
+      diskGb: Math.round(whole(value("sandbox_disk_gb"), 10, 4096)),
+    },
     colors: instance?.colors,
   };
 }

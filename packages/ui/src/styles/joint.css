@@ -34,7 +34,7 @@
 
 /* The joint seats and the pin shows: a small suō burst where the pieces meet. */
 .k-joint .k-burst { position: absolute; top: 50%; left: 90px; width: 0; height: 0; opacity: 0; pointer-events: none; }
-.k-joint .k-burst i { position: absolute; width: 10px; height: 3px; margin-top: -1.5px; border-radius: 2px; background: var(--k-suo); transform-origin: 0 50%; }
+.k-joint .k-burst i { position: absolute; width: 10px; height: 3px; margin-top: -1.5px; border-radius: var(--k-r-s); background: var(--k-suo); transform-origin: 0 50%; }
 .k-joint .k-burst i:nth-child(1){transform:rotate(12deg) translateX(8px)} .k-joint .k-burst i:nth-child(2){transform:rotate(64deg) translateX(8px)}
 .k-joint .k-burst i:nth-child(3){transform:rotate(128deg) translateX(8px)} .k-joint .k-burst i:nth-child(4){transform:rotate(190deg) translateX(8px)}
 .k-joint .k-burst i:nth-child(5){transform:rotate(248deg) translateX(8px)} .k-joint .k-burst i:nth-child(6){transform:rotate(304deg) translateX(8px)}
