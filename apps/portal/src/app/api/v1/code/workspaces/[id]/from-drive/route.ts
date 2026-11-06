@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { attach, code, db, fromDrive, workspaceFor } from "@/lib/code";
+import { attach, code, db, fromDrive, workspaceAs, shareOf } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: Context) {
   if ("response" in read) return read.response;
   const { id } = await params;
   return code(user, async (config) => {
-    const workspace = workspaceFor(db(), id, user.username);
+    const workspace = workspaceAs(db(), id, user.username, "edit", shareOf(request));
     const files = await fromDrive(db(), config, workspace, user.username, (read.body as { nodes?: unknown }).nodes);
     const attachments = [];
     for (const file of files) attachments.push(await attach(config, workspace, user, file.name, file.type, file.bytes));

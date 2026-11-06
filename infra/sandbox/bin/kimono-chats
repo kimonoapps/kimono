@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""kimono-chats list [--limit N]
+kimono-chats search WORDS… [--limit N]
+kimono-chats read ID [--turn N] [--max CHARS]
+
+The person's earlier chats with you, from /workspace/.kimono/chats: each turn's
+question and the answer it ended with. Output is kept short on purpose, so
+looking back costs little: search first, then read only the turns you need.
+"""
+import argparse, os, re, sys
+
+ROOT = os.environ.get("KIMONO_CHATS_DIR", "/workspace/.kimono/chats")
+
+
+def index():
+    try:
+        with open(os.path.join(ROOT, "index.tsv"), encoding="utf-8") as f:
+            rows = [line.rstrip("\n").split("\t") for line in f][1:]
+    except FileNotFoundError:
+        sys.exit("No earlier chats here.")
+    return [dict(zip(["id", "date", "title", "project", "began"], row + [""] * 5)) for row in rows if row and row[0]]
+
+
+def text_of(chat_id):
+    if not re.fullmatch(r"[0-9a-f]{4,64}", chat_id):
+        sys.exit(f"kimono-chats: {chat_id!r} isn't a chat id; `kimono-chats list` shows them")
+    try:
+        with open(os.path.join(ROOT, f"{chat_id}.md"), encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        sys.exit(f"kimono-chats: no chat {chat_id}")
+
+
+def head(chat):
+    return f"{chat['id']}  {chat['date']}  {chat['title']}" + (f"  [{chat['project']}]" if chat["project"] else "")
+
+
+def list_chats(limit):
+    chats = index()
+    for chat in chats[:limit]:
+        print(head(chat))
+    if len(chats) > limit:
+        print(f"… {len(chats) - limit} older; --limit to see more, or search")
+
+
+def snippet(text, at, width=70):
+    start, end = max(0, at - width), min(len(text), at + width)
+    piece = " ".join(text[start:end].split())
+    return ("…" if start else "") + piece + ("…" if end < len(text) else "")
+
+
+def search(words, limit):
+    terms = [w.lower() for w in words if len(w) > 1] or [w.lower() for w in words]
+    if not terms:
+        sys.exit("kimono-chats: search for some words")
+    found = []
+    for chat in index():
+        body = text_of(chat["id"])
+        lower = body.lower()
+        title = chat["title"].lower()
+        score = sum(lower.count(t) for t in terms) + sum(4 for t in terms if t in title)
+        if not score or not all(t in lower or t in title for t in terms[:3]):
+            continue
+        # The turns that match best, as short snippets with their turn number.
+        hits = []
+        for turn in re.split(r"\n(?=## \d+ · )", body):
+            m = re.match(r"## (\d+) · ", turn)
+            turn = turn.split("\n", 1)[1] if m and "\n" in turn else turn
+            tl = turn.lower()
+            n = sum(tl.count(t) for t in terms)
+            if m and n:
+                at = min((tl.find(t) for t in terms if t in tl), default=0)
+                hits.append((n, int(m.group(1)), snippet(turn, at)))
+        hits.sort(key=lambda h: -h[0])
+        found.append((score, chat, hits[:2]))
+    found.sort(key=lambda f: -f[0])
+    if not found:
+        print("Nothing matches. Try other words, or `kimono-chats list`.")
+        return
+    for score, chat, hits in found[:limit]:
+        print(head(chat))
+        for _, turn, text in hits:
+            print(f"  turn {turn}: {text}")
+    if len(found) > limit:
+        print(f"… {len(found) - limit} more chats match; --limit to see more")
+
+
+def read(chat_id, turn, budget):
+    body = text_of(chat_id)
+    parts = re.split(r"\n(?=## \d+ · )", body)
+    title, turns = parts[0], parts[1:]
+    numbered = [(int(re.match(r"## (\d+)", t).group(1)), t) for t in turns]
+    print(title.strip())
+    shown = 0
+    for n, text in numbered:
+        if n < turn:
+            continue
+        if shown and len(text) > budget:
+            print(f"\n… more from turn {n} of {numbered[-1][0]}: kimono-chats read {chat_id} --turn {n}")
+            return
+        print("\n" + (text if len(text) <= budget else text[:budget] + " […]").strip())
+        budget -= len(text)
+        shown += 1
+    if not shown:
+        print(f"(no turn {turn}; it has {numbered[-1][0] if numbered else 0})")
+
+
+parser = argparse.ArgumentParser(prog="kimono-chats", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+sub = parser.add_subparsers(dest="command")
+p = sub.add_parser("list"); p.add_argument("--limit", type=int, default=15)
+p = sub.add_parser("search"); p.add_argument("words", nargs="+"); p.add_argument("--limit", type=int, default=6)
+p = sub.add_parser("read"); p.add_argument("id"); p.add_argument("--turn", type=int, default=1); p.add_argument("--max", type=int, default=5000)
+args = parser.parse_args()
+if args.command == "search":
+    search(args.words, max(1, args.limit))
+elif args.command == "read":
+    read(args.id, max(1, args.turn), max(500, args.max))
+else:
+    list_chats(max(1, getattr(args, "limit", 15)))

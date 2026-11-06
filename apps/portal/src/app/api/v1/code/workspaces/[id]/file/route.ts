@@ -1,5 +1,5 @@
 import { apiUser, unauthorized } from "@/lib/api-v1";
-import { code, ensure, db, who, workspaceFor } from "@/lib/code";
+import { code, ensure, db, who, workspaceAs, shareOf } from "@/lib/code";
 import { sandbox } from "@/lib/code/node";
 
 type Context = { params: Promise<{ id: string }> };
@@ -11,7 +11,7 @@ export async function GET(request: Request, { params }: Context) {
   const { id } = await params;
   const path = new URL(request.url).searchParams.get("path") || "";
   return code(user, async (config) => {
-    const workspace = workspaceFor(db(), id, user.username);
+    const workspace = workspaceAs(db(), id, user.username, "read", shareOf(request));
     await ensure(config, workspace, who(user));
     const response = await sandbox.file(config, workspace, path);
     return new Response(response.body, {

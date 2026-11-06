@@ -24,9 +24,11 @@ import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./
 import { portalOrigin } from "../account";
 export { efforts, type Effort } from "./node";
 import { retitle, shotToDrive, syncDrive } from "./drive";
+import { historyNote, syncHistory } from "./history";
 import { suggestTitle } from "./title";
 
 export * from "./model";
+export * from "./sharing";
 export type { CodeEvent, Attachment } from "./events";
 
 const root = join(stateDir, "code");
@@ -89,6 +91,28 @@ export async function code(user: ApiUser, work: (config: CodeConfig) => Promise<
     return apiError(500, "Code couldn't do that. Try again in a moment.");
   }
 }
+
+/**
+ * Like [code], for what a chat's link may open without signing in: [user] may be null.
+ * Whoever it is, the work decides what they may see (lib/code/sharing.ts).
+ */
+export async function codeOpen(user: ApiUser | null, work: (config: CodeConfig) => Promise<Response> | Response): Promise<Response> {
+  if (user) return code(user, work, false);
+  try {
+    const config = codeConfig(await getPlatformSettings());
+    if (!config.enabled) return apiError(404, "Code isn't switched on.");
+    /* Public links switched off: a link still opens, but only for someone signed in. */
+    if (!config.publicLinks) return apiError(401, "Sign in to open this.");
+    return await work(config);
+  } catch (error) {
+    if (error instanceof CodeProblem) return apiError(error.status, error.message);
+    console.warn("Code request failed:", error instanceof Error ? error.message : error);
+    return apiError(500, "Code couldn't do that. Try again in a moment.");
+  }
+}
+
+/** A chat link's token, when a request carries one (?share=). */
+export const shareOf = (request: Request) => new URL(request.url).searchParams.get("share");
 
 /* ── the timeline, live ── */
 
@@ -208,14 +232,18 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
+    /* The person's other chats, for it to look back on; none in a chat shared with others. */
+    const history = prompt.startsWith("/") ? false : await syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
     /* Files the person let it use follow Drive, and what is no longer allowed goes. */
     const openedNews = await syncOpened(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
     const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
     const access = prompt.startsWith("/") ? "" : accessPrompt(db(), workspace);
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
-    const told = `${access ? `${access}\n\n` : ""}${news}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: contextFor(db(), workspace.owner) }, controller.signal);
+    /* Someone the chat was shared with wrote this: it should know who it's answering. */
+    const from = user.username.toLowerCase() !== workspace.owner ? `(This message is from ${who(user).name}, whom ${workspace.owner} shared this chat with.)\n\n` : "";
+    const told = `${access ? `${access}\n\n` : ""}${news}${from}${prompt}`;
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : ""].filter(Boolean).join("\n\n") }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */

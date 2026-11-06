@@ -2,9 +2,16 @@ import { KimonoMark, Seal } from "@kimono/ui";
 import { auth, signIn } from "@/auth";
 import { redirect } from "next/navigation";
 
-export default async function LoginPage() {
+/** Where to go once signed in: a page on this Kimono (a share link someone opened), or home. */
+function backTo(asked: string | string[] | undefined) {
+  const to = typeof asked === "string" ? asked : "";
+  return to.startsWith("/") && !to.startsWith("//") && !to.startsWith("/\\") ? to : "/";
+}
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ callbackUrl?: string | string[] }> }) {
+  const to = backTo((await searchParams).callbackUrl);
   const session = await auth();
-  if (session) redirect("/");
+  if (session) redirect(to);
   return (
     <main className="login-page">
       <section className="login-panel">
@@ -16,7 +23,7 @@ export default async function LoginPage() {
         </div>
         <form action={async () => {
           "use server";
-          await signIn("authentik", { redirectTo: "/" });
+          await signIn("authentik", { redirectTo: to });
         }}>
           <Seal className="login-button" type="submit">Continue to Kimono <span aria-hidden="true">→</span></Seal>
         </form>

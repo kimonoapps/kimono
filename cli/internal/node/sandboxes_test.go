@@ -57,3 +57,21 @@ func TestPreviewsTunnel(t *testing.T) {
 		t.Errorf("unit:\n%s", unit)
 	}
 }
+
+// An update keeps what the node was set up with: its address and preview
+// domain come back out of the service it wrote.
+func TestSandboxesUnitReadsBackItsSettings(t *testing.T) {
+	for _, domain := range []string{"", "previews.example.dev"} {
+		unit := sandboxesUnit("/usr/local/bin/kimono", "100.64.0.5:7480", "ghcr.io/kimonoapps/kimono-sandbox:0.4.0", domain)
+		got, err := readSandboxesUnit(unit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.listen != "100.64.0.5:7480" || got.image != "ghcr.io/kimonoapps/kimono-sandbox:0.4.0" || got.previewDomain != domain {
+			t.Fatalf("read back %+v from:\n%s", got, unit)
+		}
+	}
+	if _, err := readSandboxesUnit("[Service]\nRestart=always\n"); err == nil {
+		t.Fatal("a unit with no ExecStart should be refused")
+	}
+}

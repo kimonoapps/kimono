@@ -1,20 +1,22 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { code, db, forgetAttachments, removeWorkspace, renameWorkspace, setWorkspaceProject, taskFolder, workspaceFor } from "@/lib/code";
+import { code, codeOpen, db, shareOf, workspaceAs, forgetAttachments, removeWorkspace, renameWorkspace, setWorkspaceProject, taskFolder, workspaceFor } from "@/lib/code";
 import { rehome, retitle } from "@/lib/code/drive";
 import { sandbox } from "@/lib/code/node";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, { params }: Context) {
+export async function GET(request: Request, { params }: Context) {
   const user = await apiUser();
-  if (!user) return unauthorized();
+  const share = shareOf(request);
+  if (!user && !share) return unauthorized();
   const { id } = await params;
-  return code(user, async () => {
-    const workspace = workspaceFor(db(), id, user.username);
+  return codeOpen(user, async () => {
+    const workspace = workspaceAs(db(), id, user?.username ?? null, "read", share);
+    if (workspace.access !== "owner") return apiJson(workspace);
     /* Its folder in Drive is made the first time anyone looks, so "Open in Drive" always has somewhere to go. */
     if (!workspace.drive) await taskFolder(db(), workspace).catch((error) => console.warn("Code couldn't make a Drive folder:", error instanceof Error ? error.message : error));
-    return apiJson(workspaceFor(db(), id, user.username));
-  }, false);
+    return apiJson(workspaceAs(db(), id, workspace.owner, "owner"));
+  });
 }
 
 /** Renames it (`{ title }`), or puts it in a project (`{ folder: id | null }`), its Drive folder following. */

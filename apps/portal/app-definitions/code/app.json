@@ -4,7 +4,7 @@
   "metadata": {
     "id": "kimono-code",
     "name": "Kimono AI",
-    "shortName": "AI",
+    "shortName": "Kimono AI",
     "description": "An assistant for the household that works with your files, safely.",
     "category": "Development",
     "version": "0.1.0",
@@ -68,6 +68,15 @@
         "target": "settings",
         "advanced": true,
         "description": "Empty to use Kimono Git on this server."
+      },
+      {
+        "key": "public_links",
+        "label": "Public links",
+        "kind": "toggle",
+        "group": "sharing",
+        "target": "settings",
+        "default": "on",
+        "description": "Links to a chat or an artifact that open without signing in. Switched off, those links open only for people signed in to this Kimono."
       },
       {
         "key": "share_week",

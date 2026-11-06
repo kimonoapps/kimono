@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"github.com/kimonoapps/kimono/cli/internal/node"
 	"io"
 	"net/http"
 	"os"
@@ -88,15 +89,30 @@ func (m *Manager) Run(args []string) error {
 	if *skipServer {
 		return nil
 	}
+	// A sandbox node follows the release too: its service runs this binary and
+	// the sandbox image this release expects. Run by the new binary, which is
+	// the one that knows which image that is.
+	node := sandboxesEnabled()
+	if node {
+		if err := m.Runner.Run(executable, "node", "sandboxes", "update"); err != nil {
+			return fmt.Errorf("update this node's sandboxes: %w", err)
+		}
+	}
 	// The appliance's environment file, which is what every other server
 	// command opens. Asking system.Home() keeps a relocated KIMONO_HOME
 	// working; hardcoding the path once made this gate refuse every install.
 	if _, err := os.Stat(applianceEnvironmentPath()); err != nil {
-		_, _ = fmt.Fprintln(m.Runner.Stdout, "No appliance is installed here; the binary is up to date.")
+		if !node {
+			_, _ = fmt.Fprintln(m.Runner.Stdout, "No appliance is installed here; the binary is up to date.")
+		}
 		return nil
 	}
 	return m.Runner.Run(executable, "server", "update")
 }
+
+// sandboxesEnabled says whether this machine runs Kimono AI's sandboxes (set
+// up by `kimono node sandboxes enable`). A variable so tests can say either.
+var sandboxesEnabled = node.SandboxesEnabled
 
 // applianceEnvironmentPath mirrors the server manager's envPath, which is the
 // only file that proves an appliance was configured on this machine.

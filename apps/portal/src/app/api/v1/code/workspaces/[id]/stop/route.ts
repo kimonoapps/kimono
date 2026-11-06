@@ -1,5 +1,5 @@
 import { apiUser, crossSite, unauthorized } from "@/lib/api-v1";
-import { code, db, stop, workspaceFor } from "@/lib/code";
+import { code, db, stop, workspaceAs, shareOf } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: Context) {
   if (!user) return unauthorized();
   const { id } = await params;
   return code(user, async (config) => {
-    await stop(config, workspaceFor(db(), id, user.username));
+    await stop(config, workspaceAs(db(), id, user.username, "edit", shareOf(request)));
     return new Response(null, { status: 204 });
   });
 }

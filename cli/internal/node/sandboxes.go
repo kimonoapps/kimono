@@ -33,7 +33,7 @@ const (
 	cloudflaredImage = "cloudflare/cloudflared:2024.11.1"
 )
 
-const sandboxesUsage = "usage: kimono node sandboxes <enable|serve|status|disable>"
+const sandboxesUsage = "usage: kimono node sandboxes <enable|update|serve|status|disable>"
 
 // sandboxes runs Kimono Code's sandboxes on this hosting node.
 func (m *Manager) sandboxes(args []string) error {
@@ -43,6 +43,8 @@ func (m *Manager) sandboxes(args []string) error {
 	switch args[0] {
 	case "enable":
 		return m.sandboxesEnable(args[1:])
+	case "update":
+		return m.sandboxesUpdate(args[1:])
 	case "serve":
 		return m.sandboxesServe(args[1:])
 	case "status":
@@ -281,6 +283,90 @@ func sandboxesKey() (string, error) {
 		return "", err
 	}
 	return key, os.WriteFile(sandboxesKeyPath, []byte(key+"\n"), 0600)
+}
+
+// SandboxesEnabled says whether this machine is a sandbox node: whether
+// `kimono node sandboxes enable` set its service up.
+func SandboxesEnabled() bool {
+	_, err := os.Stat(sandboxesUnitPath)
+	return err == nil
+}
+
+// sandboxesSettings are what a node was set up with, as its service runs them.
+type sandboxesSettings struct{ listen, image, previewDomain string }
+
+// readSandboxesUnit reads the address, image and preview domain back from the
+// service's ExecStart line, so an update keeps what the node was set up with.
+func readSandboxesUnit(unit string) (sandboxesSettings, error) {
+	for _, line := range strings.Split(unit, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ExecStart=") {
+			continue
+		}
+		var found sandboxesSettings
+		fields := strings.Fields(strings.TrimPrefix(line, "ExecStart="))
+		for i := 0; i+1 < len(fields); i++ {
+			switch fields[i] {
+			case "--listen":
+				found.listen = fields[i+1]
+			case "--image":
+				found.image = fields[i+1]
+			case "--preview-domain":
+				found.previewDomain = fields[i+1]
+			}
+		}
+		if found.listen == "" {
+			return found, errors.New("the sandboxes service has no --listen address")
+		}
+		return found, nil
+	}
+	return sandboxesSettings{}, errors.New("the sandboxes service has no ExecStart line")
+}
+
+// sandboxesUpdate brings an enabled node up to this release: the sandbox image
+// this build expects, run by this kimono binary, on the address and preview
+// domain it was set up with. Nothing else is set up again: gVisor, Docker,
+// the node key and the previews tunnel stay as they are. Sandboxes keep their
+// containers; the service picks them up again when it restarts.
+func (m *Manager) sandboxesUpdate(args []string) error {
+	if len(args) > 0 {
+		return errors.New("usage: kimono node sandboxes update")
+	}
+	if err := system.RequireRoot(); err != nil {
+		return err
+	}
+	data, err := os.ReadFile(sandboxesUnitPath)
+	if os.IsNotExist(err) {
+		return errors.New("sandboxes aren't enabled on this machine; set them up with `sudo kimono node sandboxes enable`")
+	} else if err != nil {
+		return err
+	}
+	settings, err := readSandboxesUnit(string(data))
+	if err != nil {
+		return fmt.Errorf("%w; run `sudo kimono node sandboxes enable` again", err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	image := sandbox.DefaultImage
+	if image != settings.image {
+		_, _ = fmt.Fprintf(m.Runner.Stdout, "Pulling the sandbox image %s…\n", image)
+		if err := m.Runner.Run("docker", "pull", image); err != nil {
+			/* Keep the image it has rather than restart onto one it can't start. */
+			return fmt.Errorf("couldn't pull %s, so sandboxes stay on %s: %w", image, settings.image, err)
+		}
+	}
+	if err := os.WriteFile(sandboxesUnitPath, []byte(sandboxesUnit(executable, settings.listen, image, settings.previewDomain)), 0644); err != nil {
+		return err
+	}
+	for _, step := range [][]string{{"daemon-reload"}, {"restart", "kimono-sandboxes"}} {
+		if err := m.Runner.Run("systemctl", step...); err != nil {
+			return err
+		}
+	}
+	_, _ = fmt.Fprintf(m.Runner.Stdout, "Sandboxes updated: %s on %s.\n", image, settings.listen)
+	return nil
 }
 
 func sandboxesUnit(executable, address, image, previewDomain string) string {

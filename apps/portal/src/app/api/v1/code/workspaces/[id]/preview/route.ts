@@ -1,14 +1,14 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { code, db, previewStatus, renamePreview, stopPreview, workspaceFor } from "@/lib/code";
+import { code, db, previewStatus, renamePreview, stopPreview, workspaceFor, workspaceAs, shareOf } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
 /** How the app is doing: `{ health: { state, restarts, exit? }, log }`. Asking doesn't wake a sleeping sandbox. */
-export async function GET(_request: Request, { params }: Context) {
+export async function GET(request: Request, { params }: Context) {
   const user = await apiUser();
   if (!user) return unauthorized();
   const { id } = await params;
-  return code(user, async (config) => apiJson(await previewStatus(config, workspaceFor(db(), id, user.username))));
+  return code(user, async (config) => apiJson(await previewStatus(config, workspaceAs(db(), id, user.username, "read", shareOf(request)))));
 }
 
 /** Takes the app's link down; whoever had it can no longer open it. */

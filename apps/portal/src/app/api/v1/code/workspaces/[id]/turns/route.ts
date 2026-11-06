@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { ask, code, CodeProblem, db, efforts, modelChoices, workspaceFor, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
+import { ask, code, CodeProblem, db, efforts, modelChoices, workspaceAs, shareOf, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: Context) {
     const effort = efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined;
     const attachments = Array.isArray(body.attachments) ? body.attachments : [];
     if (attachments.length > 10 || !attachments.every(isAttachment)) throw new CodeProblem("Attach up to ten files.");
-    const event = ask(config, workspaceFor(db(), id, user.username), user, String(body.text ?? ""), attachments, effort, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
+    const event = ask(config, workspaceAs(db(), id, user.username, "edit", shareOf(request)), user, String(body.text ?? ""), attachments, effort, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
     return apiJson(event, 202);
   });
 }

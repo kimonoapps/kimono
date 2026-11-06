@@ -231,6 +231,33 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 14) {
+    /*
+     * Sharing (lib/code/sharing.ts): a chat shared with people, who may read it or write in it;
+     * a chat's link, which anyone may read and signed-in people may join; an artifact's link,
+     * open to the people it was shared with or to anyone.
+     */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE chat_shares (workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, username TEXT NOT NULL, access TEXT NOT NULL CHECK (access IN ('read', 'edit')), created_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, username));
+      CREATE INDEX chat_shares_by_user ON chat_shares (username);
+      CREATE TABLE chat_links (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, token TEXT NOT NULL UNIQUE, access TEXT NOT NULL CHECK (access IN ('read', 'edit')));
+      CREATE TABLE artifact_links (workspace_id TEXT NOT NULL, name TEXT NOT NULL, token TEXT NOT NULL UNIQUE, public INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, name), FOREIGN KEY (workspace_id, name) REFERENCES artifacts (workspace_id, name) ON DELETE CASCADE);
+      CREATE TABLE artifact_people (workspace_id TEXT NOT NULL, name TEXT NOT NULL, username TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name, username), FOREIGN KEY (workspace_id, name) REFERENCES artifacts (workspace_id, name) ON DELETE CASCADE);
+      CREATE INDEX artifact_people_by_user ON artifact_people (username);
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '14');
+      COMMIT;
+    `);
+  }
+  if (version < 15) {
+    /* Earlier chats as each chat's sandbox holds them (lib/code/history.ts): which version of each it was given. */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE history_synced (workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, chat_id TEXT NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (workspace_id, chat_id));
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '15');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
@@ -344,6 +371,11 @@ export function workspaceFor(db: DatabaseSync, id: string, owner: string): Works
   const row = db.prepare(`${selectWorkspace} WHERE w.id = ? AND w.owner = ?`).get(id, owner.toLowerCase()) as WorkspaceRow | undefined;
   if (!row) throw new CodeProblem("That workspace isn't here.", 404);
   return toWorkspace(row);
+}
+
+/** Chats other people shared with [username] (lib/code/sharing.ts), the most recently active first. */
+export function sharedWorkspacesOf(db: DatabaseSync, username: string): Workspace[] {
+  return (db.prepare(`${selectWorkspace} WHERE w.id IN (SELECT workspace_id FROM chat_shares WHERE username = ?) ORDER BY w.updated_at DESC LIMIT 200`).all(username.toLowerCase()) as WorkspaceRow[]).map(toWorkspace);
 }
 
 export function workspacesOf(db: DatabaseSync, owner: string): Workspace[] {

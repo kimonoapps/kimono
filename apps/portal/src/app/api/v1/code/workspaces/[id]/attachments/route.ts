@@ -1,5 +1,5 @@
 import { apiError, apiJson, apiUser, crossSite, readLimited, unauthorized } from "@/lib/api-v1";
-import { attach, code, db, maxAttachmentBytes, workspaceFor } from "@/lib/code";
+import { attach, code, db, maxAttachmentBytes, workspaceAs, shareOf } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -15,5 +15,5 @@ export async function POST(request: Request, { params }: Context) {
   const body = await readLimited(request, maxAttachmentBytes);
   if (!body) return apiError(413, "Attachments can be up to 20 MB.");
   const type = (request.headers.get("content-type") || "").split(";")[0].trim();
-  return code(user, async (config) => apiJson(await attach(config, workspaceFor(db(), id, user.username), user, name, type, body), 201));
+  return code(user, async (config) => apiJson(await attach(config, workspaceAs(db(), id, user.username, "edit", shareOf(request)), user, name, type, body), 201));
 }

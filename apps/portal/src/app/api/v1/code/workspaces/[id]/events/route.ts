@@ -1,5 +1,5 @@
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
-import { code, db, eventsAfter, listen, workspaceFor, type StoredEvent } from "@/lib/code";
+import { codeOpen, db, shareOf, workspaceAs, eventsAfter, listen, type StoredEvent } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -12,12 +12,13 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request, { params }: Context) {
   const user = await apiUser();
-  if (!user) return unauthorized();
+  const share = shareOf(request);
+  if (!user && !share) return unauthorized();
   const { id } = await params;
   const url = new URL(request.url);
   const after = Number(request.headers.get("last-event-id") ?? url.searchParams.get("after") ?? 0) || 0;
-  return code(user, () => {
-    const workspace = workspaceFor(db(), id, user.username);
+  return codeOpen(user, () => {
+    const workspace = workspaceAs(db(), id, user?.username ?? null, "read", share);
     if (!request.headers.get("accept")?.includes("text/event-stream")) {
       return apiJson({ workspace, events: eventsAfter(db(), id, after) });
     }
@@ -43,5 +44,5 @@ export async function GET(request: Request, { params }: Context) {
       cancel() { close(); },
     });
     return new Response(stream, { headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-store", "X-Accel-Buffering": "no", Connection: "keep-alive" } });
-  }, false);
+  });
 }

@@ -18,7 +18,7 @@ import { sandbox } from "./node";
 import { agentCopyName, planSync, type DriveFile, type SyncAction } from "./sync";
 
 /*
- * Code in Drive. Everyone who uses Code gets a "Code" space; each project is a
+ * Kimono AI in Drive. Everyone who uses it gets a "Kimono AI" space; each project is a
  * folder in it and each task a folder in that, holding the task's files as
  * they are in its sandbox. Everything goes through Drive's own model, so web
  * Drive, the phone and the Files app see Code's files like any others, and a
@@ -43,7 +43,7 @@ function folderIn(parentId: string, owner: string, name: string): DriveNode {
   return found ?? createFolder(db, parentId, owner, name);
 }
 
-/** The person's Code space, made the first time and made again if they deleted it or left it. */
+/** The person's Kimono AI space, made the first time and made again if they deleted it or left it. */
 function codeSpace(db: DatabaseSync, owner: string) {
   const drive = driveDb();
   const known = driveSpaceOf(db, owner);
@@ -51,7 +51,7 @@ function codeSpace(db: DatabaseSync, owner: string) {
     const root = drive.prepare("SELECT root_id FROM spaces WHERE id = ?").get(known) as { root_id: string } | undefined;
     if (root) return { id: known, rootId: root.root_id };
   }
-  const made = createSpace(drive, owner, { name: "Code", crest: "kikyo", color: "asagi" });
+  const made = createSpace(drive, owner, { name: "Kimono AI", crest: "kikyo", color: "asagi" });
   setDriveSpace(db, owner, made.id);
   return { id: made.id, rootId: made.rootId };
 }

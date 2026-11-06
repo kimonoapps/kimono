@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/kimonoapps/kimono/cli/internal/system"
@@ -105,5 +106,25 @@ func TestApplianceEnvironmentPathMatchesTheInstalledLayout(t *testing.T) {
 	}
 	if _, err := os.Stat(applianceEnvironmentPath()); err != nil {
 		t.Fatalf("a configured appliance was not detected: %v", err)
+	}
+}
+
+// A sandbox node is updated with the release: its own service, by the new
+// binary. A machine that isn't one is left alone.
+func TestUpdateRefreshesASandboxNode(t *testing.T) {
+	t.Setenv("KIMONO_ALLOW_UNPRIVILEGED", "1")
+	t.Setenv("KIMONO_HOME", t.TempDir())
+	for _, enabled := range []bool{true, false} {
+		previous := sandboxesEnabled
+		sandboxesEnabled = func() bool { return enabled }
+		var output strings.Builder
+		manager := New(&system.Runner{DryRun: true, Stdout: &output, Stderr: &output})
+		if err := manager.Run([]string{"--no-self"}); err != nil {
+			t.Fatal(err)
+		}
+		sandboxesEnabled = previous
+		if got := strings.Contains(output.String(), "node sandboxes update"); got != enabled {
+			t.Fatalf("node %v: ran the node update = %v\n%s", enabled, got, output.String())
+		}
 	}
 }

@@ -27,6 +27,8 @@ export function codeConfig(settings: PlatformSettings) {
     enabled: Boolean(instance?.enabled),
     nodeAddress: value("node_address").replace(/\/+$/, ""),
     nodeKey: value("node_key"),
+    /* Whether a chat's or an artifact's link opens for someone not signed in (lib/code/sharing.ts). */
+    publicLinks: (instance?.environment["public_links"]?.value?.trim() || "on") === "on",
     gitToken: value("git_token"),
     modelToken: value("model_token"),
     /* Composio's Tool Router: one session per person, its MCP reached through the node's gateway. Optional. */
