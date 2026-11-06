@@ -65,11 +65,11 @@ class AndroidPlatform(private val context: Context) : Platform {
     }
 
     override suspend fun keep(key: String, value: String?) = withContext(Dispatchers.IO) {
-        if (value == null) { prefs.edit().remove(key).apply(); return@withContext }
+        if (value == null) { prefs.edit().remove(key).commit(); return@withContext }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val sealed = cipher.iv + cipher.doFinal(value.toByteArray())
-        prefs.edit().putString(key, Base64.encodeToString(sealed, Base64.NO_WRAP)).apply()
+        prefs.edit().putString(key, Base64.encodeToString(sealed, Base64.NO_WRAP)).commit()
     }
 
     override fun randomBytes(count: Int) = ByteArray(count).also { SecureRandom().nextBytes(it) }

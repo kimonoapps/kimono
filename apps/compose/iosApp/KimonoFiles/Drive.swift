@@ -61,21 +61,45 @@ actor Drive {
 
     // MARK: Signing in
 
+    /* One renewal at a time: the actor lets other calls in while one waits on the network. */
+    private var renewing: Task<String, Error>?
+
     private func token() async throws -> String {
         if let access, access.expires.timeIntervalSinceNow > 60 { return access.token }
-        guard let issuer = Drive.kept("kimono.issuer"), let client = Drive.kept("kimono.clientId"), let refresh = Drive.kept("kimono.refresh") else {
+        if let renewing { return try await renewing.value }
+        let task = Task { try await renew() }
+        renewing = task
+        defer { renewing = nil }
+        return try await task.value
+    }
+
+    private func renew() async throws -> String {
+        guard let issuer = Drive.kept("kimono.issuer"), let client = Drive.kept("kimono.clientId"), var refresh = Drive.kept("kimono.refresh") else {
             throw NSFileProviderError(.notAuthenticated)
         }
         let discovery = try await json([String: AnyDecodable].self, URLRequest(url: URL(string: issuer.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/.well-known/openid-configuration")!))
         guard let endpoint = discovery["token_endpoint"]?.string, let url = URL(string: endpoint) else { throw NSFileProviderError(.serverUnreachable) }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        var form = URLComponents()
-        form.queryItems = [.init(name: "grant_type", value: "refresh_token"), .init(name: "client_id", value: client), .init(name: "refresh_token", value: refresh)]
-        request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
-        let (data, _) = try await fetch(request)
-        let answer = try JSONDecoder().decode([String: AnyDecodable].self, from: data)
+        func ask(_ refresh: String) async throws -> [String: AnyDecodable] {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            var form = URLComponents()
+            form.queryItems = [.init(name: "grant_type", value: "refresh_token"), .init(name: "client_id", value: client), .init(name: "refresh_token", value: refresh)]
+            request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
+            let (data, response) = try await fetch(request)
+            guard response.statusCode < 500, let answer = try? JSONDecoder().decode([String: AnyDecodable].self, from: data) else { throw NSFileProviderError(.serverUnreachable) }
+            return answer
+        }
+        var answer = try await ask(refresh)
+        /* Refused, perhaps because the app renewed at the same moment and is still saving
+           the token it got: give it a few seconds, and try again with what it kept. */
+        var waited = 0
+        while answer["access_token"]?.string == nil, waited < 5 {
+            guard let again = Drive.kept("kimono.refresh") else { break }
+            if again != refresh { refresh = again; answer = try await ask(again); continue }
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+            waited += 1
+        }
         guard let token = answer["access_token"]?.string else { throw NSFileProviderError(.notAuthenticated) }
         if let renewed = answer["refresh_token"]?.string, renewed != refresh { Drive.keep("kimono.refresh", renewed) }
         access = (token, Date().addingTimeInterval(answer["expires_in"]?.number ?? 300))

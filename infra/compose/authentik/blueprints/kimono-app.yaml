@@ -29,6 +29,11 @@ entries:
       # of being signed out, and a kept one doesn't ask for a password monthly.
       access_token_validity: minutes=10
       refresh_token_validity: days=30
+      # A new refresh token only in its last week. The app and its Files
+      # extension renew from the same kept token, often at the same moment;
+      # rotating every time left one of them holding a revoked token, which
+      # signed the phone out.
+      refresh_token_threshold: days=7
       include_claims_in_id_token: true
       issuer_mode: per_provider
       sub_mode: user_uuid

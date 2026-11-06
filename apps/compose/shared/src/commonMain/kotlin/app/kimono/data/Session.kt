@@ -16,10 +16,13 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.Parameters
 import io.ktor.http.URLBuilder
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -86,9 +89,11 @@ class Session(private val platform: Platform, private val http: HttpClient) {
     private suspend fun discover(issuer: String): Discovery = discovered[issuer]
         ?: json.decodeFromString<Discovery>(http.get("${issuer.trimEnd('/')}/.well-known/openid-configuration").bodyAsText()).also { discovered[issuer] = it }
 
+    /* An answer that isn't the provider's (a gateway's error page, a 5xx) throws, so it reads as offline, never as a refusal. */
     private suspend fun tokens(endpoint: String, form: Map<String, String>): TokenAnswer {
         val response = http.submitForm(endpoint, Parameters.build { form.forEach { (k, v) -> append(k, v) } })
-        return runCatching { json.decodeFromString<TokenAnswer>(response.bodyAsText()) }.getOrDefault(TokenAnswer(error = "status ${response.status.value}"))
+        if (response.status.value >= 500) error("token ${response.status.value}")
+        return json.decodeFromString<TokenAnswer>(response.bodyAsText())
     }
 
     /* A sign-in waiting on a code from the person's authenticator app. */
@@ -191,7 +196,10 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         _state.value = SessionState.SignedOut(server ?: platform.readKept("kimono.server"))
     }
 
-    private suspend fun renew(): String = renewing.withLock {
+    /* Once asked, a renewal finishes and is kept even if whatever wanted it has gone (a screen
+       left, the app sent to the back): the provider has already retired the old token by then,
+       and dropping its answer would leave this phone holding only that. */
+    private suspend fun renew(): String = withContext(NonCancellable) { renewing.withLock {
         access?.let { (token, expires) -> if (expires - now() > 60_000) return@withLock token }
         /* The Files app extension shares this sign-in and may have renewed it since: start from what is kept now. */
         var current = latestKept() ?: throw KimonoProblem("Sign in to Kimono first.")
@@ -199,12 +207,17 @@ class Session(private val platform: Platform, private val http: HttpClient) {
             tokens(discover(from.issuer).tokenEndpoint, mapOf("grant_type" to "refresh_token", "client_id" to from.clientId, "refresh_token" to from.refreshToken))
         } catch (_: Exception) { throw KimonoProblem(OFFLINE) }
         var got = ask(current)
-        if (got.accessToken == null) {
-            /* Refused, perhaps because the extension renewed at the same moment: try once more with what it kept. */
-            val again = latestKept()
-            if (again != null && again.refreshToken != current.refreshToken) { current = again; got = ask(again) }
+        /* Refused, perhaps because the Files extension renewed at the same moment and is still
+           saving the token it got: give it a few seconds, and try again with what it kept. */
+        var waited = 0
+        while (got.accessToken == null && waited < 5) {
+            val again = latestKept() ?: break
+            if (again.refreshToken != current.refreshToken) { current = again; got = ask(again); continue }
+            delay(1_000)
+            waited++
         }
         val token = got.accessToken
+        if (token == null && got.error !in REFUSALS) throw KimonoProblem(OFFLINE)
         if (token == null) {
             /* The provider said no: signed out elsewhere, expired, or switched off. */
             forget()
@@ -216,7 +229,7 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         }
         access = token to now() + got.expiresIn * 1000
         token
-    }
+    } }
 
     private suspend fun latestKept(): Kept? {
         val known = kept ?: return null
@@ -294,6 +307,9 @@ class Session(private val platform: Platform, private val http: HttpClient) {
         forget()
     }
 }
+
+/** The provider's answers that mean this sign-in is over, rather than a hiccup. */
+private val REFUSALS = setOf("invalid_grant", "invalid_client", "invalid_scope")
 
 /** What a dropped or missing connection reads as: worth trying again, unlike a refusal. */
 const val OFFLINE = "Kimono isn't answering. Check your connection and try again."
