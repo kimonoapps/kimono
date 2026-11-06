@@ -96,7 +96,7 @@ fun HomeScreen(
     suspend fun load() {
         runCatching { drive.otherApps() }
         if (driveOn != false) recent = runCatching { drive.recent() }.getOrNull() ?: recent
-        if (admin && codeApp != null) tasks = runCatching { code.workspaces() }.getOrNull() ?: tasks
+        if (codeApp != null) tasks = runCatching { code.workspaces() }.getOrNull() ?: tasks
         if (vpnApp != null) devices = runCatching { vpn.view() }.getOrNull() ?: devices
     }
     LaunchedEffect(codeApp != null, vpnApp != null) { load() }
@@ -132,14 +132,14 @@ fun HomeScreen(
                     }
                 }
             }
-            if (admin && codeApp != null && shownTasks.isNotEmpty()) item {
+            if (codeApp != null && shownTasks.isNotEmpty()) item {
                 val working = tasks.orEmpty().count { it.running }
-                Glance(codeApp, "Code", if (working > 0) "$working working" else null, onOpen = { go("code") }) {
+                Glance(codeApp, "Kimono AI", if (working > 0) "$working working" else null, onOpen = { go("code") }) {
                     shownTasks.forEach { task ->
                         Line(
                             lead = { InkDot(if (task.running) Kata.moss else Color(0xFFB9A8A2), size = 10.dp, seed = task.id) },
                             title = task.title,
-                            detail = listOfNotNull(task.repo.name, if (task.running) "working" else task.pullRequest?.let { "pull request #${it.number}" } ?: whenAgo(task.updatedAt)).joinToString(" · "),
+                            detail = listOfNotNull(task.repo.name.takeIf { task.isProject }, if (task.running) "working" else task.pullRequest?.let { "pull request #${it.number}" } ?: whenAgo(task.updatedAt)).joinToString(" · "),
                             mono = true,
                         ) { go("code/${task.id}") }
                     }

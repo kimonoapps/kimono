@@ -20,7 +20,7 @@ export default async function CodePage() {
   if (!config.enabled) redirect(admin ? "/admin/apps/kimono-code" : "/");
   return <AppShell user={session.user} brandColors={settings.brand.colors} app={await codeIdentity(settings)}>
     <Suspense>
-      <CodeApp blocked={missing(config)} admin={admin} driveApp={await driveIdentity(settings)} />
+      <CodeApp blocked={missing(config)} admin={admin} driveApp={await driveIdentity(settings)} me={session.user.username} />
     </Suspense>
   </AppShell>;
 }

@@ -932,6 +932,28 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-sidenav { display: grid; gap: 2px; }
 .cd-sidenav button { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-on-surface-variant); font: 600 15px/1 var(--k-sans); text-align: left; cursor: pointer; transition: background-color var(--k-t-state); }
 .cd-sidenav button:hover { background: var(--k-container-high); }
+/* A chat in the list: archive and delete at its end, on hover (always, on touch). */
+.cd-row { position: relative; }
+.cd-row.is-busy { opacity: .45; pointer-events: none; }
+.cd-row-acts, .cd-row-confirm { position: absolute; top: 50%; right: 6px; translate: 0 -50%; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: var(--k-r-full); background: var(--k-container-high); }
+.cd-row-acts { opacity: 0; transition: opacity var(--k-t-state); }
+.cd-row:hover .cd-row-acts, .cd-row:focus-within .cd-row-acts { opacity: 1; }
+@media (hover: none) { .cd-row-acts { opacity: 1; } }
+.cd-list .cd-row-acts button { display: grid; place-items: center; width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: var(--k-r-full); color: var(--k-on-surface-variant); }
+.cd-list .cd-row-acts button:hover { background: var(--k-container-highest); color: var(--k-on-surface); }
+.cd-list .cd-row-acts button[aria-label^="Delete"]:hover { color: var(--k-suo-deep); }
+.cd-list .cd-row-acts .i { width: 17px; height: 17px; }
+.cd-row-confirm { padding: 2px 2px 2px 12px; font: 600 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-list .cd-row-confirm button { width: auto; min-height: 30px; padding: 0 10px; display: inline-flex; align-items: center; }
+.cd-sidenav-count { margin-left: auto; font: 600 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-archived-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.cd-archived-row { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 4px 6px 4px 0; border-radius: var(--k-r-l); transition: background-color var(--k-t-state), opacity var(--k-t-state); }
+.cd-archived-row:hover { background: var(--k-container-high); }
+.cd-archived-row.is-busy { opacity: .5; pointer-events: none; }
+.cd-archived-open { display: grid; gap: 4px; flex: 1; min-width: 0; padding: 8px 14px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.cd-archived-open b { font: 600 15px/1.25 var(--k-sans); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-archived-open small { font: 500 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-archived-acts { display: flex; align-items: center; gap: 6px; flex: none; }
 .cd-sidenav button[aria-current] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
 .cd-sidenav svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 
@@ -1044,6 +1066,40 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-thinking { display: flex; align-items: center; gap: 10px; color: var(--k-ink-soft); font: 600 13px/1 var(--k-sans); }
 .cd-thinking .cd-morph { width: 20px; height: 20px; }
 .cd-note-shape { margin: 8px 0; }
+/* What it is doing: thinking takes like ink, a tool presses its seal, the magic writes in suō. */
+.cd-thinking .cd-now { position: relative; display: inline-flex; align-items: center; white-space: nowrap; animation: cd-now-in var(--k-t-seat) var(--k-ease-settle) both; }
+.cd-thinking .cd-now-time { font-variant-numeric: tabular-nums; color: var(--k-faint); font-weight: 500; }
+@keyframes cd-now-in { from { opacity: 0; translate: 0 3px; filter: blur(1.5px); } }
+.cd-now-ink { position: relative; display: grid; place-items: center; width: 20px; height: 20px; flex: none; }
+.cd-now-letter { display: inline-block; }
+.cd-thinking.is-thinking .cd-now-letter { animation: cd-ink-take 1.9s ease-in-out infinite; animation-delay: calc(var(--i) * 85ms); }
+@keyframes cd-ink-take { 0%, 100% { opacity: .34; filter: blur(.4px); } 40% { opacity: 1; filter: none; } }
+.cd-thinking.is-writing .cd-now::after { content: ""; width: 2px; height: 1.05em; margin-left: 4px; border-radius: 1px 1px 2px 2px; background: currentColor; animation: cd-brush-tip 1s ease-in-out infinite; }
+@keyframes cd-brush-tip { 50% { opacity: .15; transform: scaleY(.6); } }
+/* A tool: its app's logo, or Drive's mark, pressed in like a seal, breathing while it works. */
+.cd-now-seal { position: relative; display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 8px; background: var(--k-container-high); animation: cd-stamp 460ms var(--k-ease-settle) both, cd-seal-breathe 2.6s 460ms ease-in-out infinite; }
+.cd-now-seal .cd-applogo { width: 16px; height: 16px; }
+.cd-now-seal .cd-drivemark { width: 20px; height: 20px; }
+.cd-now-seal .i { width: 15px; height: 15px; }
+.cd-now-seal::after { content: ""; position: absolute; inset: -3px; border: 1.5px solid var(--k-ink-soft); border-radius: 11px; opacity: 0; animation: cd-seal-ring 2.6s 460ms ease-out infinite; }
+@keyframes cd-stamp { 0% { opacity: 0; transform: scale(1.5) rotate(-12deg); } 60% { opacity: 1; transform: scale(.9) rotate(2deg); } 100% { transform: none; } }
+@keyframes cd-seal-breathe { 50% { transform: scale(.93); } }
+@keyframes cd-seal-ring { 0% { opacity: .45; transform: scale(.85); } 70%, 100% { opacity: 0; transform: scale(1.25); } }
+/* The magic: suō letters rising in turn, a brush stroke drawn under them, ink sparks off the shape. */
+.cd-thinking.is-artifact { color: var(--k-suo-deep); }
+.cd-thinking.is-artifact .cd-now-letter { animation: cd-magic 1.7s var(--k-ease-settle) infinite; animation-delay: calc(var(--i) * 55ms); }
+@keyframes cd-magic { 0%, 70%, 100% { transform: none; opacity: 1; } 25% { transform: translateY(-3px) rotate(-3deg); opacity: .7; } }
+.cd-thinking.is-artifact .cd-now::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 2px; border-radius: 2px 1px 2px 1px; background: var(--k-suo); opacity: .55; transform-origin: left; animation: cd-stroke 2.2s var(--k-ease-settle) infinite; }
+@keyframes cd-stroke { 0% { transform: scaleX(0); opacity: .6; } 55% { transform: scaleX(1); opacity: .6; } 85%, 100% { transform: scaleX(1); opacity: 0; } }
+.cd-now-ink i { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--k-suo); opacity: 0; animation: cd-spark 1.8s ease-out infinite; }
+.cd-now-ink i:nth-of-type(1) { --x: 13px; --y: -12px; }
+.cd-now-ink i:nth-of-type(2) { --x: -12px; --y: -10px; animation-delay: .6s; width: 3px; height: 3px; }
+.cd-now-ink i:nth-of-type(3) { --x: 4px; --y: 14px; animation-delay: 1.2s; }
+@keyframes cd-spark { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 20% { opacity: .9; } 100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .cd-thinking .cd-now, .cd-now-letter, .cd-now-seal, .cd-now-seal::after, .cd-now-ink i, .cd-thinking .cd-now::after { animation: none !important; }
+  .cd-thinking.is-artifact .cd-now::after { transform: none; }
+}
 .cd-morph { width: 16px; height: 16px; color: var(--k-moss); flex: none; }
 .ci .cd-morph { width: 14px; height: 14px; }
 
@@ -1230,3 +1286,74 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-title-form { display: grid; gap: 4px; min-width: 0; }
 .cd-title-form h1 { overflow: visible; }
 .cd-title-input { all: unset; box-sizing: border-box; width: 100%; font: inherit; color: inherit; box-shadow: inset 0 -2px 0 var(--k-app-accent); }
+
+/* ── sharing: who a chat or an artifact is shared with, and its link ── */
+.cd-sharedby { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.cd-sharedby > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-face.portrait { flex: none; }
+.cd-list b svg.i { width: 15px; height: 15px; margin-right: 6px; vertical-align: -2px; color: var(--k-suo); }
+.cd-ws-id .cd-ws-shared { margin: 4px 0 0; font: 500 13.5px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+
+/* in a shared chat, whose message it is, just above it */
+.cd-ask-by { justify-self: end; display: inline-flex; align-items: center; gap: 8px; margin: 0 4px -10px 0; font: 600 13px/1.2 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-ask.is-theirs { background: var(--k-secondary-container); }
+.cd-ask.is-theirs p { color: var(--k-on-secondary-container); }
+.cd-access-wait { grid-column: 2; font: 500 14px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-viewonly { margin: 0; padding: 18px 24px 22px; text-align: center; font: 500 14px/1.3 var(--k-sans); color: var(--k-on-surface-variant); border-top: 1px solid var(--k-outline-variant); }
+
+.cd-share { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 0; border-radius: var(--k-r-xl); background: var(--k-container-high); color: var(--k-on-surface); box-shadow: var(--k-shadow-raised); }
+.cd-share::backdrop { background: color-mix(in srgb, var(--k-on-surface) 32%, transparent); }
+.cd-share[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; animation: cd-share-in var(--k-t-seat) var(--k-spring); }
+.cd-share[open]::backdrop { animation: cd-scrim-in var(--k-t-fold) var(--k-ease-settle); }
+@keyframes cd-share-in { from { opacity: 0; translate: 0 12px; } }
+.cd-share svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.cd-share header { padding: 24px 24px 12px; }
+.cd-share header h2 { margin: 0; font: 600 22px/30px var(--k-display); color: var(--k-on-surface); overflow-wrap: anywhere; }
+.cd-share-body { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px; padding: 4px 24px 8px; overflow: auto; }
+.cd-share footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 24px 20px; }
+.cd-share footer .cd-problem { flex: 1 1 100%; }
+.cd-share-find { display: grid; gap: 6px; }
+.cd-share-find .cd-conn-search { height: 48px; padding: 0 16px; background: var(--k-container-highest, var(--k-container-lowest)); }
+.cd-share-find input { flex: 1; min-width: 0; border: 0; background: none; font: 400 16px/1.4 var(--k-sans); color: var(--k-on-surface); outline: none; }
+.cd-share-found { display: grid; gap: 2px; padding: 6px; border-radius: var(--k-r-l); background: var(--k-container-lowest); }
+.cd-share-found button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 10px; border: 0; border-radius: var(--k-r-m, 12px); background: none; text-align: left; color: inherit; cursor: pointer; }
+.cd-share-found button:hover, .cd-share-found button:focus-visible { background: var(--k-hover); }
+.cd-share-found span, .cd-share-who { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.cd-share-found b, .cd-share-who b { font: 500 15px/1.3 var(--k-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-share-found small, .cd-share-who small { font: 400 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-share-found .cd-quiet { padding: 8px 10px; }
+.cd-share-people { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.cd-share-person { display: flex; align-items: center; gap: 12px; min-height: 56px; }
+.cd-share-can.k-choice { width: auto; flex: none; }
+.cd-share-sub { margin: 10px 0 0; font: 600 14px/1.3 var(--k-sans); color: var(--k-on-surface); }
+.cd-share-general { display: flex; align-items: center; gap: 12px; min-height: 56px; }
+.cd-share-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--k-container-lowest); color: var(--k-on-surface-variant); }
+.cd-share-mark.is-open { background: var(--k-primary-container); color: var(--k-on-primary-container); }
+.cd-share-link.k-choice { flex: 1; min-width: 0; max-width: none; }
+.cd-share-link .k-choice-button { padding-block: 8px; }
+.cd-share-link .k-choice-value { white-space: normal; line-height: 1.35; }
+.cd-share-note { margin: 0; font: 400 13px/1.45 var(--k-sans); color: var(--k-on-surface-variant); }
+@media (prefers-reduced-motion: reduce) { .cd-share[open] { animation: none; } }
+
+/* ── a share link's page: no rail, the app's name in a slim bar ── */
+.ai-share { display: block; }
+.ai-share-bar { display: flex; align-items: center; gap: 12px; max-width: 1180px; margin: 0 auto; padding: 20px 24px 4px; }
+.ai-share-bar .k-app-lockup { gap: 10px; }
+.ai-share-acts { margin-left: auto; }
+.ai-share-main { min-width: 0; }
+.cd.cd-guest { grid-template-columns: minmax(0, 1fr); max-width: 1180px; margin: 0 auto; padding-top: 12px; }
+.cd-guest .cd-ws { height: calc(100dvh - 120px); }
+.cd-link-note { max-width: 560px; margin: 10vh auto 0; justify-items: center; text-align: center; border-radius: var(--k-r-xl); }
+.cd-link-note p { font: 500 18px/1.4 var(--k-sans); }
+.cd-artifact-alone .cd-artifact.is-full { height: calc(100dvh - 104px); grid-template-rows: auto minmax(0, 1fr) auto; box-shadow: none; }
+@media (max-width: 720px) {
+  .ai-share-bar { padding: 14px 16px 0; }
+  .cd.cd-guest { padding: 8px 0 0; }
+  .cd-guest .cd-ws { height: calc(100dvh - 72px); }
+  .cd-artifact-alone .cd-artifact.is-full { height: calc(100dvh - 64px); }
+}
+.cd-share-url { flex: 1 1 100%; min-width: 0; height: 40px; padding: 0 14px; border: 0; border-radius: var(--k-r-m, 12px); background: var(--k-container-lowest); font: 400 13px/1 var(--k-mono); color: var(--k-on-surface); outline: none; }
+.cd-share-url:focus { box-shadow: 0 0 0 2px var(--k-app-accent); }
+/* the row says what a switch is for; its own label stays for screen readers only */
+.cd-share .k-joint-field { flex: none; }
+.cd-share .k-joint-field > .k-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

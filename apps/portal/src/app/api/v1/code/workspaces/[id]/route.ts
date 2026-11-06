@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { code, codeOpen, db, shareOf, workspaceAs, forgetAttachments, removeWorkspace, renameWorkspace, setWorkspaceProject, taskFolder, workspaceFor } from "@/lib/code";
+import { archiveWorkspace, code, codeOpen, db, shareOf, workspaceAs, forgetAttachments, removeWorkspace, renameWorkspace, setWorkspaceProject, taskFolder, workspaceFor } from "@/lib/code";
 import { rehome, retitle } from "@/lib/code/drive";
 import { sandbox } from "@/lib/code/node";
 
@@ -19,7 +19,7 @@ export async function GET(request: Request, { params }: Context) {
   });
 }
 
-/** Renames it (`{ title }`), or puts it in a project (`{ folder: id | null }`), its Drive folder following. */
+/** Archives it or brings it back (`{ archived }`), renames it (`{ title }`), or puts it in a project (`{ folder: id | null }`), its Drive folder following. */
 export async function PATCH(request: Request, { params }: Context) {
   const refused = crossSite(request);
   if (refused) return refused;
@@ -29,7 +29,11 @@ export async function PATCH(request: Request, { params }: Context) {
   if ("response" in read) return read.response;
   const { id } = await params;
   return code(user, async () => {
-    const body = read.body as { title?: unknown; folder?: unknown };
+    const body = read.body as { title?: unknown; folder?: unknown; archived?: unknown };
+    if (typeof body.archived === "boolean") {
+      const archived = archiveWorkspace(db(), id, user.username, body.archived);
+      if (body.title === undefined && !("folder" in body)) return apiJson(archived);
+    }
     if ("folder" in body) {
       const moved = setWorkspaceProject(db(), id, user.username, typeof body.folder === "string" && body.folder ? body.folder : null);
       await rehome(db(), moved).catch((error) => console.warn("Kimono AI couldn't move a chat's folder:", error instanceof Error ? error.message : error));

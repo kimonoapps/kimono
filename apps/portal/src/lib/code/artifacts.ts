@@ -101,44 +101,120 @@ export function artifactsOf(db: DatabaseSync, workspaceId: string): Omit<Artifac
  * is writing, and an artifact while its Write call is still arriving. Nothing
  * here is stored; it goes to whoever is watching, a few times a second.
  */
+export type Phase = "working" | "thinking" | "writing" | "tools" | "artifact";
+export type ToolHint = { tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string };
 export type Draft =
   | { kind: "draft"; text: string }
-  | { kind: "artifact-draft"; id: string; name: string; content: string };
+  | { kind: "artifact-draft"; id: string; name: string; content: string }
+  | ({ kind: "phase"; phase: Phase } & ToolHint);
 
+type Block = { type: "text" | "tool"; id?: string; name?: string; json: string; text: string; sent: number; artifact?: string | null };
+
+/*
+ * Also what it is doing, from the blocks it starts: thinking, writing, a tool
+ * (with the app or Drive space once its input is in), or an artifact. Only a
+ * change is sent, at most every [settle] ms, the last one winning.
+ */
 export class Drafts {
-  private blocks = new Map<number, { type: "text" | "tool"; id?: string; name?: string; json: string; text: string; sent: number; artifact?: string | null }>();
+  private blocks = new Map<number, Block>();
   private send: (draft: Draft) => void;
   private every: number;
-  constructor(send: (draft: Draft) => void, every = 120) { this.send = send; this.every = every; }
+  private describe?: (name: string, input: Record<string, unknown>) => ToolHint;
+  private phaseSent = { key: "", at: 0 };
+  private phaseNext: Extract<Draft, { kind: "phase" }> | null = null;
+  private phaseTimer: ReturnType<typeof setTimeout> | null = null;
+  private settle = 300;
+  constructor(send: (draft: Draft) => void, options: { every?: number; describe?: (name: string, input: Record<string, unknown>) => ToolHint } = {}) {
+    this.send = send; this.every = options.every ?? 120; this.describe = options.describe;
+  }
 
   take(line: Record<string, unknown>) {
     const event = line.event as Record<string, unknown> | undefined;
     if (line.type !== "stream_event" || !event) return;
     const index = typeof event.index === "number" ? event.index : -1;
     switch (event.type) {
-      case "message_start": this.blocks.clear(); return;
+      /* A new message: whatever tool it called has finished. */
+      case "message_start": this.blocks.clear(); this.phase({ kind: "phase", phase: "working" }); return;
       case "content_block_start": {
         const block = event.content_block as Record<string, unknown> | undefined;
-        if (block?.type === "text") this.blocks.set(index, { type: "text", json: "", text: "", sent: 0 });
-        else if (block?.type === "tool_use" && (block.name === "Write")) this.blocks.set(index, { type: "tool", id: String(block.id ?? ""), name: String(block.name), json: "", text: "", sent: 0 });
+        if (block?.type === "thinking" || block?.type === "redacted_thinking") this.phase({ kind: "phase", phase: "thinking" });
+        else if (block?.type === "text") { this.blocks.set(index, { type: "text", json: "", text: "", sent: 0 }); this.phase({ kind: "phase", phase: "writing" }); }
+        else if (block?.type === "tool_use") {
+          const name = String(block.name ?? "");
+          this.blocks.set(index, { type: "tool", id: String(block.id ?? ""), name, json: "", text: "", sent: 0 });
+          this.phase({ kind: "phase", phase: "tools", ...this.hint(name, {}) });
+        }
         return;
       }
       case "content_block_delta": {
         const block = this.blocks.get(index), delta = event.delta as Record<string, unknown> | undefined;
         if (!block || !delta) return;
         if (block.type === "text" && delta.type === "text_delta" && typeof delta.text === "string") { block.text += delta.text; this.flush(block, false); }
-        if (block.type === "tool" && delta.type === "input_json_delta" && typeof delta.partial_json === "string") { block.json += delta.partial_json; this.flush(block, false); }
+        if (block.type === "tool" && delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
+          block.json += delta.partial_json;
+          if (block.name === "Write") this.flush(block, false);
+          /* A command that writes into artifacts/ (a heredoc, say) is making one too. */
+          else if (block.name === "Bash" && block.artifact === undefined && block.json.length < 4000 && /artifacts\/[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.html/.test(partialString(block.json, "command") ?? "") && /(?:>|\btee\b|\bcp\b|\bmv\b)[^\n]{0,80}artifacts\//.test(partialString(block.json, "command") ?? "")) {
+            block.artifact = "command";
+            this.phase({ kind: "phase", phase: "artifact" });
+          }
+          /* Changing an artifact is making one too, once its path is in. */
+          else if ((block.name === "Edit" || block.name === "MultiEdit") && block.artifact === undefined) {
+            const path = partialString(block.json, "file_path");
+            if (path !== undefined && /"file_path"\s*:\s*"(?:[^"\\]|\\.)*"/.test(block.json)) {
+              block.artifact = artifactName(path);
+              if (block.artifact) this.phase({ kind: "phase", phase: "artifact" });
+            }
+          }
+        }
         return;
       }
       case "content_block_stop": {
         const block = this.blocks.get(index);
-        if (block) { this.flush(block, true); this.blocks.delete(index); }
+        if (!block) return;
+        if (block.name === "Write") this.flush(block, true);
+        /* Its input is in: say which app or space it is using, unless it is an artifact. */
+        if (block.type === "tool" && !block.artifact) {
+          let input: Record<string, unknown> = {};
+          try { input = JSON.parse(block.json || "{}"); } catch { /* cut short */ }
+          this.phase({ kind: "phase", phase: "tools", ...this.hint(block.name ?? "", input) });
+        }
+        if (block.type === "text") this.flush(block, true);
+        this.blocks.delete(index);
         return;
       }
     }
   }
 
-  private flush(block: { type: "text" | "tool"; id?: string; json: string; text: string; sent: number; artifact?: string | null }, last: boolean) {
+  /** Sends nothing more, for a turn that ended. */
+  close() {
+    if (this.phaseTimer) clearTimeout(this.phaseTimer);
+    this.phaseTimer = null; this.phaseNext = null;
+  }
+
+  private hint(name: string, input: Record<string, unknown>): ToolHint {
+    try { return this.describe?.(name, input) ?? {}; } catch { return {}; }
+  }
+
+  private phase(next: Extract<Draft, { kind: "phase" }>) {
+    this.phaseNext = next;
+    if (this.phaseTimer) return;
+    const wait = this.settle - (Date.now() - this.phaseSent.at);
+    if (wait <= 0) this.sendPhase();
+    else this.phaseTimer = setTimeout(() => { this.phaseTimer = null; this.sendPhase(); }, wait);
+  }
+
+  private sendPhase() {
+    const next = this.phaseNext;
+    this.phaseNext = null;
+    if (!next) return;
+    const key = JSON.stringify(next);
+    if (key === this.phaseSent.key) return;
+    this.phaseSent = { key, at: Date.now() };
+    this.send(next);
+  }
+
+  private flush(block: Block, last: boolean) {
     const now = Date.now();
     if (!last && now - block.sent < this.every) return;
     block.sent = now;
@@ -146,8 +222,10 @@ export class Drafts {
     if (block.artifact === undefined || block.artifact === null) {
       const path = partialString(block.json, "file_path");
       /* the path is complete once its closing quote is in */
-      if (path !== undefined && new RegExp(`"file_path"\\s*:\\s*"(?:[^"\\\\]|\\\\.)*"`).test(block.json)) block.artifact = artifactName(path);
-      else return;
+      if (path !== undefined && new RegExp(`"file_path"\\s*:\\s*"(?:[^"\\\\]|\\\\.)*"`).test(block.json)) {
+        block.artifact = artifactName(path);
+        if (block.artifact) this.phase({ kind: "phase", phase: "artifact" });
+      } else return;
     }
     if (!block.artifact) return;
     const content = partialString(block.json, "content");

@@ -105,6 +105,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import app.kimono.ui.InkLoader
 import app.kimono.ui.InkBlot
+import app.kimono.ui.LocalInkTint
 
 /**
  * Drive's state that outlives a screen: uploads keep going while you move
@@ -437,6 +438,14 @@ private fun NodeIcon(node: DriveNode, thumbnail: suspend (Int) -> String?, size:
     }
     /* A file with a type mark (TypeScript, Android, Excel…) sits on paper, like the website's rows. */
     val marked = !node.isFolder && picture == null && !busy && remember(node.name) { fileMarkUri(node.name) != null }
+    /* Anything without a picture of its own sits in a watercolour blot: folders in the app's ink, files in suō, a file's type mark on top. */
+    if (!busy && picture == null) {
+        InkBlot(node.id, size = size, tint = if (node.isFolder) LocalInkTint.current ?: app.kimono.theme.Kata.plum else app.kimono.theme.Kata.suo) {
+            val plain = @Composable { Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(size / 2), tint = app.kimono.theme.Kata.ink) }
+            if (marked) FileTypeMark(node.name, Modifier.size(size * .5f), fallback = plain) else plain()
+        }
+        return
+    }
     val shape = RoundedCornerShape(if (node.isFolder || marked) size * .3f else size / 2)
     Box(
         Modifier.size(size)
@@ -516,7 +525,7 @@ private fun ItemSheet(node: DriveNode, thumbnail: suspend (Int) -> String?, choi
                         onClick = { onDismiss(); choice.onClick() },
                         shapes = ListItemDefaults.segmentedShapes(index, choices.size),
                         colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                        leadingContent = { Icon(kimonoIcon(choice.icon), null, tint = tint) },
+                        leadingContent = { InkBlot("choice-${choice.label}", size = 36.dp, tint = if (choice.danger) MaterialTheme.colorScheme.error else LocalInkTint.current ?: app.kimono.theme.Kata.plum) { Icon(kimonoIcon(choice.icon), null, tint = tint, modifier = Modifier.size(18.dp)) } },
                     ) { Text(choice.label, style = MaterialTheme.typography.bodyLarge, color = tint) }
                 }
             }
@@ -640,7 +649,7 @@ private fun AddSheet(onDismiss: () -> Unit, onUpload: () -> Unit, onFolder: () -
                     onClick = action,
                     shapes = ListItemDefaults.segmentedShapes(index, 2),
                     colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                    leadingContent = { Icon(kimonoIcon(icon), null) },
+                    leadingContent = { InkBlot("add-$icon", size = 36.dp) { Icon(kimonoIcon(icon), null, modifier = Modifier.size(18.dp), tint = app.kimono.theme.Kata.ink) } },
                 ) { Text(label, style = MaterialTheme.typography.bodyLarge) }
             }
         }
@@ -649,7 +658,7 @@ private fun AddSheet(onDismiss: () -> Unit, onUpload: () -> Unit, onFolder: () -
 
 /** Asks for a name, and keeps the dialog open with the reason if it's refused. */
 @Composable
-private fun NameDialog(title: String, action: String, initial: String, onDismiss: () -> Unit, onConfirm: suspend (String) -> Unit) {
+internal fun NameDialog(title: String, action: String, initial: String, onDismiss: () -> Unit, onConfirm: suspend (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(initial) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -698,7 +707,7 @@ fun TrashScreen(model: DriveModel, back: () -> Unit) {
                             onClick = {},
                             shapes = ListItemDefaults.segmentedShapes(index, list.size),
                             colors = segmentColors(),
-                            leadingContent = { Icon(kimonoIcon(iconFor(node)), null) },
+                            leadingContent = { InkBlot(node.id, size = 40.dp, tint = app.kimono.theme.Kata.suo) { Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(20.dp), tint = app.kimono.theme.Kata.ink) } },
                             supportingContent = { Text(detailOf(node)) },
                             trailingContent = {
                                 TextButton(onClick = {

@@ -1,6 +1,8 @@
 package app.kimono.data
 
 import io.ktor.client.HttpClient
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.forms.submitForm
@@ -227,6 +229,9 @@ class Session(private val platform: Platform, private val http: HttpClient) {
     private suspend fun failureOf(response: HttpResponse, fallback: String): String =
         runCatching { json.decodeFromString<ApiFailure>(response.bodyAsText()).error }.getOrNull()?.takeIf { it.isNotBlank() } ?: fallback
 
+    /* A stream that stays open for minutes, its heartbeat every 15 s: no overall limit, only a quiet one. */
+    private val streaming by lazy { http.config { install(HttpTimeout) { requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS; socketTimeoutMillis = 45_000 } } }
+
     /** The Kimono this app is signed in to, as https://… with no trailing slash. */
     val server: String? get() = kept?.server
 
@@ -235,10 +240,10 @@ class Session(private val platform: Platform, private val http: HttpClient) {
      * its status (other than a sign-in that has ended, which signs out). [path]
      * starts with a slash; [handle] reads the answer while it streams.
      */
-    suspend fun <T> respond(path: String, method: HttpMethod = HttpMethod.Get, configure: HttpRequestBuilder.() -> Unit = {}, handle: suspend (HttpResponse) -> T): T {
+    suspend fun <T> respond(path: String, method: HttpMethod = HttpMethod.Get, configure: HttpRequestBuilder.() -> Unit = {}, long: Boolean = false, handle: suspend (HttpResponse) -> T): T {
         val base = kept?.server ?: throw KimonoProblem("Sign in to Kimono first.")
         val offline = OFFLINE
-        suspend fun attempt(bearer: String): T? = http.prepareRequest("$base$path") {
+        suspend fun attempt(bearer: String): T? = (if (long) streaming else http).prepareRequest("$base$path") {
             this.method = method
             header(HttpHeaders.Accept, "application/json")
             header(HttpHeaders.Authorization, "Bearer $bearer")

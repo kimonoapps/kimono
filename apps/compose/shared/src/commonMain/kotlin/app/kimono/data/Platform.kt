@@ -54,6 +54,22 @@ interface Platform {
     fun driveAvailable(on: Boolean) {}
     /** A small picture of a photo, video or PDF, at least [pixels] across, as a local file; null if there can't be one. */
     suspend fun thumbnail(node: DriveNode, pixels: Int): String? = null
+    /**
+     * A web page drawn by the phone's own web view: an artifact's frame, or the app a chat runs.
+     * Links leave for the browser unless [keepLinks]. A page can talk back through
+     * `window.KimonoNative.post(text)` (Android) or `webkit.messageHandlers.kimono` (iPhone), which
+     * arrives at [onMessage]; [control] runs script in it. [onLoaded] follows each finished load.
+     */
+    @androidx.compose.runtime.Composable
+    fun WebFrame(url: String, modifier: androidx.compose.ui.Modifier, control: WebFrameControl?, keepLinks: Boolean, onMessage: (String) -> Unit, onLoaded: () -> Unit) {}
+}
+
+/** Runs script in a [Platform.WebFrame] once it's on screen. */
+class WebFrameControl {
+    var run: ((String) -> Unit)? = null
+    /** Whether the page scrolls inside its frame; set before it's shown. Off, the screen around it scrolls instead. */
+    var scrolls: Boolean = true
+    fun evaluate(script: String) { run?.invoke(script) }
 }
 
 /** An upload as the screens show it, wherever it runs. */

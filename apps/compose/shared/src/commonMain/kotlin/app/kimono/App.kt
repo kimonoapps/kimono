@@ -118,6 +118,9 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
     }
 }
 
+/** The screens someone was on, kept between launches. */
+private const val WHERE = "kimono.where"
+
 @Composable
 private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, update: AppUpdate?, onLater: () -> Unit) {
     val nav = rememberNavController()
@@ -126,23 +129,40 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val roomApp = appOfRoom(route)
     val tab = roomApp != null
     val model = remember(session) { DriveModel(Drive(session), platform) }
-    val code = remember(session) { app.kimono.data.Code(session) }
+    val code = remember(session) { app.kimono.data.Code(session, platform) }
+    code.appLink = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID } ?: code.appLink
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
     val order = remember(session) { app.kimono.screens.AppOrder(platform, session.answers.server) }
     LaunchedEffect(order) { order.load() }
+    /*
+     * Where you were: every screen on the way there is kept as you move, and the app
+     * opens on them again, so Back still leads where it did. A notification's screen wins.
+     */
+    LaunchedEffect(nav) {
+        /* What was kept inside Kimono AI comes first, so the screens it reopens find it. */
+        code.loadChoices()
+        val kept = platform.readKept(WHERE)?.split('\n')?.filter { it.isNotBlank() && it != "home" }.orEmpty()
+        if (Opening.route.value == null) for (to in kept) if (runCatching { nav.navigate(to) }.isFailure) break
+        nav.currentBackStack.collect { stack ->
+            val routes = stack.mapNotNull { e ->
+                val pattern = e.destination.route ?: return@mapNotNull null
+                Regex("\\{([^}]+)\\}").replace(pattern) { m -> e.arguments?.read { getStringOrNull(m.groupValues[1]) } ?: "" }
+            }
+            platform.keep(WHERE, routes.joinToString("\n"))
+        }
+    }
     /* Opened from a notification: go where it said. */
     LaunchedEffect(nav) { Opening.route.collect { to -> if (to != null) { nav.navigate(to); Opening.route.value = null } } }
     val admin = me?.role == "owner" || me?.role == "admin"
-    /* The bar's own actions: Code's New task, and the Apps grid that the bloom in the middle brings up. */
-    var codeStarting by remember { mutableStateOf(false) }
+    /* The bar's own action: the Apps grid that the bloom in the middle brings up. */
     var appsOpen by remember { mutableStateOf(false) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
     /* Kimono's own apps open their screens here when the phone has them; anything else, its phone app or its website. */
     fun openApp(target: app.kimono.data.LauncherApp) {
         when {
             target.id == "kimono-drive" -> goTab("drive")
-            target.id == app.kimono.data.Code.APP_ID && admin -> goTab("code")
+            target.id == app.kimono.data.Code.APP_ID -> goTab("code")
             target.id == "kimono-vpn" -> goTab("vpn")
             /* An app with a phone app of its own: open it when it's here, and when it isn't, its page here to get it. Never its website. */
             target.phoneApp != null -> {
@@ -157,12 +177,12 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
-            if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = { codeStarting = true }, openApps = { appsOpen = true })
+            if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = {}, openApps = { appsOpen = true })
         },
     ) { padding ->
         if (appsOpen) app.kimono.screens.AppsSheet(model.drive, order, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }, home = { appsOpen = false; goTab("home") }) { appsOpen = false; openApp(it) }
@@ -190,7 +210,46 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             /* Code's screens wear Code's colour, as its pages do on the website. */
             composable("code") {
                 val codeApp = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }
-                AppAccentTheme(codeApp?.accent) { CodeScreen(code, codeApp, starting = codeStarting, setStarting = { codeStarting = it }, back = { nav.popBackStack() }) { nav.navigate(it) } }
+                AppAccentTheme(codeApp?.accent) { CodeScreen(code, codeApp, admin, back = { nav.popBackStack() }) { nav.navigate(it) } }
+            }
+            /* A new chat: from the bar, or in one of the person's projects. */
+            listOf("ai/new", "ai/new/{in}").forEach { room ->
+                composable(room) { backStack ->
+                    val folder = backStack.arguments?.read { getStringOrNull("in") }
+                    AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                        app.kimono.screens.NewChatScreen(code, model.drive, platform, admin, folder, back = { nav.popBackStack() }, open = { nav.navigate(it) }) { made ->
+                            nav.navigate("code/${made.id}") { popUpTo(room) { inclusive = true } }
+                        }
+                    }
+                }
+            }
+            composable("ai/connections") {
+                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                    app.kimono.screens.ConnectionsScreen(code, platform, back = { nav.popBackStack() }) { nav.navigate(it) }
+                }
+            }
+            composable("ai/connections/{app}") { backStack ->
+                val slug = backStack.arguments?.read { getStringOrNull("app") } ?: ""
+                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                    app.kimono.screens.AppConnectionScreen(code, platform, slug) { nav.popBackStack() }
+                }
+            }
+            composable("ai/archived") {
+                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                    app.kimono.screens.ArchivedScreen(code, back = { nav.popBackStack() }) { nav.navigate(it) }
+                }
+            }
+            composable("ai/memory") {
+                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                    app.kimono.screens.MemoryScreen(code) { nav.popBackStack() }
+                }
+            }
+            /* An artifact someone shared, by its link. */
+            composable("ai/a/{token}") { backStack ->
+                val token = backStack.arguments?.read { getStringOrNull("token") } ?: ""
+                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
+                    app.kimono.screens.SharedArtifactScreen(code, platform, token) { nav.popBackStack() }
+                }
             }
             composable("code/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""

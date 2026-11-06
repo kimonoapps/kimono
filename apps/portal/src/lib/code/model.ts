@@ -36,6 +36,8 @@ export type Workspace = {
   /** Where the task's files are in Drive: the Code space, and the task's own folder there. */
   drive: { spaceId: string; folderId: string } | null;
   createdAt: number; updatedAt: number;
+  /** When its owner archived it: it shows under Archived, not in the list. */
+  archivedAt: number | null;
   /* the last turn, which is what the list shows */
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
   lastSeq: number;
@@ -258,6 +260,10 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  /* When its owner archived a chat: out of the list, in Archived. Added by its column, not a version, so it sits beside any. */
+  if (!(db.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "archived_at")) {
+    db.exec("ALTER TABLE workspaces ADD COLUMN archived_at INTEGER");
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
@@ -308,7 +314,7 @@ export function usageOf(db: DatabaseSync, username: string, now = Date.now()): P
 
 type WorkspaceRow = {
   id: string; owner: string; title: string; repo_owner: string; repo_name: string; base: string; branch: string;
-  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; preview_kind: string | null; preview_stopped: number; drive_folder: string | null; drive_space: string | null; project_id: string | null; project_name: string | null; created_at: number; updated_at: number; last_seq: number;
+  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; preview_kind: string | null; preview_stopped: number; drive_folder: string | null; drive_space: string | null; project_id: string | null; project_name: string | null; archived_at: number | null; created_at: number; updated_at: number; last_seq: number;
   turn_id: string | null; turn_state: TurnState | null; turn_started: number | null; turn_ended: number | null;
 };
 
@@ -328,7 +334,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
     preview: row.preview_url && row.preview_port ? { url: row.preview_url, port: row.preview_port, kind: row.preview_kind ?? null, stopped: row.preview_stopped === 1 } : null,
     previewName: row.preview_name ?? null,
     drive: row.drive_space && row.drive_folder ? { spaceId: row.drive_space, folderId: row.drive_folder } : null,
-    createdAt: row.created_at, updatedAt: row.updated_at, lastSeq: row.last_seq,
+    createdAt: row.created_at, updatedAt: row.updated_at, lastSeq: row.last_seq, archivedAt: row.archived_at ?? null,
     turn: row.turn_id ? { id: row.turn_id, state: row.turn_state!, startedAt: row.turn_started!, endedAt: row.turn_ended } : null,
   };
 }
@@ -453,6 +459,13 @@ export function nameWorkspace(db: DatabaseSync, id: string, title: string | null
   return db.prepare("UPDATE workspaces SET title = ?, named = 1 WHERE id = ? AND named = 0").run(title, id).changes > 0;
 }
 
+/** Archives a chat, or brings it back. */
+export function archiveWorkspace(db: DatabaseSync, id: string, owner: string, archived: boolean, now = Date.now()) {
+  workspaceFor(db, id, owner);
+  db.prepare("UPDATE workspaces SET archived_at = ? WHERE id = ?").run(archived ? now : null, id);
+  return workspaceFor(db, id, owner);
+}
+
 export function removeWorkspace(db: DatabaseSync, id: string, owner: string) {
   workspaceFor(db, id, owner);
   db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
@@ -490,7 +503,8 @@ export function startTurn(db: DatabaseSync, workspaceId: string, now = Date.now(
   if (running) throw new CodeProblem("It's still working on the last message.", 409);
   const id = newId();
   db.prepare("INSERT INTO turns (id, workspace_id, state, started_at) VALUES (?, ?, 'running', ?)").run(id, workspaceId, now);
-  db.prepare("UPDATE workspaces SET updated_at = ? WHERE id = ?").run(now, workspaceId);
+  /* Something new said in an archived chat brings it back to the list. */
+  db.prepare("UPDATE workspaces SET updated_at = ?, archived_at = NULL WHERE id = ?").run(now, workspaceId);
   return id;
 }
 

@@ -39,12 +39,13 @@ export function wantsAnimation(prompt: string) { return animating.test(prompt); 
 export const lightEfforts = ["low", "medium"] as const;
 
 /**
- * How hard it thinks: what the person picked, except that Sonnet and Haiku stop
- * at medium, and an animation Kimono sent to Opus by itself thinks lightly.
+ * How hard it thinks: on Auto, Kimono picks it with the model (an animation
+ * thinks lightly on Opus, building thinks hard, Sonnet at medium). Otherwise
+ * what the person picked, except that Sonnet and Haiku stop at medium.
  */
-export function effortFor<E extends string>(model: Model, input: { choice: unknown; prompt: string; effort?: E }): E | "low" | "medium" | undefined {
+export function effortFor<E extends string>(model: Model, input: { choice: unknown; prompt: string; effort?: E }): E | "low" | "medium" | "high" | undefined {
   const auto = !(input.choice === "opus" || input.choice === "sonnet" || input.choice === "haiku");
-  if (model === "opus" && auto && wantsAnimation(input.prompt)) return "low";
+  if (auto) return model === "opus" ? (wantsAnimation(input.prompt) ? "low" : "high") : model === "sonnet" ? "medium" : undefined;
   if (model !== "opus" && input.effort && !(lightEfforts as readonly string[]).includes(input.effort)) return "medium";
   return input.effort;
 }

@@ -8,7 +8,7 @@ import { apiError, type ApiUser } from "../api-v1";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
-import { finish, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
+import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
 import { applyEdits, artifactOf, Drafts, saveArtifact } from "./artifacts";
 import {
@@ -227,6 +227,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   let done: { exit?: number; cancelled?: boolean } | null = null;
   let failure: string | undefined;
   let context: number | undefined;
+  let drafts: Drafts | null = null;
   try {
     await ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
@@ -247,7 +248,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
-    const drafts = new Drafts((draft) => broadcast(workspace.id, turn, draft));
+    drafts = new Drafts((draft) => broadcast(workspace.id, turn, draft), { describe: toolHint });
     const pendingArtifacts = new Map<string, ArtifactCall>();
     for (;;) {
       const { done: ended, value } = await reader.read();
@@ -258,7 +259,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (!raw.trim()) continue;
         let line: Record<string, unknown>;
         try { line = JSON.parse(raw); } catch { continue; }
-        if (line.type === "stream_event") { drafts.take(line); continue; }
+        if (line.type === "stream_event") { drafts!.take(line); continue; }
         if (line.type === "kimono.image" && typeof line.name === "string") {
           await keepShot(config, workspace, turn, line.name, typeof line.caption === "string" ? line.caption : undefined);
           continue;
@@ -340,6 +341,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     if (controller.signal.aborted) done = { cancelled: true };
     else failure = error instanceof CodeProblem ? error.message : "The sandbox stopped answering.";
   } finally {
+    drafts?.close();
     live.turns.delete(turn);
     const outcome = { ...finish(result, done, failure, context), model };
     record(workspace.id, turn, outcome);

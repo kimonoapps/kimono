@@ -3,6 +3,7 @@ package app.kimono.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -40,12 +41,16 @@ fun Portrait(picture: String?, name: String?, username: String?, size: Dp, modif
         return
     }
     val clip = shape ?: CircleShape
-    val framed = modifier.size(size).clip(clip)
-    if (picture != null) {
-        AsyncImage(model = picture, contentDescription = name ?: username, contentScale = ContentScale.Crop, modifier = framed.background(MaterialTheme.colorScheme.surfaceContainerHigh))
-    } else {
-        Box(framed.background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-            Text(initialOf(name, username), color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.displaySmall.copy(fontSize = (size.value * .44f).sp, lineHeight = (size.value * .5f).sp))
+    /* A round face wears a brushed ink outline, as the large ones wear their frame. */
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        val framed = Modifier.fillMaxSize().clip(clip)
+        if (picture != null) {
+            AsyncImage(model = picture, contentDescription = name ?: username, contentScale = ContentScale.Crop, modifier = framed.background(MaterialTheme.colorScheme.surfaceContainerHigh))
+        } else {
+            Box(framed.background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                Text(initialOf(name, username), color = MaterialTheme.colorScheme.onPrimaryContainer, style = MaterialTheme.typography.displaySmall.copy(fontSize = (size.value * .44f).sp, lineHeight = (size.value * .5f).sp))
+            }
         }
+        if (shape == null) InkOutline(username ?: name ?: "face", Modifier.matchParentSize())
     }
 }

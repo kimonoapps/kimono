@@ -110,6 +110,9 @@ private class IosPlatform(private val host: IosHost) : Platform {
         suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }
             .map { IosFile(it.path, it.name, it.size, it.mimeType, host) }
     override val uploads: Uploads = IosUploads(host)
+    @androidx.compose.runtime.Composable
+    override fun WebFrame(url: String, modifier: androidx.compose.ui.Modifier, control: app.kimono.data.WebFrameControl?, keepLinks: Boolean, onMessage: (String) -> Unit, onLoaded: () -> Unit) =
+        IosWebFrame(url, modifier, control, keepLinks, ::openUrl, onMessage, onLoaded)
     override suspend fun thumbnail(node: DriveNode, pixels: Int): String? = suspendCancellableCoroutine { waiting ->
         host.thumbnail(node.id, node.contentVersion.toLong(), node.name, node.mime, node.size, pixels.toLong()) { waiting.resume(it) }
     }

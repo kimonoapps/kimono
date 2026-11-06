@@ -42,7 +42,7 @@ import app.kimono.ui.kimonoIcon
 /** A screen to open from outside the app (an update notification, say), taken up once signed in. */
 object Opening { val route = kotlinx.coroutines.flow.MutableStateFlow<String?>(null) }
 
-/** One place in the bar: a room to go to, or (for Code's New task) something to do. */
+/** One place in the bar: a room to go to, or something to do. */
 class Room(val route: String, val label: String, val icon: String, val action: Boolean = false)
 
 class RoomApp(val id: String, val name: String, val accent: String?, val glyph: String?, val before: List<Room>, val after: List<Room> = emptyList()) {
@@ -52,14 +52,14 @@ class RoomApp(val id: String, val name: String, val accent: String?, val glyph: 
 /* Kimono's own pages: Home (what's happening), the flower (every app), You. */
 private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home")))
 private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder")), listOf(Room("trash", "Trash", "trash")))
-private val code = RoomApp("kimono-code", "Code", "#2c7783", "code", listOf(Room("code", "Tasks", "select")), listOf(Room("code:new", "New task", "plus", action = true)))
+private val code = RoomApp("kimono-code", "Kimono AI", "#2c7783", "code", listOf(Room("code", "Chats", "chat")), listOf(Room("ai/new", "New chat", "plus")))
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
 
 /** Which app's bar a screen shows, or null for a screen opened from a room (it has its own back). */
 fun appOfRoom(route: String?): RoomApp? = when (route) {
     "home", "you" -> kimono
     "drive", "trash" -> drive
-    "code" -> code
+    "code", "ai/new" -> code
     "vpn", "vpn/people", "vpn/connect" -> vpn
     else -> null
 }
@@ -85,7 +85,7 @@ fun RoomBar(app: RoomApp, route: String?, launcherApp: LauncherApp?, me: Account
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (accent == null) KimonoBranch(36.dp) else InkBloom(launcherApp?.id ?: app.id, accent, launcherApp?.glyph ?: app.glyph, 42.dp)
-                    Text(launcherApp?.name ?: app.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+                    Text(if (app.id == "kimono-code") app.name else launcherApp?.name ?: app.name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
                 }
                 Row(Modifier.weight(1f)) {
                     app.after.forEach { place(it) }

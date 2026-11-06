@@ -4,7 +4,11 @@
  */
 
 export type TurnState = "running" | "done" | "failed" | "cancelled";
+/** What someone may do in a chat: it's theirs, or it was shared with them to write in or to read. */
+export type Access = "owner" | "edit" | "read";
 export type Workspace = {
+  /** Whose chat it is (a username), and what the person looking at it may do there. */
+  owner?: string; access?: Access;
   /** A chat has no project; a project works on a Kimono Git repository. */
   kind: "chat" | "project";
   /** The project (a folder of chats) it's in, if any. */
@@ -15,6 +19,8 @@ export type Workspace = {
   previewName?: string | null;
   drive: { spaceId: string; folderId: string } | null;
   createdAt: number; updatedAt: number; lastSeq: number;
+  /** When its owner archived it, if they did. */
+  archivedAt?: number | null;
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
 };
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };
@@ -42,6 +48,7 @@ export type CodeEvent =
   | { kind: "renamed"; title: string }
   | { kind: "sent"; files: Attachment[] }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
+  | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };
 export type Profile = { instructions: string; memories: { id: string; text: string; source: "person" | "ai"; createdAt: number }[] };
@@ -63,6 +70,8 @@ export type SandboxStatus = {
 /** How a published app is doing, as the sandbox's supervisor reports it. */
 export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };
 export type ArtifactPage = { name: string; title: string; content: string; version: number; updatedAt: number };
+/** What it is doing right now: passing only, for the status at the end of the chat. */
+export type Phase = "working" | "thinking" | "writing" | "tools" | "artifact";
 export type StoredEvent = { seq: number; turn: string | null; at: number; event: CodeEvent };
 export type Entry = { name: string; kind: "file" | "dir" | "link"; size: number };
 export type Changes = {
@@ -70,11 +79,35 @@ export type Changes = {
   files: { path: string; status: "added" | "modified" | "deleted" | "renamed"; additions: number; deletions: number }[];
 };
 
+/** Who a chat is shared with, and its link (lib/code/sharing.ts). */
+/** publicLinks: whether this Kimono lets a link open for someone not signed in (an administrator's switch). */
+export type ChatSharing = { people: { username: string; access: "read" | "edit" }[]; link: { token: string; access: "read" | "edit" } | null; publicLinks?: boolean };
+/** Who an artifact's link opens for: the people it was shared with, or anyone once it's public. No token until it's first shared. */
+export type ArtifactSharing = { token: string | null; public: boolean; people: string[]; publicLinks?: boolean };
+export type SharedArtifact = { token: string; name: string; title: string; owner: string; updatedAt: number };
+/** Everything in the list: your chats, and what others shared with you. */
+export type Lists = { workspaces: Workspace[]; shared: Workspace[]; sharedArtifacts: SharedArtifact[] };
+/** What a share link opens. */
+export type LinkInfo =
+  | { kind: "chat"; id: string; title: string; owner: string; access: Access | null }
+  | ({ kind: "artifact"; owner: string; public: boolean } & ArtifactPage);
+/** Someone in the household, as Drive lists them. */
+export type Person = { username: string; name: string; picture: string | null };
+
 export class CodeProblem extends Error {
   constructor(message: string, readonly status = 0) { super(message); }
 }
 
 const base = "/api/v1/code";
+
+/*
+ * A chat opened by its link (/ai/c/<token>): every call this page makes
+ * carries the link, so whoever has it can read the chat without signing in.
+ */
+let shareToken: string | null = null;
+export function setShareLink(token: string | null) { shareToken = token; }
+const withShare = (path: string) => shareToken ? `${path}${path.includes("?") ? "&" : "?"}share=${encodeURIComponent(shareToken)}` : path;
+const at = (path: string) => withShare(`${base}${path}`);
 
 /** How hard the agent thinks. The model is always Opus 5.5. */
 export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -88,7 +121,7 @@ export type Usage = {
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${base}${path}`, {
+    response = await fetch(at(path), {
       ...init,
       headers: { ...(typeof init.body === "string" ? { "Content-Type": "application/json" } : {}), ...init.headers },
       credentials: "same-origin",
@@ -107,12 +140,15 @@ const json = (method: string, body?: unknown): RequestInit => ({ method, body: b
 const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 
 export const code = {
-  workspaces: () => call<{ workspaces: Workspace[] }>("/workspaces").then((r) => r.workspaces),
+  workspaces: () => call<Lists>("/workspaces").then((r) => r.workspaces),
+  /** Your chats, and the chats and artifacts others shared with you. */
+  lists: () => call<Lists>("/workspaces").then((r) => ({ workspaces: r.workspaces, shared: r.shared ?? [], sharedArtifacts: r.sharedArtifacts ?? [] })),
   workspace: (id: string) => call<Workspace>(ws(id)),
-  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort; folder?: string; hold?: boolean }) => call<Workspace>("/workspaces", json("POST", { ...input, model: modelNow() })),
+  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort; folder?: string; hold?: boolean }) => call<Workspace>("/workspaces", json("POST", { ...input, ...(modelNow() === "auto" ? { effort: undefined } : {}), model: modelNow() })),
   rename: (id: string, title: string) => call<Workspace>(ws(id), json("PATCH", { title })),
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
-  ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort, model: modelNow() })),
+  archive: (id: string, archived: boolean) => call<Workspace>(ws(id), json("PATCH", { archived })),
+  ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
   usage: () => call<Usage>("/usage"),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
@@ -146,7 +182,7 @@ export const code = {
   previewStatus: (id: string) => call<{ health: AppHealth; log: string }>(`${ws(id)}/preview`),
   restartPreview: (id: string) => call<unknown>(`${ws(id)}/preview/restart`, { method: "POST" }),
   pausePreview: (id: string) => call<unknown>(`${ws(id)}/preview/stop`, { method: "POST" }),
-  shotUrl: (id: string, name: string) => `${base}${ws(id)}/shots/${encodeURIComponent(name)}`,
+  shotUrl: (id: string, name: string) => at(`${ws(id)}/shots/${encodeURIComponent(name)}`),
   files: (id: string, path: string) => call<{ path: string; entries: Entry[] }>(`${ws(id)}/files?path=${encodeURIComponent(path)}`),
   changes: (id: string) => call<Changes>(`${ws(id)}/changes`),
   publish: (id: string, title: string) => call<Workspace>(`${ws(id)}/publish`, json("POST", { title })),
@@ -155,7 +191,7 @@ export const code = {
   branches: (owner: string, name: string) => call<{ branches: string[] }>(`/branches?owner=${encodeURIComponent(owner)}&name=${encodeURIComponent(name)}`).then((r) => r.branches),
 
   async file(id: string, path: string): Promise<ArrayBuffer> {
-    const response = await fetch(`${base}${ws(id)}/file?path=${encodeURIComponent(path)}`, { credentials: "same-origin" }).catch(() => null);
+    const response = await fetch(at(`${ws(id)}/file?path=${encodeURIComponent(path)}`), { credentials: "same-origin" }).catch(() => null);
     if (!response) throw new CodeProblem("Kimono isn't answering.");
     if (response.status === 413) throw new CodeProblem("That file is too large to show here.", 413);
     if (!response.ok) throw new CodeProblem(((await response.json().catch(() => ({}))) as { error?: string }).error || "That file couldn't be opened.", response.status);
@@ -167,12 +203,27 @@ export const code = {
   }),
 
   /** Where an attachment can be seen again, from its path in the sandbox. */
-  attachmentUrl: (id: string, a: Attachment) => `${base}${ws(id)}/attachments/${encodeURIComponent(a.path.replace(/^\/attachments\//, ""))}?type=${encodeURIComponent(a.type)}`,
+  attachmentUrl: (id: string, a: Attachment) => at(`${ws(id)}/attachments/${encodeURIComponent(a.path.replace(/^\/attachments\//, ""))}?type=${encodeURIComponent(a.type)}`),
 
-  eventsUrl: (id: string, after: number) => `${base}${ws(id)}/events?after=${after}`,
+  eventsUrl: (id: string, after: number) => at(`${ws(id)}/events?after=${after}`),
   /** The latest saved version of one of the chat's artifacts. */
   artifact: (id: string, name: string) => call<ArtifactPage>(`${ws(id)}/artifacts/${encodeURIComponent(name)}`),
+
+  /* Sharing: a chat with people in the household and by its link, and an artifact by a link of its own. The owner's alone. */
+  sharing: (id: string) => call<ChatSharing>(`${ws(id)}/sharing`),
+  shareWith: (id: string, username: string, access: "read" | "edit" | null) => call<ChatSharing>(`${ws(id)}/sharing`, json("PUT", { username, access })),
+  setLink: (id: string, link: "read" | "edit" | null) => call<ChatSharing>(`${ws(id)}/sharing`, json("PATCH", { link })),
+  artifactSharing: (id: string, name: string) => call<ArtifactSharing>(`${ws(id)}/artifacts/${encodeURIComponent(name)}/sharing`),
+  shareArtifact: (id: string, name: string, username: string, on: boolean) => call<ArtifactSharing>(`${ws(id)}/artifacts/${encodeURIComponent(name)}/sharing`, json("PUT", { username, on })),
+  setArtifactPublic: (id: string, name: string, on: boolean) => call<ArtifactSharing>(`${ws(id)}/artifacts/${encodeURIComponent(name)}/sharing`, json("PATCH", { public: on })),
+  /** What a share link opens; and, signed in, keeping a chat's link (it joins your shared chats). */
+  link: (token: string) => call<LinkInfo>(`/links/${encodeURIComponent(token)}`),
+  join: (token: string) => call<Workspace>(`/links/${encodeURIComponent(token)}`, { method: "POST" }),
 };
+
+/** Where a share link points, on this Kimono. */
+export const chatLinkUrl = (token: string) => `${window.location.origin}/ai/c/${token}`;
+export const artifactLinkUrl = (token: string) => `${window.location.origin}/ai/a/${token}`;
 
 export const isPicture = (type: string) => /^image\/(png|jpeg|gif|webp)$/.test(type);
 
@@ -215,6 +266,7 @@ async function driveCall<T>(path: string): Promise<T> {
 }
 
 export const drive = {
+  people: () => driveCall<{ people: Person[] }>("/people").then((r) => r.people),
   spaces: () => driveCall<{ spaces: DriveSpace[] }>("/spaces").then((r) => r.spaces),
   folder: (id: string) => driveCall<{ folder: DriveItem; path: DriveItem[]; children: DriveItem[] }>(`/nodes/${encodeURIComponent(id)}`),
 };

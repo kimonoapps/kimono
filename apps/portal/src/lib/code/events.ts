@@ -41,6 +41,8 @@ export type CodeEvent =
   /** Never stored: the chat got its name, so lists showing it load again. */
   | { kind: "renamed"; title: string }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
+  /** Never stored: what it is doing right now, so the status at the end of the chat can say so. */
+  | { kind: "phase"; phase: "working" | "thinking" | "writing" | "tools" | "artifact"; /** What sort of tool, when it's one of these. */ tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
   /** Files it gave the person with kimono-send, kept by Kimono to open and download. */
   | { kind: "sent"; files: Attachment[] }
   /** An app of theirs needs connecting: Kimono shows a Connect button for this Composio link. */
@@ -69,6 +71,20 @@ function toolLabel(name: string, input: Record<string, unknown>): { label: strin
   const named = toolName(name, input);
   const space = spaceOf(JSON.stringify(input));
   return { ...named, ...(change ? { change } : {}), ...(space ? { space } : {}) };
+}
+
+/** What a tool call is about, for the status while it runs: the app, the Drive space, or what sort of step. */
+export function toolHint(name: string, input: Record<string, unknown>): { tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string } {
+  const { app, space } = toolLabel(name, input);
+  if (app) return { app };
+  /* Only a name that reads as a space's: a glob or a shell line after /files/ is not one. */
+  if (space && /^[\p{L}\p{N} ._'()-]{1,60}$/u.test(space)) return { space };
+  if (space) return { tool: "files" };
+  const tool = name === "WebSearch" || name === "WebFetch" ? "web"
+    : name === "Bash" ? "command"
+    : ["Read", "Write", "Edit", "MultiEdit", "NotebookEdit", "Grep", "Glob"].includes(name) ? "files"
+    : name === "Task" || name === "Agent" ? "helper" : undefined;
+  return tool ? { tool } : {};
 }
 
 /** The Drive space a call worked in: the first /files/<space>/ it names (or /workspace/.kimono/files/<space>/). */

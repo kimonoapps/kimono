@@ -75,6 +75,16 @@ fun InkPortraitFrame(seed: String, size: Dp, modifier: Modifier = Modifier, tint
     }
 }
 
+/** A brushed ink ring drawn over a small round portrait: the open stroke of the large frame, at a face's size. */
+@Composable
+fun InkOutline(seed: String, modifier: Modifier = Modifier) {
+    val ring = remember(seed) {
+        val random = InkRandom(inkSeed(seed))
+        inkBrush(inkRing(random, 46.5f, .25f + random.next() * .35f, wobble = .015f), random, 4.2f, closed = false, lift = 80f..140f, swell = .3f, wander = .1f)
+    }
+    Canvas(modifier) { inBox { drawPath(ring, InkPlum, alpha = .8f) } }
+}
+
 /** A small circle, brushed rather than drawn with a compass: a status dot. */
 @Composable
 fun InkDot(colour: Color, modifier: Modifier = Modifier, size: Dp = 10.dp, seed: String = "dot") {

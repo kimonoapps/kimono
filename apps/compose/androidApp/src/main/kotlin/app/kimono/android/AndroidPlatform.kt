@@ -153,6 +153,42 @@ class AndroidPlatform(private val context: Context) : Platform {
         KimonoDocuments.rootsChanged(context)
     }
 
+    /** A WebView, its JavaScript bridge as KimonoNative; links leave for the browser unless [keepLinks]. */
+    @androidx.compose.runtime.Composable
+    override fun WebFrame(url: String, modifier: androidx.compose.ui.Modifier, control: app.kimono.data.WebFrameControl?, keepLinks: Boolean, onMessage: (String) -> Unit, onLoaded: () -> Unit) {
+        val heard = androidx.compose.runtime.rememberUpdatedState(onMessage)
+        val loaded = androidx.compose.runtime.rememberUpdatedState(onLoaded)
+        androidx.compose.ui.viewinterop.AndroidView(
+            modifier = modifier,
+            factory = { context ->
+                android.webkit.WebView(context).apply {
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = keepLinks
+                    settings.mediaPlaybackRequiresUserGesture = false
+                    if (control?.scrolls == false) { isVerticalScrollBarEnabled = false; overScrollMode = android.view.View.OVER_SCROLL_NEVER; isNestedScrollingEnabled = false }
+                    val main = android.os.Handler(android.os.Looper.getMainLooper())
+                    addJavascriptInterface(object {
+                        @android.webkit.JavascriptInterface fun post(text: String) { main.post { heard.value(text) } }
+                    }, "KimonoNative")
+                    val first = android.net.Uri.parse(url)
+                    webViewClient = object : android.webkit.WebViewClient() {
+                        override fun onPageFinished(view: android.webkit.WebView, address: String?) { loaded.value() }
+                        override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): Boolean {
+                            val to = request.url
+                            if (to.toString().substringBefore('#') == url.substringBefore('#') || (keepLinks && to.host == first.host)) return false
+                            if (to.scheme == "http" || to.scheme == "https" || to.scheme == "mailto") openUrl(to.toString())
+                            return true
+                        }
+                    }
+                    control?.run = { script -> main.post { evaluateJavascript(script, null) } }
+                    loadUrl(url)
+                }
+            },
+            onRelease = { view -> control?.run = null; view.destroy() },
+        )
+    }
+
     override fun share(text: String) {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         val chooser = Intent.createChooser(send, null)

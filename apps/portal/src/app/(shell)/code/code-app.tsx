@@ -1,16 +1,18 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
+import { AppBloom, BusyFace, Choice, cx, InkCard, Joint, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
 import { extensionLabel, lowerExtension, pictureExtensions, previewKind } from "@/components/file-preview/kinds";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
+import { Portrait } from "@/components/portrait";
 import {
   code, drive, efforts, modelChoices, modelKey, modelNow, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  artifactLinkUrl, chatLinkUrl, setShareLink, type Access, type ArtifactSharing, type ChatSharing, type Person, type SharedArtifact,
+  type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage, type Phase,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -29,6 +31,8 @@ const repoName = (w: Pick<Workspace, "repo">) => `${w.repo.owner}/${w.repo.name}
 /** Kimono Git and attachments open in their own tab; nothing here leaves the page it is on. */
 /* Working is quiet ink, not a colour: its shape is washed in --k-ink-soft. */
 const workingInk = "#5b524d";
+/* Thinking is the same ink, a little toward ai (indigo). */
+const thinkingInk = "#4d5670";
 const openOutside = (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); };
 /** Saves [url] as [name], from this page. */
 const saveAs = (url: string, name: string) => { const link = document.createElement("a"); link.href = url; link.download = name; link.rel = "noopener"; document.body.append(link); link.click(); link.remove(); };
@@ -75,8 +79,9 @@ function useNow(running: boolean) {
 /* ── the timeline, replayed then live ── */
 
 /** What it is writing right now: never kept, only sent while it writes (lib/code/artifacts.ts, Drafts). */
-type Drafts = { text: string | null; artifacts: Record<string, { id: string; content: string }> };
-const noDrafts: Drafts = { text: null, artifacts: {} };
+type Now = Extract<CodeEvent, { kind: "phase" }>;
+type Drafts = { text: string | null; artifacts: Record<string, { id: string; content: string }>; now: Now | null };
+const noDrafts: Drafts = { text: null, artifacts: {}, now: null };
 
 function useTimeline(id: string | null, onDone: () => void) {
   const [events, setEvents] = useState<StoredEvent[]>([]);
@@ -96,6 +101,7 @@ function useTimeline(id: string | null, onDone: () => void) {
         if (event.kind === "renamed") { done.current(); return; }
         if (event.kind === "draft") setDrafts((d) => ({ ...d, text: event.text }));
         if (event.kind === "artifact-draft") setDrafts((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
+        if (event.kind === "phase") setDrafts((d) => ({ ...d, now: event }));
         return;
       }
       if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") setDrafts((d) => d.text === null ? d : { ...d, text: null });
@@ -162,7 +168,9 @@ function ModelPicker() {
 function EffortPicker() {
   const effort = useEffort();
   const model = useModel();
-  /* Sonnet and Haiku think at low or medium only (the Portal holds them there too); Opus and Auto offer all of it. The choice made for Opus is kept for when it comes back. */
+  /* Auto picks how hard it thinks along with the model: nothing to choose. */
+  if (model === "auto") return null;
+  /* Sonnet and Haiku think at low or medium only (the Portal holds them there too); Opus offers all of it. The choice made for Opus is kept for when it comes back. */
   const light = model === "sonnet" || model === "haiku";
   const offered: readonly Effort[] = light ? efforts.filter((e) => e === "low" || e === "medium") : efforts;
   const shown = light && !offered.includes(effort) ? "medium" : effort;
@@ -225,11 +233,15 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
   </div>;
 }
 
-export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; admin: boolean; driveApp: AppIdentity }) {
+export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | null; admin: boolean; driveApp: AppIdentity; me: string }) {
   /* Drive's mark and each space's crest, for tool calls and access cards that touch the person's files. */
   const [spaces, setSpaces] = useState<DriveSpace[]>([]);
   useEffect(() => { drive.spaces().then(setSpaces, () => {}); }, []);
   const marks = useMemo<Marks>(() => ({ drive: driveApp, spaces: new Map(spaces.map((space) => [space.name.toLowerCase(), space])) }), [driveApp, spaces]);
+  /* The household, by name and picture: who shared a chat, who wrote in it, who to share with. */
+  const [household, setHousehold] = useState<Person[]>([]);
+  useEffect(() => { drive.people().then(setHousehold, () => {}); }, []);
+  const viewer = useMemo<Viewer>(() => ({ me, guest: false, people: new Map(household.map((p) => [p.username.toLowerCase(), p])) }), [me, household]);
   const params = useCodeParams();
   /* Old links carried the screen in the query string: move it after the #, once. */
   useEffect(() => {
@@ -239,15 +251,18 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
   /* Connections: the apps this person has connected, a page of its own in the list. */
   const showingConnections = !current && params.get("connections") === "1";
   const showingMemory = !current && !showingConnections && params.get("memory") === "1";
+  const showingArchived = !current && !showingConnections && !showingMemory && params.get("archived") === "1";
   /* On a narrow screen Code opens on the task list; the new-task form is its own screen, as on the phone. */
   const composing = params.get("new") === "1";
   const tab = (["chat", "files", "changes", "app"].includes(params.get("tab") ?? "") ? params.get("tab") : "chat") as Tab;
   const path = params.get("path") ?? "";
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
+  /* What others shared with this person: chats to read or write in, and artifacts. */
+  const [shared, setShared] = useState<{ chats: Workspace[]; artifacts: SharedArtifact[] }>({ chats: [], artifacts: [] });
   const [problem, setProblem] = useState<string | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const load = useCallback(() => Promise.all([code.workspaces(), code.projects().catch(() => [] as Project[])]).then(([list, folders]) => { setWorkspaces(list); setProjects(folders); setProblem(null); }, (error) => setProblem(problemText(error, "Kimono AI isn't answering."))), []);
+  const load = useCallback(() => Promise.all([code.lists(), code.projects().catch(() => [] as Project[])]).then(([lists, folders]) => { setWorkspaces(lists.workspaces); setShared({ chats: lists.shared, artifacts: lists.sharedArtifacts }); setProjects(folders); setProblem(null); }, (error) => setProblem(problemText(error, "Kimono AI isn't answering."))), []);
   const [naming, setNaming] = useState<{ id: string | null; name: string } | null>(null);
   const saveProject = async () => {
     if (!naming?.name.trim()) { setNaming(null); return; }
@@ -264,7 +279,10 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
     return () => window.removeEventListener("kimono-ai-reload", again);
   }, [load]);
 
-  const workspace = workspaces?.find((w) => w.id === current) ?? null;
+  const workspace = workspaces?.find((w) => w.id === current) ?? shared.chats.find((w) => w.id === current) ?? null;
+  /* Archived chats leave the list for their own page. */
+  const archived = useMemo(() => (workspaces ?? []).filter((w) => w.archivedAt).toSorted((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0)), [workspaces]);
+  const listed = useMemo(() => (workspaces ?? []).filter((w) => !w.archivedAt), [workspaces]);
   const folded = useFolded();
   const running = workspaces?.some((w) => w.turn?.state === "running") ?? false;
   const now = useNow(running);
@@ -279,34 +297,36 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  return <MarksContext.Provider value={marks}><div className="cd-page">
+  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><div className="cd-page">
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     {/* With the list folded away, the button that brings it back stays where the one that hid it was: top left. */}
     {folded ? <button type="button" className="cd-roundbutton cd-unfold-corner" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button> : null}
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span></div>
-      <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
+      <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory && !showingArchived ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
       <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       <nav className="cd-sidenav" aria-label="More">
         <button type="button" aria-current={showingConnections ? "page" : undefined} onClick={() => goTo({ connections: "1" })}><Icon name="link" /><span>Connections</span></button>
         <button type="button" aria-current={showingMemory ? "page" : undefined} onClick={() => goTo({ memory: "1" })}><Icon name="chat" /><span>Memory</span></button>
+        <button type="button" aria-current={showingArchived ? "page" : undefined} onClick={() => goTo({ archived: "1" })}><Icon name="archive" /><span>Archived</span>{archived.length ? <small className="cd-sidenav-count">{archived.length}</small> : null}</button>
       </nav>
       <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
-      <WorkspaceList list={chatsOf(workspaces ?? []).filter((w) => !w.folder)} current={current} now={now} />
+      <WorkspaceList list={chatsOf(listed).filter((w) => !w.folder)} current={current} now={now} />
       <div className="cd-side-label cd-folders-head"><span>Projects</span><button type="button" className="cd-roundbutton cd-project-new is-shown" onClick={() => setNaming({ id: null, name: "" })} aria-label="New project" title="New project"><Icon name="plus" /></button></div>
       {naming && !naming.id ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); void saveProject(); }}>
         <input autoFocus value={naming.name} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={(event) => setNaming({ id: null, name: event.target.value })} onBlur={() => void saveProject()} onKeyDown={(event) => { if (event.key === "Escape") setNaming(null); }} />
       </form> : null}
-      {projects.map((project) => <FolderGroup key={project.id} project={project} chats={chatsOf(workspaces ?? []).filter((w) => w.folder?.id === project.id)} current={current} now={now}
+      {projects.map((project) => <FolderGroup key={project.id} project={project} chats={chatsOf(listed).filter((w) => w.folder?.id === project.id)} current={current} now={now}
         renaming={naming?.id === project.id ? naming.name : null} onRename={(name) => setNaming({ id: project.id, name })} onSaveName={() => void saveProject()} onCancelName={() => setNaming(null)}
         onRemove={() => { void code.removeProject(project.id).then(load, (error) => setProblem(problemText(error))); }} />)}
       {!projects.length && !naming ? <p className="cd-quiet cd-side-note">Keep chats together in a project.</p> : null}
-      {projectsOf(workspaces ?? []).length ? <div className="cd-side-label cd-folders-head"><span>Repositories</span></div> : null}
-      {projectsOf(workspaces ?? []).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
+      <SharedWithYou chats={chatsOf(shared.chats).concat(shared.chats.filter((w) => w.kind !== "chat"))} artifacts={shared.artifacts} current={current} now={now} />
+      {projectsOf(listed).length ? <div className="cd-side-label cd-folders-head"><span>Repositories</span></div> : null}
+      {projectsOf(listed).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
         onNew={admin ? () => { try { localStorage.setItem("kimono-code-repo", project.key); localStorage.setItem("kimono-ai-project", "1"); } catch { /* not remembered */ } goTo({ new: "1" }); } : undefined} />)}
-      {workspaces && !workspaces.length ? <p className="cd-quiet cd-side-note">Your chats will be here.</p> : null}
+      {workspaces && !listed.length ? <p className="cd-quiet cd-side-note">Your chats will be here.</p> : null}
     </aside>
     <main className="cd-main">
       {current && workspace
@@ -317,10 +337,47 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
             : showingConnections ? <ConnectionsView now={now} app={params.get("app")} />
             : showingMemory ? <MemoryView now={now} />
+            : showingArchived ? <ArchivedView chats={archived} loaded={workspaces !== null} now={now} onChange={load} />
             : <Start blocked={blocked} admin={admin} folder={projects.find((p) => p.id === params.get("in")) ?? null} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
-  </div></MarksContext.Provider>;
+  </div></MarksContext.Provider></ViewerContext.Provider>;
+}
+
+/* ── archived chats: out of the list, kept until deleted ── */
+
+function ArchivedView({ chats, loaded, now, onChange }: { chats: Workspace[]; loaded: boolean; now: number; onChange: () => void }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const act = (id: string, run: () => Promise<unknown>) => {
+    setBusy(id); setProblem(null);
+    run().then(() => { setDeleting(null); onChange(); }, (error) => setProblem(problemText(error))).finally(() => setBusy(null));
+  };
+  return <section className="cd-sheet cd-conn cd-archived">
+    <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+      <h1>Archived</h1>
+    </header>
+    <div className="cd-conn-body">
+      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+      {!loaded ? <SkeletonRows rows={3} mark={false} /> : null}
+      {loaded && !chats.length ? <p className="cd-quiet">Nothing archived.</p> : null}
+      {chats.length ? <ul className="cd-archived-list">{chats.map((w) => <li key={w.id} className={cx("cd-archived-row", busy === w.id && "is-busy")}>
+        <button type="button" className="cd-archived-open" onClick={() => goTo({ w: w.id })}>
+          <b>{w.title}</b>
+          <small>{w.kind === "project" ? `${repoName(w)} · ` : w.folder ? `${w.folder.name} · ` : ""}{when(w.updatedAt, now)}</small>
+        </button>
+        {deleting === w.id
+          ? <span className="cd-archived-acts"><span className="cd-faint">Delete for good?</span><button type="button" className="cd-quietbutton is-danger" onClick={() => act(w.id, () => code.remove(w.id))}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setDeleting(null)}>Keep</button></span>
+          : <span className="cd-archived-acts">
+              <button type="button" className="cd-linkbutton" onClick={() => act(w.id, () => code.archive(w.id, false))}><Icon name="unarchive" />Unarchive</button>
+              <button type="button" className="cd-roundbutton" aria-label={`Delete ${w.title}`} title="Delete chat" onClick={() => setDeleting(w.id)}><Icon name="trash" /></button>
+            </span>}
+      </li>)}</ul> : null}
+    </div>
+  </section>;
 }
 
 /* ── memory: the person's instructions, and what it keeps about them ── */
@@ -548,6 +605,28 @@ function AppPage({ slug, now, conn, head }: { slug: string; now: number; conn: C
 type Marks = { drive: AppIdentity | null; spaces: Map<string, DriveSpace> };
 const MarksContext = createContext<Marks>({ drive: null, spaces: new Map() });
 
+/* ── who is looking, and what they may do in the chat in front of them ──
+   A chat can be shared (lib/code/sharing.ts): the person may own it, write
+   in it, or only read it. Someone who opened its link without signing in is
+   a guest, and sees the chat alone. */
+
+type Viewer = { me: string | null; guest: boolean; people: Map<string, Person> };
+const ViewerContext = createContext<Viewer>({ me: null, guest: false, people: new Map() });
+const ChatAccess = createContext<{ access: Access; owner: string }>({ access: "owner", owner: "" });
+/** Whether the person looking owns the chat in front of them: only they rename, share, run its app, answer for its Drive. */
+const useOwns = () => useContext(ChatAccess).access === "owner";
+
+/** Someone in the household by their username: their name and picture when Kimono knows them. */
+function usePerson(username: string): Person {
+  const found = useContext(ViewerContext).people.get(username.toLowerCase());
+  return found ?? { username, name: username, picture: null };
+}
+
+function Face({ username, size = 20 }: { username: string; size?: number }) {
+  const person = usePerson(username);
+  return <Portrait name={person.name} username={person.username} picture={person.picture} size={size} className="cd-face" />;
+}
+
 /** A space's crest, as Drive draws it; nothing if the space isn't known. */
 function SpaceCrest({ name }: { name: string }) {
   const space = useContext(MarksContext).spaces.get(name.toLowerCase());
@@ -586,6 +665,7 @@ const plainName = (slug: string) => slug.replace(/[_-]+/g, " ").replace(/\b\w/g,
 function useAppLook(slug: string): Look {
   const [look, setLook] = useState<(Look & { slug: string }) | null>(null);
   useEffect(() => {
+    if (!slug) return;
     let live = true;
     let pending = looks.get(slug);
     if (!pending) {
@@ -658,6 +738,7 @@ function projectsOf(list: Workspace[]) {
 
 /** The chat's name: Kimono names it after the first reply; a click renames it. */
 function ChatTitle({ workspace, onRenamed }: { workspace: Workspace; onRenamed: () => void }) {
+  const owns = useOwns();
   const [editing, setEditing] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const saving = useRef(false);
@@ -673,6 +754,7 @@ function ChatTitle({ workspace, onRenamed }: { workspace: Workspace; onRenamed: 
       onChange={(event) => setEditing(event.target.value)} onBlur={() => void save()} onKeyDown={(event) => { if (event.key === "Escape") { setEditing(null); setProblem(null); } }} /></h1>
     {problem ? <span className="cd-faint" role="alert">{problem}</span> : null}
   </form>;
+  if (!owns) return <h1 title={workspace.title}>{workspace.title}</h1>;
   return <h1 title={workspace.title}><button type="button" className="cd-title-button" title="Rename" onClick={() => setEditing(workspace.title)}>{workspace.title}</button></h1>;
 }
 
@@ -714,21 +796,65 @@ function WorkspaceList({ label, list, current, now, onNew }: { label?: string; l
   if (!list.length) return null;
   return <div className="cd-project">
     {label ? <div className="cd-side-label cd-project-head"><span>{label}</span><small>{list.length}</small>{onNew ? <button type="button" className="cd-roundbutton cd-project-new" onClick={onNew} aria-label={`New chat in ${label}`} title={`New chat in ${label}`}><Icon name="plus" /></button> : null}</div> : null}
-    <nav className="cd-list">{list.map((w) => {
-      const state = w.turn?.state;
-      return <button type="button" key={w.id} aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
-        <b>{w.title}</b>
-        <small>
-          {/* One word, and only when it says something. */}
-          {state === "running" ? <span className="cd-word running"><MorphLoader ink={workingInk} label="Working" className="cd-working-ink" />working {elapsed(now - w.turn!.startedAt)}</span>
-            : state === "failed" ? <span className="cd-word">stopped</span>
-              : w.preview && !w.preview.stopped ? <span className="cd-word">live</span>
-              : w.pullRequest ? <span className="cd-word">#{w.pullRequest.number}</span>
-                : <span className="cd-when">{when(w.updatedAt, now)}</span>}
-        </small>
-      </button>;
-    })}</nav>
+    <nav className="cd-list">{list.map((w) => <ChatRow key={w.id} w={w} current={current} now={now} />)}</nav>
   </div>;
+}
+
+/** A chat in the list: opens it; archive and delete sit at its end, shown on hover. */
+function ChatRow({ w, current, now }: { w: Workspace; current: string | null; now: number }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const owns = !w.access || w.access === "owner";
+  const state = w.turn?.state;
+  const act = (run: () => Promise<unknown>) => {
+    setBusy(true);
+    run().then(() => {
+      if (w.id === current) goTo({}, true);
+      window.dispatchEvent(new Event("kimono-ai-reload"));
+    }, () => { setBusy(false); setConfirming(false); });
+  };
+  return <div className={cx("cd-row", busy && "is-busy", confirming && "is-confirming")}>
+    <button type="button" className="cd-row-open" aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
+      <b>{w.title}</b>
+      <small>
+        {/* One word, and only when it says something. */}
+        {state === "running" ? <span className="cd-word running"><MorphLoader ink={workingInk} label="Working" className="cd-working-ink" />working {elapsed(now - w.turn!.startedAt)}</span>
+          : state === "failed" ? <span className="cd-word">stopped</span>
+            : w.preview && !w.preview.stopped ? <span className="cd-word">live</span>
+            : w.pullRequest ? <span className="cd-word">#{w.pullRequest.number}</span>
+              : <span className="cd-when">{when(w.updatedAt, now)}</span>}
+      </small>
+    </button>
+    {!owns ? null : confirming
+      ? <span className="cd-row-confirm"><span>Delete?</span><button type="button" className="cd-quietbutton is-danger" onClick={() => act(() => code.remove(w.id))}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirming(false)}>Keep</button></span>
+      : <span className="cd-row-acts">
+          <button type="button" aria-label={`Archive ${w.title}`} title="Archive" onClick={() => act(() => code.archive(w.id, true))}><Icon name="archive" /></button>
+          <button type="button" aria-label={`Delete ${w.title}`} title="Delete" onClick={() => setConfirming(true)}><Icon name="trash" /></button>
+        </span>}
+  </div>;
+}
+
+/** Chats and artifacts others shared with this person: each with whose it is. An artifact opens on its own page. */
+function SharedWithYou({ chats, artifacts, current, now }: { chats: Workspace[]; artifacts: SharedArtifact[]; current: string | null; now: number }) {
+  if (!chats.length && !artifacts.length) return null;
+  return <div className="cd-project cd-shared">
+    <div className="cd-side-label cd-folders-head"><span>Shared with you</span></div>
+    <nav className="cd-list">
+      {chats.map((w) => <button type="button" key={w.id} aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
+        <b>{w.title}</b>
+        <small><SharedBy username={w.owner ?? ""} />{w.turn?.state === "running" ? <span className="cd-word running">working</span> : <span className="cd-when">{when(w.updatedAt, now)}</span>}</small>
+      </button>)}
+      {artifacts.map((a) => <button type="button" key={a.token} onClick={() => openOutside(`/ai/a/${a.token}`)}>
+        <b><Icon name="spark" />{a.title}</b>
+        <small><SharedBy username={a.owner} /><span className="cd-when">{when(a.updatedAt, now)}</span></small>
+      </button>)}
+    </nav>
+  </div>;
+}
+
+function SharedBy({ username, words = "" }: { username: string; words?: string }) {
+  const person = usePerson(username);
+  return <span className="cd-sharedby"><Face username={username} size={18} /><span>{words}{person.name}</span></span>;
 }
 
 /* ── a new task: which repository, which branch, and what to do ── */
@@ -932,7 +1058,13 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
   /* A chat is a conversation and nothing else. Files, changes and the app (and repositories,
      branches, pull requests) belong to a chat that is building something: a project, or one with an app. */
   const project = workspace.kind === "project";
-  const isApp = project || Boolean(workspace.preview);
+  const access: Access = workspace.access ?? "owner";
+  const owns = access === "owner";
+  const { guest } = useContext(ViewerContext);
+  const chatAccess = useMemo(() => ({ access, owner: workspace.owner ?? "" }), [access, workspace.owner]);
+  const [sharing, setSharing] = useState(false);
+  /* A guest has the conversation only: files, changes and the app's controls are for people signed in. */
+  const isApp = !guest && (project || Boolean(workspace.preview));
   const tab: Tab = isApp ? asked : "chat";
   const running = workspace.turn?.state === "running";
   const [publishing, setPublishing] = useState(false);
@@ -947,38 +1079,38 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
     setProblem(null);
     try { await code.publish(workspace.id, workspace.title); onChange(); } catch (error) { setProblem(problemText(error)); } finally { setPublishing(false); }
   }
-  async function remove() {
-    try { await code.remove(workspace.id); goTo({}, true); onChange(); } catch (error) { setProblem(problemText(error)); }
-  }
 
-  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const crossTo = useCrossTo();
   /* As on the phone: the title and repo, the few things you reach for (the running app, the
      pull request, Drive, delete) as quiet links and icons, one strong seal to publish, then the tabs. */
-  return <ArtifactsContext.Provider value={artifacts}><div className={cx("cd-ws-grid", !isApp && "is-chat", tab === "chat" && beside && "has-beside")}>
+  return <ChatAccess.Provider value={chatAccess}><ArtifactsContext.Provider value={artifacts}><div className={cx("cd-ws-grid", !isApp && "is-chat", tab === "chat" && beside && "has-beside")}>
     <div className="cd-sheet cd-ws">
       <header className="cd-ws-head">
-        <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
-        <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+        {guest ? null : <>
+          <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
+          <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+        </>}
         <div className="cd-ws-id">
           <ChatTitle workspace={workspace} onRenamed={onChange} />
-          {project ? <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p> : null}
+          {!owns && workspace.owner ? <p className="cd-ws-shared"><SharedBy username={workspace.owner} words="Shared by " /></p> : null}
+          {project && owns ? <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p> : null}
           {/* Working shows once, at the end of the conversation; here only a lost connection. */}
           {!isApp && !connected ? <span className="cd-status" role="status">Reconnecting…</span> : null}
         </div>
-        {confirmDelete
-          ? <div className="cd-ws-acts"><span className="cd-faint">Delete this chat? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={() => void remove()}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></div>
+        {!owns
+          ? workspace.preview && !workspace.preview.stopped ? <div className="cd-ws-acts"><button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button></div> : null
           : !project ? <div className="cd-ws-acts">
+              <ShareButton onClick={() => setSharing(true)} />
               <FolderChip workspace={workspace} projects={projects} />
               {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
-              <button type="button" className="cd-roundbutton" aria-label="Delete chat" title="Delete chat" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>
             </div>
           : <div className="cd-ws-acts">
+              <ShareButton onClick={() => setSharing(true)} />
               {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
               {workspace.pullRequest ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button> : null}
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
-              <button type="button" className="cd-roundbutton" aria-label="Delete chat" title="Delete chat" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>
               <Seal type="button" compact tone={workspace.pullRequest ? "quiet" : "primary"} busy={publishing} disabled={running || Boolean(blocked)} onClick={() => void publish()}>
                 {workspace.pullRequest ? "Push changes" : "Open pull request"}
               </Seal>
@@ -1002,7 +1134,8 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
     {tab === "chat" && beside ? <aside className="cd-beside" aria-label="Artifact"><ArtifactCard name={beside} mode="beside" /></aside>
       : isApp ? <Scroller fit as="aside" className="cd-deploy" viewClassName="cd-deploy-view" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></Scroller> : null}
     {full ? <div className="cd-artifact-full" role="dialog" aria-modal="true" aria-label="Artifact"><ArtifactCard name={full} mode="full" /></div> : null}
-  </div></ArtifactsContext.Provider>;
+    {sharing ? <ShareChat workspace={workspace} onClose={() => setSharing(false)} /> : null}
+  </div></ArtifactsContext.Provider></ChatAccess.Provider>;
 }
 
 /** On a wide window, beside the conversation: this task's running app, and every other task's. */
@@ -1023,6 +1156,8 @@ function Deployments({ workspace, others }: { workspace: Workspace; others: Work
 
 /** The App tab: the running app, big, with everything you do to it, and the app itself below. */
 function AppView({ workspace, running, blocked, onChange }: { workspace: Workspace; running: boolean; blocked: string | null; onChange: () => void }) {
+  const owns = useOwns();
+  const writes = useContext(ChatAccess).access !== "read";
   const [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   if (!workspace.preview) return <Scroller className="cd-scroll" viewClassName="cd-appview">
@@ -1030,7 +1165,7 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
       <span className="cd-dep-icon"><Icon name="rocket" /></span>
       <b>Nothing is running</b>
       <p className="cd-faint">It runs the app when it changes something you can see. You can ask it to now.</p>
-      <Seal type="button" busy={asking} disabled={Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{running ? "Run it after this step" : "Run the app"}</Seal>
+      {writes ? <Seal type="button" busy={asking} disabled={Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{running ? "Run it after this step" : "Run the app"}</Seal> : null}
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div>
     <SandboxLimits workspace={workspace} />
@@ -1039,7 +1174,7 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
     {workspace.preview.stopped ? null : <AppReady workspace={workspace} url={workspace.preview.url} />}
     <AppRunning key={workspace.id} workspace={workspace} onChange={onChange} />
     <SandboxLimits workspace={workspace} />
-    <LinkName key={workspace.preview.url} workspace={workspace} url={workspace.preview.url} onRenamed={onChange} />
+    {owns ? <LinkName key={workspace.preview.url} workspace={workspace} url={workspace.preview.url} onRenamed={onChange} /> : null}
     {workspace.preview.stopped ? null : <div className="cd-app-frame">
       <div className="cd-app-bar"><i /><i /><i /><span className="cd-mono">{workspace.preview.url.replace(/^https?:\/\//, "")}</span></div>
       <iframe src={workspace.preview.url} title="The running app" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
@@ -1077,6 +1212,7 @@ const healthWords: Record<AppHealth["state"], string> = {
 
 /** How the app is doing, what it printed last, and starting or stopping it. Looked at every few seconds while the tab is open. */
 function AppRunning({ workspace, onChange }: { workspace: Workspace; onChange: () => void }) {
+  const owns = useOwns();
   const [status, setStatus] = useState<{ health: AppHealth; log: string } | null>(null);
   const [acting, setActing] = useState<"restart" | "stop" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -1115,14 +1251,14 @@ function AppRunning({ workspace, onChange }: { workspace: Workspace; onChange: (
     <div className="cd-run-head">
       <span className="cd-run-state" role="status"><i aria-hidden="true" /><b>{word}</b>{detail ? <small>{detail}</small> : null}</span>
       {stopped && workspace.preview?.kind ? <span className="cd-run-kind">{workspace.preview.kind}</span> : null}
-      <div className="cd-run-acts">
+      {owns ? <div className="cd-run-acts">
         {stopped
           ? <Seal type="button" compact disabled={Boolean(acting)} onClick={() => void act("restart")}><Icon name="play" />Start</Seal>
           : <>
               <button type="button" className="cd-quietbutton" disabled={Boolean(acting)} onClick={() => void act("restart")}><Icon name="restart" />Restart</button>
               <button type="button" className="cd-quietbutton" disabled={Boolean(acting)} onClick={() => void act("stop")}><Icon name="stop" />Stop</button>
             </>}
-      </div>
+      </div> : null}
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     <Scroller fit as="pre" tone="lift" viewRef={log} viewClassName="cd-run-log" aria-label="What the app printed" tabIndex={0}>{status ? status.log.trimEnd() || "Nothing printed yet." : " "}</Scroller>
@@ -1158,6 +1294,7 @@ function LinkName({ workspace, url, onRenamed }: { workspace: Workspace; url: st
 
 /** The app, ready: one big card to open it, copy its link or take it down. */
 function AppReady({ workspace, url }: { workspace: Workspace; url: string }) {
+  const owns = useOwns();
   const [copied, setCopied] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -1167,7 +1304,7 @@ function AppReady({ workspace, url }: { workspace: Workspace; url: string }) {
     <div className="cd-ready-acts">
       <Seal type="button" className="cd-ready-open" onClick={() => openOutside(url)}><Icon name="open" />Open app</Seal>
       <button type="button" className="cd-quietbutton" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => setProblem("Couldn't copy. Select the address above.")); }}>{copied ? "Copied" : "Copy link"}</button>
-      <button type="button" className="cd-quietbutton" disabled={stopping} aria-busy={stopping || undefined} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}><BusyFace busy={stopping}>Take down</BusyFace></button>
+      {owns ? <button type="button" className="cd-quietbutton" disabled={stopping} aria-busy={stopping || undefined} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}><BusyFace busy={stopping}>Take down</BusyFace></button> : null}
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </div></InkCard>;
@@ -1231,6 +1368,8 @@ function itemsOf(events: StoredEvent[]): Item[] {
 }
 
 function Chat({ workspace, events, drafts, running, blocked }: { workspace: Workspace; events: StoredEvent[]; drafts: Drafts; running: boolean; blocked: string | null }) {
+  const { access } = useContext(ChatAccess);
+  const owns = access === "owner";
   const items = useMemo(() => itemsOf(events), [events]);
   /* An artifact still being written has no place in the timeline yet: it is drawn at the end until its call lands. */
   const placed = new Set(items.flatMap((i) => i.type === "artifact" ? [i.id] : []));
@@ -1286,7 +1425,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
               ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
               : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
-            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>Memory</button></span></p>;
+            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} {owns ? <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>Memory</button> : null}</span></p>;
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
@@ -1297,13 +1436,155 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
           }
         }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
         {drafts.text ? <div className="cd-say is-draft"><Markdown text={drafts.text} /></div> : null}
-        {running ? <Working since={workspace.turn?.startedAt ?? null} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
+        {running ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
     </Scroller>
-    <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />
+    {access === "read" ? <p className="cd-viewonly">You can view this chat</p> : <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />}
   </div>;
+}
+
+
+/* ── sharing a chat, or one artifact (lib/code/sharing.ts) ──
+   As in Docs: people in the household, each to read or to write; and a link,
+   off, for anyone to read, or for anyone to read and people signed in to write. */
+
+function ShareButton({ onClick }: { onClick: () => void }) {
+  return <button type="button" className="cd-linkbutton cd-share-open" onClick={onClick}><Icon name="people" />Share</button>;
+}
+
+/** Copies [url], saying so on the button for a moment. */
+function useCopy() {
+  const [copied, setCopied] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  /* Where the clipboard is refused, the link is shown instead, to copy by hand. */
+  const copy = (url: string) => navigator.clipboard.writeText(url).then(() => { setProblem(null); setCopied(true); setTimeout(() => setCopied(false), 1600); }, () => setProblem(url));
+  return { copied, problem, copy };
+}
+
+/** Finding someone in the household to share with, by name or username: everyone but the owner and who's in already. */
+function PeopleFinder({ owner, taken, onPick }: { owner: string; taken: Set<string>; onPick: (person: Person) => void }) {
+  const { people } = useContext(ViewerContext);
+  const [find, setFind] = useState("");
+  const words = find.trim().toLowerCase().replace(/^@/, "");
+  const found = words ? [...people.values()].filter((p) => p.username.toLowerCase() !== owner.toLowerCase() && !taken.has(p.username.toLowerCase())
+    && (p.name.toLowerCase().includes(words) || p.username.toLowerCase().includes(words))).slice(0, 6) : [];
+  const pick = (p: Person) => { setFind(""); onPick(p); };
+  return <div className="cd-share-find">
+    <label className="cd-conn-search"><Icon name="search" /><input value={find} onChange={(event) => setFind(event.target.value)} placeholder="Add people" aria-label="Add people"
+      onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); pick(found[0]); } }} /></label>
+    {words ? <div className="cd-share-found" role="listbox" aria-label="People">
+      {found.map((p) => <button key={p.username} type="button" role="option" aria-selected={false} onClick={() => pick(p)}>
+        <Face username={p.username} size={32} /><span><b>{p.name}</b><small>@{p.username}</small></span>
+      </button>)}
+      {!found.length ? <p className="cd-quiet">No one by that name.</p> : null}
+    </div> : null}
+  </div>;
+}
+
+/** One person it's shared with: who, and (when given) what they may do. */
+function SharePerson({ username, note, children }: { username: string; note?: string; children?: React.ReactNode }) {
+  const person = usePerson(username);
+  return <li className="cd-share-person">
+    <Face username={username} size={36} />
+    <span className="cd-share-who"><b>{person.name}</b><small>{note ?? `@${username}`}</small></span>
+    {children}
+  </li>;
+}
+
+/** A dialog of the share kind: the page's own, in the top layer, closing on its backdrop. */
+function ShareDialog({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
+  const box = useRef<HTMLDialogElement>(null);
+  useEffect(() => { box.current?.showModal(); }, []);
+  return <dialog ref={box} className="cd-share" aria-labelledby="cd-share-title" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+    <header><h2 id="cd-share-title">Share &ldquo;{title}&rdquo;</h2></header>
+    <div className="cd-share-body">{children}</div>
+    <footer>{footer}<span className="cd-grow" /><Seal type="button" compact onClick={() => box.current?.close()}>Done</Seal></footer>
+  </dialog>;
+}
+
+const generalWords = { off: "Only people invited", read: "Anyone with the link can view", edit: "Anyone with the link can view, people signed in can write" } as const;
+/* With public links switched off, a link opens only for people signed in to this Kimono. */
+const signedInWords = { off: "Only people invited", read: "People in this Kimono with the link can view", edit: "People in this Kimono with the link can write" } as const;
+
+function ShareChat({ workspace, onClose }: { workspace: Workspace; onClose: () => void }) {
+  const { me } = useContext(ViewerContext);
+  const owner = workspace.owner ?? me ?? "";
+  const [sharing, setSharing] = useState<ChatSharing | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const { copied, problem: copyProblem, copy } = useCopy();
+  useEffect(() => { code.sharing(workspace.id).then(setSharing, (error) => setProblem(problemText(error))); }, [workspace.id]);
+  const change = (work: Promise<ChatSharing>) => { setProblem(null); work.then(setSharing, (error) => setProblem(problemText(error))); };
+  const taken = new Set(sharing?.people.map((p) => p.username.toLowerCase()) ?? []);
+  const writers = Boolean(sharing && (sharing.people.some((p) => p.access === "edit") || sharing.link?.access === "edit"));
+  const general = sharing?.link?.access ?? "off";
+  /* With the link off, the address still opens it for the people invited. */
+  const url = sharing?.link ? chatLinkUrl(sharing.link.token) : `${window.location.origin}/code#w=${workspace.id}`;
+  return <ShareDialog title={workspace.title} onClose={onClose}
+    footer={<>
+      {problem ? <span className="cd-problem" role="alert">{problem}</span> : copyProblem ? <input className="cd-share-url" readOnly value={copyProblem} aria-label="Link" onFocus={(event) => event.target.select()} /> : null}
+      <Seal type="button" compact tone="quiet" disabled={!sharing} onClick={() => void copy(url)}><Icon name={copied ? "check" : "link"} />{copied ? "Copied" : "Copy link"}</Seal>
+    </>}>
+    {sharing === null && !problem ? <SkeletonRows rows={2} mark={false} /> : sharing ? <>
+      <PeopleFinder owner={owner} taken={taken} onPick={(p) => change(code.shareWith(workspace.id, p.username, "read"))} />
+      <ul className="cd-share-people">
+        <SharePerson username={owner} note="Owner" />
+        {sharing.people.map((p) => <SharePerson key={p.username} username={p.username}>
+          <Choice compact aria-label={`What ${p.username} can do`} className="cd-share-can" value={p.access}
+            options={[{ value: "read", label: "Can view" }, { value: "edit", label: "Can write" }]}
+            onChange={(next) => change(code.shareWith(workspace.id, p.username, next as "read" | "edit"))} />
+          <button type="button" className="cd-roundbutton" aria-label={`Remove ${p.username}`} title="Remove" onClick={() => change(code.shareWith(workspace.id, p.username, null))}><Icon name="close" /></button>
+        </SharePerson>)}
+      </ul>
+      <h3 className="cd-share-sub">General access</h3>
+      <div className="cd-share-general">
+        <span className={cx("cd-share-mark", general !== "off" && "is-open")} aria-hidden="true"><Icon name={general === "off" ? "lock" : "link"} /></span>
+        <Choice aria-label="General access" className="cd-share-link" value={general}
+          options={(["off", "read", "edit"] as const).map((v) => ({ value: v, label: (sharing.publicLinks === false ? signedInWords : generalWords)[v] }))}
+          onChange={(next) => change(code.setLink(workspace.id, next === "off" ? null : next as "read" | "edit"))} />
+      </div>
+      {writers ? <p className="cd-share-note">People who can write send messages as themselves, but it works with your files and apps.</p> : null}
+    </> : null}
+  </ShareDialog>;
+}
+
+function ShareArtifact({ workspaceId, name, title, onClose }: { workspaceId: string; name: string; title: string; onClose: () => void }) {
+  const { me, people } = useContext(ViewerContext);
+  const [sharing, setSharing] = useState<ArtifactSharing | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const { copied, problem: copyProblem, copy } = useCopy();
+  useEffect(() => { code.artifactSharing(workspaceId, name).then(setSharing, (error) => setProblem(problemText(error))); }, [workspaceId, name]);
+  const change = (work: Promise<ArtifactSharing>) => { setProblem(null); return work.then((next) => { setSharing(next); return next; }, (error) => { setProblem(problemText(error)); return null; }); };
+  const on = new Set(sharing?.people.map((u) => u.toLowerCase()) ?? []);
+  /* Everyone in the household but the owner, the ones it's shared with first. */
+  const everyone = [...people.values()].filter((p) => p.username.toLowerCase() !== (me ?? "").toLowerCase())
+    .toSorted((a, b) => Number(on.has(b.username.toLowerCase())) - Number(on.has(a.username.toLowerCase())) || a.name.localeCompare(b.name));
+  /* The link exists once it's first shared; copying before that makes it, for the people it's shared with. */
+  const copyLink = async () => {
+    const token = sharing?.token ?? (await change(code.setArtifactPublic(workspaceId, name, sharing?.public ?? false)))?.token;
+    if (token) await copy(artifactLinkUrl(token));
+  };
+  return <ShareDialog title={title} onClose={onClose}
+    footer={<>
+      {problem ? <span className="cd-problem" role="alert">{problem}</span> : copyProblem ? <input className="cd-share-url" readOnly value={copyProblem} aria-label="Link" onFocus={(event) => event.target.select()} /> : null}
+      <Seal type="button" compact tone="quiet" disabled={!sharing} onClick={() => void copyLink()}><Icon name={copied ? "check" : "link"} />{copied ? "Copied" : "Copy link"}</Seal>
+    </>}>
+    {sharing === null && !problem ? <SkeletonRows rows={2} mark={false} /> : sharing ? <>
+      {everyone.length ? <ul className="cd-share-people">
+        {everyone.map((p) => <SharePerson key={p.username} username={p.username}>
+          <Joint profile="aikaki" label={`Share with ${p.name}`} checked={on.has(p.username.toLowerCase())} onChange={(next) => void change(code.shareArtifact(workspaceId, name, p.username, next))} />
+        </SharePerson>)}
+      </ul> : null}
+      {/* Public links switched off: no making it public (one made public before can still be closed). */}
+      {sharing.publicLinks === false && !sharing.public ? null : <><h3 className="cd-share-sub">General access</h3>
+      <div className="cd-share-general">
+        <span className={cx("cd-share-mark", sharing.public && "is-open")} aria-hidden="true"><Icon name={sharing.public ? "link" : "lock"} /></span>
+        <span className="cd-share-who"><b>Anyone with the link</b><small>{sharing.public ? "Can view, without signing in" : "Only the people it\u2019s shared with"}</small></span>
+        <Joint profile="aikaki" label="Anyone with the link" checked={sharing.public} onChange={(next) => void change(code.setArtifactPublic(workspaceId, name, next))} />
+      </div></>}
+    </> : null}
+  </ShareDialog>;
 }
 
 /* ── artifacts (docs/kimono-ai.md, "Artifacts") ──
@@ -1368,6 +1649,8 @@ function ArtifactFrame({ content, final, title, control, onHeight, onScene }: { 
     return () => window.removeEventListener("message", hear);
   }, [post]);
   useEffect(() => { latest.current = { content, final }; post(); }, [content, final, post]);
+  /* A frame sent with the page (a link's page) may have loaded, and said it's ready, before this listened: speak first. Posting to one still loading is lost, and its own "ready" asks again. */
+  useEffect(() => { frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final }, "*"); }, []);
   useEffect(() => { if (control) frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "scene-control", action: control.action, t: control.t, name: control.name, value: control.value }, "*"); }, [control]);
   /* The frame says it's ready as it loads, which can be before this page listens: its first load counts too.
      Only the first: the frame fires load again each time it finishes writing a page, and posting then would make it start over. */
@@ -1378,6 +1661,11 @@ function ArtifactFrame({ content, final, title, control, onHeight, onScene }: { 
 /** An artifact in the chat (and, bigger, beside it or full screen). */
 function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline" | "beside" | "full" }) {
   const { shared, content, title, writing, ready } = useArtifact(name);
+  const owns = useOwns();
+  const { guest } = useContext(ViewerContext);
+  const [sharing, setSharing] = useState(false);
+  /* Only a kept version can be shared: one still being written has nothing to open yet. */
+  const canShare = owns && !guest && !writing && Boolean(shared.versions[name]);
   const [height, setHeight] = useState(0);
   const [scene, setScene] = useState<SceneState | null>(null);
   const [control, setControl] = useState<SceneControl | null>(null);
@@ -1421,6 +1709,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
       <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
       <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <small className="cd-artifact-writing"><MorphLoader tone="plain" label="Writing" className="cd-morph" />Writing</small> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
       <span className="cd-artifact-acts">
+        {canShare ? <button type="button" className="cd-roundbutton" aria-label="Share" title="Share" onClick={() => setSharing(true)}><Icon name="people" /></button> : null}
         {mode !== "full" ? <button type="button" className="cd-roundbutton" aria-label={open ? "Close the side panel" : "Open beside the chat"} title={open ? "Close the side panel" : "Open beside the chat"} onClick={() => shared.setBeside(open ? null : name)}><Icon name={open ? "close" : "beside"} /></button> : null}
         <button type="button" className="cd-roundbutton" aria-label={mode === "full" ? "Leave full screen" : "Full screen"} title={mode === "full" ? "Leave full screen" : "Full screen"} onClick={() => shared.setFull(mode === "full" ? null : name)}><Icon name={mode === "full" ? "shrink" : "expand"} /></button>
       </span>
@@ -1437,6 +1726,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
             {scene && scene.end > 0 ? <SceneBar scene={scene} send={send} /> : null}
           </>
         : <MorphLoader label="Opening" className="cd-artifact-loading" />}
+    {sharing ? <ShareArtifact workspaceId={shared.workspaceId} name={name} title={title} onClose={() => setSharing(false)} /> : null}
   </figure>;
 }
 
@@ -1471,20 +1761,62 @@ function ArtifactChanged({ name }: { name: string }) {
   return <p className="cd-note cd-artifact-changed"><Icon name="spark" /><span>Changed <b>{title}</b> <button type="button" className="cd-textbutton" onClick={() => shared.setBeside(name)}>Open</button></span></p>;
 }
 
-/** Working, at the end of the conversation: the ink shape, what it's doing and how long. The one place it shows in a chat. */
-function Working({ since, artifact }: { since: number | null; artifact?: boolean }) {
+/** Working, at the end of the conversation: what it's doing, in its own words and ink, and how long. The one place it shows in a chat. */
+function Working({ since, now: doing, artifact }: { since: number | null; now: Now | null; artifact?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-  return <div className="cd-thinking" role="status"><MorphLoader ink={workingInk} label="Working" className="cd-morph" /><span>{artifact ? "Cooking up an artifact" : "Working"}{since ? ` ${elapsed(Math.max(0, now - since))}` : ""}</span></div>;
+  const phase = artifact || doing?.phase === "artifact" ? "artifact" : doing?.phase ?? "working";
+  const time = since ? elapsed(Math.max(0, now - since)) : "";
+  return <div className={`cd-thinking is-${phase}`} role="status">
+    <WorkingMark phase={phase} doing={doing} />
+    <span className="cd-now" key={`${phase}:${doing?.app ?? doing?.space ?? doing?.tool ?? ""}`}><WorkingWords phase={phase} doing={doing} /></span>
+    {time ? <span className="cd-now-time">{time}</span> : null}
+  </div>;
+}
+
+function WorkingMark({ phase, doing }: { phase: Phase; doing: Now | null }) {
+  if (phase === "tools" && (doing?.app || doing?.space)) {
+    return <span className="cd-now-seal" key={doing.app ?? doing.space} aria-hidden="true">{doing.app ? <AppLogo slug={doing.app} /> : <DriveMark />}</span>;
+  }
+  return <span className="cd-now-ink" aria-hidden="true">
+    <MorphLoader ink={phase === "artifact" ? undefined : phase === "thinking" ? thinkingInk : workingInk} label="" className="cd-morph" />
+    {phase === "artifact" ? <><i /><i /><i /></> : null}
+  </span>;
+}
+
+/** Its words for what it's doing; thinking and the magic come in letter by letter, like ink taking. */
+function WorkingWords({ phase, doing }: { phase: Phase; doing: Now | null }) {
+  const app = useAppLook(doing?.app ?? "");
+  const words = phase === "artifact" ? "Working my magic"
+    : phase === "thinking" ? "Thinking"
+    : phase === "writing" ? "Writing"
+    : phase === "tools" ? doing?.app ? `Using ${app.name}`
+      : doing?.space ? `Looking in ${doing.space}`
+      : doing?.tool === "web" ? "Searching the web"
+      : doing?.tool === "command" ? "Running a command"
+      : doing?.tool === "files" ? "Going through files"
+      : doing?.tool === "helper" ? "Asking a helper"
+      : "Using tools"
+    : "Working";
+  if (phase !== "thinking" && phase !== "artifact") return <>{words}</>;
+  return <span aria-label={words}>{[...words].map((c, i) => <span key={i} aria-hidden="true" className="cd-now-letter" style={{ "--i": i } as React.CSSProperties}>{c === " " ? "\u00a0" : c}</span>)}</span>;
 }
 
 function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
-  const { text, attachments, queued } = item.event;
-  if (text.trim() === "/compact" && !attachments.length) return <p className="cd-note"><Icon name="diff" />You asked it to compact the conversation{queued ? " after this step" : ""}</p>;
-  return <div className={cx("cd-ask", queued && "is-queued")} title={queued ? "Sent while it was working: read as soon as the current step ends" : undefined}>
-    {text ? <p>{text}</p> : null}
-    {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
-  </div>;
+  const { text, attachments, queued, by } = item.event;
+  const { me } = useContext(ViewerContext);
+  const { owner } = useContext(ChatAccess);
+  /* In a shared chat, a message someone else wrote says whose it is. A guest knows the owner from the header, so only the others are named. */
+  const someoneElse = Boolean(by) && by.toLowerCase() !== (me ?? owner).toLowerCase();
+  const author = usePerson(by || "");
+  if (text.trim() === "/compact" && !attachments.length) return <p className="cd-note"><Icon name="diff" />{someoneElse ? author.name : "You"} asked it to compact the conversation{queued ? " after this step" : ""}</p>;
+  return <>
+    {someoneElse ? <p className="cd-ask-by"><Face username={by} size={20} /><span>{author.name}</span></p> : null}
+    <div className={cx("cd-ask", queued && "is-queued", someoneElse && "is-theirs")} title={queued ? "Sent while it was working: read as soon as the current step ends" : undefined}>
+      {text ? <p>{text}</p> : null}
+      {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
+    </div>
+  </>;
 }
 
 /** What a file is, in a word: "PDF document", "PNG picture". */
@@ -1651,6 +1983,7 @@ function Lightbox({ workspace, shots, at, onMove, onClose }: { workspace: Worksp
 
 /** The app the agent is running: a link anyone can open while it's up. */
 function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: string; live: boolean }) {
+  const owns = useOwns();
   const [copied, setCopied] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -1665,7 +1998,7 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
     <div className="cd-preview-acts">
       <Seal type="button" compact onClick={() => openOutside(url)}>Open</Seal>
       <button type="button" className="cd-quietbutton" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? "Copied" : "Copy link"}</button>
-      <button type="button" className="cd-quietbutton" disabled={stopping} aria-busy={stopping || undefined} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}><BusyFace busy={stopping}>Take down</BusyFace></button>
+      {owns ? <button type="button" className="cd-quietbutton" disabled={stopping} aria-busy={stopping || undefined} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}><BusyFace busy={stopping}>Take down</BusyFace></button> : null}
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </div></InkCard>;
@@ -1679,17 +2012,28 @@ const whatOf = (e: { space: string; path: string; node?: string; file?: boolean 
 
 /** Kimono AI asking for some of the person's Drive, and how they answered. */
 function AccessCard({ workspace, event, answer }: { workspace: Workspace; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> }) {
+  const owns = useOwns();
+  const ownerName = usePerson(useContext(ChatAccess).owner).name;
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const verb = event.need === "change" ? "change" : "read";
-  if (event.state === "missing") return <p className="cd-note cd-access-note"><DriveMark /><span>It asked for {whatOf(event)}, which isn&rsquo;t in your Drive.</span></p>;
-  if (event.state === "auto") return <p className="cd-note cd-access-note"><DriveMark /><span>Opened {whatOf(event)} to {verb}, as you allowed before.</span></p>;
+  const who = owns ? "You" : ownerName;
+  if (event.state === "missing") return <p className="cd-note cd-access-note"><DriveMark /><span>It asked for {whatOf(event)}, which isn&rsquo;t in {owns ? "your" : `${ownerName}\u2019s`} Drive.</span></p>;
+  if (event.state === "auto") return <p className="cd-note cd-access-note"><DriveMark /><span>Opened {whatOf(event)} to {verb}, as {owns ? "you" : ownerName} allowed before.</span></p>;
   if (answer) {
-    if (answer.state === "denied") return <p className="cd-note cd-access-note"><DriveMark /><span>You didn&rsquo;t let it {verb} {whatOf(event)}.</span></p>;
+    if (answer.state === "denied") return <p className="cd-note cd-access-note"><DriveMark /><span>{who} didn&rsquo;t let it {verb} {whatOf(event)}.</span></p>;
     const scope = answer.scope === "always" ? "from now on" : "in this chat";
-    return <p className="cd-note cd-access-note"><DriveMark /><span>You let it {answer.need === "change" ? "read and change" : "read"} {answer.scope === "file" ? "one file from " : ""}{whatOf(event)} {scope}.</span></p>;
+    return <p className="cd-note cd-access-note"><DriveMark /><span>{who} let it {answer.need === "change" ? "read and change" : "read"} {answer.scope === "file" ? "one file from " : ""}{whatOf(event)} {scope}.</span></p>;
   }
+  if (!owns) return <div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
+    <span className="cd-access-mark" aria-hidden="true"><DriveMark /></span>
+    <div className="cd-access-id">
+      <b>Kimono AI wants to {verb} {event.path ? <>{event.path.split("/").pop()} in </> : <>files in </>}{event.space}</b>
+      <span>{event.why}</span>
+    </div>
+    <span className="cd-access-wait">Waiting for {ownerName}</span>
+  </div>;
   const say = (choice: "file" | "chat" | "always" | "deny", file?: string) => {
     setBusy(choice); setProblem(null);
     code.answerAccess(workspace.id, event.id, choice, file).catch((error) => { setProblem(problemText(error)); setBusy(null); });
@@ -1737,6 +2081,7 @@ function OneFilePicker({ root, onPick }: { root: string; onPick: (file: string) 
 type Pending = { id: string; name: string; size: number; preview: string | null; attachment?: Attachment; failed?: string };
 
 function Composer({ workspace, running, blocked, context }: { workspace: Workspace; running: boolean; blocked: string | null; context: { used: number; window?: number } | null }) {
+  const owns = useOwns();
   const draftKey = `kimono-code-draft-${workspace.id}`;
   const [text, setText] = useState(() => { try { return sessionStorage.getItem(draftKey) ?? ""; } catch { return ""; } });
   const [pending, setPending] = useState<Pending[]>([]);
@@ -1809,7 +2154,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />
       {/* which Claude and how hard it thinks: small, beside the limits they spend */}
-      <span className="cd-tuning">{workspace.drive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
+      <span className="cd-tuning">{workspace.drive && owns ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
       <Meters workspace={workspace} context={context} running={running} blocked={blocked} />
       {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop" title="Stop" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
       <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Enter" title="Send (↵, Shift-↵ for a new line)">Send</Seal>
@@ -2073,4 +2418,55 @@ function ChangesView({ workspace, running, lastSeq }: { workspace: Workspace; ru
     })}
     {changes.truncated ? <p className="cd-quiet cd-pad">The rest is too long to show here.</p> : null}
   </Scroller>;
+}
+
+/* ── opened by a link: a chat without signing in, or one artifact on its own page ── */
+
+/** A chat opened by its link by someone not signed in: the conversation alone, to read. */
+export function GuestChat({ token, id, owner, ownerName }: { token: string; id: string; owner: string; ownerName: string }) {
+  /* Before anything below asks for the chat, every call carries the link. */
+  useState(() => { setShareLink(token); return token; });
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const load = useCallback(() => code.workspace(id).then((w) => { setWorkspace(w); setProblem(null); }, (error) => setProblem(problemText(error))), [id]);
+  useEffect(() => { void load(); }, [load]);
+  const now = useNow(workspace?.turn?.state === "running");
+  const viewer = useMemo<Viewer>(() => ({ me: null, guest: true, people: new Map([[owner.toLowerCase(), { username: owner, name: ownerName, picture: null }]]) }), [owner, ownerName]);
+  const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
+  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><div className="cd-page">
+    <div className="cd cd-guest has-workspace">
+      <main className="cd-main">
+        {workspace ? <WorkspaceView workspace={workspace} projects={[]} others={[]} tab="chat" path="" blocked={null} onChange={() => void load()} now={now} />
+          : problem ? <div className="cd-sheet cd-empty"><p>{problem}</p></div>
+          : <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>}
+      </main>
+    </div>
+  </div></MarksContext.Provider></ViewerContext.Provider>;
+}
+
+/** Someone signed in opened a chat's link: it joins their shared chats, and opens in their Kimono AI. */
+export function JoinChat({ token }: { token: string }) {
+  const [problem, setProblem] = useState<string | null>(null);
+  const crossTo = useCrossTo();
+  useEffect(() => {
+    code.join(token).then((w) => crossTo("kakejiku", `/code#w=${encodeURIComponent(w.id)}`), (error) => setProblem(problemText(error)));
+  }, [token, crossTo]);
+  return <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note">{problem ? <p>{problem}</p> : <MorphLoader label="Opening" className="cd-artifact-loading" />}</div></div>;
+}
+
+/** An artifact opened by its link: the page, as big as the window, in the same sandboxed frame. */
+export function ArtifactAlone({ title, content }: { title: string; content: string }) {
+  const [scene, setScene] = useState<SceneState | null>(null);
+  const [control, setControl] = useState<SceneControl | null>(null);
+  const send = (action: SceneControl["action"], t?: number, name?: string, value?: number) => setControl((c) => ({ n: (c?.n ?? 0) + 1, action, t, name, value }));
+  return <div className="cd cd-guest cd-artifact-alone">
+    <figure className="cd-artifact is-full">
+      <figcaption className="cd-artifact-head">
+        <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
+        <span className="cd-artifact-name"><b title={title}>{title}</b><small>{/<k-scene\b/i.test(content) ? "Animation" : "Artifact"}</small></span>
+      </figcaption>
+      <div className="cd-artifact-body"><ArtifactFrame content={content} final title={title} control={control} onScene={setScene} /></div>
+      {scene && scene.end > 0 ? <SceneBar scene={scene} send={send} /> : null}
+    </figure>
+  </div>;
 }
