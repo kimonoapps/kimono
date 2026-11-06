@@ -213,6 +213,15 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 12) {
+    /* Artifacts: the latest of each page a chat made (lib/code/artifacts.ts). */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE artifacts (workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (workspace_id, name));
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '12');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */

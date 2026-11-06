@@ -1,0 +1,20 @@
+#!/usr/bin/env python3
+"""kimono-show NAME
+
+Shows one of this chat's artifacts (/workspace/artifacts/NAME.html) again,
+here, at this point in the conversation: after you changed one shown earlier,
+or when the person asks to see it again. Kimono picks the line up as you run
+it; this only checks the artifact is there.
+"""
+import os, re, sys
+
+if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
+    sys.exit(__doc__.strip())
+name = sys.argv[1].removesuffix(".html").lower()
+if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
+    sys.exit("kimono-show: a name is letters, digits, - and _, as in artifacts/<name>.html")
+path = f"/workspace/artifacts/{name}.html"
+if not os.path.isfile(path):
+    have = sorted(f[:-5] for f in os.listdir("/workspace/artifacts") if f.endswith(".html")) if os.path.isdir("/workspace/artifacts") else []
+    sys.exit(f"kimono-show: there's no {path}" + (f". There is: {', '.join(have)}" if have else ""))
+print(f"Shown: {name}.")

@@ -15,7 +15,7 @@ const work = /\b(sort|rename|move|convert|make|create|write|draft|send|email|mai
 /** The model for one message, when the person left it to Kimono. */
 export function chooseModel(input: { prompt: string; attachments: number; building: boolean }): Model {
   const prompt = input.prompt.trim();
-  if (input.building || building.test(prompt)) return "opus";
+  if (input.building || building.test(prompt) || animating.test(prompt)) return "opus";
   if (input.attachments > 0 || work.test(prompt) || prompt.length > 280) return "sonnet";
   return prompt.length <= 160 ? "haiku" : "sonnet";
 }
@@ -23,6 +23,25 @@ export function chooseModel(input: { prompt: string; attachments: number; buildi
 /** What the person chose, or Kimono's pick when they chose Auto (or nothing). */
 export function modelFor(choice: unknown, input: { prompt: string; attachments: number; building: boolean }): Model {
   return choice === "opus" || choice === "sonnet" || choice === "haiku" ? choice : chooseModel(input);
+}
+
+/* An animation or a picture that explains: Opus writes these best, and they need little thinking, only care. */
+const animating = /\b(animat\w*|visuali[sz]\w*|illustrat\w*|simulat\w*|show me how|walk me through|in 3d|3d|draw (me )?(a |an |the )?(graph|diagram|picture)|graph it|plot it)\b/i;
+
+export function wantsAnimation(prompt: string) { return animating.test(prompt); }
+
+/** Thinking Sonnet and Haiku may be asked for: no more than medium. */
+export const lightEfforts = ["low", "medium"] as const;
+
+/**
+ * How hard it thinks: what the person picked, except that Sonnet and Haiku stop
+ * at medium, and an animation Kimono sent to Opus by itself thinks lightly.
+ */
+export function effortFor<E extends string>(model: Model, input: { choice: unknown; prompt: string; effort?: E }): E | "low" | "medium" | undefined {
+  const auto = !(input.choice === "opus" || input.choice === "sonnet" || input.choice === "haiku");
+  if (model === "opus" && auto && wantsAnimation(input.prompt)) return "low";
+  if (model !== "opus" && input.effort && !(lightEfforts as readonly string[]).includes(input.effort)) return "medium";
+  return input.effort;
 }
 
 export const modelNames: Record<Model, string> = { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };

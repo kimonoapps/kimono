@@ -986,16 +986,6 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-folderchip { margin-right: 4px; }
 @media (max-width: 720px) { .cd-folderchip { display: none; } }
 
-/* ── Kimono beige, never white ──
-   On the page's paper, every surface in Kimono AI (the message box, cards, the
-   new-chat box, menus) sits a step darker, as M3's light scheme has it; none is
-   lighter than the page. The chosen chat in the list takes the darkest beige. */
-.cd-page { --k-container-lowest: var(--k-container-low); }
-.cd-side .cd-list button[aria-current] { background: var(--k-container-highest); }
-.cd-side .cd-list button:hover:not([aria-current]) { background: var(--k-container-high); }
-.call .ci.is-mark, .cd-conn-logo, .cd-access-mark { background: var(--k-container-high); box-shadow: none; }
-.cd-composer, .cd-hello-box, .cd-memory-box { box-shadow: inset 0 0 0 1px var(--k-container-highest); }
-
 /* the list's toggle: top left when the list is folded away, where the one that folds it sits */
 .cd { position: relative; }
 .cd-unfold-corner { position: absolute; top: 46px; left: 30px; z-index: 5; }
@@ -1005,3 +995,79 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 /* the composer's controls wrap before anything is cut off */
 .cd-composer-bar { flex-wrap: wrap; row-gap: 6px; }
 @media (max-width: 720px) { .cd-meters { display: none; } }
+
+/* ── waiting: the wavy bar while it works, the morphing shape on a running tool ── */
+.cd-thinking { display: grid; grid-template-columns: auto minmax(0, 180px); align-items: center; gap: 12px; color: var(--k-moss-deep); font: 600 13px/1 var(--k-sans); }
+.cd-thinking .k-wave, .cd-note-wave { color: var(--k-moss); }
+.cd-note-wave { max-width: 200px; margin: 8px 0; }
+.cd-morph { width: 16px; height: 16px; color: var(--k-moss); flex: none; }
+.ci .cd-morph { width: 14px; height: 14px; }
+.cd-chip-wave { width: 56px; height: 10px; }
+
+/* ── artifacts: a page it made, in the chat, beside it, or full screen ── */
+.cd-artifact { display: grid; gap: 0; margin: 0; border-radius: var(--k-r-xl); background: var(--k-container-low); overflow: hidden; min-width: 0; }
+.cd-artifact-head { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 8px 6px 14px; }
+.cd-artifact-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 10px; background: var(--k-primary-container); color: var(--k-on-primary-container); }
+.cd-artifact-mark .i { width: 18px; height: 18px; }
+.cd-artifact-name { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.cd-artifact-name b { font: 600 15px/1.25 var(--k-display); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-artifact-name small { font: 500 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-artifact-wave { max-width: 140px; height: 10px; }
+.cd-artifact-acts { display: flex; gap: 2px; flex: none; }
+.cd-artifact-body { position: relative; margin: 0 6px 6px; border-radius: calc(var(--k-r-xl) - 6px); overflow: hidden; background: var(--k-surface); transition: height var(--k-t-seat) var(--k-ease-settle); }
+.cd-artifact-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+.cd-artifact-loading { margin: 12px 16px 20px; max-width: 200px; }
+.cd-artifact-away { margin: 0 6px 6px; padding: 14px; border: 0; border-radius: calc(var(--k-r-xl) - 6px); background: var(--k-surface); font: 600 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); cursor: pointer; text-align: left; }
+.cd-artifact-away:hover { color: var(--k-on-surface); }
+.cd-artifact-changed b { font-weight: 700; color: var(--k-on-surface); }
+.cd-say.is-draft { opacity: .92; }
+
+/* beside the chat: the chat narrows, the artifact takes the rest of the height */
+.cd-ws-grid.has-beside, .cd-ws-grid.is-chat.has-beside { grid-template-columns: minmax(380px, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: stretch; }
+.cd-ws-grid.is-chat.has-beside .cd-ws { max-width: none; }
+.cd-beside { min-width: 0; height: calc(100vh - 56px); position: sticky; top: 0; }
+.cd-artifact.is-beside { height: 100%; grid-template-rows: auto minmax(0, 1fr); }
+.cd-artifact.is-beside .cd-artifact-body, .cd-artifact.is-full .cd-artifact-body { height: auto; min-height: 0; }
+
+/* full screen: over everything, the artifact as big as the window */
+.cd-artifact-full { position: fixed; inset: 0; z-index: 80; padding: 12px; background: color-mix(in srgb, var(--k-ink) 36%, transparent); display: grid; animation: cd-full-in var(--k-t-seat) var(--k-spring); }
+.cd-artifact.is-full { height: 100%; grid-template-rows: auto minmax(0, 1fr); box-shadow: var(--k-shadow-raised); }
+@keyframes cd-full-in { from { opacity: 0; transform: scale(.98); } }
+
+@media (max-width: 1179px) {
+  .cd-ws-grid.has-beside, .cd-ws-grid.is-chat.has-beside { grid-template-columns: minmax(0, 1fr); }
+  .cd-beside { position: fixed; inset: 0; z-index: 70; height: auto; padding: 8px; background: color-mix(in srgb, var(--k-ink) 36%, transparent); }
+}
+@media (max-width: 720px) {
+  .cd-artifact-head { padding-left: 10px; }
+  .cd-artifact-full { padding: 0; }
+  .cd-artifact.is-full { border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .cd-artifact-full { animation: none; } .cd-artifact-body { transition: none; } }
+
+/* an animation's controls: Kimono's, under the card, never drawn by the artifact */
+.cd-scenebar { display: flex; align-items: center; gap: 12px; margin: -2px 6px 6px; padding: 6px 14px 6px 6px; border-radius: 0 0 calc(var(--k-r-xl) - 6px) calc(var(--k-r-xl) - 6px); background: var(--k-container); }
+.cd-scene-play { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border: 0; border-radius: 14px; background: var(--k-suo); color: var(--k-lift); cursor: pointer; transition: border-radius var(--k-t-seat) var(--k-spring), transform var(--k-t-tap); }
+.cd-scene-play:hover { border-radius: 20px; }
+.cd-scene-play:active { transform: scale(.94); }
+.cd-scene-play svg, .cd-scene-play .i { width: 20px; height: 20px; fill: currentColor; }
+.cd-scene-play .i { fill: none; }
+.cd-scene-play .i path[d^="M8 5.5"] { fill: currentColor; }
+.cd-scene-scrub { flex: 1; min-width: 0; height: 24px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+.cd-scene-scrub::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--k-suo) var(--p), var(--k-container-highest) var(--p)); }
+.cd-scene-scrub::-moz-range-track { height: 6px; border-radius: 999px; background: var(--k-container-highest); }
+.cd-scene-scrub::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--k-suo); }
+.cd-scene-scrub::-webkit-slider-thumb { appearance: none; width: 6px; height: 22px; margin-top: -8px; border-radius: 3px; background: var(--k-suo); }
+.cd-scene-scrub::-moz-range-thumb { width: 6px; height: 22px; border: 0; border-radius: 3px; background: var(--k-suo); }
+.cd-scene-scrub:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; border-radius: 6px; }
+.cd-scene-time { font: 600 12px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); white-space: nowrap; }
+.cd-scene-wave { width: 64px; height: 10px; }
+@media (max-width: 720px) { .cd-scene-wave { display: none; } }
+
+/* an animation's sliders: the scene's parameters, Kimono's controls */
+.cd-scene-controls { display: grid; gap: 0; }
+.cd-scene-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px 18px; margin: -2px 6px 0; padding: 10px 16px 4px; background: var(--k-container); }
+.cd-scene-param { display: grid; gap: 2px; min-width: 0; }
+.cd-scene-param-head { display: flex; justify-content: space-between; gap: 8px; font: 600 13px/1.2 var(--k-sans); color: var(--k-on-surface); }
+.cd-scene-param-head output { font-variant-numeric: tabular-nums; color: var(--k-suo); }
+.cd-scene-params + .cd-scenebar { margin-top: 0; }

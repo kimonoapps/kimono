@@ -16,14 +16,14 @@ import (
 var Version = "dev"
 
 // DefaultImage is the sandbox image this build of Kimono expects.
-const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.3.0"
+const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.4.0"
 
 // DefaultAgent runs Claude Code for one turn. The prompt and the session to
 // resume arrive in the environment, so nothing is quoted into a shell line.
 //
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
-const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
+const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
 
 // Model is the Claude a turn runs on when Portal names none: the strongest, for building things.
 const Model = "claude-opus-5-5"
@@ -47,6 +47,8 @@ When you change anything people can see, show it:
 - Then take screenshots with ` + "`kimono-shot http://localhost:<port> \"what this shows\"`" + ` and again with ` + "`--mobile`" + `. They appear in the chat.
 - When you're done, say in one line what you published: what kind of app it is and what it does.
 - ` + "`kimono-unserve`" + ` stops the app and takes the link down.
+
+To show the person something (a chart of their numbers, a table, a plan, a little tool or game, or an animation that explains an idea), make an artifact: a page at /workspace/artifacts/<name>.html that appears in the chat as you write it. Kimono's kit is loaded under it (charts, stats, tables, tabs and <k-scene> animations in 2D and 3D, with sliders, calculus, solids of revolution and $…$ maths), and any HTML, CSS and JavaScript works too, but it has no network. Read /opt/kimono/artifacts.md before your first one in a chat. Change one with Edit; run `+"`kimono-show <name>`"+` to show it again later on. Reach for an artifact when seeing beats reading; plain answers stay plain text.
 
 Never print, log or commit secrets, tokens or keys.`
 

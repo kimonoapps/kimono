@@ -27,6 +27,8 @@ export async function GET(request: Request, { params }: Context) {
       start(controller) {
         let sent = after;
         const send = (stored: StoredEvent) => {
+          /* seq 0 is something passing (what it is writing now): sent, never kept, never counted */
+          if (stored.seq === 0) { try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(stored)}\n\n`)); } catch { close(); } return; }
           if (stored.seq <= sent) return;
           sent = stored.seq;
           controller.enqueue(encoder.encode(`id: ${stored.seq}\ndata: ${JSON.stringify(stored)}\n\n`));

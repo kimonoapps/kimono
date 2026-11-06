@@ -118,3 +118,16 @@ func TestEnvironmentAddsToolsOnlyWhenThereAreSome(t *testing.T) {
 		t.Fatal("tools are connected, yet KIMONO_MCP is missing")
 	}
 }
+
+// Artifacts render in the chat while they are written: the agent streams its
+// partial messages, and is told where artifacts go and how to read about them.
+func TestAgentStreamsAndKnowsArtifacts(t *testing.T) {
+	if !strings.Contains(DefaultAgent, "--include-partial-messages") {
+		t.Fatal("the agent must stream partial messages, or artifacts only appear once finished")
+	}
+	for _, want := range []string{"/workspace/artifacts/<name>.html", "/opt/kimono/artifacts.md", "kimono-show <name>", "no network"} {
+		if !strings.Contains(SystemPrompt, want) {
+			t.Fatalf("the system prompt doesn't mention %q", want)
+		}
+	}
+}

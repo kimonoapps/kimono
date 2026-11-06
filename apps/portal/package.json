@@ -17,20 +17,24 @@
     "test:app-updates": "node --test scripts/test-app-updates.mjs",
     "test:testflight": "node --test scripts/test-testflight.mjs",
     "test:code": "node --import ./scripts/ts-resolve.mjs --test scripts/test-code.mjs",
+    "test:artifacts": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-artifacts.mjs",
     "test:composio": "node --test scripts/test-composio.mjs",
     "test:access": "node --test scripts/test-access.mjs && node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-access-flow.mjs"
   },
   "dependencies": {
     "@kimono/account": "workspace:*",
     "@kimono/app-sdk": "workspace:*",
+    "@kimono/artifacts": "workspace:*",
     "@kimono/ui": "workspace:*",
+    "katex": "0.16.11",
     "next": "16.2.2",
     "next-auth": "5.0.0-beta.32",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
-    "sharp": "0.34.5"
+    "sharp": "0.34.5",
+    "three": "0.170.0"
   },
   "devDependencies": {
     "@iconify-json/logos": "1.2.18",

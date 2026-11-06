@@ -35,6 +35,10 @@ export type CodeEvent =
   | { kind: "disk"; used: number; quota: number; full?: boolean }
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
   | { kind: "remembered"; text: string; how?: "changed" | "forgot" }
+  | { kind: "artifact"; id: string; name: string; action: "wrote" | "edited" | "shown" }
+  | { kind: "artifact-saved"; name: string; version: number; title: string }
+  | { kind: "draft"; text: string }
+  | { kind: "artifact-draft"; id: string; name: string; content: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };
 export type Profile = { instructions: string; memories: { id: string; text: string; source: "person" | "ai"; createdAt: number }[] };
@@ -53,6 +57,7 @@ export type SandboxStatus = {
 };
 /** How a published app is doing, as the sandbox's supervisor reports it. */
 export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };
+export type ArtifactPage = { name: string; title: string; content: string; version: number; updatedAt: number };
 export type StoredEvent = { seq: number; turn: string | null; at: number; event: CodeEvent };
 export type Entry = { name: string; kind: "file" | "dir" | "link"; size: number };
 export type Changes = {
@@ -159,6 +164,8 @@ export const code = {
   attachmentUrl: (id: string, a: Attachment) => `${base}${ws(id)}/attachments/${encodeURIComponent(a.path.replace(/^\/attachments\//, ""))}?type=${encodeURIComponent(a.type)}`,
 
   eventsUrl: (id: string, after: number) => `${base}${ws(id)}/events?after=${after}`,
+  /** The latest saved version of one of the chat's artifacts. */
+  artifact: (id: string, name: string) => call<ArtifactPage>(`${ws(id)}/artifacts/${encodeURIComponent(name)}`),
 };
 
 export const isPicture = (type: string) => /^image\/(png|jpeg|gif|webp)$/.test(type);

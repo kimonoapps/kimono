@@ -152,28 +152,44 @@ Repositories.
 ## Artifacts, and apps
 
 What it makes for people is mostly **artifacts**: one self-contained page (a
-chore chart, a budget with a chart, a recipe scaler, a photo contact sheet, a
-little game). An artifact needs no server and no packages, which suits a
-sandbox with no web.
+chore chart, a budget with a chart, a recipe scaler, a little game, or an
+animation that explains an idea). An artifact needs no server and no packages,
+which suits a sandbox with no web.
 
-- It writes the artifact as files in the chat's sandbox (`/artifacts/<name>/`,
-  an `index.html` and anything beside it) and the chat shows it live in a card,
-  in a sandboxed iframe.
-- **Libraries come from Kimono, never a CDN.** Portal serves a fixed, pinned set
-  at `/ai/lib/…` (React and ReactDOM, Tailwind's runtime, a charting library, a
-  Markdown renderer, a date library, Three.js), and the same set is in the
-  sandbox at `/opt/kimono/lib` so it can test. The agent is told the list.
-- An artifact page is served with `Content-Security-Policy: default-src 'self'
-  …; connect-src 'none'`, from its own origin, so it can't reach the web or
-  Kimono's API either. It can keep its own state in the browser.
-- **Saved to Drive** in an **Artifacts** space, one folder each, so they're on
-  the phone and in the Files app.
-- **Share**: with the household (a link inside Kimono), or a public link, using
-  Drive's links. Changing one later is a message in any chat: "add a column for
-  Sam to the chore chart".
-- **Apps** with a server (Code's published apps) stay possible for
-  administrators, built from the same offline set and published as Code does
-  today, with git hidden. They are the exception, not what the AI reaches for.
+- It writes the artifact to `/workspace/artifacts/<name>.html` with its normal
+  Write tool, changes it with Edit, and shows it again further down the chat
+  with `kimono-show <name>`. The chat turns those calls into an artifact card
+  instead of a tool row (`lib/code/artifacts.ts`), and every card shows the
+  latest version, which Kimono keeps in `code.db`.
+- **It renders while it is written.** The node runs Claude Code with partial
+  messages, and Kimono passes a Write's content to the page as it arrives,
+  without storing it. The frame writes it into a document that renders as it
+  loads, the way a slow page does.
+- **One engine, shared** (`packages/artifacts`): the kit (charts, stats,
+  tables, tabs, sliders) and the scene engine, the frame that hosts an
+  artifact, and its message protocol. Kimono serves it at `/ai/lib/` and
+  `/ai/frame`, with three.js and KaTeX pinned beside it; the phone app will
+  load the same frame. The agent's reference is `infra/sandbox/artifacts.md`,
+  in the sandbox at `/opt/kimono/artifacts.md`, and a test keeps it in step
+  with the kit.
+- **No web, no Kimono.** The frame is a sandboxed iframe with scripts only, so
+  it has no origin, no cookies and no API, and its policy loads nothing but the
+  engine and reaches nothing at all. Data goes in the page.
+- **Scenes** are animations written as code, one statement per line: each line
+  plays as soon as it is written. Running the script only describes a
+  timeline, so play, pause, scrub and replay are just moving the time; the
+  script runs again from the top when it grows, and randomness repeats. They
+  have 2D and 3D, sliders and draggable points, calculus (Riemann sums,
+  shading, fields, polar and implicit curves), solids of revolution with
+  washers and discs, and `$…$` maths.
+- **Kimono draws the controls**, never the artifact: under an animation, the
+  card has play, pause, a scrubber, the time and a slider for each of the
+  scene's parameters, and talks to the scene by message.
+- A big artifact opens beside the chat by itself on a wide window; any can go
+  full screen.
+- Asked for an animation, Kimono picks Opus with light thinking.
+- Still to do: saving artifacts to Drive and sharing them, and server apps for
+  administrators (built from the same offline set, git hidden).
 
 ## Moving from Code
 
@@ -195,8 +211,10 @@ sandbox with no web.
    requests appear only for a project or a chat with an app. "Kimono AI" in the
    rail, everyone may chat, projects stay with administrators. Still to do: the
    `/ai` address with `/code` redirecting, and the phone.
-4. Artifacts: the library set, the artifact card and page, saving to Drive,
-   sharing. Then server apps for administrators, git hidden.
+4. Artifacts (started): the shared engine and frame, cards that render while
+   written, scenes with Kimono's controls, the maths vocabulary, the agent's
+   reference. Still to do: saving to Drive, sharing, server apps for
+   administrators.
 5. Phone: the AI tab in the Compose app.
 
 ## Open questions

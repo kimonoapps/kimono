@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppBloom, Choice, cx, InkCard, Seal, type AppIdentity } from "@kimono/ui";
+import { AppBloom, BusyFace, Choice, cx, InkCard, InkWave, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
@@ -67,8 +67,13 @@ function useNow(running: boolean) {
 
 /* ── the timeline, replayed then live ── */
 
+/** What it is writing right now: never kept, only sent while it writes (lib/code/artifacts.ts, Drafts). */
+type Drafts = { text: string | null; artifacts: Record<string, { id: string; content: string }> };
+const noDrafts: Drafts = { text: null, artifacts: {} };
+
 function useTimeline(id: string | null, onDone: () => void) {
   const [events, setEvents] = useState<StoredEvent[]>([]);
+  const [drafts, setDrafts] = useState<Drafts>(noDrafts);
   const [connected, setConnected] = useState(true);
   const done = useRef(onDone);
   useEffect(() => { done.current = onDone; }, [onDone]);
@@ -79,12 +84,21 @@ function useTimeline(id: string | null, onDone: () => void) {
     source.onerror = () => setConnected(source.readyState === EventSource.OPEN);
     source.onmessage = (message) => {
       const stored = JSON.parse(message.data) as StoredEvent;
+      const event = stored.event;
+      if (stored.seq === 0) {
+        if (event.kind === "draft") setDrafts((d) => ({ ...d, text: event.text }));
+        if (event.kind === "artifact-draft") setDrafts((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
+        return;
+      }
+      if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") setDrafts((d) => d.text === null ? d : { ...d, text: null });
+      if (event.kind === "artifact-saved") setDrafts((d) => { if (!(event.name in d.artifacts)) return d; const rest = { ...d.artifacts }; delete rest[event.name]; return { ...d, artifacts: rest }; });
+      if (event.kind === "done") setDrafts(noDrafts);
       setEvents((list) => list.length && list[list.length - 1].seq >= stored.seq ? list : [...list, stored]);
       if (stored.event.kind === "done" || stored.event.kind === "ask" || stored.event.kind === "published") done.current();
     };
     return () => source.close();
   }, [id]);
-  return { events, connected };
+  return { events, connected, drafts };
 }
 
 /* ── Code ── */
@@ -139,8 +153,13 @@ function ModelPicker() {
 /** The thinking level, as a compact chip in the message box. */
 function EffortPicker() {
   const effort = useEffort();
-  return <Choice compact label="Thinking ·" aria-label="How hard it thinks" className="cd-effort" value={effort} onChange={(next) => setEffort(next as Effort)}
-    options={efforts.map((e) => ({ value: e, label: effortWords[e] }))} />;
+  const model = useModel();
+  /* Sonnet and Haiku think at low or medium only (the Portal holds them there too); Opus and Auto offer all of it. The choice made for Opus is kept for when it comes back. */
+  const light = model === "sonnet" || model === "haiku";
+  const offered: readonly Effort[] = light ? efforts.filter((e) => e === "low" || e === "medium") : efforts;
+  const shown = light && !offered.includes(effort) ? "medium" : effort;
+  return <Choice compact label="Thinking ·" aria-label="How hard it thinks" className="cd-effort" value={shown} onChange={(next) => setEffort(next as Effort)}
+    options={offered.map((e) => ({ value: e, label: effortWords[e] }))} />;
 }
 
 /** A ring that fills as something is used: a pie chart's quieter cousin. */
@@ -187,7 +206,7 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
     </button>
     {open ? <div className="cd-meters-pop" role="dialog" aria-label="Context and usage">
       <div className="cd-meter"><Ring value={ctx} label="Context" /><span><b>Context</b><small>{context ? `${kTokens(context.used)} of ${kTokens(window)} tokens${context.window ? "" : " (about)"}` : "Known after the next reply"}</small></span>
-        <Seal type="button" compact tone="quiet" disabled={compacting || Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); setOpen(false); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{compacting ? "Compacting…" : running ? "Compact after this" : "Compact now"}</Seal></div>
+        <Seal type="button" compact tone="quiet" busy={compacting} disabled={Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); setOpen(false); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{running ? "Compact after this" : "Compact now"}</Seal></div>
       <p className="cd-meter-note">Compacting folds the conversation so far into a summary, so there&rsquo;s room to keep going. It also happens by itself when the context fills.</p>
       <div className="cd-meter"><Ring value={five} label="5-hour window" /><span><b>5-hour window</b><small>{noFiveHour ? "This plan has no 5-hour limit" : five == null ? "Not reported yet" : `${pct(five)} ${whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div>
       <div className="cd-meter"><Ring value={week} label="This week" /><span><b>This week</b><small>{week == null ? "Not reported yet" : `${pct(week)} ${whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div>
@@ -344,7 +363,7 @@ function MemoryView({ now }: { now: number }) {
             <span className="cd-faint">{saved ? "Saved" : `${instructions.length} / 4000`}</span>
             <span className="cd-grow" />
             {changed ? <Seal type="button" compact tone="quiet" onClick={() => setDraft(null)}>Undo</Seal> : null}
-            <Seal type="button" compact disabled={!changed || saving} onClick={save}>{saving ? "Saving…" : "Save"}</Seal>
+            <Seal type="button" compact busy={saving} disabled={!changed} onClick={save}>Save</Seal>
           </div>
         </div>
         <h2 className="cd-conn-sub">What it remembers</h2>
@@ -419,7 +438,7 @@ function ConnectionsView({ now }: { now: number }) {
           <span className="cd-conn-logo"><img src={c.logo} alt="" /></span>
           <span className="cd-conn-id"><b>{c.name}</b><small>{c.status === "ACTIVE" ? c.since ? `Connected ${when(Date.parse(c.since), now).replace(/^(Today|Yesterday)/, (word) => word.toLowerCase())}` : "Connected" : c.status === "FAILED" ? "Needs connecting again" : "Connecting…"}</small></span>
           {confirming === c.account
-            ? <span className="cd-conn-acts"><button type="button" className="cd-quietbutton is-danger" disabled={busy === c.account} onClick={() => remove(c)}>{busy === c.account ? "Disconnecting…" : "Disconnect"}</button><button type="button" className="cd-quietbutton" onClick={() => setConfirming(null)}>Keep</button></span>
+            ? <span className="cd-conn-acts"><button type="button" className="cd-quietbutton is-danger" disabled={busy === c.account} aria-busy={busy === c.account || undefined} onClick={() => remove(c)}><BusyFace busy={busy === c.account}>Disconnect</BusyFace></button><button type="button" className="cd-quietbutton" onClick={() => setConfirming(null)}>Keep</button></span>
             : <span className="cd-conn-acts">{c.status === "FAILED" ? <Seal type="button" compact onClick={() => connect(c.app)}>Connect again</Seal> : null}<button type="button" className="cd-quietbutton" onClick={() => setConfirming(c.account)}>Disconnect</button></span>}
         </li>)}</ul> : state ? <p className="cd-conn-empty">Nothing connected yet.</p> : null}
         <h2 className="cd-conn-sub">Connect an app</h2>
@@ -428,7 +447,7 @@ function ConnectionsView({ now }: { now: number }) {
           {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
           <span className="cd-conn-logo"><img src={a.logo} alt="" /></span>
           <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
-          {a.connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span> : <Seal type="button" compact tone="quiet" disabled={busy === a.app} onClick={() => connect(a.app)}>{busy === a.app ? "Opening…" : "Connect"}</Seal>}
+          {a.connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span> : <Seal type="button" compact tone="quiet" busy={busy === a.app} onClick={() => connect(a.app)}>Connect</Seal>}
         </li>)}</ul>}
       </> : null}
     </div>
@@ -667,7 +686,7 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
             onChange={(event) => setNaming(event.target.value)}
             onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void makeProject(); } if (event.key === "Escape" && repos?.length) setNaming(null); }} />
         </label>
-        <Seal type="button" onClick={() => void makeProject()} disabled={!naming?.trim() || making}>{making ? "Making…" : "Make project"}</Seal>
+        <Seal type="button" onClick={() => void makeProject()} busy={making} disabled={!naming?.trim()}>Make project</Seal>
         {repos?.length ? <Seal type="button" tone="quiet" onClick={() => setNaming(null)}>Cancel</Seal> : null}
       </div> : <div className="cd-new-pickers">
         <Picker label="Project" placeholder={repos ? "None yet" : "Loading…"} value={repo} onChange={setRepo} disabled={!repos}
@@ -683,7 +702,7 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
         <div className="cd-hello-row">
           {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Work on a project</button> : null}
           <span className="cd-grow" />
-          <Seal type="button" compact disabled={!ready || Boolean(blocked)} onClick={() => void send()}>{sending ? "Starting…" : "Send"}</Seal>
+          <Seal type="button" compact busy={sending} disabled={!ready || Boolean(blocked)} onClick={() => void send()}>Send</Seal>
         </div>
       </div>
       {blocked ? <p className="cd-hello-note">{blocked}</p> : null}
@@ -695,7 +714,16 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
 /* ── a workspace ── */
 
 function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked, onChange, now }: { projects: Project[]; workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
-  const { events, connected } = useTimeline(workspace.id, onChange);
+  const { events, connected, drafts } = useTimeline(workspace.id, onChange);
+  /* Artifacts: the latest saved version of each, and where a big one is open (beside the chat, or full screen). */
+  const versions = useMemo(() => {
+    const found: Record<string, { version: number; title: string }> = {};
+    for (const { event } of events) if (event.kind === "artifact-saved") found[event.name] = { version: event.version, title: event.title };
+    return found;
+  }, [events]);
+  const [beside, setBeside] = useState<string | null>(null);
+  const [full, setFull] = useState<string | null>(null);
+  const artifacts = useMemo<ArtifactsShared>(() => ({ workspaceId: workspace.id, drafts: drafts.artifacts, versions, beside, setBeside, setFull }), [workspace.id, drafts.artifacts, versions, beside]);
   /* A chat is a conversation and nothing else. Files, changes and the app (and repositories,
      branches, pull requests) belong to a chat that is building something: a project, or one with an app. */
   const project = workspace.kind === "project";
@@ -722,7 +750,7 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
   const crossTo = useCrossTo();
   /* As on the phone: the title and repo, the few things you reach for (the running app, the
      pull request, Drive, delete) as quiet links and icons, one strong seal to publish, then the tabs. */
-  return <div className={cx("cd-ws-grid", !isApp && "is-chat")}>
+  return <ArtifactsContext.Provider value={artifacts}><div className={cx("cd-ws-grid", !isApp && "is-chat", tab === "chat" && beside && "has-beside")}>
     <div className="cd-sheet cd-ws">
       <header className="cd-ws-head">
         <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
@@ -745,8 +773,8 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
               {workspace.pullRequest ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button> : null}
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
               <button type="button" className="cd-roundbutton" aria-label="Delete chat" title="Delete chat" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>
-              <Seal type="button" compact tone={workspace.pullRequest ? "quiet" : "primary"} disabled={running || publishing || Boolean(blocked)} onClick={() => void publish()}>
-                {publishing ? "Pushing…" : workspace.pullRequest ? "Push changes" : "Open pull request"}
+              <Seal type="button" compact tone={workspace.pullRequest ? "quiet" : "primary"} busy={publishing} disabled={running || Boolean(blocked)} onClick={() => void publish()}>
+                {workspace.pullRequest ? "Push changes" : "Open pull request"}
               </Seal>
             </div>}
       </header>
@@ -760,13 +788,15 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
           : !connected ? <span className="cd-status">Reconnecting…</span> : null}
       </div> : <div ref={segs} hidden />}
       {problem ? <p className="cd-problem cd-ws-problem" role="alert">{problem}</p> : null}
-      {tab === "chat" ? <Chat workspace={workspace} events={events} running={running} blocked={blocked} />
+      {tab === "chat" ? <Chat workspace={workspace} events={events} drafts={drafts} running={running} blocked={blocked} />
         : tab === "files" ? <Files workspace={workspace} path={path} onOpen={(path) => go({ tab: "files", path })} />
           : tab === "app" ? <AppView workspace={workspace} running={running} blocked={blocked} onChange={onChange} />
             : <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />}
     </div>
-    {isApp ? <aside className="cd-deploy" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></aside> : null}
-  </div>;
+    {tab === "chat" && beside ? <aside className="cd-beside" aria-label="Artifact"><ArtifactCard name={beside} mode="beside" /></aside>
+      : isApp ? <aside className="cd-deploy" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></aside> : null}
+    {full ? <div className="cd-artifact-full" role="dialog" aria-modal="true" aria-label="Artifact"><ArtifactCard name={full} mode="full" /></div> : null}
+  </div></ArtifactsContext.Provider>;
 }
 
 /** On a wide window, beside the conversation: this task's running app, and every other task's. */
@@ -794,7 +824,7 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
       <span className="cd-dep-icon"><Icon name="rocket" /></span>
       <b>Nothing is running</b>
       <p className="cd-faint">It runs the app when it changes something you can see. You can ask it to now.</p>
-      <Seal type="button" disabled={asking || Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{asking ? "Asking…" : running ? "Run it after this step" : "Run the app"}</Seal>
+      <Seal type="button" busy={asking} disabled={Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{running ? "Run it after this step" : "Run the app"}</Seal>
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div>
     <SandboxLimits workspace={workspace} />
@@ -914,7 +944,7 @@ function LinkName({ workspace, url, onRenamed }: { workspace: Workspace; url: st
       <span><input value={name} maxLength={50} spellCheck={false} autoCapitalize="off" aria-label="Link name" style={{ width: `${Math.max(4, name.length + 1)}ch` }}
         onChange={(event) => setName(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} /><em>{suffix}</em></span>
     </label>
-    <Seal type="submit" compact disabled={!clean || clean === label || saving}>{saving ? "Saving…" : "Rename"}</Seal>
+    <Seal type="submit" compact busy={saving} disabled={!clean || clean === label}>Rename</Seal>
     {problem ? <p className="cd-problem" role="alert">{problem}</p>
       : <p className="cd-faint">The old link stops working. A name of your own is easier to share, and easier to guess: anyone with the link can open the app.</p>}
   </form>;
@@ -931,7 +961,7 @@ function AppReady({ workspace, url }: { workspace: Workspace; url: string }) {
     <div className="cd-ready-acts">
       <Seal type="button" className="cd-ready-open" onClick={() => openOutside(url)}><Icon name="open" />Open app</Seal>
       <button type="button" className="cd-quietbutton" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => setProblem("Couldn't copy. Select the address above.")); }}>{copied ? "Copied" : "Copy link"}</button>
-      <button type="button" className="cd-quietbutton" disabled={stopping} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}>{stopping ? "Taking down…" : "Take down"}</button>
+      <button type="button" className="cd-quietbutton" disabled={stopping} aria-busy={stopping || undefined} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}><BusyFace busy={stopping}>Take down</BusyFace></button>
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </div></InkCard>;
@@ -953,6 +983,7 @@ type Item =
   | { type: "disk"; seq: number; event: Extract<CodeEvent, { kind: "disk" }> }
   | { type: "compacted"; seq: number; before?: number }
   | { type: "remembered"; seq: number; text: string; how?: "changed" | "forgot" }
+  | { type: "artifact"; seq: number; id: string; name: string; action: "wrote" | "edited" | "shown" }
   | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
@@ -983,13 +1014,17 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
       case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
       case "remembered": items.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
+      case "artifact": items.push({ type: "artifact", seq, id: event.id, name: event.name, action: event.action }); break;
     }
   }
   return items;
 }
 
-function Chat({ workspace, events, running, blocked }: { workspace: Workspace; events: StoredEvent[]; running: boolean; blocked: string | null }) {
+function Chat({ workspace, events, drafts, running, blocked }: { workspace: Workspace; events: StoredEvent[]; drafts: Drafts; running: boolean; blocked: string | null }) {
   const items = useMemo(() => itemsOf(events), [events]);
+  /* An artifact still being written has no place in the timeline yet: it is drawn at the end until its call lands. */
+  const placed = new Set(items.flatMap((i) => i.type === "artifact" ? [i.id] : []));
+  const writing = Object.entries(drafts.artifacts).filter(([, d]) => !placed.has(d.id));
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const [away, setAway] = useState(false);
@@ -998,7 +1033,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [items]);
+  }, [items, drafts]);
   /* Pictures and opened tool groups grow the timeline after it renders; stay at the bottom through that too. */
   const timeline = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1044,15 +1079,152 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
+            case "artifact": return item.action === "edited"
+              ? <ArtifactChanged key={`art-${item.id}`} name={item.name} />
+              : <ArtifactCard key={`art-${item.id}`} name={item.name} />;
           }
-        })}
-        {running && items.at(-1)?.type !== "tools" ? <p className="cd-thinking"><i aria-hidden="true" />Working</p> : null}
+        }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
+        {drafts.text ? <div className="cd-say is-draft"><Markdown text={drafts.text} /></div> : null}
+        {running && items.at(-1)?.type !== "tools" && !drafts.text && !writing.length ? <div className="cd-thinking" role="status"><span>Working</span><InkWave label="Working" /></div> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
     </div>
     <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />
   </div>;
+}
+
+/* ── artifacts (docs/kimono-ai.md, "Artifacts") ──
+   A page it made, drawn in a sandboxed frame with no origin and no internet
+   (app/ai/frame). It renders while it is being written, every card shows the
+   latest version, and a big one opens beside the chat or full screen. */
+
+type ArtifactsShared = {
+  workspaceId: string;
+  drafts: Drafts["artifacts"];
+  versions: Record<string, { version: number; title: string }>;
+  beside: string | null;
+  setBeside: (name: string | null) => void;
+  setFull: (name: string | null) => void;
+};
+const ArtifactsContext = createContext<ArtifactsShared | null>(null);
+
+/** The latest saved version of an artifact, fetched again whenever a new one is kept. */
+function useArtifact(name: string) {
+  const shared = useContext(ArtifactsContext)!;
+  const version = shared.versions[name]?.version ?? 0;
+  const [saved, setSaved] = useState<{ version: number; content: string; title: string } | null>(null);
+  useEffect(() => {
+    if (!version) return;
+    let live = true;
+    code.artifact(shared.workspaceId, name).then((found) => { if (live) setSaved({ version: found.version, content: found.content, title: found.title }); }, () => {});
+    return () => { live = false; };
+  }, [shared.workspaceId, name, version]);
+  const draft = shared.drafts[name];
+  const content = draft?.content ?? saved?.content ?? "";
+  const title = shared.versions[name]?.title ?? /<title>([^<]{1,120})<\/title>/i.exec(content)?.[1]?.trim() ?? name.replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return { shared, content, title, writing: Boolean(draft), ready: Boolean(draft || saved) };
+}
+
+/** The frame, and the conversation with it: the text as it arrives, its height back. */
+type SceneParam = { name: string; label: string; min: number; max: number; step: number; value: number; unit?: string };
+type SceneState = { t: number; end: number; playing: boolean; complete: boolean; count: number; params: SceneParam[] };
+type SceneControl = { n: number; action: "play" | "pause" | "replay" | "seek" | "set"; t?: number; name?: string; value?: number };
+
+function ArtifactFrame({ content, final, title, control, onHeight, onScene }: { content: string; final: boolean; title: string; control: SceneControl | null; onHeight?: (height: number) => void; onScene?: (state: SceneState) => void }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const ready = useRef(false);
+  const latest = useRef({ content, final });
+  const heightTo = useRef(onHeight);
+  const sceneTo = useRef(onScene);
+  useEffect(() => { heightTo.current = onHeight; sceneTo.current = onScene; }, [onHeight, onScene]);
+  const post = useCallback(() => {
+    if (!ready.current) return;
+    frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final }, "*");
+  }, []);
+  useEffect(() => {
+    const hear = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow) return;
+      const m = event.data as { kimono?: string; type?: string; height?: number } & Partial<SceneState>;
+      if (m?.kimono !== "artifact") return;
+      if (m.type === "ready") { ready.current = true; post(); }
+      if (m.type === "size" && typeof m.height === "number") heightTo.current?.(m.height);
+      if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });
+    };
+    window.addEventListener("message", hear);
+    return () => window.removeEventListener("message", hear);
+  }, [post]);
+  useEffect(() => { latest.current = { content, final }; post(); }, [content, final, post]);
+  useEffect(() => { if (control) frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "scene-control", action: control.action, t: control.t, name: control.name, value: control.value }, "*"); }, [control]);
+  return <iframe ref={frame} className="cd-artifact-frame" src="/ai/frame" title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" />;
+}
+
+/** An artifact in the chat (and, bigger, beside it or full screen). */
+function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline" | "beside" | "full" }) {
+  const { shared, content, title, writing, ready } = useArtifact(name);
+  const [height, setHeight] = useState(0);
+  const [scene, setScene] = useState<SceneState | null>(null);
+  const [control, setControl] = useState<SceneControl | null>(null);
+  const send = (action: SceneControl["action"], t?: number, name?: string, value?: number) => setControl((c) => ({ n: (c?.n ?? 0) + 1, action, t, name, value }));
+  const animated = /<k-scene\b/i.test(content);
+  const inline = mode === "inline";
+  const open = shared.beside === name;
+  /* A big one goes beside the chat by itself the first time it grows past the card, on a wide window. */
+  const moved = useRef(false);
+  const onHeight = useCallback((h: number) => {
+    setHeight(h);
+    if (inline && writing && !moved.current && h > 760 && window.innerWidth >= 1180) { moved.current = true; shared.setBeside(name); }
+  }, [inline, writing, shared, name]);
+  const shown = inline ? Math.min(Math.max(height, 120), 560) : undefined;
+  return <figure className={cx("cd-artifact", `is-${mode}`, writing && "is-writing", inline && open && "is-elsewhere")}>
+    <figcaption className="cd-artifact-head">
+      <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
+      <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <InkWave label="Writing" className="cd-artifact-wave" /> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
+      <span className="cd-artifact-acts">
+        {mode !== "full" ? <button type="button" className="cd-roundbutton" aria-label={open ? "Close the side panel" : "Open beside the chat"} title={open ? "Close the side panel" : "Open beside the chat"} onClick={() => shared.setBeside(open ? null : name)}><Icon name={open ? "close" : "beside"} /></button> : null}
+        <button type="button" className="cd-roundbutton" aria-label={mode === "full" ? "Leave full screen" : "Full screen"} title={mode === "full" ? "Leave full screen" : "Full screen"} onClick={() => shared.setFull(mode === "full" ? null : name)}><Icon name={mode === "full" ? "shrink" : "expand"} /></button>
+      </span>
+    </figcaption>
+    {inline && open
+      ? <button type="button" className="cd-artifact-away" onClick={() => shared.setBeside(null)}>Open beside the chat · bring it back here</button>
+      : ready
+        ? <>
+            <div className="cd-artifact-body" style={shown ? { height: shown } : undefined}><ArtifactFrame content={content} final={!writing} title={title} control={control} onHeight={onHeight} onScene={setScene} /></div>
+            {scene && scene.end > 0 ? <SceneBar scene={scene} send={send} /> : null}
+          </>
+        : <InkWave label="Opening" className="cd-artifact-loading" />}
+  </figure>;
+}
+
+/** Kimono's own controls for an artifact's animation: the scenes inside only report their time. */
+function SceneBar({ scene, send }: { scene: SceneState; send: (action: SceneControl["action"], t?: number, name?: string, value?: number) => void }) {
+  const ended = scene.complete && scene.t >= scene.end - 0.01;
+  const label = scene.playing ? "Pause" : ended ? "Play again" : "Play";
+  return <div className="cd-scene-controls">
+  {scene.params.length ? <div className="cd-scene-params">{scene.params.map((p) => <label key={p.name} className="cd-scene-param">
+    <span className="cd-scene-param-head"><span>{p.label}</span><output>{+p.value.toFixed(4)}{p.unit ?? ""}</output></span>
+    <input type="range" className="cd-scene-scrub" min={p.min} max={p.max} step={p.step || "any"} value={p.value}
+      style={{ ["--p" as string]: `${(p.value - p.min) / (p.max - p.min || 1) * 100}%` }}
+      onChange={(event) => send("set", undefined, p.name, +event.target.value)} />
+  </label>)}</div> : null}
+  <div className="cd-scenebar">
+    <button type="button" className="cd-scene-play" aria-label={label} title={label} onClick={() => send(scene.playing ? "pause" : ended ? "replay" : "play")}>
+      {scene.playing ? <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5.5" width="4" height="13" rx="1.5" /><rect x="13.5" y="5.5" width="4" height="13" rx="1.5" /></svg>
+        : ended ? <Icon name="restart" /> : <Icon name="play" />}
+    </button>
+    <input type="range" className="cd-scene-scrub" min={0} max={1000} value={scene.end ? Math.round(scene.t / scene.end * 1000) : 0} aria-label="Time"
+      style={{ ["--p" as string]: `${scene.end ? scene.t / scene.end * 100 : 0}%` }}
+      onChange={(event) => send("seek", (+event.target.value / 1000) * scene.end)} />
+    <span className="cd-scene-time">{scene.t.toFixed(1)} / {scene.end.toFixed(1)}s</span>
+    {!scene.complete ? <InkWave label="Still being written" className="cd-scene-wave" /> : null}
+  </div>
+  </div>;
+}
+
+/** An edit to an artifact shown earlier: the card above already shows it; this says so, and shows it again here. */
+function ArtifactChanged({ name }: { name: string }) {
+  const { shared, title } = useArtifact(name);
+  return <p className="cd-note cd-artifact-changed"><Icon name="spark" /><span>Changed <b>{title}</b> <button type="button" className="cd-textbutton" onClick={() => shared.setBeside(name)}>Open</button></span></p>;
 }
 
 function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
@@ -1076,7 +1248,7 @@ function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   const touched = [...new Set(tools.filter((t) => t.label === "Edited" || t.label === "Wrote").map((t) => t.detail).filter(Boolean))];
   return <details className="calls" open={open} onToggle={(event) => { const next = (event.currentTarget as HTMLDetailsElement).open; if (next !== open) setChosen(next); }}>
     <summary className="tools-used">
-      {live && pending ? <i className="cd-spin" aria-hidden="true" /> : <GroupMarks tools={tools} />}
+      {live && pending ? <MorphLoader tone="plain" label="Using tools" className="cd-morph" /> : <GroupMarks tools={tools} />}
       <span>{live && pending ? "Using tools" : `Used ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`}</span>
       {touched.length ? <span className="cd-faint">· edited {touched.length === 1 ? touched[0] : `${touched.length} files`}</span> : null}
       {failed ? <span className="cd-word">{failed} failed</span> : null}
@@ -1119,7 +1291,7 @@ function ToolRow({ tool }: { tool: Tool }) {
   const output = tool.result?.output.trim();
   return <details className="call" data-state={state}>
     <summary>
-      <span className={cx("ci", (tool.app || tool.space) && "is-mark")} aria-hidden="true">{state === "running" ? <i className="cd-spin" /> : <ToolMark tool={tool} />}</span>
+      <span className={cx("ci", (tool.app || tool.space) && "is-mark")} aria-hidden="true">{state === "running" ? <MorphLoader tone="plain" label="Running" className="cd-morph" /> : <ToolMark tool={tool} />}</span>
       <span className="cv">{tool.label}{tool.app && /^(Used|Connecting|Read how to use)$/.test(tool.label) ? <> <AppName slug={tool.app} /></> : null}</span>
       {tool.space ? <SpaceChip name={tool.space} /> : null}
       {tool.detail ? <code>{(tool.space ? tool.detail.split(`/workspace/.kimono/files/${tool.space}/`).join("").split(`/files/${tool.space}/`).join("") : tool.detail).split("\n")[0] || "\u00a0"}</code> : null}
@@ -1200,7 +1372,7 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
     <div className="cd-preview-acts">
       <Seal type="button" compact onClick={() => openOutside(url)}>Open</Seal>
       <button type="button" className="cd-quietbutton" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? "Copied" : "Copy link"}</button>
-      <button type="button" className="cd-quietbutton" disabled={stopping} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}>{stopping ? "Stopping…" : "Take down"}</button>
+      <button type="button" className="cd-quietbutton" disabled={stopping} aria-busy={stopping || undefined} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}><BusyFace busy={stopping}>Take down</BusyFace></button>
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </div></InkCard>;
@@ -1236,9 +1408,9 @@ function AccessCard({ workspace, event, answer }: { workspace: Workspace; event:
       <span>{event.why}</span>
     </div>
     <div className="cd-access-acts">
-      <Seal type="button" compact disabled={busy !== null} onClick={() => say("chat")}>{busy === "chat" ? "Allowing…" : event.file ? "Allow" : "Allow for this chat"}</Seal>
+      <Seal type="button" compact busy={busy === "chat"} disabled={busy !== null} onClick={() => say("chat")}>{event.file ? "Allow" : "Allow for this chat"}</Seal>
       {!event.file && event.node ? <button type="button" className="cd-quietbutton" disabled={busy !== null} onClick={() => setPicking((p) => !p)}>Only one file…</button> : null}
-      <button type="button" className="cd-quietbutton" disabled={busy !== null} onClick={() => say("always")}>{busy === "always" ? "Allowing…" : "Always allow"}</button>
+      <button type="button" className="cd-quietbutton" disabled={busy !== null} aria-busy={busy === "always" || undefined} onClick={() => say("always")}><BusyFace busy={busy === "always"}>Always allow</BusyFace></button>
       <button type="button" className="cd-quietbutton" disabled={busy !== null} onClick={() => say("deny")}>{busy === "deny" ? "…" : "Don\u2019t allow"}</button>
     </div>
     {picking && event.node ? <OneFilePicker root={event.node} onPick={(file) => { setPicking(false); say("file", file); }} /> : null}
@@ -1260,7 +1432,7 @@ function OneFilePicker({ root, onPick }: { root: string; onPick: (file: string) 
   }, [at]);
   return <div className="cd-access-pick">
     {stack.length ? <button type="button" className="cd-access-row" onClick={() => { setAt(stack.at(-1)!); setStack((s) => s.slice(0, -1)); }}><Icon name="back" />Back</button> : null}
-    {items === null ? <p className="cd-note">Looking…</p> : !items.length ? <p className="cd-note">Nothing here.</p> : items.map((item) =>
+    {items === null ? <InkWave label="Looking" className="cd-note-wave" /> : !items.length ? <p className="cd-note">Nothing here.</p> : items.map((item) =>
       <button key={item.id} type="button" className="cd-access-row" onClick={() => { if (item.kind === "folder") { setStack((s) => [...s, at]); setAt(item.id); } else onPick(item.id); }}>
         <Icon name={item.kind === "folder" ? "folder" : "file"} /><span>{item.name}</span>
       </button>)}
@@ -1329,7 +1501,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {p.preview ? <img src={p.preview} alt="" /> : <Icon name="file" />}
       <span>{p.name}</span>
-      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : "Attaching…")}</small>
+      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <InkWave label="Attaching" className="cd-chip-wave" />)}</small>
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPending((list) => list.filter((x) => x.id !== p.id))}><Icon name="close" /></button>
     </span>)}</div> : null}
     <textarea ref={field} value={text} rows={1} aria-label="Message"

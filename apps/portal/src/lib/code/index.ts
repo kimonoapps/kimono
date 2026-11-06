@@ -8,7 +8,8 @@ import { apiError, type ApiUser } from "../api-v1";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
-import { finish, translate, type Attachment, type CodeEvent, type TurnResult } from "./events";
+import { finish, translate, type ArtifactCall, type Attachment, type CodeEvent, type TurnResult } from "./events";
+import { applyEdits, artifactOf, Drafts, saveArtifact } from "./artifacts";
 import {
   abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
@@ -16,7 +17,7 @@ import {
 import { sandbox, type Effort, type NodePreview } from "./node";
 import { toolSession } from "./composio";
 import { changeMemory, contextFor, forget, profileOf, remember } from "./memory";
-import { modelFor, type ModelChoice } from "./models";
+import { effortFor, modelFor, type ModelChoice } from "./models";
 export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
@@ -93,6 +94,29 @@ function record(workspaceId: string, turnId: string | null, event: CodeEvent) {
   return stored;
 }
 
+/** Sends something to whoever is watching without keeping it: what the agent is writing right now. */
+function broadcast(workspaceId: string, turnId: string | null, event: CodeEvent) {
+  const passing: StoredEvent = { seq: 0, turn: turnId, at: Date.now(), event };
+  for (const listener of live.listeners.get(workspaceId) ?? []) {
+    try { listener(passing); } catch { /* a closed stream */ }
+  }
+}
+
+/** Keeps the artifact a finished Write, Edit or kimono-show left in the sandbox, and tells the page. */
+async function keepArtifact(config: CodeConfig, workspace: Workspace, turn: string, call: ArtifactCall) {
+  const kept = artifactOf(db(), workspace.id, call.name);
+  let content: string | null = call.action === "wrote" ? call.content ?? "" : call.action === "edited" && kept ? applyEdits(kept.content, call.edits ?? []) : null;
+  if (content === null) {
+    /* Changed some other way, or shown before Kimono kept it: read it from the sandbox. */
+    const response = await sandbox.file(config, workspace, `artifacts/${call.name}.html`).catch(() => null);
+    if (!response?.ok) return;
+    content = await response.text();
+  }
+  if (kept && kept.content === content) return;
+  const saved = saveArtifact(db(), workspace.id, call.name, content);
+  record(workspace.id, turn, { kind: "artifact-saved", name: saved.name, version: saved.version, title: saved.title });
+}
+
 /** Hears every event recorded in a workspace from now on. Returns the way to stop. */
 export function listen(workspaceId: string, listener: (event: StoredEvent) => void) {
   const set = live.listeners.get(workspaceId) ?? new Set();
@@ -147,6 +171,8 @@ export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, tex
 async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice) {
   /* Which Claude answers: what the person chose, or Kimono's pick for this message. */
   const model = modelFor(choice, { prompt, attachments: attachments.length, building: workspace.kind === "project" || Boolean(workspace.preview) });
+  /* How hard it thinks: Sonnet and Haiku stop at medium; an animation Kimono sent to Opus thinks lightly. */
+  effort = effortFor(model, { choice, prompt, effort });
   const controller = new AbortController();
   live.turns.set(turn, controller);
   record(workspace.id, turn, { kind: "started" });
@@ -169,6 +195,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: contextFor(db(), workspace.owner) }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
+    /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
+    const drafts = new Drafts((draft) => broadcast(workspace.id, turn, draft));
+    const pendingArtifacts = new Map<string, ArtifactCall>();
     for (;;) {
       const { done: ended, value } = await reader.read();
       if (value) buffer += value;
@@ -178,6 +207,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (!raw.trim()) continue;
         let line: Record<string, unknown>;
         try { line = JSON.parse(raw); } catch { continue; }
+        if (line.type === "stream_event") { drafts.take(line); continue; }
         if (line.type === "kimono.image" && typeof line.name === "string") {
           await keepShot(config, workspace, turn, line.name, typeof line.caption === "string" ? line.caption : undefined);
           continue;
@@ -242,7 +272,15 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (translated.session) setSession(db(), workspace.id, translated.session);
         if (translated.result) result = translated.result;
         if (translated.context) context = translated.context;
-        for (const event of translated.events) record(workspace.id, turn, event);
+        for (const call of translated.artifacts ?? []) pendingArtifacts.set(call.id, call);
+        for (const event of translated.events) {
+          record(workspace.id, turn, event);
+          const call = event.kind === "tool-result" ? pendingArtifacts.get(event.id) : undefined;
+          if (call && event.kind === "tool-result") {
+            pendingArtifacts.delete(event.id);
+            if (event.ok) await keepArtifact(config, workspace, turn, call).catch((error) => console.warn("Kimono AI couldn't keep an artifact:", error instanceof Error ? error.message : error));
+          }
+        }
       }
       if (ended) break;
     }

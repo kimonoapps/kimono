@@ -1,0 +1,17 @@
+{
+  "name": "@kimono/artifacts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./frame": "./src/frame.ts",
+    "./engine": "./src/engine.ts"
+  },
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

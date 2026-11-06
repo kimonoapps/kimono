@@ -1,3 +1,5 @@
+import { artifactName, editsOf, shownName, type Edit } from "./artifacts";
+
 /*
  * What a workspace's timeline is made of. The node streams Claude Code's own
  * stream-json lines; they are turned into these few kinds before they are
@@ -30,6 +32,13 @@ export type CodeEvent =
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; /** The Drive folder or file asked for, so the person can pick one file in it. */ node?: string }
   /** Something it kept about the person for future chats (kimono-remember). */
   | { kind: "remembered"; text: string; /** It changed a memory, or forgot one. */ how?: "changed" | "forgot" }
+  /** An artifact it wrote or changed (/workspace/artifacts/<name>.html), or showed again with kimono-show. */
+  | { kind: "artifact"; id: string; name: string; action: "wrote" | "edited" | "shown" }
+  /** Kimono kept a new version of an artifact: pages showing it load it again. */
+  | { kind: "artifact-saved"; name: string; version: number; title: string }
+  /** Never stored: what it is writing right now, sent to whoever is watching. */
+  | { kind: "draft"; text: string }
+  | { kind: "artifact-draft"; id: string; name: string; content: string }
   /** How the person answered an access request. */
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 
@@ -128,6 +137,14 @@ function toolName(name: string, input: Record<string, unknown>): { label: string
   }
 }
 
+/** A call that writes, edits or shows an artifact: it becomes the artifact's card instead of a tool row. */
+function artifactCall(id: string, name: string, input: Record<string, unknown>): ArtifactCall | null {
+  if (name === "Write") { const found = artifactName(input.file_path); return found ? { id, name: found, action: "wrote", content: typeof input.content === "string" ? input.content : "" } : null; }
+  if (name === "Edit" || name === "MultiEdit") { const found = artifactName(input.file_path); return found ? { id, name: found, action: "edited", edits: editsOf(name, input) } : null; }
+  if (name === "Bash") { const found = shownName(input.command); return found ? { id, name: found, action: "shown" } : null; }
+  return null;
+}
+
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) return content.map((part) => typeof part === "object" && part && "text" in part ? String((part as { text: unknown }).text) : "").join("\n");
@@ -136,7 +153,8 @@ function resultText(content: unknown): string {
 
 export type TurnResult = { failure?: string; costUsd?: number; durationMs?: number; window?: number };
 /** `context` is what the agent's latest message held: its input, plus what it read from and wrote to the cache. */
-export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult; context?: number };
+export type ArtifactCall = { id: string; name: string; action: "wrote" | "edited" | "shown"; content?: string; edits?: Edit[] };
+export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult; context?: number; artifacts?: ArtifactCall[] };
 
 const tokens = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 function contextOf(message: Record<string, unknown>): number | undefined {
@@ -167,13 +185,17 @@ export function translate(line: unknown): Translated {
   switch (message.type) {
     case "assistant": {
       const events: CodeEvent[] = [];
+      const artifacts: ArtifactCall[] = [];
       for (const part of parts) {
         if (part.type === "text" && typeof part.text === "string" && part.text.trim()) events.push({ kind: "text", text: part.text });
         if (part.type === "tool_use" && typeof part.id === "string" && typeof part.name === "string") {
-          events.push({ kind: "tool", id: part.id, name: part.name, ...toolLabel(part.name, (part.input as Record<string, unknown>) ?? {}) });
+          const input = (part.input as Record<string, unknown>) ?? {};
+          const call = artifactCall(part.id, part.name, input);
+          if (call) { artifacts.push(call); events.push({ kind: "artifact", id: call.id, name: call.name, action: call.action }); continue; }
+          events.push({ kind: "tool", id: part.id, name: part.name, ...toolLabel(part.name, input) });
         }
       }
-      return { events, session, context: contextOf(message) };
+      return { events, session, context: contextOf(message), ...(artifacts.length ? { artifacts } : {}) };
     }
     case "system": {
       /* Claude Code folded the conversation into a summary, by itself or because it was asked to. */
