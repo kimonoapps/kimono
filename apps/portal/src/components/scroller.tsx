@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type HTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 
 /*
  * A scroll area with Kimono's own bars: slim ink strokes laid over the content,
@@ -13,8 +13,12 @@ type Axis = "y" | "x";
 const MIN_THUMB = 28;
 const INSET = 4;
 
-export function Scroller({ children, className, viewClassName, tone = "ink", fit = false, ...view }: HTMLAttributes<HTMLDivElement> & {
+export function Scroller({ children, className, viewClassName, tone = "ink", fit = false, as: View = "div", viewRef, ...view }: HTMLAttributes<HTMLElement> & {
   children: ReactNode;
+  /** The scrolling element's tag, so a log stays a <pre> and a file tree a <nav>. */
+  as?: "div" | "pre" | "nav" | "aside" | "section";
+  /** The scrolling element itself, for code that reads or sets its scroll. */
+  viewRef?: RefObject<HTMLElement | null>;
   /** Classes on the outer box: size and place it here. */
   className?: string;
   /** Classes on the scrolling view: padding and layout of the content go here. */
@@ -25,7 +29,8 @@ export function Scroller({ children, className, viewClassName, tone = "ink", fit
   fit?: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const viewport = useRef<HTMLDivElement>(null);
+  const viewport = useRef<HTMLElement>(null);
+  const frame = useRef(0);
   const bars = useRef<Record<Axis, HTMLDivElement | null>>({ y: null, x: null });
   const idle = useRef<number | undefined>(undefined);
 
@@ -59,14 +64,16 @@ export function Scroller({ children, className, viewClassName, tone = "ink", fit
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
+    /* Content can change many times a frame (a reply streaming in): measure once per frame. */
+    const soon = () => { if (!frame.current) frame.current = requestAnimationFrame(() => { frame.current = 0; measure(); }); };
     const onScroll = () => { measure(); wake(); };
     el.addEventListener("scroll", onScroll, { passive: true });
-    const sizes = new ResizeObserver(measure);
+    const sizes = new ResizeObserver(soon);
     sizes.observe(el);
     for (const child of Array.from(el.children)) sizes.observe(child);
     const changes = new MutationObserver(() => {
       for (const child of Array.from(el.children)) sizes.observe(child);
-      measure();
+      soon();
     });
     changes.observe(el, { childList: true, subtree: true, characterData: true });
     measure();
@@ -75,6 +82,8 @@ export function Scroller({ children, className, viewClassName, tone = "ink", fit
       sizes.disconnect();
       changes.disconnect();
       window.clearTimeout(idle.current);
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
     };
   }, [measure, wake]);
 
@@ -118,7 +127,7 @@ export function Scroller({ children, className, viewClassName, tone = "ink", fit
   };
 
   return <div ref={root} className={`k-scroller${tone === "lift" ? " lift" : ""}${fit ? " fit" : ""}${className ? ` ${className}` : ""}`}>
-    <div ref={viewport} className={`k-scroller-view${viewClassName ? ` ${viewClassName}` : ""}`} {...view}>{children}</div>
+    <View ref={(node: HTMLElement | null) => { viewport.current = node; if (viewRef) viewRef.current = node; }} className={`k-scroller-view${viewClassName ? ` ${viewClassName}` : ""}`} {...view}>{children}</View>
     <div ref={(node) => { bars.current.y = node; }} className="k-scroller-bar y" data-axis="y" aria-hidden="true" hidden onPointerDown={press}><i /></div>
     <div ref={(node) => { bars.current.x = node; }} className="k-scroller-bar x" data-axis="x" aria-hidden="true" hidden onPointerDown={press}><i /></div>
   </div>;

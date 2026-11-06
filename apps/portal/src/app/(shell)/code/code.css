@@ -90,9 +90,10 @@
 .cd-status i, .cd-thinking i { width: 8px; height: 8px; border-radius: var(--k-r-s); background: var(--k-moss); }
 
 /* ── chat ── */
-.cd-ws > .cd-chat, .cd-ws > .cd-files, .cd-ws > .cd-changes, .cd-ws > .cd-pad { flex: 1 1 auto; min-height: 0; }
+.cd-ws > .cd-chat, .cd-ws > .cd-files, .cd-ws > .cd-changes-box, .cd-ws > .cd-pad { flex: 1 1 auto; min-height: 0; }
 .cd-chat { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
-.cd-scroll { overflow: auto; min-height: 0; overscroll-behavior: contain; }
+.cd-scroll { min-height: 0; }
+.cd-scroll-view { overscroll-behavior: contain; }
 .cd-timeline { max-width: 780px; margin: 0 auto; padding: 26px var(--cd-gutter) 40px; display: grid; gap: 16px; }
 .cd-ask { justify-self: end; max-width: min(620px, 92%); display: grid; gap: 10px; padding: 12px 16px; border: 1px solid var(--k-hair); border-radius: var(--k-r-s); background: var(--k-fold); }
 .cd-ask p { margin: 0; font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--k-ink); }
@@ -165,7 +166,8 @@ li[data-state="failed"] .cd-toolmark { color: var(--k-suo-deep); }
 
 /* ── files ── */
 .cd-files { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 0; }
-.cd-tree { overflow: auto; border-right: 2px solid var(--k-hair); padding: 10px 0 24px; background: var(--k-ground); }
+.cd-tree { border-right: 2px solid var(--k-hair); background: var(--k-ground); }
+.cd-tree-view { padding: 10px 0 24px; }
 .cd-tree ul { margin: 0; padding: 0; list-style: none; }
 .cd-tree li { margin: 0; font-size: 13px; }
 .cd-tree li.cd-faint, .cd-tree li.cd-problem { min-height: 30px; display: flex; align-items: center; }
@@ -476,7 +478,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-composer-bar { gap: 4px; }
 .cd-top .cd-new { --k-seal-base: transparent; }
 /* long commands and paths stay inside the card */
-.cd-scroll { overflow-x: hidden; }
+.cd-scroll-view { overflow-x: hidden; }
 .cd-timeline > *, details.calls, .call-list, .call { min-width: 0; max-width: 100%; }
 .call > summary { min-width: 0; }
 .call code { flex: 0 1 auto; }
@@ -513,7 +515,8 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-composer { width: min(760px, calc(100% - 48px)); margin-bottom: 20px; padding: 12px 14px; }
 
 /* Deployments: a panel beside the conversation, a tab when there's no room */
-.cd-deploy { position: sticky; top: 28px; max-height: calc(100vh - 56px); overflow: auto; }
+.cd-deploy { position: sticky; top: 28px; }
+.cd-deploy-view { max-height: calc(100vh - 56px); }
 .cd-deploy-tab { display: none !important; }
 .cd-deployments { display: grid; gap: 14px; }
 .cd-deployments h2 { margin: 6px 4px 2px; font: 700 15px/1.2 var(--k-sans); letter-spacing: .02em; color: var(--k-suo); }

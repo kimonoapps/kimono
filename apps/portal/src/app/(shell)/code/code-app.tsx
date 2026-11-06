@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
+import { Scroller } from "@/components/scroller";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
@@ -819,7 +820,7 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
             : <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />}
     </div>
     {tab === "chat" && beside ? <aside className="cd-beside" aria-label="Artifact"><ArtifactCard name={beside} mode="beside" /></aside>
-      : isApp ? <aside className="cd-deploy" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></aside> : null}
+      : isApp ? <Scroller fit as="aside" className="cd-deploy" viewClassName="cd-deploy-view" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></Scroller> : null}
     {full ? <div className="cd-artifact-full" role="dialog" aria-modal="true" aria-label="Artifact"><ArtifactCard name={full} mode="full" /></div> : null}
   </div></ArtifactsContext.Provider>;
 }
@@ -844,7 +845,7 @@ function Deployments({ workspace, others }: { workspace: Workspace; others: Work
 function AppView({ workspace, running, blocked, onChange }: { workspace: Workspace; running: boolean; blocked: string | null; onChange: () => void }) {
   const [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  if (!workspace.preview) return <div className="cd-scroll cd-appview">
+  if (!workspace.preview) return <Scroller className="cd-scroll" viewClassName="cd-appview">
     <div className="cd-app-empty">
       <span className="cd-dep-icon"><Icon name="rocket" /></span>
       <b>Nothing is running</b>
@@ -853,8 +854,8 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div>
     <SandboxLimits workspace={workspace} />
-  </div>;
-  return <div className="cd-scroll cd-appview">
+  </Scroller>;
+  return <Scroller className="cd-scroll" viewClassName="cd-appview">
     {workspace.preview.stopped ? null : <AppReady workspace={workspace} url={workspace.preview.url} />}
     <AppRunning key={workspace.id} workspace={workspace} onChange={onChange} />
     <SandboxLimits workspace={workspace} />
@@ -863,7 +864,7 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
       <div className="cd-app-bar"><i /><i /><i /><span className="cd-mono">{workspace.preview.url.replace(/^https?:\/\//, "")}</span></div>
       <iframe src={workspace.preview.url} title="The running app" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
     </div>}
-  </div>;
+  </Scroller>;
 }
 
 /** What the task's sandbox may use: its CPUs and memory, and its disk against the quota. */
@@ -944,7 +945,7 @@ function AppRunning({ workspace, onChange }: { workspace: Workspace; onChange: (
       </div>
     </div>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
-    <pre ref={log} className="cd-run-log" aria-label="What the app printed" tabIndex={0}>{status ? status.log.trimEnd() || "Nothing printed yet." : " "}</pre>
+    <Scroller fit as="pre" tone="lift" viewRef={log} viewClassName="cd-run-log" aria-label="What the app printed" tabIndex={0}>{status ? status.log.trimEnd() || "Nothing printed yet." : " "}</Scroller>
   </section>;
 }
 
@@ -1086,7 +1087,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
   const lastPreview = items.findLast((i) => i.type === "preview")?.seq;
   const lastContext = (items.findLast((i) => i.type === "done" && i.event.context) as Extract<Item, { type: "done" }> | undefined)?.event.context ?? null;
   return <div className="cd-chat">
-    <div className="cd-scroll" ref={scroller} onScroll={onScroll}>
+    <Scroller className="cd-scroll" viewClassName="cd-scroll-view" viewRef={scroller} onScroll={onScroll}>
       <div className="cd-timeline" ref={timeline} aria-live="polite">
         {items.length === 0 ? <SkeletonChat /> : null}
         {items.map((item) => {
@@ -1117,7 +1118,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
-    </div>
+    </Scroller>
     <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />
   </div>;
 }
@@ -1339,9 +1340,9 @@ function ToolRow({ tool }: { tool: Tool }) {
     </summary>
     <div className="cbody">
       {tool.change && state !== "failed"
-        ? <div className="diff">{tool.change.split("\n").map((line, index) => <div key={index} className={line.startsWith("+ ") ? "add" : line.startsWith("- ") ? "del" : "gap"}>{line}</div>)}</div>
+        ? <Scroller fit viewClassName="diff">{tool.change.split("\n").map((line, index) => <div key={index} className={line.startsWith("+ ") ? "add" : line.startsWith("- ") ? "del" : "gap"}>{line}</div>)}</Scroller>
         : command || output
-          ? <pre className="urushi">{command ? <span className="c">$ {command}{output ? "\n" : ""}</span> : null}{output}</pre>
+          ? <Scroller fit as="pre" tone="lift" viewClassName="urushi">{command ? <span className="c">$ {command}{output ? "\n" : ""}</span> : null}{output}</Scroller>
           : <p className="cd-faint">{state === "running" ? "Still running." : "Nothing came back."}</p>}
     </div>
   </details>;
@@ -1697,7 +1698,7 @@ function Files({ workspace, path, onOpen }: { workspace: Workspace; path: string
   };
 
   return <div className="cd-files">
-    <nav className="cd-tree" aria-label="Files"><ul>{render("", 0)}</ul></nav>
+    <Scroller as="nav" className="cd-tree" viewClassName="cd-tree-view" aria-label="Files"><ul>{render("", 0)}</ul></Scroller>
     <div className="cd-viewer">{path ? <Viewer key={path} workspace={workspace} path={path} /> : <p className="cd-quiet cd-pad">Choose a file.</p>}</div>
   </div>;
 }
@@ -1724,7 +1725,7 @@ function Viewer({ workspace, path }: { workspace: Workspace; path: string }) {
         // eslint-disable-next-line @next/next/no-img-element
         : "picture" in state ? <div className="cd-picture"><img src={state.picture} alt={path} /></div>
           : "binary" in state ? <p className="cd-quiet cd-pad">Not a text file · {readableSize(state.binary)}</p>
-            : <pre className="cd-lacquer cd-source">{state.text.split("\n").map((line, n) => <span key={n} className="cd-line"><i>{n + 1}</i>{line || " "}</span>)}</pre>}
+            : <Scroller as="pre" tone="lift" className="cd-lacquer" viewClassName="cd-lacquer cd-source">{state.text.split("\n").map((line, n) => <span key={n} className="cd-line"><i>{n + 1}</i>{line || " "}</span>)}</Scroller>}
   </>;
 }
 
@@ -1770,7 +1771,7 @@ function ChangesView({ workspace, running, lastSeq }: { workspace: Workspace; ru
   const removed = changes.files.reduce((n, f) => n + f.deletions, 0);
   const letter = { added: "A", modified: "M", deleted: "D", renamed: "R" } as const;
 
-  return <div className="cd-changes">
+  return <Scroller className="cd-changes-box" viewClassName="cd-changes">
     <p className="cd-changes-sum"><b>{changes.files.length} {changes.files.length === 1 ? "file" : "files"}</b><span className="cd-mono">+{added} −{removed}</span><span className="cd-faint">against {changes.base}</span></p>
     {changes.files.map((file) => {
       const diff = diffs.get(file.path);
@@ -1783,13 +1784,13 @@ function ChangesView({ workspace, running, lastSeq }: { workspace: Workspace; ru
           <span className="cd-mono cd-counts">+{file.additions} −{file.deletions}</span>
         </button>
         {isOpen ? diff?.lines.length
-          ? <pre className="cd-lacquer cd-difflines">{diff.lines.map((line, n) => {
+          ? <Scroller fit as="pre" tone="lift" viewClassName="cd-lacquer cd-difflines">{diff.lines.map((line, n) => {
             const kind = line.startsWith("@@") ? "hunk" : line.startsWith("+") ? "add" : line.startsWith("-") ? "del" : "ctx";
             return <span key={n} className="cd-line" data-kind={kind}><i aria-hidden="true">{kind === "add" ? "+" : kind === "del" ? "−" : ""}</i>{kind === "hunk" ? line : line.slice(1) || " "}</span>;
-          })}</pre>
+          })}</Scroller>
           : <p className="cd-quiet cd-pad">No text to show.</p> : null}
       </section>;
     })}
     {changes.truncated ? <p className="cd-quiet cd-pad">The rest is too long to show here.</p> : null}
-  </div>;
+  </Scroller>;
 }

@@ -942,7 +942,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
  */
 .k-scroller { --k-scroll-thumb: color-mix(in srgb, var(--k-ink) 34%, transparent); --k-scroll-thumb-hot: color-mix(in srgb, var(--k-ink) 56%, transparent); position: relative; overflow: hidden; min-height: 0; min-width: 0; }
 .k-scroller.lift { --k-scroll-thumb: rgba(236, 228, 220, .32); --k-scroll-thumb-hot: rgba(236, 228, 220, .55); }
-.k-scroller-view { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.k-scroller-view { position: absolute; inset: 0; overflow: auto; scrollbar-width: none; }
 .k-scroller-view::-webkit-scrollbar { display: none; }
 .k-scroller.fit > .k-scroller-view { position: relative; inset: auto; }
 .k-scroller-bar { position: absolute; z-index: 2; display: flex; opacity: 0; transition: opacity var(--k-t-state, .2s) var(--k-ease-settle, ease); touch-action: none; }

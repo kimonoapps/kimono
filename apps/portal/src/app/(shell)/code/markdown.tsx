@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import { Scroller } from "@/components/scroller";
 
 /*
  * The little Markdown an agent writes: paragraphs, headings, lists, quotes,
@@ -79,7 +80,7 @@ export function Markdown({ text }: { text: string }) {
   return <div className="cd-md">{blocks(text).map((block, n) => {
     const key = `b${n}`;
     switch (block.type) {
-      case "code": return <pre key={key} className="cd-pre" data-lang={block.lang || undefined}><code>{block.text}</code></pre>;
+      case "code": return <Scroller key={key} fit as="pre" tone="lift" viewClassName="cd-pre" data-lang={block.lang || undefined}><code>{block.text}</code></Scroller>;
       case "h": return block.level <= 2 ? <h3 key={key}>{inline(block.text, key)}</h3> : <h4 key={key}>{inline(block.text, key)}</h4>;
       case "ul": return <ul key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`)}</li>)}</ul>;
       case "ol": return <ol key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`)}</li>)}</ol>;
