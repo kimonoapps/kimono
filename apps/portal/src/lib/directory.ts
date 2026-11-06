@@ -119,10 +119,24 @@ export async function readMeshMembers(): Promise<Record<string, MeshMember>> {
   return members;
 }
 
+/**
+ * The identity account with this username, whatever its case. Kimono keeps
+ * usernames lowercase, but the identity provider's `username` filter is exact,
+ * so an account named "Marame" is looked for again by search.
+ */
+async function lookupUser(username: string): Promise<IdentityUser | undefined> {
+  const key = username.toLowerCase();
+  for (const filter of ["username", "search"]) {
+    const response = await identityRequest(`/api/v3/core/users/?${filter}=${encodeURIComponent(username)}&include_groups=true`);
+    const payload = await response.json() as { results?: IdentityUser[] };
+    const user = (payload.results || []).find((item) => item.username?.toLowerCase() === key);
+    if (user) return user;
+  }
+  return undefined;
+}
+
 async function findUser(username: string): Promise<IdentityUser> {
-  const response = await identityRequest(`/api/v3/core/users/?username=${encodeURIComponent(username)}&include_groups=true`);
-  const payload = await response.json() as { results?: IdentityUser[] };
-  const user = (payload.results || []).find((item) => item.username?.toLowerCase() === username.toLowerCase());
+  const user = await lookupUser(username);
   if (!user?.pk) throw new Error(`${username} is not an account on this Kimono`);
   return user;
 }
@@ -422,9 +436,7 @@ export async function readStanding(username: string): Promise<Standing | null> {
   if (hit && Date.now() - hit.at < standingTtl) return hit.value;
   let value: Standing;
   try {
-    const response = await identityRequest(`/api/v3/core/users/?username=${encodeURIComponent(username)}&include_groups=true`);
-    const payload = await response.json() as { results?: IdentityUser[] };
-    const user = (payload.results || []).find((item) => item.username?.toLowerCase() === key);
+    const user = await lookupUser(username);
     value = user
       ? { active: user.is_active !== false, groups: (user.groups_obj || []).map((group) => group.name || "").filter(Boolean) }
       : { active: false, groups: [] };
