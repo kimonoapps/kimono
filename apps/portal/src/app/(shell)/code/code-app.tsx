@@ -284,6 +284,37 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
   /* Archived chats leave the list for their own page. */
   const archived = useMemo(() => (workspaces ?? []).filter((w) => w.archivedAt).toSorted((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0)), [workspaces]);
   const listed = useMemo(() => (workspaces ?? []).filter((w) => !w.archivedAt), [workspaces]);
+  /* Chats on a Kimono Git repository, by repository. One whose name is a project's sits in that project. */
+  const repoGroups = useMemo(() => projectsOf(listed), [listed]);
+  const repoOf = (project: Project) => repoGroups.find((group) => group.name.toLowerCase() === project.name.trim().toLowerCase().replace(/\s+/g, "-"));
+  /* Searching the list: every chat by its name, its project or its repository. */
+  const [find, setFind] = useState("");
+  const searching = find.trim().length > 0;
+  /* What's folded, and the order of the projects: this device's own, kept between visits. */
+  const [folds, setFolds] = useState<Set<string>>(() => new Set(readList("kimono-ai:folded")));
+  const toggleFold = (key: string) => setFolds((now) => { const next = new Set(now); if (next.has(key)) next.delete(key); else next.add(key); writeList("kimono-ai:folded", [...next]); return next; });
+  const [order, setOrder] = useState<string[]>(() => readList("kimono-ai:project-order"));
+  type Group = { kind: "project"; key: string; project: Project } | { kind: "repo"; key: string; repo: ReturnType<typeof projectsOf>[number] };
+  const groups: Group[] = [
+    ...projects.map((project) => ({ kind: "project" as const, key: `p:${project.id}`, project })),
+    ...repoGroups.filter((group) => !projects.some((project) => repoOf(project) === group)).map((repo) => ({ kind: "repo" as const, key: `r:${repo.key}`, repo })),
+  ].map((group, n) => ({ group, n })).toSorted((a, b) => {
+    const at = (key: string) => { const i = order.indexOf(key); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+    return at(a.group.key) - at(b.group.key) || a.n - b.n;
+  }).map(({ group }) => group);
+  /* Dropping one project on another puts it there, in the order as it now shows. */
+  const reorder = (from: string, to: string) => {
+    if (from === to) return;
+    const keys = groups.map((g) => g.key).filter((key) => key !== from);
+    keys.splice(keys.indexOf(to), 0, from);
+    setOrder(keys);
+    writeList("kimono-ai:project-order", keys);
+  };
+  const fileChat = (id: string, folder: string | null) => {
+    const chat = listed.find((w) => w.id === id);
+    if (!chat || (chat.folder?.id ?? null) === folder) return;
+    void code.moveChat(id, folder).then(load, (error) => setProblem(problemText(error)));
+  };
   const folded = useFolded();
   const running = workspaces?.some((w) => w.turn?.state === "running") ?? false;
   const now = useNow(running);
@@ -305,6 +336,8 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span></div>
       <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory && !showingArchived ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
+      <label className="cd-conn-search cd-side-search"><Icon name="search" /><input type="search" value={find} placeholder="Search chats" aria-label="Search chats"
+        onChange={(event) => setFind(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setFind(""); }} /></label>
       <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       <nav className="cd-sidenav" aria-label="More">
         <button type="button" aria-current={showingConnections ? "page" : undefined} onClick={() => goTo({ connections: "1" })}><Icon name="link" /><span>Connections</span></button>
@@ -314,20 +347,26 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
       <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
-      <WorkspaceList list={chatsOf(listed).filter((w) => !w.folder)} current={current} now={now} />
+      {searching ? <SearchResults words={find} chats={[...listed, ...shared.chats]} current={current} now={now} /> : <>
+      <SideGroup gkey="recent" title={<span className="cd-folder-title">Recent</span>} icon="clock" chats={chatsOf(listed).filter((w) => !w.folder)} current={current} now={now} cap={10}
+        collapsed={folds.has("recent")} onToggle={() => toggleFold("recent")} onDropChat={(id) => fileChat(id, null)} />
       <div className="cd-side-label cd-folders-head"><span>Projects</span><button type="button" className="cd-roundbutton cd-project-new is-shown" onClick={() => setNaming({ id: null, name: "" })} aria-label="New project" title="New project"><Icon name="plus" /></button></div>
       {naming && !naming.id ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); void saveProject(); }}>
         <input autoFocus value={naming.name} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={(event) => setNaming({ id: null, name: event.target.value })} onBlur={() => void saveProject()} onKeyDown={(event) => { if (event.key === "Escape") setNaming(null); }} />
       </form> : null}
-      {projects.map((project) => <FolderGroup key={project.id} project={project} chats={chatsOf(listed).filter((w) => w.folder?.id === project.id)} current={current} now={now}
-        renaming={naming?.id === project.id ? naming.name : null} onRename={(name) => setNaming({ id: project.id, name })} onSaveName={() => void saveProject()} onCancelName={() => setNaming(null)}
-        onRemove={() => { void code.removeProject(project.id).then(load, (error) => setProblem(problemText(error))); }} />)}
-      {!projects.length && !naming ? <p className="cd-quiet cd-side-note">Keep chats together in a project.</p> : null}
+      {groups.map((group) => group.kind === "project"
+        ? <FolderGroup key={group.key} gkey={group.key} project={group.project} chats={[...chatsOf(listed).filter((w) => w.folder?.id === group.project.id), ...(repoOf(group.project)?.tasks ?? [])]} current={current} now={now}
+            renaming={naming?.id === group.project.id ? naming.name : null} onRename={(name) => setNaming({ id: group.project.id, name })} onSaveName={() => void saveProject()} onCancelName={() => setNaming(null)}
+            onRemove={() => { void code.removeProject(group.project.id).then(load, (error) => setProblem(problemText(error))); }}
+            collapsed={folds.has(group.key)} onToggle={() => toggleFold(group.key)} onDropChat={(id) => fileChat(id, group.project.id)} onDropGroup={(from) => reorder(from, group.key)} />
+        /* A repository with no project of its name is a project of its own, in the same list. */
+        : <SideGroup key={group.key} gkey={group.key} icon="branch" title={<span className="cd-folder-title" title={group.repo.key}>{group.repo.name}</span>} chats={group.repo.tasks} current={current} now={now}
+            collapsed={folds.has(group.key)} onToggle={() => toggleFold(group.key)} onDropGroup={(from) => reorder(from, group.key)}
+            actions={admin ? <button type="button" className="cd-roundbutton cd-project-new" onClick={() => { try { localStorage.setItem("kimono-code-repo", group.repo.key); localStorage.setItem("kimono-ai-project", "1"); } catch { /* not remembered */ } goTo({ new: "1" }); }} aria-label={`New chat in ${group.repo.name}`} title={`New chat in ${group.repo.name}`}><Icon name="plus" /></button> : null} />)}
+      {!groups.length && !naming ? <p className="cd-quiet cd-side-note">Keep chats together in a project.</p> : null}
       <SharedWithYou chats={chatsOf(shared.chats).concat(shared.chats.filter((w) => w.kind !== "chat"))} artifacts={shared.artifacts} current={current} now={now} />
-      {projectsOf(listed).length ? <div className="cd-side-label cd-folders-head"><span>Repositories</span></div> : null}
-      {projectsOf(listed).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
-        onNew={admin ? () => { try { localStorage.setItem("kimono-code-repo", project.key); localStorage.setItem("kimono-ai-project", "1"); } catch { /* not remembered */ } goTo({ new: "1" }); } : undefined} />)}
       {workspaces && !listed.length ? <p className="cd-quiet cd-side-note">Your chats will be here.</p> : null}
+      </>}
     </aside>
     <main className="cd-main">
       {current && workspace
@@ -760,27 +799,78 @@ function ChatTitle({ workspace, onRenamed }: { workspace: Workspace; onRenamed: 
 }
 
 /** A project in the list: its name (rename, remove), a new chat in it, and its chats. */
-function FolderGroup({ project, chats, current, now, renaming, onRename, onSaveName, onCancelName, onRemove }: {
-  project: Project; chats: Workspace[]; current: string | null; now: number;
+const readList = (key: string): string[] => { try { const v = JSON.parse(localStorage.getItem(key) ?? "[]"); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; } };
+const writeList = (key: string, list: string[]) => { try { localStorage.setItem(key, JSON.stringify(list)); } catch { /* not kept */ } };
+
+/* What a drag in the list carries: a chat, or a project being moved. */
+const chatDrag = "application/x-kimono-chat";
+const groupDrag = "application/x-kimono-group";
+
+/**
+ * A group in the list: Recent, a project, or a repository's chats. It folds; a chat dropped on it is
+ * filed there, and a project dragged by its head goes where it's dropped. A long one shows its newest first.
+ */
+function SideGroup({ gkey, icon, title, actions, chats, current, now, collapsed, onToggle, onDropChat, onDropGroup, cap, empty, head }: {
+  gkey: string; icon: IconName; title: React.ReactNode; actions?: React.ReactNode; chats: Workspace[]; current: string | null; now: number;
+  collapsed: boolean; onToggle: () => void; onDropChat?: (id: string) => void; onDropGroup?: (from: string) => void; cap?: number; empty?: React.ReactNode; head?: React.ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  const [all, setAll] = useState(false);
+  const shown = cap && !all ? chats.slice(0, cap) : chats;
+  const takes = (event: React.DragEvent) => (onDropChat && event.dataTransfer.types.includes(chatDrag)) || (onDropGroup && event.dataTransfer.types.includes(groupDrag));
+  return <div className={cx("cd-project cd-folder", over && "is-over", collapsed && "is-folded")}
+    onDragOver={(event) => { if (!takes(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; setOver(true); }}
+    onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setOver(false); }}
+    onDrop={(event) => {
+      setOver(false);
+      const chat = event.dataTransfer.getData(chatDrag), group = event.dataTransfer.getData(groupDrag);
+      if (chat && onDropChat) { event.preventDefault(); onDropChat(chat); }
+      else if (group && onDropGroup) { event.preventDefault(); onDropGroup(group); }
+    }}>
+    {head ?? <div className="cd-folder-head" draggable={Boolean(onDropGroup)} onDragStart={(event) => { event.dataTransfer.setData(groupDrag, gkey); event.dataTransfer.effectAllowed = "move"; }}>
+      <button type="button" className="cd-fold-toggle" aria-expanded={!collapsed} aria-label={collapsed ? "Show" : "Fold"} title={collapsed ? "Show" : "Fold"} onClick={onToggle}><Icon name="chevron" /></button>
+      <Icon name={icon} />
+      {title}
+      {collapsed && chats.length ? <small className="cd-folder-count">{chats.length}</small> : null}
+      {actions}
+    </div>}
+    {collapsed ? null : chats.length ? <>
+      <WorkspaceList list={shown} current={current} now={now} />
+      {cap && chats.length > cap ? <button type="button" className="cd-textbutton cd-folder-more" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${chats.length - cap} more`}</button> : null}
+    </> : empty ?? null}
+  </div>;
+}
+
+function FolderGroup({ gkey, project, chats, current, now, renaming, onRename, onSaveName, onCancelName, onRemove, collapsed, onToggle, onDropChat, onDropGroup }: {
+  gkey: string; project: Project; chats: Workspace[]; current: string | null; now: number;
   renaming: string | null; onRename: (name: string) => void; onSaveName: () => void; onCancelName: () => void; onRemove: () => void;
+  collapsed: boolean; onToggle: () => void; onDropChat: (id: string) => void; onDropGroup: (from: string) => void;
 }) {
   const [confirm, setConfirm] = useState(false);
-  return <div className="cd-project cd-folder">
-    {renaming !== null
-      ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); onSaveName(); }}>
-          <input autoFocus value={renaming} maxLength={60} aria-label="Project name" onChange={(event) => onRename(event.target.value)} onBlur={onSaveName} onKeyDown={(event) => { if (event.key === "Escape") onCancelName(); }} />
-        </form>
-      : <div className="cd-folder-head">
-          <Icon name="folder" />
-          <button type="button" className="cd-folder-title" title="Rename" onClick={() => onRename(project.name)}>{project.name}</button>
-          {confirm
-            ? <><button type="button" className="cd-quietbutton is-danger" onClick={onRemove}>Remove</button><button type="button" className="cd-quietbutton" onClick={() => setConfirm(false)}>Keep</button></>
-            : <>
-                <button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1", in: project.id })} aria-label={`New chat in ${project.name}`} title={`New chat in ${project.name}`}><Icon name="plus" /></button>
-                <button type="button" className="cd-roundbutton cd-project-new" onClick={() => setConfirm(true)} aria-label={`Remove ${project.name}`} title="Remove the project (its chats stay)"><Icon name="trash" /></button>
-              </>}
-        </div>}
-    {chats.length ? <WorkspaceList list={chats} current={current} now={now} /> : <p className="cd-quiet cd-folder-empty">No chats yet.</p>}
+  return <SideGroup gkey={gkey} icon="folder" chats={chats} current={current} now={now} collapsed={collapsed} onToggle={onToggle} onDropChat={onDropChat} onDropGroup={onDropGroup}
+    empty={<p className="cd-quiet cd-folder-empty">No chats yet. Drag one here.</p>}
+    head={renaming !== null ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); onSaveName(); }}>
+      <input autoFocus value={renaming} maxLength={60} aria-label="Project name" onChange={(event) => onRename(event.target.value)} onBlur={onSaveName} onKeyDown={(event) => { if (event.key === "Escape") onCancelName(); }} />
+    </form> : undefined}
+    title={<button type="button" className="cd-folder-title" title="Rename" onClick={() => onRename(project.name)}>{project.name}</button>}
+    actions={confirm
+      ? <><button type="button" className="cd-quietbutton is-danger" onClick={onRemove}>Remove</button><button type="button" className="cd-quietbutton" onClick={() => setConfirm(false)}>Keep</button></>
+      : <>
+          <button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1", in: project.id })} aria-label={`New chat in ${project.name}`} title={`New chat in ${project.name}`}><Icon name="plus" /></button>
+          <button type="button" className="cd-roundbutton cd-project-new" onClick={() => setConfirm(true)} aria-label={`Remove ${project.name}`} title="Remove the project (its chats stay)"><Icon name="trash" /></button>
+        </>} />;
+}
+
+/** What a search finds: chats by their name, their project or their repository, newest first. */
+function SearchResults({ words, chats, current, now }: { words: string; chats: Workspace[]; current: string | null; now: number }) {
+  const terms = words.toLowerCase().split(/\s+/).filter(Boolean);
+  const found = [...new Map(chats.map((w) => [w.id, w])).values()].filter((w) => {
+    const text = `${w.title} ${w.folder?.name ?? ""} ${w.kind === "project" ? `${w.repo.owner}/${w.repo.name}` : ""}`.toLowerCase();
+    return terms.every((t) => text.includes(t));
+  }).toSorted((a, b) => b.updatedAt - a.updatedAt);
+  return <div className="cd-search-results">
+    <div className="cd-side-label"><span>{found.length ? `${found.length} found` : "Nothing found"}</span></div>
+    <WorkspaceList list={found.slice(0, 50)} current={current} now={now} />
   </div>;
 }
 
@@ -828,7 +918,8 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
       onChange={(event) => setRenaming(event.target.value)} onBlur={saveName} onKeyDown={(event) => { if (event.key === "Escape") setRenaming(null); }} />
   </form>;
   return <div className={cx("cd-row", busy && "is-busy", confirming && "is-confirming")}>
-    <button type="button" className="cd-row-open" aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
+    <button type="button" className="cd-row-open" aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}
+      draggable={owns && w.kind === "chat"} onDragStart={(event) => { event.dataTransfer.setData(chatDrag, w.id); event.dataTransfer.effectAllowed = "move"; }}>
       <b>{w.title}</b>
       <small>
         {/* One word, and only when it says something. */}
