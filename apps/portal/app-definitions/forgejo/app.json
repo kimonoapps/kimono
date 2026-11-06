@@ -34,7 +34,8 @@
           "FORGEJO__server__PROTOCOL": "http",
           "FORGEJO__server__HTTP_PORT": "3000",
           "FORGEJO__database__DB_TYPE": "sqlite3",
-          "FORGEJO__database__PATH": "/data/forgejo/forgejo.db",
+          "FORGEJO__database__PATH": "/data/gitea/forgejo.db",
+          "FORGEJO__security__INSTALL_LOCK": "true",
           "FORGEJO__service__ENABLE_NOTIFY_MAIL": "false",
           "FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION": "true",
           "FORGEJO__oauth2_client__USERNAME": "preferred_username",
@@ -64,8 +65,9 @@
       "title": "Finish in Forgejo",
       "description": "Kimono runs Forgejo and registers its Kimono identity client. Add that client as an OpenID Connect authentication source in Forgejo before signing in with Kimono.",
       "steps": [
-        "Open Forgejo and complete its initial administrator setup.",
-        "As an administrator, open Site Administration \u2192 Authentication Sources and add an OpenID Connect source named Kimono.",
+        "On the server, create the first administrator: sudo docker exec -u git kimono-apps-<app>-web-1 forgejo admin user create --admin --username <name> --email <email> --random-password",
+        "Sign in to Forgejo as that administrator and change the generated password.",
+        "As an administrator, open Site Administration → Authentication Sources and add an OpenID Connect source named Kimono.",
         "Use the Kimono client ID and secret from the generated deployment files, and use the Kimono identity discovery URL shown in the deployment configuration.",
         "Keep local administrator sign-in enabled as a recovery path for identity outages."
       ]
@@ -119,6 +121,7 @@
       "FORGEJO__server__HTTP_PORT",
       "FORGEJO__database__DB_TYPE",
       "FORGEJO__database__PATH",
+      "FORGEJO__security__INSTALL_LOCK",
       "FORGEJO__service__ENABLE_NOTIFY_MAIL",
       "FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION",
       "FORGEJO__oauth2_client__USERNAME",
@@ -141,7 +144,7 @@
         "enabledByDefault": true,
         "volume": "data",
         "paths": [
-          "forgejo/forgejo.db"
+          "gitea/forgejo.db"
         ]
       },
       {
@@ -155,10 +158,10 @@
           "."
         ],
         "exclude": [
-          "forgejo/forgejo.db",
-          "forgejo/forgejo.db-wal",
-          "forgejo/forgejo.db-shm",
-          "forgejo/forgejo.db-journal"
+          "gitea/forgejo.db",
+          "gitea/forgejo.db-wal",
+          "gitea/forgejo.db-shm",
+          "gitea/forgejo.db-journal"
         ]
       }
     ]
