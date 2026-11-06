@@ -189,6 +189,22 @@ metadata:
     blueprints.goauthentik.io/instantiate: "true"
 
 entries:
+  # The person's Kimono profile picture, as the standard OIDC picture claim, for
+  # apps that ask for the picture scope. The Portal copies each picture's
+  # address into the avatar attribute. Its own scope, so the lookups of the
+  # built-in profile mapping by scope name stay unambiguous.
+  - id: kimono-picture
+    model: authentik_providers_oauth2.scopemapping
+    state: present
+    identifiers:
+      name: Kimono picture
+    attrs:
+      scope_name: picture
+      description: Your Kimono profile picture
+      expression: |
+        picture = request.user.attributes.get("avatar")
+        return {"picture": picture} if picture else {}
+
   - id: ${slug}-provider
     model: authentik_providers_oauth2.oauth2provider
     state: present
@@ -213,6 +229,7 @@ entries:
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, openid]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, email]]
         - !Find [authentik_providers_oauth2.scopemapping, [scope_name, profile]]
+        - !KeyOf kimono-picture
       redirect_uris:
 ${redirects}
 

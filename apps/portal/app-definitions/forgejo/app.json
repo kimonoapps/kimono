@@ -39,7 +39,7 @@
           "FORGEJO__service__ENABLE_NOTIFY_MAIL": "false",
           "FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION": "true",
           "FORGEJO__oauth2_client__USERNAME": "preferred_username",
-          "FORGEJO__oauth2_client__OPENID_CONNECT_SCOPES": "profile email",
+          "FORGEJO__oauth2_client__OPENID_CONNECT_SCOPES": "profile email picture",
           "FORGEJO____APP_NAME": "Kimono Git",
           "FORGEJO____APP_SLOGAN": "",
           "FORGEJO__server__LANDING_PAGE": "explore",
@@ -54,7 +54,8 @@
           "FORGEJO__other__SHOW_FOOTER_POWERED_BY": "false",
           "FORGEJO__ui__THEMES": "kimono",
           "FORGEJO__ui__DEFAULT_THEME": "kimono",
-          "FORGEJO__api__ENABLE_SWAGGER": "false"
+          "FORGEJO__api__ENABLE_SWAGGER": "false",
+          "FORGEJO__oauth2_client__UPDATE_AVATAR": "true"
         }
       }
     ],
@@ -73,7 +74,7 @@
         "https://{{hostname}}/user/oauth2/Kimono/callback"
       ],
       "environment": {
-        "FORGEJO__oauth2_client__OPENID_CONNECT_SCOPES": "openid profile email"
+        "FORGEJO__oauth2_client__OPENID_CONNECT_SCOPES": "openid profile email picture"
       }
     },
     "bootstrap": {
@@ -105,7 +106,7 @@
         "# Sign in with Kimono, once Kimono has registered Forgejo with its identity provider.",
         "[ -n \"$KIMONO_OIDC_CLIENT_ID\" ] || exit 0",
         "source_id=$(forgejo admin auth list | awk -F '\\t' '$2 == \"Kimono\" { print $1 }')",
-        "set -- --name Kimono --provider openidConnect --key \"$KIMONO_OIDC_CLIENT_ID\" --secret \"$KIMONO_OIDC_CLIENT_SECRET\" --auto-discover-url \"$KIMONO_OIDC_DISCOVERY\" --icon-url \"$KIMONO_OIDC_ICON\" --scopes openid --scopes profile --scopes email",
+        "set -- --name Kimono --provider openidConnect --key \"$KIMONO_OIDC_CLIENT_ID\" --secret \"$KIMONO_OIDC_CLIENT_SECRET\" --auto-discover-url \"$KIMONO_OIDC_DISCOVERY\" --icon-url \"$KIMONO_OIDC_ICON\" --scopes openid --scopes profile --scopes email --scopes picture",
         "if [ -z \"$source_id\" ]; then forgejo admin auth add-oauth \"$@\"; else forgejo admin auth update-oauth --id \"$source_id\" \"$@\"; fi"
       ],
       "files": {
@@ -190,7 +191,8 @@
       "FORGEJO__other__SHOW_FOOTER_POWERED_BY",
       "FORGEJO__ui__THEMES",
       "FORGEJO__ui__DEFAULT_THEME",
-      "FORGEJO__api__ENABLE_SWAGGER"
+      "FORGEJO__api__ENABLE_SWAGGER",
+      "FORGEJO__oauth2_client__UPDATE_AVATAR"
     ],
     "defaultNetworkPolicy": {
       "internetAccess": true,
