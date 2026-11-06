@@ -63,6 +63,12 @@ export async function gitAccountOf(config: CodeConfig, person: GitPerson, make =
     return login;
   }
   if (found.status !== 404) throw new CodeProblem("Kimono Git couldn't answer that.", 502);
+  /* Signed in under another username (one Kimono Git had already, say): the account with their email is theirs. */
+  const byEmail = await accountByEmail(config, person.email);
+  if (byEmail) {
+    known.set(username, byEmail);
+    return byEmail;
+  }
   if (!make) return null;
   if (!/^[a-z0-9][a-z0-9._-]{0,38}$/.test(username) || !person.email) throw new CodeProblem("Sign in to Kimono Git once, then try again.", 409);
   /* Their account, made the way signing in would; signing in later takes it over (same username and email). */
@@ -81,11 +87,26 @@ export async function gitAccountOf(config: CodeConfig, person: GitPerson, make =
       throw new CodeProblem("Kimono Git isn't answering.", 502);
     }
     if (made.status === 401 && !stale) continue;
-    if (!made.ok) throw new CodeProblem("Sign in to Kimono Git once, then try again.", 409);
+    if (!made.ok) {
+      const taken = await accountByEmail(config, person.email);
+      if (taken) { known.set(username, taken); return taken; }
+      console.error(`Kimono AI couldn't make ${username}'s Kimono Git account: ${made.status} ${(await made.text()).slice(0, 200)}`);
+      throw new CodeProblem("Sign in to Kimono Git once, then try again.", 409);
+    }
     known.set(username, username);
     return username;
   }
   throw new CodeProblem("Kimono Git refused Code's token.", 502);
+}
+
+/** The Kimono Git login whose email is [email], if there is one. Kimono AI, an administrator, sees everyone's. */
+async function accountByEmail(config: CodeConfig, email: string | null | undefined): Promise<string | null> {
+  const wanted = email?.trim().toLowerCase();
+  if (!wanted) return null;
+  const response = await send(config, `/users/search?q=${encodeURIComponent(wanted)}&limit=10`, { timeout: 15_000 });
+  if (!response.ok) return null;
+  const { data } = (await response.json()) as { data?: { login: string; email?: string }[] };
+  return data?.find((user) => user.email?.toLowerCase() === wanted)?.login ?? null;
 }
 
 /** The person's own repositories, and the ones shared with them or their teams. */

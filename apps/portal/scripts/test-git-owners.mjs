@@ -76,3 +76,12 @@ test('a project stays where it is while its person has no account to move it to'
   const w = model.createWorkspace(db, `ghost${run}`, { repoOwner: 'kimono-ai', repoName: name, base: 'main', prompt: 'Hi' });
   assert.equal((await forgejo.ownProject(db, config, w, { username: `ghost${run}` })).repo.owner, 'kimono-ai');
 });
+
+test('someone whose Kimono Git account has another username is found by their email', { skip }, async () => {
+  const login = `other${run}`, email = `${login}@example.test`;
+  const made = await asAdmin('/admin/users', { method: 'POST', body: JSON.stringify({ username: login, email, password: `Pw-${run}-${run}-long`, must_change_password: false }) });
+  assert.equal(made.status, 201);
+  assert.equal(await forgejo.gitAccountOf(config, { username: `kimono${run}`, email }), login);
+  const repo = await forgejo.createRepository(config, { username: `kimono${run}`, email }, `Their ${run}`);
+  assert.equal(repo.owner, login);
+});
