@@ -11,6 +11,7 @@ navigation = "2.9.2"
 ktor = "3.6.0"
 serialization = "1.12.0"
 coil = "3.6.3"
+latex = "1.7.0"
 activity = "1.13.0"
 browser = "1.10.0"
 kotlinx-io = "0.9.1"
@@ -33,6 +34,8 @@ serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-jso
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-ktor = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
 coil-svg = { module = "io.coil-kt.coil3:coil-svg", version.ref = "coil" }
+latex-renderer = { module = "io.github.huarangmeng:latex-renderer", version.ref = "latex" }
+latex-fonts-katex = { module = "io.github.huarangmeng:latex-fonts-katex", version.ref = "latex" }
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 browser = { module = "androidx.browser:browser", version.ref = "browser" }

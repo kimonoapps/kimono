@@ -37,6 +37,8 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.coil.ktor)
             implementation(libs.coil.svg)
+            implementation(libs.latex.renderer)
+            implementation(libs.latex.fonts.katex)
             implementation(libs.kotlinx.io)
         }
         androidMain.dependencies {

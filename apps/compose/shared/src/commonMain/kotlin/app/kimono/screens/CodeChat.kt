@@ -2,6 +2,14 @@
 
 package app.kimono.screens
 
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.hrm.latex.renderer.Latex
+import com.hrm.latex.renderer.model.LatexConfig
+import com.hrm.latex.renderer.model.LatexTheme
+import com.hrm.latex.renderer.model.LatexThemeColors
+import com.hrm.latex.renderer.measure.rememberLatexMeasurer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -1522,20 +1530,116 @@ internal fun Lacquer(text: String, modifier: Modifier = Modifier) {
     }
 }
 
-private fun inline(text: String, codeBg: Color, link: Color): AnnotatedString = buildAnnotatedString {
-    val pattern = Regex("(`[^`\\n]+`)|(\\*\\*[^*\\n]+\\*\\*)|(\\*[^*\\n]+\\*|_[^_\\n]+_)|(\\[([^\\]\\n]+)\\]\\((https?://[^)\\s]+)\\))")
-    var last = 0
-    for (m in pattern.findAll(text)) {
-        append(text.substring(last, m.range.first))
-        when {
-            m.groups[1] != null -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBg, fontSize = 13.sp)) { append(m.value.drop(1).dropLast(1)) }
-            m.groups[2] != null -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(m.value.drop(2).dropLast(2)) }
-            m.groups[3] != null -> withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { append(m.value.drop(1).dropLast(1)) }
-            m.groups[4] != null -> withLink(androidx.compose.ui.text.LinkAnnotation.Url(m.groups[6]!!.value, androidx.compose.ui.text.TextLinkStyles(SpanStyle(color = link, fontWeight = FontWeight.SemiBold, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)))) { append(m.groups[5]!!.value) }
+/* Inline maths as the website reads it: $$…$$, \(…\), and $…$ the pandoc way, so prices stay prices
+   ("$5 and $10" is money, "$x^2$" is maths). Code comes first, so maths in code is left alone. */
+private val inlinePattern = Regex(
+    "(`[^`\\n]+`)" +
+        """|(\$\$[^$]+?\$\$)|(\\\([\s\S]+?\\\))|((?<![\\\w$])\$(?=[^\s$])[^$\n]*?[^\s\\$]\$(?!\d))""" +
+        "|(\\*\\*[^*\\n]+\\*\\*)|(\\*[^*\\n]+\\*|_[^_\\n]+_)|(\\[([^\\]\\n]+)\\]\\((https?://[^)\\s]+)\\))",
+)
+
+/** \$ is a dollar sign written so it can't open maths: shown as the sign alone. */
+private fun plain(text: String) = text.replace("\\$", "$")
+
+/** The text with its maths as placeholders `math0`, `math1`…, and the maths' sources in that order. */
+private fun inline(text: String, codeBg: Color, link: Color): Pair<AnnotatedString, List<String>> {
+    val maths = mutableListOf<String>()
+    val out = buildAnnotatedString {
+        var last = 0
+        for (m in inlinePattern.findAll(text)) {
+            append(plain(text.substring(last, m.range.first)))
+            val g = m.groups
+            when {
+                g[1] != null -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBg, fontSize = 13.sp)) { append(m.value.drop(1).dropLast(1)) }
+                g[2] != null || g[3] != null || g[4] != null -> {
+                    val tex = if (g[4] != null) m.value.drop(1).dropLast(1) else m.value.drop(2).dropLast(2)
+                    appendInlineContent("math${maths.size}", m.value)
+                    maths += tex
+                }
+                g[5] != null -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(plain(m.value.drop(2).dropLast(2))) }
+                g[6] != null -> withStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) { append(plain(m.value.drop(1).dropLast(1))) }
+                g[7] != null -> withLink(androidx.compose.ui.text.LinkAnnotation.Url(g[9]!!.value, androidx.compose.ui.text.TextLinkStyles(SpanStyle(color = link, fontWeight = FontWeight.SemiBold, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)))) { append(g[8]!!.value) }
+            }
+            last = m.range.last + 1
         }
-        last = m.range.last + 1
+        append(plain(text.substring(last)))
     }
-    append(text.substring(last))
+    return out to maths
+}
+
+private val textArgs = Regex("""\\(text\w*|mbox|operatorname\*?|href|url|color|textcolor|begin|end|label|tag)\s*\{""")
+
+/** The renderer draws `-` as a hyphen; its `\minus` is the real minus sign, so maths gets that (text inside maths keeps its hyphens). */
+private fun mathSource(tex: String): String {
+    val out = StringBuilder()
+    var i = 0
+    while (i < tex.length) {
+        val text = textArgs.matchAt(tex, i)
+        if (text != null) {
+            var depth = 0
+            var j = text.range.last
+            while (j < tex.length) {
+                if (tex[j] == '\\') j++ else if (tex[j] == '{') depth++ else if (tex[j] == '}' && --depth == 0) break
+                j++
+            }
+            val end = minOf(j + 1, tex.length)
+            out.append(tex, i, end)
+            i = end
+            continue
+        }
+        if (tex[i] == '\\' && i + 1 < tex.length) { out.append(tex, i, i + 2); i += 2; continue }
+        if (tex[i] == '-') {
+            // With nothing before it to subtract from, it's a sign: no spacing, as TeX does.
+            val before = out.trimEnd()
+            val unary = before.isEmpty() || before.last() in "{([=<>,;:^_&|\\" || before.endsWith("\\minus") || before.endsWith("\\pm")
+            out.append(if (unary) "{\\minus}" else "\\minus ")
+        } else out.append(tex[i])
+        i++
+    }
+    return out.toString()
+}
+
+private fun mathConfig(style: TextStyle) = LatexConfig(
+    fontSize = style.fontSize * 1.05f,
+    theme = LatexTheme.auto(light = LatexThemeColors(style.color), dark = LatexThemeColors(style.color)),
+)
+
+/** A line of Markdown text, its maths sitting in the line. */
+@Composable
+private fun MdText(text: String, style: TextStyle, codeBg: Color, link: Color, modifier: Modifier = Modifier) {
+    val (annotated, maths) = remember(text, codeBg, link) { inline(text, codeBg, link) }
+    if (maths.isEmpty()) { Text(annotated, style = style, modifier = modifier); return }
+    val config = remember(style.fontSize, style.color) { mathConfig(style) }
+    val measurer = rememberLatexMeasurer(config)
+    val dark = isSystemInDarkTheme()
+    val content = remember(maths, measurer, dark) {
+        maths.withIndex().mapNotNull { (k, tex) -> measurer.inlineContent("\\textstyle ${mathSource(tex)}", config, dark)?.let { "math$k" to it } }.toMap()
+    }
+    Text(annotated, style = style, inlineContent = content, modifier = modifier)
+}
+
+/** Maths on a line of its own: centred, scrolling sideways when wide. */
+@Composable
+private fun MathBlock(tex: String, style: TextStyle) {
+    val config = remember(style.fontSize, style.color) { mathConfig(style) }
+    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+        Latex(mathSource(tex.trim()), config = config)
+    }
+}
+
+/** Display maths starting at [i]: $$…$$ or \[…\], on lines of their own (or one line); its source and the next line's index. */
+private fun displayMath(lines: List<String>, i: Int): Pair<String, Int>? {
+    val opens = Regex("^\\s*(\\$\\$|\\\\\\[)").find(lines[i]) ?: return null
+    val close = if (opens.groupValues[1] == "$$") "$$" else "\\]"
+    val rest = lines[i].trimStart().drop(2)
+    val end = rest.indexOf(close)
+    if (end >= 0) return if (rest.substring(end + 2).isBlank()) rest.substring(0, end) to i + 1 else null
+    val body = mutableListOf(rest)
+    var j = i + 1
+    while (j < lines.size && !lines[j].contains(close)) body += lines[j++]
+    if (j >= lines.size || lines[j].substring(lines[j].indexOf(close) + 2).isNotBlank()) return null
+    body += lines[j].substring(0, lines[j].indexOf(close))
+    return body.joinToString("\n") to j + 1
 }
 
 @Composable
@@ -1550,7 +1654,9 @@ private fun Markdown(source: String) {
             while (i < lines.size) {
                 val line = lines[i]
                 val fence = Regex("^\\s*(```|~~~)").find(line)
+                val display = if (fence == null) displayMath(lines, i) else null
                 when {
+                    display != null -> { MathBlock(display.first, style); i = display.second }
                     fence != null -> {
                         val lang = line.trim().removePrefix(fence.groupValues[1]).trim()
                         val body = mutableListOf<String>()
@@ -1560,13 +1666,13 @@ private fun Markdown(source: String) {
                         Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Urushi).padding(vertical = 10.dp)) { app.kimono.ui.CodeLines(body.joinToString("\n"), "x.${lang.ifEmpty { "txt" }}") }
                     }
                     line.isBlank() -> i++
-                    Regex("^#{1,4}\\s+").containsMatchIn(line) -> { Text(inline(line.replace(Regex("^#{1,4}\\s+"), ""), codeBg, link), style = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface)); i++ }
+                    Regex("^#{1,4}\\s+").containsMatchIn(line) -> { MdText(line.replace(Regex("^#{1,4}\\s+"), ""), MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface), codeBg, link); i++ }
                     Regex("^\\s*>\\s?").containsMatchIn(line) -> {
                         val body = mutableListOf<String>()
                         while (i < lines.size && Regex("^\\s*>\\s?").containsMatchIn(lines[i])) body += lines[i++].replace(Regex("^\\s*>\\s?"), "")
                         Row(Modifier.height(IntrinsicSize.Min)) {
                             Box(Modifier.width(3.dp).fillMaxSize().background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)))
-                            Text(inline(body.joinToString("\n"), codeBg, link), style = style.copy(color = MaterialTheme.colorScheme.onSurfaceVariant), modifier = Modifier.padding(start = 12.dp))
+                            MdText(body.joinToString("\n"), style.copy(color = MaterialTheme.colorScheme.onSurfaceVariant), codeBg, link, Modifier.padding(start = 12.dp))
                         }
                     }
                     Regex("^\\s*([-*+]|\\d+[.)])\\s+").containsMatchIn(line) -> {
@@ -1577,7 +1683,7 @@ private fun Markdown(source: String) {
                             val item = lines[i].replace(Regex("^\\s*([-*+]|\\d+[.)])\\s+"), "")
                             Row(Modifier.padding(start = (depth * 16).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(if (ordered) "${n}." else "•", style = style)
-                                Text(inline(item, codeBg, link), style = style)
+                                MdText(item, style, codeBg, link)
                             }
                             n++; i++
                         }
@@ -1592,7 +1698,7 @@ private fun Markdown(source: String) {
                         Column(Modifier.horizontalScroll(rememberScrollState()).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))) {
                             rows.forEachIndexed { r, row ->
                                 Row(Modifier.background(if (r == 0) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent)) {
-                                    row.forEach { cell -> Text(inline(cell, codeBg, link), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = if (r == 0) FontWeight.SemiBold else null), modifier = Modifier.width(130.dp).padding(horizontal = 10.dp, vertical = 7.dp)) }
+                                    row.forEach { cell -> MdText(cell, MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = if (r == 0) FontWeight.SemiBold else null), codeBg, link, Modifier.width(130.dp).padding(horizontal = 10.dp, vertical = 7.dp)) }
                                 }
                             }
                         }
@@ -1600,9 +1706,9 @@ private fun Markdown(source: String) {
                     Regex("^\\s*(---|\\*\\*\\*|___)\\s*$").matches(line) -> { HorizontalDivider(); i++ }
                     else -> {
                         val body = mutableListOf<String>()
-                        while (i < lines.size && lines[i].isNotBlank() && !Regex("^(#{1,4}\\s|\\s*```|\\s*~~~|\\s*[-*+]\\s+|\\s*\\d+[.)]\\s+|\\s*>|\\s*\\|)").containsMatchIn(lines[i])) body += lines[i++]
+                        while (i < lines.size && lines[i].isNotBlank() && !Regex("^(#{1,4}\\s|\\s*```|\\s*~~~|\\s*[-*+]\\s+|\\s*\\d+[.)]\\s+|\\s*>|\\s*\\||\\s*\\$\\$|\\s*\\\\\\[)").containsMatchIn(lines[i])) body += lines[i++]
                         if (body.isEmpty()) { body += lines[i++] }
-                        Text(inline(body.joinToString("\n"), codeBg, link), style = style)
+                        MdText(body.joinToString("\n"), style, codeBg, link)
                     }
                 }
             }
