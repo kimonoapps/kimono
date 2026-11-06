@@ -181,13 +181,13 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
     val time = ticking(anyRunning)
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar("Code", onBack = back, mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
+        topBar = { KimonoTopBar("Kimono AI", onBack = back, mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
     ) { padding ->
         KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.padding(padding).fillMaxSize()) {
             val shown = list
             when {
                 shown == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-                shown.isNullOrEmpty() -> Quiet(problem ?: "Give the agent a task on one of your repositories.")
+                shown.isNullOrEmpty() -> Quiet(problem ?: "Your chats will be here.")
                 else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                     if (problem != null) item { Problem(problem) }
                     /* The apps your tasks published: each one to rename, stop or start. */
@@ -199,7 +199,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, starting: Boolea
                                 items(apps, key = { it.id }) { w -> AppCard(w) { open("code/${w.id}/app") } }
                             }
                         }
-                        item(key = "tasks-label") { Text("Tasks", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) }
+                        item(key = "tasks-label") { Text("Chats", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)) }
                     }
                     itemsIndexed(shown, key = { _, w -> w.id }) { index, w ->
                         SegmentedListItem(
@@ -312,7 +312,7 @@ private fun NewTaskSheet(code: Code, onDismiss: () -> Unit, started: (CodeWorksp
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("New task", style = MaterialTheme.typography.headlineSmall)
+            Text("New chat", style = MaterialTheme.typography.headlineSmall)
             if (naming != null || noProjects) {
                 OutlinedTextField(
                     naming ?: "", { naming = it }, label = { Text("New project") }, placeholder = { Text("Family recipes") }, singleLine = true,
@@ -327,7 +327,7 @@ private fun NewTaskSheet(code: Code, onDismiss: () -> Unit, started: (CodeWorksp
                 Picker("Project", repo?.name ?: if (repos == null) "Loading…" else "None", (repos ?: emptyList()).map { "${it.owner}/${it.name}" }, action = "New project" to { naming = ""; problem = null }) { chosen -> repo = repos?.firstOrNull { "${it.owner}/${it.name}" == chosen } }
                 Picker("Starting from", base.ifEmpty { "—" }, branches) { base = it }
             }
-            OutlinedTextField(prompt, { prompt = it }, label = { Text("Task") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth().focusRequester(taskFocus))
+            OutlinedTextField(prompt, { prompt = it }, label = { Text("Message") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth().focusRequester(taskFocus))
             Problem(problem)
             Seal("Start", busy = busy, enabled = repo != null && prompt.isNotBlank(), modifier = Modifier.fillMaxWidth(), onClick = {
                 val r = repo ?: return@Seal
@@ -455,7 +455,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
     }
     if (deleting) AlertDialog(
         onDismissRequest = { deleting = false },
-        title = { Text("Delete the sandbox?") },
+        title = { Text("Delete this chat?") },
         text = { Text("Its files stay in Drive.") },
         confirmButton = { TextButton(onClick = {
             deleting = false
@@ -830,7 +830,7 @@ private fun DoneNote(e: CodeEvent.Done) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(kimonoIcon("close"), null, modifier = Modifier.size(16.dp), tint = Kata.suoDeep)
-            Text(e.error ?: "The agent stopped with an error.", style = MaterialTheme.typography.bodyMedium, color = Kata.suoDeep)
+            Text(e.error ?: "It stopped with an error.", style = MaterialTheme.typography.bodyMedium, color = Kata.suoDeep)
         }
         else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(kimonoIcon("check"), null, modifier = Modifier.size(16.dp))
@@ -873,7 +873,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, w: CodeWorksp
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = Kata.ink),
             maxLines = 6,
             modifier = Modifier.fillMaxWidth().heightIn(min = 28.dp).padding(horizontal = 4.dp, vertical = 4.dp),
-            decorationBox = { inner -> Box { if (text.isEmpty()) Text(if (w.running) "The agent is working…" else "Ask for a change, or reply", style = MaterialTheme.typography.bodyLarge, color = Kata.faint); inner() } },
+            decorationBox = { inner -> Box { if (text.isEmpty()) Text(if (w.running) "Working…" else "Ask for a change, or reply", style = MaterialTheme.typography.bodyLarge, color = Kata.faint); inner() } },
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             IconButton(onClick = {

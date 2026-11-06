@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AppBloom, Choice, cx, InkCard, Seal, type AppIdentity } from "@kimono/ui";
-import { useCrossTo } from "@/components/crossing";
+import { Crossing, useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
@@ -320,9 +320,21 @@ function SpaceCrest({ name }: { name: string }) {
   return <span className="cd-crest" aria-hidden="true" dangerouslySetInnerHTML={{ __html: space.mark }} />;
 }
 
-/** A space, as a chip: its crest and its name. */
+/** A space, as a chip: its crest and its name. It opens the space in Drive. */
 function SpaceChip({ name }: { name: string }) {
-  return <span className="cd-spacechip"><SpaceCrest name={name} />{name}</span>;
+  const space = useContext(MarksContext).spaces.get(name.toLowerCase());
+  if (!space) return <span className="cd-spacechip"><SpaceCrest name={name} />{name}</span>;
+  /* Inside a tool call's row the click opens Drive, not the row. */
+  return <Crossing kind="kakejiku" className="cd-spacechip" href={`/drive?space=${encodeURIComponent(space.id)}`} title={`Open ${space.name} in Drive`} onClick={(event) => event.stopPropagation()}>
+    <SpaceCrest name={name} />{name}
+  </Crossing>;
+}
+
+/** A file or folder in a space, by name; it opens in Drive when Kimono knows which one it is. */
+function DriveName({ space, node, children }: { space: string; node?: string; children: React.ReactNode }) {
+  const known = useContext(MarksContext).spaces.get(space.toLowerCase());
+  if (!known || !node) return <b>{children}</b>;
+  return <Crossing kind="kakejiku" className="cd-drivename" href={`/drive?space=${encodeURIComponent(known.id)}&file=${encodeURIComponent(node)}`} onClick={(event) => event.stopPropagation()}>{children}</Crossing>;
 }
 
 /** Kimono Drive's own mark. */
@@ -556,8 +568,8 @@ function WorkspaceView({ workspace, others, tab: asked, path, blocked, onChange,
         <div className="cd-ws-id">
           <h1 title={workspace.title}>{workspace.title}</h1>
           {project ? <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p> : null}
+          {!isApp && (running || !connected) ? <span className={cx("cd-status", running && "running")} role="status">{running ? <><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</> : "Reconnecting…"}</span> : null}
         </div>
-        {!isApp && (running || !connected) ? <span className={cx("cd-status", running && "running")} role="status">{running ? <><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</> : "Reconnecting…"}</span> : null}
         {confirmDelete
           ? <div className="cd-ws-acts"><span className="cd-faint">Delete this chat? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={() => void remove()}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></div>
           : !project ? <div className="cd-ws-acts">
@@ -599,10 +611,10 @@ function Deployments({ workspace, others }: { workspace: Workspace; others: Work
   return <div className="cd-deployments">
     <h2>Running apps</h2>
     {workspace.preview?.stopped
-      ? <button type="button" className="cd-dep-row is-link" onClick={() => goTo({ w: workspace.id, tab: "app" })}><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This task&rsquo;s app is stopped</b><small>Start it again from the App tab.</small></span></button>
+      ? <button type="button" className="cd-dep-row is-link" onClick={() => goTo({ w: workspace.id, tab: "app" })}><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This chat&rsquo;s app is stopped</b><small>Start it again from the App tab.</small></span></button>
       : workspace.preview
       ? <PreviewCard workspace={workspace} url={workspace.preview.url} live />
-      : <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This task isn&rsquo;t running an app</b><small>Ask the agent to run it and it appears here.</small></span></div>}
+      : <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This chat isn&rsquo;t running an app</b><small>Ask it to run one and it appears here.</small></span></div>}
     {others.length ? <div className="cd-dep-list">{others.map((w) => <button type="button" key={w.id} className="cd-dep-row is-link" onClick={() => goTo({ w: w.id })}>
       <span className="cd-dep-icon is-live"><Icon name="rocket" /></span>
       <span><b>{w.title}</b><small className="cd-mono">{w.preview!.url.replace(/^https?:\/\//, "")}</small></span>
@@ -618,7 +630,7 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
     <div className="cd-app-empty">
       <span className="cd-dep-icon"><Icon name="rocket" /></span>
       <b>Nothing is running</b>
-      <p className="cd-faint">The agent runs the app when it changes something you can see. You can ask it to now.</p>
+      <p className="cd-faint">It runs the app when it changes something you can see. You can ask it to now.</p>
       <Seal type="button" disabled={asking || Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{asking ? "Asking…" : running ? "Run it after this step" : "Run the app"}</Seal>
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div>
@@ -656,7 +668,7 @@ function SandboxLimits({ workspace }: { workspace: Workspace }) {
       {share != null ? <i aria-hidden="true"><b style={{ width: `${Math.round(share * 100)}%` }} /></i> : null}
       {disk.used != null ? `${gigabytes(disk.used)} of ${gigabytes(disk.quota)} disk` : `${gigabytes(disk.quota)} disk`}
     </span>
-    {full ? <em>Full. Ask the agent to free space; a little past this, work stops.</em> : null}
+    {full ? <em>Full. Ask it to free some space; a little past this, work stops.</em> : null}
   </p>;
 }
 
@@ -861,8 +873,8 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
             case "slept": return <p key={item.seq} className="cd-note">Put to sleep to make room for &ldquo;{item.for}&rdquo;. It wakes when you open it.</p>;
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
-              ? `Stopped: this task's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask the agent to free space.`
-              : `This task's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. The agent was asked to free space first.`}</p>;
+              ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
+              : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
@@ -960,7 +972,7 @@ function ToolRow({ tool }: { tool: Tool }) {
 
 function Done({ event }: { event: Extract<CodeEvent, { kind: "done" }> }) {
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
-  if (!event.ok) return <p className="cd-note is-failed" role="alert"><Icon name="close" />{event.error || "The agent stopped with an error."}</p>;
+  if (!event.ok) return <p className="cd-note is-failed" role="alert"><Icon name="close" />{event.error || "It stopped with an error."}</p>;
   const facts = [event.durationMs ? elapsed(event.durationMs) : null, event.costUsd ? `$${event.costUsd.toFixed(2)}` : null].filter(Boolean);
   return <p className="cd-note cd-done"><Icon name="check" />Done{facts.length ? <span className="cd-mono">{facts.join(" · ")}</span> : null}</p>;
 }
@@ -1030,7 +1042,9 @@ function PreviewCard({ workspace, url, live }: { workspace: Workspace; url: stri
 
 /* ── asking for the person's Drive ── */
 
-const whatOf = (e: { space: string; path: string }) => e.path ? <><b>{e.path.split("/").pop()}</b> in <SpaceChip name={e.space} /></> : <SpaceChip name={e.space} />;
+const whatOf = (e: { space: string; path: string; node?: string; file?: boolean }) => e.path
+  ? <><DriveName space={e.space} node={e.file ? e.node : undefined}>{e.path.split("/").pop()}</DriveName> in <SpaceChip name={e.space} /></>
+  : <SpaceChip name={e.space} />;
 
 /** Kimono AI asking for some of the person's Drive, and how they answered. */
 function AccessCard({ workspace, event, answer }: { workspace: Workspace; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> }) {
@@ -1052,7 +1066,7 @@ function AccessCard({ workspace, event, answer }: { workspace: Workspace; event:
   return <div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
     <span className="cd-access-mark" aria-hidden="true"><DriveMark /></span>
     <div className="cd-access-id">
-      <b>Kimono AI wants to {verb} {event.path ? <>{event.path.split("/").pop()} in </> : <>files in </>}<SpaceChip name={event.space} /></b>
+      <b>Kimono AI wants to {verb} {event.path ? <><DriveName space={event.space} node={event.file ? event.node : undefined}>{event.path.split("/").pop()}</DriveName> in </> : <>files in </>}<SpaceChip name={event.space} /></b>
       <span>{event.why}</span>
     </div>
     <div className="cd-access-acts">
@@ -1166,7 +1180,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />
       <Meters workspace={workspace} context={context} running={running} blocked={blocked} />
-      {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop the agent" title="Stop the agent" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
+      {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop" title="Stop" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
       <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Meta+Enter" title="Send (⌘↵)">Send</Seal>
     </div>
     {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}

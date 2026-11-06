@@ -345,7 +345,7 @@ export function setPreviewName(db: DatabaseSync, id: string, name: string | null
 /** Starts a turn, refusing while another is running in the same workspace. */
 export function startTurn(db: DatabaseSync, workspaceId: string, now = Date.now()): string {
   const running = db.prepare("SELECT id FROM turns WHERE workspace_id = ? AND state = 'running'").get(workspaceId);
-  if (running) throw new CodeProblem("The agent is still working on the last message.", 409);
+  if (running) throw new CodeProblem("It's still working on the last message.", 409);
   const id = newId();
   db.prepare("INSERT INTO turns (id, workspace_id, state, started_at) VALUES (?, ?, 'running', ?)").run(id, workspaceId, now);
   db.prepare("UPDATE workspaces SET updated_at = ? WHERE id = ?").run(now, workspaceId);

@@ -196,7 +196,7 @@ export function translate(line: unknown): Translated {
         events: [],
         session,
         result: {
-          ...(failed ? { failure: typeof message.result === "string" && message.result ? message.result : "The agent stopped with an error." } : {}),
+          ...(failed ? { failure: typeof message.result === "string" && message.result ? message.result : "It stopped with an error." } : {}),
           ...(typeof message.total_cost_usd === "number" ? { costUsd: message.total_cost_usd } : {}),
           ...(typeof message.duration_ms === "number" ? { durationMs: message.duration_ms } : {}),
           ...(windowOf(message) ? { window: windowOf(message) } : {}),
@@ -211,7 +211,7 @@ export function translate(line: unknown): Translated {
 /** What a finished turn says about itself, gathered from Claude's result line and the node's done line. */
 export function finish(result: TurnResult | null, done: { exit?: number; cancelled?: boolean } | null, error?: string, context?: number): Extract<CodeEvent, { kind: "done" }> {
   if (done?.cancelled) return { kind: "done", ok: false, cancelled: true };
-  const failure = error ?? result?.failure ?? (done && done.exit !== 0 ? "The agent stopped with an error." : undefined) ?? (!done ? "The sandbox stopped answering." : undefined);
+  const failure = error ?? result?.failure ?? (done && done.exit !== 0 ? "It stopped with an error." : undefined) ?? (!done ? "Kimono AI stopped answering." : undefined);
   return {
     kind: "done", ok: !failure, ...(failure ? { error: clip(failure, 600) } : {}),
     ...(result?.costUsd !== undefined ? { costUsd: result.costUsd } : {}),

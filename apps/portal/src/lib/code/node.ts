@@ -11,7 +11,7 @@ import type { ToolSession } from "./composio";
 
 type Who = { name: string; email: string };
 
-const unreachable = "The sandbox node isn't answering. Check that it's on.";
+const unreachable = "Kimono AI isn't answering right now. Try again in a moment.";
 
 async function call(config: CodeConfig, path: string, init: RequestInit & { timeout?: number } = {}): Promise<Response> {
   const { timeout = 60_000, ...rest } = init;
@@ -28,9 +28,9 @@ async function call(config: CodeConfig, path: string, init: RequestInit & { time
     throw new CodeProblem(unreachable, 502);
   }
   if (response.ok) return response;
-  let message = "The sandbox couldn't do that.";
+  let message = "That didn't work. Try again in a moment.";
   try { message = ((await response.json()) as { error?: string }).error || message; } catch { /* not JSON */ }
-  if (response.status === 401 || response.status === 403) message = "The sandbox node refused Portal's key.";
+  if (response.status === 401 || response.status === 403) message = "Kimono AI isn't set up right. An administrator can check it in Applications.";
   throw new CodeProblem(message, response.status >= 500 ? 502 : response.status);
 }
 

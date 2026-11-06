@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: Context) {
   return code(user, async (config) => {
     const workspace = workspaceFor(db(), id, user.username);
     requireProject(user, workspace);
-    if (workspace.turn?.state === "running") throw new CodeProblem("Wait for the agent to finish first.", 409);
+    if (workspace.turn?.state === "running") throw new CodeProblem("Wait for it to finish first.", 409);
     const body = read.body as { title?: unknown; body?: unknown };
     const title = String(body.title ?? "").trim() || workspace.title;
     await ensure(config, workspace, who(user));

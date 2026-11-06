@@ -20,10 +20,12 @@ async function first(candidates, context, next, error) {
 }
 /* Signing in needs Next itself; code under test never signs anyone in. */
 const stubs = {
+  /* A marker Next provides; outside Next it would throw, and installing it confuses Next's own. */
+  'server-only': '',
   '@/auth': 'export const auth = async () => null; export const roleFromGroups = () => "member"; export const signIn = async () => {}; export const signOut = async () => {};',
 };
 export async function resolve(specifier, context, next) {
-  if (stubs[specifier]) return { url: 'data:text/javascript,' + encodeURIComponent(stubs[specifier]), shortCircuit: true };
+  if (specifier in stubs) return { url: 'data:text/javascript,' + encodeURIComponent(stubs[specifier]), shortCircuit: true };
   try { return await next(specifier, context); } catch (error) {
     if (error.code !== 'ERR_MODULE_NOT_FOUND' && error.code !== 'ERR_UNSUPPORTED_DIR_IMPORT') throw error;
     if (specifier.startsWith('@/')) return first(endings.map((e) => src + specifier.slice(2) + e), context, next, error);

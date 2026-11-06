@@ -47,7 +47,7 @@ export function db(): DatabaseSync {
     migrate(opened);
     /* Turns a previous process was driving have no one left to finish them. */
     for (const { workspace, turn } of abandonRunningTurns(opened)) {
-      appendEvent(opened, workspace, turn, { kind: "done", ok: false, error: "Kimono restarted while the agent was working." });
+      appendEvent(opened, workspace, turn, { kind: "done", ok: false, error: "Kimono restarted while it was working." });
     }
     live.db = opened;
   }
@@ -299,7 +299,7 @@ export async function sandboxStatus(config: CodeConfig, workspace: Workspace) {
 
 /** How the app is doing now, and the end of its log. What the node says is kept, so the list agrees. */
 export async function previewStatus(config: CodeConfig, workspace: Workspace) {
-  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  if (!workspace.preview) throw new CodeProblem("This chat isn't running an app.", 404);
   const [status, log] = await Promise.all([
     sandbox.preview(config, workspace),
     sandbox.previewLogs(config, workspace).catch(() => ""),
@@ -310,7 +310,7 @@ export async function previewStatus(config: CodeConfig, workspace: Workspace) {
 
 /** Starts the app again (or for the first time since it was stopped), keeping its link. */
 export async function restartPreview(config: CodeConfig, workspace: Workspace) {
-  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  if (!workspace.preview) throw new CodeProblem("This chat isn't running an app.", 404);
   const preview = await sandbox.restartPreview(config, workspace);
   setPreview(db(), workspace.id, preview);
   return preview;
@@ -318,7 +318,7 @@ export async function restartPreview(config: CodeConfig, workspace: Workspace) {
 
 /** Stops the app but keeps its link and name; opening the link says it isn't running. */
 export async function pausePreview(config: CodeConfig, workspace: Workspace) {
-  if (!workspace.preview) throw new CodeProblem("This task isn't running an app.", 404);
+  if (!workspace.preview) throw new CodeProblem("This chat isn't running an app.", 404);
   const preview = await sandbox.pausePreview(config, workspace);
   setPreview(db(), workspace.id, preview);
   return preview;
