@@ -309,13 +309,16 @@ cd /workspace
 [ -d .git ] || git init --quiet
 grep -qxF '/.kimono/' .git/info/exclude 2>/dev/null || echo '/.kimono/' >> .git/info/exclude`
 
-// checkoutScript clones on first use and otherwise only moves onto the
-// workspace's branch when it is somewhere else, so the agent's work is never
-// reset under it.
+// checkoutScript gets the repository on first use and otherwise only moves
+// onto the workspace's branch when it is somewhere else, so the agent's work is
+// never reset under it. It fetches into /workspace rather than cloning, since
+// Kimono's own files (.kimono) may be there already; a chat's local repository
+// (one moved into a project) takes the project's remote the same way.
 const checkoutScript = `set -e
 url=$1 base=$2 branch=$3
 cd /workspace
-if [ ! -d .git ]; then git clone --quiet "$url" /workspace; fi
+[ -d .git ] || git init --quiet
+git remote get-url origin >/dev/null 2>&1 || git remote add origin "$url"
 git remote set-url origin "$url"
 # Files a person lets the agent use live in .kimono/files: never committed, never mirrored as the task's own.
 grep -qxF '/.kimono/' .git/info/exclude 2>/dev/null || echo '/.kimono/' >> .git/info/exclude
@@ -324,7 +327,9 @@ current=$(git symbolic-ref --quiet --short HEAD || true)
 if [ "$current" != "$branch" ]; then
   if git show-ref --verify --quiet "refs/heads/$branch"; then git checkout --quiet "$branch"
   elif git show-ref --verify --quiet "refs/remotes/origin/$branch"; then git checkout --quiet -b "$branch" --track "origin/$branch"
-  else git checkout --quiet --no-track -b "$branch" "origin/$base"; fi
+  elif git show-ref --verify --quiet "refs/remotes/origin/$base"; then git checkout --quiet --no-track -b "$branch" "origin/$base"
+  # An empty repository: the first commit starts the branch.
+  else git symbolic-ref HEAD "refs/heads/$branch"; fi
 fi`
 
 func (s *Server) checkout(ctx context.Context, w *workspace) error {
