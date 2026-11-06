@@ -40,6 +40,7 @@ export type CodeEvent =
   | { kind: "artifact-saved"; name: string; version: number; title: string }
   | { kind: "draft"; text: string }
   | { kind: "renamed"; title: string }
+  | { kind: "sent"; files: Attachment[] }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };

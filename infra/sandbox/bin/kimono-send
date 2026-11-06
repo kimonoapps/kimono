@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""kimono-send FILE [FILE...]
+
+Gives the person files you made or changed (a PDF, a spreadsheet, pictures,
+a zip): they appear in the chat to open and download. Use it whenever the
+answer is a file, rather than telling them where it is. What they get is the
+file as it is now; send it again after you change it. Up to 10 files, 20 MB
+each.
+"""
+import json, os, re, secrets, shutil, sys
+
+MAX_FILES, MAX_BYTES = 10, 20 * 1024 * 1024
+SENT = "/workspace/.kimono/sent"
+
+args = sys.argv[1:]
+if not args or args[0] in ("-h", "--help"):
+    sys.exit(__doc__.strip())
+if len(args) > MAX_FILES:
+    sys.exit(f"kimono-send: up to {MAX_FILES} files at once; zip the rest together")
+
+found = []
+for arg in args:
+    path = os.path.realpath(arg)
+    if os.path.isdir(path):
+        sys.exit(f"kimono-send: {arg} is a folder; zip it first (zip -r name.zip {arg})")
+    if not os.path.isfile(path):
+        sys.exit(f"kimono-send: there's no file {arg}")
+    if os.path.getsize(path) > MAX_BYTES:
+        sys.exit(f"kimono-send: {arg} is over 20 MB")
+    found.append((arg, path))
+
+os.makedirs(SENT, exist_ok=True)
+sent = []
+for arg, path in found:
+    name = re.sub(r"[^\w.,()+ -]", "_", os.path.basename(path)).strip() or "file"
+    copy = f"{SENT}/{secrets.token_hex(4)}-{name}"
+    shutil.copyfile(path, copy)
+    sent.append({"name": name, "path": os.path.relpath(copy, "/workspace")})
+
+print(f"Sent: {', '.join(f['name'] for f in sent)}.")
+# Kimono reads this line to put the files in the chat.
+print("kimono-sent " + json.dumps(sent))

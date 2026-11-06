@@ -84,7 +84,8 @@ export const sandbox = {
   files: (config: CodeConfig, workspace: Workspace, path: string) =>
     call(config, `${at(workspace)}/files?path=${encodeURIComponent(path)}`).then(json<{ path: string; entries: { name: string; kind: "file" | "dir" | "link"; size: number }[] }>),
 
-  file: (config: CodeConfig, workspace: Workspace, path: string) => call(config, `${at(workspace)}/file?path=${encodeURIComponent(path)}`),
+  /** A file's bytes: up to 2 MB, or with `full` up to 50 MB. */
+  file: (config: CodeConfig, workspace: Workspace, path: string, full = false) => call(config, `${at(workspace)}/file?path=${encodeURIComponent(path)}${full ? "&full=1" : ""}`),
 
   attach: (config: CodeConfig, workspace: Workspace, name: string, body: Uint8Array) => call(config, `${at(workspace)}/attachments?name=${encodeURIComponent(name)}`, {
     method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: body as BodyInit, timeout: 2 * 60_000,

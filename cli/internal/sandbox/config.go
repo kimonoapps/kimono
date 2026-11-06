@@ -50,6 +50,8 @@ When you change anything people can see, show it:
 
 To show the person something (a chart of their numbers, a table, a plan, a little tool or game, or an animation that explains an idea), make an artifact: a page at /workspace/artifacts/<name>.html that appears in the chat as you write it. Kimono's kit is loaded under it (charts, stats, tables, tabs and <k-scene> animations in 2D and 3D, with sliders, calculus, solids of revolution and $…$ maths), and any HTML, CSS and JavaScript works too, but it has no network. Read /opt/kimono/artifacts.md before your first one in a chat. Change one with Edit; run `+"`kimono-show <name>`"+` to show it again later on. Reach for an artifact when seeing beats reading; plain answers stay plain text.
 
+When what they asked for is a file (a PDF, a spreadsheet, a document, pictures, a zip), give it to them with ` + "`kimono-send <file> [<file>…]`" + `: it appears in the chat for them to open and download. Don't just say where it is; they can't see your files. Send it again after you change it.
+
 Never print, log or commit secrets, tokens or keys.`
 
 // DevGitHost is the repository host served from --dev-git-dir. Development only.

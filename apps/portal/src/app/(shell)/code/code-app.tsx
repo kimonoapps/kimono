@@ -5,7 +5,7 @@ import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIde
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
-import { lowerExtension, pictureExtensions } from "@/components/file-preview/kinds";
+import { extensionLabel, lowerExtension, pictureExtensions, previewKind } from "@/components/file-preview/kinds";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
@@ -1191,6 +1191,7 @@ type Item =
   | { type: "remembered"; seq: number; text: string; how?: "changed" | "forgot" }
   | { type: "artifact"; seq: number; id: string; name: string; action: "wrote" | "edited" | "shown" }
   | { type: "connect"; seq: number; app: string; url: string }
+  | { type: "sent"; seq: number; files: Attachment[] }
   | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
@@ -1223,6 +1224,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "remembered": items.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
       case "artifact": items.push({ type: "artifact", seq, id: event.id, name: event.name, action: event.action }); break;
       case "connect": items.push({ type: "connect", seq, app: event.app, url: event.url }); break;
+      case "sent": items.push({ type: "sent", seq, files: event.files }); break;
     }
   }
   return items;
@@ -1277,6 +1279,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
             case "done": return <Done key={item.seq} event={item.event} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
+            case "sent": return <div key={item.seq} className="cd-sent">{item.files.map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}</div>;
             case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
             case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
             case "slept": return <p key={item.seq} className="cd-note">Put to sleep to make room for &ldquo;{item.for}&rdquo;. It wakes when you open it.</p>;
@@ -1477,17 +1480,55 @@ function Working({ since, artifact }: { since: number | null; artifact?: boolean
 
 function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
   const { text, attachments, queued } = item.event;
-  const [opened, setOpened] = useState<Attachment | null>(null);
   if (text.trim() === "/compact" && !attachments.length) return <p className="cd-note"><Icon name="diff" />You asked it to compact the conversation{queued ? " after this step" : ""}</p>;
   return <div className={cx("cd-ask", queued && "is-queued")} title={queued ? "Sent while it was working: read as soon as the current step ends" : undefined}>
     {text ? <p>{text}</p> : null}
-    {attachments.length ? <div className="cd-attached">{attachments.map((a) => isPicture(a.type)
+    {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
+  </div>;
+}
+
+/** What a file is, in a word: "PDF document", "PNG picture". */
+function fileKind(name: string, type: string) {
+  const label = extensionLabel(name);
+  const kind = previewKind(name, type);
+  return kind === "image" ? `${label} picture` : kind === "video" ? `${label} video` : kind === "audio" ? `${label} sound`
+    : kind === "pdf" ? "PDF document" : kind === "text" ? `${label} text` : label === "FILE" ? "File" : `${label} file`;
+}
+
+/**
+ * A file Kimono AI sent: a card with its picture or mark, what it is and a
+ * Download button. One the preview can show opens over the window when clicked;
+ * anything else is the card alone.
+ */
+function SentFile({ workspace, file }: { workspace: Workspace; file: Attachment }) {
+  const [open, setOpen] = useState(false);
+  const url = code.attachmentUrl(workspace.id, file);
+  const shows = previewable(file.name, file.type) || previewKind(file.name, file.type) === "audio";
+  const download = () => saveAs(url, file.name);
+  const face = <>
+    <FileThumb name={file.name} picture={isPicture(file.type) ? url : null} size={48} className="cd-sentfile-thumb" />
+    <span className="cd-sentfile-name"><b title={file.name}>{file.name}</b><small>{fileKind(file.name, file.type)} · {readableSize(file.size)}</small></span>
+  </>;
+  return <figure className={cx("cd-sentfile", shows && "is-open-able")}>
+    {shows ? <button type="button" className="cd-sentfile-face" aria-label={`Open ${file.name}`} title="Open" onClick={() => setOpen(true)}>{face}</button>
+      : <div className="cd-sentfile-face">{face}</div>}
+    <Seal type="button" tone="quiet" compact onClick={download}><Icon name="download" />Download</Seal>
+    {open ? <FileOverlay name={file.name} mime={file.type} url={url} onClose={() => setOpen(false)}
+      actions={<Seal type="button" tone="quiet" compact onClick={download}><Icon name="download" />Download</Seal>} /> : null}
+  </figure>;
+}
+
+/** Files someone attached, as chips (pictures as thumbnails). Each opens in place, to download. */
+function FileChips({ workspace, files }: { workspace: Workspace; files: Attachment[] }) {
+  const [opened, setOpened] = useState<Attachment | null>(null);
+  return <>
+    <div className="cd-attached">{files.map((a) => isPicture(a.type)
       // eslint-disable-next-line @next/next/no-img-element
       ? <button type="button" key={a.path} className="cd-thumb" aria-label={a.name} onClick={() => setOpened(a)}><img src={code.attachmentUrl(workspace.id, a)} alt={a.name} /></button>
-      : <button type="button" key={a.path} className="cd-filechip" onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span><small>{readableSize(a.size)}</small></button>)}</div> : null}
+      : <button type="button" key={a.path} className="cd-filechip" onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span><small>{readableSize(a.size)}</small></button>)}</div>
     {opened ? <FileOverlay name={opened.name} mime={opened.type} url={code.attachmentUrl(workspace.id, opened)} onClose={() => setOpened(null)}
       actions={<Seal type="button" tone="quiet" compact onClick={() => saveAs(code.attachmentUrl(workspace.id, opened), opened.name)}><Icon name="download" />Download</Seal>} /> : null}
-  </div>;
+  </>;
 }
 
 /** Tool calls as one pill — "Used 5 tools" — open while the agent is still in them, unless you closed it. Each call opens to show what it did. */

@@ -41,6 +41,8 @@ export type CodeEvent =
   /** Never stored: the chat got its name, so lists showing it load again. */
   | { kind: "renamed"; title: string }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
+  /** Files it gave the person with kimono-send, kept by Kimono to open and download. */
+  | { kind: "sent"; files: Attachment[] }
   /** An app of theirs needs connecting: Kimono shows a Connect button for this Composio link. */
   | { kind: "connect"; app: string; url: string }
   /** How the person answered an access request. */
@@ -188,7 +190,28 @@ function resultText(content: unknown): string {
 export type TurnResult = { failure?: string; costUsd?: number; durationMs?: number; window?: number };
 /** `context` is what the agent's latest message held: its input, plus what it read from and wrote to the cache. */
 export type ArtifactCall = { id: string; name: string; action: "wrote" | "edited" | "shown"; content?: string; edits?: Edit[] };
-export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult; context?: number; artifacts?: ArtifactCall[] };
+/** A file kimono-send copied aside for the person: its name, and where it is under /workspace. */
+export type SentFile = { name: string; path: string };
+
+export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult; context?: number; artifacts?: ArtifactCall[]; sent?: SentFile[] };
+
+/** The files a kimono-send in this output gave the person, and the output without the line that says so. */
+export function sentFiles(text: string): { files: SentFile[]; shown: string } {
+  const files: SentFile[] = [];
+  const shown = text.split("\n").filter((line) => {
+    const found = /^kimono-sent (\[.*\])\s*$/.exec(line);
+    if (!found) return true;
+    try {
+      for (const f of JSON.parse(found[1]) as unknown[]) {
+        const { name, path } = (f ?? {}) as { name?: unknown; path?: unknown };
+        /* Only what the helper itself makes: a copy under .kimono/sent. */
+        if (typeof name === "string" && typeof path === "string" && /^\.kimono\/sent\/[0-9a-f]{8}-[^/]+$/.test(path) && files.length < 10) files.push({ name: name.slice(0, 200), path });
+      }
+    } catch { /* not ours */ }
+    return false;
+  }).join("\n");
+  return { files, shown };
+}
 
 const tokens = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 function contextOf(message: Record<string, unknown>): number | undefined {
@@ -243,14 +266,17 @@ export function translate(line: unknown): Translated {
     }
     case "user": {
       const events: CodeEvent[] = [];
+      const sent: SentFile[] = [];
       for (const part of parts) {
         if (part.type === "tool_result" && typeof part.tool_use_id === "string") {
-          const text = resultText(part.content);
-          events.push({ kind: "tool-result", id: part.tool_use_id, ok: part.is_error !== true, output: clip(text, 4000) });
-          for (const link of connectLinks(text)) events.push({ kind: "connect", ...link });
+          const { files, shown } = sentFiles(resultText(part.content));
+          const ok = part.is_error !== true;
+          events.push({ kind: "tool-result", id: part.tool_use_id, ok, output: clip(shown, 4000) });
+          for (const link of connectLinks(shown)) events.push({ kind: "connect", ...link });
+          if (ok) sent.push(...files);
         }
       }
-      return { events, session };
+      return { events, session, ...(sent.length ? { sent } : {}) };
     }
     case "result": {
       const failed = message.is_error === true || (typeof message.subtype === "string" && message.subtype !== "success");

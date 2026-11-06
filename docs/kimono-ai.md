@@ -125,6 +125,16 @@ see nothing inside a space until it is allowed.
   `opened` (what a chat has open, and where) and `opened_files` (each file's last
   agreed state). Tests: `pnpm --filter @kimono/portal test:access`.
 
+## Sending files
+
+When the answer is a file (a PDF, a spreadsheet, pictures, a zip), the agent
+runs `kimono-send <file>…` (up to 10, 20 MB each). The helper copies them to
+`/workspace/.kimono/sent/` and prints one `kimono-sent [...]` line; Portal reads
+it from the command's output, copies the files out beside the chat's
+attachments and records a `sent` event. Each file is a card in the chat with
+its picture or mark, its type and size, and Download; one the file preview can
+show (pictures, video, sound, text, Markdown, code) opens over the window.
+
 ## Memory and instructions
 
 A Memory page in the chat list holds each person's own instructions and what

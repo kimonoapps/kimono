@@ -8,7 +8,8 @@ import { apiError, type ApiUser } from "../api-v1";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
-import { finish, translate, type ArtifactCall, type Attachment, type CodeEvent, type TurnResult } from "./events";
+import { finish, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
+import { typeOf } from "../drive/storage";
 import { applyEdits, artifactOf, Drafts, saveArtifact } from "./artifacts";
 import {
   abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, titleFrom, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
@@ -120,6 +121,23 @@ async function keepArtifact(config: CodeConfig, workspace: Workspace, turn: stri
   if (kept && kept.content === content) return;
   const saved = saveArtifact(db(), workspace.id, call.name, content);
   record(workspace.id, turn, { kind: "artifact-saved", name: saved.name, version: saved.version, title: saved.title });
+}
+
+/** Copies the files kimono-send gave the person out of the sandbox, beside their attachments, and puts them in the chat. */
+async function keepSent(config: CodeConfig, workspace: Workspace, turn: string, sent: SentFile[]) {
+  const files: Attachment[] = [];
+  for (const file of sent) {
+    const response = await sandbox.file(config, workspace, file.path, true).catch(() => null);
+    if (!response?.ok) continue;
+    const body = new Uint8Array(await response.arrayBuffer());
+    if (body.byteLength > maxAttachmentBytes) continue;
+    const name = safeName(file.name);
+    const stored = `${newId(3)}-${name}`;
+    await mkdir(attachmentDir(workspace.id), { recursive: true, mode: 0o700 });
+    await writeFile(join(attachmentDir(workspace.id), stored), body, { mode: 0o600 });
+    files.push({ name, path: `/attachments/${stored}`, size: body.byteLength, type: typeOf(name).split(";")[0] });
+  }
+  if (files.length) record(workspace.id, turn, { kind: "sent", files });
 }
 
 /** Hears every event recorded in a workspace from now on. Returns the way to stop. */
@@ -278,6 +296,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (translated.result) result = translated.result;
         if (translated.context) context = translated.context;
         for (const call of translated.artifacts ?? []) pendingArtifacts.set(call.id, call);
+        if (translated.sent) await keepSent(config, workspace, turn, translated.sent).catch((error) => console.warn("Kimono AI couldn't keep a file it sent:", error instanceof Error ? error.message : error));
         for (const event of translated.events) {
           record(workspace.id, turn, event);
           const call = event.kind === "tool-result" ? pendingArtifacts.get(event.id) : undefined;
