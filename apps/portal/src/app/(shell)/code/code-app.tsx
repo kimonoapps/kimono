@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
@@ -800,19 +801,32 @@ function WorkspaceList({ label, list, current, now, onNew }: { label?: string; l
   </div>;
 }
 
-/** A chat in the list: opens it; archive and delete sit at its end, shown on hover. */
+/** A chat in the list: opens it; its ··· menu renames, archives or deletes it. */
 function ChatRow({ w, current, now }: { w: Workspace; current: string | null; now: number }) {
   const [confirming, setConfirming] = useState(false);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  /* The share dialog, drawn outside the list so the list's own styles don't reach it. */
+  const [sharing, setSharing] = useState<Element | null>(null);
   const [busy, setBusy] = useState(false);
   const owns = !w.access || w.access === "owner";
   const state = w.turn?.state;
-  const act = (run: () => Promise<unknown>) => {
+  const act = (run: () => Promise<unknown>, leaves = true) => {
     setBusy(true);
     run().then(() => {
-      if (w.id === current) goTo({}, true);
+      if (leaves && w.id === current) goTo({}, true);
+      setBusy(false); setRenaming(null);
       window.dispatchEvent(new Event("kimono-ai-reload"));
     }, () => { setBusy(false); setConfirming(false); });
   };
+  const saveName = () => {
+    const name = renaming?.trim();
+    if (!name || name === w.title) { setRenaming(null); return; }
+    act(() => code.rename(w.id, name), false);
+  };
+  if (renaming !== null) return <form className={cx("cd-row cd-row-naming", busy && "is-busy")} onSubmit={(event) => { event.preventDefault(); saveName(); }}>
+    <input autoFocus value={renaming} maxLength={120} aria-label="Chat name" onFocus={(event) => event.target.select()}
+      onChange={(event) => setRenaming(event.target.value)} onBlur={saveName} onKeyDown={(event) => { if (event.key === "Escape") setRenaming(null); }} />
+  </form>;
   return <div className={cx("cd-row", busy && "is-busy", confirming && "is-confirming")}>
     <button type="button" className="cd-row-open" aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
       <b>{w.title}</b>
@@ -827,11 +841,58 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
     </button>
     {!owns ? null : confirming
       ? <span className="cd-row-confirm"><span>Delete?</span><button type="button" className="cd-quietbutton is-danger" onClick={() => act(() => code.remove(w.id))}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirming(false)}>Keep</button></span>
-      : <span className="cd-row-acts">
-          <button type="button" aria-label={`Archive ${w.title}`} title="Archive" onClick={() => act(() => code.archive(w.id, true))}><Icon name="archive" /></button>
-          <button type="button" aria-label={`Delete ${w.title}`} title="Delete" onClick={() => setConfirming(true)}><Icon name="trash" /></button>
-        </span>}
+      : <RowMenu label={`More for ${w.title}`} items={[
+          { icon: "people", label: "Share", run: () => setSharing(document.querySelector(".cd") ?? document.body) },
+          { icon: "rename", label: "Rename", run: () => setRenaming(w.title) },
+          { icon: "archive", label: "Archive", run: () => act(() => code.archive(w.id, true)) },
+          { icon: "trash", label: "Delete", danger: true, run: () => setConfirming(true) },
+        ]} />}
+    {sharing ? createPortal(<ShareChat workspace={w} onClose={() => setSharing(null)} />, sharing) : null}
   </div>;
+}
+
+type MenuItem = { icon: IconName; label: string; danger?: boolean; run: () => void };
+
+/** A ··· button and its menu, drawn over everything so a scrolling list doesn't cut it off. */
+function RowMenu({ label, items, className }: { label: string; items: MenuItem[]; className?: string }) {
+  const [at, setAt] = useState<{ top: number; right: number; host: Element } | null>(null);
+  const root = useRef<HTMLSpanElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!at) return;
+    const away = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node) && !menu.current?.contains(event.target as Node)) setAt(null); };
+    const esc = (event: KeyboardEvent) => { if (event.key === "Escape") { setAt(null); root.current?.querySelector("button")?.focus(); } };
+    const close = () => setAt(null);
+    /* Only a scroll that moves the button closes it, not one elsewhere on the page. */
+    const scrolled = (event: Event) => { if (event.target instanceof Node && event.target.contains(root.current)) setAt(null); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    window.addEventListener("resize", close);
+    document.addEventListener("scroll", scrolled, true);
+    menu.current?.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus({ preventScroll: true });
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); window.removeEventListener("resize", close); document.removeEventListener("scroll", scrolled, true); };
+  }, [at]);
+  const open = (button: HTMLButtonElement) => {
+    const box = button.getBoundingClientRect();
+    /* Below the button, or above it when there isn't room. */
+    const below = box.bottom + 4 + items.length * 48 + 8 < window.innerHeight;
+    setAt({ top: below ? box.bottom + 4 : box.top - 4 - (items.length * 48 + 8), right: document.documentElement.clientWidth - box.right, host: button.closest(".cd") ?? document.body });
+  };
+  const step = (event: React.KeyboardEvent) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const all = [...(menu.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? [])];
+    const now = all.indexOf(document.activeElement as HTMLButtonElement);
+    all[(now + (event.key === "ArrowDown" ? 1 : all.length - 1)) % all.length]?.focus({ preventScroll: true });
+  };
+  return <span ref={root} className={cx("cd-row-more", at && "is-open", className)}>
+    <button type="button" aria-label={label} title="More" aria-haspopup="menu" aria-expanded={Boolean(at)}
+      onClick={(event) => { event.stopPropagation(); if (at) setAt(null); else open(event.currentTarget); }}><Icon name="more" /></button>
+    {at ? createPortal(<div ref={menu} className="cd-attach-menu cd-row-menu" role="menu" aria-label={label} style={{ top: at.top, right: at.right }} onKeyDown={step}>
+      {items.map((item) => <button key={item.label} type="button" role="menuitem" className={cx(item.danger && "is-danger")}
+        onClick={(event) => { event.stopPropagation(); setAt(null); item.run(); }}><Icon name={item.icon} />{item.label}</button>)}
+    </div>, at.host) : null}
+  </span>;
 }
 
 /** Chats and artifacts others shared with this person: each with whose it is. An artifact opens on its own page. */
@@ -1674,6 +1735,10 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
   const animated = /<k-scene\b/i.test(content);
   const inline = mode === "inline";
   const open = shared.beside === name;
+  /* Folded in the chat to just its title bar; remembered per artifact on this device. */
+  const foldKey = `kimono-ai:folded:${shared.workspaceId}:${name}`;
+  const [folded, setFolded] = useState(() => { try { return inline && localStorage.getItem(foldKey) === "1"; } catch { return false; } });
+  const fold = (next: boolean) => { setFolded(next); try { if (next) localStorage.setItem(foldKey, "1"); else localStorage.removeItem(foldKey); } catch { /* not kept */ } };
   /* A big one goes beside the chat by itself the first time it grows past the card, on a wide window. */
   const moved = useRef(false);
   const onHeight = useCallback((h: number) => {
@@ -1705,11 +1770,13 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
   };
-  return <figure className={cx("cd-artifact", `is-${mode}`, writing && "is-writing", inline && open && "is-elsewhere")}>
+  const shut = inline && folded && !open;
+  return <figure className={cx("cd-artifact", `is-${mode}`, writing && "is-writing", inline && open && "is-elsewhere", shut && "is-folded")}>
     <figcaption className="cd-artifact-head">
       <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
       <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <small className="cd-artifact-writing"><MorphLoader tone="plain" label="Writing" className="cd-morph" />Writing</small> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
       <span className="cd-artifact-acts">
+        {inline && !open ? <button type="button" className="cd-roundbutton cd-artifact-fold" aria-expanded={!folded} aria-label={folded ? "Show" : "Collapse"} title={folded ? "Show" : "Collapse"} onClick={() => fold(!folded)}><Icon name="chevron" /></button> : null}
         {canShare ? <button type="button" className="cd-roundbutton" aria-label="Share" title="Share" onClick={() => setSharing(true)}><Icon name="people" /></button> : null}
         {mode !== "full" ? <button type="button" className="cd-roundbutton" aria-label={open ? "Close the side panel" : "Open beside the chat"} title={open ? "Close the side panel" : "Open beside the chat"} onClick={() => shared.setBeside(open ? null : name)}><Icon name={open ? "close" : "beside"} /></button> : null}
         <button type="button" className="cd-roundbutton" aria-label={mode === "full" ? "Leave full screen" : "Full screen"} title={mode === "full" ? "Leave full screen" : "Full screen"} onClick={() => shared.setFull(mode === "full" ? null : name)}><Icon name={mode === "full" ? "shrink" : "expand"} /></button>
@@ -1719,12 +1786,12 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
       ? <button type="button" className="cd-artifact-away" onClick={() => shared.setBeside(null)}>Open beside the chat · bring it back here</button>
       : ready
         ? <>
-            <div className={cx("cd-artifact-body", dragging && "is-dragging")} style={shown ? { height: shown } : undefined}><ArtifactFrame content={content} final={!writing} title={title} control={control} onHeight={onHeight} onScene={setScene} /></div>
-            {inline ? <div className="cd-artifact-grip" role="separator" aria-orientation="horizontal" aria-label="Resize" title="Drag to resize · double-click to fit" tabIndex={0}
+            <div className={cx("cd-artifact-body", dragging && "is-dragging")} style={shown ? { height: shown } : undefined} hidden={shut}><ArtifactFrame content={content} final={!writing} title={title} control={control} onHeight={onHeight} onScene={setScene} /></div>
+            {inline && !shut ? <div className="cd-artifact-grip" role="separator" aria-orientation="horizontal" aria-label="Resize" title="Drag to resize · double-click to fit" tabIndex={0}
               aria-valuemin={120} aria-valuemax={2400} aria-valuenow={shown}
               onPointerDown={startDrag} onDoubleClick={() => setChosen(null)}
               onKeyDown={(event) => { if (!shown) return; if (event.key === "ArrowDown") { event.preventDefault(); resizeBy(shown + 40); } else if (event.key === "ArrowUp") { event.preventDefault(); resizeBy(shown - 40); } else if (event.key === "Enter" || event.key === "Escape") setChosen(null); }} /> : null}
-            {scene && scene.end > 0 ? <SceneBar scene={scene} send={send} /> : null}
+            {scene && scene.end > 0 && !shut ? <SceneBar scene={scene} send={send} /> : null}
           </>
         : <MorphLoader label="Opening" className="cd-artifact-loading" />}
     {sharing ? <ShareArtifact workspaceId={shared.workspaceId} name={name} title={title} onClose={() => setSharing(false)} /> : null}

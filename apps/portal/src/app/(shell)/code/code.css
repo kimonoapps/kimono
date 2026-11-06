@@ -932,17 +932,24 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-sidenav { display: grid; gap: 2px; }
 .cd-sidenav button { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 16px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-on-surface-variant); font: 600 15px/1 var(--k-sans); text-align: left; cursor: pointer; transition: background-color var(--k-t-state); }
 .cd-sidenav button:hover { background: var(--k-container-high); }
-/* A chat in the list: archive and delete at its end, on hover (always, on touch). */
+/* A chat in the list: a ··· menu at its end, on hover (always, on touch, and while open). */
 .cd-row { position: relative; }
 .cd-row.is-busy { opacity: .45; pointer-events: none; }
-.cd-row-acts, .cd-row-confirm { position: absolute; top: 50%; right: 6px; translate: 0 -50%; display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: var(--k-r-full); background: var(--k-container-high); }
-.cd-row-acts { opacity: 0; transition: opacity var(--k-t-state); }
-.cd-row:hover .cd-row-acts, .cd-row:focus-within .cd-row-acts { opacity: 1; }
-@media (hover: none) { .cd-row-acts { opacity: 1; } }
-.cd-list .cd-row-acts button { display: grid; place-items: center; width: 30px; height: 30px; min-height: 0; padding: 0; border-radius: var(--k-r-full); color: var(--k-on-surface-variant); }
-.cd-list .cd-row-acts button:hover { background: var(--k-container-highest); color: var(--k-on-surface); }
-.cd-list .cd-row-acts button[aria-label^="Delete"]:hover { color: var(--k-suo-deep); }
-.cd-list .cd-row-acts .i { width: 17px; height: 17px; }
+.cd-row-more, .cd-row-confirm { position: absolute; top: 50%; right: 8px; translate: 0 -50%; display: flex; align-items: center; gap: 2px; border-radius: var(--k-r-full); }
+.cd-row-confirm { padding: 2px; background: var(--k-container-high); }
+.cd-row-more { opacity: 0; transition: opacity var(--k-t-state); }
+.cd-row:hover .cd-row-more, .cd-row:focus-within .cd-row-more, .cd-row-more.is-open { opacity: 1; }
+@media (hover: none) { .cd-row-more { opacity: 1; } }
+.cd-list .cd-row-more > button { display: grid; place-items: center; width: 32px; height: 32px; min-height: 0; padding: 0; border-radius: var(--k-r-full); background: var(--k-container-high); color: var(--k-on-surface-variant); }
+.cd-list .cd-row-more > button:hover, .cd-list .cd-row-more.is-open > button { background: var(--k-container-highest); color: var(--k-on-surface); }
+.cd-row-more > button .i { width: 18px; height: 18px; }
+/* Not the open title's room taken: the name runs under the button only while it shows. */
+.cd-row:hover .cd-row-open b, .cd-row:focus-within .cd-row-open b { padding-right: 32px; }
+.cd-row-menu { position: fixed; left: auto; bottom: auto; min-width: 180px; transform-origin: top right; }
+.cd-row-menu button.is-danger { color: var(--k-suo-deep); }
+.cd-row-menu button.is-danger:hover, .cd-row-menu button.is-danger:focus-visible { background: color-mix(in srgb, var(--k-suo) 14%, transparent); color: var(--k-suo-deep); }
+.cd-row-naming { padding: 6px 4px; }
+.cd-row-naming input { width: 100%; height: 44px; padding: 0 12px; border: 2px solid var(--k-app-accent); border-radius: var(--k-r-l); background: var(--k-container-lowest); color: var(--k-on-surface); font: 500 15px/1 var(--k-sans); outline: none; }
 .cd-row-confirm { padding: 2px 2px 2px 12px; font: 600 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
 .cd-list .cd-row-confirm button { width: auto; min-height: 30px; padding: 0 10px; display: inline-flex; align-items: center; }
 .cd-sidenav-count { margin-left: auto; font: 600 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
@@ -1357,3 +1364,9 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 /* the row says what a switch is for; its own label stays for screen readers only */
 .cd-share .k-joint-field { flex: none; }
 .cd-share .k-joint-field > .k-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* An artifact folded to its title bar in the chat; the chevron points up to fold it, down to open it. */
+.cd-artifact-fold .i { rotate: -90deg; transition: rotate var(--k-t-seat) var(--k-spring); }
+.cd-artifact-fold[aria-expanded="false"] .i { rotate: 90deg; }
+.cd-artifact.is-folded .cd-artifact-head { border-bottom: 0; }
+.cd-artifact-body[hidden] { display: none; }
