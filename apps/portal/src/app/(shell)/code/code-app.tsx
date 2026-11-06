@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
+import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkCard, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
@@ -197,64 +197,130 @@ const dollars = (n: number) => `$${n.toFixed(2)}`;
 const monthWords = (at: number) => new Date(at).toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
 const resetWords = (at: number | null) => at ? new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
 
-/**
- * Context, the 5-hour window, the week and the month's tools, as rings beside
- * Send; open them for the numbers and to compact. Each shows only once it's
- * past half (tools also once this chat has spent some), and with none to show
- * there's nothing here.
- */
-function Meters({ workspace, context, running, blocked }: { workspace: Workspace; context: { used: number; window?: number } | null; running: boolean; blocked: string | null }) {
+/** This person's usage, fetched again whenever a turn starts or ends. */
+function useUsage(workspaceId: string, running: boolean) {
   const [usage, setUsage] = useState<Usage | null>(null);
-  const [open, setOpen] = useState(false);
+  useEffect(() => { let live = true; code.usage(workspaceId).then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, [running, workspaceId]);
+  return usage;
+}
+
+type ContextUse = { used: number; window?: number } | null;
+
+/** The figures behind every meter, as fractions (null while not known). */
+function usageFacts(usage: Usage | null, context: ContextUse) {
+  const window = context?.window ?? fallbackWindow;
+  /* Always this person's own use: of their share, or (the owner, who has no share) of the whole plan. Never anyone else's. */
+  const share = (w: Usage["week"]) => !usage?.reported ? null : w.used / w.share;
+  const media = usage?.media ?? null;
+  return {
+    window,
+    ctx: context ? context.used / window : null,
+    five: usage ? share(usage.fiveHour) : null,
+    week: usage ? share(usage.week) : null,
+    whose: usage?.unlimited ? "of the plan, used by you" : "of your share",
+    /* Usage arrives but never a 5-hour figure: this plan has no 5-hour window. */
+    noFiveHour: Boolean(usage?.reported && usage.fiveHourLimited === false),
+    media,
+    tools: media?.spent == null ? null : Math.min(1, media.spent / media.budget),
+  };
+}
+
+type Shown = { context: boolean; five: boolean; week: boolean; tools: boolean };
+
+/** The meters in full, as rows: those `show` asks for; compacting goes with the context row. */
+function UsageRows({ workspace, usage, context, running, blocked, show, onCompacted }: { workspace: Workspace; usage: Usage | null; context: ContextUse; running: boolean; blocked: string | null; show: Shown; onCompacted?: () => void }) {
   const [compacting, setCompacting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const f = usageFacts(usage, context);
+  const { media } = f;
+  return <>
+    {show.context ? <>
+      <div className="cd-meter"><Ring value={f.ctx} label="Context" /><span><b>Context</b><small>{context ? `${kTokens(context.used)} of ${kTokens(f.window)} tokens${context.window ? "" : " (about)"}` : "Known after the next reply"}</small></span>
+        <Seal type="button" compact tone="quiet" busy={compacting} disabled={Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); onCompacted?.(); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{running ? "Compact after this" : "Compact now"}</Seal></div>
+      <p className="cd-meter-note">Compacting folds the conversation so far into a summary, so there&rsquo;s room to keep going. It also happens by itself when the context fills.</p>
+    </> : null}
+    {show.five ? <div className="cd-meter"><Ring value={f.five} label="5-hour window" /><span><b>5-hour window</b><small>{f.noFiveHour ? "This plan has no 5-hour limit" : f.five == null ? "Not reported yet" : `${pct(f.five)} ${f.whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div> : null}
+    {show.week ? <div className="cd-meter"><Ring value={f.week} label="This week" /><span><b>This week</b><small>{f.week == null ? "Not reported yet" : `${pct(f.week)} ${f.whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div> : null}
+    {show.tools && media ? <div className="cd-meter"><Ring value={f.tools} label="Pro Tools" /><span><b className="cd-pro"><Icon name="bolt" />Pro Tools</b><small>{media.spent == null ? "Not reported yet" : `${dollars(media.spent)} of ${dollars(media.budget)} this month${media.chatSpent ? ` · ${dollars(media.chatSpent)} in this chat` : ""} · resets ${monthWords(media.resetsAt)}`}</small></span></div> : null}
+    {usage && !usage.unlimited && (show.five || show.week) ? <p className="cd-meter-note">Your share is {f.noFiveHour ? `${pct(usage.week.share)} of the week` : `${pct(usage.fiveHour.share)} of each 5-hour window and ${pct(usage.week.share)} of the week`}.</p> : null}
+    {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+  </>;
+}
+
+/** A pop-up anchored to a button in the message box, closed by a click elsewhere or Escape. */
+function usePopover() {
+  const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { let live = true; code.usage(workspace.id).then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, [running, workspace.id]);
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
+    const esc = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     document.addEventListener("pointerdown", away);
-    return () => document.removeEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
   }, [open]);
-  const window = context?.window ?? fallbackWindow;
-  const ctx = context ? context.used / window : null;
-  /* Always this person's own use: of their share, or (the owner, who has no share) of the whole plan. Never anyone else's. */
-  const share = (w: Usage["week"]) => !usage?.reported ? null : w.used / w.share;
-  const five = usage ? share(usage.fiveHour) : null;
-  const week = usage ? share(usage.week) : null;
-  const whose = usage?.unlimited ? "of the plan, used by you" : "of your share";
-  /* Usage arrives but never a 5-hour figure: this plan has no 5-hour window, so there's no ring for it. */
-  const noFiveHour = Boolean(usage?.reported && usage.fiveHourLimited === false);
-  const media = usage?.media ?? null;
-  const tools = media?.spent == null ? null : Math.min(1, media.spent / media.budget);
+  return { open, setOpen, box };
+}
+
+/**
+ * Context, the 5-hour window, the week and the month's Pro Tools, as rings
+ * beside Send, each only once it's past half (Pro Tools also once this chat
+ * has spent some); open them for the numbers. Everything, always, is in the
+ * message box's … menu.
+ */
+function Meters({ workspace, usage, context, running, blocked }: { workspace: Workspace; usage: Usage | null; context: ContextUse; running: boolean; blocked: string | null }) {
+  const { open, setOpen, box } = usePopover();
+  const f = usageFacts(usage, context);
   const past = (v: number | null): v is number => v != null && v > 0.5;
   const show = {
-    context: past(ctx),
-    five: !noFiveHour && past(five),
-    week: past(week),
-    tools: Boolean(media && (past(tools) || (media.chatSpent ?? 0) > 0)),
+    context: past(f.ctx),
+    five: !f.noFiveHour && past(f.five),
+    week: past(f.week),
+    tools: Boolean(f.media && (past(f.tools) || (f.media.chatSpent ?? 0) > 0)),
   };
   if (!show.context && !show.five && !show.week && !show.tools) return null;
   return <div className="cd-meters" ref={box}>
     <button type="button" className="cd-meters-btn" aria-expanded={open} aria-label="Context and usage" title="Context and usage" onClick={() => setOpen(!open)}>
-      {show.context ? <Ring value={ctx} label={`Context ${pct(ctx!)} full`} /> : null}
-      {show.five ? <Ring value={five} label={`${pct(five!)} of the 5-hour window`} /> : null}
-      {show.week ? <Ring value={week} label={`${pct(week!)} of the week`} /> : null}
-      {show.tools ? <Ring value={tools} label={tools == null ? "Pro Tools" : `${pct(tools)} of this month's Pro Tools`} /> : null}
+      {show.context ? <Ring value={f.ctx} label={`Context ${pct(f.ctx!)} full`} /> : null}
+      {show.five ? <Ring value={f.five} label={`${pct(f.five!)} of the 5-hour window`} /> : null}
+      {show.week ? <Ring value={f.week} label={`${pct(f.week!)} of the week`} /> : null}
+      {show.tools ? <Ring value={f.tools} label={f.tools == null ? "Pro Tools" : `${pct(f.tools)} of this month's Pro Tools`} /> : null}
     </button>
     {open ? <div className="cd-meters-pop" role="dialog" aria-label="Context and usage">
-      {show.context ? <>
-        <div className="cd-meter"><Ring value={ctx} label="Context" /><span><b>Context</b><small>{context ? `${kTokens(context.used)} of ${kTokens(window)} tokens${context.window ? "" : " (about)"}` : "Known after the next reply"}</small></span>
-          <Seal type="button" compact tone="quiet" busy={compacting} disabled={Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); setOpen(false); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{running ? "Compact after this" : "Compact now"}</Seal></div>
-        <p className="cd-meter-note">Compacting folds the conversation so far into a summary, so there&rsquo;s room to keep going. It also happens by itself when the context fills.</p>
-      </> : null}
-      {show.five ? <div className="cd-meter"><Ring value={five} label="5-hour window" /><span><b>5-hour window</b><small>{`${pct(five!)} ${whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div> : null}
-      {show.week ? <div className="cd-meter"><Ring value={week} label="This week" /><span><b>This week</b><small>{`${pct(week!)} ${whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div> : null}
-      {show.tools && media ? <div className="cd-meter"><Ring value={tools} label="Pro Tools" /><span><b className="cd-pro"><Icon name="bolt" />Pro Tools</b><small>{media.spent == null ? "Not reported yet" : `${dollars(media.spent)} of ${dollars(media.budget)} this month${media.chatSpent ? ` · ${dollars(media.chatSpent)} in this chat` : ""} · resets ${monthWords(media.resetsAt)}`}</small></span></div> : null}
-      {usage && !usage.unlimited && (show.five || show.week) ? <p className="cd-meter-note">Your share is {noFiveHour ? `${pct(usage.week.share)} of the week` : `${pct(usage.fiveHour.share)} of each 5-hour window and ${pct(usage.week.share)} of the week`}.</p> : null}
-      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+      <UsageRows workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} show={show} onCompacted={() => setOpen(false)} />
     </div> : null}
   </div>;
+}
+
+/**
+ * The message box's … menu: what it may do with your files, which Claude
+ * answers and how hard it thinks, and all of your usage, whatever its level.
+ */
+function ComposerMore({ workspace, usage, context, running, blocked, files }: { workspace: Workspace; usage: Usage | null; context: ContextUse; running: boolean; blocked: string | null; files: boolean }) {
+  const { open, setOpen, box } = usePopover();
+  const f = usageFacts(usage, context);
+  const everything = { context: true, five: true, week: true, tools: Boolean(f.media) };
+  return <div className="cd-more" ref={box}>
+    <button type="button" className="cd-more-btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Settings and usage" title="Settings and usage" onClick={() => setOpen(!open)}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="18" cy="12" r="1.7" /></svg>
+    </button>
+    {open ? <div className="cd-meters-pop cd-more-pop" role="dialog" aria-label="Settings and usage">
+      <div className="cd-more-settings cd-tuning">
+        {files ? <div className="cd-more-row"><span>Files</span><AccessPicker /></div> : null}
+        <div className="cd-more-row"><span>Model</span><ModelPicker /></div>
+        <EffortRow />
+      </div>
+      <div className="cd-more-head">Usage</div>
+      <UsageRows workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} show={everything} onCompacted={() => setOpen(false)} />
+    </div> : null}
+  </div>;
+}
+
+/** Thinking, as a row of the … menu; Auto picks it along with the model, so there's nothing to choose then. */
+function EffortRow() {
+  const model = useModel();
+  if (model === "auto") return null;
+  return <div className="cd-more-row"><span>Thinking</span><EffortPicker /></div>;
 }
 
 export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | null; admin: boolean; driveApp: AppIdentity; me: string }) {
@@ -2198,6 +2264,53 @@ function FileChips({ workspace, files }: { workspace: Workspace; files: Attachme
 
 /** Tool calls as one pill — "Used 5 tools" — open while the agent is still in them, unless you closed it. Each call opens to show what it did. */
 function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
+  /* Long work the agent said it's doing (kimono-progress): one card with a bar, the steps folded under it. */
+  if (tools.some((t) => t.progress?.label)) return <ProgressGroup tools={tools} live={live} />;
+  return <PlainToolGroup tools={tools} live={live} />;
+}
+
+const clockWords = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const aboutWords = (seconds: number) => seconds < 90 ? `about ${Math.round(seconds / 5) * 5 || 5} s` : `about ${Math.round(seconds / 60)} min`;
+
+/**
+ * A long piece of work as one card: what it's doing, a bar that fills toward
+ * the time the agent expected (and slows, never quite full, if it runs over),
+ * how long so far; done when the agent says so. The checks it made on the way
+ * are folded under it, to open.
+ */
+function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
+  const start = [...tools].reverse().find((t) => t.progress?.label)!;
+  const begun = start.progress!.at, about = (start.progress!.about ?? 60) * 1000;
+  const doneAt = tools.find((t) => t.progress?.done && t.progress.at >= begun)?.progress?.at;
+  const finished = doneAt != null;
+  /* Ended without saying it was done: the turn stopped or moved on. */
+  const stopped = !finished && !live;
+  const failed = tools.filter((t) => t.result && !t.result.ok && t.label !== "Ran").length;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (finished || stopped) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [finished, stopped]);
+  const took = (doneAt ?? now) - begun;
+  /* up to 90% by the time expected, then creeping toward 98%: it never claims done before it is */
+  const fill = finished ? 1 : took < about ? 0.9 * took / about : 0.9 + 0.08 * (1 - Math.exp(-(took - about) / about));
+  const label = start.progress!.label!;
+  return <details className="calls cd-progress" data-state={finished ? "done" : stopped ? "stopped" : "running"}>
+    <summary className="cd-progress-head">
+      <span className="cd-progress-mark">{finished ? <Icon name="check" /> : stopped ? <GroupMarks tools={tools} /> : <MorphLoader tone="plain" label={label} className="cd-morph" />}</span>
+      <span className="cd-progress-text">
+        <span className="cd-progress-label"><b>{label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}</span>
+        <InkWave className="cd-progress-wave" label={label} value={fill} />
+        <small>{finished ? `Done · ${clockWords(took)}` : stopped ? `Stopped after ${clockWords(took)}` : `${clockWords(took)} · ${aboutWords(about / 1000)}`}{failed ? ` · ${failed} step${failed === 1 ? "" : "s"} failed` : ""}</small>
+      </span>
+      <span className="chev" aria-hidden="true" />
+    </summary>
+    <div className="call-list">{tools.map((tool) => <ToolRow key={tool.id} tool={tool} />)}</div>
+  </details>;
+}
+
+function PlainToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   const [chosen, setChosen] = useState<boolean | null>(null);
   const open = chosen ?? live;
   const failed = tools.filter((t) => t.result && !t.result.ok).length;
@@ -2452,6 +2565,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     }
   }, [workspace.id]);
 
+  const usage = useUsage(workspace.id, running);
   const uploading = pending.some((p) => !p.attachment && !p.failed);
   const ready = pending.filter((p) => p.attachment).map((p) => p.attachment!);
   const canSend = !sending && !uploading && !blocked && (text.trim().length > 0 || ready.length > 0);
@@ -2490,9 +2604,9 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
       {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />
-      {/* which Claude and how hard it thinks: small, beside the limits they spend */}
-      <span className="cd-tuning">{workspace.drive && owns ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
-      <Meters workspace={workspace} context={context} running={running} blocked={blocked} />
+      {/* files, model and thinking, and all usage, in the … menu; the rings only past half */}
+      <Meters workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} />
+      <ComposerMore workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} files={Boolean(workspace.drive && owns)} />
       {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop" title="Stop" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
       <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Enter" title="Send (↵, Shift-↵ for a new line)">Send</Seal>
     </div>

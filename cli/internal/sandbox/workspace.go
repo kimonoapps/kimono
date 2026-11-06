@@ -91,6 +91,10 @@ type workspace struct {
 	lastActive time.Time
 	// slept are the sandboxes the last ensure put to sleep to make room.
 	slept []string
+	// fresh: the last ensure made this sandbox from nothing (it never existed,
+	// or its files were forgotten), so it holds none of what the Portal put in
+	// before. Said once, in the ensure answer.
+	fresh bool
 }
 
 func (w *workspace) touch() {
@@ -239,6 +243,9 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 		if err != nil {
 			return nil, "", err
 		}
+		w.mu.Lock()
+		w.fresh = true
+		w.mu.Unlock()
 	}
 	w.mu.Lock()
 	w.slept = slept

@@ -297,8 +297,14 @@ using the model or Kimono Git, or a request through its preview. After
 `--pause-after` of no activity (default 1 minute) the container is paused —
 frozen in memory, resumed instantly. After `--stop-after` (15 minutes) it is
 stopped, freeing its memory. After `--remove-after` (7 days; `0` never) the
-container is removed; its files stay on its volume. A running turn is never put
-to sleep.
+container is removed; its files stay on its volume. After `--forget-after` (90
+days; `0` never) the volume goes too and the node forgets the sandbox: the chat
+and its history stay in the Portal, and Drive already holds what it made. The
+next message makes a new sandbox, and the ensure answer says `"fresh": true`;
+the Portal then forgets what it had synced into the old one (`synced`,
+`opened_files`, `history_synced`), so the chat's Drive files and the person's
+opened files go back in instead of being taken as deleted, which would have
+sent them to Drive's trash. A running turn is never put to sleep.
 
 Anything that needs the sandbox wakes it: ensure and every workspace call
 unpause, start, or make the container again on the same volume. A preview's app

@@ -231,7 +231,11 @@ func (s *Server) handleEnsure(w http.ResponseWriter, r *http.Request, id string)
 		return err
 	}
 	s.reviveServe(id)
-	writeJSON(w, 200, map[string]any{"id": id, "state": state, "branch": space.repo.Branch, "runtime": s.runtime, "preview": s.previewJSON(id),
+	space.mu.Lock()
+	fresh := space.fresh
+	space.fresh = false
+	space.mu.Unlock()
+	writeJSON(w, 200, map[string]any{"id": id, "state": state, "fresh": fresh, "branch": space.repo.Branch, "runtime": s.runtime, "preview": s.previewJSON(id),
 		"slept": space.slept, "limits": s.limitsNow(), "disk": s.diskJSON(id)})
 	return nil
 }

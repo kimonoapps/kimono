@@ -18,6 +18,9 @@ RUN apt-get update \
       # Files people bring: PDFs, pictures, sound and video, office documents, scans.
       poppler-utils qpdf ghostscript mupdf-tools \
       imagemagick libimage-exiftool-perl ffmpeg \
+      # Photo work: libvips for very large images, tracing to SVG and drawing SVG,
+      # web formats and optimisers, and sound editing.
+      libvips-tools potrace librsvg2-bin webp jpegoptim optipng gifsicle sox \
       pandoc libreoffice-writer-nogui libreoffice-calc-nogui libreoffice-impress-nogui \
       tesseract-ocr tesseract-ocr-eng tesseract-ocr-jpn tesseract-ocr-fra \
       sqlite3 zip p7zip-full rsync tree fd-find bc \
@@ -46,7 +49,23 @@ RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/
       kokoro-onnx==0.6.1 onnxruntime==1.31.1 espeakng-loader==0.2.4 phonemizer==3.6.0 \
       attrs==26.1.0 cloudpickle==3.1.2 dlinfo==2.0.0 flatbuffers==25.12.19 joblib==1.6.0 \
       packaging==26.3 protobuf==7.36.2 typing-extensions==4.16.0 \
+      # Photo editing: computer vision (OpenCV 4: 5 dropped the classic detectors), scikit-image,
+      # background removal (rembg, on the same onnxruntime) and camera RAW files.
+      opencv-python-headless==4.14.0.94 scikit-image==0.26.0 rembg==2.0.87 rawpy==0.28.0 \
+      scipy==1.18.1 numba==0.68.1 llvmlite==0.50.0 pymatting==1.1.16 imageio==2.38.1 tifffile==2026.10.15 \
+      lazy-loader==0.6 pooch==1.9.0 platformdirs==4.14.5 tqdm==4.70.1 requests==2.34.2 \
+      certifi==2026.10.23 idna==3.20 urllib3==2.8.0 \
  && chmod -R a+rX /opt/kimono
+
+# rembg's model (ISNet, general use), checked against its sum, so cutting out a
+# background needs no download. numba (for rembg's edge matting) caches where
+# the agent can write.
+ARG REMBG_MODEL=https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx
+ENV U2NET_HOME=/opt/kimono/rembg NUMBA_CACHE_DIR=/tmp/numba-cache
+RUN mkdir -p /opt/kimono/rembg \
+ && curl -fsSL --retry 5 -o /opt/kimono/rembg/isnet-general-use.onnx "${REMBG_MODEL}" \
+ && echo "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a  /opt/kimono/rembg/isnet-general-use.onnx" | sha256sum -c - \
+ && chmod -R a+rX /opt/kimono/rembg
 
 # The voice kimono-say reads aloud with: Kokoro v1.0 (Apache-2.0), its int8
 # model and voices, checked against their sums. Five times faster than real
@@ -76,7 +95,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # What the agent shows people: screenshots (kimono-shot) and a running app
 # behind a link (kimono-serve, kimono-unserve, which run it under supervise).
 # See docs/kimono-code.md.
-COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-say bin/kimono-chats /usr/local/bin/
+COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-progress bin/kimono-say bin/kimono-chats /usr/local/bin/
 # How to make artifacts: the kit, scenes and maths (read by the agent; see docs/kimono-ai.md).
 COPY artifacts.md /opt/kimono/artifacts.md
 COPY bin/shot.cjs bin/supervise /usr/local/lib/kimono/

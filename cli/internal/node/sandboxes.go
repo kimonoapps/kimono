@@ -447,6 +447,7 @@ func (m *Manager) sandboxesServe(args []string) error {
 	pauseAfter := flags.Duration("pause-after", time.Minute, "pause a sandbox after this long without use (it resumes instantly)")
 	stopAfter := flags.Duration("stop-after", 15*time.Minute, "stop a sandbox after this long without use (frees its memory; files kept)")
 	removeAfter := flags.Duration("remove-after", 7*24*time.Hour, "remove a sandbox's container after this long without use (files kept on its volume; 0 never)")
+	forgetAfter := flags.Duration("forget-after", 90*24*time.Hour, "delete a sandbox's files after this long without use (its chat stays, and Drive keeps what it made; 0 never)")
 	stateDir := flags.String("state-dir", sandboxesStateDir, "directory for what survives a restart (live previews)")
 	previewListen := flags.String("preview-listen", previewsListen, "preview proxy address")
 	previewDomain := flags.String("preview-domain", "", "domain whose subdomains open previews (empty: http://<name>.localhost:<port>)")
@@ -475,7 +476,7 @@ func (m *Manager) sandboxesServe(args []string) error {
 	server, err := sandbox.New(sandbox.Config{
 		Listen: *listen, Key: strings.TrimSpace(string(key)), Image: *image,
 		GatewayListen: *gatewayListen, GatewayURL: *gatewayURL, Runtime: *runtimeName,
-		CPUs: *cpus, Memory: *memory, Pids: *pids, AwakePerPerson: *awakePerPerson, AwakePerNode: *awakePerNode, DiskGB: *diskGB, PauseAfter: *pauseAfter, StopAfter: *stopAfter, RemoveAfter: *removeAfter,
+		CPUs: *cpus, Memory: *memory, Pids: *pids, AwakePerPerson: *awakePerPerson, AwakePerNode: *awakePerNode, DiskGB: *diskGB, PauseAfter: *pauseAfter, StopAfter: *stopAfter, RemoveAfter: *removeAfter, ForgetAfter: *forgetAfter,
 		Agent: os.Getenv("KIMONO_SANDBOX_AGENT"), DevGitDir: *devGitDir,
 		StateDir: *stateDir, PreviewListen: *previewListen, PreviewDomain: *previewDomain,
 		Logf: logger.Printf,

@@ -16,7 +16,7 @@ import (
 var Version = "dev"
 
 // DefaultImage is the sandbox image this build of Kimono expects.
-const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.6.0"
+const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.7.0"
 
 // DefaultAgent runs Claude Code for one turn. The prompt and the session to
 // resume arrive in the environment, so nothing is quoted into a shell line.
@@ -33,7 +33,7 @@ const Model = "claude-opus-5-5"
 // describing it.
 const SystemPrompt = `The person you are working for may not be technical. Explain what you did in plain, short words, without jargon or code unless they ask for it.
 
-What's here for working on files: python3 (3.13) with pypdf, PyMuPDF (import pymupdf), pdfplumber, ReportLab, WeasyPrint, img2pdf, OCRmyPDF, python-docx, openpyxl, XlsxWriter, python-pptx, pandas, numpy, matplotlib, Pillow (HEIC too), BeautifulSoup, lxml and PyYAML; pdftotext, pdftoppm, qpdf, gs and mutool; ImageMagick (convert, identify, mogrify), exiftool, ffmpeg, pandoc, LibreOffice headless (soffice --headless --convert-to), tesseract (eng, jpn, fra), sqlite3, csvkit, 7z, zip, rg, fd and jq. Use them as a person at a terminal would.
+What's here for working on files: python3 (3.13) with pypdf, PyMuPDF (import pymupdf), pdfplumber, ReportLab, WeasyPrint, img2pdf, OCRmyPDF, python-docx, openpyxl, XlsxWriter, python-pptx, pandas, numpy, matplotlib, Pillow (HEIC too), BeautifulSoup, lxml and PyYAML; for photos, OpenCV (cv2, with its face and eye detectors), scikit-image, rembg (cut out a background: from rembg import remove, new_session; remove(img, session=new_session("isnet-general-use")), about half a minute on one CPU) and rawpy (camera RAW files); pdftotext, pdftoppm, qpdf, gs and mutool; ImageMagick (convert, identify, mogrify), exiftool, ffmpeg, vips (for very large images), potrace (trace to SVG), rsvg-convert, cwebp, jpegoptim, optipng, gifsicle, sox, pandoc, LibreOffice headless (soffice --headless --convert-to), tesseract (eng, jpn, fra), sqlite3, csvkit, 7z, zip, rg, fd and jq. Use them as a person at a terminal would.
 
 The person's Drive (their spaces of files) starts closed to you. To use some of it, run ` + "`kimono-access ask --space <name> [--path <folder or file>] --read|--change --why \"<one plain sentence>\"`" + `, then end your turn with one short line saying what you asked for. Ask for the least that does the job: a file or folder rather than a whole space, read rather than change. When they allow it, a new message says so and the files are under /files/<space>/. What you change, add or delete there goes back to their Drive (deleted files go to its trash, so say so). Each message lists the spaces you can ask for and what is open to you.
 
@@ -55,6 +55,8 @@ Artifact or real media? When it has to be exact (maths, a graph, a diagram, a me
 Your replies are shown as Markdown with LaTeX. Write maths as LaTeX: $…$ inside a sentence and $$…$$ on a line of its own, never as code or spelled out in plain text. A dollar amount is fine as it is ($5).
 
 When what they asked for is a file (a PDF, a spreadsheet, a document, pictures, a zip), give it to them with ` + "`kimono-send <file> [<file>…]`" + `: it appears in the chat for them to open and download. Don't just say where it is; they can't see your files. Send it again after you change it.
+
+When something takes more than about 20 seconds (a video being generated, a long render or download), show it as one progress card instead of every check: before you start it, run ` + "`kimono-progress \"<what you're doing>\" --about <seconds>`" + ` (your honest guess); between checks, run ` + "`kimono-progress --wait <seconds>`" + ` (never sleep: a long sleep fails); when it's ready, run ` + "`kimono-progress --done`" + `. Say one short line before it starts and nothing while it runs.
 
 Never print, log or commit secrets, tokens or keys.`
 
@@ -91,6 +93,10 @@ type Config struct {
 	PauseAfter  time.Duration
 	StopAfter   time.Duration
 	RemoveAfter time.Duration
+	// ForgetAfter is how long a sandbox whose container is gone may stay
+	// unused before its volume goes too; the next message makes a new one.
+	// 0 keeps volumes until their chat is deleted.
+	ForgetAfter time.Duration
 	// Agent is the shell command a turn runs inside the container.
 	Agent string
 	// AnthropicUpstream is where the model gateway forwards.
@@ -155,6 +161,11 @@ func (c *Config) defaults() error {
 		c.RemoveAfter = 0
 	} else if c.RemoveAfter > 0 && c.RemoveAfter < c.StopAfter {
 		c.RemoveAfter = c.StopAfter
+	}
+	if c.ForgetAfter < 0 {
+		c.ForgetAfter = 0
+	} else if c.ForgetAfter > 0 && c.ForgetAfter < c.RemoveAfter {
+		c.ForgetAfter = c.RemoveAfter
 	}
 	if c.Agent == "" {
 		c.Agent = DefaultAgent

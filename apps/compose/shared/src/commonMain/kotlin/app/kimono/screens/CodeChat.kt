@@ -801,6 +801,8 @@ private fun toolMeta(call: ToolCall): String {
 /** Tool calls as one line — "Used 5 tools" — open while it's still in them, unless you closed it. */
 @Composable
 private fun ToolGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, live: Boolean, open: (String) -> Unit) {
+    /* Long work the agent said it's doing (kimono-progress): one card with a bar, the steps folded under it. */
+    if (calls.any { it.event.progress?.label != null }) { ProgressGroup(code, marks, calls, live, open); return }
     var chosen by remember { mutableStateOf<Boolean?>(null) }
     val shown = chosen ?: live
     val pending = calls.any { it.result == null }
@@ -825,6 +827,52 @@ private fun ToolGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, live: B
             Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(14.dp).rotate(if (shown) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (shown) Column(Modifier.padding(start = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            calls.forEach { call -> ToolRow(code, marks, call, open) }
+        }
+    }
+}
+
+private fun clockWords(ms: Long): String { val s = (ms / 1000).coerceAtLeast(0); return "${s / 60}:${(s % 60).toString().padStart(2, '0')}" }
+private fun aboutWords(seconds: Double) = if (seconds < 90) "about ${((seconds / 5).toInt() * 5).coerceAtLeast(5)} s" else "about ${(seconds / 60).toInt()} min"
+
+/**
+ * A long piece of work as one card: what it's doing, a bar filling toward the time the agent expected (slowing,
+ * never quite full, if it runs over), how long so far; done when the agent says so. Its steps open under it.
+ */
+@Composable
+private fun ProgressGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, live: Boolean, open: (String) -> Unit) {
+    val start = calls.last { it.event.progress?.label != null }.event.progress!!
+    val doneAt = calls.firstOrNull { it.event.progress?.done == true && it.event.progress.at >= start.at }?.event?.progress?.at
+    val finished = doneAt != null
+    val stopped = !finished && !live
+    var now by remember { mutableStateOf(app.kimono.screens.now()) }
+    LaunchedEffect(finished, stopped) { while (!finished && !stopped) { now = app.kimono.screens.now(); kotlinx.coroutines.delay(1000) } }
+    val took = (doneAt ?: now) - start.at
+    val about = ((start.about ?: 60.0) * 1000).toLong()
+    val fill = if (finished) 1f else if (took < about) 0.9f * took / about else (0.9 + 0.08 * (1 - kotlin.math.exp(-(took - about).toDouble() / about))).toFloat()
+    val apps = calls.mapNotNull { it.event.app }.distinct().take(3)
+    var shown by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth()) {
+        Surface(onClick = { shown = !shown }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surfaceContainerLowest), contentAlignment = Alignment.Center) {
+                    if (finished) Icon(kimonoIcon("check"), "Done", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    else if (!stopped) InkLoader(size = 18.dp)
+                    else Icon(kimonoIcon("gear"), null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(start.label ?: "", style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        apps.forEach { app -> AppLogo(code, app, 16.dp, pro = calls.any { it.event.app == app && it.event.pro }) }
+                    }
+                    /* Kimono's own wavy ink bar; grey once it stopped */
+                    app.kimono.ui.InkProgress({ fill }, Modifier.fillMaxWidth(), color = if (stopped) MaterialTheme.colorScheme.onSurfaceVariant else null)
+                    Text(if (finished) "Done · ${clockWords(took)}" else if (stopped) "Stopped after ${clockWords(took)}" else "${clockWords(took)} · ${aboutWords(about / 1000.0)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(14.dp).rotate(if (shown) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (shown) Column(Modifier.padding(start = 6.dp, top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             calls.forEach { call -> ToolRow(code, marks, call, open) }
         }
     }
@@ -1021,6 +1069,8 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     var problem by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     var meters by remember { mutableStateOf(false) }
+    /* The … sheet: files, model and thinking, and all usage. */
+    var more by remember { mutableStateOf(false) }
     /* The person's usage for the rings beside Send, again after each turn. */
     val usage by produceState<Usage?>(null, w.id, w.running) { value = runCatching { code.usage(w.id) }.getOrNull() }
     val shown = ShownMeters.of(usage, context?.let { it.used.toDouble() / (it.window ?: 200_000) })
@@ -1076,11 +1126,9 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                             }
                         }
                     }, onDrive = if (w.drive != null && w.isOwner) ({ choosing = true }) else null)
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (w.drive != null && w.isOwner && marks.spaces.isNotEmpty()) AccessChip(code)
-                        ModelChip(code)
-                        EffortChip(code)
-                    }
+                    Spacer(Modifier.weight(1f))
+                    /* Files, model and thinking, and every meter whatever its level, behind … */
+                    IconButton(onClick = { more = true }) { Icon(kimonoIcon("more"), "Settings and usage") }
                     /* The fullest meter past half as a ring beside Send; open it for the numbers and to compact. Nothing past half, no ring. */
                     if (shown.any) IconButton(onClick = { meters = true }) { Ring(shown.most, 22.dp) }
                     if (w.running) IconButton(onClick = { scope.launch { try { code.stop(w.id) } catch (p: KimonoProblem) { problem = p.message } } }) { Icon(kimonoIcon("stop"), "Stop") }
@@ -1095,6 +1143,11 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
         }
     }
     if (meters && shown.any) MetersSheet(code, w, context, usage) { meters = false }
+    if (more) MetersSheet(code, w, context, usage, all = true, settings = {
+        if (w.drive != null && w.isOwner && marks.spaces.isNotEmpty()) SettingRow("Files") { AccessChip(code) }
+        SettingRow("Model") { ModelChip(code) }
+        SettingRow("Thinking") { EffortChip(code) }
+    }) { more = false }
     if (choosing) FromDriveSheet(drive, onDismiss = { choosing = false }) { nodes ->
         choosing = false
         val items = nodes.take(10 - pending.size).map { Pending(it.name, it.size) }
@@ -1108,9 +1161,21 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     }
 }
 
-/** Context and usage, in full: the meters past half (how full the conversation is, and compacting it; the 5-hour window; the week; the month's tools). */
+/** One setting in the … sheet: its name, and its chip. */
 @Composable
-private fun MetersSheet(code: Code, w: CodeWorkspace, context: ContextUse?, usage: Usage?, close: () -> Unit) {
+private fun SettingRow(name: String, chip: @Composable () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        chip()
+    }
+}
+
+/**
+ * Context and usage, in full: the meters past half (how full the conversation is, and compacting it; the
+ * 5-hour window; the week; the month's Pro Tools), or with [all] every one of them, under [settings].
+ */
+@Composable
+private fun MetersSheet(code: Code, w: CodeWorkspace, context: ContextUse?, usage: Usage?, all: Boolean = false, settings: (@Composable () -> Unit)? = null, close: () -> Unit) {
     val scope = rememberCoroutineScope()
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var compacting by remember { mutableStateOf(false) }
@@ -1122,9 +1187,13 @@ private fun MetersSheet(code: Code, w: CodeWorkspace, context: ContextUse?, usag
     val whose = if (u?.unlimited == true) "of the plan, used by you" else "of your share"
     ModalBottomSheet(onDismissRequest = close, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Context and usage", style = MaterialTheme.typography.titleLarge)
+            Text(if (settings != null) "Settings and usage" else "Context and usage", style = MaterialTheme.typography.titleLarge)
+            if (settings != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { settings() }
+                Text("Usage", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             val shown = ShownMeters.of(u, ctx)
-            if (shown.context != null) {
+            if (all || shown.context != null) {
                 UsageRow("Context", ctx, if (context != null) "${kTokens(context.used)} of ${kTokens(window)} tokens${if (context.window == null) " (about)" else ""}" else "Known after the next reply") {
                     Seal(if (w.running) "Compact after this" else "Compact now", compact = true, tone = SealTone.Quiet, busy = compacting, enabled = context != null, onClick = {
                         compacting = true; problem = null
@@ -1133,10 +1202,23 @@ private fun MetersSheet(code: Code, w: CodeWorkspace, context: ContextUse?, usag
                 }
                 Text("Compacting folds the conversation so far into a summary, so there’s room to keep going. It also happens by itself when the context fills.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (u != null && shown.fiveHour != null) UsageRow("5-hour window", shown.fiveHour, "${percent(shown.fiveHour)} $whose${resetWords(u.fiveHour.resetsAt)?.let { " · resets $it" } ?: ""}")
-            if (u != null && shown.week != null) UsageRow("This week", shown.week, "${percent(shown.week)} $whose${resetWords(u.week.resetsAt)?.let { " · resets $it" } ?: ""}")
-            u?.media?.takeIf { shown.tools != null }?.let { m -> UsageRow("Pro Tools", m.fraction, m.words?.let { w -> "$w${resetWords(m.resetsAt)?.let { " · resets $it" } ?: ""}" } ?: "Not reported yet", icon = "bolt") }
-            if (u != null && !u.unlimited && (shown.fiveHour != null || shown.week != null)) Text(if (u.noFiveHour) "Your share is ${percent(u.week.share)} of the week." else "Your share is ${percent(u.fiveHour.share)} of each 5-hour window and ${percent(u.week.share)} of the week.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (all) {
+                /* everything, whatever its level */
+                val five = u?.takeIf { it.reported && !it.noFiveHour }?.fiveHour?.fraction
+                val week = u?.takeIf { it.reported }?.week?.fraction
+                when {
+                    u?.noFiveHour == true -> UsageRow("5-hour window", null, "This plan has no 5-hour limit")
+                    five != null -> UsageRow("5-hour window", five, "${percent(five)} $whose${resetWords(u.fiveHour.resetsAt)?.let { " · resets $it" } ?: ""}")
+                    else -> UsageRow("5-hour window", null, "Not reported yet")
+                }
+                if (week != null) UsageRow("This week", week, "${percent(week)} $whose${resetWords(u.week.resetsAt)?.let { " · resets $it" } ?: ""}")
+                else UsageRow("This week", null, "Not reported yet")
+            } else {
+                if (u != null && shown.fiveHour != null) UsageRow("5-hour window", shown.fiveHour, "${percent(shown.fiveHour)} $whose${resetWords(u.fiveHour.resetsAt)?.let { " · resets $it" } ?: ""}")
+                if (u != null && shown.week != null) UsageRow("This week", shown.week, "${percent(shown.week)} $whose${resetWords(u.week.resetsAt)?.let { " · resets $it" } ?: ""}")
+            }
+            u?.media?.takeIf { all || shown.tools != null }?.let { m -> UsageRow("Pro Tools", m.fraction, m.words?.let { w -> "$w${resetWords(m.resetsAt)?.let { " · resets $it" } ?: ""}" } ?: "Not reported yet", icon = "bolt") }
+            if (u != null && !u.unlimited && (all || shown.fiveHour != null || shown.week != null)) Text(if (u.noFiveHour) "Your share is ${percent(u.week.share)} of the week." else "Your share is ${percent(u.fiveHour.share)} of each 5-hour window and ${percent(u.week.share)} of the week.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Problem(problem)
         }
     }

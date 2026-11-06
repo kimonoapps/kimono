@@ -419,6 +419,8 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
    tonal card with your messages as suō bubbles, tool calls open to show what
    they did, and the running app is a moss card. ── */
 .cd-page { padding-bottom: 24px; }
+/* An open chat is already the window's height: room below it would only make the page scroll. */
+@media (min-width: 981px) { .cd-page:has(> .cd.has-workspace) { padding-bottom: 0; } }
 .cd-top { padding-left: 28px; padding-right: 28px; }
 .cd-top .cd-new svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .cd { grid-template-columns: 300px minmax(0, 1fr); gap: 16px; padding: 0 24px 24px; }
@@ -1234,6 +1236,16 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* the model and thinking chips: small and quiet, beside the limits */
 .cd-tuning { display: inline-flex; align-items: center; gap: 2px; }
+/* The message box's … menu: files, model and thinking, then all usage. */
+.cd-more { position: relative; }
+.cd-more-btn { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-on-surface-variant); cursor: pointer; }
+.cd-more-btn svg { width: 20px; height: 20px; fill: currentColor; }
+.cd-more-btn:hover, .cd-more-btn[aria-expanded="true"] { background: var(--k-container-high); color: var(--k-on-surface); }
+.cd-more-pop { width: min(380px, 90vw); }
+.cd-more-settings { display: grid; gap: 4px; padding-bottom: 10px; border-bottom: 1px solid var(--k-container-high); }
+.cd-more-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; }
+.cd-more-row > span { font: 600 13px/1.2 var(--k-sans); color: var(--k-on-surface); }
+.cd-more-head { margin-top: 2px; font: 700 11px/1 var(--k-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--k-on-surface-variant); }
 .cd-tuning .k-choice.is-compact .k-choice-button { min-height: 28px; padding: 0 4px 0 9px; border-radius: 9px; background: transparent; font-size: 12px; color: var(--k-on-surface-variant); }
 .cd-tuning .k-choice.is-compact .k-choice-button:hover, .cd-tuning .k-choice.is-compact .k-choice-button[aria-expanded="true"] { background: var(--k-container-high); color: var(--k-on-surface); }
 .cd-tuning .k-choice.is-compact.is-open .k-choice-button { background: var(--k-container-high); color: var(--k-on-surface); }
@@ -1497,3 +1509,20 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
   .cd-ws-grid.is-chat .cd-timeline { padding-inline: 8px; }
   .cd-ws-grid.is-chat .cd-composer { width: calc(100% - 8px); }
 }
+
+/* ── long work as one card: kimono-progress (ProgressGroup) ── */
+.cd-progress { max-width: 560px; }
+.cd-progress > summary.cd-progress-head { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container); cursor: pointer; list-style: none; }
+.cd-progress > summary.cd-progress-head::-webkit-details-marker { display: none; }
+.cd-progress[open] > summary.cd-progress-head { border-radius: var(--k-r-l) var(--k-r-l) 6px 6px; }
+.cd-progress-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 12px; background: var(--k-container-lowest); color: var(--k-suo); }
+.cd-progress-mark .i { width: 20px; height: 20px; }
+.cd-progress-text { display: grid; gap: 7px; flex: 1; min-width: 0; }
+.cd-progress-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cd-progress-label b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.25 var(--k-sans); color: var(--k-on-surface); }
+.cd-progress-label .cd-groupmarks { flex: none; }
+/* Kimono's own wavy ink bar (InkWave), in suō; grey once it stopped */
+.cd-progress-wave { display: block; width: 100%; color: var(--k-suo); }
+.cd-progress[data-state="stopped"] .cd-progress-wave { color: var(--k-on-surface-variant); }
+.cd-progress-text small { font: 500 12px/1.2 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
+.cd-progress > .call-list { margin-top: 4px; }

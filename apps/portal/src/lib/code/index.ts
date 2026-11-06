@@ -12,7 +12,7 @@ import { finish, toolHint, translate, type ArtifactCall, type Attachment, type C
 import { typeOf } from "../drive/storage";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
-  abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
@@ -206,6 +206,8 @@ export async function ensure(config: CodeConfig, workspace: Workspace, person: {
   /* Their paid tools open or close with this month's allowance before the agent wakes. */
   if (tools) await holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error));
   const answer = await sandbox.ensure(config, workspace, person, tools, gitLogin);
+  /* A new, empty sandbox: what was synced into the old one must go back in, not be taken as deleted. */
+  if (answer.fresh) sandboxStartedOver(db(), workspace.id);
   for (const id of answer.slept ?? []) {
     try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }
   }

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import * as model from '../src/lib/code/model.ts';
-import { translate } from '../src/lib/code/events.ts';
+import { progressOf, translate } from '../src/lib/code/events.ts';
+import { planSync } from '../src/lib/code/sync.ts';
 import { applyEdits, artifactByMediaKey, artifactName, artifactOf, Drafts, mediaNames, partialString, saveArtifact, shownName, titleOf } from '../src/lib/code/artifacts.ts';
 import { chooseModel, effortFor } from '../src/lib/code/models.ts';
 
@@ -153,4 +154,28 @@ narrate('media/heart-2.mp3', "Two", 3)
   assert.equal(artifactByMediaKey(db, key).name, 'heart');
   assert.equal(artifactByMediaKey(db, 'nope'), null);
   assert.equal(artifactByMediaKey(db, '0'.repeat(32)), null);
+});
+
+test('progress: kimono-progress calls become a start, a wait or the end; anything else is left alone', () => {
+  assert.deepEqual(progressOf('kimono-progress "Making your video" --about 150', 7), { label: 'Making your video', about: 150, at: 7 });
+  assert.deepEqual(progressOf("kimono-progress 'Rendering' --about 2", 7), { label: 'Rendering', about: 5, at: 7 }, 'at least 5 s');
+  assert.deepEqual(progressOf('kimono-progress --wait 500', 7), { wait: 100, at: 7 }, 'one wait is at most 100 s');
+  assert.deepEqual(progressOf('kimono-progress --done "Video ready"', 7), { done: true, at: 7 });
+  assert.equal(progressOf('sleep 60'), undefined);
+  assert.equal(progressOf('kimono-progress "no estimate"'), undefined);
+  assert.equal(progressOf('echo kimono-progress --done'), undefined);
+});
+
+test('a sandbox made again from nothing gets its Drive files back, and none of them are trashed', () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  const w = model.createWorkspace(db, 'mina', { prompt: 'Make a video' }).id;
+  db.prepare('INSERT INTO synced (workspace_id, path, node_id, sha1, content_version) VALUES (?, ?, ?, ?, ?)').run(w, 'bunny.mp4', 'n2', 'b', 1);
+  db.prepare('INSERT INTO opened_files (workspace_id, path, node_id, sha1, content_version) VALUES (?, ?, ?, ?, ?)').run(w, 'Photos/cat.jpg', 'n9', 'c', 2);
+  const drive = [{ path: 'bunny.mp4', nodeId: 'n2', contentVersion: 1 }];
+  const rows = () => db.prepare('SELECT path, node_id AS nodeId, sha1, content_version AS contentVersion FROM synced WHERE workspace_id = ?').all(w);
+  assert.deepEqual(planSync(rows(), [], drive).map((a) => a.kind), ['trash'], 'without starting over, an empty sandbox reads as a deletion');
+  model.sandboxStartedOver(db, w);
+  assert.deepEqual(planSync(rows(), [], drive).map((a) => a.kind), ['put'], 'started over: the file goes back in');
+  assert.equal(db.prepare('SELECT count(*) AS n FROM opened_files WHERE workspace_id = ?').get(w).n, 0, 'opened files go back in too');
 });

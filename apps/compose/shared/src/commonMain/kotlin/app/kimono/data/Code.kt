@@ -228,7 +228,7 @@ sealed interface CodeEvent {
     data object Started : CodeEvent
     data class Say(val text: String) : CodeEvent
     /** [pro]: it ran on one of Composio's own accounts, a Pro Tool. */
-    data class Tool(val id: String, val name: String, val label: String, val detail: String?, val change: String?, val app: String?, val space: String?, val pro: Boolean = false) : CodeEvent
+    data class Tool(val id: String, val name: String, val label: String, val detail: String?, val change: String?, val app: String?, val space: String?, val pro: Boolean = false, val progress: ToolProgress? = null) : CodeEvent
     data class ToolResult(val id: String, val ok: Boolean, val output: String) : CodeEvent
     data class Done(val ok: Boolean, val cancelled: Boolean, val error: String?, val durationMs: Long?, val model: String?, val context: ContextUse?) : CodeEvent
     data class Compacted(val before: Long?) : CodeEvent
@@ -320,6 +320,9 @@ val modelNames = mapOf("opus" to "Opus", "sonnet" to "Sonnet", "haiku" to "Haiku
 
 private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
+/** A kimono-progress call: it began something long ([label], about [about] seconds), it's waiting, or it's [done]; [at] is when Kimono heard it (ms). */
+data class ToolProgress(val label: String?, val about: Double?, val done: Boolean, val at: Long)
+
 private fun JsonObject.text(key: String) = this[key]?.jsonPrimitive?.takeIf { it.isString }?.content
 private fun JsonObject.flag(key: String) = (this[key] as? JsonPrimitive)?.booleanOrNull
 private fun JsonObject.long(key: String) = (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.doubleOrNull?.toLong() }
@@ -329,7 +332,8 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "ask" -> CodeEvent.Ask(o.text("by") ?: "", o.text("text") ?: "", attachmentsOf(o["attachments"]), o.flag("queued") == true)
     "started" -> CodeEvent.Started
     "text" -> CodeEvent.Say(o.text("text") ?: "")
-    "tool" -> CodeEvent.Tool(o.text("id") ?: "", o.text("name") ?: "", o.text("label") ?: "", o.text("detail"), o.text("change"), o.text("app"), o.text("space"), o.flag("pro") == true)
+    "tool" -> CodeEvent.Tool(o.text("id") ?: "", o.text("name") ?: "", o.text("label") ?: "", o.text("detail"), o.text("change"), o.text("app"), o.text("space"), o.flag("pro") == true,
+        (o["progress"] as? JsonObject)?.let { p -> p.long("at")?.let { at -> ToolProgress(p.text("label"), (p["about"] as? JsonPrimitive)?.doubleOrNull, p.flag("done") == true, at) } })
     "tool-result" -> CodeEvent.ToolResult(o.text("id") ?: "", o.flag("ok") ?: true, o.text("output") ?: "")
     "done" -> CodeEvent.Done(
         o.flag("ok") ?: false, o.flag("cancelled") ?: false, o.text("error"), o.long("durationMs"), o.text("model"),

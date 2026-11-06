@@ -134,6 +134,10 @@ anything. Instant has to be switched on in the Composio project's settings.
   something (`/api/v1/code/usage?chat=<id>` adds up the person's Instant
   charges made while that chat's turns ran). With none to show, the control
   is gone. The phone's home screen shows the same rows past half.
+- The message box's **…** menu (web and phone) always has everything: what it
+  may do with your files ("Asks first"), the model and thinking pickers (which
+  moved there from the box itself), and every meter whatever its level, with
+  Compact beside the context.
 - Which one: the system prompt says that anything that must be exact (maths,
   graphs, diagrams, mechanisms, distances) is an artifact even when someone
   says "video", and real video is for when exactness doesn't matter and it
@@ -253,6 +257,14 @@ which suits a sandbox with no web.
 - **No web, no Kimono.** The frame is a sandboxed iframe with scripts only, so
   it has no origin, no cookies and no API, and its policy loads nothing but the
   engine and reaches nothing at all. Data goes in the page.
+- **Long work as one card.** For something slow (a video being generated),
+  the agent runs `kimono-progress "<what>" --about <seconds>`, waits with
+  `kimono-progress --wait` (at most 100 s at a time, under the tool time
+  limit, where a long `sleep` fails) and ends with `--done`. Portal tags those
+  calls (`progress` on the tool event, with when it heard them), and the chat
+  draws the group as one card: what it's doing, a bar filling toward the
+  estimate (then slowing, never full until done), the time so far; the steps
+  fold under it. Web and phone.
 - **Any 3D model in a scene.** `model(build, move)` puts the agent's own
   three.js model on a scene's timeline: `build(T)` makes it once, `move()` sets
   it every frame from trackers, so narration, scrubbing and the controls work

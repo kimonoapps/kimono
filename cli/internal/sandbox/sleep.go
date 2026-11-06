@@ -19,6 +19,9 @@ import (
  *   quiet for PauseAfter  (1 min)  → paused:  frozen in memory, resumes instantly
  *   quiet for StopAfter   (15 min) → stopped: memory freed, files kept
  *   quiet for RemoveAfter (7 days) → removed: container gone, files kept on its volume
+ *   quiet for ForgetAfter (90 days) → forgotten: its volume goes too; the chat stays,
+ *                                     Drive keeps what it made, and the next message
+ *                                     makes a new sandbox (ensure says "fresh")
  *
  * Anything that needs the sandbox wakes it: unpause, start, or make the
  * container again on the same volume. A preview's app is started again with it.
@@ -260,12 +263,54 @@ func (s *Server) sweep(ctx context.Context) {
 			s.cfg.Logf("%s %s after %s quiet", action, id, quiet.Round(time.Second))
 		}
 	}
+	s.forgetQuiet(ctx, found, now)
 	s.checkDisks(ctx, found)
 	s.mu.Lock()
 	if now.Sub(s.recordsSaved) > 30*time.Second {
 		s.saveRecords()
 	}
 	s.mu.Unlock()
+}
+
+// forgetQuiet deletes the volumes of sandboxes whose containers are long gone
+// and that nobody has used for ForgetAfter, and forgets them. Only sandboxes
+// this node keeps a record of: a volume it knows nothing about is left alone.
+func (s *Server) forgetQuiet(ctx context.Context, found map[string]string, now time.Time) {
+	if s.cfg.ForgetAfter <= 0 {
+		return
+	}
+	s.mu.Lock()
+	ids := make([]string, 0, len(s.records))
+	for id := range s.records {
+		if _, live := found[id]; !live {
+			ids = append(ids, id)
+		}
+	}
+	s.mu.Unlock()
+	for _, id := range ids {
+		if quiet, busy := s.quietFor(id, now); busy || quiet < s.cfg.ForgetAfter {
+			continue
+		}
+		lock := s.wakeLock(id)
+		lock.Lock()
+		quiet, busy := s.quietFor(id, s.now())
+		state, err := s.docker.containerState(ctx, id)
+		if busy || quiet < s.cfg.ForgetAfter || err != nil || state != "" {
+			lock.Unlock()
+			continue
+		}
+		_, err = s.docker.run(ctx, nil, "volume", "rm", "-f", containerName(id))
+		if err == nil || strings.Contains(strings.ToLower(err.Error()), "no such") {
+			s.forget(id)
+			err = nil
+		}
+		lock.Unlock()
+		if err != nil {
+			s.cfg.Logf("forget %s: %v", id, err)
+		} else {
+			s.cfg.Logf("forgot %s after %s quiet: its files are gone; a new message makes a new sandbox", id, quiet.Round(time.Hour))
+		}
+	}
 }
 
 // sweepEvery is how often the sweep looks: often enough that a pause lands

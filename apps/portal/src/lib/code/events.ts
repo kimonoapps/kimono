@@ -13,7 +13,7 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; /** Sent while the agent was working: it reads it as soon as the current step ends. */ queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string; /** It ran on one of Composio's own accounts: a Pro Tool, charged to the person's allowance. */ pro?: boolean }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string; /** It ran on one of Composio's own accounts: a Pro Tool, charged to the person's allowance. */ pro?: boolean; /** A kimono-progress call: the steps of a long piece of work show as one card with a bar. */ progress?: ToolProgress }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** Which Claude answered. */ model?: "opus" | "sonnet" | "haiku"; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
@@ -67,6 +67,25 @@ function toolChange(name: string, input: Record<string, unknown>): string | unde
 }
 
 /** The one argument worth showing beside a tool: the file it touched, the command it ran, what it searched for. */
+/**
+ * What a kimono-progress call says (infra/sandbox/bin/kimono-progress): it began something long (what, about how
+ * many seconds), it's waiting, or it's done; with when Kimono heard it, so the bar keeps time across reloads.
+ */
+export type ToolProgress = { label?: string; about?: number; wait?: number; done?: boolean; at: number };
+
+export function progressOf(command: unknown, at = Date.now()): ToolProgress | undefined {
+  if (typeof command !== "string") return undefined;
+  const call = /^\s*kimono-progress\s+([\s\S]*)$/.exec(command.trim());
+  if (!call) return undefined;
+  const rest = call[1].trim();
+  if (rest.startsWith("--done")) return { done: true, at };
+  const wait = /^--wait\s+(\d+(?:\.\d+)?)/.exec(rest);
+  if (wait) return { wait: Math.min(100, Number(wait[1])), at };
+  const start = /^(["'])([\s\S]*?)\1\s+--about\s+(\d+(?:\.\d+)?)/.exec(rest);
+  if (start && start[2].trim()) return { label: start[2].trim().slice(0, 80), about: Math.min(3600, Math.max(5, Number(start[3]))), at };
+  return undefined;
+}
+
 function toolLabel(name: string, input: Record<string, unknown>): { label: string; detail?: string; change?: string; app?: string; space?: string } {
   if (name.startsWith("mcp__composio__")) return composioLabel(name.slice("mcp__composio__".length), input);
   const change = toolChange(name, input);
@@ -269,7 +288,8 @@ export function translate(line: unknown): Translated {
           if (hiddenTool(part.name)) continue;
           const call = artifactCall(part.id, part.name, input);
           if (call) { artifacts.push(call); events.push({ kind: "artifact", id: call.id, name: call.name, action: call.action }); continue; }
-          events.push({ kind: "tool", id: part.id, name: part.name, ...toolLabel(part.name, input) });
+          const progress = part.name === "Bash" ? progressOf(input.command) : undefined;
+          events.push({ kind: "tool", id: part.id, name: part.name, ...toolLabel(part.name, input), ...(progress ? { progress } : {}) });
         }
       }
       return { events, session, context: contextOf(message), ...(artifacts.length ? { artifacts } : {}) };

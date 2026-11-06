@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""kimono-progress "WHAT YOU'RE DOING" --about SECONDS
+kimono-progress --wait SECONDS
+kimono-progress --done ["WHAT'S READY"]
+
+For work that takes a while (a video being generated, a long render), show the
+person one progress card instead of every check: start it with what you're
+doing and about how long it takes, wait between checks with --wait (never
+sleep), and finish with --done when it's ready. The steps in between fold away
+under the card. --wait waits at most 100 seconds at a time; call it again.
+"""
+import sys, time
+
+args = sys.argv[1:]
+if not args or args[0] in ("-h", "--help"):
+    sys.exit(__doc__.strip())
+
+if args[0] == "--wait":
+    try:
+        seconds = float(args[1]) if len(args) > 1 else 30
+    except ValueError:
+        sys.exit("kimono-progress: --wait takes seconds, as in --wait 30")
+    seconds = max(1, min(seconds, 100))
+    time.sleep(seconds)
+    print(f"Waited {seconds:g} s. Check on it, then --wait again or --done.")
+elif args[0] == "--done":
+    print("Done: the card shows it finished." + (f" ({' '.join(args[1:])})" if len(args) > 1 else ""))
+else:
+    what, about = args[0], None
+    if len(args) >= 3 and args[1] == "--about":
+        try:
+            about = float(args[2])
+        except ValueError:
+            sys.exit("kimono-progress: --about takes seconds, as in --about 120")
+    if not what.strip() or what.startswith("-"):
+        sys.exit('kimono-progress: say what you\'re doing first, as in kimono-progress "Making your video" --about 120')
+    if about is None or not 5 <= about <= 3600:
+        sys.exit("kimono-progress: give --about SECONDS, between 5 and 3600: about how long it takes")
+    print(f"Started: {what} (about {about:g} s). Use --wait between checks and --done when it's ready.")

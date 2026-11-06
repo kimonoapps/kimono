@@ -49,6 +49,18 @@ export type StoredEvent = { seq: number; turn: string | null; at: number; event:
 
 export const newId = (bytes = 8) => randomBytes(bytes).toString("hex");
 
+/**
+ * A chat's sandbox was made again from nothing (its files were forgotten after
+ * long disuse, or lost): forget what Kimono had copied into it, so the next sync
+ * puts the chat's Drive files and the person's opened files back in rather than
+ * taking their absence for deletions, and earlier chats are given again.
+ */
+export function sandboxStartedOver(db: DatabaseSync, workspaceId: string) {
+  db.prepare("DELETE FROM synced WHERE workspace_id = ?").run(workspaceId);
+  db.prepare("DELETE FROM opened_files WHERE workspace_id = ?").run(workspaceId);
+  db.prepare("DELETE FROM history_synced WHERE workspace_id = ?").run(workspaceId);
+}
+
 export function migrate(db: DatabaseSync) {
   db.exec(`
     PRAGMA journal_mode = WAL;

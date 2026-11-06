@@ -63,7 +63,7 @@ export const sandbox = {
       ...(tools ? { tools } : {}),
       owner: workspace.owner, title: workspace.title, limits: config.limits,
     }),
-  }).then(json<{ id: string; state: string; branch: string; runtime?: string; slept?: string[] | null }>),
+  }).then(json<{ id: string; state: string; branch: string; runtime?: string; slept?: string[] | null; /** Made from nothing just now: it holds none of what was synced into it before. */ fresh?: boolean }>),
 
   state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string; limits: SandboxLimits; disk: Disk }>),
 
