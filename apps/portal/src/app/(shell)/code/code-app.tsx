@@ -255,6 +255,8 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
   return <MarksContext.Provider value={marks}><div className="cd-page">
     {accessOpen ? <AccessDialog onClose={() => setAccessOpen(false)} /> : null}
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
+    {/* With the list folded away, the button that brings it back stays where the one that hid it was: top left. */}
+    {folded ? <button type="button" className="cd-roundbutton cd-unfold-corner" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button> : null}
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button></div>
       <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
