@@ -1193,26 +1193,93 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
             : <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />}
     </div>
     {tab === "chat" && beside ? <aside className="cd-beside" aria-label="Artifact"><ArtifactCard name={beside} mode="beside" /></aside>
-      : isApp ? <Scroller fit as="aside" className="cd-deploy" viewClassName="cd-deploy-view" aria-label="Running apps"><Deployments workspace={workspace} others={others} /></Scroller> : null}
+      : isApp ? <Scroller fit as="aside" className="cd-deploy" viewClassName="cd-deploy-view" aria-label="This chat's work"><SidePanel workspace={workspace} others={others} tab={tab} running={running} lastSeq={events.at(-1)?.seq ?? 0} /></Scroller> : null}
     {full ? <div className="cd-artifact-full" role="dialog" aria-modal="true" aria-label="Artifact"><ArtifactCard name={full} mode="full" /></div> : null}
     {sharing ? <ShareChat workspace={workspace} onClose={() => setSharing(false)} /> : null}
   </div></ArtifactsContext.Provider></ChatAccess.Provider>;
 }
 
-/** On a wide window, beside the conversation: this task's running app, and every other task's. */
-function Deployments({ workspace, others }: { workspace: Workspace; others: Workspace[] }) {
-  return <div className="cd-deployments">
-    <h2>Running apps</h2>
-    {workspace.preview?.stopped
-      ? <button type="button" className="cd-dep-row is-link" onClick={() => goTo({ w: workspace.id, tab: "app" })}><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This chat&rsquo;s app is stopped</b><small>Start it again from the App tab.</small></span></button>
-      : workspace.preview
-      ? <PreviewCard workspace={workspace} url={workspace.preview.url} live />
-      : <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>This chat isn&rsquo;t running an app</b><small>Ask it to run one and it appears here.</small></span></div>}
-    {others.length ? <div className="cd-dep-list">{others.map((w) => <button type="button" key={w.id} className="cd-dep-row is-link" onClick={() => goTo({ w: w.id })}>
-      <span className="cd-dep-icon is-live"><Icon name="rocket" /></span>
-      <span><b>{w.title}</b><small className="cd-mono">{w.preview!.url.replace(/^https?:\/\//, "")}</small></span>
-    </button>)}</div> : null}
+/**
+ * On a wide window, beside the conversation: what the chat is making. Its app, live and
+ * usable (unless the App tab already shows it), a project's pull request and changes as
+ * they happen, and the other chats' running apps.
+ */
+function SidePanel({ workspace, others, tab, running, lastSeq }: { workspace: Workspace; others: Workspace[]; tab: Tab; running: boolean; lastSeq: number }) {
+  const project = workspace.kind === "project";
+  const preview = workspace.preview;
+  return <div className="cd-deployments cd-side-panel">
+    {preview && !preview.stopped && tab !== "app" ? <SideApp workspace={workspace} url={preview.url} /> : null}
+    {preview?.stopped ? <button type="button" className="cd-dep-row is-link" onClick={() => goTo({ w: workspace.id, tab: "app" })}><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>The app is stopped</b><small>Start it again from the App tab.</small></span></button> : null}
+    {project ? <SideWork workspace={workspace} running={running} lastSeq={lastSeq} /> : null}
+    {!preview && !project ? <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>No app running</b><small>Ask it to run one and it appears here.</small></span></div> : null}
+    {others.length ? <section className="cd-side-sec">
+      <h2>Other running apps</h2>
+      <div className="cd-dep-list">{others.map((w) => <button type="button" key={w.id} className="cd-dep-row is-link" onClick={() => goTo({ w: w.id })}>
+        <span className="cd-dep-icon is-live"><Icon name="rocket" /></span>
+        <span><b>{w.title}</b><small className="cd-mono">{w.preview!.url.replace(/^https?:\/\//, "")}</small></span>
+      </button>)}</div>
+    </section> : null}
   </div>;
+}
+
+/** The chat's app, at phone width, to use right there; its link and what you do to it underneath. */
+function SideApp({ workspace, url }: { workspace: Workspace; url: string }) {
+  const owns = useOwns();
+  const [copied, setCopied] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
+  return <section className="cd-side-sec">
+    <h2><i className="cd-live-dot" aria-hidden="true" />Your app</h2>
+    <div className="cd-side-app">
+      <div className="cd-app-bar"><i /><i /><i /><span className="cd-mono">{url.replace(/^https?:\/\//, "")}</span>
+        <button type="button" className="cd-roundbutton" aria-label="Reload" title="Reload" onClick={() => setRound((n) => n + 1)}><Icon name="restart" /></button>
+      </div>
+      <iframe key={round} src={url} title="The running app" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" />
+    </div>
+    <div className="cd-side-acts">
+      <Seal type="button" compact onClick={() => openOutside(url)}><Icon name="open" />Open</Seal>
+      <button type="button" className="cd-quietbutton" onClick={() => { void navigator.clipboard.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>{copied ? "Copied" : "Copy link"}</button>
+      {owns ? <button type="button" className="cd-quietbutton" disabled={stopping} aria-busy={stopping || undefined} onClick={() => { setStopping(true); code.stopPreview(workspace.id).catch((error) => { setProblem(problemText(error)); setStopping(false); }); }}><BusyFace busy={stopping}>Take down</BusyFace></button> : null}
+    </div>
+    {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+  </section>;
+}
+
+/** A project's pull request and its changes so far, kept up as it works. */
+function SideWork({ workspace, running, lastSeq }: { workspace: Workspace; running: boolean; lastSeq: number }) {
+  const [changes, setChanges] = useState<Changes | null>(null);
+  const [failed, setFailed] = useState(false);
+  /* Looked at when the chat opens and as each step lands, not more often than every few seconds. */
+  useEffect(() => {
+    const timer = setTimeout(() => { code.changes(workspace.id).then((c) => { setChanges(c); setFailed(false); }, () => setFailed(true)); }, changes ? 3000 : 0);
+    return () => clearTimeout(timer);
+  }, [workspace.id, lastSeq, running]); // eslint-disable-line react-hooks/exhaustive-deps
+  const added = changes?.files.reduce((n, f) => n + f.additions, 0) ?? 0;
+  const removed = changes?.files.reduce((n, f) => n + f.deletions, 0) ?? 0;
+  const letter = { added: "A", modified: "M", deleted: "D", renamed: "R" } as const;
+  const pr = workspace.pullRequest;
+  return <>
+    <section className="cd-side-sec">
+      <h2>Pull request</h2>
+      {pr
+        ? <button type="button" className="cd-dep-row is-link" onClick={() => openOutside(pr.url)}><span className="cd-dep-icon is-live"><Icon name="pr" /></span><span><b>#{pr.number} is open</b><small className="cd-mono">{workspace.branch} → {workspace.base}</small></span><Icon name="open" /></button>
+        : <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="pr" /></span><span><b>Not opened yet</b><small className="cd-mono">{workspace.branch} → {workspace.base}</small></span></div>}
+    </section>
+    <section className="cd-side-sec">
+      <h2>Changes{changes?.files.length ? <span className="cd-side-count cd-mono"><b className="is-add">+{added}</b> <b className="is-del">−{removed}</b></span> : null}</h2>
+      {changes === null ? failed ? <p className="cd-quiet cd-side-none">Couldn&rsquo;t look at the changes right now.</p> : <SkeletonRows rows={3} mark={false} />
+        : !changes.files.length ? <p className="cd-quiet cd-side-none">Nothing changed yet.</p>
+        : <div className="cd-side-files">
+            {changes.files.slice(0, 12).map((file) => <button key={file.path} type="button" className="cd-side-file" title={file.path} onClick={() => goTo({ w: workspace.id, tab: "changes" })}>
+              <span className="cd-status-letter" title={file.status}>{letter[file.status]}</span>
+              <span className="cd-mono cd-side-path"><span>{file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/") + 1) : ""}</span><b>{file.path.split("/").pop()}</b></span>
+              <span className="cd-mono cd-counts"><i className="is-add">+{file.additions}</i> <i className="is-del">−{file.deletions}</i></span>
+            </button>)}
+            {changes.files.length > 12 ? <button type="button" className="cd-textbutton cd-side-more" onClick={() => goTo({ w: workspace.id, tab: "changes" })}>{changes.files.length - 12} more</button> : null}
+          </div>}
+    </section>
+  </>;
 }
 
 /** The App tab: the running app, big, with everything you do to it, and the app itself below. */

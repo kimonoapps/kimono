@@ -549,7 +549,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-list button { min-height: 64px; padding: 14px 18px; gap: 5px; }
 .cd-side-label { margin-top: 8px; }
 
-.cd-ws-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.cd-ws-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
 .cd-ws { height: calc(100vh - 56px); }
 .cd-bar { display: flex; align-items: center; gap: 14px; padding: 14px 18px 10px; }
 .cd-bar .cd-back { display: none; }
@@ -1376,3 +1376,32 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-artifact-fold[aria-expanded="false"] .i { rotate: 90deg; }
 .cd-artifact.is-folded .cd-artifact-head { border-bottom: 0; }
 .cd-artifact-body[hidden] { display: none; }
+
+/* The side panel beside a chat that builds something: its app, live, then its pull request and changes. */
+.cd-side-panel { gap: 22px; }
+.cd-side-sec { display: grid; gap: 8px; }
+.cd-side-sec > h2 { display: flex; align-items: center; gap: 8px; margin: 0 4px; }
+.cd-side-count { margin-left: auto; font: 600 12.5px/1 var(--k-mono); letter-spacing: 0; }
+.is-add { color: var(--k-moss-deep); font-style: normal; }
+.is-del { color: var(--k-suo-deep); font-style: normal; }
+.cd-side-app { overflow: hidden; border-radius: var(--k-r-xl); background: var(--k-container-high); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.cd-side-app .cd-app-bar { padding: 6px 6px 6px 14px; }
+.cd-side-app .cd-app-bar .cd-mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.cd-side-app .cd-app-bar .cd-roundbutton { width: 30px; height: 30px; min-height: 0; }
+.cd-side-app .cd-app-bar .cd-roundbutton svg.i { width: 16px; height: 16px; }
+/* A phone's width and most of a phone's height, so the app shows the way it does in a hand. */
+.cd-side-app iframe { display: block; width: 100%; height: clamp(300px, 46vh, 520px); border: 0; background: #fff; }
+.cd-side-acts { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 0 2px; }
+.cd-side-acts .cd-seal svg.i, .cd-side-acts svg.i { width: 16px; height: 16px; margin-right: 6px; }
+.cd-side-sec .cd-dep-row { border-radius: 20px; min-height: 60px; }
+.cd-side-sec .cd-dep-row > svg.i { flex: none; width: 16px; height: 16px; color: var(--k-on-surface-variant); }
+.cd-side-files { display: grid; gap: 2px; padding: 6px; border-radius: 20px; background: var(--k-container-low); }
+.cd-side-file { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 6px 8px; border: 0; border-radius: 12px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background-color var(--k-t-state); }
+.cd-side-file:hover { background: var(--k-container-high); }
+.cd-side-file .cd-status-letter { width: 18px; height: 18px; font-size: 10px; }
+.cd-side-path { flex: 1; min-width: 0; display: flex; overflow: hidden; font-size: 12.5px; white-space: nowrap; }
+.cd-side-path > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--k-on-surface-variant); }
+.cd-side-path > b { flex: none; font-weight: 600; }
+.cd-side-file .cd-counts { font-size: 12px; }
+.cd-side-more { justify-self: start; margin: 2px 8px 4px; }
+.cd-side-none { margin: 0 4px; }
