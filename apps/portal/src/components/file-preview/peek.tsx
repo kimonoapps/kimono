@@ -47,7 +47,7 @@ export function TypeMark({ name, fallback }: { name: string; fallback: ReactNode
   const [failed, setFailed] = useState(false);
   if (!icon || failed) return <>{fallback}</>;
   // eslint-disable-next-line @next/next/no-img-element -- a small static SVG
-  return <img className="dv-type" src={`/file-icons/${icon}.svg`} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+  return <img className="fp-type" src={`/file-icons/${icon}.svg`} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
 }
 
 export const codeLanguage = (ext: string) => languages[ext.toLowerCase()]?.name ?? null;
@@ -86,8 +86,8 @@ export function CodePeek({ text, ext, inline = false }: { text: string; ext: str
   /* Lines are counted on the plain text; the marked runs flow inside one block beside them. */
   const lines = text.split("\n").length;
   return <>
-    <span className="dv-code-lang"><TypeMark name={`x.${ext}`} fallback={null} />{codeLanguage(ext)}</span>
-    <Scroller className={inline ? undefined : "dv-fill"} viewClassName="dv-code" tone="lift" fit={inline} tabIndex={0}>
+    <span className="fp-code-lang"><TypeMark name={`x.${ext}`} fallback={null} />{codeLanguage(ext)}</span>
+    <Scroller className={inline ? undefined : "fp-fill"} viewClassName="fp-code" tone="lift" fit={inline} tabIndex={0}>
       <ol aria-hidden="true">{Array.from({ length: lines }, (_, index) => <li key={index}>{index + 1}</li>)}</ol>
       <pre><code>{marked.map((run, index) => <Fragment key={index}>{run}</Fragment>)}</code></pre>
     </Scroller>

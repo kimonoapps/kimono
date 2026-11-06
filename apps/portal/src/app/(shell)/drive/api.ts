@@ -3,6 +3,8 @@
  * phone apps call, signed in by the browser's own session.
  */
 
+import { lowerExtension, pictureExtensions, previewKind } from "@/components/file-preview/kinds";
+
 export type Role = "owner" | "editor" | "viewer";
 export type LinkAccess = "view" | "add";
 
@@ -184,15 +186,8 @@ export function extension(name: string) {
   return dot > 0 ? name.slice(dot + 1).toUpperCase().slice(0, 4) : "FILE";
 }
 
-/* Files the server can make a picture of (lib/drive/thumbs.ts). */
-const pictured = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "heic", "heif", "tif", "tiff"]);
-const texts = new Set(["txt", "md", "markdown", "csv", "tsv", "json", "log", "yaml", "yml", "toml", "xml", "ini", "conf", "cfg", "env", "sh", "zsh", "bash",
-  "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "rs", "swift", "kt", "kts", "java", "c", "h", "cc", "cpp", "hpp", "cs", "css", "scss", "html", "htm",
-  "sql", "rb", "php", "lua", "r", "tex", "srt", "vtt", "gradle", "properties", "dockerfile", "makefile"]);
-const lowerExt = (name: string) => { const dot = name.lastIndexOf("."); return dot > 0 ? name.slice(dot + 1).toLowerCase() : name.toLowerCase(); };
-
-export const hasThumb = (node: DriveNode) => node.kind === "file" && pictured.has(lowerExt(node.name));
-export const isText = (node: DriveNode) => node.kind === "file" && (texts.has(lowerExt(node.name)) || (node.mime ?? "").startsWith("text/"));
+export const hasThumb = (node: DriveNode) => node.kind === "file" && pictureExtensions.has(lowerExtension(node.name));
+export const isText = (node: DriveNode) => node.kind === "file" && previewKind(node.name, node.mime) === "text";
 
 /** A picture of an image file, [width] 256 for rows or 1280 for the drawer; the address changes when the file does. */
 export const thumbUrl = (node: DriveNode, width: 256 | 1280, token?: string | null) =>
@@ -200,11 +195,6 @@ export const thumbUrl = (node: DriveNode, width: 256 | 1280, token?: string | nu
 
 export function kindOf(node: DriveNode): "folder" | "image" | "video" | "pdf" | "audio" | "file" {
   if (node.kind === "folder") return "folder";
-  const mime = node.mime || "";
-  const ext = extension(node.name).toLowerCase();
-  if (mime.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp", "heic", "avif"].includes(ext)) return "image";
-  if (mime.startsWith("video/") || ["mp4", "mov", "webm", "m4v", "mkv"].includes(ext)) return "video";
-  if (mime === "application/pdf" || ext === "pdf") return "pdf";
-  if (mime.startsWith("audio/") || ["mp3", "ogg", "wav", "m4a", "flac"].includes(ext)) return "audio";
-  return "file";
+  const kind = previewKind(node.name, node.mime);
+  return kind === "text" ? "file" : kind;
 }

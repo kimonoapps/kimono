@@ -3,21 +3,18 @@
 import { SkeletonRows } from "@/components/skeleton";
 import { rise, riseWhenReady, slide } from "@/components/motion";
 
-import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppBloom, Choice, cx, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
-import { Scroller } from "@/components/scroller";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
   type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
 } from "./api";
 import { Icon, type IconName } from "./icons";
-import { CodePeek, codeLanguage, TypeMark } from "./peek";
+import { FilePreview, TypeMark } from "@/components/file-preview/file-preview";
 
 /* Markdown's reader loads only when a Markdown file is opened. */
-const MarkdownPeek = lazy(() => import("./markdown"));
 
 /*
  * 帳 Kimono Drive on the web, layout A (Ledger). One page: the sidebar of
@@ -750,22 +747,10 @@ function Drawer({ node, url, token, guest, canEdit, people, onSave, onShare, onU
   const byline = guest ? null : by?.name.split(" ")[0] ?? (node.createdBy || node.guest);
   const text = isText(node);
   const shown = kind === "image" || kind === "video" || text;
-  const [big, setBig] = useState(false);
-  const expander = useRef<HTMLButtonElement>(null);
-  const previewClass = cx("dv-preview", text && "text", text && codeLanguage(extension(node.name)) && "code", text && ["MD", "MARK", "MDX"].includes(extension(node.name)) && "md", !shown && kind !== "audio" && "plain");
-  const typeMark = <span className="dv-type-big"><TypeMark name={node.name} fallback={<span className="ext">{extension(node.name)}</span>} /></span>;
-  const body = kind === "image" ? <Picture node={node} url={url} token={token} />
-    : kind === "video" ? <video src={url} controls preload="metadata" playsInline />
-    : kind === "audio" ? <audio src={url} controls />
-    : text ? <TextPeek url={url} name={extension(node.name)} />
-    : typeMark;
   return <div className={cx("dv-drawer", shown && "wide")}><div className="dv-drawer-grid">
-    <div className={previewClass}>
-      {/* Expanded, the file plays in one place only: the drawer keeps just its mark. */}
-      {big ? typeMark : body}
-      {shown && !big ? <button type="button" ref={expander} className="dv-expand" aria-label="Expand" title="Expand" onClick={() => setBig(true)}><Icon name="expand" /></button> : null}
-    </div>
-    {big ? <Expanded name={node.name} className={previewClass} onSave={onSave} onClose={() => { setBig(false); requestAnimationFrame(() => expander.current?.focus()); }}>{body}</Expanded> : null}
+    <FilePreview name={node.name} url={url} mime={node.mime} overlayClassName="dv-over"
+      picture={kind === "image" ? <Picture node={node} url={url} token={token} /> : undefined}
+      actions={<Seal type="button" tone="quiet" compact onClick={onSave}><Icon name="download" />Download</Seal>} />
     <div className="dv-drawer-text">
       <div className="dv-head">
         <div>
@@ -791,30 +776,6 @@ function Drawer({ node, url, token, guest, canEdit, people, onSave, onShare, onU
   </div></div>;
 }
 
-/** A preview over the whole window: the file large, its name, and the way back. */
-function Expanded({ name, className, children, onSave, onClose }: { name: string; className: string; children: React.ReactNode; onSave: () => void; onClose: () => void }) {
-  const close = useRef<HTMLButtonElement>(null);
-  const leave = useRef(onClose);
-  useEffect(() => { leave.current = onClose; }, [onClose]);
-  useEffect(() => {
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); leave.current(); } };
-    window.addEventListener("keydown", escape, true);
-    const page = document.documentElement;
-    const overflow = page.style.overflow;
-    page.style.overflow = "hidden";
-    close.current?.focus();
-    return () => { window.removeEventListener("keydown", escape, true); page.style.overflow = overflow; };
-  }, []);
-  return createPortal(<div className="dv dv-big" role="dialog" aria-modal="true" aria-label={name}>
-    <div className="dv-big-top">
-      <h2>{name}</h2>
-      <Seal type="button" tone="quiet" compact onClick={onSave}><Icon name="download" />Download</Seal>
-      <button type="button" ref={close} className="dv-more" aria-label="Back to the folder" title="Back (Esc)" onClick={onClose}><Icon name="shrink" /></button>
-    </div>
-    <div className="dv-big-stage"><div className={className}>{children}</div></div>
-  </div>, document.body);
-}
-
 /**
  * An image in the drawer: the row's small thumbnail at once, blurred, with the
  * large one sharpening over it. GIFs play from the file itself; a picture the
@@ -831,30 +792,6 @@ function Picture({ node, url, token }: { node: DriveNode; url: string; token: st
     <img className={cx("full", ready && "ready")} src={src} alt={node.name} decoding="async"
       onLoad={() => setReady(true)} onError={() => { if (src !== url) setSrc(url); }} />
   </>;
-}
-
-/** The opening of a text or code file: its first 24 KB, read with a range. */
-function TextPeek({ url, name }: { url: string; name: string }) {
-  const [text, setText] = useState<string | null>(null);
-  useEffect(() => {
-    const stop = new AbortController();
-    fetch(url, { headers: { Range: "bytes=0-24575" }, signal: stop.signal })
-      .then((response) => response.ok ? response.arrayBuffer() : Promise.reject(new Error(String(response.status))))
-      .then((bytes) => {
-        const view = new Uint8Array(bytes);
-        if (view.includes(0)) { setText(""); return; }
-        let read = new TextDecoder("utf-8", { fatal: false }).decode(view);
-        if (view.length >= 24576) read = read.replace(/\uFFFD?[^\n]*$/, "");
-        setText(read);
-      })
-      .catch(() => { if (!stop.signal.aborted) setText(""); });
-    return () => stop.abort();
-  }, [url]);
-  if (text === null) return <span className="ext">{name}</span>;
-  if (!text.trim()) return <span className="ext">{name}</span>;
-  if (["MD", "MARK", "MDX"].includes(name)) return <Suspense fallback={<span className="ext">{name}</span>}><MarkdownPeek text={text} /></Suspense>;
-  if (codeLanguage(name)) return <CodePeek text={text} ext={name} />;
-  return <Scroller className="dv-fill" viewClassName="dv-text" tabIndex={0}><pre>{text}</pre></Scroller>;
 }
 
 /* ── dialogs ── */

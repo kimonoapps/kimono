@@ -184,11 +184,8 @@ li[data-state="failed"] .cd-toolmark { color: var(--k-suo-deep); }
 .cd-viewer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 10px 0 18px; border-bottom: 1px solid var(--k-hair); color: var(--k-ink-soft); }
 .cd-viewer-head .cd-mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-lacquer { margin: 0; background: var(--k-urushi); color: var(--k-urushi-text); font: 500 12.5px/1.65 var(--k-mono); tab-size: 2; }
-.cd-source { overflow: auto; padding: 12px 0 28px; min-height: 0; }
 .cd-line { display: block; padding-right: 18px; white-space: pre; }
 .cd-line > i { display: inline-block; width: 4.2em; padding-right: 1.2em; text-align: right; font-style: normal; color: var(--k-urushi-comment); user-select: none; }
-.cd-picture { display: grid; place-items: center; padding: 24px; overflow: auto; background: var(--k-fold); }
-.cd-picture img { max-width: 100%; max-height: 70vh; border: 1px solid var(--k-hair); }
 
 /* ── changes ── */
 .cd-changes { overflow: auto; min-height: 0; padding: 18px var(--cd-gutter) 32px; display: grid; gap: 14px; align-content: start; }
@@ -1116,3 +1113,9 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* a tool call keeps a rounded shape under the pointer, in the middle of the list too */
 .call > summary:hover { border-radius: 14px; }
+
+/* Files, previewed with Drive's own box (components/file-preview). */
+.cd-viewer > .cd-file-preview { aspect-ratio: auto; height: 100%; min-height: 0; border-radius: 0; box-shadow: none; }
+.cd-tree-row img.fp-type { width: 15px; height: 15px; flex: none; }
+.cd-filechip > .fp-thumb { flex: none; width: var(--fp-thumb); margin-right: 2px; }
+.cd-drivepick li .fp-thumb { flex: none; width: var(--fp-thumb); }

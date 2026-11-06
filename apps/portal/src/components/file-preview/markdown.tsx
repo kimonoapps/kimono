@@ -13,15 +13,15 @@ import { CodePeek } from "./peek";
 const parts: Components = {
   // eslint-disable-next-line no-restricted-syntax -- a link inside someone's file, to another site: no Kimono transition
   a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer nofollow">{children}</a>,
-  img: ({ alt }) => alt ? <span className="dv-md-pic">{alt}</span> : null,
+  img: ({ alt }) => alt ? <span className="fp-md-pic">{alt}</span> : null,
   code: ({ className, children }) => {
     const lang = /language-(\w+)/.exec(className ?? "")?.[1];
     const text = String(children ?? "");
-    return lang && text.includes("\n") ? <span className="dv-md-code"><CodePeek text={text.replace(/\n$/, "")} ext={lang} inline /></span> : <code>{children}</code>;
+    return lang && text.includes("\n") ? <span className="fp-md-code"><CodePeek text={text.replace(/\n$/, "")} ext={lang} inline /></span> : <code>{children}</code>;
   },
-  pre: ({ children }) => <div className="dv-md-pre">{children}</div>,
+  pre: ({ children }) => <div className="fp-md-pre">{children}</div>,
 };
 
 export default function MarkdownPeek({ text }: { text: string }) {
-  return <Scroller className="dv-fill" viewClassName="dv-md" tabIndex={0}><Markdown remarkPlugins={[remarkGfm]} components={parts}>{text}</Markdown></Scroller>;
+  return <Scroller className="fp-fill" viewClassName="fp-md" tabIndex={0}><Markdown remarkPlugins={[remarkGfm]} components={parts}>{text}</Markdown></Scroller>;
 }

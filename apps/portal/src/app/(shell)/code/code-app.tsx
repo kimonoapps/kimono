@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
+import { FileOverlay, FilePreview, FileThumb, TypeMark } from "@/components/file-preview/file-preview";
+import { lowerExtension, pictureExtensions } from "@/components/file-preview/kinds";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
@@ -28,6 +30,8 @@ const repoName = (w: Pick<Workspace, "repo">) => `${w.repo.owner}/${w.repo.name}
 /* Working is moss, so its ink shape is washed in moss too (--k-moss). */
 const workingInk = "#5c7150";
 const openOutside = (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); };
+/** Saves [url] as [name], from this page. */
+const saveAs = (url: string, name: string) => { const link = document.createElement("a"); link.href = url; link.download = name; link.rel = "noopener"; document.body.append(link); link.click(); link.remove(); };
 
 /*
  * Code's screens (which task, which view, a new task) live after the # in the
@@ -1269,13 +1273,16 @@ function Working({ since }: { since: number | null }) {
 
 function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
   const { text, attachments, queued } = item.event;
+  const [opened, setOpened] = useState<Attachment | null>(null);
   if (text.trim() === "/compact" && !attachments.length) return <p className="cd-note"><Icon name="diff" />You asked it to compact the conversation{queued ? " after this step" : ""}</p>;
   return <div className={cx("cd-ask", queued && "is-queued")} title={queued ? "Sent while it was working: read as soon as the current step ends" : undefined}>
     {text ? <p>{text}</p> : null}
     {attachments.length ? <div className="cd-attached">{attachments.map((a) => isPicture(a.type)
       // eslint-disable-next-line @next/next/no-img-element
-      ? <button type="button" key={a.path} className="cd-thumb" aria-label={a.name} onClick={() => openOutside(code.attachmentUrl(workspace.id, a))}><img src={code.attachmentUrl(workspace.id, a)} alt={a.name} /></button>
-      : <button type="button" key={a.path} className="cd-filechip" onClick={() => openOutside(code.attachmentUrl(workspace.id, a))}><Icon name="file" /><span>{a.name}</span><small>{readableSize(a.size)}</small></button>)}</div> : null}
+      ? <button type="button" key={a.path} className="cd-thumb" aria-label={a.name} onClick={() => setOpened(a)}><img src={code.attachmentUrl(workspace.id, a)} alt={a.name} /></button>
+      : <button type="button" key={a.path} className="cd-filechip" onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span><small>{readableSize(a.size)}</small></button>)}</div> : null}
+    {opened ? <FileOverlay name={opened.name} mime={opened.type} url={code.attachmentUrl(workspace.id, opened)} onClose={() => setOpened(null)}
+      actions={<Seal type="button" tone="quiet" compact onClick={() => saveAs(code.attachmentUrl(workspace.id, opened), opened.name)}><Icon name="download" />Download</Seal>} /> : null}
   </div>;
 }
 
@@ -1540,7 +1547,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     onDrop={(event) => { event.preventDefault(); setDragging(false); add([...event.dataTransfer.files]); }}>
     {pending.length ? <div className="cd-pending">{pending.map((p) => <span key={p.id} className={cx("cd-filechip", !p.attachment && !p.failed && "is-sending", p.failed && "is-failed")}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {p.preview ? <img src={p.preview} alt="" /> : <Icon name="file" />}
+      {p.preview ? <img src={p.preview} alt="" /> : <FileThumb name={p.name} size={30} />}
       <span>{p.name}</span>
       <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <MorphLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPending((list) => list.filter((x) => x.id !== p.id))}><Icon name="close" /></button>
@@ -1649,7 +1656,7 @@ function DrivePicker({ onClose, onPick }: { onClose: () => void; onPick: (items:
       {!at ? (spaces ?? []).map((space) => <li key={space.id}><button type="button" onClick={() => void open(space.rootId)}><Icon name="space" /><span>{space.name}</span><Icon name="chevron" /></button></li>)
         : at.children.map((item) => item.kind === "folder"
           ? <li key={item.id}><button type="button" onClick={() => void open(item.id)}><Icon name="folder" /><span>{item.name}</span><Icon name="chevron" /></button></li>
-          : <li key={item.id}><label><input type="checkbox" checked={chosen.has(item.id)} onChange={() => toggle(item)} /><Icon name="file" /><span>{item.name}</span><small>{readableSize(item.size)}</small></label></li>)}
+          : <li key={item.id}><label><input type="checkbox" checked={chosen.has(item.id)} onChange={() => toggle(item)} /><FileThumb name={item.name} size={32} picture={pictureExtensions.has(lowerExtension(item.name)) ? `/api/v1/drive/nodes/${encodeURIComponent(item.id)}/thumb?w=256` : null} /><span>{item.name}</span><small>{readableSize(item.size)}</small></label></li>)}
       {spaces === null && !problem ? <li className="cd-faint cd-drivepick-note">…</li> : null}
       {at && !at.children.length ? <li className="cd-faint cd-drivepick-note">Nothing here.</li> : null}
     </ul>
@@ -1691,7 +1698,7 @@ function Files({ workspace, path, onOpen }: { workspace: Workspace; path: string
       </li>;
       return <li key={full}>
         <button type="button" className="cd-tree-row" aria-current={full === path ? "true" : undefined} style={{ paddingLeft: 30 + depth * 14 }} onClick={() => onOpen(full)}>
-          <Icon name="file" /><span>{entry.name}</span>
+          <TypeMark name={entry.name} fallback={<Icon name="file" />} /><span>{entry.name}</span>
         </button>
       </li>;
     });
@@ -1722,10 +1729,9 @@ function Viewer({ workspace, path }: { workspace: Workspace; path: string }) {
     <div className="cd-viewer-head"><span className="cd-mono">{path}</span><CopyPath path={path} /></div>
     {!state ? <div className="cd-lacquer cd-loading" aria-busy="true" />
       : "problem" in state ? <p className="cd-problem cd-pad">{state.problem}</p>
-        // eslint-disable-next-line @next/next/no-img-element
-        : "picture" in state ? <div className="cd-picture"><img src={state.picture} alt={path} /></div>
+        : "picture" in state ? <FilePreview name={path} url={state.picture} mime="image/*" className="cd-file-preview" />
           : "binary" in state ? <p className="cd-quiet cd-pad">Not a text file · {readableSize(state.binary)}</p>
-            : <Scroller as="pre" tone="lift" className="cd-lacquer" viewClassName="cd-lacquer cd-source">{state.text.split("\n").map((line, n) => <span key={n} className="cd-line"><i>{n + 1}</i>{line || " "}</span>)}</Scroller>}
+            : <FilePreview name={path} text={state.text} className="cd-file-preview" />}
   </>;
 }
 

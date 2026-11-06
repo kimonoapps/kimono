@@ -1,0 +1,99 @@
+/*
+ * A file, previewed (components/file-preview): pictures, video and sound as
+ * themselves, code numbered and coloured, Markdown read, any other text as it
+ * is, and everything else as its type's mark. Expands to the whole window.
+ * Used by Drive and Kimono AI.
+ */
+.fp { aspect-ratio: 16/10; border-radius: var(--k-r-l); overflow: hidden; background: var(--k-urushi); position: relative; display: grid; place-items: center; }
+.fp svg { width: 100%; height: 100%; display: block; }
+.fp .play { position: absolute; inset: 0; display: grid; place-items: center; }
+.fp .play i { width: 44px; height: 44px; border-radius: 50%; background: rgba(36,34,31,.55); display: grid; place-items: center; }
+.fp .play i::after { content: ""; margin-left: 4px; border-left: 13px solid var(--k-lift); border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+.fp .dur { position: absolute; right: 8px; bottom: 8px; padding: 1px 6px; background: rgba(36,34,31,.7); color: var(--k-lift); font: 500 11px/1.5 var(--k-mono); }
+.fp img, .fp video, .fp iframe { width: 100%; height: 100%; display: block; object-fit: contain; border: 0; background: var(--k-urushi); }
+.fp .ext { position: absolute; inset: 0; display: grid; place-items: center; font: 600 22px/1 var(--k-mono); letter-spacing: .06em; color: var(--k-lift); }
+.fp.plain { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.fp-type-big { display: grid; place-items: center; }
+.fp .fp-type-big img.fp-type { width: 72px; height: 72px; background: none; object-fit: contain; }
+.fp.plain .ext { color: var(--k-on-surface-variant); }
+.fp img.blur { position: absolute; inset: 0; object-fit: contain; filter: blur(14px); transform: scale(1.04); opacity: .7; }
+.fp img.full { position: relative; object-fit: contain; opacity: 0; transition: opacity var(--k-t-state, .2s) ease; }
+.fp img.full.ready { opacity: 1; }
+.fp.text { place-items: stretch; background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.fp.text .ext { color: var(--k-on-surface-variant); }
+.fp-fill { position: absolute; inset: 0; }
+.fp-text pre { margin: 0; padding: 14px 16px; font: 500 12.5px/1.55 var(--k-mono); color: var(--k-ink); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+@media (prefers-reduced-motion: reduce) { .fp img.full { transition: none; } }
+
+/* Code: numbered lines in the margin, quiet colours from Kimono's own inks. */
+.fp.code { background: #2a2326; box-shadow: none; }
+.fp-code { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; padding: 14px 0 18px; font: 500 12.5px/1.6 var(--k-mono); color: #ece4dc; tab-size: 2; }
+.fp-code:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: -2px; }
+.fp-code ol { margin: 0; padding: 0 12px 0 14px; list-style: none; text-align: right; color: #8a7d78; user-select: none; position: sticky; left: 0; background: #2a2326; }
+.fp-code pre { margin: 0; padding: 0 16px 0 4px; white-space: pre; font: inherit; color: inherit; }
+.fp-code-lang .fp-type { width: 13px; height: 13px; }
+.fp-code-lang { display: inline-flex; align-items: center; gap: 6px; position: absolute; top: 10px; right: 12px; padding: 4px 8px; border-radius: var(--k-r-s); background: #2a2326; font: 600 10.5px/1 var(--k-sans); letter-spacing: .06em; text-transform: uppercase; color: #b8aaa2; z-index: 1; }
+.fp-code .t-com { color: #8f8a80; font-style: italic; }
+.fp-code .t-str { color: #b9cf94; }
+.fp-code .t-num { color: #e6b07a; }
+.fp-code .t-key { color: #e79bb0; }
+
+/* Markdown, read: paper, Kimono's faces, code blocks on urushi. */
+.fp.md { background: var(--k-container-lowest); }
+.fp-md { padding: 18px 22px 24px; font: 400 14px/1.6 var(--k-sans); color: var(--k-ink); }
+.fp-md:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: -2px; }
+.fp-md > :first-child { margin-top: 0; }
+.fp-md h1, .fp-md h2, .fp-md h3, .fp-md h4 { margin: 1.1em 0 .4em; font-family: var(--k-display); font-weight: 600; line-height: 1.25; color: var(--k-plum); }
+.fp-md h1 { font-size: 24px; } .fp-md h2 { font-size: 20px; } .fp-md h3 { font-size: 17px; } .fp-md h4 { font-size: 15px; }
+.fp-md p, .fp-md ul, .fp-md ol, .fp-md blockquote, .fp-md table, .fp-md-pre { margin: 0 0 .8em; }
+.fp-md ul, .fp-md ol { padding-left: 1.4em; }
+.fp-md li { margin: .15em 0; }
+.fp-md li input[type="checkbox"] { margin: 0 6px 0 -1.2em; accent-color: var(--k-app-accent); }
+.fp-md a { color: var(--k-app-accent); text-decoration: underline; text-underline-offset: 2px; }
+.fp-md code { padding: 1px 5px; border-radius: var(--k-r-s); background: var(--k-container-high); font: 500 12.5px/1.5 var(--k-mono); }
+.fp-md blockquote { padding: 2px 0 2px 14px; border-left: 3px solid var(--k-container-highest); color: var(--k-on-surface-variant); }
+.fp-md hr { margin: 1.2em 0; border: 0; border-top: 1px solid var(--k-container-highest); }
+.fp-md table { border-collapse: collapse; font-size: 13px; display: block; overflow-x: auto; }
+.fp-md th, .fp-md td { padding: 6px 10px; border: 1px solid var(--k-container-highest); text-align: left; }
+.fp-md th { background: var(--k-container); font-weight: 600; }
+.fp-md-pic { font-style: italic; color: var(--k-on-surface-variant); }
+.fp-md-pre { border-radius: var(--k-r-m); background: #2a2326; overflow: hidden; }
+.fp-md-pre > code { display: block; padding: 12px 14px; overflow-x: auto; background: none; color: #ece4dc; white-space: pre; }
+.fp-md-code { display: block; position: relative; }
+.fp-md-code .fp-code { padding: 12px 0; }
+.fp-md-code .fp-code code { padding: 0; border-radius: 0; background: none; font: inherit; }
+.fp-md-code .fp-code-lang { top: 6px; right: 8px; }
+
+/* Expanding a preview: a corner button on the drawer's preview, then the file over the whole window. */
+.fp-expand { position: absolute; right: 8px; bottom: 8px; z-index: 2; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--k-r-s); background: rgba(36, 34, 31, .62); color: var(--k-lift); cursor: pointer; opacity: 0; transition: opacity var(--k-t-state, .2s) var(--k-ease-settle, ease), background-color var(--k-t-state, .2s); }
+.fp-expand svg { width: 17px; height: 17px; }
+.fp:hover > .fp-expand, .fp-expand:focus-visible { opacity: 1; }
+.fp-expand:hover { background: rgba(36, 34, 31, .85); }
+.fp-expand:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 2px; }
+.fp.code > .fp-expand { right: 14px; bottom: 14px; background: #42373b; color: #ece4dc; box-shadow: 0 0 0 4px #2a2326; }
+.fp.code > .fp-expand:hover { background: #54474c; }
+@media (hover: none) { .fp-expand { opacity: 1; } }
+.fp-big { position: fixed; inset: 0; z-index: 80; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--k-urushi); color: var(--k-urushi-text); animation: fp-big-in var(--k-t-seat, .3s) var(--k-ease-settle, ease); }
+@keyframes fp-big-in { from { opacity: 0; } }
+.fp-big-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 24px; }
+.fp-big-top h2 { flex: 1; min-width: 0; margin: 0; font: 600 19px/1.3 var(--k-display); color: var(--k-urushi-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-big-close { width: 40px; height: 40px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--k-urushi-text); cursor: pointer; }
+.fp-big-close:hover { background: rgba(255, 255, 255, .1); color: var(--k-lift); }
+.fp-big-close:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 2px; }
+.fp-big-stage { min-height: 0; display: grid; padding: 0 24px 24px; }
+.fp-big-stage > .fp { width: 100%; height: 100%; max-height: none; aspect-ratio: auto; margin: 0; }
+.fp-big-stage > .fp.text { width: min(1100px, 100%); justify-self: center; }
+.fp-big-stage > .fp:not(.text) { background: transparent; }
+.fp-big .fp-code { font-size: 13.5px; }
+.fp-big .fp-md { padding: 28px max(32px, calc((100% - 76ch) / 2)) 40px; font-size: 15.5px; }
+@media (max-width: 720px) { .fp-big-top { padding-left: 16px; } .fp-big-stage { padding: 0 8px 8px; } }
+@media (prefers-reduced-motion: reduce) { .fp-big, .fp-expand { animation: none; transition: none; } }
+
+.fp-i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* A file as a small tile: its picture, or its type's mark. */
+.fp-thumb { width: var(--fp-thumb, 36px); height: var(--fp-thumb, 36px); flex: none; display: grid; place-items: center; overflow: hidden; border-radius: var(--k-r-s); background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.fp-thumb.pic { background: var(--k-container-high); box-shadow: none; }
+.fp-thumb > img:not(.fp-type) { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fp-thumb .fp-type { width: 62%; height: 62%; object-fit: contain; display: block; }
+.fp-thumb .ext { font: 600 9px/1 var(--k-mono); letter-spacing: .04em; color: var(--k-on-surface-variant); }
