@@ -4,6 +4,7 @@ import { SkeletonRows } from "@/components/skeleton";
 import { rise, riseWhenReady, slide } from "@/components/motion";
 
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import { AppBloom, Choice, cx, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
@@ -637,7 +638,7 @@ function Check({ on, ghost, label, onClick }: { on: boolean | "part"; ghost?: bo
 function Kind({ node, as, token, plain }: { node: DriveNode; as?: "project" | "task"; token?: string | null; plain?: boolean }) {
   const kind = kindOf(node);
   const [failed, setFailed] = useState(false);
-  if (kind === "folder" && as) return <span className={`dv-kind ${as}`}><Icon name={as} /></span>;
+  if (kind === "folder" && as) return <span className={`dv-kind is-${as}`}><Icon name={as} /></span>;
   if (kind === "folder") return <span className="dv-kind folder"><Icon name="folder" /></span>;
   const ext = <span className="ext">{extension(node.name)}</span>;
   if (!plain && !failed && hasThumb(node)) return <span className="dv-kind pic">
@@ -749,14 +750,22 @@ function Drawer({ node, url, token, guest, canEdit, people, onSave, onShare, onU
   const byline = guest ? null : by?.name.split(" ")[0] ?? (node.createdBy || node.guest);
   const text = isText(node);
   const shown = kind === "image" || kind === "video" || text;
+  const [big, setBig] = useState(false);
+  const expander = useRef<HTMLButtonElement>(null);
+  const previewClass = cx("dv-preview", text && "text", text && codeLanguage(extension(node.name)) && "code", text && ["MD", "MARK", "MDX"].includes(extension(node.name)) && "md", !shown && kind !== "audio" && "plain");
+  const typeMark = <span className="dv-type-big"><TypeMark name={node.name} fallback={<span className="ext">{extension(node.name)}</span>} /></span>;
+  const body = kind === "image" ? <Picture node={node} url={url} token={token} />
+    : kind === "video" ? <video src={url} controls preload="metadata" playsInline />
+    : kind === "audio" ? <audio src={url} controls />
+    : text ? <TextPeek url={url} name={extension(node.name)} />
+    : typeMark;
   return <div className={cx("dv-drawer", shown && "wide")}><div className="dv-drawer-grid">
-    <div className={cx("dv-preview", text && "text", text && codeLanguage(extension(node.name)) && "code", text && ["MD", "MARK", "MDX"].includes(extension(node.name)) && "md", !shown && kind !== "audio" && "plain")}>
-      {kind === "image" ? <Picture node={node} url={url} token={token} />
-        : kind === "video" ? <video src={url} controls preload="metadata" playsInline />
-        : kind === "audio" ? <audio src={url} controls />
-        : text ? <TextPeek url={url} name={extension(node.name)} />
-        : <span className="dv-type-big"><TypeMark name={node.name} fallback={<span className="ext">{extension(node.name)}</span>} /></span>}
+    <div className={previewClass}>
+      {/* Expanded, the file plays in one place only: the drawer keeps just its mark. */}
+      {big ? typeMark : body}
+      {shown && !big ? <button type="button" ref={expander} className="dv-expand" aria-label="Expand" title="Expand" onClick={() => setBig(true)}><Icon name="expand" /></button> : null}
     </div>
+    {big ? <Expanded name={node.name} className={previewClass} onSave={onSave} onClose={() => { setBig(false); requestAnimationFrame(() => expander.current?.focus()); }}>{body}</Expanded> : null}
     <div className="dv-drawer-text">
       <div className="dv-head">
         <div>
@@ -780,6 +789,30 @@ function Drawer({ node, url, token, guest, canEdit, people, onSave, onShare, onU
       </div> : canEdit ? <div className="k-seal-group"><Seal type="button" onClick={onShare}><Icon name="link" />Make public link</Seal></div> : null}
     </div>
   </div></div>;
+}
+
+/** A preview over the whole window: the file large, its name, and the way back. */
+function Expanded({ name, className, children, onSave, onClose }: { name: string; className: string; children: React.ReactNode; onSave: () => void; onClose: () => void }) {
+  const close = useRef<HTMLButtonElement>(null);
+  const leave = useRef(onClose);
+  useEffect(() => { leave.current = onClose; }, [onClose]);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); leave.current(); } };
+    window.addEventListener("keydown", escape, true);
+    const page = document.documentElement;
+    const overflow = page.style.overflow;
+    page.style.overflow = "hidden";
+    close.current?.focus();
+    return () => { window.removeEventListener("keydown", escape, true); page.style.overflow = overflow; };
+  }, []);
+  return createPortal(<div className="dv dv-big" role="dialog" aria-modal="true" aria-label={name}>
+    <div className="dv-big-top">
+      <h2>{name}</h2>
+      <Seal type="button" tone="quiet" compact onClick={onSave}><Icon name="download" />Download</Seal>
+      <button type="button" ref={close} className="dv-more" aria-label="Back to the folder" title="Back (Esc)" onClick={onClose}><Icon name="shrink" /></button>
+    </div>
+    <div className="dv-big-stage"><div className={className}>{children}</div></div>
+  </div>, document.body);
 }
 
 /**

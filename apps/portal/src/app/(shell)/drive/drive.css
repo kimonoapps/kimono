@@ -661,9 +661,9 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 @media (prefers-reduced-motion: reduce) { .dv-drawer, .dv-space[aria-current] { animation: none; } }
 
 /* Code's space: projects and tasks wear Code's colour, so the space reads as Code's own place. */
-.dv-kind.project { background: color-mix(in srgb, var(--dv-code, #3f6b6a) 16%, var(--k-container-lowest)); color: var(--dv-code, #3f6b6a); }
-.dv-kind.task { background: color-mix(in srgb, var(--dv-code, #3f6b6a) 9%, var(--k-container-lowest)); color: var(--dv-code, #3f6b6a); }
-.dv-kind.project svg.i, .dv-kind.task svg.i { width: 22px; height: 22px; stroke-width: 1.7; }
+.dv-kind.is-project { background: color-mix(in srgb, var(--dv-code, #3f6b6a) 16%, var(--k-container-lowest)); color: var(--dv-code, #3f6b6a); }
+.dv-kind.is-task { background: color-mix(in srgb, var(--dv-code, #3f6b6a) 9%, var(--k-container-lowest)); color: var(--dv-code, #3f6b6a); }
+.dv-kind.is-project svg.i, .dv-kind.is-task svg.i { width: 22px; height: 22px; stroke-width: 1.7; }
 .dv-code-mark { display: grid; place-items: center; background: none; }
 .dv-code-mark .k-app-bloom { width: 100%; height: 100%; }
 
@@ -742,3 +742,27 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 /* the wavy bar for an upload filling (it has a progress); the shape while a file opens (it doesn't) */
 .dv-wave { margin: 4px 0 2px; }
 .dv-open-shape { width: 40px; height: 40px; margin: 32px auto; }
+
+/* Expanding a preview: a corner button on the drawer's preview, then the file over the whole window. */
+.dv-expand { position: absolute; right: 8px; bottom: 8px; z-index: 2; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 0; border-radius: var(--k-r-s); background: rgba(36, 34, 31, .62); color: var(--k-lift); cursor: pointer; opacity: 0; transition: opacity var(--k-t-state, .2s) var(--k-ease-settle, ease), background-color var(--k-t-state, .2s); }
+.dv-expand svg { width: 17px; height: 17px; }
+.dv-preview:hover > .dv-expand, .dv-expand:focus-visible { opacity: 1; }
+.dv-expand:hover { background: rgba(36, 34, 31, .85); }
+.dv-expand:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 2px; }
+.dv-preview.code > .dv-expand { right: 14px; bottom: 14px; background: #42373b; color: #ece4dc; box-shadow: 0 0 0 4px #2a2326; }
+.dv-preview.code > .dv-expand:hover { background: #54474c; }
+@media (hover: none) { .dv-expand { opacity: 1; } }
+.dv-big { position: fixed; inset: 0; z-index: 80; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--k-urushi); color: var(--k-urushi-text); animation: dv-big-in var(--k-t-seat, .3s) var(--k-ease-settle, ease); }
+@keyframes dv-big-in { from { opacity: 0; } }
+.dv-big-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px 12px 24px; }
+.dv-big-top h2 { flex: 1; min-width: 0; margin: 0; font: 600 19px/1.3 var(--k-display); color: var(--k-urushi-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-big-top .dv-more { width: 40px; height: 40px; color: var(--k-urushi-text); }
+.dv-big-top .dv-more:hover { background: rgba(255, 255, 255, .1); color: var(--k-lift); }
+.dv-big-stage { min-height: 0; display: grid; padding: 0 24px 24px; }
+.dv-big-stage > .dv-preview { width: 100%; height: 100%; max-height: none; aspect-ratio: auto; margin: 0; }
+.dv-big-stage > .dv-preview.text { width: min(1100px, 100%); justify-self: center; }
+.dv-big-stage > .dv-preview:not(.text) { background: transparent; }
+.dv-big .dv-code { font-size: 13.5px; }
+.dv-big .dv-md { padding: 28px max(32px, calc((100% - 76ch) / 2)) 40px; font-size: 15.5px; }
+@media (max-width: 720px) { .dv-big-top { padding-left: 16px; } .dv-big-stage { padding: 0 8px 8px; } }
+@media (prefers-reduced-motion: reduce) { .dv-big, .dv-expand { animation: none; transition: none; } }
