@@ -1497,7 +1497,8 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
           }
         }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
         {drafts.text ? <div className="cd-say is-draft"><Markdown text={drafts.text} /></div> : null}
-        {running ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
+        {/* Not while the reply's own words are coming in: those show it's working. */}
+        {running && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
