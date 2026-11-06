@@ -17,6 +17,7 @@
 .cd-pad { padding: 22px var(--cd-gutter); }
 .cd-textbutton { border: 0; padding: 0; background: none; font: inherit; font-weight: 600; color: var(--k-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .cd-iconbutton { width: 36px; height: 36px; display: inline-grid; place-items: center; flex: none; border: 0; border-radius: var(--k-r-s); background: transparent; color: var(--k-ink-soft); cursor: pointer; }
+.cd-attach .cd-iconbutton.is-on { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
 .cd-iconbutton:hover:not(:disabled) { background: var(--k-hover); color: var(--k-plum); }
 .cd-iconbutton:disabled { opacity: .45; cursor: default; }
 .cd-iconbutton:focus-visible, .cd button:focus-visible, .cd a:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 2px; }
@@ -247,10 +248,11 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
 .cd-shots button:hover { border-color: var(--k-hair-deep); }
 .cd-shots img { display: block; width: 100%; height: auto; max-height: 420px; object-fit: cover; object-position: top; }
 .cd-shots figcaption { font-size: 12.5px; color: var(--k-ink-soft); }
-.cd-lightbox { width: min(1200px, 94vw); max-height: 92vh; padding: 0; border: 3px solid var(--k-ink); border-radius: var(--k-r-s); background: var(--k-sheet); box-shadow: 6px 6px 0 var(--k-hair-deep); }
-.cd-lightbox::backdrop { background: color-mix(in srgb, var(--k-ink) 55%, transparent); }
+.cd-lightbox { width: min(1200px, 94vw); max-height: 92vh; padding: 0; border: 0; border-radius: var(--k-r-xl); background: var(--k-container-high); box-shadow: var(--k-shadow-raised); overflow: hidden; }
+.cd-lightbox[open] { animation: cd-dialog-in var(--k-t-seat) var(--k-spring); }
+.cd-lightbox::backdrop { background: color-mix(in srgb, var(--k-on-surface) 55%, transparent); }
 .cd-lightbox img { display: block; width: 100%; max-height: calc(92vh - 60px); object-fit: contain; background: var(--k-fold); }
-.cd-lightbox-bar { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 8px 0 16px; border-top: 2px solid var(--k-hair); font-size: 13.5px; }
+.cd-lightbox-bar { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 12px 0 24px; font-size: 14px; }
 .cd-lightbox-bar > span:first-child { flex: 1 1 auto; min-width: 0; color: var(--k-ink); }
 
 /* the running app: a sheet that wants you, so it carries the app's marker */
@@ -338,26 +340,60 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
 .cd-fromdrive { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 8px; text-decoration: none; font-size: 13.5px; font-weight: 500; color: var(--k-ink-soft); }
 .cd-fromdrive:hover:not(:disabled) { color: var(--k-plum); }
 .cd-fromdrive svg.i { width: 17px; height: 17px; }
-.cd-drivepick { width: min(560px, 94vw); max-height: 80vh; padding: 0; border: 3px solid var(--k-ink); border-radius: var(--k-r-s); background: var(--k-sheet); box-shadow: 6px 6px 0 var(--k-hair-deep); }
-.cd-drivepick::backdrop { background: color-mix(in srgb, var(--k-ink) 45%, transparent); }
-.cd-drivepick[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
-.cd-drivepick header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 14px 10px 10px 18px; border-bottom: 2px solid var(--k-hair); }
-.cd-drivepick header b { font: 600 21px/1.2 var(--k-display); color: var(--k-plum); }
-.cd-drivepick header .cd-iconbutton { grid-row: 1; grid-column: 2; }
-.cd-drivepick-path { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: 13px; }
+/* Attach: one button, an M3 Expressive menu of where files come from. */
+.cd-attach { position: relative; display: inline-flex; }
+.cd-attach-menu { position: absolute; z-index: 30; left: 0; bottom: calc(100% + 8px); min-width: 216px; display: grid; gap: 2px; padding: 4px; border-radius: var(--k-r-l); background: var(--k-container); box-shadow: var(--k-shadow-raised); transform-origin: bottom left; animation: cd-menu-in var(--k-t-fold) var(--k-spring); }
+.cd-attach-menu button { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px 0 12px; border: 0; border-radius: 12px; background: none; font: 500 14px/20px var(--k-sans); color: var(--k-on-surface); text-align: left; white-space: nowrap; cursor: pointer; transition: background-color var(--k-t-state) var(--k-ease-settle), border-radius var(--k-t-seat) var(--k-spring); }
+.cd-attach-menu button:hover, .cd-attach-menu button:focus-visible { outline: none; border-radius: 22px; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-attach-menu svg.i { flex: none; width: 20px; height: 20px; color: inherit; }
+@keyframes cd-menu-in { from { opacity: 0; transform: scale(.9) translateY(4px); } }
+
+/* Drive picker: an M3 Expressive basic dialog. Tonal container, 28px corners, a connected
+   list whose rows morph their corners, and the dialog springs in from its own centre. */
+.cd-drivepick { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 0; border-radius: var(--k-r-xl); background: var(--k-container-high); color: var(--k-on-surface); box-shadow: var(--k-shadow-raised); overflow: hidden; }
+.cd-drivepick::backdrop { background: color-mix(in srgb, var(--k-on-surface) 32%, transparent); }
+.cd-drivepick[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; animation: cd-dialog-in var(--k-t-seat) var(--k-spring); }
+.cd-drivepick[open]::backdrop { animation: cd-scrim-in var(--k-t-fold) var(--k-ease-settle); }
+@keyframes cd-dialog-in { from { opacity: 0; transform: scale(.88); border-radius: 44px; } }
+@keyframes cd-scrim-in { from { opacity: 0; } }
+.cd-drivepick header { display: grid; gap: 12px; padding: 24px 24px 16px; }
+.cd-drivepick header h2 { margin: 0; font: 600 24px/32px var(--k-display); color: var(--k-on-surface); }
+.cd-drivepick-path { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-left: -10px; }
 .cd-drivepick-path span { display: inline-flex; align-items: center; }
-.cd-drivepick-path svg.i { width: 12px; height: 12px; color: var(--k-faint); }
-.cd-drivepick-path button { border: 0; background: none; padding: 4px; font: 500 13px/1 var(--k-sans); color: var(--k-ink-soft); cursor: pointer; }
-.cd-drivepick-path button:hover { color: var(--k-plum); }
-.cd-drivepick ul { margin: 0; padding: 4px 0; list-style: none; overflow: auto; min-height: 200px; }
-.cd-drivepick li > button, .cd-drivepick li > label { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 18px; border: 0; background: none; font: 500 15px/1.3 var(--k-sans); color: var(--k-ink); text-align: left; cursor: pointer; }
-.cd-drivepick li > button:hover, .cd-drivepick li > label:hover { background: var(--k-hover); }
-.cd-drivepick li span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-drivepick li small { font: 500 11px/1 var(--k-mono); color: var(--k-faint); }
-.cd-drivepick li svg.i { width: 18px; height: 18px; color: var(--k-ink-soft); }
-.cd-drivepick li input { width: 18px; height: 18px; accent-color: var(--k-app-accent); }
-.cd-drivepick-note { padding: 14px 18px; font-size: 14px; }
-.cd-drivepick footer { display: flex; align-items: center; gap: 8px; padding: 12px 14px 12px 18px; border-top: 2px solid var(--k-hair); font-size: 13px; }
+.cd-drivepick-path svg.i { width: 16px; height: 16px; color: var(--k-on-surface-variant); }
+.cd-drivepick-path button { height: 32px; padding: 0 10px; border: 0; border-radius: var(--k-r-full); background: none; font: 500 14px/20px var(--k-sans); color: var(--k-on-surface-variant); cursor: pointer; transition: background-color var(--k-t-state) var(--k-ease-settle); }
+.cd-drivepick-path button:hover { background: color-mix(in srgb, var(--k-on-surface) 8%, transparent); }
+.cd-drivepick-path button[aria-current] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); font-weight: 600; }
+.cd-drivepick-scroll { min-height: 200px; }
+/* the list grows with what it holds; past the dialog's height, header and footer, it scrolls */
+.cd-drivepick-scroll > .k-scroller-view { overflow-x: hidden; max-height: calc(100dvh - 48px - 196px); }
+.cd-drivepick ul { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 2px; margin: 0; padding: 0 16px 8px; list-style: none; }
+.cd-drivepick li > button, .cd-drivepick li > label { width: 100%; display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 8px 16px; border: 0; border-radius: 4px; background: var(--k-surface); font: 500 16px/24px var(--k-sans); color: var(--k-on-surface); text-align: left; cursor: pointer; transition: border-radius var(--k-t-seat) var(--k-spring), background-color var(--k-t-state) var(--k-ease-settle); }
+.cd-drivepick li:first-child > button, .cd-drivepick li:first-child > label { border-top-left-radius: 20px; border-top-right-radius: 20px; }
+.cd-drivepick li:last-child > button, .cd-drivepick li:last-child > label { border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; }
+.cd-drivepick li > button:hover, .cd-drivepick li > label:hover { border-radius: 20px; background: color-mix(in srgb, var(--k-on-surface) 6%, var(--k-surface)); }
+.cd-drivepick li > button:focus-visible, .cd-drivepick li > label:focus-within { outline: 2px solid var(--k-suo); outline-offset: -2px; }
+.cd-drivepick li.is-chosen > label { border-radius: 20px; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-drivepick .cd-drivepick-name { flex: 1 1 auto; min-width: 0; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-drivepick li small { display: block; overflow: hidden; text-overflow: ellipsis; font: 500 12px/16px var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-drivepick li svg.i { flex: none; width: 24px; height: 24px; color: var(--k-on-surface-variant); }
+.cd-drivepick li input { flex: none; appearance: none; display: grid; place-items: center; width: 18px; height: 18px; margin: 0 3px; border: 2px solid var(--k-on-surface-variant); border-radius: 2px; cursor: pointer; transition: background-color var(--k-t-state) var(--k-ease-settle), border-color var(--k-t-state) var(--k-ease-settle); }
+.cd-drivepick li input:checked { border-color: var(--k-suo); background: var(--k-suo) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M4 9.5l3.2 3.2L14 5.8' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E") center / 18px no-repeat; }
+.cd-drivepick li .cd-crest { width: 32px; height: 32px; margin: 0 -4px; }
+.cd-drivepick-path .cd-crest { width: 18px; height: 18px; margin-right: 6px; vertical-align: -4px; }
+.cd-drivepick-path button { display: inline-flex; align-items: center; }
+.cd-drivepick-file { position: relative; }
+.cd-drivepick-file > label { padding-right: 96px; }
+.cd-drivepick-file > label input { position: absolute; right: 19px; top: 50%; translate: 0 -50%; }
+.cd-drivepick .cd-drivepick-file > .cd-drivepick-peek { position: absolute; right: 52px; top: 50%; translate: 0 -50%; width: 40px; height: 40px; min-height: 0; padding: 0; display: grid; place-items: center; border: 0; border-radius: var(--k-r-full); background: none; color: var(--k-on-surface-variant); cursor: pointer; transition: background-color var(--k-t-state) var(--k-ease-settle); }
+.cd-drivepick .cd-drivepick-file > .cd-drivepick-peek:hover, .cd-drivepick .cd-drivepick-file > .cd-drivepick-peek:focus-visible { border-radius: var(--k-r-full); background: color-mix(in srgb, var(--k-on-surface) 8%, transparent); color: var(--k-on-surface); }
+.cd-drivepick .cd-drivepick-file > .cd-drivepick-peek svg.i { width: 20px; height: 20px; }
+.cd-drivepick li .fp-thumb { border-radius: 12px; overflow: hidden; }
+.cd-drivepick-note { display: grid; place-items: center; min-height: 120px; font-size: 14px; color: var(--k-on-surface-variant); }
+.cd-drivepick-wait { width: 32px; height: 32px; border-radius: 30%; background: var(--k-primary-container); animation: cd-drivepick-wait 1.4s var(--k-spring) infinite; }
+@keyframes cd-drivepick-wait { 50% { border-radius: 50%; transform: rotate(180deg) scale(.8); } 100% { transform: rotate(360deg); } }
+.cd-drivepick-count { font: 500 14px/20px var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-drivepick footer { display: flex; align-items: center; gap: 8px; padding: 16px 24px 24px; }
 
 /* ── M3 pass (ADR 0006, design/mockups/m3-everywhere.html): the same three
    parts with clearer weight. Tasks are soft rows, the conversation sits on a
@@ -812,11 +848,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-access-row:hover { background: var(--k-hover); }
 .cd-access-row svg { width: 18px; height: 18px; flex: none; }
 .cd-access-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-accessdialog ul { padding: 8px 12px; }
-.cd-access-space { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 4px 8px; }
-.cd-access-space-name { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 600; }
-.cd-access-space-name svg, .cd-access-row svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.cd-access-space-name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-access-row svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ── Kimono AI: a chat, not a developer's tool ──
    A chat is its title, the conversation and the composer. Tabs, the running-app
@@ -1101,7 +1133,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* no monospace in the conversation's words: times, counts and names are the sans, with figures that line up.
    Code itself (diffs, logs, code blocks) keeps its monospace. */
-.cd-mono, .cd-when, .cd-word, .cd-status, .cd-filechip small, .cd-drivepick li small, .cd-list small .cd-mono, .cd-project-head .cd-mono, .cd kbd, .cd-picker-value.is-mono, .cd-picker-name.is-mono, .cd-linkname-field > span {
+.cd-mono, .cd-when, .cd-word, .cd-status, .cd-filechip small, .cd-list small .cd-mono, .cd-project-head .cd-mono, .cd kbd, .cd-picker-value.is-mono, .cd-picker-name.is-mono, .cd-linkname-field > span {
   font-family: var(--k-sans); font-variant-numeric: tabular-nums; letter-spacing: 0;
 }
 .call code { font: 500 14px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
@@ -1114,8 +1146,67 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 /* a tool call keeps a rounded shape under the pointer, in the middle of the list too */
 .call > summary:hover { border-radius: 14px; }
 
+/* ── Connections: what you have on top, the catalog below; one app on its own page ── */
+.cd-conn-sub.is-first { margin-top: 0; }
+.cd-conn-card.is-link, .cd-conn-tile.is-link { position: relative; }
+.cd-conn-open { position: absolute; inset: 0; z-index: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; transition: background-color var(--k-t-state); }
+.cd-conn-open:hover { background: color-mix(in srgb, var(--k-on-surface) 5%, transparent); }
+.cd-conn-open:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: -2px; }
+.is-link > :not(.cd-conn-open) { position: relative; z-index: 1; pointer-events: none; }
+.is-link > .cd-conn-acts, .is-link > .k-seal, .is-link > button:not(.cd-conn-open), .is-link > .cd-conn-acts * { pointer-events: auto; }
+.cd-conn-chev svg.i { width: 18px; height: 18px; fill: none; stroke: var(--k-on-surface-variant); stroke-width: 2; }
+.cd-conn-id small.is-bad { color: var(--k-error, #a3392e); }
+
+.cd-app-hero { display: flex; align-items: center; gap: 18px; padding: 20px; border-radius: var(--k-r-xl); background: var(--k-container-lowest); flex-wrap: wrap; }
+.cd-app-hero .cd-conn-id b { font: 600 22px/1.2 var(--k-display); color: var(--k-plum); }
+.cd-app-logo { width: 64px; height: 64px; border-radius: 18px; }
+.cd-app-logo img { width: 38px; height: 38px; }
+.cd-app-about { margin: 4px 4px 0; max-width: 68ch; font-size: 15.5px; line-height: 1.55; color: var(--k-on-surface); }
+.cd-app-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
+.cd-app-tools li { display: grid; gap: 3px; padding: 12px 16px; border-radius: 8px; background: var(--k-container-low); }
+.cd-app-tools b { font: 600 14.5px/1.3 var(--k-sans); color: var(--k-on-surface); }
+.cd-app-tools small { font-size: 13px; line-height: 1.4; color: var(--k-on-surface-variant); }
+
+/* ── the new-chat screen: your use, and apps to connect ── */
+.cd-home-usage { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 0 12px; }
+.cd-home-usage .cd-meter { flex: 0 1 auto; }
+.cd-home-usage .cd-meter .cd-ring { width: 26px; height: 26px; }
+.cd-home-apps { display: grid; gap: 10px; margin-top: 10px; }
+.cd-home-apps-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 12px; }
+.cd-home-apps h3 { margin: 0; font: 700 14px/1.2 var(--k-sans); letter-spacing: .01em; color: var(--k-on-surface-variant); }
+.cd-home-apps .cd-textbutton { font-size: 14px; color: var(--k-on-surface-variant); }
+.cd-home-apps ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cd-home-apps li button { width: 100%; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 0; border-radius: var(--k-r-l); background: var(--k-container-low); text-align: left; font: inherit; cursor: pointer; transition: background-color var(--k-t-state); }
+.cd-home-apps li button:hover { background: var(--k-container-high); }
+.cd-home-apps .cd-conn-logo { width: 36px; height: 36px; border-radius: 11px; }
+.cd-home-apps .cd-conn-logo img { width: 22px; height: 22px; }
+.cd-home-apps .cd-conn-id b { font-size: 14.5px; }
+.cd-home-apps .cd-conn-id small { font-size: 12.5px; -webkit-line-clamp: 1; line-clamp: 1; }
+.cd-hello-row .cd-tuning { margin-left: 2px; }
+@media (max-width: 720px) { .cd-home-apps ul { grid-template-columns: 1fr 1fr; } .cd-hello-row { flex-wrap: wrap; } }
+.cd-app .cd-conn-head .cd-back { display: inline-grid !important; place-items: center; margin: 0; }
+.cd-app-count { margin: 0 4px; font-size: 14.5px; color: var(--k-on-surface-variant); }
+.cd-app-count b { color: var(--k-on-surface); }
+
+/* ── the new-chat box takes files too ── */
+.cd-hello-box { position: relative; }
+.cd-hello-box.is-dropping { box-shadow: 0 0 0 2px var(--k-app-accent); }
+.cd-hello-box .cd-drop { border-radius: inherit; }
+.cd-hello-box .cd-pending { padding-top: 2px; }
+.cd-hello-row .cd-iconbutton { width: 36px; height: 36px; border-radius: 10px; color: var(--k-on-surface-variant); }
+.cd-hello-row .cd-iconbutton:hover:not(:disabled) { background: var(--k-container-high); color: var(--k-on-surface); }
+.cd-conn-more { display: flex; justify-content: center; padding: 6px 0 4px; }
+
 /* Files, previewed with Drive's own box (components/file-preview). */
 .cd-viewer > .cd-file-preview { aspect-ratio: auto; height: 100%; min-height: 0; border-radius: 0; box-shadow: none; }
 .cd-tree-row img.fp-type { width: 15px; height: 15px; flex: none; }
 .cd-filechip > .fp-thumb { flex: none; width: var(--fp-thumb); margin-right: 2px; }
 .cd-drivepick li .fp-thumb { flex: none; width: var(--fp-thumb); }
+
+/* the chat's name: click to rename, in place, in the title's own type */
+.cd-title-button { all: unset; display: inline; max-width: 100%; cursor: text; border-radius: var(--k-r-s, 6px); }
+.cd-title-button:hover { box-shadow: 0 2px 0 var(--k-hair); }
+.cd-title-button:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 2px; }
+.cd-title-form { display: grid; gap: 4px; min-width: 0; }
+.cd-title-form h1 { overflow: visible; }
+.cd-title-input { all: unset; box-sizing: border-box; width: 100%; font: inherit; color: inherit; box-shadow: inset 0 -2px 0 var(--k-app-accent); }

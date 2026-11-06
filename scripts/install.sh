@@ -54,6 +54,17 @@ fi
 install -m 0755 "${temporary_directory}/${asset}" "$install_path"
 echo "Installed $($install_path version) at ${install_path}."
 
+# Under `curl | sh` our stdin is the script itself, so the CLI's own prompts
+# (the enrollment key, Cloudflare setup) would read an empty pipe. Give the CLI
+# the terminal instead whenever one is there.
+cli() {
+  if [ ! -t 0 ] && (: </dev/tty) 2>/dev/null; then
+    "$install_path" "$@" </dev/tty
+  else
+    "$install_path" "$@"
+  fi
+}
+
 prompt() {
   label=$1
   default=${2:-}
@@ -109,14 +120,16 @@ if [ "$1" = "server" ]; then
     dynamic_dns=$(prompt "Configure Cloudflare Dynamic DNS? (y/N)" "n")
     case "$dynamic_dns" in
       y|Y|yes|YES)
-        "$install_path" server install --domain "$domain" --portal-domain "$portal_domain" --email "$email" --no-start
-        "$install_path" server cloudflare-ddns setup
-        exec "$install_path" server start
+        cli server install --domain "$domain" --portal-domain "$portal_domain" --email "$email" --no-start
+        cli server cloudflare-ddns setup
+        cli server start
+        exit $?
         ;;
     esac
     set -- --domain "$domain" --portal-domain "$portal_domain" --email "$email"
   fi
-  exec "$install_path" server install "$@"
+  cli server install "$@"
+  exit $?
 fi
 
 if [ "$1" = "node" ]; then
@@ -131,7 +144,8 @@ if [ "$1" = "node" ]; then
     fi
     set -- --server "$server_url" --name "$machine"
   fi
-  exec "$install_path" node install "$@"
+  cli node install "$@"
+  exit $?
 fi
 
 if [ "$1" != "cli" ]; then

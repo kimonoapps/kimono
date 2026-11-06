@@ -1,0 +1,142 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "portal",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@kimono/portal",
+        "dev",
+        "--port",
+        "3477"
+      ],
+      "port": 3477
+    },
+    {
+      "name": "mockups",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "3478",
+        "--directory",
+        "design/mockups"
+      ],
+      "port": 3478
+    },
+    {
+      "name": "authentik-brand-proxy",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-akram-dev-kimono/50c5e4da-75da-4634-bc07-5fa748b0a72b/scratchpad/ak-proxy.mjs"
+      ],
+      "port": 3479
+    },
+    {
+      "name": "portal-prod",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "KIMONO_STATE_DIR=/tmp/kimono-portal-test",
+        "pnpm",
+        "--filter",
+        "@kimono/portal",
+        "start",
+        "--port",
+        "3000"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@kimono/mobile",
+        "exec",
+        "expo",
+        "start",
+        "--web",
+        "--port",
+        "8081"
+      ],
+      "port": 8081
+    },
+    {
+      "name": "specimens",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "3480",
+        "--directory",
+        "design/specimens"
+      ],
+      "port": 3480
+    },
+    {
+      "name": "portal-dev-3000",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "KIMONO_STATE_DIR=/tmp/kimono-portal-test",
+        "pnpm",
+        "--filter",
+        "@kimono/portal",
+        "dev",
+        "--port",
+        "3000"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "portal-web-apps",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "-C",
+        "/Users/akram/dev/kimono-redesign",
+        "--filter",
+        "@kimono/portal",
+        "dev",
+        "--port",
+        "3000"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "sandbox-node",
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-akram-dev-kimono/ebc7f2ff-ec87-48cd-aee3-4445cf022458/scratchpad/kimono",
+      "runtimeArgs": [
+        "node",
+        "sandboxes",
+        "serve",
+        "--listen",
+        "127.0.0.1:7480",
+        "--key-file",
+        "/private/tmp/claude-501/-Users-akram-dev-kimono/ebc7f2ff-ec87-48cd-aee3-4445cf022458/scratchpad/node.key",
+        "--image",
+        "ghcr.io/kimonoapps/kimono-sandbox:dev",
+        "--state-dir",
+        "/private/tmp/claude-501/-Users-akram-dev-kimono/ebc7f2ff-ec87-48cd-aee3-4445cf022458/scratchpad/node-state"
+      ],
+      "port": 7480
+    },
+    {
+      "name": "sandbox-node-naming",
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-akram-dev-kimono/c3310c9c-11f3-4918-a5ff-d873e3b51fcc/scratchpad/kimono",
+      "runtimeArgs": [
+        "node",
+        "sandboxes",
+        "serve",
+        "--listen",
+        "127.0.0.1:7480",
+        "--key-file",
+        "/private/tmp/claude-501/-Users-akram-dev-kimono/ebc7f2ff-ec87-48cd-aee3-4445cf022458/scratchpad/node.key",
+        "--image",
+        "ghcr.io/kimonoapps/kimono-sandbox:dev",
+        "--state-dir",
+        "/private/tmp/claude-501/-Users-akram-dev-kimono/ebc7f2ff-ec87-48cd-aee3-4445cf022458/scratchpad/node-state"
+      ],
+      "port": 7480
+    }
+  ]
+}

@@ -73,7 +73,8 @@ export function FilePreview({ className, actions, overlayClassName, expandable =
 }
 
 /** The file over the whole window: its name, [actions], and the way back (the button or Escape). */
-export function FileOverlay({ className, actions, onClose, ...source }: Source & { className?: string; actions?: ReactNode; onClose: () => void }) {
+/** [into] is where it's drawn, for a caller inside a modal dialog (the page's top layer would cover it otherwise). */
+export function FileOverlay({ className, actions, onClose, into, ...source }: Source & { className?: string; actions?: ReactNode; onClose: () => void; into?: Element | null }) {
   const { className: own, body } = parts(source);
   const close = useRef<HTMLButtonElement>(null);
   const leave = useRef(onClose);
@@ -94,7 +95,7 @@ export function FileOverlay({ className, actions, onClose, ...source }: Source &
       <button type="button" ref={close} className="fp-big-close" aria-label="Close" title="Close (Esc)" onClick={onClose}><ShrinkIcon /></button>
     </div>
     <div className="fp-big-stage"><div className={own}>{body}</div></div>
-  </div>, document.body);
+  </div>, into ?? document.body);
 }
 
 /** A file as a small tile: its picture when [picture] gives one, otherwise its type's mark. */

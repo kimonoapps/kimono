@@ -3,13 +3,14 @@ import { portalOrigin } from "@/lib/account";
 import { code, db } from "@/lib/code";
 import { ConnectionProblem, findApps } from "@/lib/code/composio";
 
-/** Apps this person could connect, by name (?q=). */
+/** Apps this person could connect, by name (?q=), a page at a time (?cursor= from the last page's `next`). */
 export async function GET(request: Request) {
   const user = await apiUser();
   if (!user) return unauthorized();
-  const search = new URL(request.url).searchParams.get("q") ?? "";
+  const params = new URL(request.url).searchParams;
+  const search = params.get("q") ?? "";
   return code(user, async (config) => {
-    try { return apiJson({ apps: await findApps(db(), config.composioKey, user.username, portalOrigin(), search) }); }
+    try { return apiJson(await findApps(db(), config.composioKey, user.username, portalOrigin(), search, params.get("cursor"))); }
     catch (error) { if (error instanceof ConnectionProblem) return apiError(error.status, error.message); throw error; }
   }, false);
 }

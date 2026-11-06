@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kimono Account Mockups</title>
+<style>
+/*@fonts*/
+/*@kata*/
+/*@shell*/
+/*@drive-css*/
+
+/* ═══════════════════════════════════════════════════════════════
+   Account — Kimono's own chrome, so the house suō, not an app colour.
+   ═══════════════════════════════════════════════════════════════ */
+.ac { --dv-deep: var(--k-suo); --dv-tint: var(--k-sakura-wash); }
+.ac .kimono-mark-symbol { color: var(--k-plum); }
+.ac .main-nav a { min-height: 44px; display: flex; align-items: center; padding: 0 14px; font-weight: 600; color: var(--k-ink-soft); }
+.ac-body { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 32px; padding: 32px 32px 48px; align-items: start; }
+.ac-me { display: grid; justify-items: start; gap: 10px; padding: 0 12px 18px; }
+.ac-me b { font: 600 24px/1.15 var(--k-display); color: var(--k-plum); }
+.ac-me small { font-size: 13px; color: var(--k-ink-soft); }
+.ac-portrait { position: relative; display: inline-block; }
+.ac-portrait button { position: absolute; right: -4px; bottom: -2px; }
+.ac-round { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--k-lift); color: var(--k-ink); box-shadow: 0 0 0 1px var(--k-hair-deep), var(--k-shadow-sheet); cursor: pointer; }
+.ac-round svg.i { width: 17px; height: 17px; }
+.ac-field-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.ac-fixed { min-height: 44px; display: flex; align-items: center; padding: 0 16px; border: 1px dashed var(--k-hair-deep); border-radius: 1px; color: var(--k-ink-soft); font: 500 14px/1 var(--k-mono); max-width: 420px; }
+.ac-where { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--k-hair); border-radius: 2px; background: var(--k-lift); }
+.ac-where > div { display: grid; gap: 10px; align-content: start; padding: 14px 16px; }
+.ac-where > div + div { border-left: 1px solid var(--k-hair); }
+.ac-where small { font-size: 12px; color: var(--k-ink-soft); }
+.ac-mini-chip { display: inline-flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; border: 1px solid var(--k-hair); border-radius: 1px; background: var(--k-fold); font-size: 13px; font-weight: 600; width: max-content; }
+.ac-mini-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+
+/* crop */
+.ac-crop { display: grid; grid-template-columns: 320px; gap: 28px; padding: 6px 26px 22px; align-items: start; }
+.ac-stage { position: relative; width: 320px; height: 320px; max-width: 100%; overflow: hidden; border-radius: 2px; background: var(--k-urushi); }
+.ac-stage svg { position: absolute; left: -40px; top: -30px; width: 420px; height: 420px; }
+.ac-stage .mask { position: absolute; left: 50%; top: 50%; width: 236px; height: 236px; translate: -50% -50%; border-radius: 50%; box-shadow: 0 0 0 400px rgba(42, 29, 34, .58), inset 0 0 0 2px var(--k-lift); }
+.ac-zoom { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; margin-top: 14px; font-size: 12px; color: var(--k-ink-soft); }
+.ac-zoom input { width: 100%; accent-color: var(--k-suo); }
+
+/* password */
+.ac-rules { display: grid; gap: 8px; margin: 4px 0 0; padding: 0; list-style: none; font-size: 13.5px; }
+.ac-rules li { display: flex; align-items: center; gap: 10px; color: var(--k-ink-soft); }
+.ac-rules li .dot { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--k-hair-deep); }
+.ac-rules li.ok { color: var(--k-ink); }
+.ac-rules li.ok .dot { border-color: var(--k-moss); background: var(--k-moss); color: var(--k-lift); }
+.ac-rules li.ok .dot svg { width: 11px; height: 11px; stroke-width: 2.6; }
+.ac-meter { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; max-width: 420px; margin-top: 8px; }
+.ac-meter i { height: 4px; background: var(--k-fold); }
+.ac-meter i.on { background: var(--k-moss); }
+.ac-steps { display: flex; gap: 22px; padding: 0 0 2px; font-size: 13px; color: var(--k-ink-soft); }
+.ac-steps span { display: flex; align-items: center; gap: 8px; }
+.ac-steps b { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--k-hair-deep); font: 600 12px/1 var(--k-mono); }
+.ac-steps .done b { background: var(--k-ink); border-color: var(--k-ink); color: var(--k-lift); }
+.ac-steps .now { color: var(--k-ink); font-weight: 600; }
+.ac-steps .now b { border-color: var(--k-suo); color: var(--k-suo-deep); }
+
+/* sessions */
+.ac-dev { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 72px; border-bottom: 1px solid var(--k-hair); }
+.ac-dev:last-child { border-bottom: 0; }
+.ac-dev .ico { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 2px; background: var(--k-fold); color: var(--k-ink); }
+.ac-dev .ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.ac-dev b { display: block; font-size: 14px; font-weight: 600; }
+.ac-dev small { display: block; font-size: 12.5px; color: var(--k-ink-soft); }
+.ac-dev .here { display: inline-flex; margin-left: 8px; padding: 1px 8px; background: var(--k-moss-wash); color: var(--k-moss-deep); font-size: 12px; font-weight: 600; vertical-align: 1px; }
+
+/* phone */
+.ph-list { background: var(--k-sheet); }
+.ph-li { display: grid; grid-template-columns: minmax(0, 1fr) auto 12px; gap: 10px; align-items: center; min-height: 54px; padding: 0 16px; border-bottom: 1px solid var(--k-hair); font-size: 15px; }
+.ph-li small { color: var(--k-ink-soft); font-size: 13px; }
+.ph-li .go { width: 7px; height: 7px; border-right: 2px solid var(--k-faint); border-bottom: 2px solid var(--k-faint); transform: rotate(-45deg); }
+.ph-li.danger { color: var(--k-suo-deep); font-weight: 600; grid-template-columns: 1fr; }
+.ph-group { padding: 18px 16px 8px; font: 600 12px/1.4 var(--k-sans); color: var(--k-ink-soft); }
+.ph-hero { display: grid; justify-items: center; gap: 8px; padding: 22px 16px 18px; text-align: center; }
+.ph-hero b { font: 600 24px/1.15 var(--k-display); color: var(--k-plum); }
+.ph-hero small { font-size: 13px; color: var(--k-ink-soft); }
+.ph-pad { padding: 16px; display: grid; gap: 14px; }
+.ph-pad .k-field input { max-width: none; }
+.ph-pad .k-seal { width: 100%; }
+.ph-cropstage { position: relative; height: 390px; overflow: hidden; background: var(--k-urushi); }
+.ph-cropstage svg { position: absolute; left: -20px; top: -10px; width: 430px; height: 430px; }
+.ph-cropstage .mask { position: absolute; left: 50%; top: 50%; width: 300px; height: 300px; translate: -50% -50%; border-radius: 50%; box-shadow: 0 0 0 500px rgba(42, 29, 34, .6), inset 0 0 0 2px var(--k-lift); }
+.ph-cropbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 16px; background: var(--k-urushi); }
+.ph-cropbar .k-seal { width: 100%; }
+.ph-src { display: grid; grid-template-columns: 1fr 1fr 1fr; background: var(--k-urushi); border-top: 1px solid rgba(255,255,255,.08); }
+.ph-src a { display: grid; justify-items: center; gap: 4px; padding: 12px 0 16px; color: var(--k-urushi-text); font-size: 12px; font-weight: 600; }
+.ph-src a.on { color: var(--k-lift); box-shadow: inset 0 3px 0 var(--k-sakura); }
+.ph-src svg.i { width: 20px; height: 20px; }
+</style>
+</head>
+<body>
+<div class="mk">
+  <header class="mk-head">
+    <div class="mk-kicker">Kimono account · screen mockups · round 1</div>
+    <h1>Your account, inside Kimono</h1>
+    <p>These screens bring the parts people actually change into Kimono: their picture, name and email, password, and the devices they're signed in on. The website and the phone app use the same routes and the same API.</p>
+  </header>
+  <nav class="mk-tabs" role="tablist" id="tabs"></nav>
+  <div id="sections"></div>
+</div>
+<script>
+/*@ramp*/
+/*@drive-js*/
+
+const BRANCH = `<svg class="kimono-branch" viewBox="1 12 111 106" fill="currentColor" aria-hidden="true"><path d="M2 108 C26 98 43 84 55 66 C62 55 71 47 79 43 L81 47 C73 51 66 60 59 72 C47 90 30 106 6 116Z"/><path d="M57 73 C56 63 53 54 47 47 L50 44 C57 52 60 62 61 72Z"/><path d="M27 97 C40 96 51 100 58 108 L55 111 C49 104 39 100 27 100Z"/><g transform="translate(83 41) scale(.55) translate(-50 -50)">${[0, 72, 144, 216, 288].map((r) => `<path transform="rotate(${r} 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/>`).join("")}<circle cx="50" cy="50" r="13"/></g></svg>`;
+const kHeader = () => `<header class="top-header"><div class="header-inner"><span class="brand-link"><span class="kimono-mark"><span class="kimono-mark-symbol">${BRANCH}</span><span class="kimono-mark-word">kimono</span></span></span><nav class="main-nav"><a href="#">Home</a><a href="#">Admin</a></nav><details class="profile-menu"><summary class="profile-chip"><span class="avatar has-image">${pfp("akram", 34).replace(/^<span[^>]*>|<\/span>$/g, "")}</span><span class="profile-copy"><strong>Akram</strong><small>owner</small></span><span class="profile-chevron">⌄</span></summary></details></div></header>`;
+const acScreen = (inner) => `<div class="mk-screen"><div class="dv ac">${inner}</div></div>`;
+const DEV = {
+  phone: '<svg viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>',
+  laptop: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1"/><path d="M2 19h20"/></svg>',
+  desktop: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M9 20h6M12 16v4"/></svg>',
+  tablet: '<svg viewBox="0 0 24 24"><rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M11 18.5h2"/></svg>',
+};
+/* the "photo" being cropped: a larger sample portrait */
+const bigPhoto = () => { const p = PEOPLE.akram; return `<svg viewBox="0 0 40 40" preserveAspectRatio="xMidYMid slice"><rect width="40" height="40" fill="#d8c3a2"/><rect y="28" width="40" height="12" fill="#b9a07c"/><rect x="29" y="6" width="7" height="22" fill="#c9b18c"/><path d="M5 41 C7 31 13.5 27.5 20 27.5 C26.5 27.5 33 31 35 41Z" fill="${p.shirt}"/><rect x="17.5" y="22" width="5" height="6" rx="2" fill="${p.skin}"/><circle cx="20" cy="17" r="7.5" fill="${p.skin}"/><path d="${HAIR[p.style]}" fill="${p.hair}"/></svg>`; };
+
+function rail(cur) {
+  const item = (id, label, icon) => `<a href="#" ${id === cur ? 'aria-current="page"' : ""}>${I(icon)}${label}</a>`;
+  return `<aside class="dv-side"><div class="ac-me"><span class="ac-portrait">${pfp("akram", 72)}<button class="ac-round" aria-label="Change picture">${I("camera")}</button></span><b>Akram</b><small>@akram · owner</small></div>
+    <nav class="dv-nav">${item("profile", "Profile", "people")}${item("password", "Password", "lock")}${item("devices", "Signed-in devices", "laptop" in P ? "laptop" : "space")}${item("apps", "Mobile apps", "download")}</nav>
+    </aside>`;
+}
+const pageHead = (kicker, h1, p) => `<div class="dv-mast"><div class="dv-mast-id"><div><div class="dv-kicker">${kicker}</div><h1>${h1}</h1>${p ? `<p>${p}</p>` : ""}</div></div></div>`;
+
+function web() {
+  const w1 = acScreen(kHeader() + `<div class="ac-body">${rail("profile")}<section style="min-width:0"><div class="k-tray">
+    ${pageHead("Your account", "Profile")}
+    <div class="k-compartment"><div class="k-tab"><h2>Picture</h2></div><div class="k-body"><div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">${pfp("akram", 96)}<div class="k-seal-group">${seal("Change picture")}${seal("Remove", "quiet")}</div></div></div></div>
+    <div class="k-compartment"><div class="k-tab"><h2>Details</h2></div><div class="k-body"><div class="k-form">
+      <label class="k-field"><span>Name</span><input id="ac-name" value="Akram"></label>
+      <label class="k-field"><span>Email</span><input id="ac-email" value="akram@kimono.example"></label>
+      <div class="k-field"><span>Username</span><span class="ac-fixed">@akram</span></div>
+      <div class="k-form-actions">${seal("Save")}</div></div></div></div>
+  </div></section></div>`);
+
+  const w2 = acScreen(kHeader() + `<div style="position:relative;height:640px"><div class="ac-body">${rail("profile")}<section class="dv-sheet" style="height:520px"></section></div>
+    <div class="dv-scrim"><div class="dv-dialog" style="width:min(380px,100%)"><header><h2>Change picture</h2></header>
+      <div class="ac-crop"><div><div class="ac-stage">${bigPhoto()}<span class="mask"></span></div><div class="ac-zoom"><span>Smaller</span><input id="ac-zoom" type="range" min="1" max="3" step=".1" value="1.6" aria-label="Zoom"><span>Larger</span></div></div>
+      </div>
+      <footer><span class="left"></span>${seal("Use this picture")}${seal("Cancel", "quiet")}</footer></div></div></div>`);
+
+  const w3 = acScreen(kHeader() + `<div class="ac-body">${rail("password")}<section style="min-width:0"><div class="k-tray">
+    ${pageHead("Your account", "Password")}
+    <div class="k-compartment"><div class="k-tab"><h2>Steps</h2></div><div class="k-body"><div class="ac-steps"><span class="done"><b>✓</b>Current password</span><span class="now"><b>2</b>New password</span><span><b>3</b>Done</span></div></div></div>
+    <div class="k-compartment k-wants"><div class="k-tab"><h2>New password</h2></div><div class="k-body"><div class="k-form">
+      <label class="k-field"><span>New password</span><input id="ac-new" type="password" value="sakura-ferry-lantern-42"><div class="ac-meter"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div><small>Strong. A few unrelated words is easier to remember than symbols.</small></label>
+      <ul class="ac-rules"><li class="ok"><span class="dot">${I("check")}</span>At least 12 characters</li><li class="ok"><span class="dot">${I("check")}</span>Not your name or username</li><li class="ok"><span class="dot">${I("check")}</span>Not found in known password leaks</li></ul>
+      <label class="k-field"><span>Type it again</span><input id="ac-again" type="password" value="sakura-ferry-lantern-42"></label>
+      <label style="display:flex;align-items:center;gap:12px;font-size:14px">${check(true)}Sign out my other 3 devices</label>
+      <div class="k-form-actions">${seal("Change password")}${seal("Cancel", "quiet")}</div></div></div></div>
+  </div></section></div>`);
+
+  const devs = [["phone", "Kimono app on iPhone", "This device · Tokyo · now", true], ["laptop", "Safari on Mac", "Tokyo · 10 minutes ago"], ["desktop", "Firefox on Windows", "Osaka · 3 Oct"], ["tablet", "Immich on iPad", "Tokyo · 28 Sep"]];
+  const w4 = acScreen(kHeader() + `<div class="ac-body">${rail("devices")}<section style="min-width:0"><div class="k-tray">
+    ${pageHead("Your account", "Signed-in devices")}
+    <div class="k-compartment"><div class="k-tab"><h2>4 devices</h2></div><div class="k-body">${devs.map(([i, n, m, here]) => `<div class="ac-dev"><span class="ico">${DEV[i]}</span><div><b>${n}${here ? '<span class="here">This device</span>' : ""}</b><small>${m}</small></div>${here ? "" : seal("Sign out", "quiet", "k-compact")}</div>`).join("")}</div></div></div>
+  </div></section></div>`);
+
+  const w5 = acScreen(kHeader() + `<div class="ac-body">${rail("apps")}<section style="min-width:0"><div class="k-tray">
+    ${pageHead("Your account", "Mobile apps", "The Kimono apps.")}
+    <div class="k-compartment"><div class="k-tab"><h2>iPhone and iPad</h2></div><div class="k-body"><div class="ac-steps" style="margin-bottom:14px"><span class="done"><b>✓</b>Invited</span><span class="now"><b>2</b>Accept the email</span><span><b>3</b>Install from TestFlight</span></div>
+      <p class="k-note">Akram sent a TestFlight invite to <strong>akram@icloud.example</strong> on 6 Oct. Open it on your iPhone, accept, then install the Kimono apps from TestFlight.</p><div class="k-form-actions" style="margin-top:12px">${seal("Open TestFlight")}${seal("Resend invite", "quiet")}</div></div></div>
+    <div class="k-compartment"><div class="k-tab"><h2>Android</h2></div><div class="k-body"><p class="k-note">Download the app, then allow your browser to install it when Android asks. After that, it keeps the Kimono apps up to date.</p><div class="k-form-actions" style="margin-top:12px">${seal("Download for Android", "quiet")}</div><p class="k-note" style="margin-top:10px;font-family:var(--k-mono);font-size:12px">kimono-1.4.0.apk · 38 MB</p></div></div>
+  </div></section></div>`);
+
+  return `<header><h2>Website · /account</h2><p>Kimono's own chrome and the house colour, since an account belongs to Kimono rather than to one app. The rail keeps your picture in view on every account page.</p></header>
+  ${frame("W1", "Profile", "Your picture, then name and email. Username is shown but can't be edited.", w1)}
+  ${frame("W2", "Change picture", "Drag and zoom the photo inside the circle, then save.", w2)}
+  ${frame("W3", "Password", "Current password, new one, done, with a checklist that fills in as you type.", w3)}
+  ${frame("W4", "Signed-in devices", "Each signed-in device, with sign-out for one or all.", w4)}
+  ${frame("W5", "Mobile apps", "Where each person sees their TestFlight invite state on iPhone, and the Android download.", w5)}`;
+}
+
+function phone() {
+  const ph = (inner) => `<div class="mk-screen mk-phone"><div class="dv ac ph">${inner}</div></div>`;
+  const bar = (title, back = true, end = "") => `<div class="ph-head">${back ? `<button class="dv-iconbtn" style="color:var(--k-ink-soft)" aria-label="Back">${I("back")}</button>` : ""}<b style="font-weight:600;font-size:16px">${title}</b><span class="end">${end}</span></div>`;
+  const tabs = (cur) => `<nav class="ph-tabs">${[["home", "Home", "home"], ["drive", "Drive", "folder"], ["recent", "Recent", "clock"], ["you", "You", "people"]].map(([id, l, i]) => `<a href="#" ${id === cur ? 'aria-current="page"' : ""}>${id === "you" ? pfp("akram", 22) : I(i)}${l}</a>`).join("")}</nav>`;
+  const p1 = ph(bar("You", false) + `<div class="ph-body" style="border-top:0">
+    <div class="ph-hero"><span class="ac-portrait">${pfp("akram", 96)}<button class="ac-round" aria-label="Change picture">${I("camera")}</button></span><b>Akram</b><small>@akram · akram@kimono.example</small></div>
+    <div class="ph-group">Account</div><div class="ph-list">${[["Name and email", ""], ["Password", "Changed 2 months ago"], ["Signed-in devices", "4"]].map(([l, s]) => `<div class="ph-li"><span>${l}</span><small>${s}</small><i class="go"></i></div>`).join("")}</div>
+    <div class="ph-group">This phone</div><div class="ph-list">${[["Kimono apps", "Update ready"], ["Notifications", "On"]].map(([l, s]) => `<div class="ph-li"><span>${l}</span><small>${s}</small><i class="go"></i></div>`).join("")}<div class="ph-li danger"><span>Sign out</span></div></div>
+    </div>${tabs("you")}`);
+  const p2 = ph(`<div class="ph-head" style="background:var(--k-urushi)"><button class="dv-iconbtn" style="color:var(--k-urushi-text)" aria-label="Cancel">${I("close")}</button><b style="color:var(--k-urushi-text);font-weight:600">Move and scale</b></div>
+    <div style="flex:1;background:var(--k-urushi);display:grid;align-content:center"><div class="ph-cropstage">${bigPhoto()}<span class="mask"></span></div></div>
+    <div class="ph-cropbar">${seal("Choose again", "quiet")}${seal("Use picture")}</div>
+    <nav class="ph-src"><a href="#">${I("camera")}Camera</a><a href="#" class="on">${I("grid")}Photos</a><a href="#">${I("folder")}Drive</a></nav>`);
+  const p3 = ph(bar("Password") + `<div class="ph-body" style="border-top:0"><div class="ph-pad">
+    <div class="ac-steps" style="gap:14px;font-size:12px"><span class="done"><b>✓</b>Current</span><span class="now"><b>2</b>New</span><span><b>3</b>Done</span></div>
+    <label class="k-field"><span>New password</span><input id="ph-new" type="password" value="sakura-ferry-lantern-42"><div class="ac-meter" style="max-width:none"><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div></label>
+    <ul class="ac-rules"><li class="ok"><span class="dot">${I("check")}</span>At least 12 characters</li><li class="ok"><span class="dot">${I("check")}</span>Not your name or username</li><li class="ok"><span class="dot">${I("check")}</span>Not in known leaks</li></ul>
+    <label class="k-field"><span>Type it again</span><input id="ph-again" type="password" value="sakura-ferry-lantern-42"></label>
+    <label style="display:flex;align-items:center;gap:12px;font-size:14px">${check(true)}Sign out my other devices</label>
+    ${seal("Change password")}</div></div>`);
+  const p4 = ph(bar("Signed-in devices") + `<div class="ph-body" style="border-top:0"><div class="ph-pad" style="gap:0">${[["phone", "Kimono app on iPhone", "This device · now", true], ["laptop", "Safari on Mac", "10 minutes ago"], ["desktop", "Firefox on Windows", "3 Oct"], ["tablet", "Immich on iPad", "28 Sep"]].map(([i, n, m, here]) => `<div class="ac-dev" style="grid-template-columns:40px minmax(0,1fr) auto"><span class="ico" style="width:40px;height:40px">${DEV[i]}</span><div><b>${n}</b><small>${m}</small></div>${here ? '<span class="here" style="padding:1px 8px;background:var(--k-moss-wash);color:var(--k-moss-deep);font-size:12px;font-weight:600">Here</span>' : `<button class="dv-more" aria-label="Sign out ${n}">${I("close")}</button>`}</div>`).join("")}
+    <div style="margin-top:18px">${seal("Sign out 3 other devices", "danger")}</div></div></div>`);
+  return `<header><h2>Phone app</h2><p>The same screens as native React Native views. Your picture becomes the “You” tab, the way the account system ties everything together. Changing your picture can use the camera, your photo library, or something already in Drive.</p></header>
+  ${frame("P1", "You", "The account home: picture, details, password, devices, and settings for this phone.", `<div class="mk-phones">${p1}${p2}</div>`)}
+  ${frame("P2", "Password and devices", "Same rules and steps as the website. Signing out a device is one tap on its ×.", `<div class="mk-phones">${p3}${p4}</div>`)}`;
+}
+
+const VERSIONS = [
+  { id: "web", jp: "頁", name: "Website", sub: "/account in the Portal", render: web },
+  { id: "phone", jp: "携", name: "Phone app", sub: "The same routes, native", render: phone },
+];
+const tabsEl = document.getElementById("tabs"), secs = document.getElementById("sections");
+VERSIONS.forEach((v, i) => {
+  tabsEl.insertAdjacentHTML("beforeend", `<button class="mk-tab" role="tab" aria-selected="${i === 0}" data-v="${v.id}"><b><span class="jp">${v.jp}</span>${v.name}</b><small>${v.sub}</small></button>`);
+  secs.insertAdjacentHTML("beforeend", `<section class="mk-section ${i === 0 ? "on" : ""}" id="v-${v.id}" role="tabpanel">${v.render()}</section>`);
+});
+function show(id) {
+  document.querySelectorAll(".mk-tab").forEach((t) => t.setAttribute("aria-selected", t.dataset.v === id));
+  document.querySelectorAll(".mk-section").forEach((s) => s.classList.toggle("on", s.id === "v-" + id));
+}
+tabsEl.addEventListener("click", (e) => { const b = e.target.closest(".mk-tab"); if (b) { show(b.dataset.v); window.scrollTo({ top: 0 }); } });
+if (VERSIONS.some((v) => v.id === location.hash.slice(1))) show(location.hash.slice(1));
+const solo = new URLSearchParams(location.search).get("frame");
+if (solo) { const f = document.getElementById("f-" + solo); document.body.innerHTML = ""; document.body.style.padding = "24px"; document.body.appendChild(f); }
+document.querySelectorAll("details").forEach((d) => d.addEventListener("toggle", () => d.open = false));
+</script>
+</body>
+</html>

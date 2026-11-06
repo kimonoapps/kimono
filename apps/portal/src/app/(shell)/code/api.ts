@@ -47,6 +47,8 @@ export type Profile = { instructions: string; memories: { id: string; text: stri
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
 export type ConnectableApp = { app: string; name: string; logo: string; description: string; connected: boolean };
+/** One app in full, for its own page in Connections. */
+export type AppDetails = { app: string; name: string; logo: string; description: string; categories: string[]; tools: { name: string; description: string }[]; toolCount: number | null };
 /** What Kimono AI may use without asking. */
 export type AccessSettings = {
   spaces: { id: string; name: string; crest: string; color: string; canChange: boolean; auto: "read" | "change" | null }[];
@@ -106,7 +108,7 @@ const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const code = {
   workspaces: () => call<{ workspaces: Workspace[] }>("/workspaces").then((r) => r.workspaces),
   workspace: (id: string) => call<Workspace>(ws(id)),
-  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort; folder?: string }) => call<Workspace>("/workspaces", json("POST", { ...input, model: modelNow() })),
+  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort; folder?: string; hold?: boolean }) => call<Workspace>("/workspaces", json("POST", { ...input, model: modelNow() })),
   rename: (id: string, title: string) => call<Workspace>(ws(id), json("PATCH", { title })),
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
   ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort, model: modelNow() })),
@@ -128,11 +130,12 @@ export const code = {
   changeMemory: (id: string, text: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, json("PATCH", { text })),
   /** The apps this person has connected through Composio, and whether connections are set up at all. */
   connections: () => call<{ available: boolean; connections: Connection[] }>("/connections"),
-  findApps: (q: string) => call<{ apps: ConnectableApp[] }>(`/connections/apps?q=${encodeURIComponent(q)}`).then((r) => r.apps),
+  findApps: (q: string, cursor?: string | null) => call<{ apps: ConnectableApp[]; next: string | null }>(`/connections/apps?q=${encodeURIComponent(q)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),
   connect: (app: string) => call<{ url: string }>("/connections", json("POST", { app })).then((r) => r.url),
   disconnect: (account: string) => call<void>(`/connections/${encodeURIComponent(account)}`, { method: "DELETE" }),
   /** How a person's own app (a Composio toolkit) is named and drawn. */
   appLook: (slug: string) => call<{ name: string; logo: string }>(`/apps/${encodeURIComponent(slug)}`),
+  appDetails: (slug: string) => call<AppDetails>(`/apps/${encodeURIComponent(slug)}?details=2`),
   setSpaceAccess: (spaceId: string, need: "read" | "change" | null) => call<void>(`/access/spaces/${encodeURIComponent(spaceId)}`, json("PUT", { need })),
   revokeAccess: (grantId: string) => call<void>(`/access/grants/${encodeURIComponent(grantId)}`, { method: "DELETE" }),
   fromDrive: (id: string, nodes: string[]) => call<{ attachments: Attachment[] }>(`${ws(id)}/from-drive`, json("POST", { nodes })).then((r) => r.attachments),

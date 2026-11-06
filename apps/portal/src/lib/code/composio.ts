@@ -116,6 +116,83 @@ export async function toolkitLook(key: string, raw: string, now = Date.now()): P
   return look;
 }
 
+/* ── one app in full: what it is, and what Kimono AI can do with it ── */
+
+export type AppDetails = Look & { app: string; description: string; categories: string[]; tools: { name: string; description: string }[]; toolCount: number | null };
+const details = new Map<string, { found: AppDetails; at: number }>();
+
+/** A tool's own words, cut to its first sentence, without Composio's notes to the agent. */
+const firstSentence = (text: string) => {
+  const words = text.replace(/^\s*\[[^\]]*\]\s*/, "").replace(/^Tool to (\w)/, (_, c: string) => c.toUpperCase());
+  const sentence = words.split(/(?<=\.)\s/)[0].replace(/\s*(\.\.\.|…)$/, "").trim();
+  return sentence.length <= 160 ? sentence : `${sentence.slice(0, 160).replace(/\s+\S*$/, "")}…`;
+};
+
+/** A tool's name from its slug: GOOGLECALENDAR_FIND_FREE_SLOTS is "Find free slots". */
+const nameFromSlug = (toolkit: string, slug: string) => {
+  const words = slug.replace(new RegExp(`^${toolkit}_`, "i"), "").replace(/_/g, " ").toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+type CatalogTool = { slug: string; description?: string; tags?: string[]; is_deprecated?: boolean; toolkit?: { slug?: string } };
+
+/**
+ * Every tool a toolkit has. Kimono's key may not list tools directly, so this
+ * asks a session of its own, open to that one toolkit with all its tools
+ * loaded, which lists them in full. Nobody's connections are in it.
+ */
+async function allTools(key: string, slug: string): Promise<{ name: string; description: string }[]> {
+  const made = await call(key, "/tool_router/session", {
+    method: "POST",
+    body: JSON.stringify({ user_id: "kimono:catalog", toolkits: { enable: [slug] }, preload: { tools: "all" }, workbench: { enable: false } }),
+  }).catch(() => null);
+  const session = made?.ok ? ((await made.json()) as Answer).session_id : undefined;
+  if (!session) return [];
+  const found: CatalogTool[] = [];
+  let cursor: string | null = null;
+  do {
+    const url = new URL(`${api()}/tool_router/session/${encodeURIComponent(session)}/tools`);
+    url.searchParams.set("limit", "500");
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const response = await fetch(url, { headers: { "x-api-key": key }, signal: AbortSignal.timeout(15_000), cache: "no-store" }).catch(() => null);
+    if (!response?.ok) break;
+    const page = (await response.json()) as { items?: CatalogTool[]; next_cursor?: string | null };
+    found.push(...(page.items ?? []));
+    cursor = page.next_cursor || null;
+  } while (cursor && found.length < 2000);
+  /* Composio marks the tools people reach for most; those come first. */
+  const important = (t: CatalogTool) => t.tags?.includes("important") ? 0 : 1;
+  return found
+    .filter((t) => t.slug && (t.toolkit?.slug ?? "").toLowerCase() === slug && !t.is_deprecated)
+    .sort((x, y) => important(x) - important(y) || x.slug.localeCompare(y.slug))
+    .map((t) => ({ name: nameFromSlug(slug, t.slug), description: firstSentence(t.description ?? "") }));
+}
+
+/** A toolkit's description, categories and all its tools, kept a day; just its look when the API can't be reached. */
+export async function toolkitDetails(key: string, raw: string, now = Date.now()): Promise<AppDetails> {
+  const slug = raw.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 60);
+  const cached = details.get(slug);
+  if (cached && now - cached.at < day) return cached.found;
+  const look = await toolkitLook(key, slug, now);
+  let found: AppDetails = { ...look, app: slug, description: "", categories: [], tools: [], toolCount: null };
+  if (key && slug) {
+    const [toolkit, tools] = await Promise.all([
+      fetch(`${v3()}/toolkits/${encodeURIComponent(slug)}`, { headers: { "x-api-key": key }, signal: AbortSignal.timeout(8_000), cache: "no-store" })
+        .then((r) => r.ok ? r.json() : null, () => null) as Promise<{ meta?: { description?: string; categories?: { name?: string }[]; tools_count?: number } } | null>,
+      allTools(key, slug),
+    ]);
+    found = {
+      ...found,
+      description: toolkit?.meta?.description ?? "",
+      categories: (toolkit?.meta?.categories ?? []).map((c) => c.name ?? "").filter(Boolean).slice(0, 4),
+      toolCount: tools.length || (typeof toolkit?.meta?.tools_count === "number" ? toolkit.meta.tools_count : null),
+      tools,
+    };
+    if (toolkit && tools.length) details.set(slug, { found, at: now });
+  }
+  return found;
+}
+
 /* ── a person's connections, as Composio keeps them for their session ── */
 
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
@@ -140,11 +217,17 @@ async function sessionIdFor(db: DatabaseSync, key: string, username: string, ori
 }
 
 async function sessionToolkits(key: string, session: string, query: Record<string, string>): Promise<SessionToolkit[]> {
+  return (await sessionToolkitPage(key, session, query)).items;
+}
+
+/** One page of the session's toolkits, and the cursor for the next (null at the end). */
+async function sessionToolkitPage(key: string, session: string, query: Record<string, string>): Promise<{ items: SessionToolkit[]; next: string | null }> {
   const url = new URL(`${v3()}/tool_router/session/${encodeURIComponent(session)}/toolkits`);
   for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
   const response = await fetch(url, { headers: { "x-api-key": key }, signal: AbortSignal.timeout(15_000), cache: "no-store" }).catch(() => null);
   if (!response?.ok) throw new ConnectionProblem("Connections can't be reached right now.");
-  return ((await response.json()) as { items?: SessionToolkit[] }).items ?? [];
+  const page = (await response.json()) as { items?: SessionToolkit[]; next_cursor?: string | null };
+  return { items: page.items ?? [], next: page.next_cursor || null };
 }
 
 const logoOf = (t: SessionToolkit) => t.meta?.logo?.startsWith("https://") ? t.meta.logo : `https://logos.composio.dev/api/${encodeURIComponent(t.slug)}`;
@@ -157,12 +240,14 @@ export async function connections(db: DatabaseSync, key: string, username: strin
     .map((t) => ({ app: t.slug, name: t.name, logo: logoOf(t), account: t.connected_account!.id, status: t.connected_account!.status ?? "ACTIVE", since: t.connected_account!.created_at ?? null }));
 }
 
-/** Apps the person could connect, found by name; what they already have says so. */
-export async function findApps(db: DatabaseSync, key: string, username: string, origin: string, search: string): Promise<App[]> {
+/** A page of apps the person could connect, found by name; what they already have says so. `next` asks for the page after. */
+export async function findApps(db: DatabaseSync, key: string, username: string, origin: string, search: string, cursor?: string | null): Promise<{ apps: App[]; next: string | null }> {
   const session = await sessionIdFor(db, key, username, origin);
   const query: Record<string, string> = { limit: "24" };
   if (search.trim()) query.search = search.trim().slice(0, 80);
-  return (await sessionToolkits(key, session, query)).map((t) => ({ app: t.slug, name: t.name, logo: logoOf(t), description: t.meta?.description ?? "", connected: Boolean(t.connected_account?.id) }));
+  if (cursor) query.cursor = cursor.slice(0, 200);
+  const page = await sessionToolkitPage(key, session, query);
+  return { next: page.next, apps: page.items.map((t) => ({ app: t.slug, name: t.name, logo: logoOf(t), description: t.meta?.description ?? "", connected: Boolean(t.connected_account?.id) })) };
 }
 
 /** A link where the person connects an app; it comes back to Connections when they're done. */

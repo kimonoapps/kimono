@@ -4,13 +4,13 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
-import { FileOverlay, FilePreview, FileThumb, TypeMark } from "@/components/file-preview/file-preview";
+import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
 import { lowerExtension, pictureExtensions } from "@/components/file-preview/kinds";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
   code, drive, efforts, modelChoices, modelKey, modelNow, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type AccessSettings, type ConnectableApp, type Profile, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -93,6 +93,7 @@ function useTimeline(id: string | null, onDone: () => void) {
       const stored = JSON.parse(message.data) as StoredEvent;
       const event = stored.event;
       if (stored.seq === 0) {
+        if (event.kind === "renamed") { done.current(); return; }
         if (event.kind === "draft") setDrafts((d) => ({ ...d, text: event.text }));
         if (event.kind === "artifact-draft") setDrafts((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
         return;
@@ -225,7 +226,6 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
 }
 
 export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; admin: boolean; driveApp: AppIdentity }) {
-  const [accessOpen, setAccessOpen] = useState(false);
   /* Drive's mark and each space's crest, for tool calls and access cards that touch the person's files. */
   const [spaces, setSpaces] = useState<DriveSpace[]>([]);
   useEffect(() => { drive.spaces().then(setSpaces, () => {}); }, []);
@@ -280,12 +280,11 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
   }, []);
 
   return <MarksContext.Provider value={marks}><div className="cd-page">
-    {accessOpen ? <AccessDialog onClose={() => setAccessOpen(false)} /> : null}
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     {/* With the list folded away, the button that brings it back stays where the one that hid it was: top left. */}
     {folded ? <button type="button" className="cd-roundbutton cd-unfold-corner" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button> : null}
     <aside className="cd-side" aria-label="Chats">
-      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button></div>
+      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span></div>
       <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
       <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       <nav className="cd-sidenav" aria-label="More">
@@ -316,7 +315,7 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
           ? <div className="cd-sheet cd-empty"><p>That chat isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({ new: "1" })}>New chat</Seal></div>
           : current
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
-            : showingConnections ? <ConnectionsView now={now} />
+            : showingConnections ? <ConnectionsView now={now} app={params.get("app")} />
             : showingMemory ? <MemoryView now={now} />
             : <Start blocked={blocked} admin={admin} folder={projects.find((p) => p.id === params.get("in")) ?? null} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
@@ -400,28 +399,23 @@ function MemoryView({ now }: { now: number }) {
   </section>;
 }
 
-/* ── connections: the person's own apps, as Composio keeps them ── */
+/* ── connections: the person's own apps, as Composio keeps them ──
+ * One page: what they've connected on top (when there is any), every app they could add below; and a page for one app in full. */
 
-function ConnectionsView({ now }: { now: number }) {
+const connStatus = (c: Connection, now: number) => c.status === "ACTIVE" ? c.since ? `Connected ${when(Date.parse(c.since), now).replace(/^(Today|Yesterday)/, (word) => word.toLowerCase())}` : "Connected" : c.status === "FAILED" ? "Needs connecting again" : "Connecting…";
+
+/** The person's connections, kept fresh: coming back from connecting (another tab) looks again. */
+function useConnections() {
   const [state, setState] = useState<{ available: boolean; connections: Connection[] } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [found, setFound] = useState<{ q: string; apps: ConnectableApp[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
   const load = useCallback(() => code.connections().then((next) => { setState(next); setProblem(null); }, (error) => setProblem(problemText(error))), []);
-  /* Connecting happens in another tab: coming back here shows it. */
   useEffect(() => {
     void load();
     const back = () => { void load(); };
     window.addEventListener("focus", back);
     return () => window.removeEventListener("focus", back);
   }, [load]);
-  useEffect(() => {
-    if (!state?.available) return;
-    const wait = setTimeout(() => { code.findApps(query).then((apps) => setFound({ q: query, apps }), (error) => setProblem(problemText(error))); }, query ? 250 : 0);
-    return () => clearTimeout(wait);
-  }, [query, state?.available]);
   const connect = (app: string) => {
     setBusy(app); setProblem(null);
     const opened = window.open("about:blank", "_blank");
@@ -429,37 +423,122 @@ function ConnectionsView({ now }: { now: number }) {
   };
   const remove = (c: Connection) => {
     setBusy(c.account); setProblem(null);
-    code.disconnect(c.account).then(() => { setConfirming(null); return load(); }, (error) => setProblem(problemText(error))).finally(() => setBusy(null));
+    return code.disconnect(c.account).then(() => load(), (error) => setProblem(problemText(error))).finally(() => setBusy(null));
   };
-  const apps = found && found.q === query ? found.apps : null;
+  return { state, problem, setProblem, busy, connect, remove };
+}
+
+function ConnectionsView({ now, app }: { now: number; app: string | null }) {
+  const conn = useConnections();
+  const { state, problem } = conn;
+  const head = (title: string, back: () => void) => <header className="cd-conn-head">
+    <button type="button" className="cd-roundbutton cd-back" onClick={back} aria-label="Back" title="Back"><Icon name="back" /></button>
+    <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+    <h1>{title}</h1>
+  </header>;
+  if (app) return <AppPage key={app} slug={app} now={now} conn={conn} head={head} />;
+  const mine = state?.connections ?? [];
   return <section className="cd-sheet cd-conn">
-    <header className="cd-conn-head">
-      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
-      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
-      <h1>Connections</h1>
-    </header>
+    {head("Connections", () => goTo({}))}
     <div className="cd-conn-body">
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
       {state === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
       {state && !state.available ? <p className="cd-conn-empty">Connections aren&rsquo;t available on this Kimono yet.</p> : null}
       {state?.available ? <>
-        {state.connections.length ? <ul className="cd-conn-list">{state.connections.map((c) => <li key={c.account} className="cd-conn-card">
-          {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
-          <span className="cd-conn-logo"><img src={c.logo} alt="" /></span>
-          <span className="cd-conn-id"><b>{c.name}</b><small>{c.status === "ACTIVE" ? c.since ? `Connected ${when(Date.parse(c.since), now).replace(/^(Today|Yesterday)/, (word) => word.toLowerCase())}` : "Connected" : c.status === "FAILED" ? "Needs connecting again" : "Connecting…"}</small></span>
-          {confirming === c.account
-            ? <span className="cd-conn-acts"><button type="button" className="cd-quietbutton is-danger" disabled={busy === c.account} aria-busy={busy === c.account || undefined} onClick={() => remove(c)}><BusyFace busy={busy === c.account}>Disconnect</BusyFace></button><button type="button" className="cd-quietbutton" onClick={() => setConfirming(null)}>Keep</button></span>
-            : <span className="cd-conn-acts">{c.status === "FAILED" ? <Seal type="button" compact onClick={() => connect(c.app)}>Connect again</Seal> : null}<button type="button" className="cd-quietbutton" onClick={() => setConfirming(c.account)}>Disconnect</button></span>}
-        </li>)}</ul> : state ? <p className="cd-conn-empty">Nothing connected yet.</p> : null}
-        <h2 className="cd-conn-sub">Connect an app</h2>
-        <label className="cd-conn-search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search apps" aria-label="Search apps" /></label>
-        {apps === null ? <SkeletonRows rows={2} mark={false} /> : !apps.length ? <p className="cd-conn-empty">No app by that name.</p> : <ul className="cd-conn-grid">{apps.map((a) => <li key={a.app} className="cd-conn-tile">
-          {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
-          <span className="cd-conn-logo"><img src={a.logo} alt="" /></span>
-          <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
-          {a.connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span> : <Seal type="button" compact tone="quiet" busy={busy === a.app} onClick={() => connect(a.app)}>Connect</Seal>}
-        </li>)}</ul>}
+        {mine.length ? <><h2 className="cd-conn-sub is-first">Connected</h2><YourApps now={now} conn={conn} /><h2 className="cd-conn-sub">Add apps</h2></> : null}
+        <AddApps conn={conn} />
       </> : null}
+    </div>
+  </section>;
+}
+
+type Conn = ReturnType<typeof useConnections>;
+const openApp = (slug: string) => goTo({ connections: "1", app: slug });
+/** Composio's own toolkits are how apps connect, not apps of their own. */
+const realApp = (a: { app: string }) => !a.app.startsWith("composio");
+
+function YourApps({ now, conn }: { now: number; conn: Conn }) {
+  const mine = conn.state?.connections ?? [];
+  return <ul className="cd-conn-list">{mine.map((c) => <li key={c.account} className="cd-conn-card is-link">
+    <button type="button" className="cd-conn-open" onClick={() => openApp(c.app)} aria-label={`${c.name}: ${connStatus(c, now)}`} />
+    {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
+    <span className="cd-conn-logo"><img src={c.logo} alt="" /></span>
+    <span className="cd-conn-id"><b>{c.name}</b><small className={cx(c.status === "FAILED" && "is-bad")}>{connStatus(c, now)}</small></span>
+    {c.status === "FAILED" ? <span className="cd-conn-acts"><Seal type="button" compact busy={conn.busy === c.app} onClick={() => conn.connect(c.app)}>Connect again</Seal></span> : null}
+    <span className="cd-conn-chev" aria-hidden="true"><Icon name="chevron" /></span>
+  </li>)}</ul>;
+}
+
+function AddApps({ conn }: { conn: Conn }) {
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<{ q: string; apps: ConnectableApp[]; next: string | null } | null>(null);
+  const [more, setMore] = useState(false);
+  const { setProblem } = conn;
+  useEffect(() => {
+    /* A search you've moved on from never answers over the one you're on. */
+    let live = true;
+    const wait = setTimeout(() => { code.findApps(query).then((page) => { if (live) setFound({ q: query, apps: page.apps.filter(realApp), next: page.next }); }, (error) => { if (live) setProblem(problemText(error)); }); }, query ? 250 : 0);
+    return () => { live = false; clearTimeout(wait); };
+  }, [query, setProblem]);
+  /* What's connected is listed above, so the catalog leaves it out. */
+  const apps = found && found.q === query ? found.apps.filter((a) => !a.connected) : null;
+  /* The catalog is long: a page at a time, the next one added below when asked for. */
+  const showMore = () => {
+    if (!found?.next || more) return;
+    const asked = found;
+    setMore(true);
+    code.findApps(asked.q, asked.next).then((page) => setFound((now) => now?.q !== asked.q ? now : { q: asked.q, next: page.next, apps: [...now.apps, ...page.apps.filter((a) => realApp(a) && !now.apps.some((b) => b.app === a.app))] }), (error) => setProblem(problemText(error))).finally(() => setMore(false));
+  };
+  return <>
+    <label className="cd-conn-search"><Icon name="search" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search apps" aria-label="Search apps" /></label>
+    {apps === null ? <SkeletonRows rows={2} mark={false} /> : !found?.apps.length ? <p className="cd-conn-empty">No app by that name.</p> : !apps.length ? null : <ul className="cd-conn-grid">{apps.map((a) => <li key={a.app} className="cd-conn-tile is-link">
+      <button type="button" className="cd-conn-open" onClick={() => openApp(a.app)} aria-label={`About ${a.name}`} />
+      {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
+      <span className="cd-conn-logo"><img src={a.logo} alt="" /></span>
+      <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
+      {a.connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span> : <Seal type="button" compact tone="quiet" busy={conn.busy === a.app} onClick={() => conn.connect(a.app)}>Connect</Seal>}
+    </li>)}</ul>}
+    {apps?.length && found?.next ? <div className="cd-conn-more"><Seal type="button" tone="quiet" busy={more} onClick={showMore}>Show more</Seal></div> : null}
+  </>;
+}
+
+/** One app in full: what it is, whether it's connected, and what Kimono AI can do with it. */
+function AppPage({ slug, now, conn, head }: { slug: string; now: number; conn: Conn; head: (title: string, back: () => void) => React.ReactNode }) {
+  const [about, setAbout] = useState<AppDetails | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const look = useAppLook(slug);
+  useEffect(() => { let live = true; code.appDetails(slug).then((d) => { if (live) setAbout(d); }, () => {}); return () => { live = false; }; }, [slug]);
+  const mine = conn.state?.connections.find((c) => c.app === slug) ?? null;
+  const name = about?.name ?? mine?.name ?? look.name;
+  const logo = about?.logo ?? mine?.logo ?? look.logo;
+  const more = about?.toolCount && about.toolCount > about.tools.length ? about.toolCount - about.tools.length : 0;
+  return <section className="cd-sheet cd-conn cd-app">
+    {head(name, () => goTo({ connections: "1" }))}
+    <div className="cd-conn-body">
+      {conn.problem ? <p className="cd-problem" role="alert">{conn.problem}</p> : null}
+      <div className="cd-app-hero">
+        {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
+        <span className="cd-conn-logo cd-app-logo">{logo ? <img src={logo} alt="" /> : <Icon name="gear" />}</span>
+        <span className="cd-conn-id">
+          <b>{name}</b>
+          {about?.categories.length ? <small>{about.categories.join(" · ")}</small> : null}
+          <small className={cx(mine?.status === "FAILED" && "is-bad")}>{mine ? connStatus(mine, now) : conn.state ? "Not connected" : "\u00a0"}</small>
+        </span>
+        <span className="cd-conn-acts">
+          {!conn.state?.available ? null
+            : !mine ? <Seal type="button" busy={conn.busy === slug} onClick={() => conn.connect(slug)}>Connect</Seal>
+            : confirming ? <><button type="button" className="cd-quietbutton is-danger" disabled={conn.busy === mine.account} aria-busy={conn.busy === mine.account || undefined} onClick={() => { void conn.remove(mine).then(() => setConfirming(false)); }}><BusyFace busy={conn.busy === mine.account}>Disconnect</BusyFace></button><button type="button" className="cd-quietbutton" onClick={() => setConfirming(false)}>Keep</button></>
+            : <>{mine.status === "FAILED" ? <Seal type="button" compact busy={conn.busy === slug} onClick={() => conn.connect(slug)}>Connect again</Seal> : null}<button type="button" className="cd-quietbutton" onClick={() => setConfirming(true)}>Disconnect</button></>}
+        </span>
+      </div>
+      {about === null ? <SkeletonRows rows={3} mark={false} /> : <>
+        {about.description ? <p className="cd-app-about">{about.description}</p> : null}
+        {about.tools.length ? <>
+          <h2 className="cd-conn-sub">What Kimono AI can do with it</h2>
+          <ul className="cd-app-tools">{about.tools.map((t) => <li key={t.name}><b>{t.name}</b>{t.description ? <small>{t.description}</small> : null}</li>)}</ul>
+          {more ? <p className="cd-conn-empty">And {more} more.</p> : null}
+        </> : about.toolCount ? <p className="cd-app-count"><b>{about.toolCount}</b> things Kimono AI can do with it{mine ? "" : " once it\u2019s connected"}.</p> : null}
+      </>}
     </div>
   </section>;
 }
@@ -577,6 +656,26 @@ function projectsOf(list: Workspace[]) {
     .toSorted((a, b) => Math.max(...b.tasks.map(working)) - Math.max(...a.tasks.map(working)) || b.tasks[0].updatedAt - a.tasks[0].updatedAt);
 }
 
+/** The chat's name: Kimono names it after the first reply; a click renames it. */
+function ChatTitle({ workspace, onRenamed }: { workspace: Workspace; onRenamed: () => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const saving = useRef(false);
+  async function save() {
+    if (editing === null || saving.current) return;
+    const title = editing.trim().replace(/\s+/g, " ");
+    if (!title || title === workspace.title) { setEditing(null); return; }
+    saving.current = true;
+    try { await code.rename(workspace.id, title); setEditing(null); setProblem(null); onRenamed(); } catch (error) { setProblem(problemText(error)); } finally { saving.current = false; }
+  }
+  if (editing !== null) return <form className="cd-title-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <h1><input autoFocus className="cd-title-input" value={editing} maxLength={120} aria-label="Chat name" onFocus={(event) => event.target.select()}
+      onChange={(event) => setEditing(event.target.value)} onBlur={() => void save()} onKeyDown={(event) => { if (event.key === "Escape") { setEditing(null); setProblem(null); } }} /></h1>
+    {problem ? <span className="cd-faint" role="alert">{problem}</span> : null}
+  </form>;
+  return <h1 title={workspace.title}><button type="button" className="cd-title-button" title="Rename" onClick={() => setEditing(workspace.title)}>{workspace.title}</button></h1>;
+}
+
 /** A project in the list: its name (rename, remove), a new chat in it, and its chats. */
 function FolderGroup({ project, chats, current, now, renaming, onRename, onSaveName, onCancelName, onRemove }: {
   project: Project; chats: Workspace[]; current: string | null; now: number;
@@ -634,6 +733,9 @@ function WorkspaceList({ label, list, current, now, onNew }: { label?: string; l
 
 /* ── a new task: which repository, which branch, and what to do ── */
 
+/** A file chosen for a chat that doesn't exist yet: from this device, or a Drive file by its id. */
+type Held = { id: string; name: string; size: number; preview: string | null; file?: File; node?: string; failed?: string };
+
 function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; admin: boolean; folder: Project | null; onStarted: (w: Workspace) => Promise<void> }) {
   /* A new chat is just what you ask. Administrators can instead work on a project (a Kimono Git repository). */
   const [onProject, setOnProject] = useState(() => { try { return admin && localStorage.getItem("kimono-ai-project") === "1"; } catch { return false; } });
@@ -647,6 +749,17 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
   const [naming, setNaming] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
+  /* Files for the first message: held here until the chat exists, then sent with it. */
+  const [files, setFiles] = useState<Held[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const marks = useContext(MarksContext);
+  const hasDrive = marks.spaces.size > 0;
+  /* Drive is known from the start; its spaces arrive later, and an early click shouldn't skip the menu. */
+  const drivePresent = marks.drive !== null;
+  useEffect(() => () => { for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview); }, [files]);
+  const hold = (picked: File[]) => setFiles((list) => [...list, ...picked.map((file): Held => ({ id: crypto.randomUUID(), name: file.name, size: file.size, file, preview: isPicture(file.type) ? URL.createObjectURL(file) : null, failed: file.size > 20 * 1024 * 1024 ? "Over 20 MB" : undefined }))].slice(0, 10));
   const project = (on: boolean) => { setOnProject(on); try { localStorage.setItem("kimono-ai-project", on ? "1" : "0"); } catch { /* not remembered */ } };
 
   async function makeProject() {
@@ -693,9 +806,18 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
     setSending(true);
     setProblem(null);
     try {
-      await onStarted(await code.start(chosen
+      const toSend = files.filter((f) => !f.failed);
+      const made = await code.start({ ...(chosen
         ? { owner: chosen.owner, name: chosen.name, base: base || chosen.defaultBranch, prompt, effort: effortNow() }
-        : { prompt, effort: effortNow(), ...(folder ? { folder: folder.id } : {}) }));
+        : { prompt, effort: effortNow(), ...(folder ? { folder: folder.id } : {}) }), hold: toSend.length > 0 });
+      if (toSend.length) {
+        /* The chat exists now: its files go to it, then the message, as any turn would. */
+        const uploads = await Promise.all(toSend.filter((f) => f.file).map((f) => code.attach(made.id, f.file!).catch(() => null)));
+        const nodes = toSend.filter((f) => f.node).map((f) => f.node!);
+        const copied = nodes.length ? await code.fromDrive(made.id, nodes).catch(() => [] as Attachment[]) : [];
+        await code.ask(made.id, prompt, [...uploads.filter((a): a is Attachment => a !== null), ...copied], effortNow());
+      }
+      await onStarted(made);
     } catch (error) {
       setProblem(problemText(error));
       setSending(false);
@@ -726,20 +848,72 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
         <Picker label="Starting from" value={base} onChange={setBase} disabled={!chosen} mono
           options={branches.map((b) => ({ value: b, label: b, detail: b === chosen?.defaultBranch ? "The main version" : undefined }))} />
       </div> : null}
-      <div className="cd-hello-box">
+      <div className={cx("cd-hello-box", dragging && "is-dropping")}
+        onDragOver={(event) => { if (!blocked && event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } }}
+        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
+        onDrop={(event) => { event.preventDefault(); setDragging(false); hold([...event.dataTransfer.files]); }}>
+        {files.length ? <div className="cd-pending">{files.map((f) => <span key={f.id} className={cx("cd-filechip", f.failed && "is-failed")}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {f.preview ? <img src={f.preview} alt="" /> : <FileThumb name={f.name} size={30} />}
+          <span>{f.name}</span>
+          <small>{f.failed ?? readableSize(f.size)}</small>
+          <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles((list) => list.filter((x) => x.id !== f.id))}><Icon name="close" /></button>
+        </span>)}</div> : null}
         <textarea ref={field} value={prompt} rows={3} aria-label="Message" disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
           onChange={(event) => setPrompt(event.target.value)}
+          onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); } }}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
         <div className="cd-hello-row">
+          <input ref={picker} type="file" multiple hidden onChange={(event) => { hold([...(event.target.files ?? [])]); event.target.value = ""; }} />
+          <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
           {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Work on a project</button> : null}
+          <span className="cd-tuning">{hasDrive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
           <span className="cd-grow" />
           <Seal type="button" compact busy={sending} disabled={!ready || Boolean(blocked)} onClick={() => void send()}>Send</Seal>
         </div>
+        {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
       </div>
+      {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={(items) => { setChoosing(false); setFiles((list) => [...list, ...items.map((item): Held => ({ id: crypto.randomUUID(), name: item.name, size: item.size, node: item.id, preview: null }))].slice(0, 10)); }} /> : null}
       {blocked ? <p className="cd-hello-note">{blocked}</p> : null}
     </>
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+    {blocked ? null : <HomeUsage />}
+    {blocked || onProject ? null : <SuggestedApps />}
   </section>;
+}
+
+/** The person's own use, under the new-chat box: the 5-hour window and the week, as Meters shows them. */
+function HomeUsage() {
+  const [usage, setUsage] = useState<Usage | null>(null);
+  useEffect(() => { let live = true; code.usage().then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, []);
+  if (!usage?.reported) return null;
+  const share = (w: Usage["week"]) => w.used / w.share;
+  const whose = usage.unlimited ? "of the plan" : "of your share";
+  const rows: { label: string; value: number; resets: number | null }[] = [
+    ...(usage.fiveHourLimited === false ? [] : [{ label: "5-hour window", value: share(usage.fiveHour), resets: usage.fiveHour.resetsAt }]),
+    { label: "This week", value: share(usage.week), resets: usage.week.resetsAt },
+  ];
+  return <div className="cd-home-usage" aria-label="Your usage">
+    {rows.map((r) => <div key={r.label} className="cd-meter">
+      <Ring value={r.value} label={`${pct(r.value)} ${whose}`} />
+      <span><b>{r.label}</b><small>{pct(r.value)} {whose}{r.resets ? ` · resets ${resetWords(r.resets)}` : ""}</small></span>
+    </div>)}
+  </div>;
+}
+
+/** A few apps the person hasn't connected yet, each opening its page in Connections. */
+function SuggestedApps() {
+  const [apps, setApps] = useState<ConnectableApp[] | null>(null);
+  useEffect(() => { let live = true; code.findApps("").then(({ apps: list }) => { if (live) setApps(list.filter((a) => !a.connected && realApp(a)).slice(0, 6)); }, () => { if (live) setApps([]); }); return () => { live = false; }; }, []);
+  if (!apps?.length) return null;
+  return <div className="cd-home-apps">
+    <div className="cd-home-apps-head"><h3>Connect your apps</h3><button type="button" className="cd-textbutton" onClick={() => goTo({ connections: "1" })}>All apps</button></div>
+    <ul>{apps.map((a) => <li key={a.app}><button type="button" onClick={() => openApp(a.app)}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
+      <span className="cd-conn-logo"><img src={a.logo} alt="" /></span>
+      <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
+    </button></li>)}</ul>
+  </div>;
 }
 
 /* ── a workspace ── */
@@ -787,7 +961,7 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
         <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
         <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
         <div className="cd-ws-id">
-          <h1 title={workspace.title}>{workspace.title}</h1>
+          <ChatTitle workspace={workspace} onRenamed={onChange} />
           {project ? <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p> : null}
           {/* Working shows once, at the end of the conversation; here only a lost connection. */}
           {!isApp && !connected ? <span className="cd-status" role="status">Reconnecting…</span> : null}
@@ -1562,12 +1736,11 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
     <div className="cd-composer-bar">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
-      <button type="button" className="cd-iconbutton" aria-label="Attach files" disabled={Boolean(blocked)} onClick={() => picker.current?.click()}><Icon name="clip" /></button>
-      {workspace.drive ? <button type="button" className="cd-iconbutton" aria-label="Attach from Drive" title="Attach from Drive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" /></button> : null}
+      <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
       {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />
       {/* which Claude and how hard it thinks: small, beside the limits they spend */}
-      <span className="cd-tuning"><ModelPicker /><EffortPicker /></span>
+      <span className="cd-tuning">{workspace.drive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
       <Meters workspace={workspace} context={context} running={running} blocked={blocked} />
       {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop" title="Stop" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
       <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Enter" title="Send (↵, Shift-↵ for a new line)">Send</Seal>
@@ -1592,45 +1765,65 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   </div>;
 }
 
-/** What Kimono AI may use without asking: each space, and the folders and files always allowed. */
-function AccessDialog({ onClose }: { onClose: () => void }) {
-  const box = useRef<HTMLDialogElement>(null);
+type AccessMode = "ask" | "read" | "change";
+const accessWords: Record<AccessMode, { label: string; detail: string }> = {
+  ask: { label: "Asks first", detail: "Asks before opening your files" },
+  read: { label: "Reads", detail: "Reads your files without asking" },
+  change: { label: "Reads and edits", detail: "Reads and edits your files without asking" },
+};
+/** The one mode a set of spaces adds up to: the least any of them allows. */
+function accessMode(settings: AccessSettings): AccessMode {
+  const spaces = settings.spaces;
+  if (!spaces.length || spaces.some((s) => !s.auto)) return "ask";
+  return spaces.every((s) => s.auto === "change" || !s.canChange) && spaces.some((s) => s.auto === "change") ? "change" : "read";
+}
+
+/** What Kimono AI may do with Drive without asking, as a compact chip in the message box. */
+function AccessPicker() {
   const [settings, setSettings] = useState<AccessSettings | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const load = useCallback(() => code.access().then((next) => { setSettings(next); setProblem(null); }, (error) => setProblem(problemText(error))), []);
-  useEffect(() => { box.current?.showModal(); }, []);
+  const load = useCallback(() => code.access().then(setSettings, () => {}), []);
   useEffect(() => { void load(); }, [load]);
-  const setSpace = (id: string, value: string) => {
-    const need = value === "read" || value === "change" ? value : null;
-    setSettings((s) => s && { ...s, spaces: s.spaces.map((x) => x.id === id ? { ...x, auto: need } : x) });
-    code.setSpaceAccess(id, need).catch((error) => { setProblem(problemText(error)); void load(); });
+  if (!settings?.spaces.length) return null;
+  const set = (mode: AccessMode) => {
+    const next = settings.spaces.map((s) => ({ ...s, auto: mode === "ask" ? null : mode === "change" && s.canChange ? "change" as const : "read" as const }));
+    setSettings({ ...settings, spaces: next });
+    Promise.all(next.map((s) => code.setSpaceAccess(s.id, s.auto))).catch(() => void load());
   };
-  const takeBack = (id: string) => {
-    setSettings((s) => s && { ...s, grants: s.grants.filter((g) => g.id !== id) });
-    code.revokeAccess(id).catch((error) => { setProblem(problemText(error)); void load(); });
+  const offered: AccessMode[] = settings.spaces.some((s) => s.canChange) ? ["ask", "read", "change"] : ["ask", "read"];
+  return <Choice compact aria-label="What it may do with your files" className="cd-accessmode" value={accessMode(settings)} onChange={(next) => set(next as AccessMode)}
+    options={offered.map((m) => ({ value: m, label: accessWords[m].label, detail: accessWords[m].detail }))} />;
+}
+
+/** One attach button: a menu of where the files come from, or straight to the device when there's no Drive. */
+function AttachMenu({ disabled, onDevice, onDrive }: { disabled: boolean; onDevice: () => void; onDrive?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const esc = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); root.current?.querySelector<HTMLButtonElement>("button")?.focus(); } };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    root.current?.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const go = (then: () => void) => { setOpen(false); then(); };
+  const step = (event: React.KeyboardEvent) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const items = [...(root.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]") ?? [])];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    items[(at + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
   };
-  return <dialog ref={box} className="cd-drivepick cd-accessdialog" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
-    <header>
-      <b>What Kimono AI can use</b>
-      <span className="cd-grow" />
-      <button type="button" className="cd-iconbutton" aria-label="Close" onClick={() => box.current?.close()}><Icon name="close" /></button>
-    </header>
-    <ul>
-      {settings?.spaces.map((space) => <li key={space.id} className="cd-access-space">
-        <span className="cd-access-space-name"><Icon name="space" /><span>{space.name}</span></span>
-        <Choice compact aria-label={`Kimono AI and ${space.name}`} value={space.auto ?? "ask"} onChange={(value) => setSpace(space.id, value)}
-          options={[{ value: "ask", label: "Asks first" }, { value: "read", label: "May read" }, ...(space.canChange ? [{ value: "change", label: "May read and change" }] : [])]} />
-      </li>)}
-      {settings?.grants.length ? <li className="cd-faint cd-drivepick-note">Always allowed</li> : null}
-      {settings?.grants.map((grant) => <li key={grant.id} className="cd-access-space">
-        <span className="cd-access-space-name"><Icon name="folder" /><span>{grant.path.split("/").pop()} <small className="cd-faint">in {grant.spaceName} · {grant.need === "change" ? "read and change" : "read"}</small></span></span>
-        <button type="button" className="cd-quietbutton" onClick={() => takeBack(grant.id)}>Take back</button>
-      </li>)}
-      {settings && !settings.spaces.length ? <li className="cd-faint cd-drivepick-note">You have no spaces in Drive.</li> : null}
-      {!settings && !problem ? <li className="cd-faint cd-drivepick-note">…</li> : null}
-    </ul>
-    <footer>{problem ? <span className="cd-problem">{problem}</span> : <span className="cd-faint">Anything else, it asks you first.</span>}</footer>
-  </dialog>;
+  return <div className="cd-attach" ref={root}>
+    <button type="button" className={cx("cd-iconbutton", open && "is-on")} aria-label="Attach files" title="Attach files" disabled={disabled}
+      aria-haspopup={onDrive ? "menu" : undefined} aria-expanded={onDrive ? open : undefined}
+      onClick={() => (onDrive ? setOpen(!open) : onDevice())}><Icon name="clip" /></button>
+    {open && onDrive ? <div className="cd-attach-menu" role="menu" aria-label="Attach files" onKeyDown={step}>
+      <button type="button" role="menuitem" onClick={() => go(onDevice)}><Icon name="device" />From your device</button>
+      <button type="button" role="menuitem" onClick={() => go(onDrive)}><Icon name="folder" />From Drive</button>
+    </div> : null}
+  </div>;
 }
 
 /** Files from Drive: spaces, then folders, then files to tick. */
@@ -1640,34 +1833,44 @@ function DrivePicker({ onClose, onPick }: { onClose: () => void; onPick: (items:
   const [at, setAt] = useState<{ folder: DriveItem; path: DriveItem[]; children: DriveItem[] } | null>(null);
   const [chosen, setChosen] = useState<Map<string, DriveItem>>(new Map());
   const [problem, setProblem] = useState<string | null>(null);
+  const [peek, setPeek] = useState<DriveItem | null>(null);
+  const [inSpace, setInSpace] = useState<DriveSpace | null>(null);
+  /* Escape closes the preview first; the dialog stays. */
+  const peeking = useRef(false);
+  const showPeek = (item: DriveItem | null) => { setPeek(item); if (item) peeking.current = true; else setTimeout(() => { peeking.current = false; }, 0); };
   useEffect(() => { box.current?.showModal(); }, []);
   useEffect(() => { drive.spaces().then(setSpaces, (error) => setProblem(problemText(error))); }, []);
   const open = (id: string) => drive.folder(id).then((f) => { setAt(f); setProblem(null); }, (error) => setProblem(problemText(error)));
   const toggle = (item: DriveItem) => setChosen((m) => { const next = new Map(m); if (next.has(item.id)) next.delete(item.id); else if (next.size < 10) next.set(item.id, item); return next; });
 
-  return <dialog ref={box} className="cd-drivepick" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+  return <dialog ref={box} className="cd-drivepick" aria-labelledby="cd-drivepick-title" onClose={onClose} onCancel={(event) => { if (peeking.current) event.preventDefault(); }} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
     <header>
-      <b>From Drive</b>
-      <nav className="cd-drivepick-path">
-        <button type="button" onClick={() => setAt(null)}>Spaces</button>
-        {at ? [...at.path, at.folder].map((step) => <span key={step.id}><Icon name="chevron" /><button type="button" onClick={() => void open(step.id)}>{step.name}</button></span>) : null}
-      </nav>
-      <button type="button" className="cd-iconbutton" aria-label="Close" onClick={() => box.current?.close()}><Icon name="close" /></button>
+      <h2 id="cd-drivepick-title">From Drive</h2>
+      {at ? <nav className="cd-drivepick-path" aria-label="Folder">
+        <button type="button" onClick={() => { setAt(null); setInSpace(null); }}>Spaces</button>
+        {[...at.path, at.folder].map((step, n, all) => <span key={step.id}><Icon name="chevron" /><button type="button" aria-current={n === all.length - 1 ? "location" : undefined} onClick={() => void open(step.id)}>{n === 0 && inSpace?.mark ? <span className="cd-crest" aria-hidden="true" dangerouslySetInnerHTML={{ __html: inSpace.mark }} /> : null}{n === 0 && inSpace ? inSpace.name : step.name}</button></span>)}
+      </nav> : null}
     </header>
-    <ul>
-      {!at ? (spaces ?? []).map((space) => <li key={space.id}><button type="button" onClick={() => void open(space.rootId)}><Icon name="space" /><span>{space.name}</span><Icon name="chevron" /></button></li>)
+    <Scroller fit className="cd-drivepick-scroll" viewClassName="cd-scroll-view"><ul>
+      {!at ? (spaces ?? []).map((space) => <li key={space.id}><button type="button" onClick={() => { setInSpace(space); void open(space.rootId); }}>{space.mark ? <span className="cd-crest" aria-hidden="true" dangerouslySetInnerHTML={{ __html: space.mark }} /> : <Icon name="space" />}<span className="cd-drivepick-name">{space.name}</span><Icon name="chevron" /></button></li>)
         : at.children.map((item) => item.kind === "folder"
-          ? <li key={item.id}><button type="button" onClick={() => void open(item.id)}><Icon name="folder" /><span>{item.name}</span><Icon name="chevron" /></button></li>
-          : <li key={item.id}><label><input type="checkbox" checked={chosen.has(item.id)} onChange={() => toggle(item)} /><FileThumb name={item.name} size={32} picture={pictureExtensions.has(lowerExtension(item.name)) ? `/api/v1/drive/nodes/${encodeURIComponent(item.id)}/thumb?w=256` : null} /><span>{item.name}</span><small>{readableSize(item.size)}</small></label></li>)}
-      {spaces === null && !problem ? <li className="cd-faint cd-drivepick-note">…</li> : null}
-      {at && !at.children.length ? <li className="cd-faint cd-drivepick-note">Nothing here.</li> : null}
-    </ul>
+          ? <li key={item.id}><button type="button" onClick={() => void open(item.id)}><Icon name="folder" /><span className="cd-drivepick-name">{item.name}</span><Icon name="chevron" /></button></li>
+          : <li key={item.id} className={cx("cd-drivepick-file", chosen.has(item.id) && "is-chosen")}>
+            <label><FileThumb name={item.name} size={48} picture={pictureExtensions.has(lowerExtension(item.name)) ? `/api/v1/drive/nodes/${encodeURIComponent(item.id)}/thumb?w=256` : null} /><span className="cd-drivepick-name">{item.name}<small>{readableSize(item.size)}</small></span><input type="checkbox" checked={chosen.has(item.id)} onChange={() => toggle(item)} /></label>
+            {previewable(item.name, item.mime) ? <button type="button" className="cd-drivepick-peek" aria-label={`Preview ${item.name}`} title="Preview" onClick={() => showPeek(item)}><Icon name="expand" /></button> : null}
+          </li>)}
+      {spaces === null && !problem ? <li className="cd-drivepick-note" aria-busy="true"><span className="cd-drivepick-wait" /></li> : null}
+      {(at && !at.children.length) || (!at && spaces?.length === 0) ? <li className="cd-drivepick-note">Nothing here.</li> : null}
+    </ul></Scroller>
     <footer>
-      {problem ? <span className="cd-problem">{problem}</span> : <span className="cd-faint">{chosen.size ? `${chosen.size} chosen` : "Tick the files to add"}</span>}
+      {problem ? <span className="cd-problem">{problem}</span> : chosen.size ? <span className="cd-drivepick-count">{chosen.size} chosen</span> : null}
       <span className="cd-grow" />
       <Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Cancel</Seal>
       <Seal type="button" compact disabled={!chosen.size} onClick={() => onPick([...chosen.values()])}>Add</Seal>
     </footer>
+    {peek ? <FileOverlay into={box.current} name={peek.name} mime={peek.mime} url={`/api/v1/drive/nodes/${encodeURIComponent(peek.id)}/content`} onClose={() => showPeek(null)}
+      picture={pictureExtensions.has(lowerExtension(peek.name)) ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={`/api/v1/drive/nodes/${encodeURIComponent(peek.id)}/thumb?w=1280`} alt={peek.name} decoding="async" /> : undefined}
+      actions={<Seal type="button" compact tone={chosen.has(peek.id) ? "quiet" : undefined} onClick={() => toggle(peek)}>{chosen.has(peek.id) ? "Chosen" : "Choose"}</Seal>} /> : null}
   </dialog>;
 }
 

@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kimono App Mockups</title>
+<style>
+/*@fonts*/
+/*@kata*/
+/*@shell*/
+/*@drive-css*/
+/*@launcher*/
+
+/* ═══════════════════════════════════════════════════════════════
+   The Kimono app — Kimono's own chrome, so the house suō.
+   ═══════════════════════════════════════════════════════════════ */
+.ac { --dv-deep: var(--k-suo); --dv-tint: var(--k-sakura-wash); --k-app-accent: var(--k-suo); }
+.ph-status { display: flex; justify-content: space-between; align-items: center; height: 34px; padding: 0 26px; flex: none; font: 600 14px/1 var(--k-sans); color: var(--k-ink); background: var(--k-ground); }
+.ph-status i { display: inline-block; width: 22px; height: 11px; border: 1.5px solid currentColor; border-radius: 3px; position: relative; }
+.ph-status i::after { content: ""; position: absolute; inset: 1.5px 5px 1.5px 1.5px; background: currentColor; }
+.ph.dark-status .ph-status { background: var(--k-urushi); color: var(--k-urushi-text); }
+.ph-tabs.three { grid-template-columns: repeat(3, 1fr); }
+.ph-tabs .pfp { margin-bottom: 1px; }
+.ph-scroll { flex: 1; overflow: hidden; position: relative; background-color: var(--k-ground); }
+.kmark { display: inline-flex; align-items: center; gap: 8px; }
+.kmark .kimono-branch { width: 30px; height: 30px; color: var(--k-plum); }
+.kmark b { font: 600 22px/1 var(--k-display); color: var(--k-plum); letter-spacing: -.01em; }
+.ph-hello { padding: 18px 20px 6px; }
+.ph-hello p { margin: 0 0 6px; color: var(--k-suo-deep); font: 600 12px/1.4 var(--k-sans); }
+.ph-hello h1 { margin: 0; font: 600 34px/1.08 var(--k-display); letter-spacing: -.02em; color: var(--k-plum); }
+.ph-hello h1 strong { color: var(--k-suo); font-weight: 600; }
+.bl { display: block; }
+.bl svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+/* A — ema, one rail per pair, the Portal's own plaques at phone size */
+.ph .launcher-section { padding: 18px 12px 0; }
+.ph .launcher-section h2 { margin: 0 8px 12px; }
+.ph .launcher-grid { min-height: 0; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 0 4px 16px; margin-bottom: 12px; justify-items: center; }
+.ph .launcher-app { min-height: 192px; padding-top: 24px; }
+.ph .launcher-app:nth-child(even) { margin-top: 10px; }
+.ph .app-cord { width: 96px; }
+.ph .app-ema { width: 152px; height: 158px; padding-top: 18px; }
+.ph .launcher-icon { width: 70px; height: 70px; margin-top: 8px; }
+.ph .ema-copy { bottom: 10px; }
+.ph .launcher-name { font-size: 15px; }
+.ph .launcher-status { margin-top: 2px; }
+.launcher-status.get { color: var(--k-suo-deep); font-weight: 700; }
+
+/* B — rows */
+.br-group { padding: 18px 20px 8px; font: 600 12px/1.4 var(--k-sans); color: var(--k-ink-soft); }
+.br-list { background: var(--k-sheet); border-top: 1px solid var(--k-hair); }
+.br-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 76px; padding: 0 16px 0 18px; border-bottom: 1px solid var(--k-hair); }
+.br-row .bl { width: 50px; height: 50px; }
+.br-row b { display: block; font: 600 17px/1.25 var(--k-display); color: var(--k-plum); }
+.br-row small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--k-ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.br-row .k-seal { min-height: 36px; padding: 0 16px; font-size: 13px; }
+.br-state { font-size: 12.5px; font-weight: 600; color: var(--k-moss-deep); display: inline-flex; align-items: center; gap: 6px; }
+.br-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--k-moss); }
+
+/* C — the garden: shortcuts, then a bed of blooms */
+.gc-cuts { display: flex; gap: 8px; padding: 14px 20px 6px; overflow: hidden; }
+.gc-cut { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 8px; flex: none; border: 1px solid var(--k-hair); border-radius: 2px; background: var(--k-lift); font-size: 13.5px; font-weight: 600; box-shadow: var(--k-shadow-sheet); }
+.gc-cut .bl { width: 26px; height: 26px; }
+.gc-cut.on { border-color: var(--k-moss); background: var(--k-moss-wash); color: var(--k-moss-deep); }
+.gc-bed { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px 8px; padding: 18px 16px 18px; margin: 14px 16px 0; border-top: 6px solid color-mix(in srgb, var(--k-plum) 88%, #2d2524); background: var(--k-sheet); background-image: var(--k-grain); box-shadow: var(--k-shadow-sheet); }
+.gc-app { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.gc-app .bl { width: 74px; height: 74px; filter: drop-shadow(0 4px 3px rgba(78,43,55,.2)); }
+.gc-app b { font: 600 14px/1.2 var(--k-display); color: var(--k-plum); }
+.gc-app small { margin-top: -4px; font-size: 11.5px; font-weight: 600; color: var(--k-ink-soft); }
+.gc-app small.get { color: var(--k-suo-deep); }
+.gc-app.faded .bl { opacity: .5; filter: grayscale(.4); }
+.gc-head { display: flex; align-items: baseline; justify-content: space-between; padding: 20px 20px 0; }
+.gc-head h2 { margin: 0; font: 600 16px/1.35 var(--k-display); color: #493139; }
+.gc-head a { font-size: 13px; font-weight: 600; color: var(--k-suo-deep); }
+
+/* shared: sign-in, get-an-app sheets, the long-press menu */
+.si { flex: 1; display: grid; align-content: center; justify-items: center; gap: 18px; padding: 0 28px 40px; background: var(--k-ground); text-align: center; }
+.si .kimono-branch { width: 76px; height: 76px; color: var(--k-plum); }
+.si h1 { margin: 0; font: 600 34px/1.1 var(--k-display); color: var(--k-plum); letter-spacing: -.02em; }
+.si p { margin: -6px 0 6px; font-size: 14.5px; color: var(--k-ink-soft); }
+.si .k-field { width: 100%; text-align: left; }
+.si .k-field input { max-width: none; }
+.si .k-seal { width: 100%; }
+.si-foot { padding: 0 28px 26px; text-align: center; font-size: 12.5px; color: var(--k-ink-soft); background: var(--k-ground); }
+.web { flex: 1; display: grid; grid-template-rows: auto 1fr; background: var(--k-ground); }
+.web-bar { display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 14px; background: var(--k-lift); border-bottom: 1px solid var(--k-hair); font-size: 13px; }
+.web-bar b { font-weight: 600; }
+.web-bar span { margin-left: auto; color: var(--k-ink-soft); font: 500 12px/1 var(--k-mono); }
+.web-card { margin: 28px 18px; padding: 26px 22px 24px; display: grid; gap: 16px; align-content: start; background: var(--k-lift); border: 1px solid var(--k-hair); border-radius: 2px; box-shadow: var(--k-shadow-sheet); }
+.web-card h2 { margin: 0; font: 600 26px/1.15 var(--k-display); color: var(--k-plum); }
+.web-card .k-field input { max-width: none; }
+.web-card .k-seal { width: 100%; }
+.sh-app { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 14px; align-items: center; }
+.sh-app .bl { width: 64px; height: 64px; }
+.sh-app small { display: block; font-size: 13px; color: var(--k-ink-soft); margin-top: 2px; }
+.sh-steps { display: grid; gap: 0; margin: 16px 0 14px; border: 1px solid var(--k-hair); border-radius: 2px; background: var(--k-sheet); }
+.sh-steps > div { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px; align-items: center; min-height: 50px; padding: 0 14px; font-size: 14px; }
+.sh-steps > div + div { border-top: 1px solid var(--k-hair); }
+.sh-steps b { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid var(--k-hair-deep); font: 600 12px/1 var(--k-mono); color: var(--k-ink-soft); }
+.sh-steps .done { color: var(--k-ink-soft); }
+.sh-steps .done b { background: var(--k-moss); border-color: var(--k-moss); color: var(--k-lift); }
+.sh-steps .now { font-weight: 600; }
+.sh-steps .now b { border-color: var(--k-suo); color: var(--k-suo-deep); }
+.sh-bar { height: 6px; margin: 14px 0 8px; background: var(--k-fold); }
+.sh-bar i { display: block; height: 100%; width: 64%; background: var(--k-suo); }
+.sh-meta { display: flex; justify-content: space-between; font: 500 12px/1 var(--k-mono); color: var(--k-ink-soft); }
+.sh-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sh-pair .k-seal { width: 100%; }
+.sh-tile { width: 76px; height: 76px; display: grid; place-items: center; border-radius: 18px; background: var(--k-ground); box-shadow: 0 0 0 1px var(--k-hair), 0 6px 14px -6px rgba(78,43,55,.35); }
+.sh-tile .bl { width: 58px; height: 58px; }
+.sh-home { display: grid; justify-items: center; gap: 6px; padding: 18px 0 6px; font-size: 12px; font-weight: 600; }
+.sys { position: absolute; left: 18px; right: 18px; bottom: 26px; z-index: 6; padding: 20px 20px 14px; border-radius: 22px; background: #f4f1f2; box-shadow: 0 20px 50px rgba(0,0,0,.35); font-family: -apple-system, system-ui, sans-serif; }
+.sys h4 { margin: 0 0 6px; font-size: 17px; }
+.sys p { margin: 0 0 14px; font-size: 13.5px; color: #555; }
+.sys .row { display: flex; justify-content: flex-end; gap: 22px; font-size: 14px; font-weight: 600; color: #1a6b5a; }
+.lp { position: absolute; inset: 0; z-index: 4; background: rgba(42,29,34,.38); backdrop-filter: blur(3px); }
+.lp-pick { position: absolute; z-index: 5; display: grid; justify-items: center; gap: 6px; }
+.lp-menu { position: absolute; z-index: 5; width: 240px; border: 1px solid var(--k-hair); border-radius: 2px; background: var(--k-lift); box-shadow: 0 24px 48px -20px rgba(42,29,34,.6); }
+.lp-menu a { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 16px; border-bottom: 1px solid var(--k-hair); font-size: 15px; }
+.lp-menu a:last-child { border-bottom: 0; }
+.lp-menu a.danger { color: var(--k-suo-deep); }
+.lp-menu svg.i { width: 18px; height: 18px; }
+</style>
+</head>
+<body>
+<div class="mk">
+  <header class="mk-head">
+    <div class="mk-kicker">The Kimono app · screen mockups · round 1</div>
+    <h1>Kimono in your pocket</h1>
+    <p>One native app for everyone on Kimono. It opens each app, gets the ones you don't have yet, and holds your account. Three versions of the home screen below, then the screens they share. Pick per version: <b>keep / adjust / kill</b>.</p>
+  </header>
+  <nav class="mk-tabs" role="tablist" id="tabs"></nav>
+  <div id="sections"></div>
+</div>
+<script>
+/*@ramp*/
+/*@ramps:#b5653a,#3f6a8a,#2f6b7a,#5f5596,#7b4f8f*/
+/*@drive-js*/
+
+const BRANCH = `<svg class="kimono-branch" viewBox="1 12 111 106" fill="currentColor" aria-hidden="true"><path d="M2 108 C26 98 43 84 55 66 C62 55 71 47 79 43 L81 47 C73 51 66 60 59 72 C47 90 30 106 6 116Z"/><path d="M57 73 C56 63 53 54 47 47 L50 44 C57 52 60 62 61 72Z"/><path d="M27 97 C40 96 51 100 58 108 L55 111 C49 104 39 100 27 100Z"/><g transform="translate(83 41) scale(.55) translate(-50 -50)">${[0, 72, 144, 216, 288].map((r) => `<path transform="rotate(${r} 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/>`).join("")}<circle cx="50" cy="50" r="13"/></g></svg>`;
+const kmark = () => `<span class="kmark">${BRANCH}<b>kimono</b></span>`;
+
+/* The glyphs from @kimono/ui, as drawn at the heart of each bloom. */
+const GLYPH = {
+  image: '<path d="M36 38 H64 V62 H36 Z" stroke-linejoin="round"/><path d="M36 56 L46 46 L58 58" stroke-linecap="round" stroke-linejoin="round"/><circle cx="57" cy="45" r="3.5" fill="currentColor" stroke="none"/>',
+  notes: '<path d="M38 36 H62 V64 H38 Z" stroke-linejoin="round"/><path d="M45 45 H55 M45 53 H55" stroke-linecap="round"/>',
+  mesh: '<path d="M50 38 L38 60 M50 38 L62 60 M38 60 L62 60" stroke-linecap="round"/><circle cx="50" cy="37" r="6" fill="currentColor" stroke="none"/><circle cx="37" cy="61" r="6" fill="currentColor" stroke="none"/><circle cx="63" cy="61" r="6" fill="currentColor" stroke="none"/>',
+  file: '<path d="M41 36 H54 L60 42 V64 H41 Z" stroke-linejoin="round"/><path d="M54 36 V42 H60" stroke-linejoin="round"/>',
+  play: '<path d="M43 36 L66 50 L43 64 Z" stroke-linejoin="round"/>',
+};
+let bN = 0;
+function bloomOf(app) {
+  const R = RAMPS[app.accent];
+  const hash = (v) => { let h = 2166136261; for (let i = 0; i < v.length; i++) { h ^= v.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+  const mul = (s) => () => { s = (s + 0x6d2b79f5) >>> 0; let r = s; r = Math.imul(r ^ r >>> 15, r | 1); r ^= r + Math.imul(r ^ r >>> 7, r | 61); return ((r ^ r >>> 14) >>> 0) / 4294967296; };
+  const seed = hash(`${app.id}:${app.accent}`), rnd = mul(seed), rot = -5 + rnd() * 10;
+  const petals = Array.from({ length: 5 }, (_, i) => { const rv = i % 2 === 1; return { a: rv ? R.soft : R.tint, b: rv ? R.tint : R.soft, c: R.deep, r: i * 72 + (rnd() - .5) * 2.8, s: .965 + rnd() * .055, o: .94 + rnd() * .06 }; });
+  const u = "m" + (bN++), d = "M50 46 C37 38 32 21 41 10 C45 5 50 3 50 3 C55 5 58 8 61 12 C68 23 62 38 50 46Z";
+  return `<span class="bl"><svg viewBox="0 0 100 100" aria-hidden="true"><defs>${petals.map((p, i) => `<linearGradient id="${u}g${i}" x1="20" y1="12" x2="78" y2="90" gradientUnits="userSpaceOnUse"><stop stop-color="${p.a}"/><stop offset=".5" stop-color="${p.b}"/><stop offset="1" stop-color="${p.c}"/></linearGradient>`).join("")}</defs><g transform="rotate(${rot} 50 50)">${petals.map((p, i) => `<path d="${d}" transform="rotate(${p.r} 50 50) translate(50 50) scale(${p.s}) translate(-50 -50)" fill="url(#${u}g${i})" opacity="${p.o}"/>`).join("")}${petals.map((p) => `<path class="app-bloom-vein" d="M50 41 C49 29 49 18 50 8" transform="rotate(${p.r} 50 50)"/>`).join("")}</g><circle class="app-bloom-centre-shadow" cx="50" cy="50" r="23" style="fill:var(--k-plum)"/><circle class="app-bloom-centre" cx="50" cy="50" r="20" style="fill:var(--k-plum)"/><g fill="none" stroke="var(--k-lift)" color="var(--k-lift)" stroke-width="4.5">${GLYPH[app.glyph]}</g></svg></span>`;
+}
+
+/* How each app reaches the phone decides its one action:
+   native → its own app (TestFlight on iPhone, an APK on Android)
+   store  → an app from the App Store / Play Store pointed at Kimono
+   inside → a screen of this app
+   web    → a website, added to the Home Screen with its bloom as the icon */
+const APPS = [
+  { id: "kimono-photos", name: "Photos", accent: "#b5653a", glyph: "image", how: "native", have: true, about: "Every photo from every phone" },
+  { id: "kimono-drive", name: "Drive", accent: "#5f5596", glyph: "file", how: "inside", have: true, about: "Spaces and files you share" },
+  { id: "kimono-notes", name: "Notes", accent: "#3f6a8a", glyph: "notes", how: "web", have: false, about: "The household wiki" },
+  { id: "kimono-vpn", name: "VPN", accent: "#2f6b7a", glyph: "mesh", how: "store", have: true, about: "Reach your devices from anywhere", on: true },
+  { id: "kimono-films", name: "Films", accent: "#7b4f8f", glyph: "play", how: "native", have: false, about: "Films and shows from the shelf" },
+];
+const status = (a) => a.have ? (a.on ? "Connected" : "Open") : "Get";
+
+const phone = (inner, cls = "") => `<div class="mk-screen mk-phone"><div class="dv ac ph ${cls}" style="display:flex;flex-direction:column;height:100%"><div class="ph-status"><b>9:41</b><i></i></div>${inner}</div></div>`;
+const tabs = (cur = "home") => `<nav class="ph-tabs three">${[["home", "Home", "home"], ["drive", "Drive", "folder"], ["you", "You", ""]].map(([id, l, i]) => `<a href="#" ${id === cur ? 'aria-current="page"' : ""}>${id === "you" ? pfp("akram", 22) : I(i)}${l}</a>`).join("")}</nav>`;
+const phHead = (end = "") => `<div class="ph-head">${kmark()}<span class="end">${end}</span></div>`;
+const hello = `<div class="ph-hello"><p>Your household</p><h1>Welcome home, <strong>Akram.</strong></h1></div>`;
+
+/* ═══════════════════════ A — 絵馬 Ema ═══════════════════════ */
+function ema(a) {
+  return `<a class="launcher-app" href="#"><span class="app-cord" aria-hidden="true"><i></i><i></i><b></b></span><span class="app-ema"><span class="ema-grain"></span><span class="launcher-icon">${bloomOf(a)}</span><span class="ema-copy"><span class="launcher-name">${a.name}</span><span class="launcher-status ${a.have ? "" : "get"}">${status(a)} <span aria-hidden="true">${a.have ? "→" : "↓"}</span></span></span></span><span class="ema-tassel" aria-hidden="true"><i></i><i></i><i></i></span></a>`;
+}
+function versionA() {
+  const rails = [APPS.slice(0, 2), APPS.slice(2, 4), APPS.slice(4)].map((pair) => `<div class="launcher-grid">${pair.map(ema).join("")}</div>`).join("");
+  const a1 = phone(phHead(`<button class="dv-iconbtn" aria-label="Search">${I("search")}</button>`) + `<div class="ph-scroll">${hello}<section class="launcher-section"><h2>Applications</h2>${rails}</section></div>` + tabs());
+  const a2 = phone(phHead() + `<div class="ph-scroll"><section class="launcher-section" style="padding-top:8px"><h2>Applications</h2>${rails}</section></div>` + tabs(), "");
+  return `<header><h2>A · 絵馬 Ema</h2><p>The Portal's home, carried over as it is. Each app hangs as an ema plaque, two to a rail. An app you don't have yet says <b>Get ↓</b> where the others say Open. It's the most Kimono of the three, and the slowest to scan once there are many apps.</p></header>
+  ${frame("A1", "Home", "The greeting from the website, then the plaques. Tapping Get opens the sheet for that app (see Shared).", `<div class="mk-phones">${a1}${a2}</div>`, "The right phone is the same screen scrolled: the greeting scrolls away and the rails stay.")}`;
+}
+
+/* ═══════════════════════ B — 帳 Ledger ═══════════════════════ */
+function row(a) {
+  const end = a.have ? (a.on ? `<span class="br-state">Connected</span>` : seal("Open", "quiet")) : seal("Get");
+  return `<div class="br-row">${bloomOf(a)}<span><b>${a.name}</b><small>${a.about}</small></span>${end}</div>`;
+}
+function versionB() {
+  const b1 = phone(phHead(`<button class="dv-iconbtn" aria-label="Search">${I("search")}</button>`) + `<div class="ph-scroll">${hello}<div class="br-group">On this phone</div><div class="br-list">${APPS.filter((a) => a.have).map(row).join("")}</div><div class="br-group">Get them too</div><div class="br-list">${APPS.filter((a) => !a.have).map(row).join("")}</div></div>` + tabs());
+  return `<header><h2>B · 帳 Ledger</h2><p>Each app is a row with its bloom, one line about it, and one action on the right. What you already have comes first; what you don't is gathered underneath, so setting up a new phone is one list from top to bottom. The quickest to scan, and the plainest.</p></header>
+  ${frame("B1", "Home", "Open on the right of the apps you have, Get on the ones you don't. VPN shows whether it's connected instead of an Open button.", `<div class="mk-phones">${b1}</div>`)}`;
+}
+
+/* ═══════════════════════ C — 庭 Garden ═══════════════════════ */
+function bed(a) { return `<a class="gc-app ${a.have ? "" : "faded"}" href="#">${bloomOf(a)}<b>${a.name}</b><small class="${a.have ? "" : "get"}">${a.have ? (a.on ? "Connected" : "") : "Get"}</small></a>`; }
+function versionC() {
+  const cuts = `<div class="gc-cuts"><span class="gc-cut on">${bloomOf(APPS[3])}VPN on</span><span class="gc-cut">${bloomOf(APPS[0])}Back up photos</span><span class="gc-cut">${bloomOf(APPS[1])}Upload</span></div>`;
+  const c1 = phone(phHead(`<button class="dv-iconbtn" aria-label="Search">${I("search")}</button>`) + `<div class="ph-scroll">${hello}${cuts}<div class="gc-head"><h2>Applications</h2><a href="#">Edit</a></div><div class="gc-bed">${APPS.map(bed).join("")}</div></div>` + tabs());
+  const c2 = phone(phHead() + `<div class="ph-scroll">${hello}${cuts}<div class="gc-head"><h2>Applications</h2></div><div class="gc-bed">${APPS.map(bed).join("")}</div>
+    <div class="lp"></div><div class="lp-pick" style="left:264px;top:350px">${bloomOf(APPS[2]).replace('class="bl"', 'class="bl" style="width:84px;height:84px"')}</div>
+    <div class="lp-menu" style="left:134px;top:446px"><a href="#">Open${I("open")}</a><a href="#">Add to Home Screen${I("plus")}</a><a href="#">Open in browser${I("link")}</a><a href="#" class="danger">Hide from Home${I("close")}</a></div></div>` + tabs());
+  return `<header><h2>C · 庭 Garden</h2><p>Blooms in a bed, three across, like a phone's own home screen. Above them, a row of shortcuts into the apps for the things people do most. Apps you don't have yet are faded until you get them. Long-press any bloom for its menu.</p></header>
+  ${frame("C1", "Home", "Shortcuts first, then every app. Edit lets you reorder or hide them.", `<div class="mk-phones">${c1}${c2}</div>`, "The right phone shows a long-press on Notes.")}`;
+}
+
+/* ═══════════════════════ Shared ═══════════════════════ */
+function shared() {
+  const s1 = phone(`<div class="si">${BRANCH}<h1>Kimono</h1><p>Sign in with your Kimono account.</p><label class="k-field"><span>Your Kimono's address</span><input value="kimono.example"></label>${seal("Continue")}</div><div class="si-foot">Only the people on your Kimono can sign in.</div>`);
+  const s2 = phone(`<div class="web"><div class="web-bar"><button class="dv-iconbtn" aria-label="Cancel">${I("close")}</button><b>Sign in</b><span>auth.kimono…</span></div><div><div class="web-card"><h2>Welcome to Kimono</h2><label class="k-field"><span>Username or email</span><input value="akram"></label>${seal("Log in")}</div></div></div>`);
+  const sheet = (inner, under = APPS) => phone(phHead() + `<div class="ph-scroll">${hello}<div class="br-list" style="margin-top:14px">${under.map(row).join("")}</div><div class="ph-scrim"></div><div class="ph-sheet"><div class="grab"></div><div class="pad">${inner}</div></div></div>` + tabs());
+  const app = (a, line) => `<div class="sh-app">${bloomOf(a)}<div><h2>${a.name}</h2><small>${line}</small></div></div>`;
+  const s3 = sheet(`${app(APPS[4], "An app of its own, for iPhone and iPad")}<div class="sh-steps"><div class="done"><b>✓</b>You're invited</div><div class="now"><b>2</b>Install it from TestFlight</div><div><b>3</b>Open it here</div></div>${seal("Open TestFlight")}`);
+  const s4 = sheet(`${app(APPS[4], "An app of its own, for Android")}<div class="sh-bar"><i></i></div><div class="sh-meta"><span>Downloading</span><span>41 of 64 MB</span></div><div style="margin-top:16px">${seal("Cancel", "quiet")}</div>`);
+  const s5 = sheet(`${app(APPS[2], "Opens like an app, from your Home Screen")}<div class="sh-home"><span class="sh-tile">${bloomOf(APPS[2])}</span>Notes</div><div class="sh-pair" style="margin-top:12px">${seal("Open here", "quiet")}${seal("Add to Home Screen")}</div>`);
+  const s6 = phone(phHead() + `<div class="ph-scroll">${hello}<div class="br-list" style="margin-top:14px">${APPS.map(row).join("")}</div><div class="ph-scrim"></div><div class="sys"><h4>Install Kimono Films?</h4><p>This app comes from Kimono.</p><div class="row"><span>Cancel</span><span>Install</span></div></div></div>` + tabs());
+  const s7 = sheet(`${app(APPS[3], "Uses the Tailscale app, signed in to Kimono")}<div class="sh-steps"><div class="done"><b>✓</b>Get Tailscale from the App Store</div><div class="now"><b>2</b>Sign in to Kimono in Tailscale</div><div><b>3</b>Turn it on</div></div>${seal("Open Tailscale")}`);
+  return `<header><h2>Shared by all three</h2><p>Signing in, and getting an app you don't have yet. These work the same whichever home screen wins. Each kind of app gets one sheet, with its own steps.</p></header>
+  ${frame("S1", "First launch", "The address once, then Kimono's own sign-in page in a sheet over the app. It's the page you already restyled; nothing else is asked.", `<div class="mk-phones">${s1}${s2}</div>`)}
+  ${frame("S2", "Get an app that has its own app", "On iPhone the steps follow the TestFlight invite. On Android, Kimono downloads it and asks Android to install it.", `<div class="mk-phones">${s3}${s4}${s6}</div>`, "Android asks once to allow installs from Kimono; after that each app is one tap. Updates arrive the same way.")}
+  ${frame("S3", "Get a website as an app", "A website app gets its bloom as the Home Screen icon and opens full-screen, with no browser bar.", `<div class="mk-phones">${s5}</div>`, "iPhone installs it as a small profile from Settings: two taps, once per app. Android adds it straight to the Home Screen.")}
+  ${frame("S4", "Get an app from the store", "For apps Kimono doesn't make, like the VPN, the sheet opens the store app and then helps you sign in.", `<div class="mk-phones">${s7}</div>`)}`;
+}
+
+const VERSIONS = [
+  { id: "a", jp: "絵馬", name: "A · Ema", sub: "The Portal's plaques", render: versionA },
+  { id: "b", jp: "帳", name: "B · Ledger", sub: "One row per app", render: versionB },
+  { id: "c", jp: "庭", name: "C · Garden", sub: "Shortcuts and blooms", render: versionC },
+  { id: "shared", jp: "共", name: "Shared", sub: "Sign-in and getting apps", render: shared },
+];
+const tabsEl = document.getElementById("tabs"), secs = document.getElementById("sections");
+VERSIONS.forEach((v, i) => {
+  tabsEl.insertAdjacentHTML("beforeend", `<button class="mk-tab" role="tab" aria-selected="${i === 0}" data-v="${v.id}"><b><span class="jp">${v.jp}</span>${v.name}</b><small>${v.sub}</small></button>`);
+  secs.insertAdjacentHTML("beforeend", `<section class="mk-section ${i === 0 ? "on" : ""}" id="v-${v.id}" role="tabpanel">${v.render()}</section>`);
+});
+function show(id) {
+  document.querySelectorAll(".mk-tab").forEach((t) => t.setAttribute("aria-selected", t.dataset.v === id));
+  document.querySelectorAll(".mk-section").forEach((s) => s.classList.toggle("on", s.id === "v-" + id));
+}
+tabsEl.addEventListener("click", (e) => { const b = e.target.closest(".mk-tab"); if (b) { show(b.dataset.v); window.scrollTo({ top: 0 }); } });
+if (VERSIONS.some((v) => v.id === location.hash.slice(1))) show(location.hash.slice(1));
+const solo = new URLSearchParams(location.search).get("frame");
+if (solo) { const f = document.getElementById("f-" + solo); document.body.innerHTML = ""; document.body.style.padding = "24px"; document.body.appendChild(f); }
+</script>
+</body>
+</html>

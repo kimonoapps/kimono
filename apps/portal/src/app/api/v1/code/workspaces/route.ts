@@ -12,7 +12,9 @@ export async function GET() {
 /**
  * Starts a workspace from what you ask: `{ owner, name, base, prompt }`. The
  * sandbox is made and the agent starts on the prompt straight away. Files are
- * attached to a workspace once it exists, so a first message carries none.
+ * attached to a workspace once it exists, so a first message with files says
+ * `hold: true`: the workspace is made, the files go to it, and the message
+ * follows as an ordinary turn.
  */
 export async function POST(request: Request) {
   const refused = crossSite(request);
@@ -22,7 +24,7 @@ export async function POST(request: Request) {
   const read = await readJson(request);
   if ("response" in read) return read.response;
   return code(user, (config) => {
-    const body = read.body as { owner?: unknown; name?: unknown; base?: unknown; prompt?: unknown; effort?: unknown; model?: unknown; folder?: unknown };
+    const body = read.body as { owner?: unknown; name?: unknown; base?: unknown; prompt?: unknown; effort?: unknown; model?: unknown; folder?: unknown; hold?: unknown };
     /* Out of share: say so before a task is made that couldn't start. */
     checkShare(config, user);
     if (body.owner || body.name) {
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
       if (blocked) return apiError(409, blocked);
     }
     const made = createWorkspace(db(), user.username, { repoOwner: body.owner, repoName: body.name, base: body.base, prompt: body.prompt, folder: body.folder });
-    ask(config, made, user, String(body.prompt), [] as Attachment[], efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
+    if (body.hold !== true) ask(config, made, user, String(body.prompt), [] as Attachment[], efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
     void taskFolder(db(), made).catch((error) => console.warn("Code couldn't make a Drive folder:", error instanceof Error ? error.message : error));
     return apiJson(workspaceFor(db(), made.id, user.username), 201);
   });
