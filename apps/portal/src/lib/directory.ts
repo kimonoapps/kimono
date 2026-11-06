@@ -2,6 +2,7 @@ import type { AccountSession } from "@kimono/account";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { stateDir } from "./state";
+import { isAdministrator } from "./roles";
 
 /**
  * Who Kimono has seen sign in.
@@ -28,6 +29,8 @@ export type MeshMember = {
   username: string;
   displayName: string;
   guests: string[];
+  /** An owner or administrator of this Kimono: their devices reach the server and its nodes. */
+  admin?: boolean;
 };
 
 const directoryPath = join(stateDir, "directory.json");
@@ -106,6 +109,7 @@ export async function readMeshMembers(): Promise<Record<string, MeshMember>> {
       username,
       displayName: user.name?.trim() || username,
       guests: guestsOf(user),
+      admin: isAdministrator((user.groups_obj || []).map((group) => group.name)),
     };
   }
   /* An invitation to somebody without access cannot become a policy rule. */

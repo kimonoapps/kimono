@@ -3,17 +3,11 @@ import Authentik from "next-auth/providers/authentik";
 import { randomUUID } from "node:crypto";
 import { isRevoked, signedOutBefore } from "@/lib/session-epochs";
 import { readStanding } from "@/lib/directory";
+import { roleFromGroups } from "@/lib/roles";
 
 const authentikIssuer = process.env.AUTHENTIK_ISSUER?.replace(/\/*$/, "/");
 
-export function roleFromGroups(groups: unknown) {
-  if (!Array.isArray(groups)) return "member";
-  if (groups.includes("authentik Admins")) return "owner";
-  if (groups.includes("kimono-owner")) return "owner";
-  if (groups.includes("kimono-admin")) return "admin";
-  if (groups.includes("kimono-guest")) return "guest";
-  return "member";
-}
+export { roleFromGroups };
 
 export const { auth, handlers, signIn, signOut, unstable_update: updateSession } = NextAuth({
   providers: [

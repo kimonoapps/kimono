@@ -19,6 +19,7 @@
     "test:code": "node --import ./scripts/ts-resolve.mjs --test scripts/test-code.mjs",
     "test:artifacts": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-artifacts.mjs",
     "test:composio": "node --test scripts/test-composio.mjs",
+    "test:mesh-policy": "node --experimental-transform-types --test scripts/test-mesh-policy.mjs",
     "test:access": "node --test scripts/test-access.mjs && node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-access-flow.mjs"
   },
   "dependencies": {

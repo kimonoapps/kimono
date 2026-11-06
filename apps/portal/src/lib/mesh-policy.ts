@@ -11,9 +11,16 @@ import type { MeshMember } from "./directory";
 export function renderMeshPolicy(members: Record<string, MeshMember>): string {
   const names = Object.keys(members).sort();
 
-  const acls: Array<{ comment: string; src: string; dst: string }> = [
+  const acls: Array<{ comment: string; src: string; dst: string | string[] }> = [
     { comment: "Kimono's own service identities, administered by the appliance.", src: "tag:kimono-admin", dst: "tag:kimono-node:*" },
   ];
+
+  /* The people who run this Kimono reach its server and its nodes. Tagging the
+     server takes it out of whoever enrolled it, so without this rule the person
+     who administers it would lose their own way in over the mesh. */
+  for (const name of names) {
+    if (members[name].admin) acls.push({ comment: `${name} administers Kimono: the server and its nodes.`, src: `${name}@`, dst: ["tag:kimono-admin:*", "tag:kimono-node:*"] });
+  }
 
   for (const name of names) {
     acls.push({ comment: `${name} reaches their own devices.`, src: `${name}@`, dst: `${name}@:*` });
@@ -47,7 +54,7 @@ export function renderMeshPolicy(members: Record<string, MeshMember>): string {
       "    {",
       '      "action": "accept",',
       `      "src": [${JSON.stringify(acl.src)}],`,
-      `      "dst": [${JSON.stringify(acl.dst)}],`,
+      `      "dst": [${(Array.isArray(acl.dst) ? acl.dst : [acl.dst]).map((d) => JSON.stringify(d)).join(", ")}],`,
       "    },",
     );
   }
