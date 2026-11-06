@@ -91,7 +91,7 @@
 .cd-status i, .cd-thinking i { width: 8px; height: 8px; border-radius: var(--k-r-s); background: var(--k-ink-soft); }
 
 /* ── chat ── */
-.cd-ws > .cd-chat, .cd-ws > .cd-files, .cd-ws > .cd-changes-box, .cd-ws > .cd-pad { flex: 1 1 auto; min-height: 0; }
+.cd-ws > .cd-chat, .cd-ws > .cd-files, .cd-ws > .cd-changes-box, .cd-ws > .cd-pad, .cd-ws > .cd-scroll { flex: 1 1 auto; min-height: 0; }
 .cd-chat { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
 .cd-scroll { min-height: 0; }
 .cd-scroll-view { overscroll-behavior: contain; }
@@ -566,7 +566,8 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 
 /* Deployments: a panel beside the conversation, a tab when there's no room */
 .cd-deploy { position: sticky; top: 28px; }
-.cd-deploy-view { max-height: calc(100vh - 56px); }
+/* Room for the cards' drawn outlines, which reach a little past them: without it they overflow and scroll. */
+.cd-deploy-view { max-height: calc(100vh - 56px); padding: 6px; }
 .cd-deploy-tab { display: none !important; }
 .cd-deployments { display: grid; gap: 14px; }
 .cd-deployments h2 { margin: 6px 4px 2px; font: 700 15px/1.2 var(--k-sans); letter-spacing: .02em; color: var(--k-suo); }
