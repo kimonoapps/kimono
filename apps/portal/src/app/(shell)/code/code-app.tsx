@@ -154,7 +154,7 @@ function useModel() {
   return useSyncExternalStore((listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener); }; }, modelNow, () => "auto" as ModelChoice);
 }
 const modelWords: Record<ModelChoice, { label: string; detail: string }> = {
-  auto: { label: "Auto", detail: "Picks for each message" },
+  auto: { label: "Auto", detail: "Sonnet, or Opus to build" },
   opus: { label: "Opus", detail: "Best for building things" },
   sonnet: { label: "Sonnet", detail: "Everyday work" },
   haiku: { label: "Haiku", detail: "Quick answers" },
@@ -1264,7 +1264,7 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
               <ShareButton onClick={() => setSharing(true)} />
               {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
               {workspace.pullRequest ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button> : null}
-              <button type="button" className="cd-linkbutton" title="Open in Kimono Git" onClick={() => openOutside(`/api/v1/code/workspaces/${workspace.id}/git`)}><Icon name="branch" />Kimono Git</button>
+              <button type="button" className="cd-roundbutton" aria-label="Open in Kimono Git" title="Open in Kimono Git" onClick={() => openOutside(`/api/v1/code/workspaces/${workspace.id}/git`)}><Icon name="branch" /></button>
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
               <Seal type="button" compact tone={workspace.pullRequest ? "quiet" : "primary"} busy={publishing} disabled={running || Boolean(blocked)} onClick={() => void publish()}>
                 {workspace.pullRequest ? "Push changes" : "Open pull request"}
@@ -2347,6 +2347,9 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   const field = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [choosing, setChoosing] = useState(false);
+  /* A different model than the one this chat has been on has to take in the whole chat again. */
+  const model = useModel();
+  const switching = model !== "auto" && workspace.lastModel && model !== workspace.lastModel ? model : null;
 
   useEffect(() => { try { if (text) sessionStorage.setItem(draftKey, text); else sessionStorage.removeItem(draftKey); } catch { /* not kept */ } }, [text, draftKey]);
   useEffect(() => () => { for (const p of pending) if (p.preview) URL.revokeObjectURL(p.preview); }, [pending]);
@@ -2398,6 +2401,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <MorphLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPending((list) => list.filter((x) => x.id !== p.id))}><Icon name="close" /></button>
     </span>)}</div> : null}
+    {switching && workspace.lastModel ? <p className="cd-switching" role="status">This chat has been on {modelWords[workspace.lastModel].label}. Switching to {modelWords[switching].label} uses more of your plan.</p> : null}
     <textarea ref={field} value={text} rows={1} aria-label="Message"
       placeholder={blocked ? blocked : running ? "Steer it: this is read as soon as the current step ends" : "Ask for a change, or reply"}
       disabled={Boolean(blocked)}

@@ -21,6 +21,8 @@ export type Workspace = {
   createdAt: number; updatedAt: number; lastSeq: number;
   /** When its owner archived it, if they did. */
   archivedAt?: number | null;
+  /** The model that answered its last message. */
+  lastModel?: "opus" | "sonnet" | "haiku" | null;
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
 };
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };

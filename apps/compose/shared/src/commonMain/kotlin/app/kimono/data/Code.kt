@@ -83,6 +83,8 @@ data class CodeWorkspace(
     val turn: CodeTurn? = null,
     /** When its owner archived it: then it shows under Archived, not in the list. */
     val archivedAt: Long? = null,
+    /** The model that answered its last message. */
+    val lastModel: String? = null,
     /** Whose chat it is, and what this person may do in it: "owner", or shared with them to "edit" (write) or "read". */
     val owner: String = "",
     val access: String = "owner",
@@ -273,7 +275,7 @@ val efforts = listOf("low", "medium", "high", "xhigh", "max")
 val effortWords = mapOf("low" to "Low", "medium" to "Medium", "high" to "High", "xhigh" to "Extra high", "max" to "Max")
 /** Which Claude answers: Auto (Kimono picks per message), or one the person chose. */
 val modelChoices = listOf("auto", "opus", "sonnet", "haiku")
-val modelWords = mapOf("auto" to ("Auto" to "Picks for each message"), "opus" to ("Opus" to "Best for building things"), "sonnet" to ("Sonnet" to "Everyday work"), "haiku" to ("Haiku" to "Quick answers"))
+val modelWords = mapOf("auto" to ("Auto" to "Sonnet, or Opus to build"), "opus" to ("Opus" to "Best for building things"), "sonnet" to ("Sonnet" to "Everyday work"), "haiku" to ("Haiku" to "Quick answers"))
 val modelNames = mapOf("opus" to "Opus", "sonnet" to "Sonnet", "haiku" to "Haiku")
 
 private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }

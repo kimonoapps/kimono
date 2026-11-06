@@ -38,6 +38,8 @@ export type Workspace = {
   createdAt: number; updatedAt: number;
   /** When its owner archived it: it shows under Archived, not in the list. */
   archivedAt: number | null;
+  /** The model that answered its last message, so Auto stays on it and switching can be warned about. */
+  lastModel: "opus" | "sonnet" | "haiku" | null;
   /* the last turn, which is what the list shows */
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
   lastSeq: number;
@@ -264,6 +266,10 @@ export function migrate(db: DatabaseSync) {
   if (!(db.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "archived_at")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN archived_at INTEGER");
   }
+  /* The model that answered a chat's last message. */
+  if (!(db.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "last_model")) {
+    db.exec("ALTER TABLE workspaces ADD COLUMN last_model TEXT");
+  }
   /* Where each turn left the agent's session, so a later message can be edited and run again from there. */
   if (!(db.prepare("PRAGMA table_info(turns)").all() as { name: string }[]).some((c) => c.name === "resume_at")) {
     db.exec("ALTER TABLE turns ADD COLUMN session TEXT; ALTER TABLE turns ADD COLUMN resume_at TEXT;");
@@ -318,7 +324,7 @@ export function usageOf(db: DatabaseSync, username: string, now = Date.now()): P
 
 type WorkspaceRow = {
   id: string; owner: string; title: string; repo_owner: string; repo_name: string; base: string; branch: string;
-  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; preview_kind: string | null; preview_stopped: number; drive_folder: string | null; drive_space: string | null; project_id: string | null; project_name: string | null; archived_at: number | null; created_at: number; updated_at: number; last_seq: number;
+  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; preview_kind: string | null; preview_stopped: number; drive_folder: string | null; drive_space: string | null; project_id: string | null; project_name: string | null; archived_at: number | null; last_model: string | null; created_at: number; updated_at: number; last_seq: number;
   turn_id: string | null; turn_state: TurnState | null; turn_started: number | null; turn_ended: number | null;
 };
 
@@ -339,6 +345,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
     previewName: row.preview_name ?? null,
     drive: row.drive_space && row.drive_folder ? { spaceId: row.drive_space, folderId: row.drive_folder } : null,
     createdAt: row.created_at, updatedAt: row.updated_at, lastSeq: row.last_seq, archivedAt: row.archived_at ?? null,
+    lastModel: row.last_model === "opus" || row.last_model === "sonnet" || row.last_model === "haiku" ? row.last_model : null,
     turn: row.turn_id ? { id: row.turn_id, state: row.turn_state!, startedAt: row.turn_started!, endedAt: row.turn_ended } : null,
   };
 }
@@ -495,6 +502,10 @@ export function setPreview(db: DatabaseSync, id: string, preview: { url: string;
 export function runningTurn(db: DatabaseSync, workspaceId: string): string | null {
   const row = db.prepare("SELECT id FROM turns WHERE workspace_id = ? AND state = 'running'").get(workspaceId) as { id: string } | undefined;
   return row?.id ?? null;
+}
+
+export function setLastModel(db: DatabaseSync, id: string, model: "opus" | "sonnet" | "haiku") {
+  db.prepare("UPDATE workspaces SET last_model = ? WHERE id = ?").run(model, id);
 }
 
 export function setPreviewName(db: DatabaseSync, id: string, name: string | null) {

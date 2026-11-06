@@ -145,9 +145,11 @@ as context joined to the system prompt; another person's never do.
 
 ## Choosing the model
 
-Auto by default (`lib/code/models.ts`): Opus for a chat that builds an app or a
-message about code, sites or apps; Haiku for a short word; Sonnet for the rest.
-A chip in the composer picks one instead. The node runs only Opus, Sonnet or
+Auto by default (`lib/code/models.ts`): Sonnet at medium, until the chat builds
+something (an app, code, an animation), and from then on Opus at high. A chat
+stays on one model so it never has to be read again by another. A chip in the
+composer picks one instead; picking a different model than the chat has been on
+says that it uses more of the plan. The node runs only Opus, Sonnet or
 Haiku; each Done says which answered.
 
 ## Projects

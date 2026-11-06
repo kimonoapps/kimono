@@ -179,6 +179,8 @@ li[data-state="failed"] .cd-toolmark { color: var(--k-suo-deep); }
 .cd-composer-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .cd-hint { font-size: 12px; }
 .cd-pending { display: flex; flex-wrap: wrap; gap: 8px; }
+.cd-switching { margin: 0 4px; font-size: 12.5px; line-height: 1.4; color: var(--k-ink-soft, inherit); opacity: .85; }
+.cd-switching::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; border-radius: 50%; background: var(--k-suo-deep); vertical-align: middle; }
 .cd-composer.is-dropping { border-color: var(--k-app-accent); border-style: dashed; }
 .cd-drop { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--k-lift) 88%, transparent); font: 600 14px/1 var(--k-sans); color: var(--k-plum); pointer-events: none; }
 

@@ -1019,6 +1019,9 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     var problem by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
     var meters by remember { mutableStateOf(false) }
+    /* A different model than the one this chat has been on has to take in the whole chat again. */
+    val model by code.model.collectAsState()
+    val switching = w.lastModel?.takeIf { model != "auto" && model != it }
     val uploading = pending.any { it.attachment == null && it.failed == null }
     val ready = pending.mapNotNull { it.attachment }
     val canSend = !sending && !uploading && (text.isNotBlank() || ready.isNotEmpty())
@@ -1037,6 +1040,14 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp)) {
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (switching != null) {
+                    val words = app.kimono.data.modelWords
+                    Text(
+                        "This chat has been on ${words[switching]?.first ?: switching}. Switching to ${words[model]?.first ?: model} uses more of your plan.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
                 if (pending.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
                     items(pending.toList()) { p -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null) { pending.remove(p) } }
                 }

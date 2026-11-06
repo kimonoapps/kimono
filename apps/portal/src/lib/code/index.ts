@@ -12,7 +12,7 @@ import { finish, toolHint, translate, type ArtifactCall, type Attachment, type C
 import { typeOf } from "../drive/storage";
 import { applyEdits, artifactOf, Drafts, saveArtifact } from "./artifacts";
 import {
-  abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
@@ -266,10 +266,11 @@ function transcriptOf(events: StoredEvent[], budget = 16_000): string {
 type Rewound = { at: string } | { before: string };
 
 async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice, rewound?: Rewound) {
-  /* Which Claude answers: what the person chose, or Kimono's pick for this message. */
-  const model = modelFor(choice, { prompt, attachments: attachments.length, building: workspace.kind === "project" || Boolean(workspace.preview) });
-  /* How hard it thinks: Sonnet and Haiku stop at medium; an animation Kimono sent to Opus thinks lightly. */
-  effort = effortFor(model, { choice, prompt, effort });
+  /* Which Claude answers: what the person chose, or on Auto the chat's model, Opus once it builds. */
+  const model = modelFor(choice, { prompt, building: workspace.kind === "project" || Boolean(workspace.preview), last: workspace.lastModel });
+  /* How hard it thinks: on Auto the same every message; Sonnet and Haiku stop at medium. */
+  effort = effortFor(model, { choice, effort });
+  setLastModel(db(), workspace.id, model);
   const controller = new AbortController();
   live.turns.set(turn, controller);
   record(workspace.id, turn, { kind: "started" });
