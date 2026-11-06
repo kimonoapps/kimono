@@ -27,8 +27,8 @@ type Tab = "chat" | "files" | "changes" | "app";
 const problemText = (error: unknown, fallback = "That didn't work.") => error instanceof Error ? error.message : fallback;
 const repoName = (w: Pick<Workspace, "repo">) => `${w.repo.owner}/${w.repo.name}`;
 /** Kimono Git and attachments open in their own tab; nothing here leaves the page it is on. */
-/* Working is moss, so its ink shape is washed in moss too (--k-moss). */
-const workingInk = "#5c7150";
+/* Working is quiet ink, not a colour: its shape is washed in --k-ink-soft. */
+const workingInk = "#5b524d";
 const openOutside = (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); };
 /** Saves [url] as [name], from this page. */
 const saveAs = (url: string, name: string) => { const link = document.createElement("a"); link.href = url; link.download = name; link.rel = "noopener"; document.body.append(link); link.click(); link.remove(); };
@@ -1120,7 +1120,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
           }
         }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
         {drafts.text ? <div className="cd-say is-draft"><Markdown text={drafts.text} /></div> : null}
-        {running && items.at(-1)?.type !== "tools" && !drafts.text && !writing.length ? <Working since={workspace.turn?.startedAt ?? null} /> : null}
+        {running ? <Working since={workspace.turn?.startedAt ?? null} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
@@ -1266,11 +1266,11 @@ function ArtifactChanged({ name }: { name: string }) {
   return <p className="cd-note cd-artifact-changed"><Icon name="spark" /><span>Changed <b>{title}</b> <button type="button" className="cd-textbutton" onClick={() => shared.setBeside(name)}>Open</button></span></p>;
 }
 
-/** Working, at the end of the conversation: the moss ink shape, the word and how long. The one place it shows in a chat. */
-function Working({ since }: { since: number | null }) {
+/** Working, at the end of the conversation: the ink shape, what it's doing and how long. The one place it shows in a chat. */
+function Working({ since, artifact }: { since: number | null; artifact?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
-  return <div className="cd-thinking" role="status"><MorphLoader ink={workingInk} label="Working" className="cd-morph" /><span>Working{since ? ` ${elapsed(Math.max(0, now - since))}` : ""}</span></div>;
+  return <div className="cd-thinking" role="status"><MorphLoader ink={workingInk} label="Working" className="cd-morph" /><span>{artifact ? "Cooking up an artifact" : "Working"}{since ? ` ${elapsed(Math.max(0, now - since))}` : ""}</span></div>;
 }
 
 function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
