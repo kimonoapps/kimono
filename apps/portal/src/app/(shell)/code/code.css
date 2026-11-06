@@ -129,6 +129,11 @@ button.cd-sentfile-face:focus-visible { outline: 2px solid var(--k-primary); out
 .cd-md h4 { font: 600 14.5px/1.35 var(--k-sans); }
 .cd-md ul, .cd-md ol { padding-left: 22px; }
 .cd-md li + li { margin-top: 3px; }
+/* LaTeX: a display equation on its own line, scrolling sideways when it is wider than the chat. */
+.cd-math { overflow-x: auto; overflow-y: hidden; padding: 4px 0; scrollbar-width: thin; }
+.cd-math .katex-display { margin: 0; }
+.cd-md .katex { font-size: 1.08em; }
+.cd-math-inline .katex { white-space: nowrap; }
 .cd-md blockquote { padding-left: 12px; border-left: 2px solid var(--k-hair-deep); color: var(--k-ink-soft); }
 .cd-md a { color: var(--k-ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--k-hair-deep); text-underline-offset: 3px; }
 .cd-md :not(pre) > code, .cd-toolrow code { padding: 1px 5px; border-radius: var(--k-r-s); background: var(--k-fold); font: 500 12.5px/1.5 var(--k-mono); overflow-wrap: anywhere; }

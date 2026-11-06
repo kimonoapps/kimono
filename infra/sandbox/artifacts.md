@@ -17,13 +17,30 @@ beside the chat or full screen.
   limit. Inline `<style>` and `<script>` are fine.
 - It has **no network**: no `fetch`, no CDN, no images from the web. Put data
   in the page. Pictures go in as `data:` URLs. What's available: the kit,
-  three.js (`await K.loadThree()`), and KaTeX (any `$…$` in a scene's words,
-  or `await K.loadKatex()` then `katex.render`).
+  three.js (`await K.loadThree()`), and KaTeX (see Maths).
 - Write it in one go with Write. The person watches it render as you write,
   so put the important part first. Keep it under about 200 KB.
 - To change one, use Edit on the file. Every place it is shown updates. To
   show one again further down the chat, run `kimono-show <name>`.
 - Say in one short line what you made. Don't describe what they can already see.
+
+## Maths
+
+Write LaTeX anywhere in the page's words and it is typeset: `$…$` or `\(…\)`
+inside a sentence, `$$…$$` or `\[…\]` for an equation on its own line. A dollar
+amount stays money (`$5 and $10`). Maths inside `<code>`, `<pre>` and scripts is
+left as written.
+
+```html
+<p>The roots of $ax^2+bx+c=0$ are</p>
+$$x=\frac{-b\pm\sqrt{b^2-4ac}}{2a}$$
+<k-math>\begin{pmatrix}a&b\\c&d\end{pmatrix}^{-1}=\frac{1}{ad-bc}\begin{pmatrix}d&-b\\-c&a\end{pmatrix}</k-math>
+<p>So <k-math inline>\sqrt{2}</k-math> is irrational.</p>
+```
+
+`<k-math>` holds one formula on its own line (`inline` puts it in a sentence);
+use it for a long one, or when the `$` signs would be awkward. In script,
+`K.renderMath(latex, { display })` returns an element to put anywhere.
 
 ## Components
 
@@ -84,8 +101,9 @@ Rules:
 - Each call is a step on a timeline. Steps play one after another; `wait(s)`
   pauses, and `together(() => { … })` plays its steps at the same time.
 - Anything that should move takes a function: `dot(() => [a.v, f(a.v)])`.
-- Maths in words goes between `$…$` (KaTeX). In a JS string, write a backslash
-  twice: `"$\\sqrt{x}$"`, or use `String.raw`.
+- Maths in words goes between `$…$`, or `$$…$$` for an equation on its own
+  line (KaTeX). In a JS string, write a backslash twice: `"$\\sqrt{x}$"`, or
+  use `String.raw`.
 - Aim for 10 to 40 seconds, a caption for each idea, and one scene per artifact.
 - `height` is 200 to 520.
 

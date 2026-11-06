@@ -426,7 +426,7 @@
         let node = this._labels.get(l.key);
         if (!node) { node = html("div", `k-label k-label-${l.kind || "text"}`); this.overlay.append(node); this._labels.set(l.key, node); }
         const text = String(l.text ?? "");
-        const katexReady = !/\$/.test(text) || Boolean(window.katex);
+        const katexReady = !hasMath(text) || Boolean(window.katex);
         if (node._text !== text || node._typeset !== katexReady) { node._text = text; node._typeset = katexReady; setRich(node, text); }
         node.style.opacity = String(l.alpha ?? 1);
         if (l.color) node.style.color = l.color; else node.style.removeProperty("color");
@@ -569,7 +569,7 @@
     const ux = (X, w) => view.x[0] + (X - 56) / (w - 76) * (view.x[1] - view.x[0]);
     const uy = (Y, h) => view.y[0] + (1 - (Y - top()) / (h - top() - bottom())) * (view.y[1] - view.y[0]);
     /* a label over the drawing (crisp text, and $…$ typeset as maths) */
-    const say = (key, kind, x, y, text, o = {}) => { tl.labels.push({ key, kind, x, y, text, ...o }); if (/\$/.test(String(text))) tl.usesTex = true; };
+    const say = (key, kind, x, y, text, o = {}) => { tl.labels.push({ key, kind, x, y, text, ...o }); if (hasMath(text)) tl.usesTex = true; };
     let labelId = 0;
     const font = (size, weight = 600, family = "--k-sans") => `${weight} ${size}px ${css(family)}`;
     let seriesIndex = 0;
@@ -585,15 +585,15 @@
       animate(tr, to, d = 1, how = "inOut") { const t0 = group ? group.start : cursor; tr.segs.push({ t0, d, to, how }); if (group) group.longest = Math.max(group.longest, d); else cursor += d; stretch(t0 + d); },
       set(tr, to) { tr.segs.push({ t0: group ? group.start : cursor, d: 0, to, how: "linear" }); },
       /* words */
-      title(text) { tl.titled = true; if (/\$/.test(String(text))) tl.usesTex = true; const key = `l${labelId++}`; return add({ draw(ctx, p) { say(key, "title", 0, 0, value(text), { alpha: ctx.globalAlpha * p }); } }, .6); },
+      title(text) { tl.titled = true; if (hasMath(text)) tl.usesTex = true; const key = `l${labelId++}`; return add({ draw(ctx, p) { say(key, "title", 0, 0, value(text), { alpha: ctx.globalAlpha * p }); } }, .6); },
       caption(text, o = {}) {
-        tl.captioned = true; if (/\$/.test(String(text))) tl.usesTex = true;
+        tl.captioned = true; if (hasMath(text)) tl.usesTex = true;
         const key = `l${labelId++}`;
         const op = { caption: true, draw(ctx, p) { say(key, "caption", 0, 0, value(text), { alpha: ctx.globalAlpha * p }); } };
         for (const other of ops) if (other.caption && other.fadeAt == null) { other.fadeAt = group ? group.start : cursor; other.fadeD = .25; }
         return add(op, o.dur ?? .5);
       },
-      text(pos, words, o = {}) { if (/\$/.test(String(words))) tl.usesTex = true; const key = `l${labelId++}`; return add({ draw(ctx, p, w, h) { const [x, y] = value(pos); say(key, "text", sx(x, w), sy(y, h), value(words), { alpha: ctx.globalAlpha * p, color: o.color ? colour(o.color) : undefined, size: o.size, align: o.align }); } }, o.dur ?? .4); },
+      text(pos, words, o = {}) { if (hasMath(words)) tl.usesTex = true; const key = `l${labelId++}`; return add({ draw(ctx, p, w, h) { const [x, y] = value(pos); say(key, "text", sx(x, w), sy(y, h), value(words), { alpha: ctx.globalAlpha * p, color: o.color ? colour(o.color) : undefined, size: o.size, align: o.align }); } }, o.dur ?? .4); },
       /* maths, typeset: tex([x, y], "\\int_a^b f(x)\\,dx") */
       tex(pos, latex, o = {}) { return api.text(pos, `$${value(latex)}$`, o); },
 
@@ -813,7 +813,7 @@
       },
       /* a label in 3D, following the camera */
       label3d(pos, text, o = {}) {
-        tl.uses3d = true; if (/\$/.test(String(text))) tl.usesTex = true;
+        tl.uses3d = true; if (hasMath(text)) tl.usesTex = true;
         const key = `l${labelId++}`;
         return add3d((T) => { const g = new T.Object3D(); g.userData.label = true; return g; }, (obj, p) => { const [x, y, z] = value(pos); obj.position.set(x, z, -y); obj.userData.say = { key, text: value(text), alpha: p, color: o.color ? colour(o.color) : undefined }; }, o.dur ?? .4);
       },
@@ -991,23 +991,95 @@
   }
   /* repeatable randomness (mulberry32) */
   function seeded(seed) { let a = seed >>> 0; return () => { a += 0x6d2b79f5; let t = a; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-  /* words with $…$ maths in them: KaTeX once it has loaded, the raw text until then */
+  /* LaTeX in words: $…$ and \(…\) inline, $$…$$ and \[…\] on their own line. A $ opens maths
+     only before a non-space and closes only after one, not before a digit, so "$5 and $10" stays money. */
+  const MATH = /(\$\$[\s\S]+?\$\$)|(\\\[[\s\S]+?\\\])|(\\\([\s\S]+?\\\))|((?<![\\\w$])\$(?=[^\s$])[^$\n]*?[^\s\\$]\$(?!\d))/g;
+  const hasMath = (text) => { MATH.lastIndex = 0; const found = MATH.test(String(text)); MATH.lastIndex = 0; return found; };
+  K.hasMath = hasMath;
+  /** Text split into plain runs and maths: [{ text } | { tex, display }]. */
+  function mathParts(text) {
+    const out = []; let last = 0; text = String(text);
+    for (const m of text.matchAll(MATH)) {
+      if (m.index > last) out.push({ text: text.slice(last, m.index).replace(/\\\$/g, "$") });
+      out.push(m[1] ? { tex: m[1].slice(2, -2), display: true } : m[2] ? { tex: m[2].slice(2, -2), display: true } : m[3] ? { tex: m[3].slice(2, -2), display: false } : { tex: m[4].slice(1, -1), display: false });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push({ text: text.slice(last).replace(/\\\$/g, "$") });
+    return out;
+  }
+  /** One piece of maths as an element: KaTeX once it has loaded, the source (quietly) until then. */
+  function mathNode(tex, display) {
+    const node = document.createElement(display ? "div" : "span");
+    node.className = display ? "k-math-display" : "k-math-inline";
+    if (window.katex) node.innerHTML = window.katex.renderToString(tex, { displayMode: display, throwOnError: false, trust: false, strict: "ignore" });
+    else { node.textContent = tex; node.classList.add("k-math-pending"); }
+    return node;
+  }
+  K.renderMath = (tex, { display = false } = {}) => mathNode(tex, display);
+  /* words with maths in them, as a scene's labels show them */
   function setRich(node, text) {
-    const parts = String(text).split(/(\$[^$]+\$)/g);
-    node.replaceChildren(...parts.filter(Boolean).map((part) => {
-      if (/^\$[^$]+\$$/.test(part) && window.katex) { const span = document.createElement("span"); span.innerHTML = window.katex.renderToString(part.slice(1, -1), { throwOnError: false }); return span; }
-      return document.createTextNode(part.replace(/^\$|\$$/g, ""));
-    }));
+    node.replaceChildren(...mathParts(text).map((part) => part.tex !== undefined ? mathNode(part.tex, part.display) : document.createTextNode(part.text)));
   }
   let katexLoading = null;
   function loadKatex() {
-    if (window.katex || katexLoading) return katexLoading;
+    if (window.katex) return Promise.resolve();
+    if (katexLoading) return katexLoading;
     katexLoading = new Promise((done) => {
       const link = document.createElement("link"); link.rel = "stylesheet"; link.href = `${KIT_BASE}katex/katex.min.css`; document.head.append(link);
       const script = document.createElement("script"); script.src = `${KIT_BASE}katex/katex.min.js`; script.onload = done; script.onerror = done; document.head.append(script);
     });
     return katexLoading;
   }
+
+  /* Maths anywhere in an artifact's own words is typeset, as the page arrives and whenever it
+     changes; never inside code, scripts, form fields, scenes (they do their own) or <k-math>. */
+  const SKIP = "script,style,textarea,input,select,code,pre,kbd,samp,svg,canvas,k-scene,k-math,.katex,.k-math-display,.k-math-inline,[data-no-math]";
+  let pageQueued = false;
+  function typesetPage() {
+    pageQueued = false;
+    if (!document.body) return;
+    const found = [];
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => !n.nodeValue.includes("$") && !n.nodeValue.includes("\\") ? NodeFilter.FILTER_REJECT
+        : n.parentElement?.closest(SKIP) ? NodeFilter.FILTER_REJECT : hasMath(n.nodeValue) || n.nodeValue.includes("\\$") ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+    });
+    while (walk.nextNode()) found.push(walk.currentNode);
+    if (!found.length) return;
+    if (!window.katex) { void loadKatex().then(() => { if (window.katex) queuePage(); }); return; }
+    for (const node of found) {
+      const frag = document.createDocumentFragment();
+      for (const part of mathParts(node.nodeValue)) frag.append(part.tex !== undefined ? mathNode(part.tex, part.display) : document.createTextNode(part.text));
+      node.replaceWith(frag);
+    }
+  }
+  function queuePage() { if (!pageQueued) { pageQueued = true; requestAnimationFrame(typesetPage); } }
+  new MutationObserver(queuePage).observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+  document.addEventListener("DOMContentLoaded", queuePage);
+
+  /* <k-math>\int_0^1 x\,dx</k-math>: one formula, on its own line; <k-math inline> sits in a sentence.
+     Drawn in its own shadow, so its source stays where the page wrote it (still arriving, maybe). */
+  class MathElement extends HTMLElement {
+    connectedCallback() {
+      if (!this.shadowRoot) {
+        const root = this.attachShadow({ mode: "open" });
+        const link = document.createElement("link"); link.rel = "stylesheet"; link.href = `${KIT_BASE}katex/katex.min.css`;
+        const style = document.createElement("style");
+        style.textContent = ":host{display:block;overflow-x:auto;overflow-y:hidden;margin:.6em 0}:host([inline]){display:inline;margin:0}.k-math-display .katex-display{margin:0}.k-math-pending{opacity:.55;font-family:ui-monospace,monospace;font-size:.9em}";
+        this._out = document.createElement("span");
+        root.append(link, style, this._out);
+        new MutationObserver(() => this.draw()).observe(this, { childList: true, characterData: true, subtree: true });
+      }
+      this.draw();
+    }
+    draw() {
+      const tex = this.textContent.trim(), ready = Boolean(window.katex);
+      if (tex === this._tex && ready === this._ready) return;
+      this._tex = tex; this._ready = ready;
+      this._out.replaceChildren(tex ? mathNode(tex, !this.hasAttribute("inline")) : "");
+      if (!ready && tex) void loadKatex().then(() => this.draw());
+    }
+  }
+
   K.loadKatex = loadKatex;
 
   function line(ctx, x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
@@ -1022,6 +1094,6 @@
   const define = (name, cls) => { if (!customElements.get(name)) customElements.define(name, cls); };
   define("k-chart", Chart); define("k-stat", Stat); define("k-grid", Grid); define("k-card", Card); define("k-table", Table);
   define("k-tabs", Tabs); define("k-tab", class extends HTMLElement {}); define("k-row", class extends HTMLElement {});
-  define("k-slider", Slider); define("k-progress", Progress); define("k-callout", Callout); define("k-scene", Scene);
+  define("k-slider", Slider); define("k-progress", Progress); define("k-callout", Callout); define("k-scene", Scene); define("k-math", MathElement);
   K.loadThree = loadThree; K.base = KIT_BASE;
 })();

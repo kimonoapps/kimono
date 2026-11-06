@@ -1,29 +1,52 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import { Scroller } from "@/components/scroller";
 
 /*
  * The little Markdown an agent writes: paragraphs, headings, lists, quotes,
- * fenced code, and inline code, bold, italics and links. Built as elements,
- * never as HTML, so nothing the agent writes can become markup.
+ * fenced code, inline code, bold, italics and links, and LaTeX maths. Built as
+ * elements, never as HTML, so nothing the agent writes can become markup; the
+ * one exception is KaTeX's own output, which it builds from the maths alone
+ * (with \href, \url and the like left off) and escapes.
  */
+
+/** Maths drawn by KaTeX; what it can't read stays as the source, in the error colour. */
+function Tex({ source, display }: { source: string; display: boolean }) {
+  const html = katex.renderToString(source, { displayMode: display, throwOnError: false, trust: false, strict: "ignore", output: "htmlAndMathml" });
+  return display
+    ? <div className="cd-math" dangerouslySetInnerHTML={{ __html: html }} />
+    : <span className="cd-math-inline" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+/* Inline maths: $$…$$, \(…\), and $…$ the way pandoc reads it, so prices stay prices:
+   the opening $ is followed by a non-space, the closing one follows a non-space and isn't
+   followed by a digit ("$5 and $10" is money, "$x^2$" is maths). */
+const mathInline = String.raw`(\$\$[^$]+?\$\$)|(\\\([\s\S]+?\\\))|((?<![\\\w$])\$(?=[^\s$])[^$\n]*?[^\s\\$]\$(?!\d))`;
+
+/* \$ is a dollar sign written so it can't open maths: shown as the sign alone. */
+const plain = (text: string) => text.replace(/\\\$/g, "$");
 
 function inline(text: string, key = "i"): ReactNode[] {
   const out: ReactNode[] = [];
-  const pattern = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\((https?:\/\/[^)\s]+)\))|(\*[^*\n]+\*|_[^_\n]+_)/g;
+  const pattern = new RegExp(String.raw`(\`[^\`\n]+\`)|${mathInline}|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\((https?:\/\/[^)\s]+)\))|(\*[^*\n]+\*|_[^_\n]+_)`, "g");
   let last = 0;
   let n = 0;
   for (const match of text.matchAll(pattern)) {
-    if (match.index > last) out.push(text.slice(last, match.index));
+    if (match.index > last) out.push(plain(text.slice(last, match.index)));
     const k = `${key}-${n++}`;
     if (match[1]) out.push(<code key={k}>{match[1].slice(1, -1)}</code>);
-    else if (match[2]) out.push(<strong key={k}>{inline(match[2].slice(2, -2), k)}</strong>);
-    else if (match[3]) { const href = match[4]; out.push(<button key={k} type="button" className="cd-link" title={href} onClick={() => window.open(href, "_blank", "noopener,noreferrer")}>{match[3].slice(1, match[3].indexOf("]"))}</button>); }
-    else if (match[5]) out.push(<em key={k}>{match[5].slice(1, -1)}</em>);
+    else if (match[2]) out.push(<Tex key={k} source={match[2].slice(2, -2)} display />);
+    else if (match[3]) out.push(<Tex key={k} source={match[3].slice(2, -2)} display={false} />);
+    else if (match[4]) out.push(<Tex key={k} source={match[4].slice(1, -1)} display={false} />);
+    else if (match[5]) out.push(<strong key={k}>{inline(match[5].slice(2, -2), k)}</strong>);
+    else if (match[6]) { const href = match[7]; out.push(<button key={k} type="button" className="cd-link" title={href} onClick={() => window.open(href, "_blank", "noopener,noreferrer")}>{match[6].slice(1, match[6].indexOf("]"))}</button>); }
+    else if (match[8]) out.push(<em key={k}>{match[8].slice(1, -1)}</em>);
     last = match.index + match[0].length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(plain(text.slice(last)));
   return out;
 }
 
@@ -32,7 +55,8 @@ type Block =
   | { type: "h"; level: number; text: string }
   | { type: "ul" | "ol"; items: string[] }
   | { type: "quote"; text: string }
-  | { type: "code"; lang: string; text: string };
+  | { type: "code"; lang: string; text: string }
+  | { type: "math"; text: string };
 
 function blocks(source: string): Block[] {
   const lines = source.replace(/\r\n/g, "\n").split("\n");
@@ -48,6 +72,25 @@ function blocks(source: string): Block[] {
       i++;
       out.push({ type: "code", lang: fence[2], text: body.join("\n") });
       continue;
+    }
+    /* Display maths: $$…$$ or \[…\], on lines of their own (or one line). */
+    const opens = /^\s*(\$\$|\\\[)/.exec(line);
+    if (opens) {
+      const close = opens[1] === "$$" ? "$$" : "\\]";
+      const rest = line.trimStart().slice(2);
+      const end = rest.indexOf(close);
+      if (end >= 0 && !rest.slice(end + 2).trim()) { out.push({ type: "math", text: rest.slice(0, end) }); i++; continue; }
+      if (end < 0) {
+        const body = [rest];
+        let j = i + 1;
+        while (j < lines.length && !lines[j].includes(close)) body.push(lines[j++]);
+        if (j < lines.length && !lines[j].slice(lines[j].indexOf(close) + 2).trim()) {
+          body.push(lines[j].slice(0, lines[j].indexOf(close)));
+          out.push({ type: "math", text: body.join("\n") });
+          i = j + 1;
+          continue;
+        }
+      }
     }
     if (!line.trim()) { i++; continue; }
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
@@ -70,7 +113,7 @@ function blocks(source: string): Block[] {
       continue;
     }
     const body: string[] = [];
-    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*```|\s*~~~|\s*[-*+]\s+|\s*\d+[.)]\s+|>)/.test(lines[i])) body.push(lines[i++]);
+    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*```|\s*~~~|\s*[-*+]\s+|\s*\d+[.)]\s+|>|\s*\$\$|\s*\\\[)/.test(lines[i])) body.push(lines[i++]);
     out.push({ type: "p", text: body.join("\n") });
   }
   return out;
@@ -80,6 +123,7 @@ export function Markdown({ text }: { text: string }) {
   return <div className="cd-md">{blocks(text).map((block, n) => {
     const key = `b${n}`;
     switch (block.type) {
+      case "math": return <Tex key={key} source={block.text} display />;
       case "code": return <Scroller key={key} fit as="pre" tone="lift" viewClassName="cd-pre" data-lang={block.lang || undefined}><code>{block.text}</code></Scroller>;
       case "h": return block.level <= 2 ? <h3 key={key}>{inline(block.text, key)}</h3> : <h4 key={key}>{inline(block.text, key)}</h4>;
       case "ul": return <ul key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`)}</li>)}</ul>;

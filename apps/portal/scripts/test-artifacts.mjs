@@ -66,7 +66,7 @@ test('Kimono keeps the latest version of each artifact, per chat', () => {
 
 test('drafts follow a Write of an artifact as it streams, and nothing else', () => {
   const sent = [];
-  const drafts = new Drafts((d) => sent.push(d), 0);
+  const drafts = new Drafts((d) => sent.push(d), { every: 0 });
   const ev = (event) => drafts.take({ type: 'stream_event', event });
   ev({ type: 'message_start' });
   ev({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
@@ -77,7 +77,9 @@ test('drafts follow a Write of an artifact as it streams, and nothing else', () 
   ev({ type: 'content_block_start', index: 2, content_block: { type: 'tool_use', id: 'tn', name: 'Write' } });
   ev({ type: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"file_path":"/workspace/notes.md","content":"secret' } });
   ev({ type: 'content_block_stop', index: 2 });
-  assert.deepEqual(sent[0], { kind: 'draft', text: 'Making it' });
+  /* What it's doing (phase) is told alongside; the words and the page are what this is about. */
+  assert.ok(sent.some((d) => d.kind === 'phase'));
+  assert.deepEqual(sent.filter((d) => d.kind !== 'phase')[0], { kind: 'draft', text: 'Making it' });
   const drafts_ = sent.filter((d) => d.kind === 'artifact-draft');
   assert.ok(drafts_.length >= 2);
   assert.ok(drafts_.every((d) => d.name === 'budget' && d.id === 'tw'));
@@ -94,7 +96,8 @@ test('animations go to Opus with light thinking; Sonnet and Haiku never think pa
   assert.equal(chooseModel({ prompt: 'what time is it in Tokyo', attachments: 0, building: false }), 'haiku');
   assert.equal(effortFor('opus', { choice: 'auto', prompt: 'Animate a derivative', effort: 'high' }), 'low');
   assert.equal(effortFor('opus', { choice: 'opus', prompt: 'Animate a derivative', effort: 'high' }), 'high');
-  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'Build me a website', effort: 'xhigh' }), 'xhigh');
+  /* Auto picks the thinking itself: high for Opus, whatever was chosen before. */
+  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'Build me a website', effort: 'xhigh' }), 'high');
   assert.equal(effortFor('sonnet', { choice: 'auto', prompt: 'Sort my photos', effort: 'max' }), 'medium');
   assert.equal(effortFor('haiku', { choice: 'haiku', prompt: 'hi', effort: 'high' }), 'medium');
   assert.equal(effortFor('sonnet', { choice: 'sonnet', prompt: 'hi', effort: 'low' }), 'low');
