@@ -953,3 +953,12 @@ a.cd-spacechip:hover { background: var(--k-container-highest); }
 a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 2px; }
 .cd-drivename { font-weight: 700; color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; }
 .cd-drivename:hover { text-decoration-color: currentColor; }
+
+/* Memory: the person's instructions in a tonal box, and what it keeps as rows */
+.cd-memory-box { display: grid; gap: 6px; padding: 14px 16px 10px; border-radius: var(--k-r-xl); background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
+.cd-memory-box:focus-within { box-shadow: inset 0 0 0 2px var(--k-app-accent); }
+.cd-memory-box textarea { width: 100%; min-height: 110px; resize: vertical; border: 0; outline: 0; background: transparent; font: 400 16px/1.55 var(--k-sans); color: var(--k-on-surface); }
+.cd-memory-row { display: flex; align-items: center; gap: 8px; }
+.cd-memory-add { padding-right: 8px; }
+.cd-memory-item .cd-conn-id b { font-weight: 500; line-height: 1.45; }
+.cd-remembered svg.i { width: 18px; height: 18px; flex: none; }

@@ -59,7 +59,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # What the agent shows people: screenshots (kimono-shot) and a running app
 # behind a link (kimono-serve, kimono-unserve, which run it under supervise).
 # See docs/kimono-code.md.
-COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access /usr/local/bin/
+COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember /usr/local/bin/
 COPY bin/shot.cjs bin/supervise /usr/local/lib/kimono/
 
 ENV PATH=/opt/kimono/python/bin:/home/agent/go/bin:/usr/local/go/bin:$PATH \
@@ -70,7 +70,7 @@ ENV PATH=/opt/kimono/python/bin:/home/agent/go/bin:/usr/local/go/bin:$PATH \
     DISABLE_AUTOUPDATER=1
 
 RUN useradd --create-home --uid 1000 --shell /bin/bash agent \
- && mkdir -p /workspace /attachments /outbox/shots /outbox/access \
+ && mkdir -p /workspace /attachments /outbox/shots /outbox/access /outbox/memories \
  && ln -s /workspace/.kimono/files /files \
  && chown -R agent:agent /workspace /attachments /outbox
 

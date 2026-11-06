@@ -16,7 +16,7 @@
     "test:marks": "node --test scripts/test-marks.mjs",
     "test:app-updates": "node --test scripts/test-app-updates.mjs",
     "test:testflight": "node --test scripts/test-testflight.mjs",
-    "test:code": "node --test scripts/test-code.mjs",
+    "test:code": "node --import ./scripts/ts-resolve.mjs --test scripts/test-code.mjs",
     "test:composio": "node --test scripts/test-composio.mjs",
     "test:access": "node --test scripts/test-access.mjs && node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-access-flow.mjs"
   },

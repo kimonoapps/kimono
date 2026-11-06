@@ -7,7 +7,7 @@ import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
   code, drive, efforts, modelChoices, modelKey, modelNow, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type AccessSettings, type ConnectableApp, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  type AccessSettings, type ConnectableApp, type Profile, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -211,6 +211,7 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
   const current = params.get("w");
   /* Connections: the apps this person has connected, a page of its own in the list. */
   const showingConnections = !current && params.get("connections") === "1";
+  const showingMemory = !current && !showingConnections && params.get("memory") === "1";
   /* On a narrow screen Code opens on the task list; the new-task form is its own screen, as on the phone. */
   const composing = params.get("new") === "1";
   const tab = (["chat", "files", "changes", "app"].includes(params.get("tab") ?? "") ? params.get("tab") : "chat") as Tab;
@@ -241,9 +242,10 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button></div>
-      <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
+      <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
       <nav className="cd-sidenav" aria-label="More">
         <button type="button" aria-current={showingConnections ? "page" : undefined} onClick={() => goTo({ connections: "1" })}><Icon name="link" /><span>Connections</span></button>
+        <button type="button" aria-current={showingMemory ? "page" : undefined} onClick={() => goTo({ memory: "1" })}><Icon name="chat" /><span>Memory</span></button>
       </nav>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
@@ -260,10 +262,72 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
           : current
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
             : showingConnections ? <ConnectionsView now={now} />
+            : showingMemory ? <MemoryView now={now} />
             : <Start blocked={blocked} admin={admin} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
   </div></MarksContext.Provider>;
+}
+
+/* ── memory: the person's instructions, and what it keeps about them ── */
+
+function MemoryView({ now }: { now: number }) {
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [adding, setAdding] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { code.memory().then(setProfile, (error) => setProblem(problemText(error))); }, []);
+  const instructions = draft ?? profile?.instructions ?? "";
+  const changed = draft !== null && draft !== profile?.instructions;
+  const save = () => {
+    setSaving(true); setProblem(null);
+    code.saveInstructions(instructions).then((next) => { setProfile(next); setDraft(null); setSaved(true); setTimeout(() => setSaved(false), 1600); }, (error) => setProblem(problemText(error))).finally(() => setSaving(false));
+  };
+  const add = () => {
+    if (!adding.trim()) return;
+    setProblem(null);
+    code.remember(adding).then((next) => { setProfile(next); setAdding(""); }, (error) => setProblem(problemText(error)));
+  };
+  const drop = (id: string) => {
+    setProfile((p) => p && { ...p, memories: p.memories.filter((m) => m.id !== id) });
+    code.forget(id).then(setProfile, (error) => { setProblem(problemText(error)); void code.memory().then(setProfile); });
+  };
+  return <section className="cd-sheet cd-conn cd-memory">
+    <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+      <h1>Memory</h1>
+    </header>
+    <div className="cd-conn-body">
+      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+      {profile === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
+      {profile ? <>
+        <h2 className="cd-conn-sub">Instructions</h2>
+        <div className="cd-memory-box">
+          <textarea value={instructions} rows={5} maxLength={4000} aria-label="Instructions" placeholder="How it should work for you. For example: call me Mina, keep answers short, use metric units."
+            onChange={(event) => setDraft(event.target.value)} />
+          <div className="cd-memory-row">
+            <span className="cd-faint">{saved ? "Saved" : `${instructions.length} / 4000`}</span>
+            <span className="cd-grow" />
+            {changed ? <Seal type="button" compact tone="quiet" onClick={() => setDraft(null)}>Undo</Seal> : null}
+            <Seal type="button" compact disabled={!changed || saving} onClick={save}>{saving ? "Saving…" : "Save"}</Seal>
+          </div>
+        </div>
+        <h2 className="cd-conn-sub">What it remembers</h2>
+        <form className="cd-conn-search cd-memory-add" onSubmit={(event) => { event.preventDefault(); add(); }}>
+          <Icon name="plus" />
+          <input value={adding} maxLength={500} onChange={(event) => setAdding(event.target.value)} placeholder="Something it should remember" aria-label="Something it should remember" />
+          {adding.trim() ? <Seal type="submit" compact>Add</Seal> : null}
+        </form>
+        {profile.memories.length ? <ul className="cd-conn-list">{profile.memories.map((m) => <li key={m.id} className="cd-conn-card cd-memory-item">
+          <span className="cd-conn-id"><b>{m.text}</b><small>{m.source === "ai" ? "It kept this" : "You added this"} · {when(m.createdAt, now)}</small></span>
+          <button type="button" className="cd-roundbutton" aria-label="Forget this" title="Forget this" onClick={() => drop(m.id)}><Icon name="trash" /></button>
+        </li>)}</ul> : <p className="cd-conn-empty">Nothing yet. It keeps things you tell it to remember.</p>}
+      </> : null}
+    </div>
+  </section>;
 }
 
 /* ── connections: the person's own apps, as Composio keeps them ── */
@@ -811,6 +875,7 @@ type Item =
   | { type: "slept"; seq: number; for: string }
   | { type: "disk"; seq: number; event: Extract<CodeEvent, { kind: "disk" }> }
   | { type: "compacted"; seq: number; before?: number }
+  | { type: "remembered"; seq: number; text: string }
   | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
@@ -840,6 +905,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "disk": items.push({ type: "disk", seq, event }); break;
       case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
       case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
+      case "remembered": items.push({ type: "remembered", seq, text: event.text }); break;
     }
   }
   return items;
@@ -897,6 +963,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
               ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
               : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
+            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>Remembered: {item.text} <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>Memory</button></span></p>;
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;

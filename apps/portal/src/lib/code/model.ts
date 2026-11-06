@@ -186,6 +186,20 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 10) {
+    /* Each person's own instructions, and what Kimono AI remembers about them (memory.ts). */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE profiles (username TEXT PRIMARY KEY, instructions TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL);
+      CREATE TABLE memories (
+        id TEXT PRIMARY KEY, username TEXT NOT NULL, text TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('person', 'ai')), created_at INTEGER NOT NULL
+      );
+      CREATE INDEX memories_by_person ON memories (username, created_at);
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '10');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */

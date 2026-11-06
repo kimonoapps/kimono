@@ -22,7 +22,12 @@ type turnRequest struct {
 	Effort string `json:"effort"`
 	// Model is which Claude runs the turn: opus, sonnet or haiku; empty is opus. Portal chooses.
 	Model string `json:"model"`
+	// Context is the person's own: their instructions and what Kimono remembers
+	// about them. It joins the system prompt for this turn.
+	Context string `json:"context"`
 }
+
+const maxContext = 24 * 1024
 
 // Models are the Claudes a turn may run on, by the short name Portal sends.
 var Models = map[string]string{"": Model, "opus": Model, "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
@@ -48,6 +53,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}
 	if _, ok := Models[request.Model]; !ok {
 		return problem(400, "Model is opus, sonnet or haiku.")
+	}
+	if len(request.Context) > maxContext {
+		return problem(400, "The person's instructions and memories are too long.")
 	}
 	if !efforts[request.Effort] {
 		return problem(400, "Effort is low, medium, high, xhigh or max.")
@@ -100,6 +108,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	space.mu.Lock()
 	chat := space.repo.URL == ""
 	space.mu.Unlock()
+	if request.Context != "" {
+		system += "\n\n" + request.Context
+	}
 	if chat {
 		system += "\n\nThis is a chat, not a project: there is no repository to commit to, push or open a pull request for. /workspace is this chat's own scratch space, and it is kept in the person's Drive."
 	}

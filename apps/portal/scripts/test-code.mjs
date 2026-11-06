@@ -237,3 +237,23 @@ test('Auto picks the model: Opus to build, Haiku for a quick word, Sonnet for th
   assert.equal(modelFor('auto', { prompt: 'Thanks', attachments: 0, building: false }), 'haiku');
   assert.equal(modelFor('gpt-9', { prompt: 'Thanks', attachments: 0, building: false }), 'haiku', 'an unknown choice is Auto');
 });
+
+test('memory: instructions and what it keeps reach every turn, and only their person sees them', async () => {
+  const memory = await import('../src/lib/code/memory.ts');
+  const db = fresh();
+  assert.match(memory.contextFor(db, 'mina'), /kimono-remember/, 'the helper is always explained');
+  memory.setInstructions(db, 'mina', '  Call me Mina. Keep it short.  ');
+  memory.remember(db, 'mina', 'Mina is   vegetarian.', 'ai');
+  assert.equal(memory.remember(db, 'mina', 'mina is vegetarian.', 'person'), null, 'the same thing is kept once');
+  memory.remember(db, 'sam', 'Sam runs on Tuesdays.', 'person');
+  const context = memory.contextFor(db, 'mina');
+  assert.match(context, /Call me Mina\. Keep it short\./);
+  assert.match(context, /- Mina is vegetarian\./);
+  assert.doesNotMatch(context, /Sam runs/, "someone else's memories never reach their turns");
+  const [kept] = memory.profileOf(db, 'mina').memories;
+  assert.throws(() => memory.forget(db, 'sam', kept.id), (e) => e.status === 404);
+  memory.forget(db, 'mina', kept.id);
+  assert.equal(memory.profileOf(db, 'mina').memories.length, 0);
+  assert.throws(() => memory.setInstructions(db, 'mina', 'x'.repeat(4001)), /4000/);
+  assert.throws(() => memory.remember(db, 'mina', 'x'.repeat(501), 'person'), /500/);
+});

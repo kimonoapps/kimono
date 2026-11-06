@@ -283,7 +283,9 @@ type outbox struct {
 	shots []string
 	// access are the agent's requests for some of the person's Drive (kimono-access), by file name.
 	access []accessRequest
-	serve  *serveState
+	// memories are what the agent asked to keep about the person (kimono-remember).
+	memories []memoryNote
+	serve    *serveState
 	// restarting is kimono-serve replacing the app: the link stays as it is.
 	restarting bool
 }
@@ -298,6 +300,7 @@ type serveState struct {
 
 const outboxScript = `cd /outbox 2>/dev/null || exit 0
 for f in shots/*; do [ -f "$f" ] && echo "shot ${f#shots/}"; done
+for f in memories/*.json; do [ -f "$f" ] && printf 'memory %s ' "${f#memories/}" && head -c 2000 "$f" | tr -d '\n' && echo; done
 for f in access/*.json; do [ -f "$f" ] && printf 'access %s ' "${f#access/}" && head -c 4000 "$f" | tr -d '\n' && echo; done
 if [ -f serve.json ]; then printf 'serve '; tr -d '\n' < serve.json; echo; fi
 [ -f .serve-restarting ] && echo restarting
@@ -314,6 +317,11 @@ func parseOutbox(out []byte) outbox {
 			}
 		case "restarting":
 			box.restarting = true
+		case "memory":
+			name, body, _ := strings.Cut(rest, " ")
+			if note, ok := parseRemembered(name, body); ok {
+				box.memories = append(box.memories, note)
+			}
 		case "access":
 			name, body, _ := strings.Cut(rest, " ")
 			if request, ok := parseAccess(name, body); ok {
@@ -392,6 +400,12 @@ func (s *Server) reportOutbox(space *workspace, out *lineWriter) {
 	}
 	branch := space.repo.Branch
 	space.mu.Unlock()
+	for _, note := range box.memories {
+		if _, err := s.docker.run(ctx, nil, "exec", "-u", "agent", containerName(space.id), "rm", "-f", "/outbox/memories/"+note.ID); err != nil {
+			continue
+		}
+		out.json(map[string]any{"type": "kimono.memory", "text": note.Text})
+	}
 	for _, request := range box.access {
 		/* Taken out of the outbox once reported, so it is asked once. */
 		if _, err := s.docker.run(ctx, nil, "exec", "-u", "agent", containerName(space.id), "rm", "-f", "/outbox/access/"+request.ID); err != nil {
@@ -977,4 +991,19 @@ func parseAccess(name, body string) (accessRequest, bool) {
 		return request, false
 	}
 	return request, true
+}
+
+// memoryNote is one thing kimono-remember was asked to keep.
+type memoryNote struct {
+	ID   string `json:"-"`
+	Text string `json:"text"`
+}
+
+func parseRemembered(name, body string) (memoryNote, bool) {
+	var note memoryNote
+	if !accessNamePattern.MatchString(name) || json.Unmarshal([]byte(body), &note) != nil {
+		return note, false
+	}
+	note.ID, note.Text = name, strings.TrimSpace(note.Text)
+	return note, note.Text != "" && len(note.Text) <= 500
 }

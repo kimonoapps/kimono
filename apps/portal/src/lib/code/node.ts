@@ -66,11 +66,11 @@ export const sandbox = {
   state: (config: CodeConfig, workspace: Workspace) => call(config, at(workspace), { timeout: 10_000 }).then(json<{ state: string; branch: string; limits: SandboxLimits; disk: Disk }>),
 
   /** Starts a turn; the body is the node's NDJSON stream, read until it ends. */
-  turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[]; effort?: Effort; model?: Model }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
+  turn: (config: CodeConfig, workspace: Workspace, input: { prompt: string; session: string | null; attachments: string[]; effort?: Effort; model?: Model; context?: string }, signal: AbortSignal) => call(config, `${at(workspace)}/turns`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     /* Haiku takes no thinking level. */
-    body: JSON.stringify({ prompt: input.prompt, ...(input.session ? { session: input.session } : {}), attachments: input.attachments, ...(input.effort && input.model !== "haiku" ? { effort: input.effort } : {}), ...(input.model ? { model: input.model } : {}) }),
+    body: JSON.stringify({ prompt: input.prompt, ...(input.session ? { session: input.session } : {}), attachments: input.attachments, ...(input.effort && input.model !== "haiku" ? { effort: input.effort } : {}), ...(input.model ? { model: input.model } : {}), ...(input.context ? { context: input.context } : {}) }),
     signal,
   }),
 

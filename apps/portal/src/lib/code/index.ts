@@ -15,6 +15,7 @@ import {
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
 import { toolSession } from "./composio";
+import { contextFor, remember } from "./memory";
 import { modelFor, type ModelChoice } from "./models";
 export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
@@ -165,7 +166,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const access = prompt.startsWith("/") ? "" : accessPrompt(db(), workspace);
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model }, controller.signal);
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: contextFor(db(), workspace.owner) }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -191,6 +192,13 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           }
           setPreview(db(), workspace.id, preview);
           record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port, ...(app ? { app } : {}) });
+          continue;
+        }
+        if (line.type === "kimono.memory" && typeof line.text === "string") {
+          try {
+            const kept = remember(db(), workspace.owner, line.text, "ai");
+            if (kept) record(workspace.id, turn, { kind: "remembered", text: kept.text });
+          } catch (error) { console.warn("Kimono AI couldn't keep a memory:", error instanceof Error ? error.message : error); }
           continue;
         }
         if (line.type === "kimono.access" && typeof line.id === "string" && typeof line.space === "string" && typeof line.why === "string" && (line.need === "read" || line.need === "change")) {

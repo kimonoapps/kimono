@@ -32,7 +32,9 @@ export type CodeEvent =
   | { kind: "slept"; for: string }
   | { kind: "disk"; used: number; quota: number; full?: boolean }
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
+  | { kind: "remembered"; text: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
+export type Profile = { instructions: string; memories: { id: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
 export type ConnectableApp = { app: string; name: string; logo: string; description: string; connected: boolean };
@@ -102,6 +104,11 @@ export const code = {
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),
+  /** What Kimono AI keeps about this person: their instructions, and its memories. */
+  memory: () => call<Profile>("/memory"),
+  saveInstructions: (instructions: string) => call<Profile>("/memory", json("POST", { instructions })),
+  remember: (text: string) => call<Profile>("/memory", json("POST", { remember: text })),
+  forget: (id: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),
   /** The apps this person has connected through Composio, and whether connections are set up at all. */
   connections: () => call<{ available: boolean; connections: Connection[] }>("/connections"),
   findApps: (q: string) => call<{ apps: ConnectableApp[] }>(`/connections/apps?q=${encodeURIComponent(q)}`).then((r) => r.apps),

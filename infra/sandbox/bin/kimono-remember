@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""kimono-remember "one sentence"
+
+Keeps something about the person for every future chat: a preference, a fact
+about them or their household, or something they asked you to remember. Only
+what will matter later; never secrets such as passwords. They can see and
+delete what you keep.
+"""
+import json, os, secrets, sys, time
+
+text = " ".join(" ".join(sys.argv[1:]).split())
+if not text or text in ("-h", "--help"):
+    sys.exit(__doc__.strip())
+if len(text) > 500:
+    sys.exit("kimono-remember: keep it to one sentence (500 characters at most)")
+os.makedirs("/outbox/memories", exist_ok=True)
+name = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}.json"
+with open(f"/outbox/memories/.{name}", "w") as f:
+    json.dump({"text": text}, f)
+os.rename(f"/outbox/memories/.{name}", f"/outbox/memories/{name}")
+print("Remembered. It will be there in every chat from now on.")

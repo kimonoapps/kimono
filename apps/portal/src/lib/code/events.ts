@@ -28,6 +28,8 @@ export type CodeEvent =
    * allowed (always, or earlier in this chat); "missing" names something that isn't there.
    */
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; /** The Drive folder or file asked for, so the person can pick one file in it. */ node?: string }
+  /** Something it kept about the person for future chats (kimono-remember). */
+  | { kind: "remembered"; text: string }
   /** How the person answered an access request. */
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 
