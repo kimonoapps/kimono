@@ -695,13 +695,14 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-preview img.full.ready { opacity: 1; }
 .dv-preview.text { place-items: stretch; background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
 .dv-preview.text .ext { color: var(--k-on-surface-variant); }
-.dv-preview pre { margin: 0; padding: 14px 16px; overflow: auto; font: 500 12.5px/1.55 var(--k-mono); color: var(--k-ink); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+.dv-fill { position: absolute; inset: 0; }
+.dv-text pre { margin: 0; padding: 14px 16px; font: 500 12.5px/1.55 var(--k-mono); color: var(--k-ink); white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
 @media (max-width: 1100px) { .dv-drawer.wide .dv-drawer-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .dv-preview img.full { transition: none; } }
 
 /* Code: numbered lines in the margin, quiet colours from Kimono's own inks. */
 .dv-preview.code { background: #2a2326; box-shadow: none; }
-.dv-code { position: absolute; inset: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; overflow: auto; padding: 14px 0 18px; font: 500 12.5px/1.6 var(--k-mono); color: #ece4dc; tab-size: 2; }
+.dv-code { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; padding: 14px 0 18px; font: 500 12.5px/1.6 var(--k-mono); color: #ece4dc; tab-size: 2; }
 .dv-code:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: -2px; }
 .dv-code ol { margin: 0; padding: 0 12px 0 14px; list-style: none; text-align: right; color: #8a7d78; user-select: none; position: sticky; left: 0; background: #2a2326; }
 .dv-code pre { margin: 0; padding: 0 16px 0 4px; white-space: pre; font: inherit; color: inherit; }
@@ -714,7 +715,7 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 
 /* Markdown, read: paper, Kimono's faces, code blocks on urushi. */
 .dv-preview.md { background: var(--k-container-lowest); }
-.dv-md { position: absolute; inset: 0; overflow: auto; padding: 18px 22px 24px; font: 400 14px/1.6 var(--k-sans); color: var(--k-ink); }
+.dv-md { padding: 18px 22px 24px; font: 400 14px/1.6 var(--k-sans); color: var(--k-ink); }
 .dv-md:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: -2px; }
 .dv-md > :first-child { margin-top: 0; }
 .dv-md h1, .dv-md h2, .dv-md h3, .dv-md h4 { margin: 1.1em 0 .4em; font-family: var(--k-display); font-weight: 600; line-height: 1.25; color: var(--k-plum); }
@@ -733,7 +734,9 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-md-pic { font-style: italic; color: var(--k-on-surface-variant); }
 .dv-md-pre { border-radius: var(--k-r-m); background: #2a2326; overflow: hidden; }
 .dv-md-pre > code { display: block; padding: 12px 14px; overflow-x: auto; background: none; color: #ece4dc; white-space: pre; }
-.dv-md-code .dv-code { position: relative; inset: auto; padding: 12px 0; }
+.dv-md-code { display: block; position: relative; }
+.dv-md-code .dv-code { padding: 12px 0; }
+.dv-md-code .dv-code code { padding: 0; border-radius: 0; background: none; font: inherit; }
 .dv-md-code .dv-code-lang { top: 6px; right: 8px; }
 
 /* the wavy bar for an upload filling (it has a progress); the shape while a file opens (it doesn't) */

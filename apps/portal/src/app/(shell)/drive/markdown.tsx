@@ -1,6 +1,7 @@
 "use client";
 
 import Markdown, { type Components } from "react-markdown";
+import { Scroller } from "@/components/scroller";
 import remarkGfm from "remark-gfm";
 import { CodePeek } from "./peek";
 
@@ -16,11 +17,11 @@ const parts: Components = {
   code: ({ className, children }) => {
     const lang = /language-(\w+)/.exec(className ?? "")?.[1];
     const text = String(children ?? "");
-    return lang && text.includes("\n") ? <span className="dv-md-code"><CodePeek text={text.replace(/\n$/, "")} ext={lang} /></span> : <code>{children}</code>;
+    return lang && text.includes("\n") ? <span className="dv-md-code"><CodePeek text={text.replace(/\n$/, "")} ext={lang} inline /></span> : <code>{children}</code>;
   },
   pre: ({ children }) => <div className="dv-md-pre">{children}</div>,
 };
 
 export default function MarkdownPeek({ text }: { text: string }) {
-  return <div className="dv-md" tabIndex={0}><Markdown remarkPlugins={[remarkGfm]} components={parts}>{text}</Markdown></div>;
+  return <Scroller className="dv-fill" viewClassName="dv-md" tabIndex={0}><Markdown remarkPlugins={[remarkGfm]} components={parts}>{text}</Markdown></Scroller>;
 }

@@ -934,3 +934,27 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .app-offer ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; color: var(--k-ink-soft); }
 .app-offer a:not(.k-seal) { color: var(--k-suo); text-decoration: underline; }
 .app-offer-later { justify-self: start; border: 0; background: none; padding: 4px 0; color: var(--k-faint); font: inherit; font-size: .85rem; cursor: pointer; }
+
+/*
+ * Scroller (components/scroller.tsx): Kimono's own scroll bars. A slim ink
+ * stroke over the content, shown while scrolling or hovering, thickening under
+ * the pointer. No track, no arrows, no native bar.
+ */
+.k-scroller { --k-scroll-thumb: color-mix(in srgb, var(--k-ink) 34%, transparent); --k-scroll-thumb-hot: color-mix(in srgb, var(--k-ink) 56%, transparent); position: relative; overflow: hidden; min-height: 0; min-width: 0; }
+.k-scroller.lift { --k-scroll-thumb: rgba(236, 228, 220, .32); --k-scroll-thumb-hot: rgba(236, 228, 220, .55); }
+.k-scroller-view { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.k-scroller-view::-webkit-scrollbar { display: none; }
+.k-scroller.fit > .k-scroller-view { position: relative; inset: auto; }
+.k-scroller-bar { position: absolute; z-index: 2; display: flex; opacity: 0; transition: opacity var(--k-t-state, .2s) var(--k-ease-settle, ease); touch-action: none; }
+.k-scroller-bar[hidden] { display: none; }
+.k-scroller-bar.y { top: 4px; bottom: 4px; right: 2px; width: 12px; flex-direction: column; align-items: center; }
+.k-scroller-bar.x { left: 4px; right: 4px; bottom: 2px; height: 12px; flex-direction: row; align-items: center; }
+.k-scroller-bar i { display: block; flex: none; border-radius: 999px; background: var(--k-scroll-thumb); transition: width var(--k-t-state, .2s) var(--k-ease-settle, ease), height var(--k-t-state, .2s) var(--k-ease-settle, ease), background-color var(--k-t-state, .2s); }
+.k-scroller-bar.y i { width: 4px; }
+.k-scroller-bar.x i { height: 4px; }
+.k-scroller:hover > .k-scroller-bar, .k-scroller[data-scrolling] > .k-scroller-bar, .k-scroller[data-dragging] > .k-scroller-bar, .k-scroller:focus-within > .k-scroller-bar { opacity: 1; }
+.k-scroller-bar:hover i, .k-scroller[data-dragging] > .k-scroller-bar i { background: var(--k-scroll-thumb-hot); }
+.k-scroller-bar.y:hover i, .k-scroller[data-dragging] > .k-scroller-bar.y i { width: 8px; }
+.k-scroller-bar.x:hover i, .k-scroller[data-dragging] > .k-scroller-bar.x i { height: 8px; }
+.k-scroller[data-dragging] { user-select: none; }
+@media (prefers-reduced-motion: reduce) { .k-scroller-bar, .k-scroller-bar i { transition: none; } }

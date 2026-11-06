@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState, type ReactNode } from "react";
+import { Scroller } from "@/components/scroller";
 import { fileIcons } from "./file-icons";
 
 /*
@@ -80,13 +81,15 @@ function highlight(text: string, ext: string): ReactNode[] {
 }
 
 /** A code file's opening, numbered and coloured. */
-export function CodePeek({ text, ext }: { text: string; ext: string }) {
+export function CodePeek({ text, ext, inline = false }: { text: string; ext: string; inline?: boolean }) {
   const marked = highlight(text, ext);
   /* Lines are counted on the plain text; the marked runs flow inside one block beside them. */
   const lines = text.split("\n").length;
-  return <div className="dv-code" tabIndex={0}>
+  return <>
     <span className="dv-code-lang"><TypeMark name={`x.${ext}`} fallback={null} />{codeLanguage(ext)}</span>
-    <ol aria-hidden="true">{Array.from({ length: lines }, (_, index) => <li key={index}>{index + 1}</li>)}</ol>
-    <pre><code>{marked.map((run, index) => <Fragment key={index}>{run}</Fragment>)}</code></pre>
-  </div>;
+    <Scroller className={inline ? undefined : "dv-fill"} viewClassName="dv-code" tone="lift" fit={inline} tabIndex={0}>
+      <ol aria-hidden="true">{Array.from({ length: lines }, (_, index) => <li key={index}>{index + 1}</li>)}</ol>
+      <pre><code>{marked.map((run, index) => <Fragment key={index}>{run}</Fragment>)}</code></pre>
+    </Scroller>
+  </>;
 }

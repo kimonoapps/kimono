@@ -7,6 +7,7 @@ import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useM
 import { useSearchParams } from "next/navigation";
 import { AppBloom, Choice, cx, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
+import { Scroller } from "@/components/scroller";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
   type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
@@ -820,7 +821,7 @@ function TextPeek({ url, name }: { url: string; name: string }) {
   if (!text.trim()) return <span className="ext">{name}</span>;
   if (["MD", "MARK", "MDX"].includes(name)) return <Suspense fallback={<span className="ext">{name}</span>}><MarkdownPeek text={text} /></Suspense>;
   if (codeLanguage(name)) return <CodePeek text={text} ext={name} />;
-  return <pre tabIndex={0}>{text}</pre>;
+  return <Scroller className="dv-fill" viewClassName="dv-text" tabIndex={0}><pre>{text}</pre></Scroller>;
 }
 
 /* ── dialogs ── */
