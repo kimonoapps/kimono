@@ -63,6 +63,12 @@ jobs:
   android:
     needs: release
     runs-on: ubuntu-latest
+    # One release's phone build at a time, in order: a tag pushed while the
+    # last one is still building waits for it, so it can reuse that build
+    # when the phone app hasn't changed. Never cancels one already running.
+    concurrency:
+      group: release-android
+      cancel-in-progress: false
     env:
       KEYSTORE: ${{ secrets.KIMONO_ANDROID_KEYSTORE }}
       KEYSTORE_PASSWORD: ${{ secrets.KIMONO_ANDROID_KEYSTORE_PASSWORD }}
@@ -133,6 +139,10 @@ jobs:
   ios:
     needs: release
     runs-on: macos-latest
+    # As with Android: waits for the last release's iPhone build, to reuse it.
+    concurrency:
+      group: release-ios
+      cancel-in-progress: false
     env:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
