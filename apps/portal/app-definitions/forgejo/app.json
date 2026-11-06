@@ -110,9 +110,9 @@
         "if [ -z \"$source_id\" ]; then forgejo admin auth add-oauth \"$@\"; else forgejo admin auth update-oauth --id \"$source_id\" \"$@\"; fi"
       ],
       "files": {
-        "/data/gitea/public/assets/img/logo.svg": "logo.svg",
+        "/data/gitea/public/assets/img/logo.svg": "@bloom",
         "/data/gitea/public/assets/img/logo.png": "logo.png",
-        "/data/gitea/public/assets/img/favicon.svg": "kimono-sign-in.svg",
+        "/data/gitea/public/assets/img/favicon.svg": "@bloom",
         "/data/gitea/public/assets/img/favicon.png": "favicon.png",
         "/data/gitea/public/assets/img/apple-touch-icon.png": "apple-touch-icon.png",
         "/data/gitea/public/assets/img/kimono-sign-in.svg": "kimono-sign-in.svg",

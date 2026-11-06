@@ -70,7 +70,10 @@ export type Bootstrap = {
   user?: string;
   environment: Record<string, string>;
   script: string[];
-  /** Container path → a small file beside app.json (text, or a PNG/ICO image), written into place ahead of the script. */
+  /**
+   * Container path → a small file beside app.json (text, or a PNG/ICO image), written into place ahead of the script.
+   * "@bloom" instead names the app's own bloom as an SVG, drawn when the app is deployed so it follows its colour.
+   */
   files?: Record<string, string>;
   /** The contents of `files`, read when the definition is loaded; images travel as base64. */
   fileContents?: Record<string, { contents: string; base64: boolean }>;
@@ -204,9 +207,13 @@ function validateBootstrap(bootstrap: Bootstrap | undefined, services: AppDefini
   if (!Array.isArray(bootstrap.script) || !bootstrap.script.length || !bootstrap.script.every((line) => typeof line === "string")) throw new Error("spec.bootstrap.script must be lines of shell");
   for (const [path, file] of Object.entries(bootstrap.files || {})) {
     if (!/^\/[A-Za-z0-9._/-]+$/.test(path) || path.includes("..")) throw new Error(`spec.bootstrap.files: ${path} must be an absolute container path`);
+    if (file === bloomFile) continue;
     if (typeof file !== "string" || basename(file) !== file || file === "app.json") throw new Error(`spec.bootstrap.files: ${file} must name a file beside app.json`);
   }
 }
+
+/** A setup file naming this gets the app's bloom, as the launcher draws it. */
+export const bloomFile = "@bloom";
 
 /** Reads the files a definition's setup installs; they travel inside its script, so they stay small and plain. */
 async function loadBootstrapFiles(definition: AppDefinition, directory: string) {
@@ -214,6 +221,7 @@ async function loadBootstrapFiles(definition: AppDefinition, directory: string) 
   if (!bootstrap?.files) return;
   bootstrap.fileContents = {};
   for (const [path, file] of Object.entries(bootstrap.files)) {
+    if (file === bloomFile) continue;
     if (/\.(?:png|ico)$/i.test(file)) {
       const image = await readFile(join(directory, file));
       if (image.length > 128 * 1024) throw new Error(`spec.bootstrap.files: ${file} must be a small image`);

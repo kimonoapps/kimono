@@ -1,4 +1,5 @@
-import type { AppDefinition, Bootstrap, ConfigurationField } from "./definitions";
+import { bloomSvg } from "@kimono/ui/bloom-svg";
+import { bloomFile, type AppDefinition, type Bootstrap, type ConfigurationField } from "./definitions";
 import { backupCatalog, type BackupItem } from "./backup-catalog";
 import { appHostname, type AppRoute, type PlatformSettings } from "./settings";
 import { tunnelCredentialsPath } from "./state";
@@ -332,7 +333,11 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
       /* Sign-in values only once Kimono has registered the app with its identity provider. */
       const scoped: TemplateContext = signIn ? context : { ...context, oidc: undefined };
       const path = `apps/${app.id}-bootstrap.sh`;
-      plan.files[path] = bootstrapScript(bootstrap.environment, bootstrap.script, scoped, bootstrap.fileContents);
+      /* The app's bloom in its colour as set now: the same drawing as its launcher tile. */
+      const bloom = bloomSvg({ id: app.id, accent: app.colors[0] || definition.metadata.colors[0] }, { glyph: definition.metadata.glyph, standalone: true, unique: app.id });
+      const files = { ...bootstrap.fileContents };
+      for (const [target, file] of Object.entries(bootstrap.files || {})) if (file === bloomFile) files[target] = { contents: bloom, base64: false };
+      plan.files[path] = bootstrapScript(bootstrap.environment, bootstrap.script, scoped, files);
       plan.bootstraps.push({ service: serviceName(app.id, bootstrap.service), user: bootstrap.user || "", file: path });
     }
   }
