@@ -99,7 +99,7 @@ test('a turn ends done, failed, or stopped', () => {
   const bad = translate({ type: 'result', subtype: 'error_max_turns', is_error: true });
   assert.equal(finish(bad.result, { exit: 1 }).ok, false);
   assert.deepEqual(finish(null, { cancelled: true }), { kind: 'done', ok: false, cancelled: true });
-  assert.equal(finish(null, null).error, 'The sandbox stopped answering.');
+  assert.equal(finish(null, null).error, 'Kimono AI stopped answering.');
 });
 
 test('a workspace remembers the app it is running, and only real links', () => {
