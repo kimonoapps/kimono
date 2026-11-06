@@ -1388,7 +1388,31 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
     setHeight(h);
     if (inline && writing && !moved.current && h > 760 && window.innerWidth >= 1180) { moved.current = true; shared.setBeside(name); }
   }, [inline, writing, shared, name]);
-  const shown = inline ? Math.min(Math.max(height, 120), 560) : undefined;
+  /* Inline, it's as tall as its page up to most of the window; a drag on its bottom edge sets the height instead. */
+  const [chosen, setChosen] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [cap, setCap] = useState(900);
+  useEffect(() => {
+    const fit = () => setCap(Math.max(320, Math.round(window.innerHeight * 0.8)));
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+  const shown = inline ? chosen ?? Math.min(Math.max(height, 120), cap) : undefined;
+  const resizeBy = (h: number) => setChosen(Math.min(Math.max(Math.round(h), 120), 2400));
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !shown) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const from = event.clientY, start = shown;
+    setDragging(true);
+    const move = (e: PointerEvent) => resizeBy(start + e.clientY - from);
+    const end = () => { setDragging(false); handle.removeEventListener("pointermove", move); handle.removeEventListener("pointerup", end); handle.removeEventListener("pointercancel", end); };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
   return <figure className={cx("cd-artifact", `is-${mode}`, writing && "is-writing", inline && open && "is-elsewhere")}>
     <figcaption className="cd-artifact-head">
       <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
@@ -1402,7 +1426,11 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
       ? <button type="button" className="cd-artifact-away" onClick={() => shared.setBeside(null)}>Open beside the chat · bring it back here</button>
       : ready
         ? <>
-            <div className="cd-artifact-body" style={shown ? { height: shown } : undefined}><ArtifactFrame content={content} final={!writing} title={title} control={control} onHeight={onHeight} onScene={setScene} /></div>
+            <div className={cx("cd-artifact-body", dragging && "is-dragging")} style={shown ? { height: shown } : undefined}><ArtifactFrame content={content} final={!writing} title={title} control={control} onHeight={onHeight} onScene={setScene} /></div>
+            {inline ? <div className="cd-artifact-grip" role="separator" aria-orientation="horizontal" aria-label="Resize" title="Drag to resize · double-click to fit" tabIndex={0}
+              aria-valuemin={120} aria-valuemax={2400} aria-valuenow={shown}
+              onPointerDown={startDrag} onDoubleClick={() => setChosen(null)}
+              onKeyDown={(event) => { if (!shown) return; if (event.key === "ArrowDown") { event.preventDefault(); resizeBy(shown + 40); } else if (event.key === "ArrowUp") { event.preventDefault(); resizeBy(shown - 40); } else if (event.key === "Enter" || event.key === "Escape") setChosen(null); }} /> : null}
             {scene && scene.end > 0 ? <SceneBar scene={scene} send={send} /> : null}
           </>
         : <MorphLoader label="Opening" className="cd-artifact-loading" />}

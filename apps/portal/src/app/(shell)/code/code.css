@@ -1048,6 +1048,14 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-artifact-acts { display: flex; gap: 2px; flex: none; }
 .cd-artifact-body { position: relative; margin: 0 6px 6px; border-radius: calc(var(--k-r-xl) - 6px); overflow: hidden; background: var(--k-surface); transition: height var(--k-t-seat) var(--k-ease-settle); }
 .cd-artifact-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+.cd-artifact-body.is-dragging { transition: none; }
+.cd-artifact-body.is-dragging .cd-artifact-frame { pointer-events: none; }
+/* The bottom edge: a short ink stroke that shows on hover, a row tall to catch the pointer. */
+.cd-artifact-grip { position: relative; height: 14px; margin: -6px 6px 0; cursor: ns-resize; touch-action: none; outline: none; }
+.cd-artifact-grip::after { content: ""; position: absolute; left: 50%; top: 5px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--k-outline-variant); opacity: 0; transition: opacity var(--k-t-quick, .15s) ease, background-color var(--k-t-quick, .15s) ease; }
+.cd-artifact:hover .cd-artifact-grip::after, .cd-artifact-grip:focus-visible::after { opacity: 1; }
+.cd-artifact-grip:hover::after, .cd-artifact-grip:active::after, .cd-artifact-grip:focus-visible::after { background: var(--k-on-surface-variant); }
+@media (hover: none) { .cd-artifact-grip::after { opacity: .7; } }
 .cd-artifact-loading { width: 36px; height: 36px; margin: 12px auto 22px; }
 .cd-artifact-away { margin: 0 6px 6px; padding: 14px; border: 0; border-radius: calc(var(--k-r-xl) - 6px); background: var(--k-surface); font: 600 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); cursor: pointer; text-align: left; }
 .cd-artifact-away:hover { color: var(--k-on-surface); }
