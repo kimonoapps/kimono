@@ -75,3 +75,21 @@ func TestMemoriesCanBeChangedAndForgotten(t *testing.T) {
 		t.Fatalf("%+v", box.memories)
 	}
 }
+
+// A chat has no repository, so whether a turn may run depends on the Portal
+// having ensured it, not on a repository being set. Before this, every chat
+// was refused with "Ensure the workspace first."
+func TestAnEnsuredChatTakesTurns(t *testing.T) {
+	s := &Server{spaces: map[string]*workspace{}}
+	if _, err := s.remembered("chat"); err == nil {
+		t.Fatal("a workspace never ensured must be refused")
+	}
+	s.spaces["chat"] = &workspace{id: "chat"}
+	if _, err := s.remembered("chat"); err == nil {
+		t.Fatal("a workspace known only to Docker must wait for an ensure (its credentials aren't here)")
+	}
+	s.spaces["chat"].ensured = true
+	if _, err := s.remembered("chat"); err != nil {
+		t.Fatalf("an ensured chat with no repository was refused: %v", err)
+	}
+}

@@ -68,3 +68,25 @@ func TestAgentHasNoWebTools(t *testing.T) {
 		t.Fatal("the agent must run without WebFetch and WebSearch")
 	}
 }
+
+// On Docker Desktop the gateway is the Mac itself, reached as
+// host.docker.internal; with no resolver in the sandbox that one name has to
+// be pinned, or the agent never reaches the model. Nowhere else is it added.
+func TestDesktopPinsOnlyTheGatewayName(t *testing.T) {
+	s := &Server{gatewayURL: "http://host.docker.internal:7481"}
+	was := dockerDesktop
+	defer func() { dockerDesktop = was }()
+	dockerDesktop = true
+	if got := s.desktopGatewayHost(); got != "host.docker.internal" {
+		t.Fatalf("on Docker Desktop, pinned %q", got)
+	}
+	dockerDesktop = false
+	if got := s.desktopGatewayHost(); got != "" {
+		t.Fatalf("on Linux, pinned %q; sandboxes there reach the gateway by address", got)
+	}
+	dockerDesktop = true
+	s.gatewayURL = "http://172.24.0.1:7481"
+	if got := s.desktopGatewayHost(); got != "" {
+		t.Fatalf("with a gateway address, pinned %q", got)
+	}
+}

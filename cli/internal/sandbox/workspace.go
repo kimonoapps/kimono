@@ -65,6 +65,10 @@ type workspace struct {
 	model      ModelAuth
 	tools      ToolsAuth
 	capability string
+	// ensured is set once the Portal has ensured it since this node started:
+	// its credentials are here. A chat has no repository, so this, not the
+	// repository, says whether it is ready.
+	ensured bool
 	// base is the repository's server root, such as https://git.example.com,
 	// which the broker forwards to.
 	base string
@@ -181,6 +185,7 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 	}
 	w.mu.Lock()
 	w.repo, w.git, w.model, w.tools, w.base = request.Repo, request.Git, request.Model, tools, base
+	w.ensured = true
 	w.lastActive = time.Now()
 	w.mu.Unlock()
 
@@ -256,6 +261,11 @@ func (s *Server) create(ctx context.Context, id string, repo Repo) error {
 	}
 	/* No names: Docker's own resolver would otherwise look them up from inside, past the firewall. */
 	args = append(args, "--dns", "127.0.0.1")
+	if gatewayHost := s.desktopGatewayHost(); gatewayHost != "" {
+		/* Docker Desktop (development): the gateway is on the Mac, reached by name, and with no
+		   resolver that name must be written in. It is the only name a sandbox can look up. */
+		args = append(args, "--add-host", gatewayHost+":host-gateway")
+	}
 	if s.firewall != nil {
 		if err := s.recheckFirewall(ctx); err != nil {
 			return fmt.Errorf("the sandbox firewall: %w", err)
@@ -408,12 +418,27 @@ func (s *Server) running(ctx context.Context, id string) (*workspace, error) {
 	return w, nil
 }
 
+// desktopGatewayHost is the name sandboxes reach the gateway by on Docker
+// Desktop, which has to be pinned since sandboxes have no resolver; "" elsewhere.
+func (s *Server) desktopGatewayHost() string {
+	if !dockerDesktop || !strings.Contains(s.gatewayURL, "://host.docker.internal:") {
+		return ""
+	}
+	return "host.docker.internal"
+}
+
 // remembered returns a workspace the Portal has ensured since this node started.
 func (s *Server) remembered(id string) (*workspace, error) {
 	s.mu.Lock()
 	w := s.spaces[id]
 	s.mu.Unlock()
-	if w == nil || w.repo.URL == "" {
+	if w == nil {
+		return nil, problem(409, "Ensure the workspace first.")
+	}
+	w.mu.Lock()
+	ensured := w.ensured
+	w.mu.Unlock()
+	if !ensured {
 		return nil, problem(409, "Ensure the workspace first.")
 	}
 	return w, nil
