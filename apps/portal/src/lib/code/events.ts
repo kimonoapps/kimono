@@ -29,7 +29,7 @@ export type CodeEvent =
    */
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; /** The Drive folder or file asked for, so the person can pick one file in it. */ node?: string }
   /** Something it kept about the person for future chats (kimono-remember). */
-  | { kind: "remembered"; text: string }
+  | { kind: "remembered"; text: string; /** It changed a memory, or forgot one. */ how?: "changed" | "forgot" }
   /** How the person answered an access request. */
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 

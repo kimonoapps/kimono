@@ -1,6 +1,6 @@
-import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
+import { apiJson, apiUser, readJson, unauthorized } from "@/lib/api-v1";
 import { code, db } from "@/lib/code";
-import { forget, profileOf } from "@/lib/code/memory";
+import { changeMemory, forget, profileOf } from "@/lib/code/memory";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -10,4 +10,14 @@ export async function DELETE(_request: Request, { params }: Context) {
   if (!user) return unauthorized();
   const { id } = await params;
   return code(user, async () => { forget(db(), user.username, id); return apiJson(profileOf(db(), user.username)); }, false);
+}
+
+/** New words for one memory: { text }. */
+export async function PATCH(request: Request, { params }: Context) {
+  const user = await apiUser();
+  if (!user) return unauthorized();
+  const read = await readJson(request);
+  if ("response" in read) return read.response;
+  const { id } = await params;
+  return code(user, async () => { changeMemory(db(), user.username, id, (read.body as { text?: unknown }).text); return apiJson(profileOf(db(), user.username)); }, false);
 }

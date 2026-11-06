@@ -290,6 +290,12 @@ function MemoryView({ now }: { now: number }) {
     setProblem(null);
     code.remember(adding).then((next) => { setProfile(next); setAdding(""); }, (error) => setProblem(problemText(error)));
   };
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const change = () => {
+    if (!editing?.text.trim()) return;
+    setProblem(null);
+    code.changeMemory(editing.id, editing.text).then((next) => { setProfile(next); setEditing(null); }, (error) => setProblem(problemText(error)));
+  };
   const drop = (id: string) => {
     setProfile((p) => p && { ...p, memories: p.memories.filter((m) => m.id !== id) });
     code.forget(id).then(setProfile, (error) => { setProblem(problemText(error)); void code.memory().then(setProfile); });
@@ -321,10 +327,19 @@ function MemoryView({ now }: { now: number }) {
           <input value={adding} maxLength={500} onChange={(event) => setAdding(event.target.value)} placeholder="Something it should remember" aria-label="Something it should remember" />
           {adding.trim() ? <Seal type="submit" compact>Add</Seal> : null}
         </form>
-        {profile.memories.length ? <ul className="cd-conn-list">{profile.memories.map((m) => <li key={m.id} className="cd-conn-card cd-memory-item">
-          <span className="cd-conn-id"><b>{m.text}</b><small>{m.source === "ai" ? "It kept this" : "You added this"} · {when(m.createdAt, now)}</small></span>
-          <button type="button" className="cd-roundbutton" aria-label="Forget this" title="Forget this" onClick={() => drop(m.id)}><Icon name="trash" /></button>
-        </li>)}</ul> : <p className="cd-conn-empty">Nothing yet. It keeps things you tell it to remember.</p>}
+        {profile.memories.length ? <ul className="cd-conn-list">{profile.memories.map((m) => editing?.id === m.id
+          ? <li key={m.id} className="cd-conn-card cd-memory-item is-editing">
+              <form className="cd-memory-edit" onSubmit={(event) => { event.preventDefault(); change(); }}>
+                <input autoFocus value={editing.text} maxLength={500} aria-label="Memory" onChange={(event) => setEditing({ id: m.id, text: event.target.value })} onKeyDown={(event) => { if (event.key === "Escape") setEditing(null); }} />
+                <Seal type="button" compact tone="quiet" onClick={() => setEditing(null)}>Cancel</Seal>
+                <Seal type="submit" compact disabled={!editing.text.trim() || editing.text.trim() === m.text}>Save</Seal>
+              </form>
+            </li>
+          : <li key={m.id} className="cd-conn-card cd-memory-item">
+              <button type="button" className="cd-conn-id cd-memory-text" title="Edit" onClick={() => setEditing({ id: m.id, text: m.text })}><b>{m.text}</b><small>{m.source === "ai" ? "It kept this" : "You added this"} · {when(m.createdAt, now)}</small></button>
+              <button type="button" className="cd-roundbutton" aria-label="Edit this" title="Edit this" onClick={() => setEditing({ id: m.id, text: m.text })}><Icon name="rename" /></button>
+              <button type="button" className="cd-roundbutton" aria-label="Forget this" title="Forget this" onClick={() => drop(m.id)}><Icon name="trash" /></button>
+            </li>)}</ul> : <p className="cd-conn-empty">Nothing yet. It keeps things you tell it to remember.</p>}
       </> : null}
     </div>
   </section>;
@@ -875,7 +890,7 @@ type Item =
   | { type: "slept"; seq: number; for: string }
   | { type: "disk"; seq: number; event: Extract<CodeEvent, { kind: "disk" }> }
   | { type: "compacted"; seq: number; before?: number }
-  | { type: "remembered"; seq: number; text: string }
+  | { type: "remembered"; seq: number; text: string; how?: "changed" | "forgot" }
   | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
@@ -905,7 +920,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "disk": items.push({ type: "disk", seq, event }); break;
       case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
       case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
-      case "remembered": items.push({ type: "remembered", seq, text: event.text }); break;
+      case "remembered": items.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
     }
   }
   return items;
@@ -963,7 +978,7 @@ function Chat({ workspace, events, running, blocked }: { workspace: Workspace; e
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
               ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
               : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
-            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>Remembered: {item.text} <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>Memory</button></span></p>;
+            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>Memory</button></span></p>;
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;

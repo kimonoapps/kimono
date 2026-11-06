@@ -1,21 +1,35 @@
 #!/usr/bin/env python3
 """kimono-remember "one sentence"
+kimono-remember --change ID "the new sentence"
+kimono-remember --forget ID
 
 Keeps something about the person for every future chat: a preference, a fact
-about them or their household, or something they asked you to remember. Only
-what will matter later; never secrets such as passwords. They can see and
-delete what you keep.
+about them or their household, or something they asked you to remember. Change
+or forget what you keep when it's out of date or they ask; each memory's ID is
+in your instructions. Only what will matter later; never secrets such as
+passwords. They can see, edit and delete what you keep.
 """
-import json, os, secrets, sys, time
+import json, os, re, secrets, sys, time
 
-text = " ".join(" ".join(sys.argv[1:]).split())
-if not text or text in ("-h", "--help"):
+args = sys.argv[1:]
+request = {}
+if args[:1] in (["-h"], ["--help"]) or not args:
     sys.exit(__doc__.strip())
-if len(text) > 500:
-    sys.exit("kimono-remember: keep it to one sentence (500 characters at most)")
+if args[0] in ("--change", "--forget"):
+    if len(args) < 2 or not re.fullmatch(r"[0-9a-f]{8,32}", args[1]):
+        sys.exit(f"kimono-remember: {args[0]} needs a memory's ID, as your instructions list it")
+    request["change" if args[0] == "--change" else "forget"] = args[1]
+    args = args[2:]
+text = " ".join(" ".join(args).split())
+if "forget" not in request:
+    if not text:
+        sys.exit("kimono-remember: say what to remember")
+    if len(text) > 500:
+        sys.exit("kimono-remember: keep it to one sentence (500 characters at most)")
+    request["text"] = text
 os.makedirs("/outbox/memories", exist_ok=True)
 name = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}.json"
 with open(f"/outbox/memories/.{name}", "w") as f:
-    json.dump({"text": text}, f)
+    json.dump(request, f)
 os.rename(f"/outbox/memories/.{name}", f"/outbox/memories/{name}")
-print("Remembered. It will be there in every chat from now on.")
+print("Forgotten." if "forget" in request else "Changed." if "change" in request else "Remembered. It will be there in every chat from now on.")

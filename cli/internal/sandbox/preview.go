@@ -404,7 +404,14 @@ func (s *Server) reportOutbox(space *workspace, out *lineWriter) {
 		if _, err := s.docker.run(ctx, nil, "exec", "-u", "agent", containerName(space.id), "rm", "-f", "/outbox/memories/"+note.ID); err != nil {
 			continue
 		}
-		out.json(map[string]any{"type": "kimono.memory", "text": note.Text})
+		line := map[string]any{"type": "kimono.memory", "text": note.Text}
+		if note.Change != "" {
+			line["change"] = note.Change
+		}
+		if note.Forget != "" {
+			line["forget"] = note.Forget
+		}
+		out.json(line)
 	}
 	for _, request := range box.access {
 		/* Taken out of the outbox once reported, so it is asked once. */
@@ -993,11 +1000,16 @@ func parseAccess(name, body string) (accessRequest, bool) {
 	return request, true
 }
 
-// memoryNote is one thing kimono-remember was asked to keep.
+// memoryNote is one thing kimono-remember was asked to keep, change (an
+// existing memory's id and its new text) or forget (an id alone).
 type memoryNote struct {
-	ID   string `json:"-"`
-	Text string `json:"text"`
+	ID     string `json:"-"`
+	Text   string `json:"text"`
+	Change string `json:"change"`
+	Forget string `json:"forget"`
 }
+
+var memoryIDPattern = regexp.MustCompile(`^[0-9a-f]{8,32}$`)
 
 func parseRemembered(name, body string) (memoryNote, bool) {
 	var note memoryNote
@@ -1005,5 +1017,11 @@ func parseRemembered(name, body string) (memoryNote, bool) {
 		return note, false
 	}
 	note.ID, note.Text = name, strings.TrimSpace(note.Text)
+	if note.Forget != "" {
+		return note, memoryIDPattern.MatchString(note.Forget) && note.Change == ""
+	}
+	if note.Change != "" && !memoryIDPattern.MatchString(note.Change) {
+		return note, false
+	}
 	return note, note.Text != "" && len(note.Text) <= 500
 }

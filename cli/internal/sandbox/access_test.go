@@ -65,3 +65,13 @@ func TestTurnsRunOnAKnownModel(t *testing.T) {
 		t.Error("only Claude models run")
 	}
 }
+
+func TestMemoriesCanBeChangedAndForgotten(t *testing.T) {
+	box := parseOutbox([]byte(`memory 1-0a1b2c3d.json {"change":"a1b2c3d4e5f60718","text":"Kim eats fish now."}` + "\n" +
+		`memory 2-0a1b2c3e.json {"forget":"a1b2c3d4e5f60718"}` + "\n" +
+		`memory 3-0a1b2c3f.json {"forget":"../../etc"}` + "\n" +
+		`memory 4-0a1b2c40.json {"change":"a1b2c3d4e5f60718"}` + "\n"))
+	if len(box.memories) != 2 || box.memories[0].Change == "" || box.memories[1].Forget == "" {
+		t.Fatalf("%+v", box.memories)
+	}
+}

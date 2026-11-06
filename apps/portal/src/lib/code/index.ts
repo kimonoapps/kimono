@@ -15,7 +15,7 @@ import {
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
 import { toolSession } from "./composio";
-import { contextFor, remember } from "./memory";
+import { changeMemory, contextFor, forget, profileOf, remember } from "./memory";
 import { modelFor, type ModelChoice } from "./models";
 export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
@@ -194,10 +194,20 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port, ...(app ? { app } : {}) });
           continue;
         }
-        if (line.type === "kimono.memory" && typeof line.text === "string") {
+        if (line.type === "kimono.memory") {
+          /* Only ever the person's own memories: an id that isn't theirs isn't found. */
           try {
-            const kept = remember(db(), workspace.owner, line.text, "ai");
-            if (kept) record(workspace.id, turn, { kind: "remembered", text: kept.text });
+            if (typeof line.forget === "string") {
+              const was = profileOf(db(), workspace.owner).memories.find((m) => m.id === line.forget);
+              forget(db(), workspace.owner, line.forget);
+              if (was) record(workspace.id, turn, { kind: "remembered", text: was.text, how: "forgot" });
+            } else if (typeof line.change === "string" && typeof line.text === "string") {
+              const changed = changeMemory(db(), workspace.owner, line.change, line.text);
+              record(workspace.id, turn, { kind: "remembered", text: changed.text, how: "changed" });
+            } else if (typeof line.text === "string") {
+              const kept = remember(db(), workspace.owner, line.text, "ai");
+              if (kept) record(workspace.id, turn, { kind: "remembered", text: kept.text });
+            }
           } catch (error) { console.warn("Kimono AI couldn't keep a memory:", error instanceof Error ? error.message : error); }
           continue;
         }

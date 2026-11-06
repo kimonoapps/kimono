@@ -248,8 +248,13 @@ test('memory: instructions and what it keeps reach every turn, and only their pe
   memory.remember(db, 'sam', 'Sam runs on Tuesdays.', 'person');
   const context = memory.contextFor(db, 'mina');
   assert.match(context, /Call me Mina\. Keep it short\./);
-  assert.match(context, /- Mina is vegetarian\./);
+  assert.match(context, /\] Mina is vegetarian\./);
   assert.doesNotMatch(context, /Sam runs/, "someone else's memories never reach their turns");
+  assert.match(memory.contextFor(db, 'mina'), /- \[[0-9a-f]+\] Mina is vegetarian\./, 'each memory goes with its id, so it can be changed');
+  assert.match(memory.contextFor(db, 'mina'), /--change <ID>/);
+  const [first] = memory.profileOf(db, 'mina').memories;
+  assert.equal(memory.changeMemory(db, 'mina', first.id, 'Mina eats fish now.').text, 'Mina eats fish now.');
+  assert.throws(() => memory.changeMemory(db, 'sam', first.id, 'hacked'), (e) => e.status === 404, "no one changes someone else's");
   const [kept] = memory.profileOf(db, 'mina').memories;
   assert.throws(() => memory.forget(db, 'sam', kept.id), (e) => e.status === 404);
   memory.forget(db, 'mina', kept.id);

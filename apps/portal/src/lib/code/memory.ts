@@ -43,6 +43,15 @@ export function remember(db: DatabaseSync, username: string, raw: unknown, sourc
   return memory;
 }
 
+/** New words for one of the person's own memories. */
+export function changeMemory(db: DatabaseSync, username: string, id: string, raw: unknown): Memory {
+  const text = String(raw ?? "").replace(/\s+/g, " ").trim();
+  if (!text) throw new CodeProblem("Say what to remember.");
+  if (text.length > maxMemory) throw new CodeProblem(`Keep a memory to ${maxMemory} characters.`);
+  if (!db.prepare("UPDATE memories SET text = ? WHERE id = ? AND username = ?").run(text, id, username).changes) throw new CodeProblem("That memory isn't here.", 404);
+  return profileOf(db, username).memories.find((m) => m.id === id)!;
+}
+
 export function forget(db: DatabaseSync, username: string, id: string) {
   if (!db.prepare("DELETE FROM memories WHERE id = ? AND username = ?").run(id, username).changes) throw new CodeProblem("That memory isn't here.", 404);
 }
@@ -52,7 +61,7 @@ export function contextFor(db: DatabaseSync, username: string): string {
   const { instructions, memories } = profileOf(db, username);
   const parts: string[] = [];
   if (instructions) parts.push(`The person's own instructions for you (follow them unless they ask otherwise in the chat):\n${instructions}`);
-  if (memories.length) parts.push(`What you remember about them from earlier chats:\n${memories.slice().reverse().map((m) => `- ${m.text}`).join("\n")}`);
-  parts.push("To remember something for every future chat (a preference, a fact about them or their household, or something they ask you to keep), run `kimono-remember \"<one sentence>\"`. Only what will matter later, never secrets such as passwords; they can see and delete what you keep.");
+  if (memories.length) parts.push(`What you remember about them from earlier chats (each with its ID):\n${memories.slice().reverse().map((m) => `- [${m.id}] ${m.text}`).join("\n")}`);
+  parts.push("To remember something for every future chat (a preference, a fact about them or their household, or something they ask you to keep), run `kimono-remember \"<one sentence>\"`. When one is out of date or they ask, change it with `kimono-remember --change <ID> \"<new sentence>\"` or drop it with `kimono-remember --forget <ID>`. Only what will matter later, never secrets such as passwords; they can see, edit and delete what you keep.");
   return parts.join("\n\n");
 }

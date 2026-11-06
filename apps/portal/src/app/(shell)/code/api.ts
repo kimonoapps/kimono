@@ -32,7 +32,7 @@ export type CodeEvent =
   | { kind: "slept"; for: string }
   | { kind: "disk"; used: number; quota: number; full?: boolean }
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
-  | { kind: "remembered"; text: string }
+  | { kind: "remembered"; text: string; how?: "changed" | "forgot" }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Profile = { instructions: string; memories: { id: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
@@ -109,6 +109,7 @@ export const code = {
   saveInstructions: (instructions: string) => call<Profile>("/memory", json("POST", { instructions })),
   remember: (text: string) => call<Profile>("/memory", json("POST", { remember: text })),
   forget: (id: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  changeMemory: (id: string, text: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, json("PATCH", { text })),
   /** The apps this person has connected through Composio, and whether connections are set up at all. */
   connections: () => call<{ available: boolean; connections: Connection[] }>("/connections"),
   findApps: (q: string) => call<{ apps: ConnectableApp[] }>(`/connections/apps?q=${encodeURIComponent(q)}`).then((r) => r.apps),
