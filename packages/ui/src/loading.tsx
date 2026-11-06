@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cx } from "./cx";
-import { inkFilters, washGradient } from "./ink";
+import { inkFilters, mixHex, washGradient } from "./ink";
 
 /*
  * How Kimono waits (docs/design-system.md, "Waiting"):
@@ -39,7 +39,13 @@ function shapePath(i: number, j: number, mix: number) {
 }
 
 /** The morphing shape. `tone="wash"` is suō on paper; `tone="plain"` takes the text colour (for a Seal's face). */
-export function MorphLoader({ tone = "wash", label = "Loading", className }: { tone?: "wash" | "plain"; label?: string; className?: string }) {
+export function MorphLoader({ tone = "wash", ink, label = "Loading", className }: {
+  tone?: "wash" | "plain";
+  /** The colour the wash is made from (#rrggbb), to sit with the words beside it. Suō when left out. */
+  ink?: string;
+  label?: string;
+  className?: string;
+}) {
   const unique = useId().replaceAll(":", "");
   const svg = useRef<SVGSVGElement>(null);
   useEffect(() => {
@@ -65,9 +71,11 @@ export function MorphLoader({ tone = "wash", label = "Loading", className }: { t
   return <svg ref={svg} className={cx("k-morph", className)} viewBox="0 0 38 38" role="progressbar" aria-label={label}>
     {tone === "wash"
       ? <>
-          <defs dangerouslySetInnerHTML={{ __html: inkFilters(unique, 21) + washGradient(`lw-${unique}`, "#eab0be", "#cf7088", "#8f3c52", "60%") }}/>
+          <defs dangerouslySetInnerHTML={{ __html: inkFilters(unique, 21) + (ink
+            ? washGradient(`lw-${unique}`, mixHex(ink, "#ffffff", .62), mixHex(ink, "#ffffff", .22), mixHex(ink, "#000000", .22), "60%")
+            : washGradient(`lw-${unique}`, "#eab0be", "#cf7088", "#8f3c52", "60%")) }}/>
           <path className="shape" d={first} fill={`url(#lw-${unique})`} filter={`url(#ink-wash-${unique})`} opacity=".95"/>
-          <path className="shape" d={first} fill="none" stroke="#4e2b37" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="70 4" opacity=".8" filter={`url(#ink-fine-${unique})`}/>
+          <path className="shape" d={first} fill="none" stroke={ink ? mixHex(ink, "#000000", .45) : "#4e2b37"} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="70 4" opacity=".8" filter={`url(#ink-fine-${unique})`}/>
         </>
       : <path className="shape" d={first} fill="currentColor"/>}
   </svg>;

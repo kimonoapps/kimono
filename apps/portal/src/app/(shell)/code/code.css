@@ -1088,3 +1088,28 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-connect-words { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .cd-connect-words b { font: 600 15px/1.25 var(--k-sans); color: var(--k-on-surface); }
 .cd-connect-words small { font-size: 13px; color: var(--k-on-surface-variant); }
+
+/* working, in the list and the header: the ink shape, not a dot */
+.cd-word.running::before { content: none; }
+.cd-word.running, .cd-status.running { display: inline-flex; align-items: center; gap: 5px; }
+.cd-working-ink { width: 13px; height: 13px; flex: none; }
+.cd-status.running .cd-working-ink { width: 15px; height: 15px; }
+
+/* the chat list scrolls without a bar: a bar can't follow its rounded corners */
+.cd-side { scrollbar-width: none; }
+.cd-side::-webkit-scrollbar { display: none; }
+
+/* no monospace in the conversation's words: times, counts and names are the sans, with figures that line up.
+   Code itself (diffs, logs, code blocks) keeps its monospace. */
+.cd-mono, .cd-when, .cd-word, .cd-status, .cd-filechip small, .cd-drivepick li small, .cd-list small .cd-mono, .cd-project-head .cd-mono, .cd kbd, .cd-picker-value.is-mono, .cd-picker-name.is-mono, .cd-linkname-field > span {
+  font-family: var(--k-sans); font-variant-numeric: tabular-nums; letter-spacing: 0;
+}
+.call code { font: 500 14px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+
+/* Done: the tick, the word and the facts on one line */
+.cd-done { display: flex; align-items: center; gap: 8px; }
+.cd-done .i { flex: none; }
+.cd-done-facts { font: 500 13px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
+
+/* a tool call keeps a rounded shape under the pointer, in the middle of the list too */
+.call > summary:hover { border-radius: 14px; }

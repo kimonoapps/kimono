@@ -26,7 +26,12 @@ export function modelFor(choice: unknown, input: { prompt: string; attachments: 
 }
 
 /* An animation or a picture that explains: Opus writes these best, and they need little thinking, only care. */
-const animating = /\b(animat\w*|visuali[sz]\w*|illustrat\w*|simulat\w*|show me how|walk me through|in 3d|3d|draw (me )?(a |an |the )?(graph|diagram|picture)|graph it|plot it)\b/i;
+const animating = new RegExp([
+  /\b(animat\w*|visuali[sz]\w*|illustrat\w*|simulat\w*|walk me through|in 3d|3d|graph it|plot it)\b/.source,
+  /* "show me how", "something that shows how washers work", "make me something that shows…" */
+  /\bshows? (me )?(how|what|why)\b|\bthat shows\b/.source,
+  /\b(make|build|create|draw|give)( me)? (something|a thing|a demo|an? (little |quick |interactive )?(animation|visual|visualization|diagram|graph|chart|picture|simulation|explainer|demo))\b/.source,
+].join("|"), "i");
 
 export function wantsAnimation(prompt: string) { return animating.test(prompt); }
 

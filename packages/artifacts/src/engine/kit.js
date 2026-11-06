@@ -461,7 +461,8 @@
       const key = `${index}|${state.t.toFixed(2)}|${end}|${state.playing}|${state.complete}|${params.map((p) => `${p.name}=${p.value}`).join(",")}`;
       if (key === this._said) return;
       this._said = key;
-      parent.postMessage(state, "*");
+      /* the frame sums every scene up for Kimono's controls */
+      if (window.KIMONO_REPORT) window.KIMONO_REPORT(state); else parent.postMessage(state, "*");
     }
     /* The host page hands over the script as it streams (it reads the raw text, so nothing depends on the parser). */
     feed(text, complete) {
@@ -490,6 +491,7 @@
         this.errorBox.hidden = true;
       } catch (error) {
         this.errorBox.hidden = false; this.errorBox.textContent = String(error?.message || error);
+        if (window.KIMONO_REPORT_ERROR) window.KIMONO_REPORT_ERROR(`Scene: ${error?.message || error}`);
         if (this.timeline) return;
       } finally { Math.random = random; }
       if (timeline.usesTex) loadKatex();
@@ -514,7 +516,7 @@
         this.gl = { renderer, camera, scene: new T.Scene() };
         this.size();
         this.timeline?.mount3d();
-      }, (error) => { this.errorBox.hidden = false; this.errorBox.textContent = `3D couldn't load: ${error?.message || error}`; });
+      }, (error) => { this.errorBox.hidden = false; this.errorBox.textContent = `3D couldn't load: ${error?.message || error}`; if (window.KIMONO_REPORT_ERROR) window.KIMONO_REPORT_ERROR(`3D couldn't load: ${error?.message || error}`); });
     }
     drop3d() { if (!this.gl) return; this.gl.renderer.domElement.remove(); this.gl.renderer.dispose(); this.gl = null; }
     size() {

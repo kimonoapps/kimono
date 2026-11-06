@@ -6,10 +6,10 @@
  * nothing at all.
  *
  * Whoever shows it posts the artifact's text as it arrives ({ kimono:
- * "artifact", type: "render", content, final }); it writes the new part into a
- * document that renders as it is written, the way a browser renders a page
+ * "artifact", type: "render", content, final }); it writes the new part into
+ * its own page, which renders as it is written, the way a browser renders a page
  * still loading, and hands each scene its script as it grows. It answers with
- * { type: "ready" }, { type: "size", height } and, for animations,
+ * { type: "ready" }, { type: "size", height }, { type: "error", message } and, for animations,
  * { type: "scene", t, end, playing, complete, count, params }; the shower
  * drives it with { type: "scene-control", action: play | pause | replay | seek
  * (t) | set (name, value) }, and draws the controls and sliders itself.
@@ -17,68 +17,87 @@
 
 export const frameHtml = (origin: string) => `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style>
-</head><body><iframe id="page" title="Artifact"></iframe>
+<style>html,body{margin:0;background:transparent}</style>
+</head><body>
 <script>
 (() => {
+  /*
+   * The artifact is written into this very page: a sandboxed frame has no
+   * origin, so it can't reach a frame inside it. document.open() clears the
+   * page and its listeners but keeps this script's state (and the kit, once
+   * loaded), so the listener is added again after every open.
+   */
   const LIB = ${JSON.stringify(`${origin}/ai/lib/`)};
-  const HEAD = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="' + LIB + 'kit.css"><script>window.KIMONO_FRAME = 1<\\/script><script src="' + LIB + 'kit.js"><\\/script></head><body>';
-  const frame = document.getElementById("page");
-  let doc = null, written = "", closed = false, sized = 0, watcher = null;
+  const HEAD = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="' + LIB + 'kit.css"><script src="' + LIB + 'kit.js"><\\/script></head><body>';
+  window.KIMONO_FRAME = 1;
+  window.KIMONO_REPORT_ERROR = (message) => tell({ type: "error", message: String(message).slice(0, 500) });
+  let opened = false, written = "", closed = false, sized = 0, watcher = null;
   const tell = (message) => parent.postMessage(Object.assign({ kimono: "artifact" }, message), "*");
+  /* the scenes' time, summed up for the card's controls: the longest one sets the length */
+  const sceneState = new Map();
+  window.KIMONO_REPORT = (state) => {
+    sceneState.set(state.index, state);
+    const all = [...sceneState.values()];
+    const params = []; for (const s of all) for (const p of s.params || []) if (!params.some((q) => q.name === p.name)) params.push(p);
+    tell({ type: "scene", t: Math.max(...all.map((s) => s.t)), end: Math.max(...all.map((s) => s.end)), playing: all.some((s) => s.playing), complete: all.every((s) => s.complete), count: all.length, params });
+  };
   function reset() {
-    watcher?.disconnect();
+    if (watcher) watcher.disconnect();
+    watcher = null;
     sceneState.clear();
-    doc = frame.contentDocument;
-    doc.open();
-    doc.write(HEAD);
-    written = ""; closed = false;
-    watcher = new ResizeObserver(size);
-    watcher.observe(doc.documentElement);
+    document.open();
+    document.write(HEAD);
+    addEventListener("message", hear);
+    listenForErrors();
+    opened = true; written = ""; closed = false;
   }
   function size() {
-    if (!doc?.documentElement) return;
-    const h = Math.ceil(Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight || 0));
+    /* the page's own box, not its scroll height: that is never less than the frame, so it could only grow */
+    const root = document.documentElement; if (!root) return;
+    if (!watcher) { watcher = new ResizeObserver(size); watcher.observe(root); }
+    const h = Math.ceil(root.getBoundingClientRect().height);
     if (h !== sized) { sized = h; tell({ type: "size", height: h }); }
   }
   /* each scene's script, read from the raw text so it doesn't wait for the parser */
   function scenes(content, final) {
     const found = [...content.matchAll(/<k-scene\\b[^>]*>[\\s\\S]*?<script[^>]*type=["']?text\\/kimono-scene["']?[^>]*>([\\s\\S]*?)(<\\/script>|$)/gi)];
-    const elements = doc.querySelectorAll("k-scene");
+    const elements = document.querySelectorAll("k-scene");
     found.forEach((m, i) => { const el = elements[i]; if (el && el.feed) el.feed(m[1], final || m[2].length > 0); });
   }
   function render(content, final) {
-    if (!doc || closed || !content.startsWith(written)) reset();
+    /* the same finished page again (the shower re-posts when it hears a load): leave it be */
+    if (closed && content === written) return;
+    if (!opened || closed || !content.startsWith(written)) reset();
     const delta = content.slice(written.length);
-    if (delta) doc.write(delta);
+    if (delta) document.write(delta);
     written = content;
-    if (final) { doc.close(); closed = true; }
-    try { scenes(content, final); } catch {}
+    if (final) { document.close(); closed = true; }
+    try { scenes(content, final); } catch (e) {}
     size();
     if (final) setTimeout(size, 300);
   }
-  /* the scenes' time, summed up for the card's controls: the longest one sets the length */
-  const sceneState = new Map();
-  addEventListener("message", (event) => {
-    if (event.source === frame.contentWindow && event.data && event.data.kimono === "scene") {
-      sceneState.set(event.data.index, event.data);
-      const all = [...sceneState.values()];
-      const params = []; for (const s of all) for (const p of s.params || []) if (!params.some((q) => q.name === p.name)) params.push(p);
-      tell({ type: "scene", t: Math.max(...all.map((s) => s.t)), end: Math.max(...all.map((s) => s.end)), playing: all.some((s) => s.playing), complete: all.every((s) => s.complete), count: all.length, params });
-      return;
-    }
+  function hear(event) {
     if (event.source !== parent) return;
     const m = event.data;
     if (!m || m.kimono !== "artifact") return;
-    if (m.type === "render" && typeof m.content === "string") render(m.content, !!m.final);
-    if (m.type === "scene-control") doc?.querySelectorAll("k-scene").forEach((s) => {
+    if (m.type === "render" && typeof m.content === "string") {
+      try { render(m.content, !!m.final); } catch (error) { tell({ type: "error", message: String(error && error.message || error) }); }
+    }
+    if (m.type === "scene-control") document.querySelectorAll("k-scene").forEach((s) => {
       if (m.action === "play" && s.play) s.play();
       if (m.action === "pause" && s.pause) s.pause();
       if (m.action === "replay" && s.replay) s.replay();
       if (m.action === "seek" && s.seek) s.seek(m.t);
       if (m.action === "set" && s.setParam) s.setParam(m.name, m.value);
     });
-  });
+  }
+  /* what goes wrong inside goes to Kimono, so a broken artifact says so instead of staying blank */
+  function listenForErrors() {
+    addEventListener("error", (event) => tell({ type: "error", message: String(event.message || (event.target && event.target.src ? "Couldn't load " + event.target.src : "error")) }), true);
+    addEventListener("unhandledrejection", (event) => tell({ type: "error", message: String(event.reason && event.reason.message || event.reason) }));
+  }
+  addEventListener("message", hear);
+  listenForErrors();
   tell({ type: "ready" });
 })();
 </script></body></html>`;

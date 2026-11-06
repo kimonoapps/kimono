@@ -88,6 +88,10 @@ test('drafts follow a Write of an artifact as it streams, and nothing else', () 
 test('animations go to Opus with light thinking; Sonnet and Haiku never think past medium', () => {
   assert.equal(chooseModel({ prompt: 'Animate how a washer makes a volume', attachments: 0, building: false }), 'opus');
   assert.equal(chooseModel({ prompt: 'visualize compound interest', attachments: 0, building: false }), 'opus');
+  assert.equal(chooseModel({ prompt: 'Can you make something that shows like washer slices and how they work', attachments: 0, building: false }), 'opus');
+  assert.equal(chooseModel({ prompt: 'show me how compound interest grows', attachments: 0, building: false }), 'opus');
+  assert.equal(chooseModel({ prompt: 'make me a chart of our spending', attachments: 0, building: false }), 'opus');
+  assert.equal(chooseModel({ prompt: 'what time is it in Tokyo', attachments: 0, building: false }), 'haiku');
   assert.equal(effortFor('opus', { choice: 'auto', prompt: 'Animate a derivative', effort: 'high' }), 'low');
   assert.equal(effortFor('opus', { choice: 'opus', prompt: 'Animate a derivative', effort: 'high' }), 'high');
   assert.equal(effortFor('opus', { choice: 'auto', prompt: 'Build me a website', effort: 'xhigh' }), 'xhigh');

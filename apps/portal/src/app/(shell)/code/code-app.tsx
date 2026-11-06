@@ -24,6 +24,8 @@ type Tab = "chat" | "files" | "changes" | "app";
 const problemText = (error: unknown, fallback = "That didn't work.") => error instanceof Error ? error.message : fallback;
 const repoName = (w: Pick<Workspace, "repo">) => `${w.repo.owner}/${w.repo.name}`;
 /** Kimono Git and attachments open in their own tab; nothing here leaves the page it is on. */
+/* Working is moss, so its ink shape is washed in moss too (--k-moss). */
+const workingInk = "#5c7150";
 const openOutside = (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); };
 
 /*
@@ -612,7 +614,7 @@ function WorkspaceList({ label, list, current, now, onNew }: { label?: string; l
         <b>{w.title}</b>
         <small>
           {/* One word, and only when it says something. */}
-          {state === "running" ? <span className="cd-word running">working {elapsed(now - w.turn!.startedAt)}</span>
+          {state === "running" ? <span className="cd-word running"><MorphLoader ink={workingInk} label="Working" className="cd-working-ink" />working {elapsed(now - w.turn!.startedAt)}</span>
             : state === "failed" ? <span className="cd-word">stopped</span>
               : w.preview && !w.preview.stopped ? <span className="cd-word">live</span>
               : w.pullRequest ? <span className="cd-word">#{w.pullRequest.number}</span>
@@ -780,7 +782,8 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
         <div className="cd-ws-id">
           <h1 title={workspace.title}>{workspace.title}</h1>
           {project ? <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p> : null}
-          {!isApp && (running || !connected) ? <span className={cx("cd-status", running && "running")} role="status">{running ? <><i aria-hidden="true" />Working {elapsed(now - workspace.turn!.startedAt)}</> : "Reconnecting…"}</span> : null}
+          {/* Working shows once, at the end of the conversation; here only a lost connection. */}
+          {!isApp && !connected ? <span className="cd-status" role="status">Reconnecting…</span> : null}
         </div>
         {confirmDelete
           ? <div className="cd-ws-acts"><span className="cd-faint">Delete this chat? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={() => void remove()}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></div>
@@ -1110,7 +1113,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
           }
         }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
         {drafts.text ? <div className="cd-say is-draft"><Markdown text={drafts.text} /></div> : null}
-        {running && items.at(-1)?.type !== "tools" && !drafts.text && !writing.length ? <div className="cd-thinking" role="status"><MorphLoader tone="plain" label="Working" className="cd-morph" /><span>Working</span></div> : null}
+        {running && items.at(-1)?.type !== "tools" && !drafts.text && !writing.length ? <Working since={workspace.turn?.startedAt ?? null} /> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
@@ -1174,6 +1177,7 @@ function ArtifactFrame({ content, final, title, control, onHeight, onScene }: { 
       if (m?.kimono !== "artifact") return;
       if (m.type === "ready") { ready.current = true; post(); }
       if (m.type === "size" && typeof m.height === "number") heightTo.current?.(m.height);
+      if (m.type === "error") console.warn("Artifact:", (m as { message?: string }).message);
       if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });
     };
     window.addEventListener("message", hear);
@@ -1181,7 +1185,10 @@ function ArtifactFrame({ content, final, title, control, onHeight, onScene }: { 
   }, [post]);
   useEffect(() => { latest.current = { content, final }; post(); }, [content, final, post]);
   useEffect(() => { if (control) frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "scene-control", action: control.action, t: control.t, name: control.name, value: control.value }, "*"); }, [control]);
-  return <iframe ref={frame} className="cd-artifact-frame" src="/ai/frame" title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" />;
+  /* The frame says it's ready as it loads, which can be before this page listens: its first load counts too.
+     Only the first: the frame fires load again each time it finishes writing a page, and posting then would make it start over. */
+  return <iframe ref={frame} className="cd-artifact-frame" src="/ai/frame" title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+    onLoad={() => { if (ready.current) return; ready.current = true; post(); }} />;
 }
 
 /** An artifact in the chat (and, bigger, beside it or full screen). */
@@ -1250,6 +1257,13 @@ function SceneBar({ scene, send }: { scene: SceneState; send: (action: SceneCont
 function ArtifactChanged({ name }: { name: string }) {
   const { shared, title } = useArtifact(name);
   return <p className="cd-note cd-artifact-changed"><Icon name="spark" /><span>Changed <b>{title}</b> <button type="button" className="cd-textbutton" onClick={() => shared.setBeside(name)}>Open</button></span></p>;
+}
+
+/** Working, at the end of the conversation: the moss ink shape, the word and how long. The one place it shows in a chat. */
+function Working({ since }: { since: number | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  return <div className="cd-thinking" role="status"><MorphLoader ink={workingInk} label="Working" className="cd-morph" /><span>Working{since ? ` ${elapsed(Math.max(0, now - since))}` : ""}</span></div>;
 }
 
 function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
@@ -1336,8 +1350,9 @@ function ToolRow({ tool }: { tool: Tool }) {
 function Done({ event }: { event: Extract<CodeEvent, { kind: "done" }> }) {
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
   if (!event.ok) return <p className="cd-note is-failed" role="alert"><Icon name="close" />{event.error || "It stopped with an error."}</p>;
-  const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null, event.costUsd ? `$${event.costUsd.toFixed(2)}` : null].filter(Boolean);
-  return <p className="cd-note cd-done"><Icon name="check" />Done{facts.length ? <span className="cd-mono">{facts.join(" · ")}</span> : null}</p>;
+  /* Which Claude answered, and how long it took. Never what it cost. */
+  const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null].filter(Boolean);
+  return <p className="cd-note cd-done"><Icon name="check" /><span>Done</span>{facts.length ? <span className="cd-done-facts">{facts.join(" · ")}</span> : null}</p>;
 }
 
 /* ── what the agent shows: screenshots, and the app it is running ── */
