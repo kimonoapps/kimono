@@ -3,8 +3,14 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   transpilePackages: ["@kimono/ui", "@kimono/app-sdk", "@kimono/account", "@kimono/artifacts"],
-  /* The artifact engine is served from its package, and three.js from here (app/ai/lib). */
-  outputFileTracingIncludes: { "/ai/lib/[...path]": ["../../packages/artifacts/src/engine/*", "./node_modules/three/build/three.module.min.js", "./node_modules/katex/dist/**"] },
+  /* The artifact engine is served from its package, and three.js and KaTeX from here (app/ai/lib).
+     Those two are named where pnpm keeps them: the build doesn't follow the links in node_modules.
+     The key is a glob, so not the route's own name: its [...path] would be read as a set of characters. */
+  outputFileTracingIncludes: { "/ai/lib/**": [
+    "../../packages/artifacts/src/engine/*",
+    "../../node_modules/.pnpm/three@*/node_modules/three/build/three.module.min.js",
+    "../../node_modules/.pnpm/katex@*/node_modules/katex/dist/**",
+  ] },
   /* Pages move between each other with the browser's view transitions (components/page-transition.tsx). */
   experimental: {
     viewTransition: true,
