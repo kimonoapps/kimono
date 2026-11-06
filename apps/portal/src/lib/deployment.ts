@@ -4,6 +4,7 @@ import { backupCatalog, type BackupItem } from "./backup-catalog";
 import { appHostname, type AppRoute, type PlatformSettings } from "./settings";
 import { tunnelCredentialsPath } from "./state";
 import { renderMeshPolicy } from "./mesh-policy";
+import { secretName } from "./secret-name";
 import type { MeshMember } from "./directory";
 import { getTunnelProvider } from "./tunnel-providers";
 
@@ -37,7 +38,7 @@ export type DeploymentPlan = {
 };
 
 function serviceName(appId: string, serviceId: string) { return `${appId}-${serviceId}`; }
-export function secretName(appId: string, key: string) { return `KIMONO_SECRET_${appId}_${key}`.toUpperCase().replaceAll("-", "_"); }
+export { secretName };
 function secretReference(appId: string, key: string) { return `\${${secretName(appId, key)}}`; }
 
 type TemplateContext = {

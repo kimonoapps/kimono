@@ -72,6 +72,9 @@ type workspace struct {
 	// base is the repository's server root, such as https://git.example.com,
 	// which the broker forwards to.
 	base string
+	// person is whose task it is (their Kimono username, the same in Kimono
+	// Git): pull requests are opened as them.
+	person string
 
 	// op serialises the operations that change the container or the branch.
 	op sync.Mutex
@@ -173,7 +176,9 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 
 	w.op.Lock()
 	defer w.op.Unlock()
-	if w.repo.URL != "" && (w.repo.URL != request.Repo.URL || w.repo.Branch != request.Repo.Branch) {
+	// A repository that moved to another owner (a project Kimono AI kept in its
+	// own account, now the person's) is the same one: same name, same branch.
+	if w.repo.URL != "" && (w.repo.Branch != request.Repo.Branch || (w.repo.URL != request.Repo.URL && w.repo.Name != request.Repo.Name)) {
 		return nil, "", problem(409, "This workspace already belongs to another repository or branch.")
 	}
 	tools := ToolsAuth{}
@@ -185,6 +190,7 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 	}
 	w.mu.Lock()
 	w.repo, w.git, w.model, w.tools, w.base = request.Repo, request.Git, request.Model, tools, base
+	w.person = strings.TrimSpace(request.Owner)
 	w.ensured = true
 	w.lastActive = time.Now()
 	w.mu.Unlock()
@@ -193,7 +199,7 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 	if err != nil {
 		return nil, "", err
 	}
-	if label := s.repoLabel(ctx, id); state != "" && label != "" && label != request.Repo.Owner+"/"+request.Repo.Name {
+	if label := s.repoLabel(ctx, id); state != "" && label != "" && label != request.Repo.Owner+"/"+request.Repo.Name && !strings.HasSuffix(label, "/"+request.Repo.Name) {
 		return nil, "", problem(409, "This workspace already belongs to another repository.")
 	}
 	s.mu.Lock()

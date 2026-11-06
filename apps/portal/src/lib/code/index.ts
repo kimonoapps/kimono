@@ -25,6 +25,7 @@ import { portalOrigin } from "../account";
 export { efforts, type Effort } from "./node";
 import { retitle, shotToDrive, syncDrive } from "./drive";
 import { historyNote, syncHistory } from "./history";
+import { ownProject } from "./forgejo";
 import { suggestTitle } from "./title";
 
 export * from "./model";
@@ -177,6 +178,8 @@ export function listen(workspaceId: string, listener: (event: StoredEvent) => vo
  * another task to sleep; that task's timeline says so.
  */
 export async function ensure(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }) {
+  /* A project still in Kimono AI's own Kimono Git account moves to its person's, once they have one. */
+  workspace = await ownProject(db(), config, workspace, { username: workspace.owner });
   const answer = await sandbox.ensure(config, workspace, person, await toolSession(db(), config.composioKey, workspace.owner, portalOrigin()));
   for (const id of answer.slept ?? []) {
     try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }

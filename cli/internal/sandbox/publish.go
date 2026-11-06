@@ -45,7 +45,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request, id string
 	space.op.Lock()
 	defer space.op.Unlock()
 	space.mu.Lock()
-	repo, token, base := space.repo, space.git.Token, space.base
+	repo, token, base, person := space.repo, space.git.Token, space.base, space.person
 	space.mu.Unlock()
 	_, err = s.exec(r.Context(), space, nil, nil, "sh", "-c", publishScript, "publish", request.Title, repo.Base, repo.Branch)
 	if exitCode(err) == 5 {
@@ -58,7 +58,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request, id string
 		writeJSON(w, 200, map[string]any{"url": base + "/" + repo.Owner + "/" + repo.Name + "/compare/" + repo.Base + "..." + repo.Branch, "number": 0})
 		return nil
 	}
-	pull, err := openPull(r.Context(), base, token, repo, request)
+	pull, err := openPull(r.Context(), base, token, person, repo, request)
 	if err != nil {
 		return err
 	}
@@ -71,10 +71,24 @@ type pull struct {
 	Number int    `json:"number"`
 }
 
-// openPull returns the open pull request for the branch, or opens one.
-func openPull(ctx context.Context, base, token string, repo Repo, request publishRequest) (pull, error) {
+// openPull returns the open pull request for the branch, or opens one, as
+// the person whose task it is when Kimono Git knows them (Kimono AI is its
+// administrator, so it may act as them), and as Kimono AI otherwise.
+func openPull(ctx context.Context, base, token, person string, repo Repo, request publishRequest) (pull, error) {
 	api := base + "/api/v1/repos/" + url.PathEscape(repo.Owner) + "/" + url.PathEscape(repo.Name) + "/pulls"
 	client := &http.Client{Timeout: 30 * time.Second}
+	as := ""
+	if person != "" && namePattern.MatchString(person) {
+		if req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v1/users/"+url.PathEscape(person), nil); err == nil {
+			req.Header.Set("Authorization", "token "+token)
+			if response, err := client.Do(req); err == nil {
+				_ = response.Body.Close()
+				if response.StatusCode == http.StatusOK {
+					as = person
+				}
+			}
+		}
+	}
 	call := func(method, address string, body any) ([]byte, int, error) {
 		var payload io.Reader
 		if body != nil {
@@ -87,6 +101,9 @@ func openPull(ctx context.Context, base, token string, repo Repo, request publis
 		}
 		req.Header.Set("Authorization", "token "+token)
 		req.Header.Set("Accept", "application/json")
+		if as != "" {
+			req.Header.Set("Sudo", as)
+		}
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}

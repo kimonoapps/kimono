@@ -353,8 +353,17 @@ Kimono sets up its own Kimono Git: after each deploy the reconciler runs the
 app's setup script inside Forgejo, which makes Kimono's administrator
 (`kimono-ai`, with a password only the Portal holds) and the Kimono sign-in
 source. With no token entered, the Portal mints one from that account the first
-time a project needs it and keeps it with its other secrets, so new projects
-belong to `kimono-ai`.
+time a project needs it and keeps it with its other secrets.
+
+Projects are each person's own. Kimono AI is Kimono Git's administrator, so it
+acts as the person (Forgejo's `Sudo`): the project list is their repositories
+and the ones shared with them, a new project is made in their account, and its
+pull requests are opened as them. Their account there is the one they sign in
+to Kimono Git with, by the same username; for someone who never has, the Portal
+makes it with a second, admin-only token it keeps to itself (the node only ever
+gets the first). A project made before this, in `kimono-ai`'s account, moves to
+its person the next time their chat or project list opens, and the node takes
+the move as the same repository.
 
 Code then appears at `/code` for administrators. The tokens go to the node with
 each ensure and live only in its memory; no sandbox ever holds them.
