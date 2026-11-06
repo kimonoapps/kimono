@@ -1437,3 +1437,20 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-ask-edit textarea { width: 100%; min-height: 24px; max-height: 50vh; padding: 0; border: 0; background: none; resize: none; outline: none; font: inherit; font-size: 15px; line-height: 1.55; color: var(--k-on-primary-container); }
 .cd-ask-edit-foot { display: flex; align-items: center; gap: 8px; }
 .cd-ask-edit-foot small { flex: 1; min-width: 0; font-size: 12.5px; color: var(--k-on-primary-container); opacity: .8; }
+
+/* ── A chat uses the room it's given ──
+   On a wide window the chat no longer sits in a 920px box with empty margins:
+   its column widens with the window, the messages and the composer share one
+   edge, and only words keep a reading measure, so code, tool calls, pictures
+   and artifacts take the width. */
+.cd-ws-grid.is-chat { --cd-col: min(100%, 1120px); }
+.cd-ws-grid.is-chat .cd-ws { max-width: none; }
+.cd-ws-grid.is-chat .cd-ws-head { width: min(var(--cd-col), 100%); margin: 0 auto; padding-inline: 24px; }
+.cd-ws-grid.is-chat .cd-timeline { max-width: var(--cd-col); padding-inline: 24px; }
+.cd-ws-grid.is-chat .cd-composer { width: min(calc(var(--cd-col) - 48px), calc(100% - 48px)); }
+.cd-ws-grid.is-chat .cd-say .cd-md > :is(p, ul, ol, blockquote, h3, h4) { max-width: 80ch; }
+@media (max-width: 720px) {
+  .cd-ws-grid.is-chat .cd-ws-head { width: auto; padding-inline: 4px; }
+  .cd-ws-grid.is-chat .cd-timeline { padding-inline: 8px; }
+  .cd-ws-grid.is-chat .cd-composer { width: calc(100% - 8px); }
+}
