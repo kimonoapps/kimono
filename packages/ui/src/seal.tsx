@@ -2,6 +2,7 @@
 
 import { type AnchorHTMLAttributes, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type Ref } from "react";
 import { cx } from "./cx";
+import { BusyFace } from "./loading";
 
 export type SealState = "running" | "private" | "wants" | "quiet";
 
@@ -11,12 +12,17 @@ export type SealTone = "primary" | "quiet" | "danger";
  * 判 Seal — the hanko. Commits an action. One colour in every app.
  * `compact` is 36px tall and still a 44px target.
  */
-export function Seal({ tone = "primary", compact = false, className, ...props }: {
+export function Seal({ tone = "primary", compact = false, busy, className, children, disabled, ...props }: {
   tone?: SealTone;
   compact?: boolean;
+  /** Waiting on what it started: the shape morphs on its face in place of the word, and it can't be pressed again. */
+  busy?: boolean;
   ref?: Ref<HTMLButtonElement>;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button type="button" className={cx("k-seal", tone !== "primary" && `k-tone-${tone}`, compact && "k-compact", className)} {...props} />;
+  return <button type="button" className={cx("k-seal", tone !== "primary" && `k-tone-${tone}`, compact && "k-compact", busy && "is-busy", className)}
+    disabled={disabled || busy} aria-busy={busy || undefined} {...props}>
+    {busy === undefined ? children : <BusyFace busy={busy}>{children}</BusyFace>}
+  </button>;
 }
 
 /** @deprecated Plain navigation bypasses transitions. Use the portal's CrossingSeal. */

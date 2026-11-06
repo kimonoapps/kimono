@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { Seal } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
 import { detectMobileOS } from "@/lib/mobile-app";
 import type { AppOffer } from "@/lib/app-offer";
@@ -102,7 +103,7 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
         : status === "waiting"
         ? <p>Your invite is on its way. Try again in a minute.</p>
         : <p>Kimono asks Apple to invite you to try the app.</p>}
-      {status !== "tester" ? <button type="button" className="k-seal" onClick={request} disabled={busy}><span>{busy ? "Asking Apple…" : sent ? "Check again" : "Request access"}</span></button> : null}
+      {status !== "tester" ? <Seal onClick={request} busy={busy}>{sent ? "Check again" : "Request access"}</Seal> : null}
       {problem ? <p className="get-app-problem" role="alert">{problem}</p> : null}
     </Step>
     <Step n={2} title="Download TestFlight">

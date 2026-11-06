@@ -22,6 +22,7 @@ export * from "./app-identity";
 export * from "./door";
 export * from "./joint";
 export * from "./seal";
+export * from "./loading";
 
 /* Surfaces and the things that go inside them. */
 export * from "./tray";

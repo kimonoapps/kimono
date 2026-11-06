@@ -13,7 +13,7 @@
   --error-container: #ffdad6; --on-error-container: #93000a;
   --surface: var(--k-surface); --on-surface: var(--k-on-surface); --on-surface-variant: var(--k-on-surface-variant);
   --sc-lowest: var(--k-container-lowest); --sc-low: var(--k-container-low); --sc: var(--k-container); --sc-high: var(--k-container-high); --sc-highest: var(--k-container-highest);
-  --outline-variant: #d9c2bc; --inverse: #382e2b; --on-inverse: #ffede8;
+  --outline-variant: var(--k-outline-variant); --inverse: #382e2b; --on-inverse: #ffede8;
   --plum: #4e2b37;
   --urushi: #2a1d22; --urushi-text: #f3e9e0; --urushi-dim: #a8969c; --urushi-string: #e9c8a8; --urushi-key: #d77b8c;
   --page: #ece2db;

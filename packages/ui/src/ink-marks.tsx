@@ -60,7 +60,7 @@ export function InkPetal({ seed, colour, className }: { seed: number; colour?: s
   return <span className={cx("k-ink-petal", className)} dangerouslySetInnerHTML={{ __html: petalSvg(seed, colour) }}/>;
 }
 
-/** An ink-and-wash outline round an important card: a soft wash at the rim and a broken brush line. */
+/** An ink-and-wash outline round an important card: a broken brush line with the faintest wash at the rim. Kept for what matters; never every container. */
 export function inkOutlineMarkup(width: number, height: number, radius: number, colour: string, seed: string) {
   const random = inkRandom(seedOf(seed)), unique = `o${seedOf(seed).toString(36)}`;
   const r = Math.min(radius, height / 2) + 3, step = 34, j = () => (random() - .5);
@@ -76,7 +76,7 @@ export function inkOutlineMarkup(width: number, height: number, radius: number, 
   for (let k = 0; k < n; k++) { const p = ordered[k], m = mid(p, ordered[(k + 1) % n]); d += ` Q${p[0].toFixed(1)} ${p[1].toFixed(1)} ${m[0].toFixed(1)} ${m[1].toFixed(1)}`; }
   d += "Z";
   return `<defs>${inkFilters(unique, 15)}<filter id="rim-${unique}" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".03" numOctaves="3" seed="15" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="6" result="d"></feDisplacementMap><feGaussianBlur in="d" stdDeviation="3"></feGaussianBlur></filter></defs>`
-    + `<path d="${d}" fill="none" stroke="${colour}" stroke-width="10" stroke-opacity=".16" filter="url(#rim-${unique})"></path>`
+    + `<path d="${d}" fill="none" stroke="${colour}" stroke-width="5" stroke-opacity=".06" filter="url(#rim-${unique})"></path>`
     + `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${(2 + random() * .6).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${(220 + random() * 120).toFixed(0)} ${(8 + random() * 8).toFixed(0)}" opacity=".75" filter="url(#ink-fine-${unique})"></path>`;
 }
 

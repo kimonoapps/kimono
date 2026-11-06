@@ -735,3 +735,7 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-md-pre > code { display: block; padding: 12px 14px; overflow-x: auto; background: none; color: #ece4dc; white-space: pre; }
 .dv-md-code .dv-code { position: relative; inset: auto; padding: 12px 0; }
 .dv-md-code .dv-code-lang { top: 6px; right: 8px; }
+
+/* the wavy bar: an upload filling, and a file opening */
+.dv-wave { margin: 4px 0 2px; }
+.dv-open-wave { max-width: 220px; margin: 24px auto; }

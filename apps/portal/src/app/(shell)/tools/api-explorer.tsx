@@ -105,7 +105,7 @@ function Operation({ apiId, operation: op, access, enabled, callerKey, onCallerK
             <small>{needsKey ? "Enter the caller key to send this request. It stays in this page’s memory." : "Sent as Authorization: Bearer. It stays in this page’s memory and is shared by every endpoint on this page."}</small>
           </label>}
           {unavailable && <p className="tools-request-note">{unavailable}</p>}
-          {trying && <div className="tools-execute"><Seal type="submit" disabled={busy || !!unavailable || needsKey}>{busy ? "Requesting…" : "Execute request"}</Seal><span>GET · read only{needsKey ? " · needs a key" : ""}</span></div>}
+          {trying && <div className="tools-execute"><Seal type="submit" busy={busy} disabled={!!unavailable || needsKey}>Execute request</Seal><span>GET · read only{needsKey ? " · needs a key" : ""}</span></div>}
           <div className="tools-response-docs">
             <h3>Response</h3>
             <p>{op.response}</p>

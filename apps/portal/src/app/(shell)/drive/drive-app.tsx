@@ -5,7 +5,7 @@ import { rise, riseWhenReady, slide } from "@/components/motion";
 
 import { Fragment, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { AppBloom, Choice, cx, InkPortraitFrame, Seal } from "@kimono/ui";
+import { AppBloom, Choice, cx, InkPortraitFrame, InkWave, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
@@ -889,7 +889,7 @@ function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: Dr
       </div>
       <div className="dv-pick-list">
         {problem ? <p className="dv-quiet-text">{problem}</p>
-          : !ready ? <p className="dv-quiet-text">Opening…</p>
+          : !ready ? <InkWave className="dv-open-wave" label="Opening" />
           : !children.length ? <p className="dv-quiet-text">Empty folder</p>
           : children.map((n) => n.kind === "folder" && !moving.has(n.id)
             ? <button key={n.id} type="button" className="dv-pick-row" onClick={() => setWhere(n.id)}><Kind node={n} /><b>{n.name}</b><i className="go" aria-hidden="true" /></button>
@@ -902,7 +902,7 @@ function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: Dr
 function CrestPicker({ crest, color, onPick }: { crest: string; color: string; onPick: (crest: string, color: string) => void }) {
   const [catalogue, setCatalogue] = useState<Crests | null>(null);
   useEffect(() => { void drive.crests().then(setCatalogue).catch(() => {}); }, []);
-  if (!catalogue) return <p className="dv-quiet-text">Opening…</p>;
+  if (!catalogue) return <InkWave className="dv-open-wave" label="Opening" />;
   return <div className="dv-crestpick">
     <div className="dv-colours" role="group" aria-label="Colour">{catalogue.colors.map((c) => <button key={c.id} type="button" aria-pressed={c.id === color} aria-label={c.name} title={c.name} style={{ backgroundColor: c.hex }} onClick={() => onPick(crest, c.id)} />)}</div>
     <div className="dv-crests" role="group" aria-label="Crest">{catalogue.crests.map((c) => <button key={c.id} type="button" aria-pressed={c.id === crest} aria-label={c.name} title={c.name} onClick={() => onPick(c.id, color)}>
@@ -1104,7 +1104,7 @@ function UploadTray({ uploads, guest, onClear, onCancel, onToast }: { uploads: U
         <div><b>{u.name}</b>
           {u.failed ? <small className="err">{u.failed}</small>
             : u.done ? <small>Done · {readableSize(u.size)} · in {u.spaceName}</small>
-            : <><div className="dv-bar"><i style={{ width: `${u.size ? Math.round(u.sent / u.size * 100) : 100}%` }} /></div><small>{readableSize(u.sent)} of {readableSize(u.size)}</small></>}
+            : <><InkWave className="dv-wave" label={`Uploading ${u.name}`} value={u.size ? u.sent / u.size : 1} /><small>{readableSize(u.sent)} of {readableSize(u.size)}</small></>}
         </div>
         {u.done ? guest ? <span className="dv-done" aria-label="Done"><Icon name="check" /></span> : <Seal type="button" tone="quiet" compact onClick={async () => {
           try { await navigator.clipboard.writeText(await drive.link(u.done!)); onToast({ text: "Public link copied." }); } catch (error) { onToast({ text: problemText(error) }); }

@@ -67,18 +67,15 @@
   /* ── Material 3 roles, the same scheme as the phone app (Kata.kt) ──
      ADR 0006: tonal surfaces carry hierarchy, suō may fill a container.
      Every role stays in the suō, plum and moss family. */
-  /* Neutrals are Kimono's beige paper, not pink: the page is paper-0 and every
-     container a step darker in the same warm hue, so nothing sits lighter than
-     the page and the app's own colour never fights a pink ground. */
-  --k-surface: var(--k-paper-1);
-  --k-container-lowest: var(--k-paper-1);
-  --k-container-low: #f2ebe0;
-  --k-container: #ede5d8;
-  --k-container-high: #e7decf;
-  --k-container-highest: #e1d7c6;
-  --k-on-surface: #221d18;
-  --k-on-surface-variant: #54493f;
-  --k-outline-variant: #d6cbb9;
+  --k-surface: #fffbf7;
+  --k-container-lowest: #ffffff;
+  --k-container-low: #fcf4ef;
+  --k-container: #f7eee8;
+  --k-container-high: #f1e8e2;
+  --k-container-highest: #ebe2dc;
+  --k-on-surface: #221a17;
+  --k-on-surface-variant: #54443f;
+  --k-outline-variant: #d9c2bc;
   --k-primary-container: #ffd9df;
   --k-on-primary-container: var(--k-suo-deep);
   --k-secondary-container: #f6e0e2;
@@ -201,4 +198,20 @@
   .k-seal, .k-seal::before, .k-chip, .k-door, .k-door > i, .k-door > .k-plate, .k-joint .k-pc, .k-field input, .k-field select, .k-field textarea,
   .k-reveal-cue, .k-reveal::details-content, .k-tray, .k-sheet, .k-row { transition: none !important; }
   .k-joint.k-seating .k-pc-b, .k-joint.k-parting .k-pc-b, .k-joint.k-seating .k-burst, .k-bloom-born, .k-arrive { animation: none !important; }
+}
+
+/* More contrast, when the person asks their system for it (macOS: Accessibility →
+   Display → Increase contrast; Windows: contrast themes). The same pink family,
+   with every container a clearer step down from the page, darker quiet text and
+   an outline that shows. Washed-out screens lose the default steps first. */
+@media (prefers-contrast: more) {
+  :root {
+    --k-container-lowest: #fffdfb;
+    --k-container-low: #f7ebe4;
+    --k-container: #f0e1d9;
+    --k-container-high: #e8d6cd;
+    --k-container-highest: #dfcabf;
+    --k-on-surface-variant: #3d302c;
+    --k-outline-variant: #a98f87;
+  }
 }

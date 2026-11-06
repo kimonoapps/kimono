@@ -250,3 +250,7 @@ html, body, .app-frame { overflow-x: clip; }
 .name-tip.below { translate: -50% 0; }
 @keyframes name-tip-in { from { opacity: 0; scale: .92; } }
 @media (prefers-reduced-motion: reduce) { .name-tip { animation: none; } }
+
+/* Waiting on Cloudflare: the words, then the wavy bar. */
+.login-progress { display: grid; gap: 10px; max-width: 520px; }
+.login-progress p { margin: 0; }

@@ -1,0 +1,35 @@
+/* ─────────────────────────────────────────────────────────────
+   Waiting (loading.tsx): the morphing shape, a button's busy face,
+   and the brushed wavy bar.
+   ───────────────────────────────────────────────────────────── */
+
+.k-morph { display: block; overflow: visible; }
+
+/* A busy button keeps its word's width; the shape sits where the word was. */
+.k-busy-face { display: inline-grid; place-items: center; }
+.k-busy-face > * { grid-area: 1 / 1; }
+.k-busy-face.is-busy > .k-busy-word { visibility: hidden; }
+.k-busy-shape { width: 22px; height: 22px; animation: k-busy-in 220ms var(--k-spring, cubic-bezier(.05, .7, .1, 1)); }
+@keyframes k-busy-in { from { opacity: 0; scale: .4; } }
+
+/* A busy Seal still looks like itself: it's working, not turned off. */
+.k-seal.is-busy[disabled] { color: var(--k-lift); background: var(--k-accent); box-shadow: inset 0 -3px 0 var(--k-seal-base); cursor: progress; opacity: 1; }
+.k-seal.is-busy[disabled]::before { display: block; }
+.k-seal.k-tone-quiet.is-busy[disabled] { color: var(--k-on-surface); background: var(--k-container-high); }
+.k-seal.k-tone-quiet.is-busy[disabled]::before { display: none; }
+.k-seal.k-tone-danger.is-busy[disabled] { color: var(--k-suo-deep, var(--k-suo)); background: var(--k-suo-wash); }
+.k-seal.k-compact .k-busy-shape { width: 18px; height: 18px; }
+button[aria-busy="true"] { cursor: progress; }
+
+/* The wavy bar: suō on paper, the app's colour inside an app. */
+.k-wave { display: block; width: 100%; height: 12px; color: var(--k-app-accent, var(--k-suo)); }
+.k-wave svg { display: block; overflow: visible; }
+.k-wave.is-unknown .k-wave-flow { animation: k-wave-flow 1.1s linear infinite; }
+.k-wave-run { animation: k-wave-run 1.8s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes k-wave-flow { to { transform: translateX(calc(var(--k-wave-length) * -1)); } }
+@keyframes k-wave-run { from { stroke-dashoffset: 34; } to { stroke-dashoffset: -100; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .k-wave.is-unknown .k-wave-flow, .k-wave-run, .k-busy-shape { animation: none; }
+  .k-wave-run { stroke-dasharray: none; opacity: .5; }
+}

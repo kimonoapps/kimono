@@ -1,0 +1,271 @@
+<title>Kimono Containers</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;700&family=Zen+Maru+Gothic:wght@400;500;700&display=swap">
+<style>
+/* Layout: the sheet itself is Kimono's page paper, so every specimen is judged on the ground it will really sit on.
+   Single light theme on purpose: these are specimens of the light app. */
+:root {
+  --page: #f7f1e8;          /* k-paper-1, the page now */
+  --sheet: #fbf7ef;         /* k-paper-0 */
+  --ink: #221d18;           /* on-surface */
+  --ink-soft: #54493f;      /* on-surface-variant */
+  --sumi: #2a1d22;          /* urushi: the ink */
+  --plum: #4e2b37;
+  --suo: #9b3b55;
+  --moss: #5c7150;
+  --display: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  --sans: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 400 15px/1.5 var(--sans); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 40px 80px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 36px; }
+header h1 { margin: 0 0 6px; font: 700 clamp(30px, 4vw, 42px)/1.1 var(--display); color: var(--plum); text-wrap: balance; }
+header p { margin: 0; max-width: 64ch; color: var(--ink-soft); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 13px; color: var(--ink-soft); }
+.legend label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.specs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 540px), 1fr)); gap: 44px 36px; }
+.spec { display: grid; gap: 12px; min-width: 0; }
+.spec-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.spec-head b { font: 700 13px/1 var(--sans); letter-spacing: .08em; color: var(--suo); }
+.spec-head h2 { margin: 0; font: 700 22px/1.2 var(--display); color: var(--plum); }
+.notes { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; color: var(--ink-soft); }
+.notes dt { font-weight: 700; color: var(--ink); }
+.notes dd { margin: 0; }
+.metrics { display: flex; flex-wrap: wrap; gap: 6px; font: 500 12px/1 var(--sans); font-variant-numeric: tabular-nums; }
+.metrics span { padding: 5px 8px; border-radius: 6px; background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.metrics .bad { background: color-mix(in srgb, var(--suo) 16%, transparent); color: var(--suo); }
+
+/* ── the mock: one chat page and one Home card, built only from the role tokens each specimen sets ── */
+.mock { --c-page: var(--page); display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 14px; padding: 14px; background: var(--c-page); border-radius: 4px; }
+.home { grid-column: 1 / -1; display: flex; gap: 12px; }
+.card { flex: 1; display: grid; gap: 2px; padding: 14px 16px; border-radius: 22px; background: var(--c-card); box-shadow: var(--c-card-edge, none); color: inherit; text-decoration: none; transition: background-color .2s, box-shadow .2s; }
+.card:hover { background: var(--c-card-hover, var(--c-card)); }
+.card strong { font: 700 17px/1.2 var(--display); color: var(--plum); }
+.card small { font-size: 12px; color: var(--ink-soft); }
+.side { display: grid; align-content: start; gap: 4px; padding: 10px 8px; border-radius: 22px; background: var(--c-side); box-shadow: var(--c-side-edge, none); min-height: 290px; }
+.side h3 { margin: 2px 8px 8px; font: 700 18px/1 var(--display); color: var(--plum); }
+.side .lbl { margin: 10px 8px 2px; font: 700 11px/1 var(--sans); letter-spacing: .06em; color: var(--ink-soft); }
+.row { display: grid; gap: 1px; width: 100%; padding: 8px 10px; border: 0; border-radius: 14px; background: transparent; font: 500 13px/1.25 var(--sans); color: var(--ink); text-align: left; cursor: pointer; box-shadow: none; transition: background-color .15s, box-shadow .15s; }
+.row small { font-size: 11px; color: var(--ink-soft); }
+.row:hover { background: var(--c-row-hover); }
+.row[aria-current] { background: var(--c-row-on); box-shadow: var(--c-row-on-edge, none); }
+.row:focus-visible, .card:focus-visible, .composer textarea:focus-visible { outline: 2px solid var(--suo); outline-offset: 2px; }
+.main { display: grid; align-content: start; gap: 10px; min-width: 0; }
+.you { justify-self: end; max-width: 80%; padding: 8px 14px; border-radius: 18px 18px 4px 18px; background: var(--c-bubble); box-shadow: var(--c-bubble-edge, none); font-size: 13px; }
+.calls { display: grid; gap: 2px; padding: 6px; border-radius: 16px; background: var(--c-calls); box-shadow: var(--c-calls-edge, none); }
+.call { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; border-radius: 10px; font-size: 12.5px; color: var(--ink); }
+.call:hover { background: var(--c-row-hover); }
+.call i { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 5px; background: var(--c-mark, var(--c-row-hover)); font: normal 700 10px/1 var(--sans); color: var(--plum); }
+.call em { font-style: normal; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.reply { margin: 0; font-size: 13.5px; }
+.composer { display: grid; gap: 6px; padding: 10px 12px; border-radius: 20px; background: var(--c-composer); box-shadow: var(--c-composer-edge, none); transition: box-shadow .3s; }
+.composer textarea { width: 100%; min-height: 34px; resize: none; border: 0; background: transparent; font: 400 13.5px/1.4 var(--sans); color: var(--ink); border-radius: 6px; }
+.composer textarea::placeholder { color: var(--ink-soft); }
+.composer .bar { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--ink-soft); }
+.composer .chip { padding: 4px 9px; border-radius: 8px; background: var(--c-chip); }
+.composer .send { margin-left: auto; padding: 6px 12px; border-radius: 6px; background: var(--plum); color: #fbf7ef; font-weight: 700; box-shadow: 0 3px 0 #2a1d22; }
+
+/* the "working" switch: what a mechanic reads (the chat is running) */
+.working .calls { --live: 1; }
+
+/* ── A · Tonal step (what ships now) ── */
+.a { --c-side: #ede5d8; --c-card: #ede5d8; --c-card-hover: #e7decf; --c-row-hover: #e7decf; --c-row-on: #e1d7c6; --c-bubble: #e7decf; --c-calls: #f2ebe0; --c-composer: #ede5d8; --c-chip: #e1d7c6; }
+
+/* ── B · Brushed line: page-tone fill, Kimono's own ink outline (InkCard's brush) ── */
+.b { --c-side: var(--page); --c-card: var(--page); --c-card-hover: #f2ebe0; --c-row-hover: #efe7da; --c-row-on: #e9dfcf;
+  --c-bubble: #ebe2d3; --c-calls: #f2ebe0; --c-composer: var(--page); --c-chip: #ebe2d3; --c-mark: #ebe2d3; }
+
+/* ── C · Brushed line on tone: today's fills, with the ink outline round them ── */
+.c { --c-side: #ede5d8; --c-card: #ede5d8; --c-card-hover: #e7decf; --c-row-hover: #e7decf; --c-row-on: #e1d7c6;
+  --c-bubble: #e7decf; --c-calls: #f2ebe0; --c-composer: #ede5d8; --c-chip: #e1d7c6; }
+
+/* ── G · Ink follows attention: tone at rest; the brush draws round what you're on ── */
+.g { --c-side: #ede5d8; --c-card: #ede5d8; --c-card-hover: #e7decf; --c-row-hover: #e7decf; --c-row-on: #e1d7c6;
+  --c-bubble: #e7decf; --c-calls: #f2ebe0; --c-composer: #ede5d8; --c-chip: #e1d7c6; }
+.g .inkline { opacity: 0; transition: opacity .25s; }
+.g .inkline path:last-child { stroke-dashoffset: var(--len, 1200); transition: stroke-dashoffset .9s cubic-bezier(.2, .8, .2, 1); }
+.g .card:hover > .inkline, .g .card:focus-visible > .inkline, .g .composer:focus-within > .inkline, .g.working .calls > .inkline { opacity: 1; }
+.g .card:hover > .inkline path:last-child, .g .card:focus-visible > .inkline path:last-child, .g .composer:focus-within > .inkline path:last-child, .g.working .calls > .inkline path:last-child { stroke-dashoffset: 0; }
+.g.working .calls > .inkline path { stroke: var(--moss); }
+
+/* the ink outline itself, laid over a container like InkCard does */
+.side, .card, .composer, .calls { position: relative; isolation: isolate; }
+.inkline { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); pointer-events: none; overflow: visible; z-index: 0; }
+.side > :not(.inkline), .card > :not(.inkline), .composer > :not(.inkline), .calls > :not(.inkline) { position: relative; z-index: 1; }
+
+/* the wavy bar while a chat works: Kimono's brushed wave, travelling */
+.wave-slot { display: none; padding: 2px 8px 4px; }
+.working .wave-slot { display: block; }
+.kwave { display: block; width: 100%; height: 12px; overflow: visible; color: var(--moss); }
+.kwave .flow { animation: flow 1.1s linear infinite; }
+.kwave .run { animation: run 1.8s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes flow { to { transform: translateX(calc(var(--wl) * -1px)); } }
+@keyframes run { from { stroke-dashoffset: 34; } to { stroke-dashoffset: -100; } }
+
+/* ── D · Seated: the hanko's base under every container ── */
+.d { --c-side: #efe7da; --c-card: #efe7da; --c-card-hover: #e9e0d1; --c-row-hover: #e7decf; --c-row-on: var(--page);
+  --c-row-on-edge: inset 0 0 0 1.5px var(--sumi), 0 2px 0 var(--sumi);
+  --c-side-edge: inset 0 0 0 1.5px var(--sumi), 0 4px 0 var(--sumi); --c-card-edge: inset 0 0 0 1.5px var(--sumi), 0 4px 0 var(--sumi);
+  --c-composer-edge: inset 0 0 0 1.5px var(--sumi), 0 4px 0 var(--sumi);
+  --c-bubble: #e7decf; --c-calls: transparent; --c-calls-edge: inset 0 0 0 1px color-mix(in srgb, var(--sumi) 30%, transparent); --c-composer: var(--sheet); --c-chip: #ebe2d3; --c-mark: #e7decf; }
+.d .side, .d .card, .d .composer { margin-bottom: 4px; }
+.d .card:active { transform: translateY(3px); box-shadow: inset 0 0 0 1.5px var(--sumi), 0 1px 0 var(--sumi); }
+
+/* ── E · Kinari: one confident tonal step ── */
+.e { --c-side: #e6d9c2; --c-card: #e6d9c2; --c-card-hover: #dfd0b6; --c-row-hover: #ddcfb7; --c-row-on: #f7f1e8; --c-row-on-edge: inset 0 0 0 1px color-mix(in srgb, var(--sumi) 18%, transparent);
+  --c-bubble: #e6d9c2; --c-calls: #efe5d4; --c-composer: #e6d9c2; --c-chip: #dacbb1; --c-mark: #ddcfb7; }
+
+/* ── F · Sumi wash: grey-warm containers, the beige stays the page's ── */
+.f { --c-side: #e6e2db; --c-card: #e6e2db; --c-card-hover: #dfdad2; --c-row-hover: #dcd7cf; --c-row-on: #d4cec4;
+  --c-bubble: #dfdad2; --c-calls: #ece8e1; --c-composer: #e6e2db; --c-chip: #d8d2c8; --c-mark: #dcd7cf; }
+
+@media (max-width: 560px) {
+  .mock { grid-template-columns: 1fr; }
+  .side { min-height: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Containers on the page paper</h1>
+    <p>Seven ways to set the chat sidebar, tool calls, composer and Home cards apart from the page. Each specimen is the same chat, drawn only from its own surface roles. Hover rows and cards, tab through them, and switch on a running chat to see what the ink does while Kimono AI works.</p>
+    <div class="legend">
+      <label><input type="checkbox" id="working"> Chat is working</label>
+      <span>Metrics: contrast of the quiet grey text on the container, and how far the container is from the page (ΔL, lightness points).</span>
+    </div>
+  </header>
+
+  <div class="specs" id="specs"></div>
+</div>
+
+<template id="mock">
+  <div class="mock">
+    <div class="home">
+      <a class="card" href="#" onclick="return false"><strong>AI</strong><small>4 chats</small></a>
+      <a class="card" href="#" onclick="return false"><strong>Drive</strong><small>1 space · 15 new files today</small></a>
+    </div>
+    <nav class="side" aria-label="Chats">
+      <h3>Chats</h3>
+      <button class="row" type="button" aria-current="true">Email Sam the Kyoto plan<small>28m</small></button>
+      <button class="row" type="button">Contact sheet of my Kyoto photos<small>2h</small></button>
+      <span class="lbl">PROJECTS</span>
+      <button class="row" type="button">Kyoto trip<small>2 chats</small></button>
+    </nav>
+    <div class="main">
+      <div class="you">Email Sam the Kyoto trip plan</div>
+      <div class="calls">
+        <div class="wave-slot"></div>
+        <div class="call"><i>D</i>Read <em>Preview test / Kyoto trip.md</em></div>
+        <div class="call"><i>›</i>Ran <em>pandoc Kyoto trip.md -o trip.pdf</em></div>
+        <div class="call"><i>G</i>Used Gmail <em>send email</em></div>
+      </div>
+      <p class="reply">Sent Sam the trip plan as a PDF, and put the trip in your calendar.</p>
+      <div class="composer">
+        <textarea rows="1" placeholder="Ask Kimono AI" aria-label="Message"></textarea>
+        <div class="bar"><span class="chip">Auto</span><span class="chip">Thinking · High</span><span class="send">Send</span></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+const specs = [
+  { k: "a", n: "A", name: "Tonal step", motif: "M3 surface containers, in paper beige", convention: "None. This is what ships today, the baseline.", cost: "Free. The steps are 3 to 6 lightness points apart, so edges lean on corners alone." },
+  { k: "b", n: "B", name: "Brushed line", ink: ["side", "card", "composer"], motif: "InkCard's ink and wash: a broken plum brush line with a soft wash at the rim", convention: "Material separates by tone and drops outlines. Here the brush is the container's edge and fills stay page paper.", cost: "SVG filter per container, redrawn on resize (InkCard already does this). Three or four per screen is fine; dozens of rows are not, so rows stay unbrushed." },
+  { k: "c", n: "C", name: "Brushed line on tone", ink: ["side", "card", "composer"], motif: "The same brush round today's tonal fills", convention: "Tone and outline together, which Material avoids: the fill groups, the brush edges.", cost: "Same as B, plus the fill. The busiest of the brushed three." },
+  { k: "g", n: "G", name: "Ink follows attention", ink: ["card", "composer", "calls"], motif: "Wet ink: the brush draws round what you're on", convention: "Outlines as permanent chrome. Here the line reads something real: it draws round the box you're typing in, the card you're about to open, and, in moss, the tools while Kimono AI is working.", cost: "Motion on focus and hover (off with reduced motion, where the line just appears). At rest it's today's tone, so the edge problem stays until something has your attention." },
+  { k: "d", n: "D", name: "Seated", motif: "The hanko's base: what the Seal sinks onto", convention: "Elevation by blurred shadow. Here a hard ink base under every container, and cards sink onto it when pressed, like the Seal.", cost: "Heaviest look; a base under the sidebar and the composer both may be too much. Needs 4px of room below each." },
+  { k: "e", n: "E", name: "Kinari", motif: "Unbleached cloth: one deeper, warmer step", convention: "M3's barely-there tonal steps. One confident step, about 10 points darker, with the selected row lifted to page paper.", cost: "More yellow overall; the quiet grey text drops a little in contrast on it." },
+  { k: "f", n: "F", name: "Sumi wash", motif: "Ink diluted in water: grey with a warm cast", convention: "A tonal ramp in the page's own hue. Containers leave the beige for a warm grey, so the page keeps the warmth and containers recede.", cost: "Two neutrals on one page. The in-app stone (removed 2026-11-05) was close to this, but on the page, not the containers." },
+];
+const tpl = document.getElementById("mock");
+const host = document.getElementById("specs");
+for (const s of specs) {
+  const el = document.createElement("section");
+  el.className = "spec";
+  el.innerHTML = `<div class="spec-head"><b>${s.n}</b><h2>${s.name}</h2></div>`;
+  const mock = tpl.content.firstElementChild.cloneNode(true);
+  mock.classList.add(s.k);
+  el.append(mock);
+  const m = document.createElement("div"); m.className = "metrics"; el.append(m);
+  const dl = document.createElement("dl"); dl.className = "notes";
+  dl.innerHTML = `<dt>Motif</dt><dd>${s.motif}</dd><dt>Challenges</dt><dd>${s.convention}</dd><dt>Cost</dt><dd>${s.cost}</dd>`;
+  el.append(dl);
+  host.append(el);
+  s.mock = mock; s.metrics = m;
+}
+document.getElementById("working").addEventListener("change", (e) => {
+  for (const s of specs) s.mock.classList.toggle("working", e.target.checked);
+});
+
+/* Kimono's brush, as packages/ui/src/ink.ts and ink-marks.tsx draw it */
+function inkRandom(seed) { let st = seed >>> 0; return () => { st += 0x6d2b79f5; let r = st; r = Math.imul(r ^ r >>> 15, r | 1); r ^= r + Math.imul(r ^ r >>> 7, r | 61); return ((r ^ r >>> 14) >>> 0) / 4294967296; }; }
+function seedOf(t) { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+function fine(u, seed) { return `<filter id="fine-${u}" x="-20%" y="-20%" width="140%" height="140%"><feTurbulence type="fractalNoise" baseFrequency=".08" numOctaves="2" seed="${seed}" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"/></filter>`; }
+let uid = 0;
+function outline(w, h, radius, colour, seed) {
+  const random = inkRandom(seedOf(seed)), u = `o${uid++}`;
+  const r = Math.min(radius, h / 2) + 3, step = 34, j = () => random() - .5, pts = [];
+  const edge = (x0, y0, x1, y1) => { const n = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0) / step)); for (let k = 0; k < n; k++) pts.push([x0 + (x1 - x0) * k / n + j(), y0 + (y1 - y0) * k / n + j()]); };
+  const arc = (cx, cy, a0) => { for (let k = 0; k < 4; k++) { const t = a0 + k / 4 * Math.PI / 2; pts.push([cx + r * Math.cos(t) + j(), cy + r * Math.sin(t) + j()]); } };
+  const x0 = 2.5, y0 = 2.5, x1 = w - 2.5, y1 = h - 2.5;
+  edge(x0 + r, y0, x1 - r, y0); arc(x1 - r, y0 + r, -Math.PI / 2); edge(x1, y0 + r, x1, y1 - r); arc(x1 - r, y1 - r, 0);
+  edge(x1 - r, y1, x0 + r, y1); arc(x0 + r, y1 - r, Math.PI / 2); edge(x0, y1 - r, x0, y0 + r); arc(x0 + r, y0 + r, Math.PI);
+  const start = Math.floor(random() * pts.length), o = pts.slice(start).concat(pts.slice(0, start)), n = o.length;
+  const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+  let d = "M" + mid(o[n - 1], o[0]).map((v) => v.toFixed(1)).join(" ");
+  for (let k = 0; k < n; k++) { const p = o[k], m = mid(p, o[(k + 1) % n]); d += ` Q${p[0].toFixed(1)} ${p[1].toFixed(1)} ${m[0].toFixed(1)} ${m[1].toFixed(1)}`; }
+  d += "Z";
+  const len = Math.round(2 * (w + h));
+  return `<defs>${fine(u, 22)}<filter id="rim-${u}" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency=".03" numOctaves="3" seed="15" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="6" result="d"/><feGaussianBlur in="d" stdDeviation="3"/></filter></defs>`
+    + `<path d="${d}" fill="none" stroke="${colour}" stroke-width="5" stroke-opacity=".06" filter="url(#rim-${u})"/>`
+    + `<path d="${d}" fill="none" stroke="${colour}" stroke-width="${(2 + random() * .6).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${(220 + random() * 120).toFixed(0)} ${(8 + random() * 8).toFixed(0)}" opacity=".75" filter="url(#fine-${u})" style="--len:${len}"/>`;
+}
+function inkOver(el, seed) {
+  let svg = el.querySelector(":scope > .inkline");
+  if (!svg) { svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.classList.add("inkline"); svg.setAttribute("aria-hidden", "true"); el.prepend(svg); }
+  const w = el.offsetWidth + 8, h = el.offsetHeight + 8, r = parseFloat(getComputedStyle(el).borderTopLeftRadius) || 20;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.innerHTML = outline(w, h, r, "#4e2b37", seed);
+  const last = svg.lastElementChild; if (el.closest(".g")) { last.setAttribute("stroke-dasharray", `${2 * (w + h)} ${2 * (w + h)}`); last.style.setProperty("--len", 2 * (w + h)); }
+}
+/* the wavy bar: Material's wave, brushed, a stretch of it travelling */
+function wave(el) {
+  const w = Math.max(40, el.clientWidth - 16), h = 12, wl = 22, amp = 2.6, mid = h / 2;
+  let d = `M0 ${mid}`;
+  for (let x = 0; x <= w + wl; x += 1.5) d += ` L${x.toFixed(1)} ${(mid + amp * Math.sin(x / wl * 2 * Math.PI)).toFixed(2)}`;
+  const u = `w${uid++}`;
+  el.innerHTML = `<svg class="kwave" viewBox="0 0 ${w} ${h}" style="--wl:${wl}" role="progressbar" aria-label="Working"><defs>${fine(u, 9)}<clipPath id="c-${u}"><rect width="${w}" height="${h}"/></clipPath></defs>`
+    + `<g clip-path="url(#c-${u})"><g class="flow"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".22" stroke-dasharray="90 6" filter="url(#fine-${u})"/>`
+    + `<path class="run" d="${d}" pathLength="100" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="34 100" opacity=".9" filter="url(#fine-${u})"/></g></g></svg>`;
+}
+function draw() {
+  for (const s of specs) {
+    for (const part of s.ink || []) s.mock.querySelectorAll(`.${part}`).forEach((el, i) => inkOver(el, `${s.k}-${part}-${i}`));
+    s.mock.querySelectorAll(".wave-slot").forEach(wave);
+  }
+}
+let pending = 0;
+new ResizeObserver(() => { cancelAnimationFrame(pending); pending = requestAnimationFrame(draw); }).observe(host);
+document.getElementById("working").addEventListener("change", () => requestAnimationFrame(draw));
+
+/* metrics, measured from what's rendered */
+const rgb = (c) => (c.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const lum = ([r, g, b]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+const Lstar = (c) => { const Y = lum(c); return Y > 0.008856 ? 116 * Math.cbrt(Y) - 16 : 903.3 * Y; };
+function measure() {
+  for (const s of specs) {
+    const page = rgb(getComputedStyle(s.mock).backgroundColor);
+    const side = rgb(getComputedStyle(s.mock.querySelector(".side")).backgroundColor);
+    const soft = rgb(getComputedStyle(s.mock.querySelector(".row small")).color);
+    const cr = ratio(soft, side);
+    const dL = Lstar(side) - Lstar(page);
+    s.metrics.innerHTML = `<span class="${cr < 4.5 ? "bad" : ""}">Quiet text ${cr.toFixed(1)}:1</span><span>Container ΔL ${dL > 0 ? "+" : ""}${dL.toFixed(1)}</span>`;
+  }
+}
+document.fonts?.ready.then(measure); measure();
+</script>
