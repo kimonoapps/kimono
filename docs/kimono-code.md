@@ -358,10 +358,10 @@ time a project needs it and keeps it with its other secrets.
 Projects are each person's own. Kimono AI is Kimono Git's administrator, so it
 acts as the person (Forgejo's `Sudo`): the project list is their repositories
 and the ones shared with them, a new project is made in their account, and its
-pull requests are opened as them. Their account there is the one they sign in
-to Kimono Git with, by the same username; for someone who never has, the Portal
-makes it with a second, admin-only token it keeps to itself (the node only ever
-gets the first). A project made before this, in `kimono-ai`'s account, moves to
+pull requests are opened as them. Their account there is the one with their
+email (from their Kimono account), whatever its username; for someone who has
+none, the Portal makes one under their Kimono username with a second, admin-only
+token it keeps to itself (the node only ever gets the first). A project made before this, in `kimono-ai`'s account, moves to
 its person the next time their chat or project list opens, and the node takes
 the move as the same repository.
 

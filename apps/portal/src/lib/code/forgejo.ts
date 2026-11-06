@@ -5,12 +5,13 @@ import type { DatabaseSync } from "node:sqlite";
 import { CodeProblem, type Workspace } from "./model";
 import type { CodeConfig } from "./config";
 import { gitAdminToken, gitToken, managedGitUser } from "./git-token";
+import { listAccounts } from "../directory";
 
 /*
  * Kimono Git, with Kimono AI's token. Projects are each person's own: Kimono AI is
  * Kimono Git's administrator, so it acts as the person (Forgejo's Sudo) to list and make
  * their repositories, and its pull requests are theirs too. Their account there is the
- * one they sign in to Kimono Git with (same username); one who never has gets it made.
+ * one with their email, whatever its username; one who has none gets it made.
  */
 
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };
@@ -49,29 +50,38 @@ type ForgejoRepo = { name: string; owner: { login: string }; description: string
 /** Someone in Kimono, as Kimono Git knows them. */
 export type GitPerson = { username: string; name?: string | null; email?: string | null };
 
+/* Kimono Git logins by email, once found. */
 const known = new Map<string, string>();
 
-/** The person's Kimono Git login, making their account when they have none (and [make] allows). */
+/** The person's email: as given, or as Kimono's directory has it. */
+async function emailOf(person: GitPerson): Promise<string> {
+  const given = person.email?.trim().toLowerCase();
+  if (given) return given;
+  const account = (await listAccounts()).find((a) => a.username.toLowerCase() === person.username.toLowerCase());
+  return account?.email?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * The person's Kimono Git login: the account with their email, whatever its username. One is made
+ * when they have none (and [make] allows), under their Kimono username; signing in to Kimono Git
+ * later takes it over, by the same email.
+ */
 export async function gitAccountOf(config: CodeConfig, person: GitPerson, make = true): Promise<string | null> {
-  const username = person.username.toLowerCase();
-  const seen = known.get(username);
-  if (seen) return seen;
-  const found = await send(config, `/users/${encodeURIComponent(username)}`, { timeout: 15_000 });
-  if (found.ok) {
-    const login = ((await found.json()) as { login: string }).login;
-    known.set(username, login);
-    return login;
+  const email = await emailOf(person);
+  if (!email) {
+    if (!make) return null;
+    throw new CodeProblem("Your Kimono account needs an email first. Add one in your profile.", 409);
   }
-  if (found.status !== 404) throw new CodeProblem("Kimono Git couldn't answer that.", 502);
-  /* Signed in under another username (one Kimono Git had already, say): the account with their email is theirs. */
-  const byEmail = await accountByEmail(config, person.email);
-  if (byEmail) {
-    known.set(username, byEmail);
-    return byEmail;
+  const seen = known.get(email);
+  if (seen) return seen;
+  const found = await accountByEmail(config, email);
+  if (found) {
+    known.set(email, found);
+    return found;
   }
   if (!make) return null;
-  if (!/^[a-z0-9][a-z0-9._-]{0,38}$/.test(username) || !person.email) throw new CodeProblem("Sign in to Kimono Git once, then try again.", 409);
-  /* Their account, made the way signing in would; signing in later takes it over (same username and email). */
+  const username = person.username.toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{0,38}$/.test(username)) throw new CodeProblem("Sign in to Kimono Git once, then try again.", 409);
   for (const stale of [false, true]) {
     const admin = await gitAdminToken(config, stale);
     if (!admin) throw new CodeProblem("Sign in to Kimono Git once, then try again.", 409);
@@ -80,7 +90,7 @@ export async function gitAccountOf(config: CodeConfig, person: GitPerson, make =
       made = await fetch(`${config.gitAddress}/api/v1/admin/users`, {
         method: "POST",
         headers: { Authorization: `token ${admin}`, Accept: "application/json", "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email: person.email, full_name: person.name ?? "", password: randomBytes(24).toString("base64url"), must_change_password: false, send_notify: false }),
+        body: JSON.stringify({ username, email, full_name: person.name ?? "", password: randomBytes(24).toString("base64url"), must_change_password: false, send_notify: false }),
         signal: AbortSignal.timeout(15_000), cache: "no-store",
       });
     } catch {
@@ -88,13 +98,12 @@ export async function gitAccountOf(config: CodeConfig, person: GitPerson, make =
     }
     if (made.status === 401 && !stale) continue;
     if (!made.ok) {
-      const taken = await accountByEmail(config, person.email);
-      if (taken) { known.set(username, taken); return taken; }
       console.error(`Kimono AI couldn't make ${username}'s Kimono Git account: ${made.status} ${(await made.text()).slice(0, 200)}`);
       throw new CodeProblem("Sign in to Kimono Git once, then try again.", 409);
     }
-    known.set(username, username);
-    return username;
+    const login = ((await made.json()) as { login?: string }).login ?? username;
+    known.set(email, login);
+    return login;
   }
   throw new CodeProblem("Kimono Git refused Code's token.", 502);
 }
