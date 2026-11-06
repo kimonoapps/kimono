@@ -1264,6 +1264,7 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
               <ShareButton onClick={() => setSharing(true)} />
               {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
               {workspace.pullRequest ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.pullRequest!.url)}><Icon name="pr" />Pull request #{workspace.pullRequest.number}</button> : null}
+              <button type="button" className="cd-linkbutton" title="Open in Kimono Git" onClick={() => openOutside(`/api/v1/code/workspaces/${workspace.id}/git`)}><Icon name="branch" />Kimono Git</button>
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
               <Seal type="button" compact tone={workspace.pullRequest ? "quiet" : "primary"} busy={publishing} disabled={running || Boolean(blocked)} onClick={() => void publish()}>
                 {workspace.pullRequest ? "Push changes" : "Open pull request"}

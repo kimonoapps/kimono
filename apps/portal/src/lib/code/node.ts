@@ -47,7 +47,7 @@ export const sandbox = {
   health: (config: CodeConfig) => call(config, "/v1/health", { timeout: 5_000 }).then(json<{ ok: boolean; version: string; runtime: string }>),
 
   /** Makes sure the sandbox exists, holds the repository and is awake. Safe to call before anything. */
-  ensure: async (config: CodeConfig, workspace: Workspace, who: Who, tools: ToolSession | null = null) => call(config, at(workspace), {
+  ensure: async (config: CodeConfig, workspace: Workspace, who: Who, tools: ToolSession | null = null, gitLogin: string | null = null) => call(config, at(workspace), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     timeout: 5 * 60_000,
@@ -57,7 +57,8 @@ export const sandbox = {
         url: `${config.gitAddress}/${workspace.repo.owner}/${workspace.repo.name}.git`,
         owner: workspace.repo.owner, name: workspace.repo.name, base: workspace.base, branch: workspace.branch,
       } : {},
-      git: { token: workspace.kind === "project" ? await gitToken(config) : "", name: who.name, email: who.email },
+      /* login: the owner's Kimono Git account, which pull requests are opened as. */
+      git: { token: workspace.kind === "project" ? await gitToken(config) : "", name: who.name, email: who.email, ...(gitLogin ? { login: gitLogin } : {}) },
       model: { token: config.modelToken },
       ...(tools ? { tools } : {}),
       owner: workspace.owner, title: workspace.title, limits: config.limits,

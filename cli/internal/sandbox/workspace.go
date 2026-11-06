@@ -28,6 +28,9 @@ type GitAuth struct {
 	Token string `json:"token"`
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	// Login is the task's person's Kimono Git account, which may have another
+	// username than their Kimono one: pull requests are opened as it.
+	Login string `json:"login"`
 }
 
 type ModelAuth struct {
@@ -190,7 +193,10 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 	}
 	w.mu.Lock()
 	w.repo, w.git, w.model, w.tools, w.base = request.Repo, request.Git, request.Model, tools, base
-	w.person = strings.TrimSpace(request.Owner)
+	w.person = strings.TrimSpace(request.Git.Login)
+	if w.person == "" {
+		w.person = strings.TrimSpace(request.Owner)
+	}
 	w.ensured = true
 	w.lastActive = time.Now()
 	w.mu.Unlock()

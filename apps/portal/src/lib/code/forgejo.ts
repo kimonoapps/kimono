@@ -138,6 +138,14 @@ export async function branches(config: CodeConfig, owner: string, name: string):
   return list.map((branch) => branch.name).filter((branch) => !branch.startsWith("code/"));
 }
 
+/** Where a project chat is in Kimono Git: its branch once pushed there, the repository's home until then. */
+export async function repositoryPage(config: CodeConfig, owner: string, name: string, branch: string): Promise<string> {
+  const home = `${config.gitAddress}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  if (!branch) return home;
+  const pushed = await send(config, `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches/${branch.split("/").map(encodeURIComponent).join("/")}`, { timeout: 10_000 }).then((r) => r.ok, () => false);
+  return pushed ? `${home}/src/branch/${branch.split("/").map(encodeURIComponent).join("/")}` : home;
+}
+
 /** A Kimono Git-safe name from what someone typed: "Family Recipes!" → "family-recipes". */
 export function repositoryName(input: string) {
   return input.normalize("NFKD").toLowerCase().replace(/[^a-z0-9._\s-]/g, "").trim().replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^[.-]+|[.-]+$/g, "").slice(0, 60);

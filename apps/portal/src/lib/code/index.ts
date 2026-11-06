@@ -25,7 +25,7 @@ import { portalOrigin } from "../account";
 export { efforts, type Effort } from "./node";
 import { retitle, shotToDrive, syncDrive } from "./drive";
 import { historyNote, syncHistory } from "./history";
-import { ownProject } from "./forgejo";
+import { gitAccountOf, ownProject } from "./forgejo";
 import { suggestTitle } from "./title";
 
 export * from "./model";
@@ -180,7 +180,9 @@ export function listen(workspaceId: string, listener: (event: StoredEvent) => vo
 export async function ensure(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }) {
   /* A project still in Kimono AI's own Kimono Git account moves to its person's, once they have one. */
   workspace = await ownProject(db(), config, workspace, { username: workspace.owner });
-  const answer = await sandbox.ensure(config, workspace, person, await toolSession(db(), config.composioKey, workspace.owner, portalOrigin()));
+  /* Their Kimono Git account, found by email (its username may not be theirs in Kimono), for the node to open pull requests as. */
+  const gitLogin = workspace.kind === "project" ? await gitAccountOf(config, { username: workspace.owner }, false).catch(() => null) : null;
+  const answer = await sandbox.ensure(config, workspace, person, await toolSession(db(), config.composioKey, workspace.owner, portalOrigin()), gitLogin);
   for (const id of answer.slept ?? []) {
     try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }
   }
