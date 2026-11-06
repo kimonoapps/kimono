@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppBloom, BusyFace, Choice, cx, InkCard, InkWave, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
+import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
@@ -1085,7 +1085,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
           }
         }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
         {drafts.text ? <div className="cd-say is-draft"><Markdown text={drafts.text} /></div> : null}
-        {running && items.at(-1)?.type !== "tools" && !drafts.text && !writing.length ? <div className="cd-thinking" role="status"><span>Working</span><InkWave label="Working" /></div> : null}
+        {running && items.at(-1)?.type !== "tools" && !drafts.text && !writing.length ? <div className="cd-thinking" role="status"><MorphLoader tone="plain" label="Working" className="cd-morph" /><span>Working</span></div> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
@@ -1179,7 +1179,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
   return <figure className={cx("cd-artifact", `is-${mode}`, writing && "is-writing", inline && open && "is-elsewhere")}>
     <figcaption className="cd-artifact-head">
       <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
-      <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <InkWave label="Writing" className="cd-artifact-wave" /> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
+      <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <small className="cd-artifact-writing"><MorphLoader tone="plain" label="Writing" className="cd-morph" />Writing</small> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
       <span className="cd-artifact-acts">
         {mode !== "full" ? <button type="button" className="cd-roundbutton" aria-label={open ? "Close the side panel" : "Open beside the chat"} title={open ? "Close the side panel" : "Open beside the chat"} onClick={() => shared.setBeside(open ? null : name)}><Icon name={open ? "close" : "beside"} /></button> : null}
         <button type="button" className="cd-roundbutton" aria-label={mode === "full" ? "Leave full screen" : "Full screen"} title={mode === "full" ? "Leave full screen" : "Full screen"} onClick={() => shared.setFull(mode === "full" ? null : name)}><Icon name={mode === "full" ? "shrink" : "expand"} /></button>
@@ -1192,7 +1192,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
             <div className="cd-artifact-body" style={shown ? { height: shown } : undefined}><ArtifactFrame content={content} final={!writing} title={title} control={control} onHeight={onHeight} onScene={setScene} /></div>
             {scene && scene.end > 0 ? <SceneBar scene={scene} send={send} /> : null}
           </>
-        : <InkWave label="Opening" className="cd-artifact-loading" />}
+        : <MorphLoader label="Opening" className="cd-artifact-loading" />}
   </figure>;
 }
 
@@ -1216,7 +1216,7 @@ function SceneBar({ scene, send }: { scene: SceneState; send: (action: SceneCont
       style={{ ["--p" as string]: `${scene.end ? scene.t / scene.end * 100 : 0}%` }}
       onChange={(event) => send("seek", (+event.target.value / 1000) * scene.end)} />
     <span className="cd-scene-time">{scene.t.toFixed(1)} / {scene.end.toFixed(1)}s</span>
-    {!scene.complete ? <InkWave label="Still being written" className="cd-scene-wave" /> : null}
+    {!scene.complete ? <MorphLoader tone="plain" label="Still being written" className="cd-morph cd-scene-writing" /> : null}
   </div>
   </div>;
 }
@@ -1432,7 +1432,7 @@ function OneFilePicker({ root, onPick }: { root: string; onPick: (file: string) 
   }, [at]);
   return <div className="cd-access-pick">
     {stack.length ? <button type="button" className="cd-access-row" onClick={() => { setAt(stack.at(-1)!); setStack((s) => s.slice(0, -1)); }}><Icon name="back" />Back</button> : null}
-    {items === null ? <InkWave label="Looking" className="cd-note-wave" /> : !items.length ? <p className="cd-note">Nothing here.</p> : items.map((item) =>
+    {items === null ? <MorphLoader tone="plain" label="Looking" className="cd-morph cd-note-shape" /> : !items.length ? <p className="cd-note">Nothing here.</p> : items.map((item) =>
       <button key={item.id} type="button" className="cd-access-row" onClick={() => { if (item.kind === "folder") { setStack((s) => [...s, at]); setAt(item.id); } else onPick(item.id); }}>
         <Icon name={item.kind === "folder" ? "folder" : "file"} /><span>{item.name}</span>
       </button>)}
@@ -1501,7 +1501,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {p.preview ? <img src={p.preview} alt="" /> : <Icon name="file" />}
       <span>{p.name}</span>
-      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <InkWave label="Attaching" className="cd-chip-wave" />)}</small>
+      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <MorphLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPending((list) => list.filter((x) => x.id !== p.id))}><Icon name="close" /></button>
     </span>)}</div> : null}
     <textarea ref={field} value={text} rows={1} aria-label="Message"
@@ -1509,18 +1509,18 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       disabled={Boolean(blocked)}
       onChange={(event) => setText(event.target.value)}
       onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}
-      onKeyDown={(event) => { if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send(); } }} />
+      onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
     <div className="cd-composer-bar">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <button type="button" className="cd-iconbutton" aria-label="Attach files" disabled={Boolean(blocked)} onClick={() => picker.current?.click()}><Icon name="clip" /></button>
       {workspace.drive ? <button type="button" className="cd-iconbutton" aria-label="Attach from Drive" title="Attach from Drive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" /></button> : null}
-      <ModelPicker />
-      <EffortPicker />
       {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />
+      {/* which Claude and how hard it thinks: small, beside the limits they spend */}
+      <span className="cd-tuning"><ModelPicker /><EffortPicker /></span>
       <Meters workspace={workspace} context={context} running={running} blocked={blocked} />
       {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop" title="Stop" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
-      <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Meta+Enter" title="Send (⌘↵)">Send</Seal>
+      <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Enter" title="Send (↵, Shift-↵ for a new line)">Send</Seal>
     </div>
     {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
     {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={async (items) => {

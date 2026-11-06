@@ -14,8 +14,9 @@ import { inkFilters, washGradient } from "./ink";
  * - BusyFace: a button that's waiting keeps its size and its word; the shape
  *   takes the face instead of the word changing to "Saving…".
  * - InkWave: Material's wavy progress bar, brushed, as on the phone
- *   (InkProgress.kt). With a value it fills; without one, a stretch of brush
- *   travels along a wave that flows.
+ *   (InkProgress.kt). Only for a real progress (an upload, a download): it
+ *   fills as the value grows. Waiting with no measure of how far along
+ *   ("Working", "Opening") is the MorphLoader, never the wave.
  */
 
 const SHAPES: ((t: number) => number)[] = [

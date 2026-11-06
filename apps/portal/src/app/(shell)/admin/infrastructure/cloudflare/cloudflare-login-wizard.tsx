@@ -1,6 +1,6 @@
 "use client";
 
-import { InkWave, Seal } from "@kimono/ui";
+import { MorphLoader, Seal } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
 import { useEffect, useState, type FormEvent } from "react";
 
@@ -53,8 +53,8 @@ export function CloudflareLoginWizard({ appId }: { appId?: string }) {
       <label><span>Tunnel name</span><input name="name" placeholder="Family apps" disabled={busy} required /></label>
       <label><span>Cloudflare domain</span><input name="domain" placeholder="yourdomain.com" disabled={busy} required /></label>
     </div>
-    {state.status === "waiting" ? <div className="login-progress"><p><strong>Waiting for Cloudflare.</strong> Finish authorization in the opened tab. This page will continue automatically.</p><InkWave label="Waiting for Cloudflare" /></div> : null}
-    {state.status === "creating" ? <div className="login-progress"><p><strong>Authorized.</strong> Creating the tunnel and its isolated credentials.</p><InkWave label="Creating the tunnel" /></div> : null}
+    {state.status === "waiting" ? <div className="login-progress"><MorphLoader tone="plain" label="Waiting for Cloudflare" className="login-shape" /><p><strong>Waiting for Cloudflare.</strong> Finish authorization in the opened tab. This page will continue automatically.</p></div> : null}
+    {state.status === "creating" ? <div className="login-progress"><MorphLoader tone="plain" label="Creating the tunnel" className="login-shape" /><p><strong>Authorized.</strong> Creating the tunnel and its isolated credentials.</p></div> : null}
     {state.status === "error" ? <p className="admin-notice error">{state.message}</p> : null}
     <div className="connection-form-footer"><small>Cloudflare will ask you to sign in and select this domain. Each new tunnel starts a separate login.</small><Seal type="submit" busy={busy}>Sign in with Cloudflare</Seal></div>
   </form>;

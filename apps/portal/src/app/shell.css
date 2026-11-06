@@ -251,6 +251,7 @@ html, body, .app-frame { overflow-x: clip; }
 @keyframes name-tip-in { from { opacity: 0; scale: .92; } }
 @media (prefers-reduced-motion: reduce) { .name-tip { animation: none; } }
 
-/* Waiting on Cloudflare: the words, then the wavy bar. */
-.login-progress { display: grid; gap: 10px; max-width: 520px; }
+/* Waiting on Cloudflare: the shape, then the words. */
+.login-progress { display: flex; align-items: flex-start; gap: 10px; max-width: 520px; }
+.login-shape { width: 20px; height: 20px; flex: none; color: var(--k-suo); margin-top: 1px; }
 .login-progress p { margin: 0; }
