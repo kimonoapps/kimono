@@ -138,9 +138,10 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY: ${{ secrets.ASC_KEY }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      # One Apple Distribution certificate (base64 .p12) and its password. A fresh
-      # runner signing automatically would otherwise ask Apple for a new
-      # certificate every release, until the account runs out of them.
+      # One .p12 (base64) holding Kimono CI's Apple Development and Apple
+      # Distribution certificates, and its password. A fresh runner signing
+      # automatically would otherwise ask Apple for a new certificate every
+      # release, until the account runs out of them.
       IOS_SIGNING_CERT: ${{ secrets.IOS_SIGNING_CERT }}
       IOS_SIGNING_CERT_PASSWORD: ${{ secrets.IOS_SIGNING_CERT_PASSWORD }}
     steps:
@@ -218,7 +219,7 @@ jobs:
           AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
           xcodebuild -project Kimono.xcodeproj -scheme Kimono -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Kimono.xcarchive" archive "${AUTH[@]}" \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD"
           cat > "$RUNNER_TEMP/export.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
