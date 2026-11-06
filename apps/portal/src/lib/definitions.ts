@@ -70,6 +70,10 @@ export type Bootstrap = {
   user?: string;
   environment: Record<string, string>;
   script: string[];
+  /** Container path → a text file beside app.json, written into place ahead of the script. */
+  files?: Record<string, string>;
+  /** The contents of `files`, read when the definition is loaded. */
+  fileContents?: Record<string, string>;
 };
 
 export type AppDefinition = {
@@ -198,6 +202,22 @@ function validateBootstrap(bootstrap: Bootstrap | undefined, services: AppDefini
   if (bootstrap.user !== undefined && !/^[a-z_][a-z0-9_-]{0,31}$/.test(bootstrap.user)) throw new Error("spec.bootstrap.user must be a user name");
   if (!bootstrap.environment || typeof bootstrap.environment !== "object" || !Object.entries(bootstrap.environment).every(([key, value]) => /^[A-Z_][A-Z0-9_]*$/.test(key) && typeof value === "string")) throw new Error("spec.bootstrap.environment must map variable names to strings");
   if (!Array.isArray(bootstrap.script) || !bootstrap.script.length || !bootstrap.script.every((line) => typeof line === "string")) throw new Error("spec.bootstrap.script must be lines of shell");
+  for (const [path, file] of Object.entries(bootstrap.files || {})) {
+    if (!/^\/[A-Za-z0-9._/-]+$/.test(path) || path.includes("..")) throw new Error(`spec.bootstrap.files: ${path} must be an absolute container path`);
+    if (typeof file !== "string" || basename(file) !== file || file === "app.json") throw new Error(`spec.bootstrap.files: ${file} must name a file beside app.json`);
+  }
+}
+
+/** Reads the files a definition's setup installs; they travel inside its script, so they stay small and plain. */
+async function loadBootstrapFiles(definition: AppDefinition, directory: string) {
+  const bootstrap = definition.spec.bootstrap;
+  if (!bootstrap?.files) return;
+  bootstrap.fileContents = {};
+  for (const [path, file] of Object.entries(bootstrap.files)) {
+    const contents = await readFile(join(directory, file), "utf8");
+    if (contents.length > 256 * 1024 || contents.includes("\0") || /^KIMONO_FILE$/m.test(contents) || contents.includes("${KIMONO_SECRET_")) throw new Error(`spec.bootstrap.files: ${file} must be a small text file`);
+    bootstrap.fileContents[path] = contents;
+  }
 }
 
 function validateManualSetup(manualSetup: AppDefinition["spec"]["manualSetup"]) {
@@ -258,6 +278,7 @@ async function scanRoot(root: string, source: AppDefinition["source"], errors: s
       const manifest = await readFile(join(directory, "app.json"), "utf8");
       if (manifest.length > 1024 * 1024) throw new Error("app.json is larger than 1 MiB");
       const definition = parseDefinition(JSON.parse(manifest), directory, source);
+      await loadBootstrapFiles(definition, directory);
       const icon = await readFile(definition.iconPath, "utf8");
       if (icon.length > 256 * 1024 || !/^\s*<svg[\s>]/i.test(icon)) throw new Error("icon is not a valid SVG file");
       if (/<(?:script|foreignObject|iframe|object|embed)\b|\son[a-z]+\s*=|(?:href|src)\s*=\s*["'](?!#)/i.test(icon)) throw new Error("icon.svg must be a self-contained glyph without scripts, event handlers, or external references");

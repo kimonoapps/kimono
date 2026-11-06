@@ -39,7 +39,19 @@
           "FORGEJO__service__ENABLE_NOTIFY_MAIL": "false",
           "FORGEJO__oauth2_client__ENABLE_AUTO_REGISTRATION": "true",
           "FORGEJO__oauth2_client__USERNAME": "preferred_username",
-          "FORGEJO__oauth2_client__OPENID_CONNECT_SCOPES": "profile email"
+          "FORGEJO__oauth2_client__OPENID_CONNECT_SCOPES": "profile email",
+          "FORGEJO____APP_NAME": "Kimono Git",
+          "FORGEJO____APP_SLOGAN": "",
+          "FORGEJO__server__LANDING_PAGE": "explore",
+          "FORGEJO__service__ENABLE_INTERNAL_SIGNIN": "false",
+          "FORGEJO__service__ALLOW_ONLY_EXTERNAL_REGISTRATION": "true",
+          "FORGEJO__service__SHOW_REGISTRATION_BUTTON": "false",
+          "FORGEJO__openid__ENABLE_OPENID_SIGNIN": "false",
+          "FORGEJO__openid__ENABLE_OPENID_SIGNUP": "false",
+          "FORGEJO__oauth2_client__ACCOUNT_LINKING": "auto",
+          "FORGEJO__other__SHOW_FOOTER_VERSION": "false",
+          "FORGEJO__other__SHOW_FOOTER_TEMPLATE_LOAD_TIME": "false",
+          "FORGEJO__other__SHOW_FOOTER_POWERED_BY": "false"
         }
       }
     ],
@@ -70,7 +82,8 @@
         "KIMONO_ADMIN_PASSWORD": "{{secret.ADMIN_PASSWORD}}",
         "KIMONO_OIDC_CLIENT_ID": "{{oidc.clientId}}",
         "KIMONO_OIDC_CLIENT_SECRET": "{{oidc.clientSecret}}",
-        "KIMONO_OIDC_DISCOVERY": "{{oidc.issuer}}.well-known/openid-configuration"
+        "KIMONO_OIDC_DISCOVERY": "{{oidc.issuer}}.well-known/openid-configuration",
+        "KIMONO_OIDC_ICON": "https://{{hostname}}/assets/img/kimono-sign-in.svg"
       },
       "script": [
         "# Wait for the server: the command line must not race its first start.",
@@ -89,9 +102,14 @@
         "# Sign in with Kimono, once Kimono has registered Forgejo with its identity provider.",
         "[ -n \"$KIMONO_OIDC_CLIENT_ID\" ] || exit 0",
         "source_id=$(forgejo admin auth list | awk -F '\\t' '$2 == \"Kimono\" { print $1 }')",
-        "set -- --name Kimono --provider openidConnect --key \"$KIMONO_OIDC_CLIENT_ID\" --secret \"$KIMONO_OIDC_CLIENT_SECRET\" --auto-discover-url \"$KIMONO_OIDC_DISCOVERY\" --scopes openid --scopes profile --scopes email",
+        "set -- --name Kimono --provider openidConnect --key \"$KIMONO_OIDC_CLIENT_ID\" --secret \"$KIMONO_OIDC_CLIENT_SECRET\" --auto-discover-url \"$KIMONO_OIDC_DISCOVERY\" --icon-url \"$KIMONO_OIDC_ICON\" --scopes openid --scopes profile --scopes email",
         "if [ -z \"$source_id\" ]; then forgejo admin auth add-oauth \"$@\"; else forgejo admin auth update-oauth --id \"$source_id\" \"$@\"; fi"
-      ]
+      ],
+      "files": {
+        "/data/gitea/public/assets/img/logo.svg": "logo.svg",
+        "/data/gitea/public/assets/img/favicon.svg": "logo.svg",
+        "/data/gitea/public/assets/img/kimono-sign-in.svg": "kimono-sign-in.svg"
+      }
     },
     "configuration": [
       {
@@ -150,7 +168,19 @@
       "FORGEJO__service__DISABLE_REGISTRATION",
       "FORGEJO__repository__DEFAULT_BRANCH",
       "FORGEJO__service__REQUIRE_SIGNIN_VIEW",
-      "FORGEJO__log__LEVEL"
+      "FORGEJO__log__LEVEL",
+      "FORGEJO____APP_NAME",
+      "FORGEJO____APP_SLOGAN",
+      "FORGEJO__server__LANDING_PAGE",
+      "FORGEJO__service__ENABLE_INTERNAL_SIGNIN",
+      "FORGEJO__service__ALLOW_ONLY_EXTERNAL_REGISTRATION",
+      "FORGEJO__service__SHOW_REGISTRATION_BUTTON",
+      "FORGEJO__openid__ENABLE_OPENID_SIGNIN",
+      "FORGEJO__openid__ENABLE_OPENID_SIGNUP",
+      "FORGEJO__oauth2_client__ACCOUNT_LINKING",
+      "FORGEJO__other__SHOW_FOOTER_VERSION",
+      "FORGEJO__other__SHOW_FOOTER_TEMPLATE_LOAD_TIME",
+      "FORGEJO__other__SHOW_FOOTER_POWERED_BY"
     ],
     "defaultNetworkPolicy": {
       "internetAccess": true,
