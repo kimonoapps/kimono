@@ -31,7 +31,7 @@ func (r *Reconciler) Watch(ctx context.Context, interval, retry time.Duration) e
 				nextRetry = r.Now().Add(retry)
 			} else {
 				applied = current
-				nextRetry = time.Time{}
+				nextRetry = r.retryAfter(retry)
 			}
 		case !nextRetry.IsZero() && r.Now().After(nextRetry):
 			if applyErr := r.Apply(); applyErr != nil {
@@ -39,7 +39,7 @@ func (r *Reconciler) Watch(ctx context.Context, interval, retry time.Duration) e
 				nextRetry = r.Now().Add(retry)
 			} else {
 				applied = current
-				nextRetry = time.Time{}
+				nextRetry = r.retryAfter(retry)
 			}
 		}
 		select {
@@ -48,6 +48,15 @@ func (r *Reconciler) Watch(ctx context.Context, interval, retry time.Duration) e
 		case <-time.After(interval):
 		}
 	}
+}
+
+// retryAfter is when a successful pass is repeated: never, unless an app's own
+// setup still has to run.
+func (r *Reconciler) retryAfter(retry time.Duration) time.Time {
+	if !r.retry {
+		return time.Time{}
+	}
+	return r.Now().Add(retry)
 }
 
 func fingerprint(path string) (string, error) {

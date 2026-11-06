@@ -58,6 +58,20 @@ export type IdentityIntegration = {
   environment?: Record<string, string>;
 };
 
+/**
+ * Setup an app only offers through its own command line, which Kimono runs for
+ * it: a shell script piped into one service's container after every deploy, so
+ * it must be safe to repeat. `environment` values take the same tokens a
+ * service's do and are exported ahead of the script; a value whose tokens are
+ * unavailable (no single sign-on yet, say) comes out empty.
+ */
+export type Bootstrap = {
+  service: string;
+  user?: string;
+  environment: Record<string, string>;
+  script: string[];
+};
+
 export type AppDefinition = {
   apiVersion: "apps.kimono.dev/v1alpha1";
   kind: "AppDefinition";
@@ -92,6 +106,7 @@ export type AppDefinition = {
     backups?: BackupSource[];
     identity?: IdentityIntegration;
     settingsFile?: SettingsFile;
+    bootstrap?: Bootstrap;
     /** Work the upstream application deliberately leaves to its own UI or tooling. */
     manualSetup?: {
       title: string;
@@ -149,6 +164,7 @@ function parseDefinition(value: unknown, directory: string, source: AppDefinitio
     }
   }
   validateSettings(definition.spec.settingsFile, definition.spec.configuration, definition.spec.services, definition.spec.portalPath !== undefined);
+  validateBootstrap(definition.spec.bootstrap, definition.spec.services);
   validateBackups(definition);
   const iconPath = join(directory, definition.metadata.icon);
   return { ...definition, source, iconPath, iconUrl: `/api/app-definitions/${definition.metadata.id}/icon` };
@@ -174,6 +190,14 @@ function validateBackups(definition: Omit<AppDefinition, "source" | "iconUrl" | 
     if (source.method === "postgres" && (!definition.spec.services.some((service) => service.id === source.service) || !/^[a-zA-Z0-9_]+$/.test(source.database || "") || !/^[a-zA-Z0-9_]+$/.test(source.username || ""))) throw new Error(`backup ${source.id} needs a database service, database and username`);
     if (source.method === "settings" && !definition.spec.settingsFile) throw new Error(`backup ${source.id} needs spec.settingsFile`);
   }
+}
+
+function validateBootstrap(bootstrap: Bootstrap | undefined, services: AppDefinition["spec"]["services"]) {
+  if (!bootstrap) return;
+  if (!services.some((service) => service.id === bootstrap.service)) throw new Error(`spec.bootstrap names unknown service ${bootstrap.service}`);
+  if (bootstrap.user !== undefined && !/^[a-z_][a-z0-9_-]{0,31}$/.test(bootstrap.user)) throw new Error("spec.bootstrap.user must be a user name");
+  if (!bootstrap.environment || typeof bootstrap.environment !== "object" || !Object.entries(bootstrap.environment).every(([key, value]) => /^[A-Z_][A-Z0-9_]*$/.test(key) && typeof value === "string")) throw new Error("spec.bootstrap.environment must map variable names to strings");
+  if (!Array.isArray(bootstrap.script) || !bootstrap.script.length || !bootstrap.script.every((line) => typeof line === "string")) throw new Error("spec.bootstrap.script must be lines of shell");
 }
 
 function validateManualSetup(manualSetup: AppDefinition["spec"]["manualSetup"]) {

@@ -2,6 +2,7 @@ import "server-only";
 
 import { CodeProblem, type Workspace } from "./model";
 import type { CodeConfig } from "./config";
+import { gitToken } from "./git-token";
 import type { ToolSession } from "./composio";
 import type { Model } from "./models";
 
@@ -46,7 +47,7 @@ export const sandbox = {
   health: (config: CodeConfig) => call(config, "/v1/health", { timeout: 5_000 }).then(json<{ ok: boolean; version: string; runtime: string }>),
 
   /** Makes sure the sandbox exists, holds the repository and is awake. Safe to call before anything. */
-  ensure: (config: CodeConfig, workspace: Workspace, who: Who, tools: ToolSession | null = null) => call(config, at(workspace), {
+  ensure: async (config: CodeConfig, workspace: Workspace, who: Who, tools: ToolSession | null = null) => call(config, at(workspace), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     timeout: 5 * 60_000,
@@ -56,7 +57,7 @@ export const sandbox = {
         url: `${config.gitAddress}/${workspace.repo.owner}/${workspace.repo.name}.git`,
         owner: workspace.repo.owner, name: workspace.repo.name, base: workspace.base, branch: workspace.branch,
       } : {},
-      git: { token: workspace.kind === "project" ? config.gitToken : "", name: who.name, email: who.email },
+      git: { token: workspace.kind === "project" ? await gitToken(config) : "", name: who.name, email: who.email },
       model: { token: config.modelToken },
       ...(tools ? { tools } : {}),
       owner: workspace.owner, title: workspace.title, limits: config.limits,

@@ -58,6 +58,15 @@ type ProviderAction struct {
 	CNAME string `json:"cname"`
 }
 
+// Bootstrap is an app's own setup, piped as a shell script into one of its
+// running services. The script is a generated file of the plan, so it carries
+// secrets the same way every other generated file does.
+type Bootstrap struct {
+	Service string `json:"service"`
+	User    string `json:"user,omitempty"`
+	File    string `json:"file"`
+}
+
 type Plan struct {
 	APIVersion string `json:"apiVersion"`
 	Runtime    struct {
@@ -72,6 +81,7 @@ type Plan struct {
 	} `json:"compose"`
 	Files           map[string]string `json:"files"`
 	ProviderActions []ProviderAction  `json:"providerActions"`
+	Bootstraps      []Bootstrap       `json:"bootstraps,omitempty"`
 	Secrets         []string          `json:"secrets"`
 	Warnings        []string          `json:"warnings"`
 	Digest          string            `json:"digest"`
@@ -82,6 +92,7 @@ var (
 	imagePattern       = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]*(?::[a-zA-Z0-9._-]+)?(?:@sha256:[a-f0-9]{64})?$`)
 	environmentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	hostnamePattern    = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+	userPattern        = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 	uuidPattern        = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
 	secretPattern      = regexp.MustCompile(`\$\{(KIMONO_SECRET_[A-Z0-9_]+)\}`)
 )
@@ -155,6 +166,19 @@ func (p Plan) Validate() error {
 	for file := range p.Files {
 		if err := validateFilePath(file); err != nil {
 			return err
+		}
+	}
+	for _, bootstrap := range p.Bootstraps {
+		// Only into a service this plan runs, as a named user, from a script the
+		// plan itself generates: never a command on the host.
+		if _, ok := p.Compose.Services[bootstrap.Service]; !ok {
+			return fmt.Errorf("bootstrap names unknown service %q", bootstrap.Service)
+		}
+		if bootstrap.User != "" && !userPattern.MatchString(bootstrap.User) {
+			return fmt.Errorf("%s: invalid bootstrap user %q", bootstrap.Service, bootstrap.User)
+		}
+		if _, ok := p.Files[bootstrap.File]; !ok || !strings.HasPrefix(bootstrap.File, AppPrefix) {
+			return fmt.Errorf("%s: bootstrap script %q is not a generated app file", bootstrap.Service, bootstrap.File)
 		}
 	}
 	for _, action := range p.ProviderActions {

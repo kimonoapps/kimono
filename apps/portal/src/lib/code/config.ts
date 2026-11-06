@@ -21,6 +21,8 @@ export function codeConfig(settings: PlatformSettings) {
   const value = (key: string) => instance?.environment[key]?.value?.trim() || "";
   const forgejo = Object.values(settings.apps).find((app) => app.definitionId === "forgejo" && app.enabled);
   const gitAddress = (value("git_address") || (forgejo ? `https://${appHostname(forgejo.domain, settings.baseDomain)}` : "")).replace(/\/+$/, "");
+  /* Kimono's own Kimono Git, which Kimono AI gets a token from itself when nobody entered one. */
+  const gitApp = forgejo && !value("git_address") ? forgejo.id : "";
   return {
     enabled: Boolean(instance?.enabled),
     nodeAddress: value("node_address").replace(/\/+$/, ""),
@@ -30,6 +32,7 @@ export function codeConfig(settings: PlatformSettings) {
     /* Composio's Tool Router: one session per person, its MCP reached through the node's gateway. Optional. */
     composioKey: value("composio_api_key"),
     gitAddress,
+    gitApp,
     /* Each person's share of the Claude plan, as fractions; the owner isn't limited. */
     shares: { week: percent(value("share_week"), 20), fiveHour: percent(value("share_five_hour"), 75) },
     /* What each task's sandbox may use, and how many may be awake at once; the node enforces them. */
@@ -55,7 +58,7 @@ export function missing(config: CodeConfig): string | null {
 /** What stands between this server and working on a project: Kimono Git, and its token. */
 export function projectMissing(config: CodeConfig): string | null {
   if (!config.gitAddress) return "Projects need Kimono Git. Switch it on first.";
-  if (!config.gitToken) return "Projects need a Kimono Git token. Add it on Kimono AI's page in Applications.";
+  if (!config.gitToken && !config.gitApp) return "Projects need a Kimono Git token. Add it on Kimono AI's page in Applications.";
   return null;
 }
 

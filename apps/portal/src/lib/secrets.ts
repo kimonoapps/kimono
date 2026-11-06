@@ -47,3 +47,17 @@ export async function resolveSecrets(names: readonly string[]): Promise<SecretSt
 export function renderSecretEnvironment(secrets: SecretStore) {
   return `${Object.entries(secrets).sort(([left], [right]) => left.localeCompare(right)).map(([name, value]) => `${name}=${value}`).join("\n")}\n`;
 }
+
+/** One stored value, without minting it: absent until something put it there. */
+export async function readSecret(name: string): Promise<string> {
+  return (await read())[name] || "";
+}
+
+/** Keeps a value the Portal obtained rather than minted, such as a token another app issued. */
+export async function storeSecret(name: string, value: string) {
+  if (!namePattern.test(name) || !value) return;
+  const store = await read();
+  if (store[name] === value) return;
+  store[name] = value;
+  await write(store);
+}

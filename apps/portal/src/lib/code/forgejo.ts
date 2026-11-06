@@ -2,22 +2,35 @@ import "server-only";
 
 import { CodeProblem } from "./model";
 import type { CodeConfig } from "./config";
+import { gitToken } from "./git-token";
 
 /* Kimono Git, read with Code's token: which repositories there are to work on, and their branches. */
 
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };
 
-async function get<T>(config: CodeConfig, path: string): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${config.gitAddress}/api/v1${path}`, {
-      headers: { Authorization: `token ${config.gitToken}`, Accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
-      cache: "no-store",
-    });
-  } catch {
-    throw new CodeProblem("Kimono Git isn't answering.", 502);
+/** A Kimono Git API call with Code's token; a minted token Forgejo no longer knows is replaced once. */
+async function send(config: CodeConfig, path: string, init: { method?: string; body?: string; timeout: number }): Promise<Response> {
+  for (const stale of [false, true]) {
+    const token = await gitToken(config, stale);
+    let response: Response;
+    try {
+      response = await fetch(`${config.gitAddress}/api/v1${path}`, {
+        method: init.method,
+        headers: { Authorization: `token ${token}`, Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}) },
+        body: init.body,
+        signal: AbortSignal.timeout(init.timeout),
+        cache: "no-store",
+      });
+    } catch {
+      throw new CodeProblem("Kimono Git isn't answering.", 502);
+    }
+    if (response.status !== 401 || stale || config.gitToken) return response;
   }
+  throw new CodeProblem("Kimono Git refused Code's token.", 502);
+}
+
+async function get<T>(config: CodeConfig, path: string): Promise<T> {
+  const response = await send(config, path, { timeout: 15_000 });
   if (response.status === 401 || response.status === 403) throw new CodeProblem("Kimono Git refused Code's token.", 502);
   if (response.status === 404) throw new CodeProblem("That repository isn't in Kimono Git.", 404);
   if (!response.ok) throw new CodeProblem("Kimono Git couldn't answer that.", 502);
@@ -53,17 +66,11 @@ export function repositoryName(input: string) {
 export async function createRepository(config: CodeConfig, title: string): Promise<Repository> {
   const name = repositoryName(title);
   if (!name) throw new CodeProblem("Give the project a name.");
-  let response: Response;
-  try {
-    response = await fetch(`${config.gitAddress}/api/v1/user/repos`, {
-      method: "POST",
-      headers: { Authorization: `token ${config.gitToken}`, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ name, description: title.trim().slice(0, 200), private: true, auto_init: true, default_branch: "main", readme: "Default" }),
-      signal: AbortSignal.timeout(20_000),
-    });
-  } catch {
-    throw new CodeProblem("Kimono Git isn't answering.", 502);
-  }
+  const response = await send(config, "/user/repos", {
+    method: "POST",
+    body: JSON.stringify({ name, description: title.trim().slice(0, 200), private: true, auto_init: true, default_branch: "main", readme: "Default" }),
+    timeout: 20_000,
+  });
   if (response.status === 409) throw new CodeProblem("There's already a project with that name.", 409);
   if (response.status === 401 || response.status === 403) throw new CodeProblem("Kimono Git refused Code's token.", 502);
   if (!response.ok) throw new CodeProblem("Kimono Git couldn't make that project.", 502);

@@ -341,3 +341,23 @@ func TestRenderComposeAttachesToTheApplianceEdgeNetwork(t *testing.T) {
 		t.Fatal("the edge network is still being created by this project")
 	}
 }
+
+func TestValidateConfinesBootstrapsToThePlansOwnServicesAndScripts(t *testing.T) {
+	plan := validPlan()
+	plan.Files = map[string]string{"apps/outline-bootstrap.sh": "#!/bin/sh\n", "generated/caddy-sites": ""}
+	plan.Bootstraps = []Bootstrap{{Service: "outline-web", User: "node", File: "apps/outline-bootstrap.sh"}}
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("expected a bootstrap into a planned service to validate: %v", err)
+	}
+	for name, bootstrap := range map[string]Bootstrap{
+		"unknown service":   {Service: "elsewhere", File: "apps/outline-bootstrap.sh"},
+		"bad user":          {Service: "outline-web", User: "root; rm", File: "apps/outline-bootstrap.sh"},
+		"ungenerated file":  {Service: "outline-web", File: "apps/missing.sh"},
+		"not an app script": {Service: "outline-web", File: "generated/caddy-sites"},
+	} {
+		plan.Bootstraps = []Bootstrap{bootstrap}
+		if err := plan.Validate(); err == nil {
+			t.Errorf("%s: expected validation to fail", name)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -49,6 +50,9 @@ type Status struct {
 }
 
 type Reconciler struct {
+	// retry asks Watch to apply again soon although the pass succeeded: an
+	// app's own setup could not run yet.
+	retry  bool
 	Idle   func(context.Context) error
 	Runner *system.Runner
 	Paths  Paths
@@ -133,6 +137,11 @@ func (r *Reconciler) Apply() error {
 	// were removed inside Authentik. Failures are reported because sign-in
 	// depends on them.
 	failed = append(failed, r.applyIdentityBlueprints(rendered.Blueprints)...)
+	// After sign-in is registered, because an app's setup may point at it. An
+	// app that is still starting is tried again on the retry interval.
+	bootstraps := r.runBootstraps(plan)
+	r.retry = len(bootstraps) > 0
+	failed = append(failed, bootstraps...)
 	if rendered.MeshChanged {
 		// Who may reach whom depends on this, so a failure is reported.
 		if err := r.applyMeshPolicy(); err != nil {
@@ -248,12 +257,41 @@ func (r *Reconciler) restartStaleServices(plan Plan, changed []string) []string 
 	return failed
 }
 
-func (r *Reconciler) compose(args ...string) error {
-	return r.Runner.Run("docker", append([]string{"compose",
+// runBootstraps pipes each app's setup script into its running service. The
+// script travels on standard input so its secrets never appear in a command line.
+func (r *Reconciler) runBootstraps(plan Plan) []string {
+	var failed []string
+	for _, bootstrap := range plan.Bootstraps {
+		script, err := os.ReadFile(filepath.Join(r.Paths.Layout.ProjectDir, bootstrap.File))
+		if err != nil {
+			failed = append(failed, fmt.Sprintf("%s setup: %s", bootstrap.Service, err))
+			continue
+		}
+		args := []string{"exec", "-T"}
+		if bootstrap.User != "" {
+			args = append(args, "--user", bootstrap.User)
+		}
+		args = append(args, bootstrap.Service, "sh", "-s")
+		runner := *r.Runner
+		runner.Stdin = bytes.NewReader(script)
+		output, err := runner.OutputCombined("docker", r.composeArgs(args...)...)
+		if err != nil {
+			failed = append(failed, fmt.Sprintf("%s setup: %s", bootstrap.Service, lastMeaningfulLine(string(output))))
+		}
+	}
+	return failed
+}
+
+func (r *Reconciler) composeArgs(args ...string) []string {
+	return append([]string{"compose",
 		"--project-name", ProjectName,
 		"--project-directory", r.Paths.Layout.ProjectDir,
 		"--env-file", r.Paths.Layout.EnvironmentPath(),
-		"-f", r.Paths.Layout.ComposePath()}, args...)...)
+		"-f", r.Paths.Layout.ComposePath()}, args...)
+}
+
+func (r *Reconciler) compose(args ...string) error {
+	return r.Runner.Run("docker", r.composeArgs(args...)...)
 }
 
 func (r *Reconciler) composeUp() error {

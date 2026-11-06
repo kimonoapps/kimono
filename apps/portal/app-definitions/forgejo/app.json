@@ -61,15 +61,36 @@
         "FORGEJO__oauth2_client__OPENID_CONNECT_SCOPES": "openid profile email"
       }
     },
-    "manualSetup": {
-      "title": "Finish in Forgejo",
-      "description": "Kimono runs Forgejo and registers its Kimono identity client. Add that client as an OpenID Connect authentication source in Forgejo before signing in with Kimono.",
-      "steps": [
-        "On the server, create the first administrator: sudo docker exec -u git kimono-apps-<app>-web-1 forgejo admin user create --admin --username <name> --email <email> --random-password",
-        "Sign in to Forgejo as that administrator and change the generated password.",
-        "As an administrator, open Site Administration → Authentication Sources and add an OpenID Connect source named Kimono.",
-        "Use the Kimono client ID and secret from the generated deployment files, and use the Kimono identity discovery URL shown in the deployment configuration.",
-        "Keep local administrator sign-in enabled as a recovery path for identity outages."
+    "bootstrap": {
+      "service": "web",
+      "user": "git",
+      "environment": {
+        "KIMONO_ADMIN_USER": "kimono-ai",
+        "KIMONO_ADMIN_EMAIL": "kimono-ai@{{hostname}}",
+        "KIMONO_ADMIN_PASSWORD": "{{secret.ADMIN_PASSWORD}}",
+        "KIMONO_OIDC_CLIENT_ID": "{{oidc.clientId}}",
+        "KIMONO_OIDC_CLIENT_SECRET": "{{oidc.clientSecret}}",
+        "KIMONO_OIDC_DISCOVERY": "{{oidc.issuer}}.well-known/openid-configuration"
+      },
+      "script": [
+        "# Wait for the server: the command line must not race its first start.",
+        "tries=0",
+        "until wget -q -O /dev/null http://localhost:3000/api/healthz; do",
+        "  tries=$((tries + 1))",
+        "  if [ \"$tries\" -ge 30 ]; then echo 'Forgejo is still starting.' >&2; exit 75; fi",
+        "  sleep 2",
+        "done",
+        "# Kimono's own administrator, which Kimono AI works as.",
+        "if forgejo admin user list --admin | awk 'NR > 1 { print $2 }' | grep -qx \"$KIMONO_ADMIN_USER\"; then",
+        "  forgejo admin user change-password --username \"$KIMONO_ADMIN_USER\" --password \"$KIMONO_ADMIN_PASSWORD\" --must-change-password=false >/dev/null",
+        "else",
+        "  forgejo admin user create --admin --username \"$KIMONO_ADMIN_USER\" --email \"$KIMONO_ADMIN_EMAIL\" --password \"$KIMONO_ADMIN_PASSWORD\" --must-change-password=false >/dev/null",
+        "fi",
+        "# Sign in with Kimono, once Kimono has registered Forgejo with its identity provider.",
+        "[ -n \"$KIMONO_OIDC_CLIENT_ID\" ] || exit 0",
+        "source_id=$(forgejo admin auth list | awk -F '\\t' '$2 == \"Kimono\" { print $1 }')",
+        "set -- --name Kimono --provider openidConnect --key \"$KIMONO_OIDC_CLIENT_ID\" --secret \"$KIMONO_OIDC_CLIENT_SECRET\" --auto-discover-url \"$KIMONO_OIDC_DISCOVERY\" --scopes openid --scopes profile --scopes email",
+        "if [ -z \"$source_id\" ]; then forgejo admin auth add-oauth \"$@\"; else forgejo admin auth update-oauth --id \"$source_id\" \"$@\"; fi"
       ]
     },
     "configuration": [

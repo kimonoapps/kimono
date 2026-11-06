@@ -346,8 +346,15 @@ and fill in:
 | --- | --- |
 | Sandbox node | the address `enable` printed, e.g. `http://100.64.0.7:7480` |
 | Node key | the key `enable` printed |
-| Kimono Git token | a Kimono Git access token with repository read and write |
+| Kimono Git token | leave empty to use Kimono's own Kimono Git; set it only for another Forgejo |
 | Claude token | an Anthropic API key, or what `claude setup-token` prints |
+
+Kimono sets up its own Kimono Git: after each deploy the reconciler runs the
+app's setup script inside Forgejo, which makes Kimono's administrator
+(`kimono-ai`, with a password only the Portal holds) and the Kimono sign-in
+source. With no token entered, the Portal mints one from that account the first
+time a project needs it and keeps it with its other secrets, so new projects
+belong to `kimono-ai`.
 
 Code then appears at `/code` for administrators. The tokens go to the node with
 each ensure and live only in its memory; no sandbox ever holds them.
