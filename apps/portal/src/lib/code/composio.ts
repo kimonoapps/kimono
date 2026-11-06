@@ -290,6 +290,9 @@ const spends = new Map<string, { from: number; spent: number; at: number; charge
 
 type ExecutionLog = { timestamp?: string; metadata?: { credential_source?: string; instant_charge?: string } };
 
+/** The key can't read Composio's execution logs (it needs "observability" read): spending can't be counted. */
+export class SpendUnreadable extends Error {}
+
 /**
  * What a person's Instant tools cost since `from`, in US dollars, from
  * Composio's execution logs (by their Composio user, so it spans every session
@@ -308,6 +311,7 @@ export async function instantSpent(key: string, username: string, origin: string
       method: "POST",
       body: JSON.stringify({ limit: 100, cursor, filters: [{ field: "user_id", operator: "==", value: composioUser(username, origin) }], time_range: { from, to: now } }),
     }).catch(() => null);
+    if (response?.status === 401 || response?.status === 403) throw new SpendUnreadable(`Composio refused to show the execution logs (${response.status}): give the API key "observability" read access`);
     if (!response?.ok) return cached?.from === from ? cached.spent : null;
     const answer = (await response.json()) as { logs?: ExecutionLog[]; next_cursor?: string | null };
     for (const log of answer.logs ?? []) {

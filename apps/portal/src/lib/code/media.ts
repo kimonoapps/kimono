@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { CodeConfig } from "./config";
-import { connections, instantCharges, instantOpen, instantSpent, instantToolkit, setInstant } from "./composio";
+import { connections, instantCharges, instantOpen, instantSpent, instantToolkit, setInstant, SpendUnreadable } from "./composio";
 
 /*
  * Each person's monthly allowance for paid tools: Composio's Instant tools
@@ -12,7 +12,8 @@ import { connections, instantCharges, instantOpen, instantSpent, instantToolkit,
  * little, so the last call or two of a month can go slightly over.
  */
 
-export type MediaAllowance = { budget: number; spent: number | null; resetsAt: number; open: boolean };
+/** unreadable: the key can't see what was spent, so Pro Tools stay closed until it can. */
+export type MediaAllowance = { budget: number; spent: number | null; resetsAt: number; open: boolean; unreadable?: boolean };
 
 /** This calendar month (UTC): when it began, and when the next one does. */
 export function monthOf(now: number) {
@@ -31,11 +32,20 @@ export async function holdMediaBudget(db: DatabaseSync, config: CodeConfig, user
   const was = instantOpen(db, username);
   if (was === null) return null;
   const { from, resetsAt } = monthOf(now);
-  const spent = config.mediaBudget > 0 ? await instantSpent(config.composioKey, username, origin, from, now, fresh) : null;
-  /* When the logs can't be read, it stays as it was. */
-  const open = config.mediaBudget > 0 && (spent === null ? was : spent < config.mediaBudget);
+  let spent: number | null = null, unreadable = false;
+  if (config.mediaBudget > 0) {
+    try { spent = await instantSpent(config.composioKey, username, origin, from, now, fresh); }
+    catch (error) {
+      if (!(error instanceof SpendUnreadable)) throw error;
+      /* Never spend what can't be counted: closed until the key may read the logs. */
+      unreadable = true;
+      console.warn(`Kimono AI's Pro Tools are off: ${error.message}`);
+    }
+  }
+  /* When the logs can't be reached for a moment, it stays as it was. */
+  const open = config.mediaBudget > 0 && !unreadable && (spent === null ? was : spent < config.mediaBudget);
   if (open !== was) await setInstant(db, config.composioKey, username, open);
-  const allowance = { budget: config.mediaBudget, spent, resetsAt, open: instantOpen(db, username) ?? open };
+  const allowance = { budget: config.mediaBudget, spent, resetsAt, open: instantOpen(db, username) ?? open, unreadable };
   last.set(username, allowance);
   return allowance;
 }
@@ -77,6 +87,7 @@ const dayOf = (at: number) => new Date(at).toLocaleDateString("en", { month: "lo
 /** What the agent is told this turn about the Pro Tools allowance; nothing when there's none. */
 export function mediaNote(allowance: MediaAllowance | null): string {
   if (!allowance || allowance.budget <= 0) return "";
+  if (allowance.unreadable) return "Pro Tools (tools that need no account of the person's) aren't available right now. Don't use them or ask the person to connect one for this: say they're unavailable, and use what's here instead.";
   if (!allowance.open) {
     return `This person's Pro Tools allowance for the month (${dollars(allowance.budget)}) is used up, and comes back on ${dayOf(allowance.resetsAt)}. Pro Tools (voice, video, pictures, web search and the like) now work only through an account the person connected themselves: don't ask them to connect one for this. Say it's used up and when it returns, and offer an artifact where one would do.`;
   }

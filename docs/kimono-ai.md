@@ -122,6 +122,10 @@ anything. Instant has to be switched on in the Composio project's settings.
   each turn and again, at most every 15 seconds, after each of their tool calls
   during one. Composio then refuses Instant itself, whatever the agent tries.
   The logs lag a little, so the last call of a month can go slightly over.
+  The key must be allowed to read the logs ("observability" read on a scoped
+  key). If Composio refuses (401/403), Kimono can't count spending, so it
+  closes Instant on the session and tells the agent Pro Tools are unavailable,
+  rather than leaving them uncapped.
   Accounts the person connected themselves still work.
 - The agent is told each turn what's left, or that it's used up and when it
   returns. The usage panel (web and phone) shows "⚡ Pro Tools".

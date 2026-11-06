@@ -61,6 +61,7 @@ async function fakeComposio() {
       }
       if (req.method === 'POST' && req.url === '/logs/tool_execution') {
         if (state.logsDown) { res.writeHead(503); return res.end(); }
+        if (state.logsForbidden) { res.writeHead(403, { 'Content-Type': 'application/json' }); return res.end('{"error":{"slug":"APIKey_InsufficientPermissions"}}'); }
         const { filters, time_range: range, cursor, limit } = calls.at(-1).body;
         const user = filters.find((f) => f.field === 'user_id').value;
         const found = logs.filter((l) => l.user === user && l.at >= range.from && l.at <= range.to);
@@ -289,5 +290,22 @@ test('a call ran as a Pro Tool when the app has Instant, the person never connec
     await media.holdMediaBudget(db, settings(10), 'mina', origin, dec + 2 * 60_000);
     assert.equal(await media.ranAsPro(db, settings(10), 'mina', origin, 'elevenlabs', dec + 3 * 60_000), false, 'spent: Instant is off');
     assert.equal(await media.ranAsPro(db, settings(10), 'sam', origin, 'elevenlabs', at), false, 'no session, nothing to tell');
+  } finally { composio.close(); }
+});
+
+test('media allowance: a key that may not read the logs closes Pro Tools, rather than leaving them uncapped', async () => {
+  const composio = await fakeComposio();
+  try {
+    const db = fresh();
+    await toolSession(db, 'key-a', 'kai', origin, month);
+    composio.state.logsForbidden = true;
+    const closed = await media.holdMediaBudget(db, settings(10), 'kai', origin, month + 1);
+    assert.equal(closed.open, false);
+    assert.equal(closed.unreadable, true);
+    assert.deepEqual(composio.calls.at(-1).body, { instant: false }, 'Instant switched off on the session');
+    assert.match(media.mediaNote(closed), /aren't available right now/);
+    composio.state.logsForbidden = false;
+    const back = await media.holdMediaBudget(db, settings(10), 'kai', origin, month + 2 * 60_000);
+    assert.equal(back.open, true, 'once the key may read them, Pro Tools open again');
   } finally { composio.close(); }
 });

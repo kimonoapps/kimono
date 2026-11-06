@@ -58,7 +58,7 @@
         "kind": "secret",
         "group": "agent",
         "target": "settings",
-        "description": "Optional. Lets it use people's own apps, such as Gmail or Calendar, once they connect them."
+        "description": "Optional. Lets it use people's own apps, such as Gmail or Calendar, once they connect them, and Pro Tools. A scoped key needs observability read access, or Pro Tools stay off."
       },
       {
         "key": "git_address",
