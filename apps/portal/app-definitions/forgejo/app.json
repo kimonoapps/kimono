@@ -51,7 +51,10 @@
           "FORGEJO__oauth2_client__ACCOUNT_LINKING": "auto",
           "FORGEJO__other__SHOW_FOOTER_VERSION": "false",
           "FORGEJO__other__SHOW_FOOTER_TEMPLATE_LOAD_TIME": "false",
-          "FORGEJO__other__SHOW_FOOTER_POWERED_BY": "false"
+          "FORGEJO__other__SHOW_FOOTER_POWERED_BY": "false",
+          "FORGEJO__ui__THEMES": "kimono",
+          "FORGEJO__ui__DEFAULT_THEME": "kimono",
+          "FORGEJO__api__ENABLE_SWAGGER": "false"
         }
       }
     ],
@@ -107,8 +110,12 @@
       ],
       "files": {
         "/data/gitea/public/assets/img/logo.svg": "logo.svg",
-        "/data/gitea/public/assets/img/favicon.svg": "logo.svg",
-        "/data/gitea/public/assets/img/kimono-sign-in.svg": "kimono-sign-in.svg"
+        "/data/gitea/public/assets/img/logo.png": "logo.png",
+        "/data/gitea/public/assets/img/favicon.svg": "kimono-sign-in.svg",
+        "/data/gitea/public/assets/img/favicon.png": "favicon.png",
+        "/data/gitea/public/assets/img/apple-touch-icon.png": "apple-touch-icon.png",
+        "/data/gitea/public/assets/img/kimono-sign-in.svg": "kimono-sign-in.svg",
+        "/data/gitea/public/assets/css/theme-kimono.css": "theme-kimono.css"
       }
     },
     "configuration": [
@@ -180,7 +187,10 @@
       "FORGEJO__oauth2_client__ACCOUNT_LINKING",
       "FORGEJO__other__SHOW_FOOTER_VERSION",
       "FORGEJO__other__SHOW_FOOTER_TEMPLATE_LOAD_TIME",
-      "FORGEJO__other__SHOW_FOOTER_POWERED_BY"
+      "FORGEJO__other__SHOW_FOOTER_POWERED_BY",
+      "FORGEJO__ui__THEMES",
+      "FORGEJO__ui__DEFAULT_THEME",
+      "FORGEJO__api__ENABLE_SWAGGER"
     ],
     "defaultNetworkPolicy": {
       "internetAccess": true,

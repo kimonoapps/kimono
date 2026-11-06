@@ -70,10 +70,10 @@ export type Bootstrap = {
   user?: string;
   environment: Record<string, string>;
   script: string[];
-  /** Container path → a text file beside app.json, written into place ahead of the script. */
+  /** Container path → a small file beside app.json (text, or a PNG/ICO image), written into place ahead of the script. */
   files?: Record<string, string>;
-  /** The contents of `files`, read when the definition is loaded. */
-  fileContents?: Record<string, string>;
+  /** The contents of `files`, read when the definition is loaded; images travel as base64. */
+  fileContents?: Record<string, { contents: string; base64: boolean }>;
 };
 
 export type AppDefinition = {
@@ -214,9 +214,15 @@ async function loadBootstrapFiles(definition: AppDefinition, directory: string) 
   if (!bootstrap?.files) return;
   bootstrap.fileContents = {};
   for (const [path, file] of Object.entries(bootstrap.files)) {
+    if (/\.(?:png|ico)$/i.test(file)) {
+      const image = await readFile(join(directory, file));
+      if (image.length > 128 * 1024) throw new Error(`spec.bootstrap.files: ${file} must be a small image`);
+      bootstrap.fileContents[path] = { contents: image.toString("base64").replace(/.{76}/g, "$&\n"), base64: true };
+      continue;
+    }
     const contents = await readFile(join(directory, file), "utf8");
     if (contents.length > 256 * 1024 || contents.includes("\0") || /^KIMONO_FILE$/m.test(contents) || contents.includes("${KIMONO_SECRET_")) throw new Error(`spec.bootstrap.files: ${file} must be a small text file`);
-    bootstrap.fileContents[path] = contents;
+    bootstrap.fileContents[path] = { contents, base64: false };
   }
 }
 

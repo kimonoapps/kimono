@@ -1,11 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <rect width="100" height="100" rx="22" fill="#8a6a4a"/>
-  <g transform="translate(15 15) scale(0.7)">
-    <path d="M30 29v42M70 29v10c0 15-40 10-40 26" stroke="#fffdf8" stroke-width="7" stroke-linecap="round"/>
-    <g fill="#3f3027" stroke="#fffdf8" stroke-width="7">
-      <circle cx="30" cy="20" r="9"/>
-      <circle cx="70" cy="20" r="9"/>
-      <circle cx="30" cy="80" r="9"/>
-    </g>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="1 12 111 106" fill="#4e2b37">
+<path d="M2 108 C26 98 43 84 55 66 C62 55 71 47 79 43 L81 47 C73 51 66 60 59 72 C47 90 30 106 6 116Z"/>
+<path d="M56 69 C55 61 52 54 47 47 L50 44 C56 51 59 59 59.5 66Z"/>
+<path d="M27 97 C40 96 51 100 58 108 L55 111 C49 104 39 100 27 100Z"/>
+<g transform="translate(83 41) scale(.55) translate(-50 -50)"><path transform="rotate(0 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/><path transform="rotate(72 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/><path transform="rotate(144 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/><path transform="rotate(216 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/><path transform="rotate(288 50 50)" d="M50 48 C36 39 31 21 41 9 C45 4 50 2 50 2 C55 4 59 7 62 11 C69 22 63 39 50 48Z"/><circle cx="50" cy="50" r="13"/></g>
 </svg>

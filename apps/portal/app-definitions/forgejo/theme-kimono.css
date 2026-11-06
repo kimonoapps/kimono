@@ -1,0 +1,111 @@
+/* Kimono Git's only theme: Forgejo's light theme in Kimono's paper, ink and plum. */
+@import "./theme-forgejo-light.css";
+
+:root {
+  /* warm paper and ink in place of Forgejo's grey */
+  --zinc-50: #fcf6f2;
+  --zinc-100: #f7eee8;
+  --zinc-150: #f1e8e2;
+  --zinc-200: #ebe2dc;
+  --zinc-250: #e3d6cf;
+  --zinc-300: #d9c2bc;
+  --zinc-350: #c4aca5;
+  --zinc-400: #a8938c;
+  --zinc-450: #927d77;
+  --zinc-500: #7a6862;
+  --zinc-550: #685752;
+  --zinc-600: #5c4b46;
+  --zinc-650: #54443f;
+  --zinc-700: #473834;
+  --zinc-750: #3a2d2a;
+  --zinc-800: #2f2421;
+  --zinc-850: #281f1c;
+  --zinc-900: #221a17;
+
+  /* Kimono's plum-rose */
+  --color-primary: #a84d63;
+  --color-primary-contrast: #ffffff;
+  --color-primary-dark-1: #9a4559;
+  --color-primary-dark-2: #8c3e51;
+  --color-primary-dark-3: #7e3448;
+  --color-primary-dark-4: #6a2b3d;
+  --color-primary-dark-5: #5c2535;
+  --color-primary-dark-6: #4e2b37;
+  --color-primary-dark-7: #4e2b37;
+  --color-primary-light-1: #b45d72;
+  --color-primary-light-2: #c06f83;
+  --color-primary-light-3: #cd8798;
+  --color-primary-light-4: #dba3b1;
+  --color-primary-light-5: #e9c1cb;
+  --color-primary-light-6: #f6e0e5;
+  --color-primary-light-7: #fdf1f3;
+  --color-primary-alpha-10: #a84d6319;
+  --color-primary-alpha-20: #a84d6333;
+  --color-primary-alpha-30: #a84d634b;
+  --color-primary-alpha-40: #a84d6366;
+  --color-primary-alpha-50: #a84d6380;
+  --color-primary-alpha-60: #a84d6399;
+  --color-primary-alpha-70: #a84d63b3;
+  --color-primary-alpha-80: #a84d63cc;
+  --color-primary-alpha-90: #a84d63e1;
+  --color-secondary-alpha-10: #d9c2bc19;
+  --color-secondary-alpha-20: #d9c2bc33;
+  --color-secondary-alpha-30: #d9c2bc4b;
+  --color-secondary-alpha-40: #d9c2bc66;
+  --color-secondary-alpha-50: #d9c2bc80;
+  --color-secondary-alpha-60: #d9c2bc99;
+  --color-secondary-alpha-70: #d9c2bcb3;
+  --color-secondary-alpha-80: #d9c2bccc;
+  --color-secondary-alpha-90: #d9c2bce1;
+
+  --color-body: #fffbf7;
+  --color-text-dark: #221a17;
+  --color-input-background: #ffffff;
+  --color-header-wrapper: #fcf4ef;
+  --color-header-wrapper-transparent: #fcf4ef00;
+  --color-nav-bg: #fcf4ef;
+  --color-nav-hover-bg: #f1e8e2;
+  --color-footer: #fcf4ef;
+  --color-hover: #ebe2dcaa;
+  --color-active: #ebe2dc;
+  --color-light-border: #4e2b371d;
+  --color-label-bg: #d9c2bc7b;
+  --color-label-hover-bg: #d9c2bca0;
+  --color-label-active-bg: #d9c2bc;
+  --color-label-bg-alt: #d9c2bc;
+  --color-reaction-bg: #4e2b370a;
+  --color-tooltip-bg: #2a1d22f0;
+  --color-overlay-backdrop: #2a1d22c0;
+  --color-selection-bg: #a84d63;
+  --color-accent: var(--color-primary);
+  --color-small-accent: var(--color-primary-light-6);
+  --color-console-bg: #2a1d22;
+  --color-console-fg: #f3e9e0;
+  --color-console-fg-subtle: #a8969c;
+  --color-console-border: #4e2b37;
+  --color-console-menu-bg: #3a2a30;
+  --color-console-active-bg: #4e2b37;
+  --color-indicator-active: #a84d63;
+  --color-indicator-active-20: #a84d6333;
+  --checkerboard-color-2: #f1e8e2;
+}
+
+/* Links out to Forgejo's own website and docs: help, "learn more", the
+   licenses list and the like. Kimono Git has no help pages of its own yet. */
+a[href*="forgejo.org"],
+a[href*="codeberg.org"],
+a[href$="/assets/licenses.txt"],
+li:has(> a[href*="forgejo.org"]),
+div:has(> a[href*="/contributor/localization"]) {
+  display: none !important;
+}
+
+/* This is the only theme, so there is nothing to choose. */
+.user-setting-content > h4:has(+ .segment form[action$="/appearance/theme"]),
+.user-setting-content > .segment:has(form[action$="/appearance/theme"]) {
+  display: none;
+}
+
+#navbar {
+  border-bottom: 1px solid var(--color-secondary);
+}
