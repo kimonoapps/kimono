@@ -483,7 +483,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   /* In the Code space, the top level holds projects and each project its tasks. */
   const codeRole = (node: DriveNode) => !space.code || node.kind !== "folder" || found ? undefined
     : (folder?.path.length ?? 0) === 0 ? "project" as const : (folder?.path.length ?? 0) === 1 ? "task" as const : undefined;
-  const subtitle = (node: DriveNode) => node.kind === "folder" ? codeRole(node) === "project" ? "Project" : codeRole(node) === "task" ? "Task" : "Folder"
+  const subtitle = (node: DriveNode) => node.kind === "folder" ? codeRole(node) === "project" ? "Project" : codeRole(node) === "task" ? "Chat" : "Folder"
     : `${extension(node.name)}${!token && node.guest ? ` · added by ${node.guest}` : ""}`;
 
   return <section className="dv-sheet"

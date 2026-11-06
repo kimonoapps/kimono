@@ -990,7 +990,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
    On the page's paper, every surface in Kimono AI (the message box, cards, the
    new-chat box, menus) sits a step darker, as M3's light scheme has it; none is
    lighter than the page. The chosen chat in the list takes the darkest beige. */
-.cd-page { --k-container-lowest: var(--k-container); }
+.cd-page { --k-container-lowest: var(--k-container-low); }
 .cd-side .cd-list button[aria-current] { background: var(--k-container-highest); }
 .cd-side .cd-list button:hover:not([aria-current]) { background: var(--k-container-high); }
 .call .ci.is-mark, .cd-conn-logo, .cd-access-mark { background: var(--k-container-high); box-shadow: none; }

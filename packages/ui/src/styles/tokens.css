@@ -67,15 +67,18 @@
   /* ── Material 3 roles, the same scheme as the phone app (Kata.kt) ──
      ADR 0006: tonal surfaces carry hierarchy, suō may fill a container.
      Every role stays in the suō, plum and moss family. */
-  --k-surface: #fffbf7;
-  --k-container-lowest: #ffffff;
-  --k-container-low: #fcf4ef;
-  --k-container: #f7eee8;
-  --k-container-high: #f1e8e2;
-  --k-container-highest: #ebe2dc;
-  --k-on-surface: #221a17;
-  --k-on-surface-variant: #54443f;
-  --k-outline-variant: #d9c2bc;
+  /* Neutrals are Kimono's beige paper, not pink: the page is paper-0 and every
+     container a step darker in the same warm hue, so nothing sits lighter than
+     the page and the app's own colour never fights a pink ground. */
+  --k-surface: var(--k-paper-0);
+  --k-container-lowest: var(--k-paper-0);
+  --k-container-low: var(--k-paper-1);
+  --k-container: #f2ebe0;
+  --k-container-high: #ede5d8;
+  --k-container-highest: #e7decf;
+  --k-on-surface: #221d18;
+  --k-on-surface-variant: #54493f;
+  --k-outline-variant: #d6cbb9;
   --k-primary-container: #ffd9df;
   --k-on-primary-container: var(--k-suo-deep);
   --k-secondary-container: #f6e0e2;
