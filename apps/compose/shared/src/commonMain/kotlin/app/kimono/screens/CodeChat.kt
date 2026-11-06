@@ -462,7 +462,9 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                 item(key = "draft") { drafts.text?.let { Box(Modifier.alpha(.75f)) { Markdown(it) } } }
                 item(key = "tail") {
                     when {
-                        w.running -> Working(code, marks, w.turn?.startedAt, drafts.now, artifact = drafts.artifacts.isNotEmpty())
+                        /* Not while the reply's own words are coming in: those show it's working. */
+                        w.running && (drafts.text.isNullOrBlank() && drafts.now?.phase != "writing") -> Working(code, marks, w.turn?.startedAt, drafts.now, artifact = drafts.artifacts.isNotEmpty())
+                        w.running -> Spacer(Modifier.size(1.dp))
                         w.preview != null && !w.preview.stopped && items.lastOrNull() !is Item.Ask -> PreviewCard(code, platform, w, w.preview.url, ready = true)
                         else -> Spacer(Modifier.size(1.dp))
                     }
