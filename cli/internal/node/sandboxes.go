@@ -31,6 +31,9 @@ const (
 	previewsListen    = "127.0.0.1:7482"
 	// cloudflaredImage runs the previews tunnel; pinned like everything else.
 	cloudflaredImage = "cloudflare/cloudflared:2024.11.1"
+	// cloudflaredUser is who that image runs as (its "nonroot" user): the
+	// tunnel's folder is theirs, and only theirs, so it can read its settings.
+	cloudflaredUser = 65532
 )
 
 const sandboxesUsage = "usage: kimono node sandboxes <enable|update|serve|status|disable>"
@@ -194,6 +197,9 @@ func (m *Manager) setupPreviews(domain string) error {
 	if err := os.WriteFile(filepath.Join(previewsDir, "config.yml"), []byte(previewsTunnelConfig(id)), 0600); err != nil {
 		return err
 	}
+	if err := ownPreviews(); err != nil {
+		return err
+	}
 	wildcard := "*." + domain
 	if err := m.Runner.Run("cloudflared", "tunnel", "--origincert", certificate, "route", "dns", id, wildcard); err != nil {
 		return fmt.Errorf("point %s at the previews tunnel: %w (if a %s record already exists, remove it in Cloudflare and run this again)", wildcard, err, wildcard)
@@ -207,6 +213,34 @@ func (m *Manager) setupPreviews(domain string) error {
 	// listens nowhere else.
 	return m.Runner.Run("docker", "run", "-d", "--name", previewsTunnel, "--restart", "unless-stopped", "--network", "host",
 		"-v", previewsDir+":/etc/cloudflared:ro", cloudflaredImage, "tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run")
+}
+
+// ownPreviews hands the previews tunnel's folder to the user the cloudflared
+// image runs as. Kept root's, the tunnel can't read its own settings and
+// restarts forever (Cloudflare then answers every preview with error 1033).
+func ownPreviews() error {
+	return filepath.WalkDir(previewsDir, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chown(path, cloudflaredUser, cloudflaredUser)
+	})
+}
+
+// repairPreviews mends a previews tunnel set up before ownPreviews existed: it
+// takes its folder, and starts again if it was stuck restarting.
+func (m *Manager) repairPreviews() error {
+	if _, err := os.Stat(previewsDir); err != nil {
+		return nil
+	}
+	if err := ownPreviews(); err != nil {
+		return err
+	}
+	if _, err := m.Runner.Output("docker", "inspect", previewsTunnel); err != nil {
+		return nil
+	}
+	_, _ = fmt.Fprintln(m.Runner.Stdout, "Restarting the previews tunnel…")
+	return m.Runner.Run("docker", "restart", previewsTunnel)
 }
 
 // previewsTunnelConfig sends every hostname the tunnel receives to the preview proxy.
@@ -326,7 +360,8 @@ func readSandboxesUnit(unit string) (sandboxesSettings, error) {
 // sandboxesUpdate brings an enabled node up to this release: the sandbox image
 // this build expects, run by this kimono binary, on the address and preview
 // domain it was set up with. Nothing else is set up again: gVisor, Docker,
-// the node key and the previews tunnel stay as they are. Sandboxes keep their
+// the node key and the previews tunnel stay as they are (the tunnel's folder
+// is only handed to its user, and the tunnel restarted, see repairPreviews). Sandboxes keep their
 // containers; the service picks them up again when it restarts.
 func (m *Manager) sandboxesUpdate(args []string) error {
 	if len(args) > 0 {
@@ -363,6 +398,11 @@ func (m *Manager) sandboxesUpdate(args []string) error {
 	for _, step := range [][]string{{"daemon-reload"}, {"restart", "kimono-sandboxes"}} {
 		if err := m.Runner.Run("systemctl", step...); err != nil {
 			return err
+		}
+	}
+	if settings.previewDomain != "" {
+		if err := m.repairPreviews(); err != nil {
+			return fmt.Errorf("sandboxes updated, but the previews tunnel: %w", err)
 		}
 	}
 	_, _ = fmt.Fprintf(m.Runner.Stdout, "Sandboxes updated: %s on %s.\n", image, settings.listen)
