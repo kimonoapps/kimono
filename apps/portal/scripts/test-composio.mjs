@@ -54,10 +54,20 @@ async function fakeComposio() {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end('{"success":true}');
       }
+      /* As the real one: a toolkit asked for alone has no Instant information; only the list says, a page at a time. */
       const kit = /^\/toolkits\/([^/?]+)$/.exec(req.url);
       if (req.method === 'GET' && kit) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify({ slug: kit[1], name: kit[1], instant: ['elevenlabs', 'exa', 'gmail'].includes(kit[1]) ? { supported: true } : null }));
+        return res.end(JSON.stringify({ slug: kit[1], name: kit[1], instant: null }));
+      }
+      if (req.method === 'GET' && req.url.startsWith('/toolkits?')) {
+        const second = new URL(req.url, 'http://x').searchParams.get('cursor') === 'p2';
+        const items = second
+          ? [{ slug: 'exa', instant: { supported: true } }, { slug: 'gmail', instant: { supported: true } }]
+          : [{ slug: 'elevenlabs', instant: { supported: true } }, { slug: 'notion', instant: null }];
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        /* a raw control character in a description, as Composio's list has */
+        return res.end(JSON.stringify({ items, next_cursor: second ? null : 'p2' }).replace('"notion"', '"notion","meta":{"description":"Notes\u0001"}'));
       }
       if (req.method === 'POST' && req.url === '/logs/tool_execution') {
         if (state.logsDown) { res.writeHead(503); return res.end(); }

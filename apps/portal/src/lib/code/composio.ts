@@ -359,17 +359,35 @@ export async function setInstant(db: DatabaseSync, key: string, username: string
   return true;
 }
 
-const instantKits = new Map<string, { yes: boolean; at: number }>();
-
 /** Whether a toolkit has any Instant tools, as Composio's catalog says; kept a day. False when it can't be asked. */
 export async function instantToolkit(key: string, raw: string, now = Date.now()): Promise<boolean> {
   const slug = raw.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 60);
   if (!key || !slug) return false;
-  const cached = instantKits.get(slug);
-  if (cached && now - cached.at < day) return cached.yes;
-  const response = await call(key, `/toolkits/${encodeURIComponent(slug)}`).catch(() => null);
-  if (!response?.ok) return cached?.yes ?? false;
-  const yes = ((await response.json()) as { instant?: { supported?: boolean } | null }).instant?.supported === true;
-  instantKits.set(slug, { yes, at: now });
-  return yes;
+  const kits = await instantKitList(key, now);
+  return kits?.has(slug) ?? false;
+}
+
+let instantList: { slugs: Set<string>; at: number; key: string } | null = null;
+
+/**
+ * Every toolkit with Instant tools, from Composio's toolkit list, kept a day. Only the list says: one
+ * toolkit asked for alone comes back with no Instant information at all. Null when it can't be read.
+ */
+async function instantKitList(key: string, now: number): Promise<Set<string> | null> {
+  const hash = hashOf(key);
+  if (instantList && instantList.key === hash && now - instantList.at < day) return instantList.slugs;
+  const slugs = new Set<string>();
+  let cursor: string | null = null;
+  for (let page = 0; page < 20; page++) {
+    const response = await call(key, `/toolkits?limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`).catch(() => null);
+    if (!response?.ok) return instantList?.key === hash ? instantList.slugs : null;
+    /* Some descriptions carry raw control characters, which JSON doesn't allow: blank them first. */
+    const text = (await response.text()).replace(/[\u0000-\u001f]/g, " ");
+    const answer = JSON.parse(text) as { items?: { slug?: string; instant?: { supported?: boolean } | null }[]; next_cursor?: string | null };
+    for (const item of answer.items ?? []) if (item.slug && item.instant?.supported) slugs.add(item.slug.toLowerCase());
+    cursor = answer.next_cursor || null;
+    if (!cursor) break;
+  }
+  instantList = { slugs, at: now, key: hash };
+  return slugs;
 }
