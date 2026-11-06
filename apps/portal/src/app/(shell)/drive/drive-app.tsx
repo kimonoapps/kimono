@@ -151,7 +151,7 @@ export function DriveApp({ me }: { me: Me }) {
     <div className="dv-body" ref={body}>
       <aside className="dv-side">
         {codeSpace ? <div>
-          <div className="dv-side-label">Code</div>
+          <div className="dv-side-label">Kimono AI</div>
           <div className="dv-nav"><SpaceLink space={codeSpace} here={!view && current?.id === codeSpace.id} people={people} onOpen={() => go({ space: codeSpace.id })} /></div>
         </div> : null}
         <div>
@@ -229,14 +229,14 @@ export function GuestDrive({ token, space, mark }: { token: string; space: Share
 
 function Mark({ space, size = "" }: { space: Pick<Space, "mark" | "code">; size?: string }) {
   if (space.code) return <span className={`dv-mark dv-code-mark ${size}`} aria-hidden="true">
-    <AppBloom identity={{ id: "kimono-code", name: "Code", accent: space.code.accent, glyph: "code" }} size="mark" />
+    <AppBloom identity={{ id: "kimono-code", name: "AI", accent: space.code.accent, glyph: "code" }} size="mark" />
   </span>;
   return <span className={`dv-mark mon ${size}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: space.mark ?? "" }} />;
 }
 
 function SpaceLink({ space, here, people, onOpen }: { space: Space; here: boolean; people: Record<string, Person>; onOpen: () => void }) {
   const owner = people[space.createdBy?.toLowerCase()];
-  const meta = space.code ? "Your projects, kept by Code" : space.role === "owner"
+  const meta = space.code ? "Kept by Kimono AI" : space.role === "owner"
     ? space.members === 1 ? "Only you" : `${space.members} people`
     : `${owner?.name.split(" ")[0] ?? space.createdBy}'s · ${space.role === "editor" ? "you edit" : "you view"}`;
   return <button type="button" className="dv-space" aria-current={here ? "page" : undefined} onClick={onOpen}>

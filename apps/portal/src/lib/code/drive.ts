@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import {
   addFile, blobPath, childrenOf, moveNode, createFolder, createSpace, db as driveDb, driveOn, DriveProblem, finishUpload,
-  maxFileBytes, newId as driveId, nodeFor, renameNode, roleIn, root as driveRoot, startReplace, trashNode, typeOf,
+  maxFileBytes, newId as driveId, nodeFor, renameNode, renameSpace, roleIn, root as driveRoot, startReplace, trashNode, typeOf,
   type DriveNode,
 } from "../drive";
 import type { CodeConfig } from "./config";
@@ -43,15 +43,27 @@ function folderIn(parentId: string, owner: string, name: string): DriveNode {
   return found ?? createFolder(db, parentId, owner, name);
 }
 
+/** What the person's Kimono AI space is called in Drive. */
+export const aiSpaceName = "AI";
+/* What it was called before; one still named so takes the new name, one its owner renamed keeps theirs. */
+const formerNames = new Set(["code", "kimono ai"]);
+
+/** Gives the person's Kimono AI space its current name, if it still has a former one. */
+export function nameAiSpace(drive: DatabaseSync, spaceId: string, owner: string) {
+  const row = drive.prepare("SELECT name FROM spaces WHERE id = ?").get(spaceId) as { name: string } | undefined;
+  if (!row || !formerNames.has(row.name.trim().toLowerCase())) return;
+  try { renameSpace(drive, spaceId, owner, { name: aiSpaceName }); } catch { /* not theirs to rename any more */ }
+}
+
 /** The person's Kimono AI space, made the first time and made again if they deleted it or left it. */
 function codeSpace(db: DatabaseSync, owner: string) {
   const drive = driveDb();
   const known = driveSpaceOf(db, owner);
   if (known && roleIn(drive, known, owner) === "owner") {
     const root = drive.prepare("SELECT root_id FROM spaces WHERE id = ?").get(known) as { root_id: string } | undefined;
-    if (root) return { id: known, rootId: root.root_id };
+    if (root) { nameAiSpace(drive, known, owner); return { id: known, rootId: root.root_id }; }
   }
-  const made = createSpace(drive, owner, { name: "Kimono AI", crest: "kikyo", color: "asagi" });
+  const made = createSpace(drive, owner, { name: aiSpaceName, crest: "kikyo", color: "asagi" });
   setDriveSpace(db, owner, made.id);
   return { id: made.id, rootId: made.rootId };
 }
