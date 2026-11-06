@@ -24,6 +24,8 @@ export type Workspace = {
   id: string; owner: string; title: string;
   /** A chat has no project: its repo, base and branch are empty, and it never touches Kimono Git. */
   kind: "chat" | "project";
+  /** The project (a folder of chats) it's in, if any. */
+  folder: { id: string; name: string } | null;
   repo: { owner: string; name: string }; base: string; branch: string;
   session: string | null;
   pullRequest: { url: string; number: number } | null;
@@ -200,6 +202,17 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 11) {
+    /* Projects: folders a person keeps chats in. A chat is in one, or none. */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE projects (id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE INDEX projects_by_owner ON projects (owner);
+      ALTER TABLE workspaces ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '11');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
@@ -250,12 +263,12 @@ export function usageOf(db: DatabaseSync, username: string, now = Date.now()): P
 
 type WorkspaceRow = {
   id: string; owner: string; title: string; repo_owner: string; repo_name: string; base: string; branch: string;
-  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; preview_kind: string | null; preview_stopped: number; drive_folder: string | null; drive_space: string | null; created_at: number; updated_at: number; last_seq: number;
+  session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; preview_kind: string | null; preview_stopped: number; drive_folder: string | null; drive_space: string | null; project_id: string | null; project_name: string | null; created_at: number; updated_at: number; last_seq: number;
   turn_id: string | null; turn_state: TurnState | null; turn_started: number | null; turn_ended: number | null;
 };
 
 const selectWorkspace = `
-  SELECT w.*, (SELECT space_id FROM drive_spaces d WHERE d.owner = w.owner) AS drive_space, t.id AS turn_id, t.state AS turn_state, t.started_at AS turn_started, t.ended_at AS turn_ended
+  SELECT w.*, (SELECT space_id FROM drive_spaces d WHERE d.owner = w.owner) AS drive_space, (SELECT name FROM projects p WHERE p.id = w.project_id) AS project_name, t.id AS turn_id, t.state AS turn_state, t.started_at AS turn_started, t.ended_at AS turn_ended
   FROM workspaces w
   LEFT JOIN turns t ON t.id = (SELECT id FROM turns WHERE workspace_id = w.id ORDER BY started_at DESC LIMIT 1)`;
 
@@ -263,6 +276,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
   return {
     id: row.id, owner: row.owner, title: row.title,
     kind: row.repo_name ? "project" : "chat",
+    folder: row.project_id && row.project_name ? { id: row.project_id, name: row.project_name } : null,
     repo: { owner: row.repo_owner, name: row.repo_name }, base: row.base, branch: row.branch,
     session: row.session,
     pullRequest: row.pr_url && row.pr_number ? { url: row.pr_url, number: row.pr_number } : null,
@@ -290,7 +304,7 @@ export function branchFor(title: string, suffix = newId(2)) {
 }
 
 /** A new chat; with a repository named, a project on it. */
-export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOwner?: unknown; repoName?: unknown; base?: unknown; prompt: unknown }, now = Date.now()): Workspace {
+export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOwner?: unknown; repoName?: unknown; base?: unknown; prompt: unknown; folder?: unknown }, now = Date.now()): Workspace {
   const repoOwner = String(input.repoOwner ?? "");
   const repoName = String(input.repoName ?? "");
   const base = String(input.base ?? "");
@@ -299,10 +313,11 @@ export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOw
   if (project && (!namePattern.test(repoOwner) || !namePattern.test(repoName))) throw new CodeProblem("Choose a repository.");
   if (project && !branchPattern.test(base)) throw new CodeProblem("Choose a branch.");
   if (!prompt) throw new CodeProblem("Say what to do.");
+  const folder = input.folder ? projectFor(db, String(input.folder), owner).id : null;
   const id = newId();
   const title = titleFrom(prompt);
-  db.prepare(`INSERT INTO workspaces (id, owner, title, repo_owner, repo_name, base, branch, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, owner.toLowerCase(), title, repoOwner, repoName, project ? base : "", project ? branchFor(title) : "", now, now);
+  db.prepare(`INSERT INTO workspaces (id, owner, title, repo_owner, repo_name, base, branch, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, owner.toLowerCase(), title, repoOwner, repoName, project ? base : "", project ? branchFor(title) : "", folder, now, now);
   return workspaceFor(db, id, owner);
 }
 
@@ -315,6 +330,58 @@ export function workspaceFor(db: DatabaseSync, id: string, owner: string): Works
 
 export function workspacesOf(db: DatabaseSync, owner: string): Workspace[] {
   return (db.prepare(`${selectWorkspace} WHERE w.owner = ? ORDER BY w.updated_at DESC LIMIT 200`).all(owner.toLowerCase()) as WorkspaceRow[]).map(toWorkspace);
+}
+
+/* ── projects: folders of chats ── */
+
+export type Project = { id: string; name: string; createdAt: number };
+
+const projectName = (raw: unknown) => {
+  const name = String(raw ?? "").replace(/[\u0000-\u001f\u007f/\\]/g, " ").replace(/\s+/g, " ").trim();
+  if (!name || name.length > 60) throw new CodeProblem("Give the project a name of up to 60 characters.");
+  return name;
+};
+
+export function projectsOf(db: DatabaseSync, owner: string): Project[] {
+  return (db.prepare("SELECT id, name, created_at FROM projects WHERE owner = ? ORDER BY lower(name)").all(owner.toLowerCase()) as { id: string; name: string; created_at: number }[])
+    .map((p) => ({ id: p.id, name: p.name, createdAt: p.created_at }));
+}
+
+export function projectFor(db: DatabaseSync, id: string, owner: string): Project {
+  const found = projectsOf(db, owner).find((p) => p.id === id);
+  if (!found) throw new CodeProblem("That project isn't here.", 404);
+  return found;
+}
+
+export function createProject(db: DatabaseSync, owner: string, raw: unknown, now = Date.now()): Project {
+  const name = projectName(raw);
+  if (projectsOf(db, owner).some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new CodeProblem("You already have a project by that name.", 409);
+  const project = { id: newId(), name, createdAt: now };
+  db.prepare("INSERT INTO projects (id, owner, name, created_at) VALUES (?, ?, ?, ?)").run(project.id, owner.toLowerCase(), name, now);
+  return project;
+}
+
+export function renameProject(db: DatabaseSync, id: string, owner: string, raw: unknown): Project {
+  projectFor(db, id, owner);
+  const name = projectName(raw);
+  if (projectsOf(db, owner).some((p) => p.id !== id && p.name.toLowerCase() === name.toLowerCase())) throw new CodeProblem("You already have a project by that name.", 409);
+  db.prepare("UPDATE projects SET name = ? WHERE id = ?").run(name, id);
+  return projectFor(db, id, owner);
+}
+
+/** Removes a project; its chats stay, out of any project. */
+export function removeProject(db: DatabaseSync, id: string, owner: string) {
+  projectFor(db, id, owner);
+  db.prepare("UPDATE workspaces SET project_id = NULL WHERE project_id = ?").run(id);
+  db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+}
+
+/** Puts a chat in a project, or (null) in none. */
+export function setWorkspaceProject(db: DatabaseSync, workspaceId: string, owner: string, folder: string | null): Workspace {
+  workspaceFor(db, workspaceId, owner);
+  const id = folder ? projectFor(db, folder, owner).id : null;
+  db.prepare("UPDATE workspaces SET project_id = ? WHERE id = ?").run(id, workspaceId);
+  return workspaceFor(db, workspaceId, owner);
 }
 
 export function renameWorkspace(db: DatabaseSync, id: string, owner: string, title: unknown) {

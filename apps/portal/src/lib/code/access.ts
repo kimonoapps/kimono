@@ -8,7 +8,7 @@ import {
   type Grant, type Need,
 } from "./access-plan";
 import type { CodeConfig } from "./config";
-import { addToDrive, driveBytes, replaceInDrive } from "./drive";
+import { addToDrive, codeSpaceOf, driveBytes, replaceInDrive } from "./drive";
 import { CodeProblem, newId, type Workspace } from "./model";
 import { sandbox } from "./node";
 import { planSync, type SyncAction } from "./sync";
@@ -260,6 +260,12 @@ export async function onRequest(db: DatabaseSync, config: CodeConfig, workspace:
   db.prepare(`INSERT OR IGNORE INTO access_requests (id, workspace_id, turn_id, space_name, path, need, why, space_id, node_id, state, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, workspace.id, turn, base.space, line.path, line.need, line.why, found?.spaceId ?? null, found?.node.id ?? null, found ? "pending" : "missing", Date.now());
   if (!found) return { event: { kind: "access" as const, ...base, state: "missing" as const }, carryOn: `There's nothing called "${describe({ space_name: line.space, path: line.path })}" in their Drive. Check the name with them.` };
+  /* The person's own chats' files (their Code space) are every one of their chats' to use: no asking. */
+  const ownChats = found.spaceId === codeSpaceOf(db, owner);
+  if (ownChats && !grantsOf(db, owner).some((g) => g.workspaceId === null && g.nodeId === found.node.id)) {
+    const root = spacesOf(driveDb(), owner).find((s) => s.id === found.spaceId)?.rootId;
+    if (root) addGrant(db, owner, null, found.spaceId, root, "change");
+  }
   const grant = coveringGrant(grantsOf(db, owner), owner, workspace.id, chainOf(found.node.id), line.need);
   const ceil = ceiling(found.spaceId, owner);
   if (grant && ceil && (line.need === "read" || ceil === "change")) {
@@ -322,7 +328,10 @@ export function accessPrompt(db: DatabaseSync, workspace: Workspace): string {
     const open = (db.prepare("SELECT node_id, dir FROM opened WHERE workspace_id = ?").all(workspace.id) as { node_id: string; dir: string }[])
       .map((o) => ({ dir: o.dir, need: needOn(grants, owner, workspace.id, chainOf(o.node_id)) }))
       .filter((o): o is { dir: string; need: Need } => o.need !== null);
-    return accessNote(spaces, open);
+    const code = codeSpaceOf(db, owner);
+    const codeName = spacesOf(driveDb(), owner).find((s) => s.id === code)?.name;
+    const note = accessNote(spaces, open);
+    return codeName ? `${note} Every one of their chats keeps its files in the "${codeName}" space (a folder per project, then one per chat); ask for any of it with kimono-access and it opens without asking them.` : note;
   } catch {
     return "";
   }

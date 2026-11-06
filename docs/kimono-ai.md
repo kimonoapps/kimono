@@ -125,6 +125,30 @@ see nothing inside a space until it is allowed.
   `opened` (what a chat has open, and where) and `opened_files` (each file's last
   agreed state). Tests: `pnpm --filter @kimono/portal test:access`.
 
+## Memory and instructions
+
+A Memory page in the chat list holds each person's own instructions and what
+Kimono AI remembers about them (`lib/code/memory.ts`). They add, edit and delete
+memories; it keeps, changes and forgets them with `kimono-remember` (`--change
+ID`, `--forget ID`), and the chat says so. Both reach the node with every turn
+as context joined to the system prompt; another person's never do.
+
+## Choosing the model
+
+Auto by default (`lib/code/models.ts`): Opus for a chat that builds an app or a
+message about code, sites or apps; Haiku for a short word; Sonnet for the rest.
+A chip in the composer picks one instead. The node runs only Opus, Sonnet or
+Haiku; each Done says which answered.
+
+## Projects
+
+A project is a folder of chats, made by anyone. In Drive, a chat's files live
+in the person's Code space under its project's name ("Chats" for none), and
+moving a chat or renaming a project moves the folder. Every one of a person's
+chats may open any of their chats' files without asking: the Code space is
+theirs. Work on a Kimono Git repository (administrators) is grouped apart, under
+Repositories.
+
 ## Artifacts, and apps
 
 What it makes for people is mostly **artifacts**: one self-contained page (a

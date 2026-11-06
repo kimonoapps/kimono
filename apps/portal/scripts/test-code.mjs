@@ -262,3 +262,19 @@ test('memory: instructions and what it keeps reach every turn, and only their pe
   assert.throws(() => memory.setInstructions(db, 'mina', 'x'.repeat(4001)), /4000/);
   assert.throws(() => memory.remember(db, 'mina', 'x'.repeat(501), 'person'), /500/);
 });
+
+test('projects are folders of chats: make, file, rename, remove (chats stay)', () => {
+  const db = fresh();
+  const trip = model.createProject(db, 'mina', 'Kyoto trip');
+  assert.throws(() => model.createProject(db, 'mina', 'kyoto TRIP'), (e) => e.status === 409);
+  const chat = model.createWorkspace(db, 'mina', { prompt: 'Plan day one', folder: trip.id });
+  assert.deepEqual(chat.folder, { id: trip.id, name: 'Kyoto trip' });
+  assert.throws(() => model.createWorkspace(db, 'sam', { prompt: 'x', folder: trip.id }), (e) => e.status === 404, "no one files a chat in someone else's project");
+  const loose = model.createWorkspace(db, 'mina', { prompt: 'Another' });
+  assert.equal(model.setWorkspaceProject(db, loose.id, 'mina', trip.id).folder.name, 'Kyoto trip');
+  model.renameProject(db, trip.id, 'mina', 'Japan 2027');
+  assert.equal(model.workspaceFor(db, chat.id, 'mina').folder.name, 'Japan 2027');
+  model.removeProject(db, trip.id, 'mina');
+  assert.equal(model.workspaceFor(db, chat.id, 'mina').folder, null, 'its chats stay, in no project');
+  assert.equal(model.projectsOf(db, 'mina').length, 0);
+});

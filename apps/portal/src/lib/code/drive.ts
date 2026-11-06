@@ -5,7 +5,7 @@ import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import {
-  addFile, blobPath, childrenOf, createFolder, createSpace, db as driveDb, driveOn, DriveProblem, finishUpload,
+  addFile, blobPath, childrenOf, moveNode, createFolder, createSpace, db as driveDb, driveOn, DriveProblem, finishUpload,
   maxFileBytes, newId as driveId, nodeFor, roleIn, root as driveRoot, startReplace, trashNode, typeOf,
   type DriveNode,
 } from "../drive";
@@ -56,6 +56,25 @@ function codeSpace(db: DatabaseSync, owner: string) {
   return { id: made.id, rootId: made.rootId };
 }
 
+/** Where a chat's folder belongs: its project's folder, "Chats" for one in none, or its repository's for work on one. */
+function homeOf(workspace: Workspace) {
+  return workspace.kind === "project" ? workspace.repo.name : workspace.folder?.name ?? "Chats";
+}
+
+/** Moves a chat's folder to where it now belongs (after it changed project, or its project was renamed). */
+export async function rehome(db: DatabaseSync, workspace: Workspace) {
+  if (!(await driveOn()) || !workspace.drive) return;
+  const space = codeSpace(db, workspace.owner);
+  if (space.id !== workspace.drive.spaceId) return;
+  const home = folderIn(space.rootId, workspace.owner, homeOf(workspace));
+  try { moveNode(driveDb(), workspace.drive.folderId, workspace.owner, home.id); } catch (error) { if (!(error instanceof DriveProblem)) throw error; }
+}
+
+/** The person's Code space, where every chat's files are: any of their chats may use it without asking. */
+export function codeSpaceOf(db: DatabaseSync, owner: string): string | null {
+  try { return codeSpace(db, owner).id; } catch { return null; }
+}
+
 /** The task's folder: Code → project → task. Made, or made again, as needed. */
 export async function taskFolder(db: DatabaseSync, workspace: Workspace): Promise<{ spaceId: string; folderId: string } | null> {
   if (!(await driveOn())) return null;
@@ -70,7 +89,7 @@ export async function taskFolder(db: DatabaseSync, workspace: Workspace): Promis
       if (!(error instanceof DriveProblem)) throw error;
     }
   }
-  const project = folderIn(space.rootId, owner, workspace.kind === "project" ? workspace.repo.name : "Chats");
+  const project = folderIn(space.rootId, owner, homeOf(workspace));
   const taken = new Set(childrenOf(driveDb(), project.id, owner).children.map((c) => c.name.toLowerCase()));
   const base = workspace.title.replace(/[\u0000-\u001f\u007f/\\]/g, " ").trim().slice(0, 120) || "Task";
   let name = base;

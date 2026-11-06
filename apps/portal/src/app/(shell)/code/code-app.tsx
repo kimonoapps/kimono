@@ -7,7 +7,7 @@ import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
   code, drive, efforts, modelChoices, modelKey, modelNow, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
-  type AccessSettings, type ConnectableApp, type Profile, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
+  type AccessSettings, type ConnectableApp, type Profile, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -219,8 +219,23 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const load = useCallback(() => code.workspaces().then((list) => { setWorkspaces(list); setProblem(null); }, (error) => setProblem(problemText(error, "Code isn't answering."))), [setWorkspaces]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const load = useCallback(() => Promise.all([code.workspaces(), code.projects().catch(() => [] as Project[])]).then(([list, folders]) => { setWorkspaces(list); setProjects(folders); setProblem(null); }, (error) => setProblem(problemText(error, "Kimono AI isn't answering."))), []);
+  const [naming, setNaming] = useState<{ id: string | null; name: string } | null>(null);
+  const saveProject = async () => {
+    if (!naming?.name.trim()) { setNaming(null); return; }
+    try {
+      if (naming.id) await code.renameProject(naming.id, naming.name); else await code.createProject(naming.name);
+      setNaming(null); await load();
+    } catch (error) { setProblem(problemText(error)); }
+  };
   useEffect(() => { void load(); }, [load]);
+  /* Something elsewhere on the page changed the list (a chat moved project). */
+  useEffect(() => {
+    const again = () => { void load(); };
+    window.addEventListener("kimono-ai-reload", again);
+    return () => window.removeEventListener("kimono-ai-reload", again);
+  }, [load]);
 
   const workspace = workspaces?.find((w) => w.id === current) ?? null;
   const folded = useFolded();
@@ -249,21 +264,30 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
       </nav>
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
-      <WorkspaceList list={chatsOf(workspaces ?? [])} current={current} now={now} />
+      <WorkspaceList list={chatsOf(workspaces ?? []).filter((w) => !w.folder)} current={current} now={now} />
+      <div className="cd-side-label cd-folders-head"><span>Projects</span><button type="button" className="cd-roundbutton cd-project-new is-shown" onClick={() => setNaming({ id: null, name: "" })} aria-label="New project" title="New project"><Icon name="plus" /></button></div>
+      {naming && !naming.id ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); void saveProject(); }}>
+        <input autoFocus value={naming.name} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={(event) => setNaming({ id: null, name: event.target.value })} onBlur={() => void saveProject()} onKeyDown={(event) => { if (event.key === "Escape") setNaming(null); }} />
+      </form> : null}
+      {projects.map((project) => <FolderGroup key={project.id} project={project} chats={chatsOf(workspaces ?? []).filter((w) => w.folder?.id === project.id)} current={current} now={now}
+        renaming={naming?.id === project.id ? naming.name : null} onRename={(name) => setNaming({ id: project.id, name })} onSaveName={() => void saveProject()} onCancelName={() => setNaming(null)}
+        onRemove={() => { void code.removeProject(project.id).then(load, (error) => setProblem(problemText(error))); }} />)}
+      {!projects.length && !naming ? <p className="cd-quiet cd-side-note">Keep chats together in a project.</p> : null}
+      {projectsOf(workspaces ?? []).length ? <div className="cd-side-label cd-folders-head"><span>Repositories</span></div> : null}
       {projectsOf(workspaces ?? []).map((project) => <WorkspaceList key={project.key} label={project.name} list={project.tasks} current={current} now={now}
         onNew={admin ? () => { try { localStorage.setItem("kimono-code-repo", project.key); localStorage.setItem("kimono-ai-project", "1"); } catch { /* not remembered */ } goTo({ new: "1" }); } : undefined} />)}
       {workspaces && !workspaces.length ? <p className="cd-quiet cd-side-note">Your chats will be here.</p> : null}
     </aside>
     <main className="cd-main">
       {current && workspace
-        ? <WorkspaceView key={workspace.id} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview && !w.preview.stopped) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
+        ? <WorkspaceView key={workspace.id} projects={projects} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview && !w.preview.stopped) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
         : current && workspaces
           ? <div className="cd-sheet cd-empty"><p>That chat isn&rsquo;t here any more.</p><Seal type="button" tone="quiet" onClick={() => goTo({ new: "1" })}>New chat</Seal></div>
           : current
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
             : showingConnections ? <ConnectionsView now={now} />
             : showingMemory ? <MemoryView now={now} />
-            : <Start blocked={blocked} admin={admin} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
+            : <Start blocked={blocked} admin={admin} folder={projects.find((p) => p.id === params.get("in")) ?? null} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
   </div></MarksContext.Provider>;
@@ -501,6 +525,40 @@ function projectsOf(list: Workspace[]) {
     .toSorted((a, b) => Math.max(...b.tasks.map(working)) - Math.max(...a.tasks.map(working)) || b.tasks[0].updatedAt - a.tasks[0].updatedAt);
 }
 
+/** A project in the list: its name (rename, remove), a new chat in it, and its chats. */
+function FolderGroup({ project, chats, current, now, renaming, onRename, onSaveName, onCancelName, onRemove }: {
+  project: Project; chats: Workspace[]; current: string | null; now: number;
+  renaming: string | null; onRename: (name: string) => void; onSaveName: () => void; onCancelName: () => void; onRemove: () => void;
+}) {
+  const [confirm, setConfirm] = useState(false);
+  return <div className="cd-project cd-folder">
+    {renaming !== null
+      ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); onSaveName(); }}>
+          <input autoFocus value={renaming} maxLength={60} aria-label="Project name" onChange={(event) => onRename(event.target.value)} onBlur={onSaveName} onKeyDown={(event) => { if (event.key === "Escape") onCancelName(); }} />
+        </form>
+      : <div className="cd-folder-head">
+          <Icon name="folder" />
+          <button type="button" className="cd-folder-title" title="Rename" onClick={() => onRename(project.name)}>{project.name}</button>
+          {confirm
+            ? <><button type="button" className="cd-quietbutton is-danger" onClick={onRemove}>Remove</button><button type="button" className="cd-quietbutton" onClick={() => setConfirm(false)}>Keep</button></>
+            : <>
+                <button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1", in: project.id })} aria-label={`New chat in ${project.name}`} title={`New chat in ${project.name}`}><Icon name="plus" /></button>
+                <button type="button" className="cd-roundbutton cd-project-new" onClick={() => setConfirm(true)} aria-label={`Remove ${project.name}`} title="Remove the project (its chats stay)"><Icon name="trash" /></button>
+              </>}
+        </div>}
+    {chats.length ? <WorkspaceList list={chats} current={current} now={now} /> : <p className="cd-quiet cd-folder-empty">No chats yet.</p>}
+  </div>;
+}
+
+/** Puts a chat in a project, or takes it out: a chip in its header. */
+function FolderChip({ workspace, projects }: { workspace: Workspace; projects: Project[] }) {
+  const options = [{ value: "", label: "No project" }, ...projects.map((p) => ({ value: p.id, label: p.name }))];
+  if (!projects.length) return null;
+  return <Choice compact aria-label="Project" className="cd-folderchip" value={workspace.folder?.id ?? ""}
+    onChange={(next) => { void code.moveChat(workspace.id, next || null).then(() => window.dispatchEvent(new Event("kimono-ai-reload"))); }}
+    options={options} />;
+}
+
 function WorkspaceList({ label, list, current, now, onNew }: { label?: string; list: Workspace[]; current: string | null; now: number; onNew?: () => void }) {
   if (!list.length) return null;
   return <div className="cd-project">
@@ -524,7 +582,7 @@ function WorkspaceList({ label, list, current, now, onNew }: { label?: string; l
 
 /* ── a new task: which repository, which branch, and what to do ── */
 
-function Start({ blocked, admin, onStarted }: { blocked: string | null; admin: boolean; onStarted: (w: Workspace) => Promise<void> }) {
+function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; admin: boolean; folder: Project | null; onStarted: (w: Workspace) => Promise<void> }) {
   /* A new chat is just what you ask. Administrators can instead work on a project (a Kimono Git repository). */
   const [onProject, setOnProject] = useState(() => { try { return admin && localStorage.getItem("kimono-ai-project") === "1"; } catch { return false; } });
   const [repos, setRepos] = useState<Repository[] | null>(null);
@@ -585,7 +643,7 @@ function Start({ blocked, admin, onStarted }: { blocked: string | null; admin: b
     try {
       await onStarted(await code.start(chosen
         ? { owner: chosen.owner, name: chosen.name, base: base || chosen.defaultBranch, prompt, effort: effortNow() }
-        : { prompt, effort: effortNow() }));
+        : { prompt, effort: effortNow(), ...(folder ? { folder: folder.id } : {}) }));
     } catch (error) {
       setProblem(problemText(error));
       setSending(false);
@@ -598,6 +656,7 @@ function Start({ blocked, admin, onStarted }: { blocked: string | null; admin: b
       <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
     </div>
     <h2 className="cd-hello">{onProject ? "What should we build?" : "What can I do for you?"}</h2>
+    {folder && !onProject ? <p className="cd-hello-in"><Icon name="folder" />In {folder.name}</p> : null}
     <>
       {onProject && !blocked ? naming !== null || (repos && !repos.length) ? <div className="cd-naming">
         <label className="cd-task">
@@ -633,7 +692,7 @@ function Start({ blocked, admin, onStarted }: { blocked: string | null; admin: b
 
 /* ── a workspace ── */
 
-function WorkspaceView({ workspace, others, tab: asked, path, blocked, onChange, now }: { workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
+function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked, onChange, now }: { projects: Project[]; workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
   const { events, connected } = useTimeline(workspace.id, onChange);
   /* A chat is a conversation and nothing else. Files, changes and the app (and repositories,
      branches, pull requests) belong to a chat that is building something: a project, or one with an app. */
@@ -674,6 +733,7 @@ function WorkspaceView({ workspace, others, tab: asked, path, blocked, onChange,
         {confirmDelete
           ? <div className="cd-ws-acts"><span className="cd-faint">Delete this chat? Its files stay in Drive.</span><button type="button" className="cd-quietbutton is-danger" onClick={() => void remove()}>Delete</button><button type="button" className="cd-quietbutton" onClick={() => setConfirmDelete(false)}>Keep</button></div>
           : !project ? <div className="cd-ws-acts">
+              <FolderChip workspace={workspace} projects={projects} />
               {workspace.preview && !workspace.preview.stopped ? <button type="button" className="cd-linkbutton" onClick={() => openOutside(workspace.preview!.url)}><Icon name="open" />Open app</button> : null}
               {workspace.drive ? <button type="button" className="cd-roundbutton" aria-label="Open in Drive" title="Open in Drive" onClick={() => crossTo("kakejiku", `/drive?space=${workspace.drive!.spaceId}&folder=${workspace.drive!.folderId}`)}><Icon name="folder" /></button> : null}
               <button type="button" className="cd-roundbutton" aria-label="Delete chat" title="Delete chat" onClick={() => setConfirmDelete(true)}><Icon name="trash" /></button>

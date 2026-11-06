@@ -69,7 +69,10 @@ const text = (p) => sandboxFiles.get(p)?.toString();
 const driveText = async (id) => (await import('node:fs')).readFileSync(drive.blobPath(drive.root, drive.nodeFor(ddb, id, 'mina').blob), 'utf8');
 
 test('the agent learns the spaces it can ask for, and nothing is open yet', () => {
-  assert.equal(access.accessPrompt(db, ws), 'Drive spaces you can ask for: Family, Photos.');
+  const note = access.accessPrompt(db, ws);
+  assert.match(note, /^Drive spaces you can ask for: (Code, )?Family, Photos\./);
+  assert.match(note, /keeps its files in the "Code" space/, "it's told where the person's chats keep their files");
+  assert.doesNotMatch(note, /Open to you now/);
 });
 
 test("asking for a space that isn't theirs, or isn't there, opens nothing", async () => {
@@ -164,5 +167,18 @@ test('only one file: picked from what was asked for', async () => {
   await assert.rejects(access.answer(db, config, ws4, 'mina', asked.event.id, 'file', family.rootId), /Pick a file/);
   await access.answer(db, config, ws4, 'mina', asked.event.id, 'file', a.id);
   assert.deepEqual([...sandboxFiles.keys()], ['.kimono/files/Photos/2026/a.txt']);
+});
+
+test("a chat opens another of the person's chats' files without asking", async () => {
+  const codeDb = (await import('../src/lib/code/drive.ts')).codeSpaceOf(db, 'mina');
+  const codeSpace = drive.spacesOf(ddb, 'mina').find((s) => s.id === codeDb);
+  const chats = drive.createFolder(ddb, codeSpace.rootId, 'mina', 'Chats');
+  const other = drive.createFolder(ddb, chats.id, 'mina', 'Plan the trip');
+  await put(other.id, 'mina', 'itinerary.md', 'day one');
+  const ws5 = model.createWorkspace(db, 'mina', { prompt: 'Fifth' });
+  sandboxFiles.clear();
+  const asked = await access.onRequest(db, config, ws5, null, { id: '1-00000008', space: 'Code', path: 'Chats/Plan the trip', need: 'change', why: 'To build on the plan.' });
+  assert.equal(asked.event.state, 'auto');
+  assert.equal(text('.kimono/files/Code/Chats/Plan the trip/itinerary.md'), 'day one');
   node.close();
 });

@@ -7,6 +7,8 @@ export type TurnState = "running" | "done" | "failed" | "cancelled";
 export type Workspace = {
   /** A chat has no project; a project works on a Kimono Git repository. */
   kind: "chat" | "project";
+  /** The project (a folder of chats) it's in, if any. */
+  folder: { id: string; name: string } | null;
   id: string; title: string; repo: { owner: string; name: string }; base: string; branch: string;
   pullRequest: { url: string; number: number } | null;
   preview: { url: string; port: number; kind: string | null; stopped: boolean } | null;
@@ -34,6 +36,7 @@ export type CodeEvent =
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
   | { kind: "remembered"; text: string; how?: "changed" | "forgot" }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
+export type Project = { id: string; name: string; createdAt: number };
 export type Profile = { instructions: string; memories: { id: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
@@ -96,7 +99,7 @@ const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const code = {
   workspaces: () => call<{ workspaces: Workspace[] }>("/workspaces").then((r) => r.workspaces),
   workspace: (id: string) => call<Workspace>(ws(id)),
-  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort }) => call<Workspace>("/workspaces", json("POST", { ...input, model: modelNow() })),
+  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort; folder?: string }) => call<Workspace>("/workspaces", json("POST", { ...input, model: modelNow() })),
   rename: (id: string, title: string) => call<Workspace>(ws(id), json("PATCH", { title })),
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
   ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort, model: modelNow() })),
@@ -104,6 +107,12 @@ export const code = {
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),
+  /** Projects: folders a person keeps chats in. */
+  projects: () => call<{ projects: Project[] }>("/projects").then((r) => r.projects),
+  createProject: (name: string) => call<Project>("/projects", json("POST", { name })),
+  renameProject: (id: string, name: string) => call<Project>(`/projects/${encodeURIComponent(id)}`, json("PATCH", { name })),
+  removeProject: (id: string) => call<void>(`/projects/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  moveChat: (id: string, folder: string | null) => call<Workspace>(ws(id), json("PATCH", { folder })),
   /** What Kimono AI keeps about this person: their instructions, and its memories. */
   memory: () => call<Profile>("/memory"),
   saveInstructions: (instructions: string) => call<Profile>("/memory", json("POST", { instructions })),
