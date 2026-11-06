@@ -102,7 +102,7 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
     <Crossing kind="kakejiku" className="rail-dest" href="/" aria-current={active === "home" ? "page" : undefined}>
       <span className="rail-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5M10 20v-5h4v5"/></svg></span>Home
     </Crossing>
-    {shown.length ? <span className="rail-divider" aria-hidden="true" /> : null}
+    {shown.length ? <span className="rail-divider k-ink-rule" aria-hidden="true" /> : null}
     <div className="rail-pins" onDragOver={(event) => { if (dragging || event.dataTransfer.types.includes("text/kimono-app")) { event.preventDefault(); } }} onDrop={drop}>
       {shown.map((id) => {
         const app = byId.get(id)!;
@@ -128,7 +128,7 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
       })}
     </div>
     <span className="rail-spacer" />
-    <span className="rail-divider" aria-hidden="true" />
+    <span className="rail-divider k-ink-rule" aria-hidden="true" />
     <Crossing kind="kakejiku" className="rail-dest rail-you" href="/account" aria-current={active === "account" ? "page" : undefined}><span className="rail-pill">{you}</span>You</Crossing>
     {admin ? <Crossing kind="kakejiku" className="rail-dest rail-admin" href="/admin" aria-current={active === "admin" ? "page" : undefined}>
       <span className="rail-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6.5v5.5c0 4-3 7-7 8.5-4-1.5-7-4.5-7-8.5V6.5z"/></svg></span>Admin

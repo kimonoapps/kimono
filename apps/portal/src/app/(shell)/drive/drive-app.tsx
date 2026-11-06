@@ -5,7 +5,7 @@ import { rise, riseWhenReady, slide } from "@/components/motion";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
-import { AppBloom, Choice, cx, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
+import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
@@ -635,8 +635,8 @@ function Check({ on, ghost, label, onClick }: { on: boolean | "part"; ghost?: bo
 function Kind({ node, as, token, plain }: { node: DriveNode; as?: "project" | "task"; token?: string | null; plain?: boolean }) {
   const kind = kindOf(node);
   const [failed, setFailed] = useState(false);
-  if (kind === "folder" && as) return <span className={`dv-kind is-${as}`}><Icon name={as} /></span>;
-  if (kind === "folder") return <span className="dv-kind folder"><Icon name="folder" /></span>;
+  if (kind === "folder" && as) return <Wash icon={as} seed={node.id} tint={CODE_TINT} tone={`is-${as}`} />;
+  if (kind === "folder") return <Wash icon="folder" seed={node.id} tint={FOLDER_TINT} tone="folder" />;
   const ext = <span className="ext">{extension(node.name)}</span>;
   if (!plain && !failed && hasThumb(node)) return <span className="dv-kind pic">
     {/* eslint-disable-next-line @next/next/no-img-element -- Drive's own thumbnail of the file */}
@@ -644,6 +644,14 @@ function Kind({ node, as, token, plain }: { node: DriveNode; as?: "project" | "t
   </span>;
   if (!plain && !failed && kind === "video") return <span className="dv-kind pic vid"><Frame src={token ? shared.fileUrl(token, node.id) : contentUrl(node)} onFail={() => setFailed(true)} /></span>;
   return <span className="dv-kind typed"><TypeMark name={node.name} fallback={ext} /></span>;
+}
+
+const FOLDER_TINT = "#c48a45";
+const CODE_TINT = "#3f6b6a";
+
+/** A folder-like mark: its line icon on a watercolour puddle, the puddle's shape seeded by what it marks. */
+function Wash({ icon, seed, tint, tone, size = "" }: { icon: IconName; seed: string; tint: string; tone: string; size?: string }) {
+  return <span className={cx("dv-kind dv-wash", tone, size)}><InkBlot seed={seed} tint={tint}><Icon name={icon} /></InkBlot></span>;
 }
 
 /** A video's opening frame, fetched only once its row scrolls into view. */
@@ -1025,7 +1033,7 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
   }, []);
   const spaceOf = (id: string) => spaces.find((s) => s.id === id);
   return <section className="dv-sheet">
-    <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder lg"><Icon name="trash" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Kept for 30 days.</p></div></div></div>
+    <div className="dv-mast"><div className="dv-mast-id"><Wash icon="trash" seed="trash" tint={FOLDER_TINT} tone="folder" size="lg" /><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Kept for 30 days.</p></div></div></div>
     <div className="dv-list">
       {!items ? <SkeletonRows rows={5} /> : !items.length ? <div className="dv-empty"><h3>Nothing in the Trash</h3></div>
         : items.map((node) => {
@@ -1049,7 +1057,7 @@ function RecentView({ spaces, people, onOpen }: { spaces: Space[]; people: Recor
   useEffect(() => { void drive.recent().then(setItems).catch(() => setItems([])); }, []);
   const spaceName = (id: string) => spaces.find((s) => s.id === id)?.name ?? "";
   return <section className="dv-sheet">
-    <div className="dv-mast"><div className="dv-mast-id"><span className="dv-kind folder lg"><Icon name="clock" /></span><div><div className="dv-kicker">Across your spaces</div><h1>Recent</h1></div></div></div>
+    <div className="dv-mast"><div className="dv-mast-id"><Wash icon="clock" seed="recent" tint={FOLDER_TINT} tone="folder" size="lg" /><div><div className="dv-kicker">Across your spaces</div><h1>Recent</h1></div></div></div>
     <div className="dv-list">
       {!items ? <SkeletonRows rows={5} /> : !items.length ? <div className="dv-empty"><h3>Nothing yet</h3></div>
         : items.map((node) => <div className="dv-r recent" key={node.id}>

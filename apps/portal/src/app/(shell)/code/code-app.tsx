@@ -287,10 +287,12 @@ export function CodeApp({ blocked, admin, driveApp }: { blocked: string | null; 
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span><button type="button" className="cd-roundbutton" onClick={() => setAccessOpen(true)} aria-label="What Kimono AI can use" title="What Kimono AI can use"><Icon name="lock" /></button></div>
       <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
+      <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       <nav className="cd-sidenav" aria-label="More">
         <button type="button" aria-current={showingConnections ? "page" : undefined} onClick={() => goTo({ connections: "1" })}><Icon name="link" /><span>Connections</span></button>
         <button type="button" aria-current={showingMemory ? "page" : undefined} onClick={() => goTo({ memory: "1" })}><Icon name="chat" /><span>Memory</span></button>
       </nav>
+      <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       <WorkspaceList list={chatsOf(workspaces ?? []).filter((w) => !w.folder)} current={current} now={now} />
