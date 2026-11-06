@@ -327,7 +327,6 @@ func (m *Manager) extractAppliance() error {
 		"infra/compose/server/headscale/config.yaml.tmpl":                  "headscale/config.yaml.tmpl",
 		"infra/compose/server/headscale/policy.hujson":                     "headscale/policy.hujson",
 		"infra/compose/server/scripts/render-headscale-config.sh":          "scripts/render-headscale-config.sh",
-		"apps/portal/public/kimono-sakura-mark.svg":                        "assets/kimono-sakura-mark.svg",
 		"scripts/install.sh": "assets/install.sh",
 	}
 	// Every brand asset ships, so adding a logo variant needs no CLI change.

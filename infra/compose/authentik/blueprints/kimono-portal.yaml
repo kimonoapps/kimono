@@ -22,7 +22,7 @@ entries:
       default: false
       branding_title: Kimono
       branding_logo: http://localhost:3000/brand/kimono-logo.svg
-      branding_favicon: http://localhost:3000/kimono-sakura-mark.svg
+      branding_favicon: http://localhost:3000/brand/favicon-48.png
       branding_default_flow_background: http://localhost:3000/brand/kimono-login-background.svg
       branding_custom_css: !File /blueprints/kimono/kimono.css
       flow_authentication: !Find [authentik_flows.flow, [slug, default-authentication-flow]]
