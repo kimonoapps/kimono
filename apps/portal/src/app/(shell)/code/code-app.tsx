@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { AppBloom, BusyFace, Choice, cx, InkCard, Joint, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
+import { AppBloom, BusyFace, Choice, cx, InkCard, MorphLoader, Seal, type AppIdentity } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
@@ -1550,16 +1550,14 @@ function ShareChat({ workspace, onClose }: { workspace: Workspace; onClose: () =
 }
 
 function ShareArtifact({ workspaceId, name, title, onClose }: { workspaceId: string; name: string; title: string; onClose: () => void }) {
-  const { me, people } = useContext(ViewerContext);
+  const { me } = useContext(ViewerContext);
+  const owner = me ?? "";
   const [sharing, setSharing] = useState<ArtifactSharing | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const { copied, problem: copyProblem, copy } = useCopy();
   useEffect(() => { code.artifactSharing(workspaceId, name).then(setSharing, (error) => setProblem(problemText(error))); }, [workspaceId, name]);
   const change = (work: Promise<ArtifactSharing>) => { setProblem(null); return work.then((next) => { setSharing(next); return next; }, (error) => { setProblem(problemText(error)); return null; }); };
   const on = new Set(sharing?.people.map((u) => u.toLowerCase()) ?? []);
-  /* Everyone in the household but the owner, the ones it's shared with first. */
-  const everyone = [...people.values()].filter((p) => p.username.toLowerCase() !== (me ?? "").toLowerCase())
-    .toSorted((a, b) => Number(on.has(b.username.toLowerCase())) - Number(on.has(a.username.toLowerCase())) || a.name.localeCompare(b.name));
   /* The link exists once it's first shared; copying before that makes it, for the people it's shared with. */
   const copyLink = async () => {
     const token = sharing?.token ?? (await change(code.setArtifactPublic(workspaceId, name, sharing?.public ?? false)))?.token;
@@ -1571,17 +1569,20 @@ function ShareArtifact({ workspaceId, name, title, onClose }: { workspaceId: str
       <Seal type="button" compact tone="quiet" disabled={!sharing} onClick={() => void copyLink()}><Icon name={copied ? "check" : "link"} />{copied ? "Copied" : "Copy link"}</Seal>
     </>}>
     {sharing === null && !problem ? <SkeletonRows rows={2} mark={false} /> : sharing ? <>
-      {everyone.length ? <ul className="cd-share-people">
-        {everyone.map((p) => <SharePerson key={p.username} username={p.username}>
-          <Joint profile="aikaki" label={`Share with ${p.name}`} checked={on.has(p.username.toLowerCase())} onChange={(next) => void change(code.shareArtifact(workspaceId, name, p.username, next))} />
+      <PeopleFinder owner={owner} taken={on} onPick={(p) => void change(code.shareArtifact(workspaceId, name, p.username, true))} />
+      <ul className="cd-share-people">
+        <SharePerson username={owner} note="Owner" />
+        {sharing.people.map((username) => <SharePerson key={username} username={username} note="Can view">
+          <button type="button" className="cd-roundbutton" aria-label={`Remove ${username}`} title="Remove" onClick={() => void change(code.shareArtifact(workspaceId, name, username, false))}><Icon name="close" /></button>
         </SharePerson>)}
-      </ul> : null}
+      </ul>
       {/* Public links switched off: no making it public (one made public before can still be closed). */}
       {sharing.publicLinks === false && !sharing.public ? null : <><h3 className="cd-share-sub">General access</h3>
       <div className="cd-share-general">
         <span className={cx("cd-share-mark", sharing.public && "is-open")} aria-hidden="true"><Icon name={sharing.public ? "link" : "lock"} /></span>
-        <span className="cd-share-who"><b>Anyone with the link</b><small>{sharing.public ? "Can view, without signing in" : "Only the people it\u2019s shared with"}</small></span>
-        <Joint profile="aikaki" label="Anyone with the link" checked={sharing.public} onChange={(next) => void change(code.setArtifactPublic(workspaceId, name, next))} />
+        <Choice aria-label="General access" className="cd-share-link" value={sharing.public ? "public" : "people"}
+          options={[{ value: "people", label: "Only people it\u2019s shared with" }, { value: "public", label: "Anyone with the link can view" }]}
+          onChange={(next) => void change(code.setArtifactPublic(workspaceId, name, next === "public"))} />
       </div></>}
     </> : null}
   </ShareDialog>;
