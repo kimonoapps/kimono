@@ -70,12 +70,12 @@
   /* Neutrals are Kimono's beige paper, not pink: the page is paper-0 and every
      container a step darker in the same warm hue, so nothing sits lighter than
      the page and the app's own colour never fights a pink ground. */
-  --k-surface: var(--k-paper-0);
-  --k-container-lowest: var(--k-paper-0);
-  --k-container-low: var(--k-paper-1);
-  --k-container: #f2ebe0;
-  --k-container-high: #ede5d8;
-  --k-container-highest: #e7decf;
+  --k-surface: var(--k-paper-1);
+  --k-container-lowest: var(--k-paper-1);
+  --k-container-low: #f2ebe0;
+  --k-container: #ede5d8;
+  --k-container-high: #e7decf;
+  --k-container-highest: #e1d7c6;
   --k-on-surface: #221d18;
   --k-on-surface-variant: #54493f;
   --k-outline-variant: #d6cbb9;
