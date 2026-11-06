@@ -35,6 +35,7 @@ export type CodeEvent =
   | { kind: "disk"; used: number; quota: number; full?: boolean }
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
   | { kind: "remembered"; text: string; how?: "changed" | "forgot" }
+  | { kind: "connect"; app: string; url: string }
   | { kind: "artifact"; id: string; name: string; action: "wrote" | "edited" | "shown" }
   | { kind: "artifact-saved"; name: string; version: number; title: string }
   | { kind: "draft"; text: string }

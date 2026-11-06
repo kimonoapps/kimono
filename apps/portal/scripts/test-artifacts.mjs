@@ -106,3 +106,20 @@ test('the agent\'s artifact reference names every scene call the kit has', () =>
   assert.deepEqual(missing, []);
   assert.ok(calls.length > 30);
 });
+
+test('plumbing tools stay out of the chat, and a Composio connection becomes a Connect card', async () => {
+  const { connectLinks, hiddenTool } = await import('../src/lib/code/events.ts');
+  assert.ok(hiddenTool('ToolSearch'));
+  assert.ok(hiddenTool('mcp__composio__COMPOSIO_SEARCH_TOOLS'));
+  assert.ok(hiddenTool('mcp__composio__COMPOSIO_MANAGE_CONNECTIONS'));
+  assert.ok(!hiddenTool('mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL'));
+  assert.ok(!hiddenTool('Bash'));
+  const out = translate({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'a', name: 'ToolSearch', input: {} }, { type: 'tool_use', id: 'b', name: 'mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL', input: { tools: [{ tool_slug: 'GMAIL_SEND_EMAIL' }] } }] } });
+  assert.deepEqual(out.events.map((e) => e.name), ['mcp__composio__COMPOSIO_MULTI_EXECUTE_TOOL']);
+  const result = JSON.stringify({ successful: true, data: { results: { gmail: { toolkit: 'gmail', status: 'initiated', redirect_url: 'https://connect.composio.dev/link/lk_abc' } } } });
+  assert.deepEqual(connectLinks(result), [{ app: 'gmail', url: 'https://connect.composio.dev/link/lk_abc' }]);
+  const r = translate({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'c', content: result }] } });
+  assert.deepEqual(r.events.map((e) => e.kind), ['tool-result', 'connect']);
+  assert.deepEqual(connectLinks(JSON.stringify({ data: { x: { toolkit: 'gmail', redirect_url: 'https://evil.example/phish' } } })), []);
+  assert.deepEqual(connectLinks(JSON.stringify({ data: { x: { toolkit: 'gmail', redirect_url: 'http://connect.composio.dev/x' } } })), []);
+});

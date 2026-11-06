@@ -1080,3 +1080,11 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-tuning .k-choice.is-compact .k-choice-text small { font-size: 12px; }
 .cd-tuning .k-choice.is-compact .k-choice-text { gap: 4px; }
 .cd-tuning .k-choice-cue { transform: scale(.72); margin-left: -2px; }
+
+/* an app to connect, in the chat: its logo, what to do, and Kimono's own button */
+.cd-connect { display: flex; align-items: center; gap: 14px; max-width: 520px; padding: 12px 12px 12px 14px; border-radius: var(--k-r-xl); background: var(--k-container-low); }
+.cd-connect-logo { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 14px; background: var(--k-container-high); }
+.cd-connect-logo .cd-applogo { width: 26px; height: 26px; }
+.cd-connect-words { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.cd-connect-words b { font: 600 15px/1.25 var(--k-sans); color: var(--k-on-surface); }
+.cd-connect-words small { font-size: 13px; color: var(--k-on-surface-variant); }

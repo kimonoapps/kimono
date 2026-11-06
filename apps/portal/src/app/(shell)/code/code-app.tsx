@@ -192,10 +192,11 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
   }, [open]);
   const window = context?.window ?? fallbackWindow;
   const ctx = context ? context.used / window : null;
-  const share = (w: Usage["week"], plan: number | null) => !usage?.reported ? null : usage.unlimited ? plan : w.used / w.share;
-  const five = usage ? share(usage.fiveHour, usage.plan?.fiveHour ?? null) : null;
-  const week = usage ? share(usage.week, usage.plan?.week ?? null) : null;
-  const whose = usage?.unlimited ? "of the plan" : "of your share";
+  /* Always this person's own use: of their share, or (the owner, who has no share) of the whole plan. Never anyone else's. */
+  const share = (w: Usage["week"]) => !usage?.reported ? null : w.used / w.share;
+  const five = usage ? share(usage.fiveHour) : null;
+  const week = usage ? share(usage.week) : null;
+  const whose = usage?.unlimited ? "of the plan, used by you" : "of your share";
   /* Usage arrives but never a 5-hour figure: this plan has no 5-hour window, so there's no ring for it. */
   const noFiveHour = Boolean(usage?.reported && usage.fiveHourLimited === false);
   return <div className="cd-meters" ref={box}>
@@ -517,6 +518,27 @@ function AppLogo({ slug }: { slug: string }) {
 
 function AppName({ slug }: { slug: string }) {
   return <>{useAppLook(slug).name}</>;
+}
+
+/** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
+function ConnectCard({ app, url }: { app: string; url: string }) {
+  const [connected, setConnected] = useState(false);
+  useEffect(() => {
+    if (connected) return;
+    let live = true;
+    const check = () => { code.connections().then((r) => { if (live && r.connections.some((c) => c.app === app && c.status === "ACTIVE")) setConnected(true); }, () => {}); };
+    check();
+    /* Back from signing in (another tab), look again. */
+    window.addEventListener("focus", check);
+    const timer = setInterval(check, 5000);
+    return () => { live = false; window.removeEventListener("focus", check); clearInterval(timer); };
+  }, [app, connected]);
+  return <div className={cx("cd-connect", connected && "is-done")}>
+    <span className="cd-connect-logo"><AppLogo slug={app} /></span>
+    <span className="cd-connect-words"><b>{connected ? <><AppName slug={app} /> is connected</> : <>Connect <AppName slug={app} /></>}</b><small>{connected ? "Kimono AI can use it now." : "Sign in, then come back here."}</small></span>
+    {connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span>
+      : <Seal type="button" compact onClick={() => openOutside(url)}>Connect</Seal>}
+  </div>;
 }
 
 /** What a call is about: the app it used, Drive, or what kind of step it was. */
@@ -984,6 +1006,7 @@ type Item =
   | { type: "compacted"; seq: number; before?: number }
   | { type: "remembered"; seq: number; text: string; how?: "changed" | "forgot" }
   | { type: "artifact"; seq: number; id: string; name: string; action: "wrote" | "edited" | "shown" }
+  | { type: "connect"; seq: number; app: string; url: string }
   | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
@@ -1015,6 +1038,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
       case "remembered": items.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
       case "artifact": items.push({ type: "artifact", seq, id: event.id, name: event.name, action: event.action }); break;
+      case "connect": items.push({ type: "connect", seq, app: event.app, url: event.url }); break;
     }
   }
   return items;
@@ -1079,6 +1103,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
+            case "connect": return <ConnectCard key={item.seq} app={item.app} url={item.url} />;
             case "artifact": return item.action === "edited"
               ? <ArtifactChanged key={`art-${item.id}`} name={item.name} />
               : <ArtifactCard key={`art-${item.id}`} name={item.name} />;

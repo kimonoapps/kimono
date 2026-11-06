@@ -204,12 +204,9 @@ test("a person's own apps: the call names the toolkit, whatever tool it is", () 
   assert.equal(used.app, 'gmail');
   assert.equal(used.label, 'Used');
   assert.equal(used.detail, 'send email');
-  const connecting = call('mcp__composio__COMPOSIO_MANAGE_CONNECTIONS', { toolkits: ['GoogleCalendar'] });
-  assert.equal(connecting.app, 'googlecalendar');
-  assert.equal(connecting.label, 'Connecting');
-  const searching = call('mcp__composio__COMPOSIO_SEARCH_TOOLS', { queries: [{ use_case: 'find tomorrow’s meetings' }] });
-  assert.equal(searching.label, 'Looked for a way to');
-  assert.match(searching.detail, /meetings/);
+  /* Finding tools and starting a connection are plumbing: no row (a connection gets its own Connect card). */
+  assert.equal(call('mcp__composio__COMPOSIO_MANAGE_CONNECTIONS', { toolkits: ['GoogleCalendar'] }), undefined);
+  assert.equal(call('mcp__composio__COMPOSIO_SEARCH_TOOLS', { queries: [{ use_case: 'find tomorrow’s meetings' }] }), undefined);
   const direct = call('mcp__composio__NOTION_CREATE_PAGE', { title: 'x' });
   assert.equal(direct.app, 'notion');
 });

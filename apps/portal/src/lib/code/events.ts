@@ -39,6 +39,8 @@ export type CodeEvent =
   /** Never stored: what it is writing right now, sent to whoever is watching. */
   | { kind: "draft"; text: string }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
+  /** An app of theirs needs connecting: Kimono shows a Connect button for this Composio link. */
+  | { kind: "connect"; app: string; url: string }
   /** How the person answered an access request. */
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 
@@ -145,6 +147,36 @@ function artifactCall(id: string, name: string, input: Record<string, unknown>):
   return null;
 }
 
+/**
+ * Tool calls the person never needs to see: Claude Code loading its own tools,
+ * and Composio's finding, describing and connecting (a connection shows as its
+ * own Connect card instead). What it then does with an app still shows.
+ */
+const hidden = new Set(["ToolSearch", "COMPOSIO_SEARCH_TOOLS", "COMPOSIO_GET_TOOL_SCHEMAS", "COMPOSIO_MANAGE_CONNECTIONS", "COMPOSIO_WAIT_FOR_CONNECTIONS"]);
+export function hiddenTool(name: string) { return hidden.has(name.replace(/^mcp__composio__/, "")); }
+
+/** Composio's connect links in a tool's result: { app, url } for each app it started connecting. Only Composio's own https links. */
+export function connectLinks(text: string): { app: string; url: string }[] {
+  if (!text.includes("redirect_url")) return [];
+  let data: unknown;
+  try { data = JSON.parse(text); } catch { return []; }
+  const found: { app: string; url: string }[] = [];
+  const visit = (value: unknown, key: string, depth: number) => {
+    if (depth > 6 || !value || typeof value !== "object") return;
+    const item = value as Record<string, unknown>;
+    if (typeof item.redirect_url === "string") {
+      try {
+        const url = new URL(item.redirect_url);
+        const app = typeof item.toolkit === "string" ? item.toolkit : key;
+        if (url.protocol === "https:" && /(^|\.)composio\.dev$/.test(url.hostname) && /^[a-z0-9_-]{2,60}$/i.test(app) && !found.some((f) => f.url === url.href)) found.push({ app: app.toLowerCase(), url: url.href });
+      } catch { /* not a link */ }
+    }
+    for (const [k, v] of Object.entries(item)) visit(v, k, depth + 1);
+  };
+  visit(data, "", 0);
+  return found.slice(0, 5);
+}
+
 function resultText(content: unknown): string {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) return content.map((part) => typeof part === "object" && part && "text" in part ? String((part as { text: unknown }).text) : "").join("\n");
@@ -190,6 +222,8 @@ export function translate(line: unknown): Translated {
         if (part.type === "text" && typeof part.text === "string" && part.text.trim()) events.push({ kind: "text", text: part.text });
         if (part.type === "tool_use" && typeof part.id === "string" && typeof part.name === "string") {
           const input = (part.input as Record<string, unknown>) ?? {};
+          /* Plumbing, not something done for the person: how the agent finds and loads tools. */
+          if (hiddenTool(part.name)) continue;
           const call = artifactCall(part.id, part.name, input);
           if (call) { artifacts.push(call); events.push({ kind: "artifact", id: call.id, name: call.name, action: call.action }); continue; }
           events.push({ kind: "tool", id: part.id, name: part.name, ...toolLabel(part.name, input) });
@@ -209,7 +243,9 @@ export function translate(line: unknown): Translated {
       const events: CodeEvent[] = [];
       for (const part of parts) {
         if (part.type === "tool_result" && typeof part.tool_use_id === "string") {
-          events.push({ kind: "tool-result", id: part.tool_use_id, ok: part.is_error !== true, output: clip(resultText(part.content), 4000) });
+          const text = resultText(part.content);
+          events.push({ kind: "tool-result", id: part.tool_use_id, ok: part.is_error !== true, output: clip(text, 4000) });
+          for (const link of connectLinks(text)) events.push({ kind: "connect", ...link });
         }
       }
       return { events, session };
