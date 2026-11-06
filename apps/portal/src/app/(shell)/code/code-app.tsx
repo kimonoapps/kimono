@@ -6,7 +6,7 @@ import { Crossing, useCrossTo } from "@/components/crossing";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import {
-  code, drive, efforts, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
+  code, drive, efforts, modelChoices, modelKey, modelNow, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   type AccessSettings, type ConnectableApp, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage,
 } from "./api";
 import { Icon, type IconName } from "./icons";
@@ -114,7 +114,29 @@ function useEffort() {
 }
 const effortWords: Record<Effort, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Extra high", max: "Max" };
 
-/** The thinking level, as a compact chip in the message box. Opus 5.5 is the only model. */
+const modelListeners = new Set<() => void>();
+function setModel(model: ModelChoice) {
+  try { window.localStorage.setItem(modelKey, model); } catch { /* private window: this page only */ }
+  modelListeners.forEach((listener) => listener());
+}
+function useModel() {
+  return useSyncExternalStore((listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener); }; }, modelNow, () => "auto" as ModelChoice);
+}
+const modelWords: Record<ModelChoice, { label: string; detail: string }> = {
+  auto: { label: "Auto", detail: "Picks for each message" },
+  opus: { label: "Opus", detail: "Best for building things" },
+  sonnet: { label: "Sonnet", detail: "Everyday work" },
+  haiku: { label: "Haiku", detail: "Quick answers" },
+};
+
+/** Which Claude answers, as a compact chip in the message box. */
+function ModelPicker() {
+  const model = useModel();
+  return <Choice compact aria-label="Which model answers" className="cd-model" value={model} onChange={(next) => setModel(next as ModelChoice)}
+    options={modelChoices.map((m) => ({ value: m, label: modelWords[m].label, detail: modelWords[m].detail }))} />;
+}
+
+/** The thinking level, as a compact chip in the message box. */
 function EffortPicker() {
   const effort = useEffort();
   return <Choice compact label="Thinking ·" aria-label="How hard it thinks" className="cd-effort" value={effort} onChange={(next) => setEffort(next as Effort)}
@@ -973,7 +995,7 @@ function ToolRow({ tool }: { tool: Tool }) {
 function Done({ event }: { event: Extract<CodeEvent, { kind: "done" }> }) {
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
   if (!event.ok) return <p className="cd-note is-failed" role="alert"><Icon name="close" />{event.error || "It stopped with an error."}</p>;
-  const facts = [event.durationMs ? elapsed(event.durationMs) : null, event.costUsd ? `$${event.costUsd.toFixed(2)}` : null].filter(Boolean);
+  const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null, event.costUsd ? `$${event.costUsd.toFixed(2)}` : null].filter(Boolean);
   return <p className="cd-note cd-done"><Icon name="check" />Done{facts.length ? <span className="cd-mono">{facts.join(" · ")}</span> : null}</p>;
 }
 
@@ -1176,6 +1198,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <button type="button" className="cd-iconbutton" aria-label="Attach files" disabled={Boolean(blocked)} onClick={() => picker.current?.click()}><Icon name="clip" /></button>
       {workspace.drive ? <button type="button" className="cd-iconbutton" aria-label="Attach from Drive" title="Attach from Drive" disabled={Boolean(blocked)} onClick={() => setChoosing(true)}><Icon name="folder" /></button> : null}
+      <ModelPicker />
       <EffortPicker />
       {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
       <span className="cd-grow" />

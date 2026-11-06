@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { ask, code, CodeProblem, db, efforts, workspaceFor, type Attachment, type Effort } from "@/lib/code";
+import { ask, code, CodeProblem, db, efforts, modelChoices, workspaceFor, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -18,11 +18,11 @@ export async function POST(request: Request, { params }: Context) {
   if ("response" in read) return read.response;
   const { id } = await params;
   return code(user, (config) => {
-    const body = read.body as { text?: unknown; attachments?: unknown; effort?: unknown };
+    const body = read.body as { text?: unknown; attachments?: unknown; effort?: unknown; model?: unknown };
     const effort = efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined;
     const attachments = Array.isArray(body.attachments) ? body.attachments : [];
     if (attachments.length > 10 || !attachments.every(isAttachment)) throw new CodeProblem("Attach up to ten files.");
-    const event = ask(config, workspaceFor(db(), id, user.username), user, String(body.text ?? ""), attachments, effort);
+    const event = ask(config, workspaceFor(db(), id, user.username), user, String(body.text ?? ""), attachments, effort, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
     return apiJson(event, 202);
   });
 }

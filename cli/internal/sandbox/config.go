@@ -25,7 +25,7 @@ const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.3.0"
 // session that can't be found starts fresh instead of failing the turn.
 const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
 
-// Model is the one model Kimono Code runs. People choose how hard it thinks, not which it is.
+// Model is the Claude a turn runs on when Portal names none: the strongest, for building things.
 const Model = "claude-opus-5-5"
 
 // SystemPrompt is appended to Claude Code's own on every turn. The people

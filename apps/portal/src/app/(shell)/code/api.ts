@@ -23,7 +23,7 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
-  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; context?: { used: number; window?: number } }
+  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; model?: "opus" | "sonnet" | "haiku"; context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }
@@ -94,10 +94,10 @@ const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const code = {
   workspaces: () => call<{ workspaces: Workspace[] }>("/workspaces").then((r) => r.workspaces),
   workspace: (id: string) => call<Workspace>(ws(id)),
-  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort }) => call<Workspace>("/workspaces", json("POST", input)),
+  start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort }) => call<Workspace>("/workspaces", json("POST", { ...input, model: modelNow() })),
   rename: (id: string, title: string) => call<Workspace>(ws(id), json("PATCH", { title })),
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
-  ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort })),
+  ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, effort, model: modelNow() })),
   usage: () => call<Usage>("/usage"),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
@@ -188,3 +188,11 @@ export const drive = {
   spaces: () => driveCall<{ spaces: DriveSpace[] }>("/spaces").then((r) => r.spaces),
   folder: (id: string) => driveCall<{ folder: DriveItem; path: DriveItem[]; children: DriveItem[] }>(`/nodes/${encodeURIComponent(id)}`),
 };
+
+/* Which Claude answers: Auto (Kimono picks per message), or one the person chose. Remembered in this browser. */
+export const modelChoices = ["auto", "opus", "sonnet", "haiku"] as const;
+export type ModelChoice = (typeof modelChoices)[number];
+export const modelKey = "kimono-ai-model";
+export function modelNow(): ModelChoice {
+  try { const v = window.localStorage.getItem(modelKey); return (modelChoices as readonly string[]).includes(v ?? "") ? v as ModelChoice : "auto"; } catch { return "auto"; }
+}

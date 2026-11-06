@@ -15,6 +15,8 @@ import {
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
 import { toolSession } from "./composio";
+import { modelFor, type ModelChoice } from "./models";
+export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
 export { efforts, type Effort } from "./node";
@@ -32,7 +34,7 @@ type Live = {
   listeners: Map<string, Set<(event: StoredEvent) => void>>;
   turns: Map<string, AbortController>;
   /** Messages sent while a turn was running, per workspace: the next turn reads them. */
-  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[]; effort?: Effort }[]>;
+  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[]; effort?: Effort; model?: ModelChoice }[]>;
   /** What to tell the agent when it should carry on by itself (an access answer), once the current turn ends. */
   carryOn?: Map<string, { user: ApiUser; notes: string[] }>;
 };
@@ -123,7 +125,7 @@ export function checkShare(config: CodeConfig, user: ApiUser) {
 }
 
 /** Sends a message to the agent and returns at once; the turn runs on, recording as it goes. */
-export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[], effort?: Effort) {
+export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[], effort?: Effort, model?: ModelChoice) {
   const prompt = text.trim();
   if (!prompt && !attachments.length) throw new CodeProblem("Say what to do.");
   if (prompt.length > 32_000) throw new CodeProblem("That message is too long.");
@@ -132,16 +134,18 @@ export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, tex
   const busy = runningTurn(db(), workspace.id);
   if (busy) {
     const queue = (live.queued ??= new Map());
-    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments, effort }]);
+    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments, effort, model }]);
     return record(workspace.id, busy, { kind: "ask", by: user.username, text: prompt, attachments, queued: true });
   }
   const turn = startTurn(db(), workspace.id);
   const asked = record(workspace.id, turn, { kind: "ask", by: user.username, text: prompt, attachments });
-  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments, effort);
+  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments, effort, model);
   return asked;
 }
 
-async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort) {
+async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice) {
+  /* Which Claude answers: what the person chose, or Kimono's pick for this message. */
+  const model = modelFor(choice, { prompt, attachments: attachments.length, building: workspace.kind === "project" || Boolean(workspace.preview) });
   const controller = new AbortController();
   live.turns.set(turn, controller);
   record(workspace.id, turn, { kind: "started" });
@@ -161,7 +165,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const access = prompt.startsWith("/") ? "" : accessPrompt(db(), workspace);
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort }, controller.signal);
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {
@@ -229,7 +233,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     else failure = error instanceof CodeProblem ? error.message : "The sandbox stopped answering.";
   } finally {
     live.turns.delete(turn);
-    const outcome = finish(result, done, failure, context);
+    const outcome = { ...finish(result, done, failure, context), model };
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
     /* What the agent made goes to Drive, and what it changed in the person's own files goes back to them. */
@@ -247,7 +251,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           checkShare(config, by);
           const next = startTurn(db(), workspace.id);
           const said = [...(carry?.notes ?? []), ...waiting.map((m) => m.prompt)].filter(Boolean).join("\n\n");
-          void run(config, workspace, by, next, said || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort);
+          void run(config, workspace, by, next, said || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort, waiting.at(-1)?.model);
         } catch (error) { console.warn("Code couldn't start the next turn:", error instanceof Error ? error.message : error); }
       });
     }

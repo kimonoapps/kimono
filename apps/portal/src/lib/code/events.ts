@@ -13,7 +13,7 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
-  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
+  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** Which Claude answered. */ model?: "opus" | "sonnet" | "haiku"; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }

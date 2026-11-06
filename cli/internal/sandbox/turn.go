@@ -20,7 +20,12 @@ type turnRequest struct {
 	Attachments []string `json:"attachments"`
 	// Effort is how hard the agent thinks: low, medium, high, xhigh or max; empty is Claude Code's default.
 	Effort string `json:"effort"`
+	// Model is which Claude runs the turn: opus, sonnet or haiku; empty is opus. Portal chooses.
+	Model string `json:"model"`
 }
+
+// Models are the Claudes a turn may run on, by the short name Portal sends.
+var Models = map[string]string{"": Model, "opus": Model, "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
 
 var efforts = map[string]bool{"": true, "low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
@@ -40,6 +45,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}
 	if strings.TrimSpace(request.Prompt) == "" {
 		return problem(400, "Say what the agent should do.")
+	}
+	if _, ok := Models[request.Model]; !ok {
+		return problem(400, "Model is opus, sonnet or haiku.")
 	}
 	if !efforts[request.Effort] {
 		return problem(400, "Effort is low, medium, high, xhigh or max.")
@@ -105,7 +113,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Model}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model]}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()

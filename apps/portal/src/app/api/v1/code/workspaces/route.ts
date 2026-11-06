@@ -1,6 +1,6 @@
 import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { projectMissing } from "@/lib/code/config";
-import { ask, checkShare, code, requireProject, createWorkspace, db, efforts, taskFolder, workspaceFor, workspacesOf, type Attachment, type Effort } from "@/lib/code";
+import { ask, checkShare, code, requireProject, createWorkspace, db, efforts, modelChoices, taskFolder, workspaceFor, workspacesOf, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
 
 /** Your workspaces, the most recently active first. */
 export async function GET() {
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const read = await readJson(request);
   if ("response" in read) return read.response;
   return code(user, (config) => {
-    const body = read.body as { owner?: unknown; name?: unknown; base?: unknown; prompt?: unknown; effort?: unknown };
+    const body = read.body as { owner?: unknown; name?: unknown; base?: unknown; prompt?: unknown; effort?: unknown; model?: unknown };
     /* Out of share: say so before a task is made that couldn't start. */
     checkShare(config, user);
     if (body.owner || body.name) {
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       if (blocked) return apiError(409, blocked);
     }
     const made = createWorkspace(db(), user.username, { repoOwner: body.owner, repoName: body.name, base: body.base, prompt: body.prompt });
-    ask(config, made, user, String(body.prompt), [] as Attachment[], efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined);
+    ask(config, made, user, String(body.prompt), [] as Attachment[], efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
     void taskFolder(db(), made).catch((error) => console.warn("Code couldn't make a Drive folder:", error instanceof Error ? error.message : error));
     return apiJson(workspaceFor(db(), made.id, user.username), 201);
   });
