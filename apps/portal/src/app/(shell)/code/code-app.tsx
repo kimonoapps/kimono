@@ -100,6 +100,8 @@ function useTimeline(id: string | null, onDone: () => void) {
       const event = stored.event;
       if (stored.seq === 0) {
         if (event.kind === "renamed") { done.current(); return; }
+        /* A message was changed: the chat from it on went, and runs again from there. */
+        if (event.kind === "rewound") { setEvents((list) => list.filter((e) => e.seq < event.seq)); setDrafts(noDrafts); done.current(); return; }
         if (event.kind === "draft") setDrafts((d) => ({ ...d, text: event.text }));
         if (event.kind === "artifact-draft") setDrafts((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
         if (event.kind === "phase") setDrafts((d) => ({ ...d, now: event }));
@@ -1632,7 +1634,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
         {items.length === 0 ? <SkeletonChat /> : null}
         {items.map((item) => {
           switch (item.type) {
-            case "ask": return <Ask key={item.seq} workspace={workspace} item={item} />;
+            case "ask": return <Ask key={item.seq} workspace={workspace} item={item} running={running} />;
             case "text": return <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
             case "done": return <Done key={item.seq} event={item.event} />;
@@ -2029,20 +2031,46 @@ function WorkingWords({ phase, doing }: { phase: Phase; doing: Now | null }) {
   return <span aria-label={words}>{[...words].map((c, i) => <span key={i} aria-hidden="true" className="cd-now-letter" style={{ "--i": i } as React.CSSProperties}>{c === " " ? "\u00a0" : c}</span>)}</span>;
 }
 
-function Ask({ workspace, item }: { workspace: Workspace; item: Extract<Item, { type: "ask" }> }) {
+function Ask({ workspace, item, running }: { workspace: Workspace; item: Extract<Item, { type: "ask" }>; running: boolean }) {
   const { text, attachments, queued, by } = item.event;
-  const { me } = useContext(ViewerContext);
-  const { owner } = useContext(ChatAccess);
+  const { me, guest } = useContext(ViewerContext);
+  const { owner, access } = useContext(ChatAccess);
   /* In a shared chat, a message someone else wrote says whose it is. A guest knows the owner from the header, so only the others are named. */
   const someoneElse = Boolean(by) && by.toLowerCase() !== (me ?? owner).toLowerCase();
   const author = usePerson(by || "");
+  /* Your own message, while it isn't working: change it, and it runs again from there. */
+  const editable = !guest && !someoneElse && !queued && !running && access !== "read" && Boolean(me);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const field = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => { const f = field.current; if (f) { f.style.height = "auto"; f.style.height = `${f.scrollHeight}px`; } }, [editing]);
+  const send = () => {
+    const next = editing?.trim();
+    if (!next || saving) return;
+    if (next === text.trim()) { setEditing(null); return; }
+    setSaving(true); setProblem(null);
+    code.editAsk(workspace.id, item.seq, next, effortNow()).then(() => { setEditing(null); setSaving(false); }, (error) => { setProblem(problemText(error)); setSaving(false); });
+  };
   if (text.trim() === "/compact" && !attachments.length) return <p className="cd-note"><Icon name="diff" />{someoneElse ? author.name : "You"} asked it to compact the conversation{queued ? " after this step" : ""}</p>;
+  if (editing !== null) return <form className="cd-ask cd-ask-edit" onSubmit={(event) => { event.preventDefault(); send(); }}>
+    <textarea ref={field} autoFocus value={editing} aria-label="Your message" rows={1} maxLength={32_000}
+      onChange={(event) => setEditing(event.target.value)}
+      onKeyDown={(event) => { if (event.key === "Escape") setEditing(null); if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }} />
+    {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
+    <div className="cd-ask-edit-foot">
+      <small>{problem ?? "It answers again from here; what came after goes."}</small>
+      <button type="button" className="cd-quietbutton" onClick={() => setEditing(null)}>Cancel</button>
+      <Seal type="submit" compact busy={saving} disabled={!editing.trim()}>Send</Seal>
+    </div>
+  </form>;
   return <>
     {someoneElse ? <p className="cd-ask-by"><Face username={by} size={20} /><span>{author.name}</span></p> : null}
     <div className={cx("cd-ask", queued && "is-queued", someoneElse && "is-theirs")} title={queued ? "Sent while it was working: read as soon as the current step ends" : undefined}>
       {text ? <p>{text}</p> : null}
       {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
     </div>
+    {editable ? <div className="cd-ask-acts"><button type="button" className="cd-roundbutton" aria-label="Edit" title="Edit" onClick={() => { setEditing(text); setProblem(null); }}><Icon name="rename" /></button></div> : null}
   </>;
 }
 

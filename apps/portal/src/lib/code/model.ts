@@ -264,6 +264,10 @@ export function migrate(db: DatabaseSync) {
   if (!(db.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "archived_at")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN archived_at INTEGER");
   }
+  /* Where each turn left the agent's session, so a later message can be edited and run again from there. */
+  if (!(db.prepare("PRAGMA table_info(turns)").all() as { name: string }[]).some((c) => c.name === "resume_at")) {
+    db.exec("ALTER TABLE turns ADD COLUMN session TEXT; ALTER TABLE turns ADD COLUMN resume_at TEXT;");
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
@@ -471,7 +475,7 @@ export function removeWorkspace(db: DatabaseSync, id: string, owner: string) {
   db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
 }
 
-export function setSession(db: DatabaseSync, id: string, session: string) {
+export function setSession(db: DatabaseSync, id: string, session: string | null) {
   db.prepare("UPDATE workspaces SET session = ? WHERE id = ?").run(session, id);
 }
 
@@ -510,6 +514,37 @@ export function startTurn(db: DatabaseSync, workspaceId: string, now = Date.now(
 
 export function endTurn(db: DatabaseSync, turnId: string, state: Exclude<TurnState, "running">, now = Date.now()) {
   db.prepare("UPDATE turns SET state = ?, ended_at = ? WHERE id = ? AND state = 'running'").run(state, now, turnId);
+}
+
+/** Where a turn left the agent's session: its id, and its last message (the agent's) to carry on from. */
+export function noteTurnEnd(db: DatabaseSync, turnId: string, session: string | null, lastMessage: string | null) {
+  db.prepare("UPDATE turns SET session = coalesce(?, session), resume_at = coalesce(?, resume_at) WHERE id = ?").run(session, lastMessage, turnId);
+}
+
+/**
+ * Takes the chat back to just before one of the person's messages, for it to be sent again
+ * changed: that message and everything after it go. Returns where the agent's session was at
+ * that point (none before the first message, unknown for a turn from before this was kept), and
+ * the conversation up to it, for a session that can't be carried on.
+ */
+export function rewindTo(db: DatabaseSync, workspaceId: string, seq: number): { by: string; resume: { session: string | null; at: string | null } | null; before: StoredEvent[] } {
+  const row = db.prepare("SELECT turn_id, data FROM events WHERE workspace_id = ? AND seq = ?").get(workspaceId, seq) as { turn_id: string | null; data: string } | undefined;
+  const event = row ? JSON.parse(row.data) as CodeEvent : null;
+  if (!event || event.kind !== "ask") throw new CodeProblem("That message isn't here.", 404);
+  if (event.queued) throw new CodeProblem("A message sent while it was working can't be edited.", 409);
+  const before = eventsAfter(db, workspaceId, 0, 100_000).filter((e) => e.seq < seq);
+  const previous = [...before].reverse().find((e) => e.turn && e.turn !== row!.turn_id)?.turn ?? null;
+  const turn = previous ? db.prepare("SELECT session, resume_at FROM turns WHERE id = ?").get(previous) as { session: string | null; resume_at: string | null } | undefined : undefined;
+  db.exec("BEGIN");
+  try {
+    const gone = (db.prepare("SELECT DISTINCT turn_id FROM events WHERE workspace_id = ? AND seq >= ? AND turn_id IS NOT NULL").all(workspaceId, seq) as { turn_id: string }[]).map((r) => r.turn_id);
+    db.prepare("DELETE FROM events WHERE workspace_id = ? AND seq >= ?").run(workspaceId, seq);
+    for (const id of gone) {
+      if (!db.prepare("SELECT 1 FROM events WHERE workspace_id = ? AND turn_id = ? LIMIT 1").get(workspaceId, id)) db.prepare("DELETE FROM turns WHERE id = ?").run(id);
+    }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return { by: event.by, resume: previous ? { session: turn?.session ?? null, at: turn?.resume_at ?? null } : null, before };
 }
 
 /** Turns left running by a Portal that stopped mid-turn: nothing is driving them any more. */

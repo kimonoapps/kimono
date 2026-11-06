@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -197,6 +203,8 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                 is CodeEvent.ArtifactDraft -> drafts.artifacts[e.name] = e.id to e.content
                 is CodeEvent.Phase -> drafts.now = e
                 is CodeEvent.Renamed -> refresh()
+                /* A message was changed: the chat from it on went, and runs again from there. */
+                is CodeEvent.Rewound -> { events.removeAll { it.seq >= e.seq }; drafts.clear(); refresh() }
                 else -> {}
             }
             return
@@ -443,7 +451,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                 if (items.isEmpty() && !w.running) item(key = "empty") { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                 items(items, key = { it.key }) { item ->
                     when (item) {
-                        is Item.Ask -> AskBubble(code, platform, people, w, item.event)
+                        is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
                         is Item.Say -> Markdown(item.text)
                         is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
                         is Item.Done -> DoneNote(item.event)
@@ -619,11 +627,49 @@ private fun InkSparks() {
 /* ── what someone asked ── */
 
 @Composable
-private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.kimono.data.Person>, w: CodeWorkspace, ask: CodeEvent.Ask) {
+private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.kimono.data.Person>, w: CodeWorkspace, ask: CodeEvent.Ask, seq: Long) {
     /* Someone else's message: who sent it, by name and face. */
     val other = ask.by.takeIf { it.isNotBlank() && !it.equals(code.me ?: w.owner, ignoreCase = true) }
     if (ask.text.trim() == "/compact" && ask.attachments.isEmpty()) { Note("diff", "${other?.let { people.nameOf(it) } ?: "You"} asked it to compact the conversation${if (ask.queued) " after this step" else ""}"); return }
     var opened by remember { mutableStateOf<CodeAttachment?>(null) }
+    /* Your own message, while it isn't working: a long press changes it, and it runs again from there. */
+    val editable = other == null && !ask.queued && !w.running && w.canWrite
+    var editing by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    editing?.let { draft ->
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+            Column(
+                Modifier.widthIn(max = 340.dp).fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp))
+                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                val focus = remember { FocusRequester() }
+                LaunchedEffect(Unit) { focus.requestFocus() }
+                BasicTextField(draft, { editing = it }, Modifier.fillMaxWidth().focusRequester(focus),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSecondaryContainer),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary))
+                Text(problem ?: "It answers again from here; what came after goes.", style = MaterialTheme.typography.labelSmall, color = if (problem != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = .8f))
+                Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Seal("Cancel", compact = true, tone = SealTone.Quiet, onClick = { editing = null })
+                    Seal("Send", compact = true, busy = saving, enabled = draft.isNotBlank(), onClick = {
+                        val next = draft.trim()
+                        if (next == ask.text.trim()) { editing = null; return@Seal }
+                        saving = true; problem = null
+                        scope.launch {
+                            runCatching { code.editAsk(w.id, seq, next) }
+                                .onSuccess { editing = null }
+                                .onFailure { problem = it.message ?: "Couldn't change it." }
+                            saving = false
+                        }
+                    })
+                }
+            }
+        }
+        return
+    }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         if (other != null) Row(Modifier.padding(bottom = 4.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(people.nameOf(other), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -631,7 +677,9 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
             app.kimono.ui.Portrait(person?.picture, person?.name, other, 22.dp)
         }
         Column(
-            Modifier.widthIn(max = 320.dp).alpha(if (ask.queued) .72f else 1f).background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
+            Modifier.widthIn(max = 320.dp).alpha(if (ask.queued) .72f else 1f).clip(RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp))
+                .then(if (editable) Modifier.combinedClickable(onClick = {}, onLongClickLabel = "Edit", onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); problem = null; editing = ask.text }) else Modifier)
+                .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (ask.text.isNotBlank()) Text(ask.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)

@@ -25,6 +25,10 @@ type turnRequest struct {
 	// Context is the person's own: their instructions and what Kimono remembers
 	// about them. It joins the system prompt for this turn.
 	Context string `json:"context"`
+	// ResumeAt rewinds the session first: it carries on from this assistant
+	// message (its uuid), and what came after is dropped. A person edited an
+	// earlier message, and this turn runs it again from there.
+	ResumeAt string `json:"resumeAt"`
 }
 
 const maxContext = 24 * 1024
@@ -59,6 +63,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}
 	if !efforts[request.Effort] {
 		return problem(400, "Effort is low, medium, high, xhigh or max.")
+	}
+	if request.ResumeAt != "" && (request.Session == "" || !namePattern.MatchString(request.ResumeAt)) {
+		return problem(400, "A turn resumes at a message of its session.")
 	}
 	if request.Session != "" && !namePattern.MatchString(request.Session) {
 		return problem(400, "That session isn't one Kimono can resume.")
@@ -124,7 +131,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model]}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()

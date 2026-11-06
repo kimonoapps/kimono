@@ -1424,3 +1424,14 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-folder-more { justify-self: start; margin: 2px 0 2px 40px; font-size: 13px; }
 .cd-row-open[draggable="true"] { cursor: pointer; }
 .cd-search-results { display: grid; gap: 4px; }
+
+/* Changing a message sent earlier: a pencil under your own message on hover (always, on touch), and the bubble becomes its editor. */
+.cd-ask-acts { justify-self: end; display: flex; gap: 2px; margin: -14px 2px -8px 0; opacity: 0; transition: opacity var(--k-t-state); }
+.cd-timeline > .cd-ask:hover + .cd-ask-acts, .cd-ask-acts:hover, .cd-ask-acts:focus-within { opacity: 1; }
+@media (hover: none) { .cd-ask-acts { opacity: 1; } }
+.cd-ask-acts .cd-roundbutton { width: 32px; height: 32px; min-height: 0; }
+.cd-ask-acts .cd-roundbutton svg.i { width: 16px; height: 16px; }
+.cd-ask-edit { width: min(620px, 92%); box-shadow: 0 0 0 2px var(--k-app-accent); }
+.cd-ask-edit textarea { width: 100%; min-height: 24px; max-height: 50vh; padding: 0; border: 0; background: none; resize: none; outline: none; font: inherit; font-size: 15px; line-height: 1.55; color: var(--k-on-primary-container); }
+.cd-ask-edit-foot { display: flex; align-items: center; gap: 8px; }
+.cd-ask-edit-foot small { flex: 1; min-width: 0; font-size: 12.5px; color: var(--k-on-primary-container); opacity: .8; }

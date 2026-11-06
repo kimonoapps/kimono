@@ -46,6 +46,8 @@ export type CodeEvent =
   | { kind: "artifact-saved"; name: string; version: number; title: string }
   | { kind: "draft"; text: string }
   | { kind: "renamed"; title: string }
+  /* Never stored: a message was changed, so the chat from it on went. */
+  | { kind: "rewound"; seq: number }
   | { kind: "sent"; files: Attachment[] }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
   | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
@@ -149,6 +151,8 @@ export const code = {
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
   archive: (id: string, archived: boolean) => call<Workspace>(ws(id), json("PATCH", { archived })),
   ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
+  /** Changes a message sent earlier and runs it again from there; what came after it goes. */
+  editAsk: (id: string, seq: number, text: string, effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("PATCH", { seq, text, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
   usage: () => call<Usage>("/usage"),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),

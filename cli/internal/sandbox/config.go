@@ -23,7 +23,7 @@ const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.5.1"
 //
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
-const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"}`
+const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
 
 // Model is the Claude a turn runs on when Portal names none: the strongest, for building things.
 const Model = "claude-opus-5-5"

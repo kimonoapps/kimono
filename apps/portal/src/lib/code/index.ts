@@ -12,7 +12,7 @@ import { finish, toolHint, translate, type ArtifactCall, type Attachment, type C
 import { typeOf } from "../drive/storage";
 import { applyEdits, artifactOf, Drafts, saveArtifact } from "./artifacts";
 import {
-  abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, titleFrom, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
@@ -218,7 +218,52 @@ export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, tex
   return asked;
 }
 
-async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice) {
+/**
+ * The person changed a message they sent earlier: it and everything after it go, and it runs again
+ * from that point, the agent's session carried on from its last message before it.
+ */
+export function editAsk(config: CodeConfig, workspace: Workspace, user: ApiUser, seq: number, text: string, effort?: Effort, model?: ModelChoice) {
+  const prompt = text.trim();
+  if (!prompt) throw new CodeProblem("Say what to do.");
+  if (prompt.length > 32_000) throw new CodeProblem("That message is too long.");
+  if (runningTurn(db(), workspace.id)) throw new CodeProblem("Stop it first, or wait until it's done.", 409);
+  checkShare(config, user);
+  const asked = eventsAfter(db(), workspace.id, seq - 1, 1)[0];
+  if (!asked || asked.seq !== seq || asked.event.kind !== "ask") throw new CodeProblem("That message isn't here.", 404);
+  if (asked.event.by.toLowerCase() !== user.username.toLowerCase()) throw new CodeProblem("You can only change your own messages.", 403);
+  const attachments = asked.event.attachments;
+  const { resume, before } = rewindTo(db(), workspace.id, seq);
+  live.queued?.delete(workspace.id);
+  /* Whoever is watching starts the chat again from what's left. */
+  broadcast(workspace.id, null, { kind: "rewound", seq });
+  let rewound: Rewound | undefined;
+  if (resume?.session && resume.at) { setSession(db(), workspace.id, resume.session); rewound = { at: resume.at }; }
+  else {
+    setSession(db(), workspace.id, null);
+    if (resume) rewound = { before: transcriptOf(before) };
+  }
+  const turn = startTurn(db(), workspace.id);
+  const recorded = record(workspace.id, turn, { kind: "ask", by: user.username, text: prompt, attachments });
+  void run(config, workspace, user, turn, prompt, attachments, effort, model, rewound);
+  return recorded;
+}
+
+/** The conversation as words only, its latest part kept when it's long: who asked what, and what it answered. */
+function transcriptOf(events: StoredEvent[], budget = 16_000): string {
+  const lines: string[] = [];
+  for (const { event } of events) {
+    if (event.kind === "ask" && event.text) lines.push(`Person: ${event.text}`);
+    else if (event.kind === "text" && event.text.trim()) lines.push(`You: ${event.text.trim()}`);
+  }
+  let text = lines.join("\n\n");
+  if (text.length > budget) text = `…${text.slice(text.length - budget)}`;
+  return text;
+}
+
+/** How an edited message picks up: carrying the session on from a message of it, or a fresh one told what came before. */
+type Rewound = { at: string } | { before: string };
+
+async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice, rewound?: Rewound) {
   /* Which Claude answers: what the person chose, or Kimono's pick for this message. */
   const model = modelFor(choice, { prompt, attachments: attachments.length, building: workspace.kind === "project" || Boolean(workspace.preview) });
   /* How hard it thinks: Sonnet and Haiku stop at medium; an animation Kimono sent to Opus thinks lightly. */
@@ -231,6 +276,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   let failure: string | undefined;
   let context: number | undefined;
   let drafts: Drafts | null = null;
+  /* The agent's last message this turn, which a later edit carries the session on from. */
+  let lastMessage: string | null = null;
   try {
     await ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
@@ -246,8 +293,10 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
     /* Someone the chat was shared with wrote this: it should know who it's answering. */
     const from = user.username.toLowerCase() !== workspace.owner ? `(This message is from ${who(user).name}, whom ${workspace.owner} shared this chat with.)\n\n` : "";
-    const told = `${access ? `${access}\n\n` : ""}${news}${from}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : ""].filter(Boolean).join("\n\n") }, controller.signal);
+    /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
+    const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
+    const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : ""].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
@@ -323,6 +372,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           if (typeof line.session === "string" && line.session) setSession(db(), workspace.id, line.session);
           continue;
         }
+        if (line.type === "assistant" && typeof line.uuid === "string") lastMessage = line.uuid;
         const translated = translate(line);
         if (translated.session) setSession(db(), workspace.id, translated.session);
         if (translated.result) result = translated.result;
@@ -349,6 +399,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const outcome = { ...finish(result, done, failure, context), model };
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
+    noteTurnEnd(db(), turn, workspaceFor(db(), workspace.id, workspace.owner).session, lastMessage);
     /* A chat still on the words it started with gets a name from its first exchange. */
     if (outcome.ok) void nameChat(config, workspace);
     /* What the agent made goes to Drive, and what it changed in the person's own files goes back to them. */

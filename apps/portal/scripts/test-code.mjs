@@ -275,3 +275,41 @@ test('projects are folders of chats: make, file, rename, remove (chats stay)', (
   assert.equal(model.workspaceFor(db, chat.id, 'mina').folder, null, 'its chats stay, in no project');
   assert.equal(model.projectsOf(db, 'mina').length, 0);
 });
+
+test('changing a message takes the chat back to just before it, and says where the session was', () => {
+  const db = fresh();
+  const w = start(db);
+  const say = (turn, event) => model.appendEvent(db, w.id, turn, event).seq;
+  const t1 = model.startTurn(db, w.id);
+  const first = say(t1, { kind: 'ask', by: 'akram', text: 'Remember 41', attachments: [] });
+  say(t1, { kind: 'text', text: 'OK' });
+  model.endTurn(db, t1, 'done');
+  model.noteTurnEnd(db, t1, 'session-1', 'message-1');
+  const t2 = model.startTurn(db, w.id);
+  const second = say(t2, { kind: 'ask', by: 'akram', text: 'What is 2+2?', attachments: [] });
+  say(t2, { kind: 'text', text: 'Four' });
+  model.endTurn(db, t2, 'done');
+  model.noteTurnEnd(db, t2, 'session-1', 'message-2');
+
+  /* The second message: the chat goes back to the end of the first turn, and carries the session on from there. */
+  const back = model.rewindTo(db, w.id, second);
+  assert.deepEqual(back.resume, { session: 'session-1', at: 'message-1' });
+  assert.equal(back.by, 'akram');
+  assert.deepEqual(model.eventsAfter(db, w.id, 0).map((e) => e.seq), [first, first + 1]);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM turns WHERE id = ?').get(t2).n, 0);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM turns WHERE id = ?').get(t1).n, 1);
+
+  /* The first message: nothing before it, so a fresh session. */
+  assert.equal(model.rewindTo(db, w.id, first).resume, null);
+  assert.equal(model.eventsAfter(db, w.id, 0).length, 0);
+});
+
+test('only a message can be changed, and not one sent while it was working', () => {
+  const db = fresh();
+  const w = start(db);
+  const t = model.startTurn(db, w.id);
+  const text = model.appendEvent(db, w.id, t, { kind: 'text', text: 'Hi' }).seq;
+  const queued = model.appendEvent(db, w.id, t, { kind: 'ask', by: 'akram', text: 'and also', attachments: [], queued: true }).seq;
+  assert.throws(() => model.rewindTo(db, w.id, text), /isn't here/);
+  assert.throws(() => model.rewindTo(db, w.id, queued), /while it was working/);
+});

@@ -208,6 +208,8 @@ sealed interface CodeEvent {
     data class Draft(val text: String) : CodeEvent
     data class ArtifactDraft(val id: String, val name: String, val content: String) : CodeEvent
     data class Renamed(val title: String) : CodeEvent
+    /** Never stored: a message was changed, so the chat from it ([seq]) on went, and runs again from there. */
+    data class Rewound(val seq: Long) : CodeEvent
     /** What it is doing right now: working, thinking, writing, tools (with the app, space or sort of tool) or artifact. */
     data class Phase(val phase: String, val tool: String?, val app: String?, val space: String?) : CodeEvent
     data object Unknown : CodeEvent
@@ -308,6 +310,7 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "draft" -> CodeEvent.Draft(o.text("text") ?: "")
     "artifact-draft" -> CodeEvent.ArtifactDraft(o.text("id") ?: "", o.text("name") ?: "", o.text("content") ?: "")
     "renamed" -> CodeEvent.Renamed(o.text("title") ?: "")
+    "rewound" -> CodeEvent.Rewound(o["seq"]?.jsonPrimitive?.longOrNull ?: 0L)
     "phase" -> CodeEvent.Phase(o.text("phase") ?: "working", o.text("tool"), o.text("app"), o.text("space"))
     else -> CodeEvent.Unknown
 }
@@ -470,6 +473,16 @@ class Code(private val session: Session, private val platform: Platform? = null)
         session.call("${ws(id)}/turns", HttpMethod.Post, jsonBody(buildJsonObject {
             put("text", text)
             put("attachments", json.encodeToJsonElement(attachments))
+            if (_model.value != "auto") put("effort", _effort.value)
+            put("model", _model.value)
+        }))
+    }
+
+    /** Changes a message sent earlier ([seq]) and runs it again from there; what came after it goes. */
+    suspend fun editAsk(id: String, seq: Long, text: String) {
+        session.call("${ws(id)}/turns", HttpMethod.Patch, jsonBody(buildJsonObject {
+            put("seq", seq)
+            put("text", text)
             if (_model.value != "auto") put("effort", _effort.value)
             put("model", _model.value)
         }))

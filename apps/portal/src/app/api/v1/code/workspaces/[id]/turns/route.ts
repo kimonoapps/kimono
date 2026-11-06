@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { ask, code, CodeProblem, db, efforts, modelChoices, workspaceAs, shareOf, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
+import { ask, code, CodeProblem, db, editAsk, efforts, modelChoices, workspaceAs, shareOf, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -23,6 +23,27 @@ export async function POST(request: Request, { params }: Context) {
     const attachments = Array.isArray(body.attachments) ? body.attachments : [];
     if (attachments.length > 10 || !attachments.every(isAttachment)) throw new CodeProblem("Attach up to ten files.");
     const event = ask(config, workspaceAs(db(), id, user.username, "edit", shareOf(request)), user, String(body.text ?? ""), attachments, effort, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
+    return apiJson(event, 202);
+  });
+}
+
+/**
+ * Changes a message the person sent earlier and runs it again from there: `{ seq, text, effort?, model? }`.
+ * It and everything after it go; the agent carries on from just before it.
+ */
+export async function PATCH(request: Request, { params }: Context) {
+  const refused = crossSite(request);
+  if (refused) return refused;
+  const user = await apiUser();
+  if (!user) return unauthorized();
+  const read = await readJson(request);
+  if ("response" in read) return read.response;
+  const { id } = await params;
+  return code(user, (config) => {
+    const body = read.body as { seq?: unknown; text?: unknown; effort?: unknown; model?: unknown };
+    if (!Number.isInteger(body.seq) || (body.seq as number) < 1) throw new CodeProblem("Say which message to change.");
+    const effort = efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined;
+    const event = editAsk(config, workspaceAs(db(), id, user.username, "edit", shareOf(request)), user, body.seq as number, String(body.text ?? ""), effort, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
     return apiJson(event, 202);
   });
 }

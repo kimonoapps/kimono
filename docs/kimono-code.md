@@ -56,8 +56,15 @@ Removes the container and its volume. `204`. Already gone is fine.
 
 ### `POST /v1/workspaces/{id}/turns` — run the agent
 ```json
-{ "prompt": "…", "session": "<claude session id or omitted>", "attachments": ["/attachments/a.png"] }
+{ "prompt": "…", "session": "<claude session id or omitted>", "attachments": ["/attachments/a.png"], "resumeAt": "<message uuid or omitted>" }
 ```
+`resumeAt` rewinds the session first (`claude --resume-session-at`): it carries
+on from that assistant message and drops what came after. The Portal sends it
+when a person edits a message they sent earlier: it keeps each turn's session
+and last assistant message, deletes the edited message and everything after it
+from the chat, and runs the edited message from the end of the turn before. A
+turn from before this was kept starts a fresh session instead, told the
+conversation so far as text. Files the later turns changed stay as they are.
 Response is `application/x-ndjson`, streamed until the turn ends. Each line is
 one JSON object: Claude Code's own `--output-format stream-json --verbose`
 lines passed through untouched, plus Kimono lines:

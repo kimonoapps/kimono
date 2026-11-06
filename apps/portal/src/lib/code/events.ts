@@ -40,6 +40,8 @@ export type CodeEvent =
   | { kind: "draft"; text: string }
   /** Never stored: the chat got its name, so lists showing it load again. */
   | { kind: "renamed"; title: string }
+  /** Never stored: a message was changed, so the chat from it on went; whoever is watching loads it again. */
+  | { kind: "rewound"; seq: number }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
   /** Never stored: what it is doing right now, so the status at the end of the chat can say so. */
   | { kind: "phase"; phase: "working" | "thinking" | "writing" | "tools" | "artifact"; /** What sort of tool, when it's one of these. */ tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
