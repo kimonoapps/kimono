@@ -222,6 +222,15 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 13) {
+    /* Whether a chat has its name: one it was given after a reply, or one its owner chose. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE workspaces ADD COLUMN named INTEGER NOT NULL DEFAULT 0;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '13');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
@@ -397,8 +406,19 @@ export function renameWorkspace(db: DatabaseSync, id: string, owner: string, tit
   const value = String(title ?? "").trim().replace(/\s+/g, " ");
   if (!value || value.length > 120) throw new CodeProblem("Give it a name of up to 120 characters.");
   workspaceFor(db, id, owner);
-  db.prepare("UPDATE workspaces SET title = ?, updated_at = ? WHERE id = ?").run(value, Date.now(), id);
+  db.prepare("UPDATE workspaces SET title = ?, named = 1, updated_at = ? WHERE id = ?").run(value, Date.now(), id);
   return workspaceFor(db, id, owner);
+}
+
+/** Whether a chat still has the name it started with, waiting for one from its first exchange. */
+export function awaitsName(db: DatabaseSync, id: string) {
+  return (db.prepare("SELECT named FROM workspaces WHERE id = ?").get(id) as { named: number } | undefined)?.named === 0;
+}
+
+/** Gives a chat its name from its first exchange, unless it has one by now; marks it named either way. */
+export function nameWorkspace(db: DatabaseSync, id: string, title: string | null): boolean {
+  if (!title) { db.prepare("UPDATE workspaces SET named = 1 WHERE id = ?").run(id); return false; }
+  return db.prepare("UPDATE workspaces SET title = ?, named = 1 WHERE id = ? AND named = 0").run(title, id).changes > 0;
 }
 
 export function removeWorkspace(db: DatabaseSync, id: string, owner: string) {

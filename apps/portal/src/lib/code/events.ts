@@ -38,6 +38,8 @@ export type CodeEvent =
   | { kind: "artifact-saved"; name: string; version: number; title: string }
   /** Never stored: what it is writing right now, sent to whoever is watching. */
   | { kind: "draft"; text: string }
+  /** Never stored: the chat got its name, so lists showing it load again. */
+  | { kind: "renamed"; title: string }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
   /** An app of theirs needs connecting: Kimono shows a Connect button for this Composio link. */
   | { kind: "connect"; app: string; url: string }

@@ -11,7 +11,7 @@ import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, translate, type ArtifactCall, type Attachment, type CodeEvent, type TurnResult } from "./events";
 import { applyEdits, artifactOf, Drafts, saveArtifact } from "./artifacts";
 import {
-  abandonRunningTurns, appendEvent, CodeProblem, endTurn, migrate, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, titleFrom, newId, recordUsage, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
@@ -22,7 +22,8 @@ export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
 export { efforts, type Effort } from "./node";
-import { shotToDrive, syncDrive } from "./drive";
+import { retitle, shotToDrive, syncDrive } from "./drive";
+import { suggestTitle } from "./title";
 
 export * from "./model";
 export type { CodeEvent, Attachment } from "./events";
@@ -54,9 +55,13 @@ export function db(): DatabaseSync {
       appendEvent(opened, workspace, turn, { kind: "done", ok: false, error: "Kimono restarted while it was working." });
     }
     live.db = opened;
+    migrated = true;
   }
+  /* A hot reload keeps the connection but brings new code: bring the schema along. */
+  if (!migrated) { migrate(live.db); migrated = true; }
   return live.db;
 }
+let migrated = false;
 
 /** Chats are for everyone; projects on Kimono Git, and publishing, are for administrators. */
 export const allowed = (user: ApiUser) => Boolean(user.username);
@@ -292,6 +297,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const outcome = { ...finish(result, done, failure, context), model };
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
+    /* A chat still on the words it started with gets a name from its first exchange. */
+    if (outcome.ok) void nameChat(config, workspace);
     /* What the agent made goes to Drive, and what it changed in the person's own files goes back to them. */
     void syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync to Drive:", error instanceof Error ? error.message : error));
     const wroteBack = syncOpened(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't write back opened files:", error instanceof Error ? error.message : error); return []; });
@@ -311,6 +318,34 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         } catch (error) { console.warn("Code couldn't start the next turn:", error instanceof Error ? error.message : error); }
       });
     }
+  }
+}
+
+/* ── the chat's name ── */
+
+const naming = new Set<string>();
+
+async function nameChat(config: CodeConfig, workspace: Workspace) {
+  if (naming.has(workspace.id)) return;
+  naming.add(workspace.id);
+  try {
+    if (!awaitsName(db(), workspace.id)) return;
+    const events = eventsAfter(db(), workspace.id, 0, 400);
+    const first = events.find((e) => e.event.kind === "ask");
+    if (!first || first.event.kind !== "ask") return;
+    /* Someone renamed it before Kimono could (or before chats were named): theirs stays. */
+    const current = workspaceFor(db(), workspace.id, workspace.owner);
+    if (current.title !== titleFrom(first.event.text)) { nameWorkspace(db(), workspace.id, null); return; }
+    const reply = events.filter((e) => e.turn === first.turn && e.event.kind === "text").map((e) => (e.event as { text: string }).text).join("\n\n");
+    const title = await suggestTitle(config, current, first.event.text || first.event.attachments.map((a) => a.name).join(", "), reply);
+    if (!title || !nameWorkspace(db(), workspace.id, title)) return;
+    const named = workspaceFor(db(), workspace.id, workspace.owner);
+    await retitle(db(), named).catch((error) => console.warn("Kimono AI couldn't rename a chat's folder:", error instanceof Error ? error.message : error));
+    broadcast(workspace.id, null, { kind: "renamed", title });
+  } catch (error) {
+    console.warn("Kimono AI couldn't name a chat:", error instanceof Error ? error.message : error);
+  } finally {
+    naming.delete(workspace.id);
   }
 }
 

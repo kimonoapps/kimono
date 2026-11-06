@@ -1,6 +1,6 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { code, db, forgetAttachments, removeWorkspace, renameWorkspace, setWorkspaceProject, taskFolder, workspaceFor } from "@/lib/code";
-import { rehome } from "@/lib/code/drive";
+import { rehome, retitle } from "@/lib/code/drive";
 import { sandbox } from "@/lib/code/node";
 
 type Context = { params: Promise<{ id: string }> };
@@ -33,7 +33,9 @@ export async function PATCH(request: Request, { params }: Context) {
       await rehome(db(), moved).catch((error) => console.warn("Kimono AI couldn't move a chat's folder:", error instanceof Error ? error.message : error));
       if (body.title === undefined) return apiJson(moved);
     }
-    return apiJson(renameWorkspace(db(), id, user.username, body.title));
+    const renamed = renameWorkspace(db(), id, user.username, body.title);
+    await retitle(db(), renamed).catch((error) => console.warn("Kimono AI couldn't rename a chat's folder:", error instanceof Error ? error.message : error));
+    return apiJson(renamed);
   }, false);
 }
 

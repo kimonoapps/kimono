@@ -6,7 +6,7 @@ import { dirname } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import {
   addFile, blobPath, childrenOf, moveNode, createFolder, createSpace, db as driveDb, driveOn, DriveProblem, finishUpload,
-  maxFileBytes, newId as driveId, nodeFor, roleIn, root as driveRoot, startReplace, trashNode, typeOf,
+  maxFileBytes, newId as driveId, nodeFor, renameNode, roleIn, root as driveRoot, startReplace, trashNode, typeOf,
   type DriveNode,
 } from "../drive";
 import type { CodeConfig } from "./config";
@@ -70,6 +70,19 @@ export async function rehome(db: DatabaseSync, workspace: Workspace) {
   try { moveNode(driveDb(), workspace.drive.folderId, workspace.owner, home.id); } catch (error) { if (!(error instanceof DriveProblem)) throw error; }
 }
 
+/** The chat's folder takes its new name, made unique among its neighbours as when it was made. */
+export async function retitle(db: DatabaseSync, workspace: Workspace) {
+  if (!(await driveOn()) || !workspace.drive) return;
+  const base = folderName(workspace.title);
+  for (let n = 1; n < 50; n += 1) {
+    try { renameNode(driveDb(), workspace.drive.folderId, workspace.owner, n === 1 ? base : `${base} (${n})`); return; } catch (error) {
+      if (!(error instanceof DriveProblem) || error.status !== 409) return;
+    }
+  }
+}
+
+const folderName = (title: string) => title.replace(/[\u0000-\u001f\u007f/\\]/g, " ").trim().slice(0, 120) || "Task";
+
 /** The person's Code space, where every chat's files are: any of their chats may use it without asking. */
 export function codeSpaceOf(db: DatabaseSync, owner: string): string | null {
   try { return codeSpace(db, owner).id; } catch { return null; }
@@ -91,7 +104,7 @@ export async function taskFolder(db: DatabaseSync, workspace: Workspace): Promis
   }
   const project = folderIn(space.rootId, owner, homeOf(workspace));
   const taken = new Set(childrenOf(driveDb(), project.id, owner).children.map((c) => c.name.toLowerCase()));
-  const base = workspace.title.replace(/[\u0000-\u001f\u007f/\\]/g, " ").trim().slice(0, 120) || "Task";
+  const base = folderName(workspace.title);
   let name = base;
   for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${base} (${n})`;
   const folder = createFolder(driveDb(), project.id, owner, name);

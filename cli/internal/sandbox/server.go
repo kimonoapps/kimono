@@ -168,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/workspaces/{id}", s.workspaceCall(s.handleDelete))
 	mux.HandleFunc("POST /v1/workspaces/{id}/turns", s.workspaceCall(s.handleTurn))
 	mux.HandleFunc("POST /v1/workspaces/{id}/cancel", s.workspaceCall(s.handleCancel))
+	mux.HandleFunc("POST /v1/workspaces/{id}/name", s.workspaceCall(s.handleName))
 	mux.HandleFunc("GET /v1/workspaces/{id}/files", s.workspaceCall(s.handleFiles))
 	mux.HandleFunc("GET /v1/workspaces/{id}/file", s.workspaceCall(s.handleFile))
 	mux.HandleFunc("PUT /v1/workspaces/{id}/file", s.workspaceCall(s.handlePutFile))
