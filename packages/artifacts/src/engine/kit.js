@@ -13,7 +13,12 @@
  * is written, while the rest of the artifact is still arriving. A scene runs
  * line by line as it arrives, and plays again whenever the person asks.
  *
- * window.K: K.value(name), K.watch(name, fn), K.colors(), K.format(n, opts).
+ * window.K: K.value(name), K.watch(name, fn), K.colors(), K.format(n, opts), K.media(file).
+ *
+ * Media: a page names its own sounds, videos and pictures as media/<file>
+ * (src="media/voice.mp3"); the frame says where they're served
+ * (window.KIMONO_MEDIA) once Kimono keeps the artifact, and K.pointMedia()
+ * points them there. A scene's narrate() plays a clip as one of its steps.
  */
 (() => {
   "use strict";
@@ -35,6 +40,21 @@
   };
   const html = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
 
+  /* media/<file>: the artifact's own files, served where the frame says (none until Kimono has kept them) */
+  const mediaFile = (name) => String(name ?? "").replace(/^\.?\/?media\//, "");
+  K.media = (name) => window.KIMONO_MEDIA ? window.KIMONO_MEDIA + encodeURIComponent(mediaFile(name)) : "";
+  K.pointMedia = () => {
+    if (!window.KIMONO_MEDIA) return;
+    for (const node of document.querySelectorAll("[src^='media/'], [poster^='media/']")) {
+      for (const attr of ["src", "poster"]) {
+        const v = node.getAttribute(attr);
+        if (v && /^media\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v)) node.setAttribute(attr, K.media(v));
+      }
+    }
+  };
+  /* clip lengths as the browser measured them: a scene's timeline is rebuilt with them */
+  const clipLengths = new Map();
+
   /* numbers */
   K.format = (n, opts = {}) => {
     if (typeof n !== "number" || !isFinite(n)) return String(n ?? "");
@@ -45,13 +65,17 @@
       : new Intl.NumberFormat(undefined, { maximumFractionDigits: opts.digits ?? (abs < 10 && n % 1 ? 2 : abs < 100 && n % 1 ? 1 : 0) }).format(n);
     return `${opts.prefix ?? ""}${text}${opts.suffix ?? ""}`;
   };
-  function niceTicks(min, max, count = 5) {
+  /* Round values for an axis between min and max. enclose: reach out to round values past them, so a
+     chart's highest point sits under a labelled line (a scene's axes keep inside their view). */
+  function niceTicks(min, max, count = 5, enclose = false) {
     if (!isFinite(min) || !isFinite(max)) return [0, 1];
     if (min === max) { min -= 1; max += 1; }
     const span = max - min, raw = span / count, mag = Math.pow(10, Math.floor(Math.log10(raw)));
     const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => span / s <= count) ?? 10 * mag;
+    const first = (enclose ? Math.floor(min / step + 1e-9) : Math.ceil(min / step - 1e-9)) * step;
+    const last = enclose ? Math.ceil(max / step - 1e-9) * step : max;
     const out = [];
-    for (let v = Math.ceil(min / step - 1e-9) * step; v <= max + step * 1e-6; v += step) out.push(+v.toFixed(10));
+    for (let v = first; v <= last + step * 1e-6; v += step) out.push(+v.toFixed(10));
     return out;
   }
   K.ticks = niceTicks;
@@ -147,7 +171,7 @@
       if (bars || type === "area") lo = Math.min(0, lo);
       if (this.hasAttribute("min")) lo = +this.getAttribute("min");
       if (this.hasAttribute("max")) hi = +this.getAttribute("max");
-      const ticks = niceTicks(lo, hi, horizontal ? 4 : 5);
+      const ticks = niceTicks(lo, hi, horizontal ? 4 : 5, true);
       lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
       const tickWidth = Math.max(...ticks.map((t) => fmt(t).length)) * 7 + 10;
       const catWidth = horizontal ? Math.min(140, Math.max(...xs.map((v) => String(v).length)) * 7 + 12) : 0;
@@ -193,11 +217,27 @@
         });
       } else {
         const baseline = scaleV(Math.max(lo, 0));
+        /* stacked: each series sits on the ones before it (positives up, negatives down), as bars do */
+        const below = data.map(() => ({ up: 0, down: 0 }));
+        const line2 = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
         yKeys.forEach((k, j) => {
-          const pts = data.map((r, i) => [pos(i), scaleV(+r[k])]).filter((p) => isFinite(p[1]));
+          let pts, floor = null;
+          if (stacked && type !== "scatter") {
+            const tops = [], bottoms = [];
+            data.forEach((r, i) => {
+              const v = +r[k] || 0, at = below[i];
+              const from = v >= 0 ? at.up : at.down, to = from + v;
+              if (v >= 0) at.up = to; else at.down = to;
+              tops.push([pos(i), scaleV(to)]); bottoms.push([pos(i), scaleV(from)]);
+            });
+            pts = tops; floor = bottoms;
+          } else pts = data.map((r, i) => [pos(i), scaleV(+r[k])]).filter((p) => isFinite(p[1]));
           if (!pts.length) return;
-          const d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("");
-          if (type === "area") el("path", { d: `${d}L${pts[pts.length - 1][0]} ${baseline}L${pts[0][0]} ${baseline}Z`, fill: col(j), opacity: .16, class: animate ? "k-fade" : null }, svg);
+          const d = line2(pts);
+          if (type === "area") {
+            const under = floor ? floor.slice().reverse().map((p) => `L${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join("") : `L${pts[pts.length - 1][0]} ${baseline}L${pts[0][0]} ${baseline}`;
+            el("path", { d: `${d}${under}Z`, fill: col(j), opacity: floor ? .3 : .16, class: animate ? "k-fade" : null }, svg);
+          }
           if (type !== "scatter") {
             const path = el("path", { d, fill: "none", stroke: col(j), "stroke-width": 2.5, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
             if (animate) { const len = path.getTotalLength(); path.style.cssText = `--len:${len};stroke-dasharray:${len};animation-delay:${j * 120}ms`; path.classList.add("k-draw"); }
@@ -337,7 +377,7 @@
   class Callout extends Base { render() {} }
 
   /* ── k-scene: an animation written as code, one statement per line ── */
-  const ease = { linear: (p) => p, out: (p) => 1 - Math.pow(1 - p, 3), inOut: (p) => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2, spring: (p) => 1 - Math.cos(p * Math.PI * 2.4) * Math.exp(-p * 6) };
+  const ease = { linear: (p) => p, in: (p) => p * p * p, out: (p) => 1 - Math.pow(1 - p, 3), inOut: (p) => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2, spring: (p) => 1 - Math.cos(p * Math.PI * 2.4) * Math.exp(-p * 6) };
   const clamp = (v) => Math.max(0, Math.min(1, v));
   let THREE = null, threeLoading = null;
   function loadThree() {
@@ -379,7 +419,7 @@
       new MutationObserver(() => { const s = this.querySelector("script"); if (s) this.feed(s.textContent, this._closed); }).observe(this, { childList: true, subtree: true, characterData: true });
       let last = performance.now();
       const tick = (now) => {
-        if (!this.isConnected) { this._loop = 0; return; }
+        if (!this.isConnected) { this._loop = 0; this.silence(); return; }
         const dt = Math.min(.1, (now - last) / 1000); last = now;
         if (this.playing && this.timeline) {
           const end = this.timeline.end;
@@ -387,6 +427,7 @@
           if (this.t >= end && this.complete) { this.playing = false; }
         }
         this.paint();
+        this.voice(now);
         if (this.external && now - (this._told || 0) > 90) { this._told = now; this.report(); }
         this._loop = requestAnimationFrame(tick);
       };
@@ -438,6 +479,107 @@
       }
       for (const [key, node] of this._labels) if (!seen.has(key)) { node.remove(); this._labels.delete(key); }
     }
+    /* Narration: the clip whose step the time is in plays, at the step's own point; the rest stay quiet. */
+    voice(now = performance.now()) {
+      const tl = this.timeline, voices = tl?.voices;
+      if (!voices?.length) { this.silence(); return; }
+      this._ticked = now;
+      this.audios ??= new Map();
+      this.soundControls();
+      if (!window.KIMONO_MEDIA) return;
+      for (const v of voices) if (!this.audios.has(v.name)) {
+        const a = new Audio();
+        a.preload = "auto";
+        /* read with CORS, so its sound can go through a gain where the browser won't set a volume (iOS) */
+        a.crossOrigin = "anonymous";
+        a.src = K.media(v.name);
+        this.applyVolume(a);
+        a.addEventListener("loadedmetadata", () => this.learnLength(v.name, a.duration));
+        /* the page stopped drawing (hidden, or put away): so does the voice */
+        a.addEventListener("timeupdate", () => { if (performance.now() - (this._ticked || 0) > 400) a.pause(); });
+        this.audios.set(v.name, a);
+      }
+      const end = tl.end;
+      const going = this.playing && !(this.t >= end && this.complete) && !this.muted;
+      let active = null;
+      if (going) for (const v of voices) if (this.t >= v.t0 && this.t < v.t0 + v.d) active = v;
+      for (const [name, a] of this.audios) if ((!active || name !== active.name) && !a.paused) a.pause();
+      if (!active) return;
+      const a = this.audios.get(active.name), want = this.t - active.t0;
+      if (isFinite(a.duration) && want >= a.duration) { if (!a.paused) a.pause(); return; }
+      if (Math.abs(a.currentTime - want) > .3) { try { a.currentTime = want; } catch { /* not seekable yet */ } }
+      if (a.paused && !this.blocked && !a._starting) {
+        a._starting = true;
+        a.play().then(() => { a._starting = false; }, (error) => {
+          a._starting = false;
+          /* the browser wants a tap in here before it plays sound */
+          if (error?.name === "NotAllowedError") { this.blocked = true; this.soundControls(); }
+        });
+      }
+    }
+    silence() { for (const a of this.audios?.values() ?? []) if (!a.paused) a.pause(); }
+    learnLength(name, seconds) {
+      if (!isFinite(seconds) || seconds <= 0 || clipLengths.get(name) === seconds) return;
+      const step = this.timeline?.voices?.find((v) => v.name === name);
+      clipLengths.set(name, seconds);
+      if (step && Math.abs(step.d - seconds) > .15 && this.ran) this.run(this.ran);
+    }
+    /* How loud, 0 to 1: from Kimono's controls (scene-control "volume"). Raising it turns muted sound back on. */
+    setVolume(v) {
+      this.volume = Math.max(0, Math.min(1, +v || 0));
+      if (this.volume > 0 && this.muted) this.muted = false;
+      for (const a of this.audios?.values() ?? []) this.applyVolume(a);
+      this.report(true);
+    }
+    applyVolume(a) {
+      const v = this.volume ?? 1;
+      if (a._gain) { a._gain.gain.value = v; return; }
+      try { a.volume = v; } catch { /* read-only here */ }
+      /* iOS keeps a page's media at full volume whatever it sets: go through Web Audio instead */
+      if (Math.abs(a.volume - v) > .01) {
+        try {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          K._audio ??= new Ctx();
+          const source = K._audio.createMediaElementSource(a);
+          a._gain = K._audio.createGain();
+          source.connect(a._gain).connect(K._audio.destination);
+          a._gain.gain.value = v;
+          if (K._audio.state === "suspended") K._audio.resume().catch(() => {});
+        } catch { /* no Web Audio: it plays at the device's volume */ }
+      }
+    }
+    /* Sound on or off: from Kimono's controls (scene-control "sound-on" / "sound-off"), or the stage's own switch. */
+    setSound(on) {
+      if (on) { this.blocked = false; this.muted = false; this.voice(); }
+      else { this.muted = true; this.silence(); }
+      this.soundControls();
+      this.report(true);
+    }
+    /* A sound switch on the stage, and "Tap for sound" while the browser holds the sound back. In
+       Kimono's frame its controls draw the switch instead, from what report() says. */
+    soundControls() {
+      if (this.external) { this.report(true); return; }
+      if (!this._sound) {
+        this._sound = html("button", "k-sound");
+        this._sound.type = "button";
+        this._sound.addEventListener("pointerdown", (e) => e.stopPropagation());
+        this._sound.addEventListener("pointerup", (e) => e.stopPropagation());
+        this._sound.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (this.blocked && !this.playing) this.play();
+          this.setSound(this.blocked || this.muted);
+        });
+        this.stage.append(this._sound);
+      }
+      const label = this.blocked ? "Tap for sound" : this.muted ? "Sound off" : "Sound on";
+      if (this._sound.dataset.state !== label) {
+        this._sound.dataset.state = label;
+        this._sound.textContent = this.blocked ? "🔈 Tap for sound" : this.muted ? "🔇" : "🔊";
+        this._sound.setAttribute("aria-label", label);
+        this._sound.title = label;
+        this._sound.classList.toggle("is-asking", Boolean(this.blocked));
+      }
+    }
     toggle() {
       if (!this.timeline) return;
       if (!this.playing && this.t >= this.timeline.end - 1e-3) this.t = 0;
@@ -456,9 +598,12 @@
       const index = [...document.querySelectorAll("k-scene")].indexOf(this);
       const end = this.timeline?.end || 0;
       const params = (this.timeline?.params ?? []).map((p) => ({ name: p.name, label: p.label, min: p.min, max: p.max, step: p.step, value: p.v, unit: p.unit }));
-      const state = { kimono: "scene", index, t: this.t, end, playing: this.playing && !(this.t >= end && this.complete), complete: this.complete, params };
+      /* voiced: it narrates, so Kimono's controls show a sound switch; blocked: the browser wants a tap first */
+      const voiced = Boolean(this.timeline?.voices?.length);
+      const volume = this.volume ?? 1;
+      const state = { kimono: "scene", index, t: this.t, end, playing: this.playing && !(this.t >= end && this.complete), complete: this.complete, params, voiced, muted: Boolean(this.muted), blocked: Boolean(this.blocked), volume };
       /* only when something moved: a paused scene says nothing */
-      const key = `${index}|${state.t.toFixed(2)}|${end}|${state.playing}|${state.complete}|${params.map((p) => `${p.name}=${p.value}`).join(",")}`;
+      const key = `${index}|${state.t.toFixed(2)}|${end}|${state.playing}|${state.complete}|${voiced}|${state.muted}|${state.blocked}|${volume}|${params.map((p) => `${p.name}=${p.value}`).join(",")}`;
       if (key === this._said) return;
       this._said = key;
       /* the frame sums every scene up for Kimono's controls */
@@ -549,7 +694,7 @@
   function makeTimeline(host) {
     const ops = [], trackers = [];
     let cursor = 0, group = null, view = { x: [-1, 1], y: [-1, 1], set: false }, now = 0, end = 0;
-    const tl = { ops, end: 0, uses3d: false, three: null, params: [], labels: [], drags: [] };
+    const tl = { ops, end: 0, uses3d: false, three: null, params: [], labels: [], drags: [], voices: [] };
     const stretch = (t) => { end = Math.max(end, t); tl.end = end; };
     const add = (op, d = .8) => {
       op.t0 = group ? group.start : cursor; op.d = Math.max(0, d);
@@ -593,7 +738,36 @@
         for (const other of ops) if (other.caption && other.fadeAt == null) { other.fadeAt = group ? group.start : cursor; other.fadeD = .25; }
         return add(op, o.dur ?? .5);
       },
+      /* narrate("media/beat-1.mp3", "What it says", 4.2): the clip plays as a step as long as it is, with its words as the caption */
+      narrate(src, words, seconds) {
+        if (typeof words === "number") { seconds = words; words = undefined; }
+        const name = mediaFile(src);
+        const d = clipLengths.get(name) ?? (typeof seconds === "number" && seconds > 0 ? seconds : words ? Math.max(1.5, String(value(words)).length / 14) : 3);
+        let step;
+        api.together(() => {
+          if (words != null) api.caption(words);
+          step = add({ voice: name }, d);
+        });
+        tl.voices.push({ name, t0: step.op.t0, d });
+        return step;
+      },
       text(pos, words, o = {}) { if (hasMath(words)) tl.usesTex = true; const key = `l${labelId++}`; return add({ draw(ctx, p, w, h) { const [x, y] = value(pos); say(key, "text", sx(x, w), sy(y, h), value(words), { alpha: ctx.globalAlpha * p, color: o.color ? colour(o.color) : undefined, size: o.size, align: o.align }); } }, o.dur ?? .4); },
+      /*
+       * An equation pinned to the stage (top left, or { at: "right" }), in front of 2D or 3D. Equations shown
+       * at once stack; fade them when the next line starts. latex may be a function, so its numbers stay
+       * live: formula(() => `x = ${x.toFixed(1)}\\text{ cm}`). Colour a symbol with tint("r", "indigo").
+       */
+      formula(latex, o = {}) {
+        tl.usesTex = true;
+        const key = `l${labelId++}`, right = o.at === "right";
+        const slot = o.slot ?? ops.filter((op) => op.formula && op.right === right && op.fadeAt == null).length;
+        return add({ formula: true, right, draw(ctx, p, w) {
+          const y = (tl.titled ? 60 : 22) + slot * (o.gap ?? 46) + 16;
+          /* it comes in over the second half of its step, once the line before has faded out of its place */
+          say(key, "formula", right ? w - 16 : 16, y, `$${value(latex)}$`, { alpha: ctx.globalAlpha * Math.max(0, (p - .45) / .55), align: right ? "right" : "left", size: o.size });
+        } }, o.dur ?? .9);
+      },
+      tint: (tex, name) => `\\color{${colour(name)}}{${tex}}`,
       /* maths, typeset: tex([x, y], "\\int_a^b f(x)\\,dx") */
       tex(pos, latex, o = {}) { return api.text(pos, `$${value(latex)}$`, o); },
 
@@ -819,6 +993,38 @@
       },
       camera(o = {}, d = 1.5) { tl.uses3d = true; tl.cams ??= []; tl.cams.push({ t0: group ? group.start : cursor, d, to: o }); if (group) group.longest = Math.max(group.longest, d); else cursor += d; stretch((group ? group.start : cursor) + (group ? d : 0)); },
       orbit(deg = 360, d = 6) { tl.uses3d = true; tl.cams ??= []; const t0 = group ? group.start : cursor; tl.cams.push({ t0, d, spin: deg }); if (group) group.longest = Math.max(group.longest, d); else cursor += d; stretch(t0 + d); },
+      /*
+       * Any model: build(T) makes it with three.js (T is THREE; y is up, in three's own units) and returns
+       * it; move(obj, t, T) runs every frame, t seconds after this step began, so it can turn, slide and
+       * light up its parts. Trackers animate()d on the timeline can drive it, so it keeps time with
+       * narrate() and with scrubbing. { frame: r } frames the camera on a box r each way from the middle.
+       */
+      model(build, move, o = {}) {
+        tl.uses3d = true;
+        if (o.frame) { const r = +o.frame; tl.view3d = { x: [-r, r], y: [-r, r], z: [-r, r] }; }
+        const step = add3d((T) => {
+          const obj = build(T);
+          if (!obj?.isObject3D) throw new Error("model(): build(T) must return a three.js object, such as a THREE.Group");
+          return obj;
+        }, (obj, p, t, T) => {
+          obj.userData.size ??= obj.scale.clone();
+          obj.scale.copy(obj.userData.size).multiplyScalar(o.grow === false ? 1 : Math.max(.001, ease.out(p)));
+          if (move) move(obj, Math.max(0, t - step.op.t0), T);
+        }, o.dur ?? .8);
+        return step;
+      },
+      /* a label that follows part of a model (a three.js object) or a point in three's units ([x, y, z], y up) */
+      tag(target, text, o = {}) {
+        tl.uses3d = true; if (hasMath(text)) tl.usesTex = true;
+        const key = `l${labelId++}`;
+        return add3d((T) => { const g = new T.Object3D(); g.userData.label = true; return g; }, (obj, p, t, T) => {
+          const at = value(target);
+          if (at?.isObject3D) { at.updateWorldMatrix(true, false); at.getWorldPosition(obj.position); }
+          else if (Array.isArray(at)) obj.position.set(at[0], at[1], at[2]);
+          if (o.offset) obj.position.add(new T.Vector3(...o.offset));
+          obj.userData.say = { key, text: value(text), alpha: p, color: o.color ? colour(o.color) : undefined };
+        }, o.dur ?? .4);
+      },
       /* helpers people's code can use */
       PI: Math.PI, sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, log: Math.log, sqrt: Math.sqrt, abs: Math.abs, pow: Math.pow, floor: Math.floor, round: Math.round, min: Math.min, max: Math.max,
       range(a, b, step = 1) { const out = []; for (let v = a; step > 0 ? v <= b + 1e-9 : v >= b - 1e-9; v += step) out.push(+v.toFixed(10)); return out; },
@@ -866,7 +1072,10 @@
       gl.scene.add(root);
       gl.scene.add(tl.light ??= new T.HemisphereLight(0xffffff, 0x886666, 2.2));
       const sun = new T.DirectionalLight(0xffffff, 1.4); sun.position.set(3, 6, 4); root.add(sun);
-      for (const op of ops) if (op.three) { try { op.three.obj = op.three.make(T); op.three.obj.visible = false; root.add(op.three.obj); } catch (e) { console.error(e); } }
+      for (const op of ops) if (op.three) {
+        try { op.three.obj = op.three.make(T); op.three.obj.visible = false; root.add(op.three.obj); }
+        catch (e) { console.error(e); if (window.KIMONO_REPORT_ERROR) window.KIMONO_REPORT_ERROR(`Scene: ${e?.message || e}`); }
+      }
       tl.three = root;
       tl.dispose = () => { gl.scene.remove(root); root.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }); tl.three = null; };
     };

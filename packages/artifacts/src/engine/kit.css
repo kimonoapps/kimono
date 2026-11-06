@@ -120,6 +120,8 @@ k-scene .k-controls { display: flex; align-items: center; gap: 10px; padding: 8p
 k-scene .k-controls button { min-height: 30px; width: 30px; padding: 0; border-radius: 50%; box-shadow: none; }
 k-scene .k-controls input[type=range] { flex: 1; min-width: 0; padding: 0; background: none; box-shadow: none; accent-color: var(--k-accent); }
 k-scene .k-building { color: var(--k-accent); font-weight: 700; }
+k-scene .k-sound { position: absolute; top: 10px; right: 10px; z-index: 2; min-height: 30px; min-width: 30px; padding: 0 8px; border-radius: 15px; font-size: 14px; line-height: 30px; background: color-mix(in srgb, var(--k-card) 85%, transparent); box-shadow: none; }
+k-scene .k-sound.is-asking { font-size: 13px; font-weight: 600; color: var(--k-accent); }
 k-scene .k-error { padding: 6px 12px; font: 12px/1.4 var(--k-mono); color: var(--k-bad); }
 k-scene script { display: none; }
 k-scene .k-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -127,6 +129,8 @@ k-scene .k-label { position: absolute; left: 0; top: 0; white-space: nowrap; fon
 k-scene .k-label-title { left: 18px; right: 18px; top: 13px; font: 700 19px/1.25 var(--k-display); overflow: hidden; text-overflow: ellipsis; }
 k-scene .k-label-caption { left: 24px; right: 24px; top: auto; bottom: 14px; text-align: center; white-space: normal; font: 500 15px/1.4 var(--k-sans); text-wrap: balance; }
 k-scene .k-label .katex { font-size: 1.08em; }
+k-scene .k-label-formula { padding: 6px 11px; border-radius: 10px; background: color-mix(in srgb, var(--k-card) 86%, transparent); font-size: 15px; font-weight: 500; }
+k-scene .k-label-formula .katex { font-size: 1.12em; }
 k-scene .k-stage { touch-action: none; user-select: none; }
 
 @media (prefers-reduced-motion: reduce) { .k-draw, .k-grow, .k-grow-x, .k-pop, .k-fade { animation: none; } }

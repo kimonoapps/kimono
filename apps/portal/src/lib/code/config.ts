@@ -10,6 +10,12 @@ const whole = (raw: string, fallback: number, max: number, min = 1) => {
   return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : fallback;
 };
 
+/** Dollars, to the cent. */
+const money = (raw: string, fallback: number, max: number) => {
+  const n = raw === "" ? fallback : Number(raw);
+  return Number.isFinite(n) ? Math.round(Math.min(Math.max(n, 0), max) * 100) / 100 : fallback;
+};
+
 const percent = (raw: string, fallback: number) => {
   const n = raw === "" ? fallback : Number(raw);
   return Number.isFinite(n) ? Math.min(Math.max(n, 0), 100) / 100 : fallback / 100;
@@ -33,6 +39,8 @@ export function codeConfig(settings: PlatformSettings) {
     modelToken: value("model_token"),
     /* Composio's Tool Router: one session per person, its MCP reached through the node's gateway. Optional. */
     composioKey: value("composio_api_key"),
+    /* What each person may spend a month on paid tools (Composio's Instant), in US dollars; 0 is none (lib/code/media.ts). */
+    mediaBudget: money(value("media_budget"), 10, 10_000),
     gitAddress,
     gitApp,
     /* Each person's share of the Claude plan, as fractions; the owner isn't limited. */

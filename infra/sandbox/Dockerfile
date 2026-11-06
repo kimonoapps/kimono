@@ -42,7 +42,24 @@ RUN curl -fsSL "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/
       pandas==3.1.1 numpy==2.5.4 matplotlib==3.11.2 tabulate==0.10.0 csvkit==2.2.0 \
       pillow==13.0.0 pillow-heif==1.8.1 \
       markdown==3.11.3 beautifulsoup4==4.15.0 lxml==6.1.3 pyyaml==6.0.3 python-dateutil==4.0.0 \
+      # kimono-say's voice engine (Kokoro on onnxruntime, espeak for spelling sounds).
+      kokoro-onnx==0.6.1 onnxruntime==1.31.1 espeakng-loader==0.2.4 phonemizer==3.6.0 \
+      attrs==26.1.0 cloudpickle==3.1.2 dlinfo==2.0.0 flatbuffers==25.12.19 joblib==1.6.0 \
+      packaging==26.3 protobuf==7.36.2 typing-extensions==4.16.0 \
  && chmod -R a+rX /opt/kimono
+
+# The voice kimono-say reads aloud with: Kokoro v1.0 (Apache-2.0), its int8
+# model and voices, checked against their sums. Five times faster than real
+# time on one CPU; nothing is fetched when it runs.
+ARG KOKORO_FILES=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+RUN mkdir -p /opt/kimono/voice \
+ && curl -fsSL --retry 5 -o /opt/kimono/voice/kokoro-v1.0.int8.onnx "${KOKORO_FILES}/kokoro-v1.0.int8.onnx" \
+ && curl -fsSL --retry 5 -o /opt/kimono/voice/voices-v1.0.bin "${KOKORO_FILES}/voices-v1.0.bin" \
+ && printf '%s  %s\n' \
+      6e742170d309016e5891a994e1ce1559c702a2ccd0075e67ef7157974f6406cb /opt/kimono/voice/kokoro-v1.0.int8.onnx \
+      bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d /opt/kimono/voice/voices-v1.0.bin \
+    | sha256sum -c - \
+ && chmod -R a+rX /opt/kimono/voice
 
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
@@ -59,7 +76,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # What the agent shows people: screenshots (kimono-shot) and a running app
 # behind a link (kimono-serve, kimono-unserve, which run it under supervise).
 # See docs/kimono-code.md.
-COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-chats /usr/local/bin/
+COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-say bin/kimono-chats /usr/local/bin/
 # How to make artifacts: the kit, scenes and maths (read by the agent; see docs/kimono-ai.md).
 COPY artifacts.md /opt/kimono/artifacts.md
 COPY bin/shot.cjs bin/supervise /usr/local/lib/kimono/

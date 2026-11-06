@@ -19,8 +19,15 @@ export type ToolSession = { url: string; headers: Record<string, string> };
 type Stored = { session_id: string; mcp_url: string; key_hash: string; checked_at: number };
 type Answer = { session_id?: string; mcp?: { type?: string; url?: string } };
 
+/*
+ * Composio's Instant tools run on Composio's own provider accounts and are
+ * charged to its balance, so nobody connects anything. Every Instant tool is
+ * allowed (an empty policy); each person has a monthly allowance for them (media.ts).
+ */
+export const instantPolicy = {};
+
 /* The session's settings are part of what it was made with: change them, and old sessions are made again. */
-const sessionVersion = "3";
+const sessionVersion = "4";
 const hashOf = (key: string) => createHash("sha256").update(`${sessionVersion}:${key}`).digest("hex").slice(0, 16);
 
 /** Who a person is to Composio: stable, and distinct between Kimono servers sharing one Composio project. */
@@ -46,6 +53,7 @@ async function create(key: string, username: string, origin: string): Promise<An
       manage_connections: { enable: true, callback_url: `${origin}/code?connections=1` },
       /* No remote workbench: it runs code on Composio's machines with the internet, around "never the web". */
       workbench: { enable: false },
+      instant: instantPolicy,
     }),
   });
   if (!response.ok) throw new Error(`Composio said ${response.status} to a new session`);
@@ -76,8 +84,9 @@ export async function toolSession(db: DatabaseSync, key: string, username: strin
     }
     const answer = await create(key, username, origin);
     if (!answer.session_id || !answer.mcp?.url) throw new Error("Composio's answer had no session");
-    db.prepare(`INSERT INTO tool_sessions (username, key_hash, session_id, mcp_url, checked_at) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT (username) DO UPDATE SET key_hash = excluded.key_hash, session_id = excluded.session_id, mcp_url = excluded.mcp_url, checked_at = excluded.checked_at`)
+    /* A new session starts with Instant on; media.ts closes it again if this month's allowance is spent. */
+    db.prepare(`INSERT INTO tool_sessions (username, key_hash, session_id, mcp_url, checked_at, instant) VALUES (?, ?, ?, ?, ?, 1)
+      ON CONFLICT (username) DO UPDATE SET key_hash = excluded.key_hash, session_id = excluded.session_id, mcp_url = excluded.mcp_url, checked_at = excluded.checked_at, instant = 1`)
       .run(username, keyHash, answer.session_id, answer.mcp.url, now);
     return { url: answer.mcp.url, headers };
   } catch (error) {
@@ -271,4 +280,92 @@ export async function disconnect(db: DatabaseSync, key: string, username: string
   if (!mine.some((c) => c.account === account)) throw new ConnectionProblem("That connection isn't yours, or it's gone.", 404);
   const response = await fetch(`${v3()}/connected_accounts/${encodeURIComponent(account)}`, { method: "DELETE", headers: { "x-api-key": key }, signal: AbortSignal.timeout(15_000), cache: "no-store" }).catch(() => null);
   if (!response?.ok) throw new ConnectionProblem("That connection couldn't be removed right now.");
+}
+
+/* ── Instant: what a person spent, and switching it off and on ── */
+
+/** One Instant charge: when (ms) and how much, in millionths of a dollar. */
+export type InstantCharge = { at: number; micros: number };
+const spends = new Map<string, { from: number; spent: number; at: number; charges: InstantCharge[] }>();
+
+type ExecutionLog = { timestamp?: string; metadata?: { credential_source?: string; instant_charge?: string } };
+
+/**
+ * What a person's Instant tools cost since `from`, in US dollars, from
+ * Composio's execution logs (by their Composio user, so it spans every session
+ * they had). Kept for `fresh` ms; null when the logs can't be read.
+ */
+export async function instantSpent(key: string, username: string, origin: string, from: number, now = Date.now(), fresh = 60_000): Promise<number | null> {
+  if (!key) return null;
+  const cached = spends.get(username);
+  if (cached && cached.from === from && now - cached.at < fresh) return cached.spent;
+  /* Millionths of a dollar, so adding up many small charges stays exact. */
+  let micros = 0;
+  const charges: InstantCharge[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 50; page++) {
+    const response = await call(key, "/logs/tool_execution", {
+      method: "POST",
+      body: JSON.stringify({ limit: 100, cursor, filters: [{ field: "user_id", operator: "==", value: composioUser(username, origin) }], time_range: { from, to: now } }),
+    }).catch(() => null);
+    if (!response?.ok) return cached?.from === from ? cached.spent : null;
+    const answer = (await response.json()) as { logs?: ExecutionLog[]; next_cursor?: string | null };
+    for (const log of answer.logs ?? []) {
+      const charge = Number(log.metadata?.instant_charge);
+      if (log.metadata?.credential_source !== "instant_account" || !Number.isFinite(charge) || charge <= 0) continue;
+      const amount = Math.round(charge * 1_000_000);
+      micros += amount;
+      const at = Date.parse(log.timestamp ?? "");
+      if (Number.isFinite(at)) charges.push({ at, micros: amount });
+    }
+    cursor = answer.next_cursor || null;
+    if (!cursor || !(answer.logs ?? []).length) break;
+  }
+  const spent = micros / 1_000_000;
+  spends.set(username, { from, spent, at: now, charges });
+  return spent;
+}
+
+/** The person's Instant charges since `from`, as last read by instantSpent. */
+export const instantCharges = (username: string, from: number): InstantCharge[] => {
+  const cached = spends.get(username);
+  return cached?.from === from ? cached.charges : [];
+};
+
+/** Whether the person's session may use Instant tools now, as Kimono last set it. */
+export function instantOpen(db: DatabaseSync, username: string): boolean | null {
+  const stored = db.prepare("SELECT instant FROM tool_sessions WHERE username = ?").get(username) as { instant?: number } | undefined;
+  return stored ? stored.instant === 1 : null;
+}
+
+/** Opens or closes Instant on the person's session; Composio then holds to it, whatever the agent tries. */
+export async function setInstant(db: DatabaseSync, key: string, username: string, open: boolean): Promise<boolean> {
+  const stored = db.prepare("SELECT session_id, instant FROM tool_sessions WHERE username = ?").get(username) as { session_id?: string; instant?: number } | undefined;
+  if (!key || !stored?.session_id) return false;
+  if ((stored.instant === 1) === open) return true;
+  const response = await call(key, `/tool_router/session/${encodeURIComponent(stored.session_id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ instant: open ? instantPolicy : false }),
+  }).catch(() => null);
+  if (!response?.ok) {
+    console.warn(`Composio said ${response?.status ?? "nothing"} to switching Instant ${open ? "on" : "off"}`);
+    return false;
+  }
+  db.prepare("UPDATE tool_sessions SET instant = ? WHERE username = ?").run(open ? 1 : 0, username);
+  return true;
+}
+
+const instantKits = new Map<string, { yes: boolean; at: number }>();
+
+/** Whether a toolkit has any Instant tools, as Composio's catalog says; kept a day. False when it can't be asked. */
+export async function instantToolkit(key: string, raw: string, now = Date.now()): Promise<boolean> {
+  const slug = raw.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 60);
+  if (!key || !slug) return false;
+  const cached = instantKits.get(slug);
+  if (cached && now - cached.at < day) return cached.yes;
+  const response = await call(key, `/toolkits/${encodeURIComponent(slug)}`).catch(() => null);
+  if (!response?.ok) return cached?.yes ?? false;
+  const yes = ((await response.json()) as { instant?: { supported?: boolean } | null }).instant?.supported === true;
+  instantKits.set(slug, { yes, at: now });
+  return yes;
 }

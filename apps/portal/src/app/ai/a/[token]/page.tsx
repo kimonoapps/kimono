@@ -33,7 +33,7 @@ export default async function SharedArtifactPage({ params }: Props) {
   const { token } = await params;
   const found = await opened(token);
   const app = await codeIdentity(settings);
-  if ("artifact" in found && found.artifact) return <LinkFrame app={app}><ArtifactAlone title={found.artifact.title} content={found.artifact.content} /></LinkFrame>;
+  if ("artifact" in found && found.artifact) return <LinkFrame app={app}><ArtifactAlone title={found.artifact.title} content={found.artifact.content} media={found.artifact.media} /></LinkFrame>;
   const signIn = found.status === 401 && !found.signedIn;
   return <LinkFrame app={app}>
     {signIn

@@ -16,7 +16,8 @@ beside the chat or full screen.
   anything yourself with SVG, canvas or the DOM. The kit is a shortcut, not a
   limit. Inline `<style>` and `<script>` are fine.
 - It has **no network**: no `fetch`, no CDN, no images from the web. Put data
-  in the page. Pictures go in as `data:` URLs. What's available: the kit,
+  in the page. Pictures go in as `data:` URLs, or as files (see Sound,
+  video and pictures). What's available: the kit,
   three.js (`await K.loadThree()`), and KaTeX (see Maths).
 - Write it in one go with Write. The person watches it render as you write,
   so put the important part first. Keep it under about 200 KB.
@@ -115,6 +116,9 @@ Rules:
 
 ### Words
 - `title(text)`, `caption(text)` (one at a time; the next replaces it)
+- `formula(latex, { at: "right" })` an equation pinned to the stage (top left by default), over 2D or 3D. Equations shown at once stack; `.fade()` them when the next line starts. `latex` may be a function, so its numbers stay live: `` formula(() => `\theta = ${deg}^\circ`) ``.
+- `tint(tex, color)` colours a symbol, so it matches what it names in the drawing: `` formula(`${tint("r", "indigo")}\cos\theta`) ``, and draw `r` on the model in indigo too.
+- `narrate("media/<file>", text, seconds)` a spoken step: plays the clip, shows `text` as the caption, and lasts `seconds` (see Narration)
 - `text([x, y], words, { color, size, align })`, `tex([x, y], latex)`
 
 ### 2D
@@ -141,6 +145,40 @@ Rules:
   - `washers(f, g, a, b, n)` / `discs(f, a, b, n)` n slices, added up (n may be a slider)
 - `orbit(degrees, seconds)`, `camera({ az, el, dist }, seconds)`. The person can also turn the view by dragging.
 
+### Any 3D model: `model()`
+
+For a real thing (an engine, a heart, a molecule, the solar system), build it
+yourself with three.js and let the scene move it. It keeps time with the
+scene, so narration, pause, scrub and replay all work.
+
+- `model(build, move, { frame })`: `build(T)` gets THREE and returns your model
+  (a `T.Group` of meshes, in three's own units, y up, centred near the origin).
+  `move(obj, t, T)` runs every frame: set positions, rotations and colours from
+  trackers you `animate()` on the timeline (or from `t`, seconds since the step
+  began). It must give the same picture for the same time: no randomness, no
+  state carried between frames. `frame: r` frames the camera on a box `r` each
+  way from the middle.
+- `tag(part, "words", { offset: [x, y, z] })` a label that follows a part (the
+  three.js object, or a function returning it) or a point `[x, y, z]`. A step's
+  `.fade(seconds)` takes it away; fade a line's labels when the next line starts.
+- Put the model's code in an ordinary `<script>` before the `<k-scene>`
+  (`window.engine = { build, move, parts }`), so the scene stays one statement a
+  line. Keep a handle on the parts you'll move or tag.
+- Drive it with trackers: one tracker for the main motion (a crank angle, an
+  orbit angle), `animate(t, to, seconds, "linear")` inside each narrated line's
+  `together()`, so the motion lasts exactly as long as the line.
+- Use `camera()` and `orbit()` to show it from the side that explains each line.
+- Explain it with its maths: draw guides on the model (a radius, an angle's arc,
+  a length with end ticks) in the colours of the symbols, label them with
+  `tag(part, "$r$")`, and show the equations with `formula()`, live numbers
+  included, a few per line, faded when the next line starts.
+
+```
+const a = tracker(0)
+model((T) => engine.build(T), () => engine.move(a.v), { frame: 1.85 })
+together(() => { narrate("media/engine-2.mp3", "Intake: the piston slides down…", 5.85); animate(a, PI, 5.85, "linear"); tag(() => engine.parts.intake, "Intake valve") })
+```
+
 ### Example: washers
 
 ```
@@ -163,3 +201,39 @@ caption("Add them up: $V=\\pi\\int_0^4\\left(x-\\tfrac{x^2}{4}\\right)dx=\\tfrac
 ```
 
 Inside a scene you also have `sin cos tan exp log sqrt abs pow floor round min max PI range(a, b, step) color(name)`.
+
+## Narration
+
+A scene can speak: an explainer with a voice is a scene whose captions are
+narrated. Kimono adds a sound switch to the scene's controls, and pause, scrub and replay
+keep the voice in step.
+
+1. Write what's said, one line per step, to a file, and voice it first:
+   `kimono-say --lines /workspace/media/heart.txt --name heart`. It makes
+   `media/heart-1.mp3`, `heart-2.mp3`… and prints a `narrate(…)` step for each,
+   with its length.
+2. Paste those steps into the scene, with what each line explains drawn
+   alongside it: put a step and its drawing in `together(() => { … })`, and
+   use the printed seconds for `animate()` so the motion lasts as long as the voice.
+3. Write the artifact after the clips exist. If you make or change clips
+   afterwards, run `kimono-show <name>` so Kimono picks them up.
+
+```
+title("One heartbeat")
+together(() => { narrate("media/heart-1.mp3", "It starts with a spark in the right atrium.", 2.75); dot([0.3, 0.8], { label: "SA node" }) })
+together(() => { narrate("media/heart-2.mp3", "The atria squeeze, pushing blood down into the ventricles.", 3.2); animate(squeeze, 1, 3.2) })
+```
+
+- Spoken lines are plain words: write maths as it's said ("x squared"); the
+  caption may show it as `$x^2$` (edit the caption, not the clip).
+- Keep each line to a sentence or two, so captions and drawings change with it.
+- Use one voice for a scene (`--voice`; `kimono-say --voices` lists them).
+
+## Sound, video and pictures
+
+An artifact can play and show files: name them `media/<file>`, from
+`/workspace/media/` (what `kimono-say` and `kimono-fetch` make, or anything you
+put there). `<audio controls src="media/song.mp3">`, `<video src="media/clip.mp4">`
+and `<img src="media/photo.jpg">` all work; in script, `K.media("song.mp3")` is
+the address. Kimono copies the files the page names when it keeps the
+artifact, up to 50 MB each; they load once it's kept, not while you're writing.

@@ -3,12 +3,20 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import * as model from '../src/lib/code/model.ts';
+import { register } from 'node:module';
 import { composioUser, connectLink, connections, disconnect, findApps, toolSession } from '../src/lib/code/composio.ts';
+
+/* The Portal's modules import each other without extensions, as Next does; this lets node find them. */
+register('data:text/javascript,' + encodeURIComponent(`export async function resolve(s, c, next) { try { return await next(s, c); } catch (e) { if (s.startsWith('.') && !/\\.[cm]?[jt]s$/.test(s)) return next(s + '.ts', c); throw e; } }`));
+const media = await import('../src/lib/code/media.ts');
 
 /* A stand-in for Composio's Tool Router: sessions it knows, and every call it got. */
 async function fakeComposio() {
   const sessions = new Map();
   const connected = new Set();
+  /* Execution logs, as Composio keeps them: who, when, which account paid, what it cost. */
+  const logs = [];
+  const state = { logsDown: false };
   const calls = [];
   let next = 1;
   const server = http.createServer((req, res) => {
@@ -46,6 +54,28 @@ async function fakeComposio() {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end('{"success":true}');
       }
+      const kit = /^\/toolkits\/([^/?]+)$/.exec(req.url);
+      if (req.method === 'GET' && kit) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ slug: kit[1], name: kit[1], instant: ['elevenlabs', 'exa', 'gmail'].includes(kit[1]) ? { supported: true } : null }));
+      }
+      if (req.method === 'POST' && req.url === '/logs/tool_execution') {
+        if (state.logsDown) { res.writeHead(503); return res.end(); }
+        const { filters, time_range: range, cursor, limit } = calls.at(-1).body;
+        const user = filters.find((f) => f.field === 'user_id').value;
+        const found = logs.filter((l) => l.user === user && l.at >= range.from && l.at <= range.to);
+        const start = Number(cursor || 0);
+        const page = found.slice(start, start + Math.min(limit, 2));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ logs: page.map((l) => ({ id: String(l.at), timestamp: new Date(l.at).toISOString(), status: 'success', metadata: l.metadata })), next_cursor: start + page.length < found.length ? String(start + page.length) : null }));
+      }
+      const patched = /^\/tool_router\/session\/([^/]+)$/.exec(req.url);
+      if (req.method === 'PATCH' && patched) {
+        if (!sessions.has(patched[1])) { res.writeHead(404); return res.end(); }
+        sessions.set(patched[1], { instant: calls.at(-1).body.instant });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ session_id: patched[1], mcp: { type: 'http', url: `https://mcp.example/${patched[1]}/mcp` } }));
+      }
       const got = /^\/tool_router\/session\/([^/]+)$/.exec(req.url);
       if (req.method === 'GET' && got) {
         if (!sessions.has(got[1])) { res.writeHead(404); return res.end(); }
@@ -57,7 +87,7 @@ async function fakeComposio() {
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   process.env.KIMONO_COMPOSIO_API = `http://127.0.0.1:${server.address().port}`;
-  return { sessions, calls, close: () => server.close() };
+  return { sessions, calls, logs, state, close: () => server.close() };
 }
 
 function fresh() { const db = new DatabaseSync(':memory:'); model.migrate(db); return db; }
@@ -75,6 +105,7 @@ test('a person gets one session, made once and then reused', async () => {
     assert.equal(made.body.manage_connections.enable, true);
     assert.equal(made.body.manage_connections.callback_url, 'https://home.example.com/code?connections=1');
     assert.deepEqual(made.body.workbench, { enable: false }, 'no remote workbench: it would reach the web');
+    assert.deepEqual(made.body.instant, {}, 'every Instant tool is allowed');
     const again = await toolSession(db, 'key-a', 'mina', origin, 2000);
     assert.equal(again.url, first.url);
     assert.equal(composio.calls.length, 1, 'a fresh stored session is used without asking');
@@ -128,7 +159,7 @@ test('connections: a person connects an app, sees it, and disconnects it; never 
   try {
     const db = fresh();
     assert.deepEqual(await connections(db, 'key-a', 'mina', origin), []);
-    const apps = await findApps(db, 'key-a', 'mina', origin, 'gm');
+    const { apps } = await findApps(db, 'key-a', 'mina', origin, 'gm');
     assert.deepEqual(apps.map((a) => a.app), ['gmail']);
     assert.equal(await connectLink(db, 'key-a', 'mina', origin, 'Gmail'), 'https://connect.example/gmail');
     assert.equal(composio.calls.at(-1).body.callback_url, 'https://home.example.com/code?connections=1');
@@ -136,12 +167,127 @@ test('connections: a person connects an app, sees it, and disconnects it; never 
     assert.equal(mine.length, 1);
     assert.equal(mine[0].name, 'Gmail');
     assert.equal(mine[0].logo, 'https://logos.example/gmail.svg');
-    const all = await findApps(db, 'key-a', 'mina', origin, '');
+    const { apps: all } = await findApps(db, 'key-a', 'mina', origin, '');
     assert.equal(all.find((a) => a.app === 'notion').logo, 'https://logos.composio.dev/api/notion', 'a logo that is not https is replaced');
     assert.equal(all.find((a) => a.app === 'gmail').connected, true);
     await assert.rejects(disconnect(db, 'key-a', 'sam', origin, mine[0].account), (e) => e.status === 404);
     await disconnect(db, 'key-a', 'mina', origin, mine[0].account);
     assert.deepEqual(await connections(db, 'key-a', 'mina', origin), []);
     await assert.rejects(connections(db, '', 'mina', origin), (e) => e.status === 409);
+  } finally { composio.close(); }
+});
+
+const month = Date.UTC(2026, 10, 1);
+const charge = (user, at, amount, source = 'instant_account') => ({ user: `kimono:home.example.com:${user}`, at, metadata: { credential_source: source, instant_charge: amount } });
+const settings = (mediaBudget) => ({ composioKey: 'key-a', mediaBudget });
+
+test('media allowance: spending past it switches Instant off, and a new month switches it on', async () => {
+  const composio = await fakeComposio();
+  try {
+    const db = fresh();
+    const day = 24 * 60 * 60 * 1000;
+    await toolSession(db, 'key-a', 'mina', origin, month + day);
+    composio.logs.push(
+      charge('mina', month + day, '1.20'), charge('mina', month + day + 1, '0.05'), charge('mina', month + day + 2, '0.75'),
+      charge('mina', month + day + 3, '9.00', 'connected_account'), charge('sam', month + day, '9.00'), charge('mina', month - day, '9.00'),
+    );
+    const under = await media.holdMediaBudget(db, settings(5), 'mina', origin, month + 2 * day);
+    assert.equal(under.spent, 2, 'only her Instant charges this month count, over every page');
+    assert.equal(under.open, true);
+    assert.equal(under.resetsAt, Date.UTC(2026, 11, 1));
+    assert.ok(!composio.calls.some((c) => c.method === 'PATCH'), 'nothing to change while under');
+    assert.match(media.mediaNote(under), /\$3\.00 of \$5\.00 left/);
+
+    composio.logs.push(charge('mina', month + 3 * day, '3.10'));
+    const fresh_ = await media.holdMediaBudget(db, settings(5), 'mina', origin, month + 3 * day + 1);
+    assert.equal(fresh_.open, false, 'over the allowance');
+    assert.deepEqual(composio.calls.at(-1).body, { instant: false }, 'Instant is switched off on her session');
+    assert.match(media.mediaNote(fresh_), /used up.*December 1/);
+    assert.equal(media.lastAllowance('mina').open, false);
+
+    const raised = await media.holdMediaBudget(db, settings(10), 'mina', origin, month + 3 * day + 2 * 60_000);
+    assert.equal(raised.open, true, 'a higher allowance opens it again');
+    assert.deepEqual(composio.calls.at(-1).body.instant, {}, 'every Instant tool again');
+
+    await media.holdMediaBudget(db, settings(5), 'mina', origin, month + 3 * day + 4 * 60_000);
+    const next = await media.holdMediaBudget(db, settings(5), 'mina', origin, Date.UTC(2026, 11, 1) + 1);
+    assert.equal(next.spent, 0);
+    assert.equal(next.open, true, 'a new month starts afresh');
+  } finally { composio.close(); }
+});
+
+test('media allowance: unreadable logs keep it as it was; 0 switches Instant off; no session, no allowance', async () => {
+  const composio = await fakeComposio();
+  try {
+    const db = fresh();
+    assert.equal(await media.holdMediaBudget(db, settings(5), 'nobody', origin, month), null);
+    assert.equal(await media.holdMediaBudget(db, { composioKey: '', mediaBudget: 5 }, 'mina', origin, month), null);
+    await toolSession(db, 'key-a', 'sam', origin, month);
+    composio.state.logsDown = true;
+    const unknown = await media.holdMediaBudget(db, settings(5), 'sam', origin, month + 1);
+    assert.equal(unknown.spent, null);
+    assert.equal(unknown.open, true, 'still open, as it was');
+    assert.match(media.mediaNote(unknown), /some of \$5\.00 left/);
+    const off = await media.holdMediaBudget(db, settings(0), 'sam', origin, month + 2);
+    assert.equal(off.open, false);
+    assert.deepEqual(composio.calls.at(-1).body, { instant: false });
+    assert.equal(media.mediaNote(off), '', 'no allowance, nothing to say');
+  } finally { composio.close(); }
+});
+
+test('a session made again starts with Instant on, and is closed again if the month is spent', async () => {
+  const composio = await fakeComposio();
+  try {
+    const db = fresh();
+    await toolSession(db, 'key-a', 'lee', origin, month);
+    composio.logs.push(charge('lee', month + 1, '6.00'));
+    assert.equal((await media.holdMediaBudget(db, settings(5), 'lee', origin, month + 2)).open, false);
+    await toolSession(db, 'key-b', 'lee', origin, month + 3);
+    assert.equal(db.prepare('SELECT instant FROM tool_sessions WHERE username = ?').get('lee').instant, 1);
+    const again = await media.holdMediaBudget(db, { composioKey: 'key-b', mediaBudget: 5 }, 'lee', origin, month + 2 * 60_000);
+    assert.equal(again.open, false);
+    assert.deepEqual(composio.calls.at(-1).body, { instant: false });
+  } finally { composio.close(); }
+});
+
+test('what a chat spent: the charges made while its own turns ran', async () => {
+  const composio = await fakeComposio();
+  try {
+    const db = fresh();
+    const day = 24 * 60 * 60 * 1000;
+    const a = model.createWorkspace(db, 'mina', { prompt: 'Make a voiceover' }, month + day);
+    const b = model.createWorkspace(db, 'mina', { prompt: 'Find flights' }, month + day);
+    const turn = (workspace, start, end) => db.prepare('INSERT INTO turns (id, workspace_id, state, started_at, ended_at) VALUES (?, ?, ?, ?, ?)').run(`t${start}`, workspace.id, end ? 'done' : 'running', start, end);
+    turn(a, month + day, month + day + 10 * 60_000);
+    turn(b, month + 2 * day, null);
+    composio.logs.push(
+      charge('mina', month + day + 60_000, '0.40'), charge('mina', month + day + 5 * 60_000, '0.10'),
+      charge('mina', month + 2 * day + 60_000, '0.008'), charge('mina', month + day + 3 * 60 * 60_000, '1.00'),
+    );
+    await toolSession(db, 'key-a', 'mina', origin, month + 2 * day);
+    assert.equal(media.chatSpent(db, a.id, 'mina', month + 2 * day + 2 * 60_000), 0, 'nothing read yet, nothing to count');
+    await media.holdMediaBudget(db, settings(10), 'mina', origin, month + 2 * day + 2 * 60_000);
+    assert.equal(media.chatSpent(db, a.id, 'mina', month + 2 * day + 2 * 60_000), 0.5, 'only what ran during its turn');
+    assert.equal(media.chatSpent(db, b.id, 'mina', month + 2 * day + 2 * 60_000), 0.008, 'a turn still running counts too');
+    assert.equal(media.chatSpent(db, 'nope', 'mina', month + 2 * day + 2 * 60_000), 0);
+  } finally { composio.close(); }
+});
+
+test('a call ran as a Pro Tool when the app has Instant, the person never connected it, and Pro Tools are open', async () => {
+  const composio = await fakeComposio();
+  try {
+    const db = fresh();
+    const dec = Date.UTC(2026, 11, 3);
+    await toolSession(db, 'key-a', 'mina', origin, dec);
+    await connectLink(db, 'key-a', 'mina', origin, 'gmail');
+    const at = dec + 60_000;
+    assert.equal(await media.ranAsPro(db, settings(10), 'mina', origin, 'elevenlabs', at), true);
+    assert.equal(await media.ranAsPro(db, settings(10), 'mina', origin, 'gmail', at), false, 'her own Gmail runs on her account');
+    assert.equal(await media.ranAsPro(db, settings(10), 'mina', origin, 'notion', at), false, 'no Instant tools: it would need connecting');
+    assert.equal(await media.ranAsPro(db, settings(0), 'mina', origin, 'elevenlabs', at), false, 'no allowance, no Pro Tools');
+    composio.logs.push(charge('mina', dec + 1, '11.00'));
+    await media.holdMediaBudget(db, settings(10), 'mina', origin, dec + 2 * 60_000);
+    assert.equal(await media.ranAsPro(db, settings(10), 'mina', origin, 'elevenlabs', dec + 3 * 60_000), false, 'spent: Instant is off');
+    assert.equal(await media.ranAsPro(db, settings(10), 'sam', origin, 'elevenlabs', at), false, 'no session, nothing to tell');
   } finally { composio.close(); }
 });

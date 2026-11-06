@@ -26,7 +26,8 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body><InkIconDefs /><CrossingProvider>{children}</CrossingProvider><NameTips /></body>
+      {/* Browser extensions (ColorZilla, password managers) add attributes to <body> before React loads; only <body>'s own attributes are let off, nothing inside it. */}
+      <body suppressHydrationWarning><InkIconDefs /><CrossingProvider>{children}</CrossingProvider><NameTips /></body>
     </html>
   );
 }

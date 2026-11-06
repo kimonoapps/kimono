@@ -768,6 +768,9 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-meter .cd-ring { width: 30px; height: 30px; }
 .cd-meter > span { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .cd-meter b { font-size: 14px; }
+/* Pro Tools wear a lightning bolt wherever they're named. */
+.cd-pro { display: inline-flex; align-items: center; gap: 4px; }
+.cd .cd-pro svg.i { width: 14px; height: 14px; stroke-width: 1.8; }
 .cd-meter small { font-size: 12.5px; color: var(--k-on-surface-variant); }
 .cd-meter-note { margin: -4px 0 2px 42px; font-size: 12px; line-height: 1.45; color: var(--k-on-surface-variant); }
 .cd-compacted { color: var(--k-on-surface-variant); }
@@ -922,6 +925,9 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
    and a space its crest beside its name. */
 .call .ci.is-mark { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-outline-variant); }
 .cd-applogo { width: 20px; height: 20px; display: block; object-fit: contain; }
+/* A Pro Tool's logo: a filled bolt in the app's accent on its top right, cut out from the page by a ring of the surface. */
+.cd-pro-logo { position: relative; display: inline-flex; flex: none; }
+.cd .cd-pro-bolt { position: absolute; top: -5px; right: -6px; width: 12px; height: 12px; fill: var(--k-app-accent); stroke: var(--k-surface); stroke-width: 3; stroke-linejoin: round; paint-order: stroke; pointer-events: none; }
 .cd-drivemark { width: 26px; height: 26px; flex: none; }
 .cd-crest { display: inline-grid; place-items: center; width: 18px; height: 18px; flex: none; }
 .cd-crest svg { width: 100%; height: 100%; display: block; overflow: visible; }
@@ -1170,10 +1176,20 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* an animation's controls: Kimono's, under the card, never drawn by the artifact */
 .cd-scenebar { display: flex; align-items: center; gap: 12px; margin: -2px 6px 6px; padding: 6px 14px 6px 6px; border-radius: 0 0 calc(var(--k-r-xl) - 6px) calc(var(--k-r-xl) - 6px); background: var(--k-container); }
-.cd-scene-play { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border: 0; border-radius: 14px; background: var(--k-suo); color: var(--k-lift); cursor: pointer; transition: border-radius var(--k-t-seat) var(--k-spring), transform var(--k-t-tap); }
-.cd-scene-play:hover { border-radius: 20px; }
-.cd-scene-play:active { transform: scale(.94); }
-.cd-scene-play svg, .cd-scene-play .i { width: 20px; height: 20px; fill: currentColor; }
+/* Play is a seal: a suō block on its base, with the carved ring inked as far as the animation has played.
+   Pressed, it goes down into the paper and leaves an impression that fades. */
+.cd-scene-play { --base: color-mix(in srgb, var(--k-suo) 72%, var(--k-ink)); position: relative; display: grid; place-items: center; width: 44px; height: 44px; flex: none; border: 0; border-radius: var(--k-r-seal); background: var(--k-suo); color: var(--k-lift); cursor: pointer;
+  box-shadow: inset 0 -3px 0 var(--base), 0 0 0 7px transparent;
+  transition: background-color var(--k-t-state) var(--k-ease-settle), transform var(--k-t-tap) var(--k-ease-settle), box-shadow var(--k-t-seat) var(--k-ease-settle); }
+.cd-scene-play:hover { background: var(--k-accent-deep); }
+.cd-scene-play:active { transform: translateY(2px); box-shadow: inset 0 0 0 var(--base), 0 0 0 0 color-mix(in srgb, var(--k-suo) 42%, transparent); transition-duration: 0ms; }
+.cd-scene-play:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 3px; }
+.cd-scene-play > svg:not(.cd-scene-ring), .cd-scene-play .i { position: relative; width: 20px; height: 20px; fill: currentColor; }
+.cd-scene-ring { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; pointer-events: none; }
+.cd-scene-ring rect { stroke: rgba(255, 253, 248, .26); stroke-width: 1.2; }
+.cd-scene-ring rect.is-done { stroke: var(--k-lift); stroke-width: 1.8; stroke-linecap: round; transition: stroke-dashoffset 120ms linear; }
+.cd-scene-play:hover .cd-scene-ring rect:not(.is-done) { stroke: rgba(255, 253, 248, .42); }
+@media (prefers-reduced-motion: reduce) { .cd-scene-ring rect.is-done { transition: none; } }
 .cd-scene-play .i { fill: none; }
 .cd-scene-play .i path[d^="M8 5.5"] { fill: currentColor; }
 .cd-scene-scrub { flex: 1; min-width: 0; height: 24px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
@@ -1183,6 +1199,28 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-scene-scrub::-webkit-slider-thumb { appearance: none; width: 6px; height: 22px; margin-top: -8px; border-radius: 3px; background: var(--k-suo); }
 .cd-scene-scrub::-moz-range-thumb { width: 6px; height: 22px; border: 0; border-radius: 3px; background: var(--k-suo); }
 .cd-scene-scrub:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; border-radius: 6px; }
+.cd-scene-sound { display: inline-flex; align-items: center; gap: 6px; height: 34px; min-width: 34px; flex: none; padding: 0 7px; border: 0; border-radius: 12px; background: transparent; color: var(--k-on-surface-variant); font: 600 12px/1 var(--k-sans); cursor: pointer; transition: background var(--k-t-tap), color var(--k-t-tap); }
+.cd-scene-sound:hover { background: var(--k-container-high); color: var(--k-on-surface); }
+.cd-scene-sound .i { width: 20px; height: 20px; }
+.cd-scene-sound.is-asking { padding: 0 11px 0 9px; background: var(--k-suo); color: var(--k-lift); }
+/* Volume: the speaker, and above it on hover (a tap on touch screens) a small round tray with a vertical slider. */
+.cd-scene-volume { position: relative; display: flex; flex: none; }
+.cd-scene-volume-pop { position: absolute; z-index: 5; bottom: calc(100% + 8px); left: 50%; display: grid; justify-items: center; gap: 6px; width: 44px; padding: 10px 0 12px; border-radius: 22px; background: var(--k-container-lowest); box-shadow: 0 6px 20px rgba(36, 34, 31, .16), 0 0 0 1px var(--k-container-high);
+  opacity: 0; visibility: hidden; transform: translate(-50%, 6px) scale(.96); transform-origin: 50% 100%;
+  transition: opacity var(--k-t-tap) var(--k-ease-settle), transform var(--k-t-state) var(--k-ease-settle), visibility 0s linear var(--k-t-state); }
+/* a bridge over the gap, so the pointer can travel from the speaker up to the tray */
+.cd-scene-volume-pop::after { content: ""; position: absolute; top: 100%; left: 0; right: 0; height: 10px; }
+@media (hover: hover) { .cd-scene-volume:hover .cd-scene-volume-pop { opacity: 1; visibility: visible; transform: translate(-50%, 0) scale(1); transition-delay: 0s; } }
+.cd-scene-volume:focus-within .cd-scene-volume-pop, .cd-scene-volume.is-open .cd-scene-volume-pop { opacity: 1; visibility: visible; transform: translate(-50%, 0) scale(1); transition-delay: 0s; }
+.cd-scene-volume-pop output { font: 700 11px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
+.cd-scene-volume-range { writing-mode: vertical-lr; direction: rtl; width: 24px; height: 96px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+.cd-scene-volume-range::-webkit-slider-runnable-track { width: 6px; border-radius: 999px; background: linear-gradient(to top, var(--k-suo) var(--p), var(--k-container-highest) var(--p)); }
+.cd-scene-volume-range::-moz-range-track { width: 6px; border-radius: 999px; background: var(--k-container-highest); }
+.cd-scene-volume-range::-moz-range-progress { width: 6px; border-radius: 999px; background: var(--k-suo); }
+.cd-scene-volume-range::-webkit-slider-thumb { appearance: none; width: 20px; height: 6px; margin-left: -7px; border-radius: 3px; background: var(--k-suo); }
+.cd-scene-volume-range::-moz-range-thumb { width: 20px; height: 6px; border: 0; border-radius: 3px; background: var(--k-suo); }
+.cd-scene-volume-range:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; border-radius: 6px; }
+.cd-scene-mute { margin-top: 2px; }
 .cd-scene-time { font: 600 12px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); white-space: nowrap; }
 .cd-scene-writing { color: var(--k-suo); }
 
@@ -1361,11 +1399,16 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-link-note { max-width: 560px; margin: 10vh auto 0; justify-items: center; text-align: center; border-radius: var(--k-r-xl); }
 .cd-link-note p { font: 500 18px/1.4 var(--k-sans); }
 .cd-artifact-alone .cd-artifact.is-full { height: calc(100dvh - 104px); grid-template-rows: auto minmax(0, 1fr) auto; box-shadow: none; }
+/* once the page has said how tall it is, the card fits it, and only a taller page fills the window and scrolls */
+.cd-artifact-alone .cd-artifact.is-full:has(> .cd-artifact-body[style]) { display: flex; flex-direction: column; height: auto; max-height: calc(100dvh - 104px); }
+.cd-artifact-alone .cd-artifact.is-full:has(> .cd-artifact-body[style]) > * { flex: none; }
+.cd-artifact-alone .cd-artifact.is-full:has(> .cd-artifact-body[style]) > .cd-artifact-body { flex: 0 1 auto; min-height: 0; }
 @media (max-width: 720px) {
   .ai-share-bar { padding: 14px 16px 0; }
   .cd.cd-guest { padding: 8px 0 0; }
   .cd-guest .cd-ws { height: calc(100dvh - 72px); }
   .cd-artifact-alone .cd-artifact.is-full { height: calc(100dvh - 64px); }
+  .cd-artifact-alone .cd-artifact.is-full:has(> .cd-artifact-body[style]) { height: auto; max-height: calc(100dvh - 64px); }
 }
 .cd-share-url { flex: 1 1 100%; min-width: 0; height: 40px; padding: 0 14px; border: 0; border-radius: var(--k-r-m, 12px); background: var(--k-container-lowest); font: 400 13px/1 var(--k-mono); color: var(--k-on-surface); outline: none; }
 .cd-share-url:focus { box-shadow: 0 0 0 2px var(--k-app-accent); }

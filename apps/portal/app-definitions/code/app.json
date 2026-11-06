@@ -88,6 +88,15 @@
         "description": "Percent of the weekly usage of the Claude plan behind the token. The owner isn't limited."
       },
       {
+        "key": "media_budget",
+        "label": "Each person's Pro Tools budget",
+        "kind": "number",
+        "group": "sharing",
+        "target": "settings",
+        "default": "10",
+        "description": "US dollars a month each person may spend on Pro Tools: tools that need no account of theirs, such as voice, video, pictures and web search, charged to the Composio balance. 0 switches them off."
+      },
+      {
         "key": "share_five_hour",
         "label": "Each person's share of a 5-hour window",
         "kind": "number",

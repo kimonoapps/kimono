@@ -45,6 +45,8 @@ type Server struct {
 	// whatever the Portal last sent. room serialises waking past the caps.
 	limits Limits
 	room   sync.Mutex
+	// mediaClient fetches what tools linked to (media.go); nil is the public-only default.
+	mediaClient *http.Client
 	// dial replaces dialSandbox in tests.
 	dial func(ctx context.Context, id string, port int) (net.Conn, error)
 }

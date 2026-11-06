@@ -19,7 +19,7 @@ export async function GET(_request: Request, { params }: Context) {
       return apiJson({ kind: "chat", id: workspace.id, title: workspace.title, owner, access: accessOf(db(), workspace.id, user?.username ?? null, token) });
     }
     const artifact = artifactByLink(db(), token, user?.username ?? null);
-    return apiJson({ kind: "artifact", name: artifact.name, title: artifact.title, content: artifact.content, version: artifact.version, updatedAt: artifact.updatedAt, owner: artifact.owner, public: artifact.public });
+    return apiJson({ kind: "artifact", name: artifact.name, title: artifact.title, content: artifact.content, version: artifact.version, updatedAt: artifact.updatedAt, owner: artifact.owner, public: artifact.public, media: artifact.media });
   });
 }
 

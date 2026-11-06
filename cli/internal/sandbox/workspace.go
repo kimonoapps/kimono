@@ -82,8 +82,10 @@ type workspace struct {
 	// op serialises the operations that change the container or the branch.
 	op sync.Mutex
 
-	mu         sync.Mutex
-	seenShots  map[string]bool
+	mu        sync.Mutex
+	seenShots map[string]bool
+	// links are the https links its tools gave back lately, which /media may fetch (media.go).
+	links      map[string]time.Time
 	busy       bool
 	cancel     func()
 	lastActive time.Time
@@ -381,7 +383,8 @@ func (s *Server) environment(w *workspace) []string {
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
 	}
 	if w.tools.URL != "" {
-		env = append(env, "KIMONO_MCP="+mcpConfig(gateway, w.capability))
+		/* kimono-fetch reaches the gateway's /media with the same capability. */
+		env = append(env, "KIMONO_MCP="+mcpConfig(gateway, w.capability), "KIMONO_GATEWAY="+gateway, "KIMONO_TOKEN="+w.capability)
 	}
 	if w.git.Name != "" {
 		env = append(env, "GIT_AUTHOR_NAME="+w.git.Name, "GIT_COMMITTER_NAME="+w.git.Name)

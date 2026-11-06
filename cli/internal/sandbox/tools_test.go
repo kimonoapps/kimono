@@ -125,7 +125,7 @@ func TestAgentStreamsAndKnowsArtifacts(t *testing.T) {
 	if !strings.Contains(DefaultAgent, "--include-partial-messages") {
 		t.Fatal("the agent must stream partial messages, or artifacts only appear once finished")
 	}
-	for _, want := range []string{"/workspace/artifacts/<name>.html", "/opt/kimono/artifacts.md", "kimono-show <name>", "kimono-send <file>", "no network"} {
+	for _, want := range []string{"/workspace/artifacts/<name>.html", "/opt/kimono/artifacts.md", "kimono-show <name>", "kimono-send <file>", "no network", "kimono-fetch <link>", "even when they say \"video\"", "kimono-say \"<text>\"", "ElevenLabs only for"} {
 		if !strings.Contains(SystemPrompt, want) {
 			t.Fatalf("the system prompt doesn't mention %q", want)
 		}

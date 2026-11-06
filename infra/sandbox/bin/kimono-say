@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""kimono-say [--voice NAME] [--speed N] [-o FILE] "TEXT"
+kimono-say [options] -f TEXTFILE
+kimono-say [options] --lines SCRIPT --name NAME
+kimono-say --voices
+
+Reads text aloud with the voice engine on this computer (Kokoro): free, quick,
+and good for narration, voiceovers, read-alouds and podcast intros. It writes
+an MP3 to /workspace/media/ (or FILE: .mp3, .wav, .m4a or .ogg) and prints
+where. The voice decides the language and accent: af_heart (default, American
+English) and others in British English, Spanish, French, Hindi, Italian and
+Brazilian Portuguese; --voices lists them all. --speed is 0.5 to 2 (1 is normal).
+
+To narrate an artifact's scene, write what's said one line per step in SCRIPT
+and give --lines SCRIPT --name NAME: each line becomes media/NAME-1.mp3,
+NAME-2.mp3… and it prints a narrate("media/NAME-1.mp3", "the line", seconds)
+step for each, ready for the scene.
+"""
+import argparse, os, re, subprocess, sys, tempfile, wave
+
+MODEL = "/opt/kimono/voice/kokoro-v1.0.int8.onnx"
+VOICES = "/opt/kimono/voice/voices-v1.0.bin"
+MEDIA = "/workspace/media"
+# The first letter of a voice is its language, as espeak names it. Japanese
+# and Mandarin voices exist too, but espeak's spelling of those languages isn't
+# what they learned from (it reads kanji as "Chinese letter"), so they're left out.
+LANGS = {"a": "en-us", "b": "en-gb", "e": "es", "f": "fr-fr", "h": "hi", "i": "it", "p": "pt-br"}
+NAMES = {"a": "American English", "b": "British English", "e": "Spanish", "f": "French", "h": "Hindi", "i": "Italian", "p": "Brazilian Portuguese"}
+
+parser = argparse.ArgumentParser(prog="kimono-say", add_help=False)
+parser.add_argument("text", nargs="?")
+parser.add_argument("-f", "--file")
+parser.add_argument("-o", "--out")
+parser.add_argument("--lines")
+parser.add_argument("--name")
+parser.add_argument("--voice", default="af_heart")
+parser.add_argument("--speed", type=float, default=1.0)
+parser.add_argument("--voices", action="store_true")
+parser.add_argument("-h", "--help", action="store_true")
+args = parser.parse_args()
+if args.help or (not args.voices and not args.text and not args.file and not args.lines):
+    sys.exit(__doc__.strip())
+
+import onnxruntime  # noqa: E402  (slow to import; only once there's work)
+from kokoro_onnx import Kokoro  # noqa: E402
+
+
+def cpus():
+    """The CPUs this sandbox may use. Its limit is a quota, which the machine's
+    core count doesn't show: a thread per core would fight over one CPU and
+    run several times slower."""
+    try:
+        quota, period = open("/sys/fs/cgroup/cpu.max").read().split()
+        if quota != "max":
+            return max(1, int(int(quota) / int(period)))
+    except (OSError, ValueError):
+        pass
+    return max(1, len(os.sched_getaffinity(0)))
+
+
+options = onnxruntime.SessionOptions()
+options.intra_op_num_threads, options.inter_op_num_threads = cpus(), 1
+engine = Kokoro.from_session(onnxruntime.InferenceSession(MODEL, options, providers=["CPUExecutionProvider"]), VOICES)
+voices = sorted(v for v in engine.get_voices() if v[0] in LANGS)
+if args.voices:
+    for prefix, name in NAMES.items():
+        mine = [v for v in voices if v.startswith(prefix)]
+        if mine:
+            print(f"{name}: {', '.join(mine)}")
+    sys.exit(0)
+if args.voice[:1] in ("j", "z"):
+    sys.exit("kimono-say: Japanese and Mandarin aren't here; use ElevenLabs for those")
+if args.voice not in voices:
+    sys.exit(f"kimono-say: there's no voice {args.voice}; kimono-say --voices lists them")
+if not 0.5 <= args.speed <= 2:
+    sys.exit("kimono-say: --speed is between 0.5 and 2")
+lang = LANGS.get(args.voice[0], "en-us")
+
+import json  # noqa: E402
+import numpy as np  # noqa: E402
+
+
+def pieces_of(text):
+    """A paragraph or a few sentences at a time, so long texts never hold much in memory."""
+    pieces, piece = [], ""
+    for sentence in re.split(r"(?<=[.!?。！？])\s+|\n{2,}", text):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        if piece and len(piece) + len(sentence) > 400:
+            pieces.append(piece)
+            piece = ""
+        piece = f"{piece} {sentence}".strip()
+    if piece:
+        pieces.append(piece)
+    return pieces
+
+
+def say(text, out):
+    """Reads text into the file out; returns how long it lasts, in seconds."""
+    ext = os.path.splitext(out)[1].lower()
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    raw = out if ext == ".wav" else tempfile.mkstemp(suffix=".wav", dir=os.path.dirname(out))[1]
+    seconds = 0.0
+    try:
+        with wave.open(raw, "wb") as sound:
+            sound.setnchannels(1)
+            sound.setsampwidth(2)
+            rate = None
+            for i, part in enumerate(pieces_of(text)):
+                samples, rate_now = engine.create(part, voice=args.voice, speed=args.speed, lang=lang)
+                if rate is None:
+                    rate = rate_now
+                    sound.setframerate(rate)
+                pause = np.zeros(int(rate * 0.25), dtype=np.float32) if i else np.zeros(0, dtype=np.float32)
+                chunk = np.concatenate([pause, samples])
+                sound.writeframes((np.clip(chunk, -1, 1) * 32767).astype("<i2").tobytes())
+                seconds += len(chunk) / rate
+        if ext != ".wav":
+            codec = {".mp3": ["-c:a", "libmp3lame", "-q:a", "3"], ".m4a": ["-c:a", "aac", "-b:a", "128k"], ".ogg": ["-c:a", "libopus", "-b:a", "64k"]}[ext]
+            done = subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", raw, *codec, out], capture_output=True, text=True)
+            if done.returncode:
+                sys.exit(f"kimono-say: couldn't make the {ext} file: {done.stderr.strip()}")
+    finally:
+        if raw != out and os.path.exists(raw):
+            os.remove(raw)
+    return seconds
+
+
+if args.lines:
+    name = re.sub(r"[^a-z0-9_-]+", "-", (args.name or "").lower()).strip("-")
+    if not name:
+        sys.exit("kimono-say: --lines needs --name, a short name for its clips (e.g. --name heart)")
+    lines = [line.strip() for line in open(args.lines, encoding="utf-8").read().splitlines() if line.strip()]
+    if not lines:
+        sys.exit("kimono-say: the script has no lines")
+    if len(lines) > 60:
+        sys.exit("kimono-say: up to 60 lines; split the scene")
+    os.makedirs(MEDIA, exist_ok=True)
+    total = 0.0
+    steps = []
+    for i, line in enumerate(lines, 1):
+        seconds = say(line, os.path.join(MEDIA, f"{name}-{i}.mp3"))
+        total += seconds
+        steps.append(f"narrate({json.dumps(f'media/{name}-{i}.mp3')}, {json.dumps(line, ensure_ascii=False)}, {seconds:.2f})")
+    print(f"{len(lines)} clips in {MEDIA}/, {int(total // 60)}:{int(total % 60):02d} in all, voice {args.voice}. The scene's steps:")
+    print("\n".join(steps))
+    sys.exit(0)
+
+text = open(args.file, encoding="utf-8").read() if args.file else args.text
+text = text.strip()
+if not text:
+    sys.exit("kimono-say: there's nothing to say")
+if args.out:
+    out = os.path.abspath(args.out)
+else:
+    os.makedirs(MEDIA, exist_ok=True)
+    stem = re.sub(r"[^a-z0-9]+", "-", text[:40].lower()).strip("-") or "speech"
+    out, n = os.path.join(MEDIA, f"{stem}.mp3"), 2
+    while os.path.exists(out):
+        out, n = os.path.join(MEDIA, f"{stem}-{n}.mp3"), n + 1
+if os.path.splitext(out)[1].lower() not in (".mp3", ".wav", ".m4a", ".ogg"):
+    sys.exit("kimono-say: the file can be .mp3, .wav, .m4a or .ogg")
+seconds = say(text, out)
+print(f"{out} ({int(seconds // 60)}:{int(seconds % 60):02d}, {seconds:.2f} s, voice {args.voice})")

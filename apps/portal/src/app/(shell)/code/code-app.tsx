@@ -193,16 +193,23 @@ function Ring({ value, label }: { value: number | null; label: string }) {
 const fallbackWindow = 200_000;
 const kTokens = (n: number) => n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 const pct = (n: number) => `${Math.round(n * 100)}%`;
+const dollars = (n: number) => `$${n.toFixed(2)}`;
+const monthWords = (at: number) => new Date(at).toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
 const resetWords = (at: number | null) => at ? new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
 
-/** Context, the 5-hour window and the week, as three rings beside Send; open them for the numbers and to compact. */
+/**
+ * Context, the 5-hour window, the week and the month's tools, as rings beside
+ * Send; open them for the numbers and to compact. Each shows only once it's
+ * past half (tools also once this chat has spent some), and with none to show
+ * there's nothing here.
+ */
 function Meters({ workspace, context, running, blocked }: { workspace: Workspace; context: { used: number; window?: number } | null; running: boolean; blocked: string | null }) {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [open, setOpen] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { let live = true; code.usage().then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, [running]);
+  useEffect(() => { let live = true; code.usage(workspace.id).then((u) => { if (live) setUsage(u); }, () => {}); return () => { live = false; }; }, [running, workspace.id]);
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) setOpen(false); };
@@ -218,19 +225,33 @@ function Meters({ workspace, context, running, blocked }: { workspace: Workspace
   const whose = usage?.unlimited ? "of the plan, used by you" : "of your share";
   /* Usage arrives but never a 5-hour figure: this plan has no 5-hour window, so there's no ring for it. */
   const noFiveHour = Boolean(usage?.reported && usage.fiveHourLimited === false);
+  const media = usage?.media ?? null;
+  const tools = media?.spent == null ? null : Math.min(1, media.spent / media.budget);
+  const past = (v: number | null): v is number => v != null && v > 0.5;
+  const show = {
+    context: past(ctx),
+    five: !noFiveHour && past(five),
+    week: past(week),
+    tools: Boolean(media && (past(tools) || (media.chatSpent ?? 0) > 0)),
+  };
+  if (!show.context && !show.five && !show.week && !show.tools) return null;
   return <div className="cd-meters" ref={box}>
     <button type="button" className="cd-meters-btn" aria-expanded={open} aria-label="Context and usage" title="Context and usage" onClick={() => setOpen(!open)}>
-      <Ring value={ctx} label={ctx == null ? "Context not known yet" : `Context ${pct(ctx)} full`} />
-      {noFiveHour ? null : <Ring value={five} label={five == null ? "5-hour use not reported" : `${pct(five)} of the 5-hour window`} />}
-      <Ring value={week} label={week == null ? "Weekly use not reported" : `${pct(week)} of the week`} />
+      {show.context ? <Ring value={ctx} label={`Context ${pct(ctx!)} full`} /> : null}
+      {show.five ? <Ring value={five} label={`${pct(five!)} of the 5-hour window`} /> : null}
+      {show.week ? <Ring value={week} label={`${pct(week!)} of the week`} /> : null}
+      {show.tools ? <Ring value={tools} label={tools == null ? "Pro Tools" : `${pct(tools)} of this month's Pro Tools`} /> : null}
     </button>
     {open ? <div className="cd-meters-pop" role="dialog" aria-label="Context and usage">
-      <div className="cd-meter"><Ring value={ctx} label="Context" /><span><b>Context</b><small>{context ? `${kTokens(context.used)} of ${kTokens(window)} tokens${context.window ? "" : " (about)"}` : "Known after the next reply"}</small></span>
-        <Seal type="button" compact tone="quiet" busy={compacting} disabled={Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); setOpen(false); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{running ? "Compact after this" : "Compact now"}</Seal></div>
-      <p className="cd-meter-note">Compacting folds the conversation so far into a summary, so there&rsquo;s room to keep going. It also happens by itself when the context fills.</p>
-      <div className="cd-meter"><Ring value={five} label="5-hour window" /><span><b>5-hour window</b><small>{noFiveHour ? "This plan has no 5-hour limit" : five == null ? "Not reported yet" : `${pct(five)} ${whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div>
-      <div className="cd-meter"><Ring value={week} label="This week" /><span><b>This week</b><small>{week == null ? "Not reported yet" : `${pct(week)} ${whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div>
-      {usage && !usage.unlimited ? <p className="cd-meter-note">Your share is {noFiveHour ? `${pct(usage.week.share)} of the week` : `${pct(usage.fiveHour.share)} of each 5-hour window and ${pct(usage.week.share)} of the week`}.</p> : null}
+      {show.context ? <>
+        <div className="cd-meter"><Ring value={ctx} label="Context" /><span><b>Context</b><small>{context ? `${kTokens(context.used)} of ${kTokens(window)} tokens${context.window ? "" : " (about)"}` : "Known after the next reply"}</small></span>
+          <Seal type="button" compact tone="quiet" busy={compacting} disabled={Boolean(blocked) || !context} onClick={() => { setCompacting(true); setProblem(null); code.ask(workspace.id, "/compact", [], effortNow()).then(() => { setCompacting(false); setOpen(false); }, (error) => { setProblem(problemText(error)); setCompacting(false); }); }}>{running ? "Compact after this" : "Compact now"}</Seal></div>
+        <p className="cd-meter-note">Compacting folds the conversation so far into a summary, so there&rsquo;s room to keep going. It also happens by itself when the context fills.</p>
+      </> : null}
+      {show.five ? <div className="cd-meter"><Ring value={five} label="5-hour window" /><span><b>5-hour window</b><small>{`${pct(five!)} ${whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div> : null}
+      {show.week ? <div className="cd-meter"><Ring value={week} label="This week" /><span><b>This week</b><small>{`${pct(week!)} ${whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div> : null}
+      {show.tools && media ? <div className="cd-meter"><Ring value={tools} label="Pro Tools" /><span><b className="cd-pro"><Icon name="bolt" />Pro Tools</b><small>{media.spent == null ? "Not reported yet" : `${dollars(media.spent)} of ${dollars(media.budget)} this month${media.chatSpent ? ` · ${dollars(media.chatSpent)} in this chat` : ""} · resets ${monthWords(media.resetsAt)}`}</small></span></div> : null}
+      {usage && !usage.unlimited && (show.five || show.week) ? <p className="cd-meter-note">Your share is {noFiveHour ? `${pct(usage.week.share)} of the week` : `${pct(usage.fiveHour.share)} of each 5-hour window and ${pct(usage.week.share)} of the week`}.</p> : null}
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
     </div> : null}
   </div>;
@@ -720,10 +741,13 @@ function useAppLook(slug: string): Look {
   return look?.slug === slug ? look : { name: plainName(slug), logo: "" };
 }
 
-function AppLogo({ slug }: { slug: string }) {
+/** An app's logo; one used as a Pro Tool wears a filled bolt on its top right. */
+function AppLogo({ slug, pro }: { slug: string; pro?: boolean }) {
   const look = useAppLook(slug);
   // eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it
-  return look.logo ? <img className="cd-applogo" src={look.logo} alt="" /> : <Icon name="gear" />;
+  const logo = look.logo ? <img className="cd-applogo" src={look.logo} alt="" /> : <Icon name="gear" />;
+  if (!pro) return logo;
+  return <span className="cd-pro-logo" title="Pro Tool">{logo}<svg className="cd-pro-bolt" viewBox="0 0 24 24" aria-label="Pro Tool"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg></span>;
 }
 
 function AppName({ slug }: { slug: string }) {
@@ -753,7 +777,7 @@ function ConnectCard({ app, url }: { app: string; url: string }) {
 
 /** What a call is about: the app it used, Drive, or what kind of step it was. */
 function ToolMark({ tool }: { tool: Tool }) {
-  if (tool.app) return <AppLogo slug={tool.app} />;
+  if (tool.app) return <AppLogo slug={tool.app} pro={tool.pro} />;
   if (tool.space) return <DriveMark />;
   return <Icon name={toolIcons[tool.label] ?? "gear"} />;
 }
@@ -1830,34 +1854,35 @@ const ArtifactsContext = createContext<ArtifactsShared | null>(null);
 function useArtifact(name: string) {
   const shared = useContext(ArtifactsContext)!;
   const version = shared.versions[name]?.version ?? 0;
-  const [saved, setSaved] = useState<{ version: number; content: string; title: string } | null>(null);
+  const [saved, setSaved] = useState<{ version: number; content: string; title: string; media?: string } | null>(null);
   useEffect(() => {
     if (!version) return;
     let live = true;
-    code.artifact(shared.workspaceId, name).then((found) => { if (live) setSaved({ version: found.version, content: found.content, title: found.title }); }, () => {});
+    code.artifact(shared.workspaceId, name).then((found) => { if (live) setSaved({ version: found.version, content: found.content, title: found.title, media: found.media }); }, () => {});
     return () => { live = false; };
   }, [shared.workspaceId, name, version]);
   const draft = shared.drafts[name];
   const content = draft?.content ?? saved?.content ?? "";
   const title = shared.versions[name]?.title ?? /<title>([^<]{1,120})<\/title>/i.exec(content)?.[1]?.trim() ?? name.replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
-  return { shared, content, title, writing: Boolean(draft), ready: Boolean(draft || saved) };
+  return { shared, content, title, media: saved?.media, writing: Boolean(draft), ready: Boolean(draft || saved) };
 }
 
 /** The frame, and the conversation with it: the text as it arrives, its height back. */
 type SceneParam = { name: string; label: string; min: number; max: number; step: number; value: number; unit?: string };
-type SceneState = { t: number; end: number; playing: boolean; complete: boolean; count: number; params: SceneParam[] };
-type SceneControl = { n: number; action: "play" | "pause" | "replay" | "seek" | "set"; t?: number; name?: string; value?: number };
+/** voiced: it narrates; muted: its sound is off; blocked: the browser wants a tap before it plays sound. */
+type SceneState = { t: number; end: number; playing: boolean; complete: boolean; count: number; params: SceneParam[]; voiced?: boolean; muted?: boolean; blocked?: boolean; volume?: number };
+type SceneControl = { n: number; action: "play" | "pause" | "replay" | "seek" | "set" | "sound-on" | "sound-off" | "volume"; t?: number; name?: string; value?: number };
 
-function ArtifactFrame({ content, final, title, control, onHeight, onScene }: { content: string; final: boolean; title: string; control: SceneControl | null; onHeight?: (height: number) => void; onScene?: (state: SceneState) => void }) {
+function ArtifactFrame({ content, final, title, media, control, onHeight, onScene }: { content: string; final: boolean; title: string; media?: string; control: SceneControl | null; onHeight?: (height: number) => void; onScene?: (state: SceneState) => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const ready = useRef(false);
-  const latest = useRef({ content, final });
+  const latest = useRef({ content, final, media });
   const heightTo = useRef(onHeight);
   const sceneTo = useRef(onScene);
   useEffect(() => { heightTo.current = onHeight; sceneTo.current = onScene; }, [onHeight, onScene]);
   const post = useCallback(() => {
     if (!ready.current) return;
-    frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final }, "*");
+    frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final, media: latest.current.media }, "*");
   }, []);
   useEffect(() => {
     const hear = (event: MessageEvent) => {
@@ -1867,24 +1892,25 @@ function ArtifactFrame({ content, final, title, control, onHeight, onScene }: { 
       if (m.type === "ready") { ready.current = true; post(); }
       if (m.type === "size" && typeof m.height === "number") heightTo.current?.(m.height);
       if (m.type === "error") console.warn("Artifact:", (m as { message?: string }).message);
-      if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });
+      if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, voiced: Boolean(m.voiced), muted: Boolean(m.muted), blocked: Boolean(m.blocked), volume: typeof m.volume === "number" ? m.volume : 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });
     };
     window.addEventListener("message", hear);
     return () => window.removeEventListener("message", hear);
   }, [post]);
-  useEffect(() => { latest.current = { content, final }; post(); }, [content, final, post]);
+  useEffect(() => { latest.current = { content, final, media }; post(); }, [content, final, media, post]);
   /* A frame sent with the page (a link's page) may have loaded, and said it's ready, before this listened: speak first. Posting to one still loading is lost, and its own "ready" asks again. */
-  useEffect(() => { frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final }, "*"); }, []);
+  useEffect(() => { frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final, media: latest.current.media }, "*"); }, []);
   useEffect(() => { if (control) frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "scene-control", action: control.action, t: control.t, name: control.name, value: control.value }, "*"); }, [control]);
   /* The frame says it's ready as it loads, which can be before this page listens: its first load counts too.
      Only the first: the frame fires load again each time it finishes writing a page, and posting then would make it start over. */
-  return <iframe ref={frame} className="cd-artifact-frame" src="/ai/frame" title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+  /* autoplay: a narrated scene speaks as it plays, as this page may; without it the frame asks for a tap first */
+  return <iframe ref={frame} className="cd-artifact-frame" src="/ai/frame" title={title} sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" allow="autoplay"
     onLoad={() => { if (ready.current) return; ready.current = true; post(); }} />;
 }
 
 /** An artifact in the chat (and, bigger, beside it or full screen). */
 function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline" | "beside" | "full" }) {
-  const { shared, content, title, writing, ready } = useArtifact(name);
+  const { shared, content, title, media, writing, ready } = useArtifact(name);
   const owns = useOwns();
   const { guest } = useContext(ViewerContext);
   const [sharing, setSharing] = useState(false);
@@ -1948,7 +1974,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
       ? <button type="button" className="cd-artifact-away" onClick={() => shared.setBeside(null)}>Open beside the chat · bring it back here</button>
       : ready
         ? <>
-            <div className={cx("cd-artifact-body", dragging && "is-dragging")} style={shown ? { height: shown } : undefined} hidden={shut}><ArtifactFrame content={content} final={!writing} title={title} control={control} onHeight={onHeight} onScene={setScene} /></div>
+            <div className={cx("cd-artifact-body", dragging && "is-dragging")} style={shown ? { height: shown } : undefined} hidden={shut}><ArtifactFrame content={content} final={!writing} title={title} media={media} control={control} onHeight={onHeight} onScene={setScene} /></div>
             {inline && !shut ? <div className="cd-artifact-grip" role="separator" aria-orientation="horizontal" aria-label="Resize" title="Drag to resize · double-click to fit" tabIndex={0}
               aria-valuemin={120} aria-valuemax={2400} aria-valuenow={shown}
               onPointerDown={startDrag} onDoubleClick={() => setChosen(null)}
@@ -1961,6 +1987,51 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
 }
 
 /** Kimono's own controls for an artifact's animation: the scenes inside only report their time. */
+/* How loud narrated animations play, kept for the next one (this browser only). */
+const volumeKey = "kimono.scene-volume";
+const savedVolume = () => { try { const v = Number(localStorage.getItem(volumeKey)); return localStorage.getItem(volumeKey) != null && v >= 0 && v <= 1 ? v : null; } catch { return null; } };
+
+/** A narrated animation's sound: the speaker turns it on or off, the slider sets how loud; while the browser holds it back, a tap lets it play. */
+function SoundControl({ scene, send }: { scene: SceneState; send: (action: SceneControl["action"], t?: number, name?: string, value?: number) => void }) {
+  const volume = scene.volume ?? 1;
+  const off = Boolean(scene.muted || scene.blocked || volume === 0);
+  /* a new narrated animation starts at the volume last chosen */
+  const restored = useRef(false);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    const saved = savedVolume();
+    if (saved != null && Math.abs(saved - volume) > .001) send("volume", undefined, undefined, saved);
+  }, [send, volume]);
+  const label = scene.blocked ? "Turn sound on" : off ? "Unmute" : "Mute";
+  const toggle = () => {
+    if (scene.blocked && !scene.playing) send("play");
+    if (off && volume === 0) send("volume", undefined, undefined, savedVolume() || .8);
+    send(off ? "sound-on" : "sound-off");
+  };
+  if (scene.blocked) return <button type="button" className="cd-scene-sound is-asking" aria-label={label} title={label} onClick={toggle}><Icon name="sound-off" /><span>Tap for sound</span></button>;
+  const shown = off ? 0 : volume;
+  /* With a mouse the slider rises on hover and the speaker mutes; on a touch screen the speaker opens it, and mute sits inside. */
+  const touch = typeof window !== "undefined" && window.matchMedia?.("(hover: none)").matches;
+  return <div className={cx("cd-scene-volume", open && "is-open")} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
+    <button type="button" className="cd-scene-sound" aria-label={touch ? "Volume" : label} title={touch ? "Volume" : label} aria-pressed={touch ? undefined : off} aria-expanded={touch ? open : undefined}
+      onClick={() => { if (touch) setOpen(!open); else toggle(); }}><Icon name={off ? "sound-off" : "sound"} /></button>
+    <div className="cd-scene-volume-pop" role="group" aria-label="Volume">
+      <output>{Math.round(shown * 100)}</output>
+      <input type="range" className="cd-scene-volume-range" min={0} max={100} value={Math.round(shown * 100)} aria-label="Volume" aria-orientation="vertical"
+        style={{ ["--p" as string]: `${shown * 100}%` }}
+        onChange={(event) => {
+          const v = +event.target.value / 100;
+          try { localStorage.setItem(volumeKey, String(v)); } catch { /* not kept */ }
+          send("volume", undefined, undefined, v);
+          if (v > 0 && scene.muted) send("sound-on");
+        }} />
+      {touch ? <button type="button" className="cd-scene-sound cd-scene-mute" aria-label={label} title={label} aria-pressed={off} onClick={toggle}><Icon name={off ? "sound-off" : "sound"} /></button> : null}
+    </div>
+  </div>;
+}
+
 function SceneBar({ scene, send }: { scene: SceneState; send: (action: SceneControl["action"], t?: number, name?: string, value?: number) => void }) {
   const ended = scene.complete && scene.t >= scene.end - 0.01;
   const label = scene.playing ? "Pause" : ended ? "Play again" : "Play";
@@ -1972,10 +2043,16 @@ function SceneBar({ scene, send }: { scene: SceneState; send: (action: SceneCont
       onChange={(event) => send("set", undefined, p.name, +event.target.value)} />
   </label>)}</div> : null}
   <div className="cd-scenebar">
-    <button type="button" className="cd-scene-play" aria-label={label} title={label} onClick={() => send(scene.playing ? "pause" : ended ? "replay" : "play")}>
+    <button type="button" className={cx("cd-scene-play", scene.playing && "is-playing")} aria-label={label} title={label} onClick={() => send(scene.playing ? "pause" : ended ? "replay" : "play")}>
+      {/* the carved ring, inked as far as the animation has played */}
+      <svg className="cd-scene-ring" viewBox="0 0 44 44" aria-hidden="true">
+        <rect x="4.5" y="4.5" width="35" height="35" rx="7.5" pathLength="1" />
+        <rect x="4.5" y="4.5" width="35" height="35" rx="7.5" pathLength="1" className="is-done" strokeDasharray="1 1" strokeDashoffset={scene.end ? 1 - Math.min(1, scene.t / scene.end) : 1} />
+      </svg>
       {scene.playing ? <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5.5" width="4" height="13" rx="1.5" /><rect x="13.5" y="5.5" width="4" height="13" rx="1.5" /></svg>
         : ended ? <Icon name="restart" /> : <Icon name="play" />}
     </button>
+    {scene.voiced ? <SoundControl scene={scene} send={send} /> : null}
     <input type="range" className="cd-scene-scrub" min={0} max={1000} value={scene.end ? Math.round(scene.t / scene.end * 1000) : 0} aria-label="Time"
       style={{ ["--p" as string]: `${scene.end ? scene.t / scene.end * 100 : 0}%` }}
       onChange={(event) => send("seek", (+event.target.value / 1000) * scene.end)} />
@@ -2143,7 +2220,7 @@ function GroupMarks({ tools }: { tools: Tool[] }) {
   const apps = [...new Set(tools.map((t) => t.app).filter((a): a is string => Boolean(a)))].slice(0, 3);
   const drive = tools.some((t) => t.space && !t.app);
   if (!apps.length && !drive) return <Icon name="gear" />;
-  return <span className="cd-groupmarks">{drive ? <DriveMark /> : null}{apps.map((slug) => <AppLogo key={slug} slug={slug} />)}</span>;
+  return <span className="cd-groupmarks">{drive ? <DriveMark /> : null}{apps.map((slug) => <AppLogo key={slug} slug={slug} pro={tools.some((t) => t.app === slug && t.pro)} />)}</span>;
 }
 
 const toolIcons: Record<string, IconName> = { Read: "file", Wrote: "file", Edited: "diff", Ran: "code", "Searched for": "search", "Looked for": "search", Fetched: "link", "Searched the web for": "search", "Asked a helper": "chat" };
@@ -2715,17 +2792,19 @@ export function JoinChat({ token }: { token: string }) {
 }
 
 /** An artifact opened by its link: the page, as big as the window, in the same sandboxed frame. */
-export function ArtifactAlone({ title, content }: { title: string; content: string }) {
+export function ArtifactAlone({ title, content, media }: { title: string; content: string; media?: string }) {
   const [scene, setScene] = useState<SceneState | null>(null);
   const [control, setControl] = useState<SceneControl | null>(null);
   const send = (action: SceneControl["action"], t?: number, name?: string, value?: number) => setControl((c) => ({ n: (c?.n ?? 0) + 1, action, t, name, value }));
+  /* as tall as its page, up to the window: a short artifact doesn't leave a tall empty card */
+  const [height, setHeight] = useState<number | null>(null);
   return <div className="cd cd-guest cd-artifact-alone">
     <figure className="cd-artifact is-full">
       <figcaption className="cd-artifact-head">
         <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
         <span className="cd-artifact-name"><b title={title}>{title}</b><small>{/<k-scene\b/i.test(content) ? "Animation" : "Artifact"}</small></span>
       </figcaption>
-      <div className="cd-artifact-body"><ArtifactFrame content={content} final title={title} control={control} onScene={setScene} /></div>
+      <div className="cd-artifact-body" style={height ? { height } : undefined}><ArtifactFrame content={content} final title={title} media={media} control={control} onHeight={setHeight} onScene={setScene} /></div>
       {scene && scene.end > 0 ? <SceneBar scene={scene} send={send} /> : null}
     </figure>
   </div>;

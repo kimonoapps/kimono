@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
 /*
@@ -7,7 +8,32 @@ import type { DatabaseSync } from "node:sqlite";
  * sandbox is awake, and streams them to the page while they're being written.
  */
 
-export type Artifact = { name: string; title: string; content: string; version: number; updatedAt: number };
+/** `media` is where the files it plays or shows (media/<name> in its page) are served: /ai/media/<key>/. */
+export type Artifact = { name: string; title: string; content: string; version: number; updatedAt: number; media: string };
+
+/*
+ * An artifact's media: sounds, videos and pictures it names as media/<file>,
+ * from the sandbox's /workspace/media/ (kimono-say, kimono-fetch, or made
+ * there). Kimono copies the ones it names out of the sandbox when it keeps the
+ * artifact, and serves them at an address with a key of its own, the only
+ * place the artifact's frame may load media from. Only files the artifact's
+ * current page names are served.
+ */
+const mediaPattern = /(?<![\w/.-])media\/([A-Za-z0-9][A-Za-z0-9._-]{0,99}\.(?:mp3|m4a|aac|ogg|oga|opus|wav|flac|webm|mp4|m4v|mov|png|jpe?g|webp|gif|avif))\b/gi;
+export const maxMediaBytes = 50 * 1024 * 1024;
+
+/** The media files an artifact's page names, each once. */
+export function mediaNames(content: string): string[] {
+  const names = new Set<string>();
+  for (const found of content.matchAll(mediaPattern)) {
+    names.add(found[1]);
+    if (names.size >= 60) break;
+  }
+  return [...names];
+}
+
+export const mediaBase = (key: string) => `/ai/media/${key}/`;
+const newMediaKey = () => randomBytes(16).toString("hex");
 
 /** The artifact a path names, or null: artifacts/<name>.html, under /workspace or not. */
 export function artifactName(path: unknown): string | null {
@@ -80,18 +106,34 @@ export const maxArtifactBytes = 2 * 1024 * 1024;
 export function saveArtifact(db: DatabaseSync, workspaceId: string, name: string, content: string, now = Date.now()): Artifact {
   if (content.length > maxArtifactBytes) content = content.slice(0, maxArtifactBytes);
   const title = titleOf(content, name);
-  const row = db.prepare(`INSERT INTO artifacts (workspace_id, name, title, content, version, updated_at) VALUES (?, ?, ?, ?, 1, ?)
-    ON CONFLICT (workspace_id, name) DO UPDATE SET title = excluded.title, content = excluded.content, version = artifacts.version + 1, updated_at = excluded.updated_at
-    RETURNING version`).get(workspaceId, name, title, content, now) as { version: number };
-  return { name, title, content, version: row.version, updatedAt: now };
+  const row = db.prepare(`INSERT INTO artifacts (workspace_id, name, title, content, version, updated_at, media_key) VALUES (?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT (workspace_id, name) DO UPDATE SET title = excluded.title, content = excluded.content, version = artifacts.version + 1, updated_at = excluded.updated_at,
+      media_key = COALESCE(artifacts.media_key, excluded.media_key)
+    RETURNING version, media_key`).get(workspaceId, name, title, content, now, newMediaKey()) as { version: number; media_key: string };
+  return { name, title, content, version: row.version, updatedAt: now, media: mediaBase(row.media_key) };
+}
+
+/** The artifact a media key belongs to: its chat, and its page (whose media/ names are all it may serve). */
+export function artifactByMediaKey(db: DatabaseSync, key: string): { workspaceId: string; name: string; content: string } | null {
+  if (!/^[0-9a-f]{32}$/.test(key)) return null;
+  const row = db.prepare("SELECT workspace_id, name, content FROM artifacts WHERE media_key = ?").get(key) as { workspace_id: string; name: string; content: string } | undefined;
+  return row ? { workspaceId: row.workspace_id, name: row.name, content: row.content } : null;
 }
 
 export function artifactOf(db: DatabaseSync, workspaceId: string, name: string): Artifact | null {
-  const row = db.prepare("SELECT name, title, content, version, updated_at FROM artifacts WHERE workspace_id = ? AND name = ?").get(workspaceId, name) as { name: string; title: string; content: string; version: number; updated_at: number } | undefined;
-  return row ? { name: row.name, title: row.title, content: row.content, version: row.version, updatedAt: row.updated_at } : null;
+  const row = db.prepare("SELECT name, title, content, version, updated_at, media_key FROM artifacts WHERE workspace_id = ? AND name = ?").get(workspaceId, name) as { name: string; title: string; content: string; version: number; updated_at: number; media_key: string | null } | undefined;
+  if (!row) return null;
+  /* Kept before artifacts had media: it gets its key now. */
+  let key = row.media_key;
+  if (!key) {
+    key = newMediaKey();
+    db.prepare("UPDATE artifacts SET media_key = ? WHERE workspace_id = ? AND name = ? AND media_key IS NULL").run(key, workspaceId, name);
+    key = (db.prepare("SELECT media_key FROM artifacts WHERE workspace_id = ? AND name = ?").get(workspaceId, name) as { media_key: string }).media_key;
+  }
+  return { name: row.name, title: row.title, content: row.content, version: row.version, updatedAt: row.updated_at, media: mediaBase(key) };
 }
 
-export function artifactsOf(db: DatabaseSync, workspaceId: string): Omit<Artifact, "content">[] {
+export function artifactsOf(db: DatabaseSync, workspaceId: string): Omit<Artifact, "content" | "media">[] {
   return (db.prepare("SELECT name, title, version, updated_at FROM artifacts WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as { name: string; title: string; version: number; updated_at: number }[])
     .map((r) => ({ name: r.name, title: r.title, version: r.version, updatedAt: r.updated_at }));
 }

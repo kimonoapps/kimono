@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""kimono-fetch LINK [NAME]
+
+Brings in a file one of your tools made (a voice, a video, a picture) from
+the link the tool gave back. It lands in /workspace/media/ (as NAME, if you
+give one), ready to use here or to kimono-send to the person. Only links your
+tools returned in this chat in the last three hours work, and only pictures,
+sounds and videos: it isn't a way onto the web. Up to 200 MB.
+"""
+import mimetypes, os, re, sys, urllib.error, urllib.parse, urllib.request
+
+MEDIA = "/workspace/media"
+MAX_BYTES = 200 * 1024 * 1024
+
+args = sys.argv[1:]
+if not args or len(args) > 2 or args[0] in ("-h", "--help"):
+    sys.exit(__doc__.strip())
+link = args[0]
+gateway, token = os.environ.get("KIMONO_GATEWAY", ""), os.environ.get("KIMONO_TOKEN", "")
+if not gateway or not token:
+    sys.exit("kimono-fetch: this chat has no tools, so there's nothing to fetch")
+if not link.startswith("https://"):
+    sys.exit("kimono-fetch: give the https link the tool gave back")
+
+request = urllib.request.Request(f"{gateway}/media?link={urllib.parse.quote(link, safe='')}", headers={"Authorization": f"Bearer {token}"})
+try:
+    response = urllib.request.urlopen(request, timeout=900)
+except urllib.error.HTTPError as error:
+    message = error.read().decode(errors="replace")
+    found = re.search(r'"error"\s*:\s*"([^"]+)"', message)
+    sys.exit(f"kimono-fetch: {found.group(1) if found else message.strip() or error.reason}")
+except OSError as error:
+    sys.exit(f"kimono-fetch: couldn't reach Kimono ({error})")
+
+kind = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+given = response.headers.get("X-Kimono-Name") or "file"
+name = os.path.basename(args[1]) if len(args) == 2 else given
+name = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip(".-")[:100] or "file"
+stem, ext = os.path.splitext(name)
+if not ext:
+    ext = os.path.splitext(given)[1] or mimetypes.guess_extension(kind) or ""
+    if ext == ".mpga":
+        ext = ".mp3"
+os.makedirs(MEDIA, exist_ok=True)
+path, n = os.path.join(MEDIA, stem + ext), 2
+while os.path.exists(path):
+    path, n = os.path.join(MEDIA, f"{stem}-{n}{ext}"), n + 1
+
+size, part = 0, path + ".part"
+try:
+    with open(part, "wb") as out:
+        while chunk := response.read(1 << 20):
+            size += len(chunk)
+            if size > MAX_BYTES:
+                raise ValueError("over 200 MB")
+            out.write(chunk)
+    expected = response.headers.get("Content-Length")
+    if expected and int(expected) != size:
+        raise ValueError("it arrived cut short; try again")
+    os.replace(part, path)
+except (OSError, ValueError) as error:
+    if os.path.exists(part):
+        os.remove(part)
+    sys.exit(f"kimono-fetch: {error}")
+
+shown = f"{size / 1048576:.1f} MB" if size >= 1048576 else f"{max(1, size // 1024)} KB"
+print(f"{path} ({kind or 'file'}, {shown})")

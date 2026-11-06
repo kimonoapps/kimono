@@ -10,13 +10,14 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
-import { applyEdits, artifactOf, Drafts, saveArtifact } from "./artifacts";
+import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
   abandonRunningTurns, appendEvent, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
 import { toolSession } from "./composio";
+import { guardMediaBudget, holdMediaBudget, lastAllowance, mediaNote, ranAsPro } from "./media";
 import { changeMemory, contextFor, forget, profileOf, remember } from "./memory";
 import { effortFor, modelFor, type ModelChoice } from "./models";
 export { modelChoices, type ModelChoice } from "./models";
@@ -143,9 +144,28 @@ async function keepArtifact(config: CodeConfig, workspace: Workspace, turn: stri
     if (!response?.ok) return;
     content = await response.text();
   }
+  /* Its media first, so whoever shows the saved page finds the files it names (they may have changed under the same names). */
+  await keepMedia(config, workspace, content);
   if (kept && kept.content === content) return;
   const saved = saveArtifact(db(), workspace.id, call.name, content);
   record(workspace.id, turn, { kind: "artifact-saved", name: saved.name, version: saved.version, title: saved.title });
+}
+
+/** Where a chat's artifact media is kept: media/<chat>/<file>, served at /ai/media/<key>/<file>. */
+export const mediaDir = (workspaceId: string) => join(root, "media", workspaceId);
+
+/** Copies the media an artifact's page names (media/<file>) out of the sandbox's /workspace/media/. */
+async function keepMedia(config: CodeConfig, workspace: Workspace, content: string) {
+  const names = mediaNames(content);
+  if (!names.length) return;
+  await mkdir(mediaDir(workspace.id), { recursive: true, mode: 0o700 });
+  for (const name of names) {
+    const response = await sandbox.file(config, workspace, `media/${name}`, true).catch(() => null);
+    if (!response?.ok) continue;
+    const body = new Uint8Array(await response.arrayBuffer());
+    if (body.byteLength > maxMediaBytes) continue;
+    await writeFile(join(mediaDir(workspace.id), name), body, { mode: 0o600 });
+  }
 }
 
 /** Copies the files kimono-send gave the person out of the sandbox, beside their attachments, and puts them in the chat. */
@@ -182,7 +202,10 @@ export async function ensure(config: CodeConfig, workspace: Workspace, person: {
   workspace = await ownProject(db(), config, workspace, { username: workspace.owner });
   /* Their Kimono Git account, found by email (its username may not be theirs in Kimono), for the node to open pull requests as. */
   const gitLogin = workspace.kind === "project" ? await gitAccountOf(config, { username: workspace.owner }, false).catch(() => null) : null;
-  const answer = await sandbox.ensure(config, workspace, person, await toolSession(db(), config.composioKey, workspace.owner, portalOrigin()), gitLogin);
+  const tools = await toolSession(db(), config.composioKey, workspace.owner, portalOrigin());
+  /* Their paid tools open or close with this month's allowance before the agent wakes. */
+  if (tools) await holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error));
+  const answer = await sandbox.ensure(config, workspace, person, tools, gitLogin);
   for (const id of answer.slept ?? []) {
     try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }
   }
@@ -281,6 +304,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   let drafts: Drafts | null = null;
   /* The agent's last message this turn, which a later edit carries the session on from. */
   let lastMessage: string | null = null;
+  /* Calls to the person's own tools still waiting for their answer. */
+  const composioCalls = new Set<string>();
   try {
     await ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
@@ -299,7 +324,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : ""].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null }, controller.signal);
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
@@ -383,7 +408,12 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         for (const call of translated.artifacts ?? []) pendingArtifacts.set(call.id, call);
         if (translated.sent) await keepSent(config, workspace, turn, translated.sent).catch((error) => console.warn("Kimono AI couldn't keep a file it sent:", error instanceof Error ? error.message : error));
         for (const event of translated.events) {
+          /* An app it used that the person never connected ran on Composio's account: a Pro Tool, marked with its bolt. */
+          if (event.kind === "tool" && event.app && event.label === "Used" && await ranAsPro(db(), config, workspace.owner, portalOrigin(), event.app).catch(() => false)) event.pro = true;
           record(workspace.id, turn, event);
+          /* A tool of theirs answered: what it cost counts against the month's Pro Tools allowance at once. */
+          if (event.kind === "tool" && event.name.startsWith("mcp__composio__")) composioCalls.add(event.id);
+          if (event.kind === "tool-result" && composioCalls.delete(event.id)) guardMediaBudget(db(), config, workspace.owner, portalOrigin());
           const call = event.kind === "tool-result" ? pendingArtifacts.get(event.id) : undefined;
           if (call && event.kind === "tool-result") {
             pendingArtifacts.delete(event.id);
@@ -592,6 +622,7 @@ export async function attachmentBytes(workspace: Workspace, stored: string) {
 export async function forgetAttachments(workspaceId: string) {
   await rm(attachmentDir(workspaceId), { recursive: true, force: true });
   await rm(shotDir(workspaceId), { recursive: true, force: true });
+  await rm(mediaDir(workspaceId), { recursive: true, force: true });
 }
 
 export { who };

@@ -22,6 +22,7 @@ import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKUserContentController
 import platform.WebKit.WKWebView
+import platform.WebKit.WKAudiovisualMediaTypeNone
 import platform.WebKit.WKWebViewConfiguration
 import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
@@ -57,6 +58,8 @@ internal fun IosWebFrame(url: String, modifier: Modifier, control: WebFrameContr
                 /* An artifact keeps nothing; a running app may keep what it likes, for this launch. */
                 websiteDataStore = WKWebsiteDataStore.nonPersistentDataStore()
                 allowsInlineMediaPlayback = true
+                /* a narrated scene speaks as it plays, with no tap first */
+                mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone
                 userContentController.addScriptMessageHandler(Heard { heard.value(it) }, "kimono")
             }
             val view = WKWebView(frame = CGRectZero.readValue(), configuration = configuration)

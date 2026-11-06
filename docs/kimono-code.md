@@ -308,6 +308,14 @@ browser waits up to 1.5 s (20 s for a WebSocket upgrade), after which it gets a
 small "Waking up…" page (`503`, `Retry-After: 2`) that refreshes itself every two
 seconds until the app answers.
 
+A sandbox can also be awake while its app isn't: the app died with nobody
+starting it again, or the container came back without it. When a request
+through the proxy fails and the app's port doesn't answer, the proxy starts the
+app again (as Restart would) and answers with the same "Waking up…" page. It
+leaves alone an app whose supervisor is still running it (still starting, or
+crashing and being started again: a second start would only interrupt it, and
+its log says why), and one its owner stopped.
+
 The state answers say `ready`, `busy`, `paused`, `stopped` (stopped or removed,
 files kept) or `gone`. Each sandbox's last activity and repository (never a
 credential) is kept in `<state-dir>/sandboxes.json`, so a restarted node neither

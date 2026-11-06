@@ -2,6 +2,13 @@
 
 package app.kimono.screens
 
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -140,11 +147,34 @@ internal fun SpaceChip(marks: AiMarks, name: String, open: (String) -> Unit) {
 
 /** An app's own logo, as Composio draws it. */
 @Composable
-internal fun AppLogo(code: Code, slug: String, size: Dp = 20.dp) {
+internal fun AppLogo(code: Code, slug: String, size: Dp = 20.dp, pro: Boolean = false) {
     val look by produceState(code.knownLook(slug), slug) { value = code.appLook(slug) }
     val logo = look?.logo
-    if (logo.isNullOrBlank()) { Icon(kimonoIcon("gear"), null, modifier = Modifier.size(size)); return }
-    LogoImage(logo, size)
+    if (!pro) {
+        if (logo.isNullOrBlank()) Icon(kimonoIcon("gear"), null, modifier = Modifier.size(size)) else LogoImage(logo, size)
+        return
+    }
+    /* A Pro Tool: the logo with a filled bolt on its top right. */
+    Box(Modifier.size(size)) {
+        if (logo.isNullOrBlank()) Icon(kimonoIcon("gear"), null, modifier = Modifier.size(size)) else LogoImage(logo, size)
+        ProBolt(Modifier.align(Alignment.TopEnd).offset(x = size * 0.32f, y = -size * 0.32f).size(size * 0.7f))
+    }
+}
+
+private const val boltPath = "M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z"
+
+/** A lightning bolt filled with the app's accent, cut out from the page by a ring of the surface: what marks a Pro Tool. */
+@Composable
+internal fun ProBolt(modifier: Modifier = Modifier) {
+    val accent = MaterialTheme.colorScheme.primary
+    val ring = MaterialTheme.colorScheme.surface
+    val bolt = remember(accent, ring) {
+        ImageVector.Builder("pro-bolt", 24.dp, 24.dp, 24f, 24f)
+            .addPath(addPathNodes(boltPath), stroke = SolidColor(ring), strokeLineWidth = 5f, strokeLineJoin = StrokeJoin.Round)
+            .addPath(addPathNodes(boltPath), fill = SolidColor(accent))
+            .build()
+    }
+    Image(rememberVectorPainter(bolt), contentDescription = "Pro Tool", modifier = modifier)
 }
 
 @Composable

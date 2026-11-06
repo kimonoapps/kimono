@@ -2,6 +2,18 @@
 
 package app.kimono.screens
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -84,10 +96,13 @@ internal class Artifacts(val workspaceId: String) {
     var canShare by mutableStateOf(false)
     /* The saved text of each, by name and version: fetched once, shared by every card. */
     val saved = androidx.compose.runtime.mutableStateMapOf<String, Pair<Int, String>>()
+    /* Where each one's media/<file> is served, once it's kept. */
+    val media = androidx.compose.runtime.mutableStateMapOf<String, String>()
 }
 
 internal class SceneParam(val name: String, val label: String, val min: Float, val max: Float, val step: Float, val value: Float, val unit: String)
-internal class SceneState(val t: Double, val end: Double, val playing: Boolean, val complete: Boolean, val params: List<SceneParam>)
+/** voiced: it narrates; muted: its sound is off; blocked: the web view wants a tap before it plays sound. */
+internal class SceneState(val t: Double, val end: Double, val playing: Boolean, val complete: Boolean, val params: List<SceneParam>, val voiced: Boolean = false, val muted: Boolean = false, val blocked: Boolean = false, val volume: Double = 1.0)
 
 private val loose = Json { ignoreUnknownKeys = true }
 
@@ -97,7 +112,7 @@ private fun artifactOf(code: Code, shared: Artifacts, name: String): Triple<Stri
     val version = shared.versions[name]?.first ?: 0
     LaunchedEffect(name, version) {
         if (version == 0 || shared.saved[name]?.first == version) return@LaunchedEffect
-        runCatching { code.artifact(shared.workspaceId, name) }.onSuccess { shared.saved[name] = it.version to it.content }
+        runCatching { code.artifact(shared.workspaceId, name) }.onSuccess { shared.saved[name] = it.version to it.content; it.media?.let { m -> shared.media[name] = m } }
     }
     val draft = shared.drafts[name]?.second
     val content = draft ?: shared.saved[name]?.second
@@ -129,7 +144,7 @@ internal fun ArtifactCard(code: Code, platform: Platform, shared: Artifacts, nam
                     Text("Open full screen", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 else {
-                    ArtifactFrame(platform, code.server, content, final = !writing, control, Modifier.fillMaxWidth().height(shown.dp), onHeight = { height = it }, onScene = { scene = it })
+                    ArtifactFrame(platform, code.server, content, final = !writing, control, Modifier.fillMaxWidth().height(shown.dp), onHeight = { height = it }, onScene = { scene = it }, media = shared.media[name])
                     /* The grip: drag to resize; a double tap fits it to its page again. */
                     Box(Modifier.fillMaxWidth().height(22.dp).pointerInput(Unit) {
                         detectVerticalDragGestures { _, drag -> chosen = ((chosen ?: shown) + with(density) { drag.toDp().value }.toInt()).coerceIn(120, 2400) }
@@ -161,7 +176,7 @@ internal fun ArtifactFull(code: Code, platform: Platform, shared: Artifacts, nam
             ArtifactHead(title, writing, animated = content?.contains("<k-scene", ignoreCase = true) == true, full = true) { shared.full = null }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (content == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-                else ArtifactFrame(platform, code.server, content, final = !writing, control, Modifier.fillMaxSize(), onHeight = {}, onScene = { scene = it })
+                else ArtifactFrame(platform, code.server, content, final = !writing, control, Modifier.fillMaxSize(), onHeight = {}, onScene = { scene = it }, media = shared.media[name])
             }
             scene?.takeIf { it.end > 0 }?.let { SceneBar(it, control) }
         }
@@ -211,7 +226,7 @@ fun SharedArtifactScreen(code: Code, platform: Platform, token: String, back: ()
             when {
                 failed != null -> Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { Text(failed, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 content == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-                else -> ArtifactFrame(platform, code.server, content, final = true, control, Modifier.fillMaxSize(), onHeight = {}, onScene = { scene = it })
+                else -> ArtifactFrame(platform, code.server, content, final = true, control, Modifier.fillMaxSize(), onHeight = {}, onScene = { scene = it }, media = shown?.media)
             }
         }
         scene?.takeIf { it.end > 0 }?.let { SceneBar(it, control) }
@@ -226,17 +241,17 @@ window.__kimonoSend=function(m){own(m,'*')};})();"""
 
 /** The frame, and the conversation with it: the text as it arrives, its height and its scenes back. */
 @Composable
-private fun ArtifactFrame(platform: Platform, server: String?, content: String, final: Boolean, control: WebFrameControl, modifier: Modifier, onHeight: (Int) -> Unit, onScene: (SceneState) -> Unit) {
+private fun ArtifactFrame(platform: Platform, server: String?, content: String, final: Boolean, control: WebFrameControl, modifier: Modifier, onHeight: (Int) -> Unit, onScene: (SceneState) -> Unit, media: String? = null) {
     if (server == null) return
     var loaded by remember { mutableStateOf(false) }
-    val latest by rememberUpdatedState(content to final)
+    val latest by rememberUpdatedState(Triple(content, final, media))
     val heightTo by rememberUpdatedState(onHeight)
     val sceneTo by rememberUpdatedState(onScene)
     /* While it's being written the text grows a little at a time: posted at most a few times a second, the latest each time. */
     LaunchedEffect(loaded) {
         if (!loaded) return@LaunchedEffect
-        snapshotFlow { latest }.conflate().collect { (text, done) ->
-            val message = buildJsonObject { put("kimono", "artifact"); put("type", "render"); put("content", text); put("final", done) }
+        snapshotFlow { latest }.conflate().collect { (text, done, where) ->
+            val message = buildJsonObject { put("kimono", "artifact"); put("type", "render"); put("content", text); put("final", done); if (where != null) put("media", where) }
             control.evaluate("$BRIDGE;window.__kimonoSend($message);")
             delay(if (done) 0 else 200)
         }
@@ -265,7 +280,8 @@ private fun sceneOf(m: JsonObject): SceneState? {
         val value = o["value"]?.jsonPrimitive?.doubleOrNull ?: return@mapNotNull null
         SceneParam(name, o["label"]?.jsonPrimitive?.content ?: name, min.toFloat(), max.toFloat(), (o["step"]?.jsonPrimitive?.doubleOrNull ?: 0.0).toFloat(), value.toFloat(), o["unit"]?.jsonPrimitive?.content ?: "")
     }.take(8) }.getOrDefault(emptyList())
-    return SceneState(t, end, m["playing"]?.jsonPrimitive?.booleanOrNull == true, m["complete"]?.jsonPrimitive?.booleanOrNull == true, params)
+    val flag = { key: String -> m[key]?.jsonPrimitive?.booleanOrNull == true }
+    return SceneState(t, end, flag("playing"), flag("complete"), params, voiced = flag("voiced"), muted = flag("muted"), blocked = flag("blocked"), volume = m["volume"]?.jsonPrimitive?.doubleOrNull ?: 1.0)
 }
 
 private fun sceneControl(control: WebFrameControl, action: String, t: Double? = null, name: String? = null, value: Double? = null) {
@@ -278,7 +294,38 @@ private fun sceneControl(control: WebFrameControl, action: String, t: Double? = 
     control.evaluate("window.__kimonoSend&&window.__kimonoSend($message);")
 }
 
-/** Kimono's own controls for an artifact's animation: play, pause, again, scrub, and each of its settings. */
+/**
+ * Play and pause, as Kimono's seal: suō, round at rest and squaring off as it's pressed, with its carved
+ * ring inked as far as the animation has played.
+ */
+@Composable
+private fun PlaySeal(scene: SceneState, ended: Boolean, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val corner by animateDpAsState(if (pressed) 12.dp else 22.dp, spring(dampingRatio = 0.55f, stiffness = 600f))
+    val progress = if (scene.end > 0) (scene.t / scene.end).toFloat().coerceIn(0f, 1f) else 0f
+    val ink = MaterialTheme.colorScheme.onPrimary
+    val label = if (scene.playing) "Pause" else if (ended) "Play again" else "Play"
+    Surface(onClick = onClick, interactionSource = source, shape = RoundedCornerShape(corner), color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(44.dp)) {
+        Box(Modifier.fillMaxSize().drawWithContent {
+            drawContent()
+            val inset = 4.5.dp.toPx()
+            val ring = Path().apply { addRoundRect(RoundRect(Rect(inset, inset, size.width - inset, size.height - inset), CornerRadius((corner.toPx() - inset).coerceAtLeast(0f)))) }
+            drawPath(ring, ink.copy(alpha = 0.26f), style = Stroke(1.2.dp.toPx()))
+            if (progress > 0f) {
+                val measure = PathMeasure().apply { setPath(ring, false) }
+                val done = Path()
+                measure.getSegment(0f, measure.length * progress, done, true)
+                drawPath(done, ink, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round))
+            }
+        }, contentAlignment = Alignment.Center) {
+            if (scene.playing) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { repeat(2) { Box(Modifier.width(4.dp).height(13.dp).clip(RoundedCornerShape(2.dp)).background(ink)) } }
+            else Icon(kimonoIcon(if (ended) "restart" else "play"), label, tint = ink, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/** Kimono's own controls for an artifact's animation: play, pause, again, scrub, sound, and each of its settings. */
 @Composable
 private fun SceneBar(scene: SceneState, control: WebFrameControl) {
     val ended = scene.complete && scene.t >= scene.end - 0.01
@@ -292,11 +339,22 @@ private fun SceneBar(scene: SceneState, control: WebFrameControl) {
             Slider(value = p.value, onValueChange = { sceneControl(control, "set", name = p.name, value = it.toDouble()) }, valueRange = p.min..p.max, steps = steps)
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Surface(onClick = { sceneControl(control, if (scene.playing) "pause" else if (ended) "replay" else "play") }, shape = CircleShape, color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp)) {
-                Box(contentAlignment = Alignment.Center) {
-                    if (scene.playing) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { repeat(2) { Box(Modifier.width(4.dp).height(13.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.onPrimary)) } }
-                    else Icon(kimonoIcon(if (ended) "restart" else "play"), if (ended) "Play again" else "Play", tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
+            PlaySeal(scene, ended) { sceneControl(control, if (scene.playing) "pause" else if (ended) "replay" else "play") }
+            /* A narrated animation's sound, beside play: the speaker turns it on or off, the slider sets how loud. */
+            if (scene.voiced) {
+                val off = scene.muted || scene.blocked || scene.volume <= 0.0
+                val label = if (scene.blocked) "Turn sound on" else if (off) "Unmute" else "Mute"
+                IconButton(onClick = {
+                    if (scene.blocked && !scene.playing) sceneControl(control, "play")
+                    if (off && scene.volume <= 0.0) sceneControl(control, "volume", value = 0.8)
+                    sceneControl(control, if (off) "sound-on" else "sound-off")
+                }, modifier = Modifier.size(36.dp)) {
+                    Icon(kimonoIcon(if (off) "sound-off" else "sound"), label, tint = if (scene.blocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
+                if (!scene.blocked) Slider(value = if (off) 0f else scene.volume.toFloat(), onValueChange = {
+                    sceneControl(control, "volume", value = it.toDouble())
+                    if (it > 0f && scene.muted) sceneControl(control, "sound-on")
+                }, valueRange = 0f..1f, modifier = Modifier.width(72.dp))
             }
             Slider(value = if (scene.end > 0) (scene.t / scene.end).toFloat().coerceIn(0f, 1f) else 0f, onValueChange = { sceneControl(control, "seek", t = it * scene.end) }, modifier = Modifier.weight(1f))
             Text("${(scene.t * 10).toInt() / 10.0} / ${(scene.end * 10).toInt() / 10.0}s", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)

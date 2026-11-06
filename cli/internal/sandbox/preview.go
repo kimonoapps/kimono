@@ -705,9 +705,11 @@ func (s *Server) reviveServe(id string) {
 	}()
 }
 
-// restartServe runs a preview's app again unless it already answers or its
-// owner stopped it. A stopped container keeps kimono-serve's notes but not the
-// process, so the port decides.
+// restartServe runs a preview's app again unless it already answers, its
+// owner stopped it, or its supervisor is still running it (starting up, or
+// starting it again after a crash: a second one would only interrupt it). A
+// stopped container keeps kimono-serve's notes but not the process, so the
+// port and the process decide, not the notes.
 func (s *Server) restartServe(ctx context.Context, id string) error {
 	p := s.previewCopy(id)
 	if p == nil || p.Stopped || len(p.Args) == 0 || s.portAnswers(ctx, id, p.Port) {
@@ -719,7 +721,46 @@ func (s *Server) restartServe(ctx context.Context, id string) error {
 	if s.portAnswers(ctx, id, p.Port) {
 		return nil
 	}
+	if alive, _ := s.supervisor(ctx, id); alive {
+		return nil
+	}
 	return s.startServe(ctx, id, p)
+}
+
+const supervisorScript = `pgrep -u agent -f "[/]usr/local/lib/kimono/supervise" >/dev/null && echo alive || echo gone
+jq -r .state /outbox/serve-status.json 2>/dev/null || true`
+
+// supervisor says whether the app's supervisor is running in the sandbox, and
+// what it last said it was doing (running, restarting).
+func (s *Server) supervisor(ctx context.Context, id string) (alive bool, state string) {
+	out, err := s.docker.run(ctx, nil, "exec", "-u", "agent", containerName(id), "bash", "-c", supervisorScript)
+	if err != nil {
+		return false, ""
+	}
+	first, rest, _ := strings.Cut(string(out), "\n")
+	return strings.TrimSpace(first) == "alive", strings.TrimSpace(rest)
+}
+
+// recovering is what the proxy does when a request to a running sandbox's app
+// fails: if the app isn't answering and can be started, it's brought back (in
+// the background, shared with any wake under way) and true says to show the
+// waking page. An app that answers failed on its own; one that keeps crashing
+// would only crash again; neither is started.
+func (s *Server) recovering(id string, port int) bool {
+	p := s.previewCopy(id)
+	if id == "" || p == nil || p.Stopped || len(p.Args) == 0 {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if s.portAnswers(ctx, id, port) {
+		return false
+	}
+	if alive, state := s.supervisor(ctx, id); alive && state == "restarting" {
+		return false
+	}
+	s.wakeForPreview(id, port)
+	return true
 }
 
 // startServe runs kimono-serve as the agent did: same folder, command and kind.
@@ -793,6 +834,13 @@ func (s *Server) PreviewHandler() http.Handler {
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			s.cfg.Logf("preview %s: %v", r.Host, err)
+			t, _ := r.Context().Value(targetKey{}).(target)
+			// The sandbox is up but its app isn't answering: start it again
+			// and say it's waking, rather than a dead end until someone presses Restart.
+			if s.recovering(t.id, t.port) {
+				stillWaking(w)
+				return
+			}
 			notRunning(w, http.StatusBadGateway)
 		},
 	}

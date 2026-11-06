@@ -168,18 +168,56 @@ data class UsageWindow(val used: Double = 0.0, val share: Double = 1.0, val rese
     val fraction get() = if (share <= 0.0) 0.0 else used / share
 }
 
-/** The person's own use of the plan: this 5-hour window and this week, against their share. */
+/** This month's allowance for paid tools (voice, video, pictures, web search…), in US dollars; spent is null until it's known. */
+@Serializable
+data class MediaAllowance(val budget: Double = 0.0, val spent: Double? = null, val resetsAt: Long? = null, val chatSpent: Double = 0.0) {
+    val fraction get() = spent?.let { if (budget <= 0.0) 0.0 else (it / budget).coerceAtMost(1.0) }
+    val words get() = spent?.let { "${dollars(it)} of ${dollars(budget)} this month${if (chatSpent > 0) " · ${dollars(chatSpent)} in this chat" else ""}" }
+}
+
+/**
+ * Which meters show: each only once it's past half; tools also once the chat
+ * asked about has spent some. Null is hidden.
+ */
+data class ShownMeters(val context: Double?, val fiveHour: Double?, val week: Double?, val tools: Double?) {
+    val any get() = context != null || fiveHour != null || week != null || tools != null
+    /** The fullest one shown, for a single ring. */
+    val most get() = listOfNotNull(context, fiveHour, week, tools).maxOrNull()
+
+    companion object {
+        private fun past(v: Double?) = v?.takeIf { it > 0.5 }
+        fun of(usage: Usage?, context: Double?): ShownMeters {
+            val reported = usage?.takeIf { it.reported }
+            val media = usage?.media
+            return ShownMeters(
+                context = past(context),
+                fiveHour = past(reported?.takeIf { !it.noFiveHour }?.fiveHour?.fraction),
+                week = past(reported?.week?.fraction),
+                tools = media?.let { m -> m.fraction?.takeIf { it > 0.5 || m.chatSpent > 0 } },
+            )
+        }
+    }
+}
+
+private fun dollars(n: Double): String {
+    val cents = kotlin.math.round(n * 100).toLong()
+    return "$" + (cents / 100) + "." + (cents % 100).toString().padStart(2, '0')
+}
+
+/** The person's own use of the plan (this 5-hour window and this week, against their share), and of this month's Pro Tools allowance. */
 @Serializable
 data class Usage(
     val model: String = "", val unlimited: Boolean = false, val reported: Boolean = false, val fiveHourLimited: Boolean? = null,
     val fiveHour: UsageWindow = UsageWindow(), val week: UsageWindow = UsageWindow(),
+    val media: MediaAllowance? = null,
 ) {
     /** This plan has no 5-hour window at all. */
     val noFiveHour get() = reported && fiveHourLimited == false
 }
 
 @Serializable
-data class ArtifactSaved(val name: String, val title: String = "", val content: String = "", val version: Int = 0, val updatedAt: Long = 0)
+/** `media` is where its media/<file> sounds, videos and pictures are served. */
+data class ArtifactSaved(val name: String, val title: String = "", val content: String = "", val version: Int = 0, val updatedAt: Long = 0, val media: String? = null)
 
 /** How full the conversation is, as the last reply said. */
 data class ContextUse(val used: Long, val window: Long?)
@@ -189,7 +227,8 @@ sealed interface CodeEvent {
     data class Ask(val by: String, val text: String, val attachments: List<CodeAttachment>, val queued: Boolean) : CodeEvent
     data object Started : CodeEvent
     data class Say(val text: String) : CodeEvent
-    data class Tool(val id: String, val name: String, val label: String, val detail: String?, val change: String?, val app: String?, val space: String?) : CodeEvent
+    /** [pro]: it ran on one of Composio's own accounts, a Pro Tool. */
+    data class Tool(val id: String, val name: String, val label: String, val detail: String?, val change: String?, val app: String?, val space: String?, val pro: Boolean = false) : CodeEvent
     data class ToolResult(val id: String, val ok: Boolean, val output: String) : CodeEvent
     data class Done(val ok: Boolean, val cancelled: Boolean, val error: String?, val durationMs: Long?, val model: String?, val context: ContextUse?) : CodeEvent
     data class Compacted(val before: Long?) : CodeEvent
@@ -261,6 +300,7 @@ data class SharedLink(
     val kind: String, val title: String = "", val owner: String = "",
     val id: String? = null, val access: String? = null,
     val name: String? = null, val content: String? = null, val version: Int = 0, val public: Boolean = false,
+    val media: String? = null,
 )
 @Serializable private data class People(val people: List<Person> = emptyList())
 @Serializable private data class ProjectList(val projects: List<CodeProject>)
@@ -289,7 +329,7 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "ask" -> CodeEvent.Ask(o.text("by") ?: "", o.text("text") ?: "", attachmentsOf(o["attachments"]), o.flag("queued") == true)
     "started" -> CodeEvent.Started
     "text" -> CodeEvent.Say(o.text("text") ?: "")
-    "tool" -> CodeEvent.Tool(o.text("id") ?: "", o.text("name") ?: "", o.text("label") ?: "", o.text("detail"), o.text("change"), o.text("app"), o.text("space"))
+    "tool" -> CodeEvent.Tool(o.text("id") ?: "", o.text("name") ?: "", o.text("label") ?: "", o.text("detail"), o.text("change"), o.text("app"), o.text("space"), o.flag("pro") == true)
     "tool-result" -> CodeEvent.ToolResult(o.text("id") ?: "", o.flag("ok") ?: true, o.text("output") ?: "")
     "done" -> CodeEvent.Done(
         o.flag("ok") ?: false, o.flag("cancelled") ?: false, o.text("error"), o.long("durationMs"), o.text("model"),
@@ -535,7 +575,8 @@ class Code(private val session: Session, private val platform: Platform? = null)
 
     /* ── usage, and what it may do with Drive ── */
 
-    suspend fun usage(): Usage = json.decodeFromString(session.call("/api/v1/code/usage"))
+    /** The person's usage; with [chat], also what that chat of theirs spent on paid tools. */
+    suspend fun usage(chat: String? = null): Usage = json.decodeFromString(session.call("/api/v1/code/usage" + (chat?.let { "?chat=${it.encodeURLParameter()}" } ?: "")))
 
     suspend fun access(): AccessSettings = json.decodeFromString(session.call("/api/v1/code/access"))
     suspend fun setSpaceAccess(spaceId: String, need: String?) { session.call("/api/v1/code/access/spaces/${spaceId.encodeURLParameter()}", HttpMethod.Put, jsonBody(JsonObject.of("need" to need))) }

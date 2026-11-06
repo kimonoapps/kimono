@@ -31,7 +31,7 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string; pro?: boolean }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; model?: "opus" | "sonnet" | "haiku"; context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
@@ -73,7 +73,8 @@ export type SandboxStatus = {
 };
 /** How a published app is doing, as the sandbox's supervisor reports it. */
 export type AppHealth = { state: "running" | "starting" | "crashed" | "stopped" | "asleep" | "down"; restarts: number; exit?: number; since?: number };
-export type ArtifactPage = { name: string; title: string; content: string; version: number; updatedAt: number };
+/** `media` is where its media/<file> sounds, videos and pictures are served. */
+export type ArtifactPage = { name: string; title: string; content: string; version: number; updatedAt: number; media?: string };
 /** What it is doing right now: passing only, for the status at the end of the chat. */
 export type Phase = "working" | "thinking" | "writing" | "tools" | "artifact";
 export type StoredEvent = { seq: number; turn: string | null; at: number; event: CodeEvent };
@@ -120,6 +121,8 @@ export type Usage = {
   model: string; unlimited: boolean; reported: boolean; plan: { fiveHour: number | null; week: number | null }; fiveHourLimited?: boolean;
   fiveHour: { used: number; share: number; resetsAt: number | null };
   week: { used: number; share: number; resetsAt: number | null };
+  /** This month's allowance for paid tools, in US dollars; null where there is none. */
+  media?: { budget: number; spent: number | null; resetsAt: number; /** What the chat asked about spent of it. */ chatSpent?: number } | null;
 };
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -155,7 +158,7 @@ export const code = {
   ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
   /** Changes a message sent earlier and runs it again from there; what came after it goes. */
   editAsk: (id: string, seq: number, text: string, effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("PATCH", { seq, text, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
-  usage: () => call<Usage>("/usage"),
+  usage: (chat?: string) => call<Usage>(chat ? `/usage?chat=${encodeURIComponent(chat)}` : "/usage"),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),

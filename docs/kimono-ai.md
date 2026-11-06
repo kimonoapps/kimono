@@ -26,6 +26,16 @@ stays underneath. What changes is what people see and what the sandbox may reach
 - The agent is Claude Code in the sandbox, with its shell: it reaches for
   `rg`, `jq`, `ffmpeg`, ImageMagick, `exiftool`, `pandoc`, `pdftotext`,
   LibreOffice headless, Python and Node, as a person at a terminal would.
+- Speech is made on the sandbox itself: `kimono-say "<text>" [--voice NAME]
+  [--speed N] [-o FILE]` (or `-f TEXTFILE`) reads text aloud with Kokoro, an
+  open voice model baked into the image (`/opt/kimono/voice/`), and writes an
+  MP3 to `/workspace/media/`. Free and offline: the int8 model, with
+  onnxruntime held to the sandbox's CPU quota, speaks about five times faster
+  than real time on one CPU (a thread per host core instead runs several times
+  slower than real time). Voices in American and British English, Spanish,
+  French, Hindi, Italian and Brazilian Portuguese (`--voices`). Kokoro's
+  Japanese and Mandarin voices are left out: espeak, its phonemizer here, reads
+  kanji as "Chinese letter"; those go to ElevenLabs.
 
 ## Never the web
 
@@ -41,7 +51,8 @@ nothing else. Code allowed the public internet; Kimono AI does not.
   try and fail.
 - Tools come in the image, pinned: PDF tools (poppler, qpdf, Ghostscript,
   MuPDF, OCRmyPDF), ImageMagick, ExifTool, ffmpeg, pandoc, LibreOffice
-  headless, Tesseract (English, Japanese, French), SQLite, and Python 3.13 with
+  headless, Tesseract (English, Japanese, French), SQLite, the Kokoro voice
+  model for `kimono-say`, and Python 3.13 with
   pypdf, PyMuPDF, pdfplumber, ReportLab, WeasyPrint, python-docx, openpyxl,
   python-pptx, pandas, matplotlib, Pillow (with HEIC) and more, first on PATH;
   Kimono's artifact libraries and, for
@@ -82,6 +93,57 @@ person, no code in Kimono for any one toolkit.
   own list first. The connect link comes back to Connections.
 - Sessions are made without Composio's remote workbench, which would run code
   with the internet on Composio's side.
+
+### Tools with no account (Composio Instant)
+
+Web search, reading pages, maps, weather, market data, speech, video, pictures
+and the rest come from Composio's Instant tools: they run on Composio's own
+provider accounts and are charged to the Composio balance, so nobody connects
+anything. Instant has to be switched on in the Composio project's settings.
+
+- Sessions allow every Instant tool (an empty `instant` policy), web search
+  and reading pages included. The sandbox stays offline for a different reason:
+  so nothing from the web is downloaded, installed or run there. Searching and
+  reading through a tool brings back text, not programs, so it's fine.
+- They're called **Pro Tools** wherever people see them, with a lightning
+  bolt (`bolt` in both icon sets), and the agent calls them that too.
+- A call that ran as a Pro Tool is marked `pro` on its `tool` event when it's
+  recorded: Pro Tools are open for the person, they haven't connected that app
+  themselves (Composio uses their own account first), and the toolkit has
+  Instant tools (`ranAsPro` in `lib/code/media.ts`). Its app logo in the chat
+  then wears a bolt filled with the app's accent on its top right, on web and
+  phone, in the call's row and in its group's header.
+- **Each person's Pro Tools budget** (Admin → Kimono AI, default $10, 0 for none)
+  is a monthly allowance in US dollars. Portal sums the person's Instant charges
+  this month (UTC) from Composio's execution logs, filtered by their Composio
+  user, and keeps their session's `instant` policy to match: `PATCH`ed to
+  `false` once spent, back on (`{}`) when a month starts or the budget
+  rises (`lib/code/media.ts`, column `tool_sessions.instant`). It checks before
+  each turn and again, at most every 15 seconds, after each of their tool calls
+  during one. Composio then refuses Instant itself, whatever the agent tries.
+  The logs lag a little, so the last call of a month can go slightly over.
+  Accounts the person connected themselves still work.
+- The agent is told each turn what's left, or that it's used up and when it
+  returns. The usage panel (web and phone) shows "⚡ Pro Tools".
+- Every meter beside Send (context, the 5-hour window, the week, Pro
+  Tools) shows only once it's past half; Pro Tools also once the chat has spent
+  something (`/api/v1/code/usage?chat=<id>` adds up the person's Instant
+  charges made while that chat's turns ran). With none to show, the control
+  is gone. The phone's home screen shows the same rows past half.
+- Which one: the system prompt says that anything that must be exact (maths,
+  graphs, diagrams, mechanisms, distances) is an artifact even when someone
+  says "video", and real video is for when exactness doesn't matter and it
+  should look real. Anything read aloud is `kimono-say` (free, no
+  allowance); ElevenLabs only for a particular voice, accent or character,
+  for Japanese, Mandarin and other languages `kimono-say` lacks, or when someone
+  asks for it by name.
+- Files come back as links the sandbox can't follow. The node gateway notes
+  every https link in a workspace's tool results as they pass, and its
+  `/media` fetches one of those links (seen in the last three hours) for
+  `kimono-fetch <link> [<name>]`, which saves it under `/workspace/media/`.
+  Only pictures, sounds and videos, up to 200 MB, and only from public
+  addresses. A link nobody's tool returned is refused, so it isn't a way onto
+  the web (`cli/internal/sandbox/media.go`).
 
 ## Your files, and asking
 
@@ -187,6 +249,33 @@ which suits a sandbox with no web.
 - **No web, no Kimono.** The frame is a sandboxed iframe with scripts only, so
   it has no origin, no cookies and no API, and its policy loads nothing but the
   engine and reaches nothing at all. Data goes in the page.
+- **Any 3D model in a scene.** `model(build, move)` puts the agent's own
+  three.js model on a scene's timeline: `build(T)` makes it once, `move()` sets
+  it every frame from trackers, so narration, scrubbing and the controls work
+  as for any scene. `tag()` labels a part and follows it. `formula()` pins an
+  equation to the stage (live when given a function) and `tint()` colours a
+  symbol to match its guide on the model.
+- **Media and narration.** A page names its own sounds, videos and pictures as
+  `media/<file>` (from the sandbox's `/workspace/media/`). When Kimono keeps
+  the artifact it copies the files the page names (up to 50 MB each) to
+  `<state>/code/media/<chat>/`, and serves them at `/ai/media/<key>/<file>`,
+  with byte ranges for seeking. The key is the artifact's own random key: the
+  frame has no cookies, so the address is the permission. Only files the
+  current page names are served. The frame's policy allows media and images
+  from `/ai/media/` and nothing else; the shower sends the address with each
+  render (`media`), and the kit points `media/…` there. A scene's
+  `narrate(file, text, seconds)` is a step that plays a clip with its words as
+  the caption; it lasts the clip's length (corrected once the browser has
+  measured it), and play, pause, scrub and replay keep the voice in step.
+  `kimono-say --lines script --name n` voices a script line by line and prints
+  those steps. A narrated scene reports `voiced`, `muted` and `blocked`, and
+  Kimono's controls (web and phone) add a speaker and a volume slider right
+  after play, which send `sound-on` / `sound-off` and `volume` (0–1; the web
+  remembers it in this browser). Where a browser won't set a page's volume
+  (iOS), the kit routes the clip through a Web Audio gain, which is why the
+  media route allows CORS. The frame has `allow="autoplay"` (the phone's
+  web views play without a tap); where a browser still wants a tap, the switch
+  becomes "Tap for sound". Outside Kimono's frame the scene draws its own switch.
 - **Scenes** are animations written as code, one statement per line: each line
   plays as soon as it is written. Running the script only describes a
   timeline, so play, pause, scrub and replay are just moving the time; the

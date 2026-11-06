@@ -266,6 +266,14 @@ export function migrate(db: DatabaseSync) {
   if (!(db.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "archived_at")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN archived_at INTEGER");
   }
+  /* Where an artifact's media is served: a key of its own (lib/code/artifacts.ts). */
+  if (!(db.prepare("PRAGMA table_info(artifacts)").all() as { name: string }[]).some((c) => c.name === "media_key")) {
+    db.exec("ALTER TABLE artifacts ADD COLUMN media_key TEXT; CREATE UNIQUE INDEX artifacts_by_media_key ON artifacts (media_key)");
+  }
+  /* Whether a person's tool session may use Composio's Instant tools: off once their month's media allowance is spent (lib/code/media.ts). */
+  if (!(db.prepare("PRAGMA table_info(tool_sessions)").all() as { name: string }[]).some((c) => c.name === "instant")) {
+    db.exec("ALTER TABLE tool_sessions ADD COLUMN instant INTEGER NOT NULL DEFAULT 1");
+  }
   /* The model that answered a chat's last message. */
   if (!(db.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "last_model")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN last_model TEXT");

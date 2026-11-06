@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import * as model from '../src/lib/code/model.ts';
 import { translate } from '../src/lib/code/events.ts';
-import { applyEdits, artifactName, artifactOf, Drafts, partialString, saveArtifact, shownName, titleOf } from '../src/lib/code/artifacts.ts';
+import { applyEdits, artifactByMediaKey, artifactName, artifactOf, Drafts, mediaNames, partialString, saveArtifact, shownName, titleOf } from '../src/lib/code/artifacts.ts';
 import { chooseModel, effortFor } from '../src/lib/code/models.ts';
 
 test('artifacts are pages under artifacts/, by a plain name', () => {
@@ -129,4 +129,28 @@ test('plumbing tools stay out of the chat, and a Composio connection becomes a C
   assert.deepEqual(r.events.map((e) => e.kind), ['tool-result', 'connect']);
   assert.deepEqual(connectLinks(JSON.stringify({ data: { x: { toolkit: 'gmail', redirect_url: 'https://evil.example/phish' } } })), []);
   assert.deepEqual(connectLinks(JSON.stringify({ data: { x: { toolkit: 'gmail', redirect_url: 'http://connect.composio.dev/x' } } })), []);
+});
+
+test('media: an artifact names its files as media/<file>, and gets a key of its own that lasts', () => {
+  const page = `<k-scene><script type="text/kimono-scene">
+narrate("media/heart-1.mp3", "One", 2.1)
+narrate('media/heart-2.mp3', "Two", 3)
+</script></k-scene>
+<audio src="media/heart-1.mp3"></audio><img src="media/photo.JPG"><video src="media/../../etc/passwd"></video>
+<p>see media/notes.txt and https://example.com/media/x.mp3</p>`;
+  assert.deepEqual(mediaNames(page), ['heart-1.mp3', 'heart-2.mp3', 'photo.JPG'], 'not a web address that happens to have media/ in it');
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  const w1 = model.createWorkspace(db, 'mina', { prompt: 'Explain a heartbeat' }).id;
+  const first = saveArtifact(db, w1, 'heart', page);
+  assert.match(first.media, /^\/ai\/media\/[0-9a-f]{32}\/$/);
+  const again = saveArtifact(db, w1, 'heart', page + ' ');
+  assert.equal(again.media, first.media, 'a new version keeps its address');
+  assert.equal(artifactOf(db, w1, 'heart').media, first.media);
+  const other = saveArtifact(db, w1, 'other', page);
+  assert.notEqual(other.media, first.media, 'each artifact has its own');
+  const key = first.media.split('/')[3];
+  assert.equal(artifactByMediaKey(db, key).name, 'heart');
+  assert.equal(artifactByMediaKey(db, 'nope'), null);
+  assert.equal(artifactByMediaKey(db, '0'.repeat(32)), null);
 });

@@ -19,7 +19,7 @@ import (
 )
 
 // GatewayHandler is what sandboxes reach: the model under /anthropic/, Kimono
-// Git under /git/, and the person's tools (an MCP server) at /mcp. Each request carries a workspace's capability, which
+// Git under /git/, the person's tools (an MCP server) at /mcp, and what those tools made at /media. Each request carries a workspace's capability, which
 // is exchanged here for the real credential and never leaves this node.
 func (s *Server) GatewayHandler() http.Handler {
 	mux := http.NewServeMux()
@@ -27,6 +27,7 @@ func (s *Server) GatewayHandler() http.Handler {
 	mux.Handle("/git/", http.HandlerFunc(s.serveGit))
 	mux.Handle("/mcp", http.HandlerFunc(s.serveTools))
 	mux.Handle("/mcp/", http.HandlerFunc(s.serveTools))
+	mux.Handle("/media", http.HandlerFunc(s.serveMedia))
 	return mux
 }
 
@@ -148,6 +149,14 @@ func (s *Server) serveTools(w http.ResponseWriter, r *http.Request) {
 			for name, value := range tools.Headers {
 				out.Out.Header.Set(name, value)
 			}
+			/* The sandbox's own encoding choice goes; the transport then hands results back decoded, so their links can be read on the way (media.go). */
+			out.Out.Header.Del("Accept-Encoding")
+		},
+		ModifyResponse: func(response *http.Response) error {
+			if response.Header.Get("Content-Encoding") == "" {
+				response.Body = &linkScanner{ReadCloser: response.Body, space: space, now: s.now}
+			}
+			return nil
 		},
 		FlushInterval: -1,
 	}

@@ -74,6 +74,7 @@ import app.kimono.data.CodeWorkspace
 import app.kimono.data.ConnectableApp
 import app.kimono.data.Drive
 import app.kimono.data.KimonoProblem
+import app.kimono.data.ShownMeters
 import app.kimono.data.PickedFile
 import app.kimono.data.Platform
 import app.kimono.data.Usage
@@ -598,24 +599,29 @@ internal fun Picker(label: String, value: String, options: List<Option>, action:
     }
 }
 
-/** The person's own use, under the new-chat box: the 5-hour window and the week. */
+/** The person's own use, under the new-chat box: the 5-hour window, the week and the month's Pro Tools, each only once it's past half. */
 @Composable
 private fun HomeUsage(code: Code) {
     val usage by androidx.compose.runtime.produceState<Usage?>(null) { value = runCatching { code.usage() }.getOrNull() }
-    val u = usage?.takeIf { it.reported } ?: return
+    val u = usage ?: return
+    val shown = ShownMeters.of(u, null).takeIf { it.any } ?: return
     val whose = if (u.unlimited) "of the plan" else "of your share"
     Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 4.dp)) {
-        if (!u.noFiveHour) UsageRow("5-hour window", u.fiveHour.fraction, "${percent(u.fiveHour.fraction)} $whose${resetWords(u.fiveHour.resetsAt)?.let { " · resets $it" } ?: ""}")
-        UsageRow("This week", u.week.fraction, "${percent(u.week.fraction)} $whose${resetWords(u.week.resetsAt)?.let { " · resets $it" } ?: ""}")
+        shown.fiveHour?.let { UsageRow("5-hour window", it, "${percent(it)} $whose${resetWords(u.fiveHour.resetsAt)?.let { r -> " · resets $r" } ?: ""}") }
+        shown.week?.let { UsageRow("This week", it, "${percent(it)} $whose${resetWords(u.week.resetsAt)?.let { r -> " · resets $r" } ?: ""}") }
+        u.media?.takeIf { shown.tools != null }?.let { m -> UsageRow("Pro Tools", m.fraction, m.words?.let { w -> "$w${resetWords(m.resetsAt)?.let { " · resets $it" } ?: ""}" } ?: "Not reported yet", icon = "bolt") }
     }
 }
 
 @Composable
-internal fun UsageRow(title: String, value: Double?, detail: String, trailing: (@Composable () -> Unit)? = null) {
+internal fun UsageRow(title: String, value: Double?, detail: String, icon: String? = null, trailing: (@Composable () -> Unit)? = null) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Ring(value, 26.dp)
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (icon != null) Icon(kimonoIcon(icon), null, modifier = Modifier.size(15.dp))
+                Text(title, style = MaterialTheme.typography.titleSmall)
+            }
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         trailing?.invoke()
