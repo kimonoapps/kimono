@@ -1336,7 +1336,7 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
         <div className="cd-hello-row">
           <input ref={picker} type="file" multiple hidden onChange={(event) => { hold([...(event.target.files ?? [])]); event.target.value = ""; }} />
           <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
-          {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Work on a project</button> : null}
+          {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Code</button> : null}
           <span className="cd-tuning">{hasDrive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
           <span className="cd-grow" />
           <Seal type="button" compact busy={sending} disabled={!ready || Boolean(blocked)} onClick={() => void send()}>Send</Seal>
