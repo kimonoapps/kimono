@@ -15,7 +15,7 @@ export type SealTone = "primary" | "quiet" | "danger";
 export function Seal({ tone = "primary", compact = false, busy, className, children, disabled, ...props }: {
   tone?: SealTone;
   compact?: boolean;
-  /** Waiting on what it started: the wave runs on its face in place of the word, and it can't be pressed again. */
+  /** Waiting on what it started: the shape morphs on its face in place of the word, and it can't be pressed again. */
   busy?: boolean;
   ref?: Ref<HTMLButtonElement>;
 } & ButtonHTMLAttributes<HTMLButtonElement>) {

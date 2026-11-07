@@ -1,17 +1,17 @@
 /* ─────────────────────────────────────────────────────────────
-   Waiting (loading.tsx): the brushed wavy bar, running while how
-   long is unknown, and a button's busy face.
+   Waiting (loading.tsx): the morphing shape while how long is
+   unknown, a button's busy face, and the brushed wavy bar for a
+   real progress.
    ───────────────────────────────────────────────────────────── */
 
-.k-loader { display: block; width: 120px; height: 12px; }
-.k-loader.is-wash { color: var(--k-app-accent, var(--k-suo)); }
-.k-loader svg, .k-wave svg { display: block; overflow: visible; }
+.k-morph { display: block; overflow: visible; }
+.k-wave svg { display: block; overflow: visible; }
 
-/* A busy button keeps its word's width; the wave runs where the word was. */
+/* A busy button keeps its word's width; the shape sits where the word was. */
 .k-busy-face { display: inline-grid; place-items: center; }
 .k-busy-face > * { grid-area: 1 / 1; }
 .k-busy-face.is-busy > .k-busy-word { visibility: hidden; }
-.k-busy-shape { width: 100%; min-width: 28px; height: 12px; animation: k-busy-in 220ms var(--k-spring, cubic-bezier(.05, .7, .1, 1)); }
+.k-busy-shape { width: 22px; height: 22px; animation: k-busy-in 220ms var(--k-spring, cubic-bezier(.05, .7, .1, 1)); }
 @keyframes k-busy-in { from { opacity: 0; scale: .4; } }
 
 /* A busy Seal still looks like itself: it's working, not turned off. */
@@ -20,7 +20,7 @@
 .k-seal.k-tone-quiet.is-busy[disabled] { color: var(--k-on-surface); background: var(--k-container-high); }
 .k-seal.k-tone-quiet.is-busy[disabled]::before { display: none; }
 .k-seal.k-tone-danger.is-busy[disabled] { color: var(--k-suo-deep, var(--k-suo)); background: var(--k-suo-wash); }
-.k-seal.k-compact .k-busy-shape { height: 10px; }
+.k-seal.k-compact .k-busy-shape { width: 18px; height: 18px; }
 button[aria-busy="true"] { cursor: progress; }
 
 /* The wavy bar: suō on paper, the app's colour inside an app. */

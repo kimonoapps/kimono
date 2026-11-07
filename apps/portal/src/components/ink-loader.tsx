@@ -1,8 +1,8 @@
 "use client";
 
-import { InkLoader as Wave } from "@kimono/ui";
+import { MorphLoader } from "@kimono/ui";
 
-/* The page-change loader: Kimono's brushed wavy bar, running (packages/ui/src/loading.tsx). */
+/* The page-change loader: Kimono's morphing shape, washed in suō (packages/ui/src/loading.tsx). */
 export function InkLoader() {
-  return <Wave className="ink-loader" />;
+  return <MorphLoader className="ink-loader" />;
 }

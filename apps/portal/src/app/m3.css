@@ -269,7 +269,7 @@
 /* Motion: every page change is one swipe, left to right (back swipes right to left).
    The page slides 48px and fades; a light stream of petals in the destination's colour
    drifts the same way across the content, never covering it. The rail stays still.
-   If the next page isn't ready after 250ms, Kimono's brushed wavy bar runs in its place. */
+   If the next page isn't ready after 250ms, M3's loading indicator morphs in its place. */
 /* paper: a 3% grain on the house's own surfaces, never on app content */
 /* toast: the snackbar on inverse surface */
 /* inside an app: Apps, then the app's own tabs, then your pins under a hairline */

@@ -2,22 +2,83 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cx } from "./cx";
+import { inkFilters, mixHex, washGradient } from "./ink";
 
 /*
- * How Kimono waits (docs/design-system.md, "Waiting"), as on the phone
- * (InkProgress.kt, InkLoader.kt): Material 3 Expressive's wavy progress bar,
- * the one an update shows, brushed in ink.
+ * How Kimono waits (docs/design-system.md, "Waiting"):
  *
  * - InkLoader: waiting with no measure of how far along ("Working",
- *   "Opening"). Two brushed waves run along a faint flat track, as Material's
- *   indeterminate bar does. It fits the box it's given: long and low in a wide
- *   one, a short squiggle in a small square. `tone="wash"` is suō (or `ink`);
- *   `tone="plain"` takes the text colour (for a Seal's face).
- * - BusyFace: a button that's waiting keeps its size and its word; the wave
+ *   "Opening"). Material 3 Expressive's loading indicator, painted: one shape
+ *   morphs through Material's shapes while it turns. On paper it is washed in
+ *   suō (or `ink`) with a broken brush edge; `tone="plain"` takes the text
+ *   colour (for a Seal's face).
+ * - BusyFace: a button that's waiting keeps its size and its word; the shape
  *   takes the word's place instead of the word changing to "Saving…".
- * - InkWave: the same bar for a real progress (an upload, a download): the
- *   wave fills as the value grows, the rest a flat track ending in a dot.
+ * - InkWave: the update's wavy bar, brushed, as on the phone (InkProgress.kt).
+ *   Only for a real progress (an upload, a render with a percent): the wave
+ *   fills as the value grows. Never for a wait without a measure.
  */
+
+const SHAPES: ((t: number) => number)[] = [
+  (t) => .86 + .14 * Math.pow(Math.abs(Math.cos(5 * t)), .6),
+  (t) => .9 + .1 * Math.cos(9 * t),
+  (t) => { const k = Math.PI / 5, a = ((t % (2 * k)) + 2 * k) % (2 * k) - k; return .7 * (Math.cos(k) / Math.cos(a)) + .27; },
+  (t) => .62 / Math.hypot(.62 * Math.cos(t), Math.sin(t)),
+  (t) => .9 + .1 * Math.sign(Math.cos(8 * t)) * Math.pow(Math.abs(Math.cos(8 * t)), .45),
+  (t) => .76 + .24 * Math.pow(Math.abs(Math.cos(2 * t)), 1.6),
+  (t) => .8 / Math.hypot(.8 * Math.cos(t), Math.sin(t)),
+];
+function shapePath(i: number, j: number, mix: number) {
+  let d = "";
+  for (let k = 0; k <= 120; k++) {
+    const t = k / 120 * Math.PI * 2, r = (SHAPES[i](t) * (1 - mix) + SHAPES[j](t) * mix) * 17.5;
+    d += (k ? "L" : "M") + (19 + r * Math.cos(t)).toFixed(2) + " " + (19 + r * Math.sin(t)).toFixed(2);
+  }
+  return d + "Z";
+}
+
+/** The morphing shape. `tone="wash"` is suō on paper; `tone="plain"` takes the text colour (for a Seal's face). */
+export function MorphLoader({ tone = "wash", ink, label = "Loading", className }: {
+  tone?: "wash" | "plain";
+  /** The colour the wash is made from (#rrggbb), to sit with the words beside it. Suō when left out. */
+  ink?: string;
+  label?: string;
+  className?: string;
+}) {
+  const unique = useId().replaceAll(":", "");
+  const svg = useRef<SVGSVGElement>(null);
+  useEffect(() => {
+    const root = svg.current; if (!root) return;
+    const paths = root.querySelectorAll<SVGPathElement>("path.shape");
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { paths.forEach((p) => p.setAttribute("d", shapePath(0, 0, 0))); return; }
+    const HOLD = 120, MORPH = 520, start = performance.now();
+    let angle = 0, last = start, raf = 0;
+    const frame = (now: number) => {
+      /* A frame's timestamp can come from just before the effect ran; never go below zero. */
+      const elapsed = Math.max(0, now - start), phase = elapsed % (HOLD + MORPH), mix = phase < HOLD ? 0 : ease((phase - HOLD) / MORPH);
+      const current = Math.floor(elapsed / (HOLD + MORPH)) % SHAPES.length;
+      angle += Math.max(0, now - last) * (.18 + .5 * (phase < HOLD ? 0 : Math.sin(mix * Math.PI))); last = now;
+      const d = shapePath(current, (current + 1) % SHAPES.length, mix);
+      paths.forEach((p) => p.setAttribute("d", d));
+      root.style.transform = `rotate(${angle.toFixed(1)}deg)`;
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const first = shapePath(0, 0, 0);
+  return <svg ref={svg} className={cx("k-morph", className)} viewBox="0 0 38 38" role="progressbar" aria-label={label}>
+    {tone === "wash"
+      ? <>
+          <defs dangerouslySetInnerHTML={{ __html: inkFilters(unique, 21) + (ink
+            ? washGradient(`lw-${unique}`, mixHex(ink, "#ffffff", .62), mixHex(ink, "#ffffff", .22), mixHex(ink, "#000000", .22), "60%")
+            : washGradient(`lw-${unique}`, "#eab0be", "#cf7088", "#8f3c52", "60%")) }}/>
+          <path className="shape" d={first} fill={`url(#lw-${unique})`} filter={`url(#ink-wash-${unique})`} opacity=".95"/>
+          <path className="shape" d={first} fill="none" stroke={ink ? mixHex(ink, "#000000", .45) : "#4e2b37"} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="70 4" opacity=".8" filter={`url(#ink-fine-${unique})`}/>
+        </>
+      : <path className="shape" d={first} fill="currentColor"/>}
+  </svg>;
+}
 
 const CYCLE = 1750;
 const RUNS: [number, number][] = [[0, 1000], [250, 1250], [650, 1500], [900, 1750]];
@@ -105,20 +166,12 @@ function Wave({ value, colour, label, className }: { value?: number; colour?: st
   </span>;
 }
 
-/** The loader. `tone="wash"` is suō on paper (or `ink`, #rrggbb); `tone="plain"` takes the text colour. */
-export function InkLoader({ tone = "wash", ink, label = "Loading", className }: {
-  tone?: "wash" | "plain";
-  /** The colour it's brushed in (#rrggbb), to sit with the words beside it. Suō when left out. */
-  ink?: string;
-  label?: string;
-  className?: string;
-}) {
-  return <Wave colour={tone === "wash" ? ink : undefined} label={label} className={cx("k-loader", tone === "wash" && "is-wash", className)}/>;
-}
+/** The loader, for a wait with no measure. `tone="wash"` is suō on paper (or `ink`, #rrggbb); `tone="plain"` takes the text colour. */
+export const InkLoader = MorphLoader;
 
 /**
  * What goes inside a button that may be waiting: its word, and while `busy`,
- * the running wave in the word's place. The button keeps its width.
+ * the morphing shape in the word's place. The button keeps its width.
  */
 export function BusyFace({ busy, label = "Working", children }: { busy: boolean; label?: string; children: ReactNode }) {
   return <span className={cx("k-busy-face", busy && "is-busy")}>

@@ -2545,7 +2545,7 @@ function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
     <InkBlot className="cd-progress-mark" tint={done ? inkTint.live : inkTint.suo} seed={tools[0]?.id ?? card.label}>{done ? <Icon name="check" /> : broke || card.stopped ? <GroupMarks tools={tools} /> : <InkLoader tone="plain" label={card.label} className="cd-morph" />}</InkBlot>
     <span className="cd-progress-text">
       <span className="cd-progress-label"><b>{card.label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}<ProPrice usd={priceOf(tools)} /></span>
-      {done || broke || card.stopped ? null : <InkWave className="cd-progress-wave" label={card.label} value={card.percent != null ? card.percent / 100 : undefined} />}
+      {done || broke || card.stopped || card.percent == null ? null : <InkWave className="cd-progress-wave" label={card.label} value={card.percent / 100} />}
       <small>{cardWords(card, failed)}</small>
     </span>
   </>;
