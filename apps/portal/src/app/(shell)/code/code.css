@@ -1634,3 +1634,24 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd .cd-composer .cd-pending, .cd .cd-hello-box .cd-pending { padding: 4px 4px 0; }
 /* the new chat's choices, under its box */
 .cd-hello-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: 10px; padding: 0 6px; }
+
+/* Send and Stop, one square seal: an arrow that lifts away as a square turns in. */
+.cd .cd-sendstop, .cd .cd-sendstop.is-stop { width: 40px; min-height: 40px; height: 40px; padding: 0; border-radius: 14px; }
+.cd .cd-sendstop.is-stop { border-radius: 12px; }
+.cd .cd-ss { position: relative; width: 22px; height: 22px; }
+.cd .cd-ss > span { position: absolute; inset: 0; display: grid; place-items: center; }
+.cd .cd-ss svg { width: 22px; height: 22px; overflow: visible; }
+.cd .cd-ss-send svg path { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.cd .cd-ss-stop svg rect { fill: currentColor; }
+.cd .cd-ss-send { transition: opacity .22s var(--k-ease-settle), transform .5s var(--k-spring), filter .22s var(--k-ease-settle); }
+.cd .cd-ss-stop { opacity: 0; transform: rotate(-90deg) scale(.3); filter: blur(2px); transition: opacity .22s var(--k-ease-settle), transform .55s var(--k-spring), filter .22s var(--k-ease-settle); }
+.cd .cd-sendstop.is-stop .cd-ss-send { opacity: 0; transform: translateY(-14px) scale(.7); filter: blur(2px); }
+.cd .cd-sendstop.is-stop .cd-ss-stop { opacity: 1; transform: none; filter: none; }
+/* the arrow draws itself in: the head unfolds from its point as it settles */
+.cd .cd-ss-head { stroke-dasharray: 16; stroke-dashoffset: 0; transition: stroke-dashoffset .45s var(--k-spring) .05s; }
+.cd .cd-sendstop.is-stop .cd-ss-head { stroke-dashoffset: 16; }
+.cd .cd-ss-shaft { stroke-dasharray: 14; stroke-dashoffset: 0; transition: stroke-dashoffset .4s var(--k-ease-settle); }
+.cd .cd-sendstop.is-stop .cd-ss-shaft { stroke-dashoffset: -14; }
+/* a press sends the arrow up a touch */
+.cd .cd-sendstop:not(.is-stop):active .cd-ss-send { transform: translateY(-3px); }
+@media (prefers-reduced-motion: reduce) { .cd .cd-ss > span, .cd .cd-ss-head, .cd .cd-ss-shaft { transition: opacity .15s linear; } }

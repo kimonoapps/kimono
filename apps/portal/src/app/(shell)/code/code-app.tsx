@@ -909,15 +909,18 @@ function AppName({ slug }: { slug: string }) {
 
 /**
  * Send and Stop are one seal: while the agent works and nothing is written it
- * stops it; a word typed turns it back into Send. It narrows to a square and
- * the word gives way to the stop mark, and back again.
+ * stops it; a word typed turns it back into Send. The arrow lifts away as the
+ * square turns in, the seal's ink changing with it, and back again.
  */
 function SendStop({ mode, disabled, busy, onSend, onStop }: { mode: "send" | "stop"; disabled?: boolean; busy?: boolean; onSend: () => void; onStop?: () => void }) {
   const stop = mode === "stop";
   return <Seal type="button" compact tone={stop ? "danger" : "primary"} className={cx("cd-sendstop", stop && "is-stop", busy && "is-sending")} disabled={disabled || busy}
     aria-label={stop ? "Stop" : "Send"} title={stop ? "Stop" : "Send (↵, Shift-↵ for a new line)"} aria-keyshortcuts={stop ? undefined : "Enter"}
     onClick={() => (stop ? onStop?.() : onSend())}>
-    <span className="cd-ss" aria-hidden="true"><span className="cd-ss-send">{busy ? <MorphLoader tone="plain" label="Sending" className="cd-morph" /> : "Send"}</span><span className="cd-ss-stop"><Icon name="stop" /></span></span>
+    <span className="cd-ss" aria-hidden="true">
+      <span className="cd-ss-send">{busy ? <MorphLoader tone="plain" label="Sending" className="cd-morph" /> : <svg viewBox="0 0 24 24"><path className="cd-ss-shaft" d="M12 19V6" /><path className="cd-ss-head" d="M6.5 11 12 5.5l5.5 5.5" /></svg>}</span>
+      <span className="cd-ss-stop"><svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2.2" /></svg></span>
+    </span>
   </Seal>;
 }
 
