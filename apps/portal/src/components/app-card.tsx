@@ -6,7 +6,7 @@ import { AppBloom, cx } from "@kimono/ui";
 import type { KimonoApp } from "@/lib/apps";
 import { detectMobileOS, type MobileOS } from "@/lib/mobile-app";
 import { MobileAppTutorial } from "./mobile-app-tutorial";
-import { usePins } from "./pins";
+import { noteUse, usePins } from "./pins";
 import type { RailApp } from "./rail";
 
 type TileApp = RailApp & { mobileApp?: KimonoApp["mobileApp"]; /** One live line ("9 spaces · 2 new files today") in place of the description. */ line?: string };
@@ -41,6 +41,7 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
   }
 
   function open(app: TileApp, event: MouseEvent) {
+    noteUse(app.id);
     onOpen?.();
     /* On a phone, an app with its own phone app offers that first. */
     if (!app.mobileApp || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;

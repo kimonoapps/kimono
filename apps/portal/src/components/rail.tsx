@@ -4,7 +4,7 @@ import { Crossing } from "@/components/crossing";
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { AppBloom, cx, type GlyphName } from "@kimono/ui";
-import { usePins } from "@/components/pins";
+import { noteUse, usePins, useUsed } from "@/components/pins";
 import { AppTiles } from "@/components/app-card";
 import { LineIcon, type LineIconName } from "@/components/line-icon";
 
@@ -85,7 +85,28 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   const pinned = pins.filter((id) => byId.has(id));
   /* Apps in My apps that this person can't open right now keep their place at the end. */
   const setPins = (next: string[]) => savePins([...next, ...pins.filter((id) => !byId.has(id))]);
-  const shown = current && !pinned.includes(current) ? [...pinned, current] : pinned;
+  /* Every other app, the ones used last first; the rest keep the catalogue's order. */
+  const used = useUsed();
+  /* The middle scrolls on its own; it fades at whichever end has more beyond it. */
+  const scroller = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState("");
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const measure = () => {
+      const above = element.scrollTop > 1, below = element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+      setFade([above && "top", below && "bottom"].filter(Boolean).join(" "));
+    };
+    measure();
+    element.addEventListener("scroll", measure, { passive: true });
+    const sizes = new ResizeObserver(measure);
+    sizes.observe(element);
+    Array.from(element.children).forEach((child) => sizes.observe(child));
+    return () => { element.removeEventListener("scroll", measure); sizes.disconnect(); };
+  }, [pinned.length, used, current]);
+  useEffect(() => { if (current) noteUse(current); }, [current]);
+  const others = apps.map((app) => app.id).filter((id) => !pinned.includes(id))
+    .sort((a, b) => rank(used, a) - rank(used, b));
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   function drop(event: DragEvent) {
@@ -99,37 +120,45 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
     setDragging(null); setDropBefore(null);
   }
 
+  function stop(id: string) {
+    const app = byId.get(id)!;
+    const open = id === current, isPinned = pinned.includes(id);
+    return <div key={id} className="rail-pin">
+      <Crossing kind="kakejiku"
+        className={cx("rail-dest", open && "is-open", !isPinned && "is-visiting", dropBefore === id && "drop-before", dragging === id && "is-dragging")}
+        href={app.href}
+        external={app.external}
+        aria-current={open ? "page" : undefined}
+        draggable={isPinned}
+        onDragStart={(event) => { setDragging(id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/kimono-app", id); }}
+        onClick={() => noteUse(id)}
+        onDragOver={isPinned ? (event) => { const r = event.currentTarget.getBoundingClientRect(); setDropBefore(event.clientY < r.top + r.height / 2 ? id : pinned[pinned.indexOf(id) + 1] ?? "end"); } : undefined}
+        onDragEnd={() => { setDragging(null); setDropBefore(null); }}
+        onContextMenu={(event) => { event.preventDefault(); setMenu({ id, x: event.clientX, y: event.clientY }); }}
+      >
+        <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" />{app.external ? <span className="rail-away" title="Opens another website"><LineIcon name="out" /></span> : null}</span><RailLabel text={app.name} />
+      </Crossing>
+      {open && rooms?.length ? <div className="rail-rooms">
+        {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}><span className="rail-pill"><LineIcon name={room.icon ?? "book"} /></span><RailLabel text={room.label} /></Crossing>)}
+      </div> : null}
+    </div>;
+  }
+
   return <nav className="rail" aria-label="Kimono">
     <Crossing kind="kakejiku" className="rail-mark" href="/" aria-label="Kimono home"><Branch /></Crossing>
     <Crossing kind="kakejiku" className="rail-dest" href="/" aria-current={active === "home" ? "page" : undefined}>
       <span className="rail-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4l8 7M6 9.5V20h12V9.5M10 20v-5h4v5"/></svg></span>Home
     </Crossing>
-    {shown.length ? <span className="rail-divider k-ink-rule" aria-hidden="true" /> : null}
+    <div className="rail-scroll" ref={scroller} data-fade={fade}>
+    {pinned.length ? <span className="rail-divider k-ink-rule" aria-hidden="true" /> : null}
     <div className="rail-pins" onDragOver={(event) => { if (dragging || event.dataTransfer.types.includes("text/kimono-app")) { event.preventDefault(); } }} onDrop={drop}>
-      {shown.map((id) => {
-        const app = byId.get(id)!;
-        const open = id === current, isPinned = pinned.includes(id);
-        return <div key={id} className="rail-pin">
-          <Crossing kind="kakejiku"
-            className={cx("rail-dest", open && "is-open", !isPinned && "is-visiting", dropBefore === id && "drop-before", dragging === id && "is-dragging")}
-            href={app.href}
-            external={app.external}
-            aria-current={open ? "page" : undefined}
-            draggable={isPinned}
-            onDragStart={(event) => { setDragging(id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/kimono-app", id); }}
-            onDragOver={(event) => { const r = event.currentTarget.getBoundingClientRect(); setDropBefore(event.clientY < r.top + r.height / 2 ? id : shown[shown.indexOf(id) + 1] ?? "end"); }}
-            onDragEnd={() => { setDragging(null); setDropBefore(null); }}
-            onContextMenu={(event) => { event.preventDefault(); setMenu({ id, x: event.clientX, y: event.clientY }); }}
-          >
-            <span className="rail-pill"><AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} size="mark" />{app.external ? <span className="rail-away" title="Opens another website"><LineIcon name="out" /></span> : null}</span><RailLabel text={app.name} />
-          </Crossing>
-          {open && rooms?.length ? <div className="rail-rooms">
-            {rooms.map((room) => <Crossing kind="kakejiku" key={room.href} className="rail-dest rail-room" href={room.href} aria-current={room.href === hereRoom ? "page" : undefined}><span className="rail-pill"><LineIcon name={room.icon ?? "book"} /></span><RailLabel text={room.label} /></Crossing>)}
-          </div> : null}
-        </div>;
-      })}
+      {pinned.map((id) => stop(id))}
     </div>
-    <span className="rail-spacer" />
+    {others.length ? <>
+      <span className="rail-divider k-ink-rule" aria-hidden="true" />
+      <div className="rail-pins rail-used">{others.map((id) => stop(id))}</div>
+    </> : null}
+    </div>
     <span className="rail-divider k-ink-rule" aria-hidden="true" />
     <Crossing kind="kakejiku" className="rail-dest rail-you" href="/account" aria-current={active === "account" ? "page" : undefined}><span className="rail-pill">{you}</span>You</Crossing>
     {admin ? <Crossing kind="kakejiku" className="rail-dest rail-admin" href="/admin" aria-current={active === "admin" ? "page" : undefined}>
@@ -154,6 +183,12 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
       </div>
     </div> : null}
   </nav>;
+}
+
+/** Where an app sits among the ones used last: never used, it goes after them all. */
+function rank(used: string[], id: string) {
+  const at = used.indexOf(id);
+  return at < 0 ? used.length : at;
 }
 
 /** A pin's right-click menu, placed at the pointer and kept on screen. */

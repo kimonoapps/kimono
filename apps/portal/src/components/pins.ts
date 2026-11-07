@@ -44,3 +44,37 @@ export function usePins(fromServer: string[]) {
   const setPins = useCallback((next: string[]) => save(next), []);
   return [pins, setPins] as const;
 }
+
+/*
+ * Apps last used, newest first: this browser's own, so the rail can keep the
+ * rest of the apps in the order you reach for them.
+ */
+const USED = "kimono-used-apps";
+let used: string[] | null = null;
+const usedListeners = new Set<() => void>();
+const readUsed = () => {
+  if (used === null) { try { used = JSON.parse(localStorage.getItem(USED) ?? "[]"); } catch { used = []; } }
+  return used!;
+};
+const noUse: string[] = [];
+
+function subscribeUsed(onChange: () => void) {
+  usedListeners.add(onChange);
+  const fromOtherTab = (event: StorageEvent) => { if (event.key === USED) { used = null; onChange(); } };
+  window.addEventListener("storage", fromOtherTab);
+  return () => { usedListeners.delete(onChange); window.removeEventListener("storage", fromOtherTab); };
+}
+
+/** Note that an app was just opened. */
+export function noteUse(id: string) {
+  const list = readUsed();
+  if (list[0] === id) return;
+  used = [id, ...list.filter((other) => other !== id)].slice(0, 40);
+  try { localStorage.setItem(USED, JSON.stringify(used)); } catch { /* storage refused: kept for this page */ }
+  usedListeners.forEach((listener) => listener());
+}
+
+/** Apps last used here, newest first. */
+export function useUsed() {
+  return useSyncExternalStore(subscribeUsed, readUsed, () => noUse);
+}

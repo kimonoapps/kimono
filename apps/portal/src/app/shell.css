@@ -9,7 +9,7 @@
 .page { width: min(100%, calc(1280px + 2 * var(--k-shell-gutter))); min-height: 100vh; padding-top: var(--k-space-5); }
 
 /* ── rail ── */
-.rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 16px 0 14px; background: var(--k-surface); overflow-y: auto; scrollbar-width: none; z-index: 20; }
+.rail { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 16px 0 14px; background: var(--k-surface); overflow: hidden; z-index: 20; }
 .rail-mark { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 14px; color: var(--k-plum); }
 .rail-mark svg { width: 34px; height: 32px; }
 .rail-dest { display: grid; justify-items: center; gap: 4px; width: 80px; padding: 4px 0 8px; border: 0; background: none; color: var(--k-on-surface-variant); font: 700 12px/1.2 var(--k-sans); text-align: center; text-decoration: none; cursor: pointer; }
@@ -22,7 +22,13 @@
 .rail-dest[aria-current] { color: var(--k-on-surface); }
 .rail-dest[aria-current] .rail-pill { background: var(--k-secondary-container); }
 .rail-divider { flex: none; width: 36px; height: 1.5px; margin: 8px 0; border-radius: var(--k-r-s); background: color-mix(in srgb, var(--k-plum) 28%, transparent); }
-.rail-spacer { flex: 1; }
+/* Home above and You below stay put; the apps between scroll, fading out where there's more. */
+.rail-scroll { --fade-top: 0px; --fade-bottom: 0px; flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; mask-image: linear-gradient(transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent); }
+.rail-scroll::-webkit-scrollbar { display: none; }
+.rail-scroll[data-fade~="top"] { --fade-top: 40px; }
+.rail-scroll[data-fade~="bottom"] { --fade-bottom: 56px; }
+.rail-scroll > .rail-divider:first-child { margin-top: 8px; }
+.rail-scroll + .rail-divider { margin-top: 4px; }
 .rail-pins { display: grid; justify-items: center; gap: 2px; width: 100%; }
 .rail-pin { display: grid; justify-items: center; width: 100%; }
 .rail-pins .rail-pill { height: 40px; }
@@ -123,7 +129,7 @@
 @media (max-width: 720px) {
   .app-frame { grid-template-columns: minmax(0, 1fr); padding-bottom: 76px; }
   .rail { position: fixed; inset: auto 0 0; top: auto; height: auto; flex-direction: row; justify-content: space-around; padding: 8px 6px max(10px, env(safe-area-inset-bottom)); background: var(--k-container); overflow: visible; }
-  .rail-mark, .rail-pins, .rail-divider, .rail-spacer { display: none; }
+  .rail-mark, .rail-scroll, .rail-divider { display: none; }
   .rail-dest { width: auto; flex: 1; }
   .app-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .app-tile-link { padding: 16px; }
