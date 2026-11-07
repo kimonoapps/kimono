@@ -6,7 +6,7 @@ The Portal keeps the iPhone apps' TestFlight testers in step with Kimono's accou
 
 Nobody is invited until they ask and an admin approves, one app at a time (Kimono, Kimono Photos):
 
-- **People ask** for each app on **Get the app** on their iPhone, or from that app's screen in the Kimono app (`POST /api/v1/app/testflight`, `{ "app": "app.kimono.photos" }`; the Kimono app when left out). `GET` answers where they stand with each app.
+- **People ask** for Kimono on **Get the app** on their iPhone, and for Kimono's other apps from that app's screen inside Kimono (`POST /api/v1/app/testflight`, `{ "app": "app.kimono.photos" }`; the Kimono app when left out). `GET` answers where they stand with each app.
 - **Admins answer** under **Asking for the iPhone apps** on **Admin → Phone app**. Approving sends the invite straight away; declining lets them ask again later.
 
 Requests live in `testflight.json` (`requests`, by username and bundle ID). People who had asked before approval existed count as approved for Kimono only. Anyone already in an app's group stays there.

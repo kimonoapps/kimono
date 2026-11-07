@@ -79,7 +79,7 @@ function askLine(app: IosApp, email: string | null | undefined): string {
   }
 }
 
-function IosSteps({ address, apps }: { address: string | null; apps: string[] }) {
+function IosSteps({ address }: { address: string | null; apps: string[] }) {
   const [standing, setStanding] = useState<{ email: string | null; apps: IosApp[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -122,13 +122,14 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
     const answer = await send("email", "/api/v1/app/testflight/email", { email: newEmail });
     if (answer?.apps && !answer.error) { setChanging(false); setResent(false); }
   }
-  const list = standing?.apps ?? [];
+  /* Only Kimono is asked for here; its other apps are asked for from inside Kimono. */
+  const list = (standing?.apps ?? []).filter((app) => app.bundleId === "app.kimono.compose");
   const email = standing?.email;
   const has = (...statuses: Standing[]) => list.some((app) => statuses.includes(app.status));
   const inviteOut = has("invited", "stuck");
   return <ol className="get-app-steps">
-    <Step n={1} title="Ask for the apps" done={has("invited", "stuck", "tester", "waiting")}>
-      <p>Pick the apps you want. Once an admin approves, Apple invites you to try them.</p>
+    <Step n={1} title="Ask for Kimono" done={has("invited", "stuck", "tester", "waiting")}>
+      <p>Once an admin approves, Apple invites you to try it.</p>
       {list.length ? <ul className="get-app-asks">
         {list.map((app) => <li key={app.bundleId}>
           <span><b>{app.name}</b>{askLine(app, email) ? <small>{askLine(app, email)}</small> : null}</span>
@@ -161,14 +162,8 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
     <Step n={3} title="Accept Apple's email" done={has("tester")}>
       <p>Once you&apos;re approved, you&apos;ll get an email from Apple{email ? <> at <b>{email}</b></> : null}. Open it and follow the instructions to accept, then come back here and tap <b>Check again</b>.</p>
     </Step>
-    <Step n={4} title="Install">
-      {(() => {
-        const mine = list.filter((app) => app.status === "tester").map((app) => app.name);
-        const names = mine.length ? mine : apps.slice(0, 1);
-        return names.length > 1
-          ? <p>Open TestFlight. {names.map((name, i) => <span key={name}>{i ? (i === names.length - 1 ? " and " : ", ") : null}<b>{name}</b></span>)} are waiting there: tap <b>Install</b> on each.</p>
-          : <p>Open TestFlight. <b>{names[0] ?? "Kimono"}</b> is waiting there: tap <b>Install</b>.</p>;
-      })()}
+    <Step n={4} title="Install Kimono">
+      <p>Open TestFlight. Kimono is waiting there: tap <b>Install</b>.</p>
     </Step>
     <SignInStep n={5} address={address} />
   </ol>;
