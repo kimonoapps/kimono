@@ -47,8 +47,8 @@ async function appRooms(): Promise<Record<string, RailRoom[]>> {
       { href: "/drive?view=trash", label: "Trash", icon: "trash" },
     ],
     "kimono-notes": [
-      { href: "/notes", label: "All notes", icon: "book" },
-      { href: "/notes?new=1", label: "New note", icon: "plus" },
+      { href: "/notes", label: "All", icon: "book" },
+      { href: "/notes?new=1", label: "New", icon: "plus" },
     ],
     "kimono-vpn": [
       { href: "/vpn", label: "Devices", icon: "laptop" },

@@ -92,17 +92,29 @@ These are the same choices Kimono AI made (see `docs/kimono-ai.md`,
 
 ### Places
 
-- **Web, wide:** a side panel and a page.
-  - The panel is 300px on `--k-container` with 28px corners, and folds away on
-    `--k-spring`, like Kimono AI's chat list. From the top:
-    - **New note**, a primaryContainer pill, as New chat is;
-    - **Search notes**;
-    - an ink rule (`.k-ink-rule`);
+- **Web:** one surface beside the rail, with an 8px margin and 16px corners.
+  Its parts are told apart by tone alone, with no hairlines.
+  - The **note list** is 300px on `--k-container-low`. The **open note** is on
+    `--k-container-lowest`, with text up to 720px wide.
+  - The **notebooks panel** is 248px on `--k-container` and is closed by
+    default, so there are never two sidebars. The list header holds a panel
+    button and the place you're in (for example "Notes / Recipes ▾"); either
+    one opens the panel over the list on `--k-spring`. Picking a place or a
+    note closes it, and so do Esc and a click outside.
+  - From the top, the panel holds:
+    - **New note**, a 34px block on primaryContainer with a 2px inset base;
+    - **Search** (32px), which lists matching notes in the panel;
     - **All notes**;
-    - each notebook, with its sections folding under it.
-  - The page holds the note list or the open note. At 1280px and wider, the
-    list stays as a 340px middle column while a note is open.
-- **Web, under 980px:** list and note are separate screens, as in Kimono AI.
+    - each notebook, with its sections folding under it;
+    - **New notebook**;
+    - **Shared with you**.
+  - Panel rows are 32px with 8px corners. Each level is indented 14px, and the
+    fold chevron sits on the left.
+  - With no note open, the note area shows the blot and New note.
+- **Web, under 1200px:** the list steps aside while a note is open, and a back
+  arrow brings it back.
+- **Web, under 760px:** list and note are separate screens, and the panel is a
+  drawer.
 - **Phone:**
   - The drawer is `ModalNavigationDrawer` on surfaceContainerLow, with 28dp end
     corners and a 340dp maximum width. It holds notebooks and sections as 48dp
@@ -134,17 +146,28 @@ Ink is for marks only. It never goes on controls, cards or text.
 
 ### The note list
 
-- A row is a soft 56–72px row:
-  - the **title** in bold 15px, then one line of excerpt in on-surface-variant;
-  - on the right, one word, only when it says something: "now", "2h", "Tue",
-    or a `InkLoader` while it saves;
+- The **header** is 44px: the panel button, the place in 18px Mincho (with its
+  notebook above it when it's a section), who it's shared with, and a 32px
+  **+** that makes a note right there.
+- A **row** is 52px:
+  - the **title** in bold 14px, then one line of excerpt at 12.5px in
+    on-surface-variant;
+  - on the right at 11.5px, one word, only when it says something: "now",
+    "2h", "Tue", or an `InkLoader` while it saves;
   - in All notes, the notebook's small crest before the time.
-- A ··· menu shows on hover, and always on touch. A note's menu holds
-  **Share**, **Move** and **Delete**. A notebook's menu (in the panel or
-  drawer) holds **Rename**, **Share** and **Delete**, or **Leave** for one
-  shared with you. Below your own notebooks, the panel and drawer have a
-  **Shared with you** group: notebooks, then single notes, each with the
-  portrait of whoever shared it.
+- **Pluses:**
+  - Each notebook and section row in the panel shows a 26px **+** and a
+    **···** on hover or focus, and always on touch. The + makes a note there.
+  - A notebook's ··· holds **New note**, **New section**, **Rename**,
+    **Share** and **Delete**, or **Leave** for one shared with you.
+  - A note's ··· holds **Share**, **Move** and **Delete**.
+  - An empty list has its own **+ New note**.
+- **Shared with you** lists notebooks, then single notes. Each shows a 20px
+  portrait of whoever shared it, or their initial on primaryContainer.
+- **Keys:**
+  - `N` makes a note while you're not typing, and so does ⌘⌥N anywhere.
+  - `/` or ⌘K goes to search. Outside the note, Notes' ⌘K wins over the rail's
+    apps sheet. In the note, ⌘K makes a link and never reaches the rail.
 - The open note's row gets the lightest container and a faint shadow, as the
   current chat does.
 - New rows rise 12px into place. On the phone they use `animateItem` (a 380ms
@@ -153,19 +176,45 @@ Ink is for marks only. It never goes on controls, cards or text.
 
 ### Writing
 
-- The **title** is a Mincho headline field above the body. The file is renamed
-  when it loses focus. A blank title becomes "Untitled".
-- The **body stays Markdown, styled where you type** (live preview, not a
-  split view):
-  - headings, bold, italics, lists, quotes, code and links take their look in
-    place, and the markup characters fade to outline colour;
-  - checkboxes can be clicked or tapped;
+- The **title** is a 28px Mincho field above the body. It is saved when it
+  loses focus, and a blank one becomes "Untitled".
+- **A new note is only saved once it has a title or words.** One of yours
+  left blank and Untitled is quietly put in the trash when you leave it.
+- The **body is still Markdown**, read as a document. Markup shows only while
+  you're in it:
+  - bold, italic, code and link markers come back when the caret touches that
+    span;
+  - heading, quote and rule markers come back when the caret is on that line;
+  - code fences show while the caret is in the block.
+- **How it looks:**
+  - bullets are dots, filled, then open rings a level down;
+  - `- [ ]` is an ink ring that ticks when clicked, and the caret steps over
+    it in one. The `[ ]` it toggles is found from the line's text;
+  - numbers stay, in on-surface-variant;
   - links open on ⌘/Ctrl-click, or a long press on the phone;
   - pictures stay as their words, as Drive's Markdown preview does. Raw HTML
     never runs.
-  - Web: CodeMirror 6 with Markdown decorations, or the equivalent.
-  - Phone: `BasicTextField` with an output transformation that styles the spans.
-    Above the keyboard, a row offers checklist, heading, bold, list and done.
+- **Shortcuts (⌘ or Ctrl):**
+  - B, I and E (inline code); ⌘B at the end of bold steps out of it;
+  - K makes a link, then Tab or Enter jumps to the address, and again out;
+  - ⇧7 numbered list, ⇧8 bullets, ⇧9 checklist;
+  - ⌥1, ⌥2 and ⌥3 for headings.
+- **Typing:**
+  - `# `, `- `, `1. `, `[] ` and `> ` at the start of a line make a heading,
+    bullet, numbered item, checkbox and quote;
+  - Enter continues a list or quote, and on an empty item or quote line it
+    ends it;
+  - Tab and ⇧Tab indent and outdent list items. In code Tab is two spaces,
+    and elsewhere it does nothing;
+  - Backspace right after a list marker removes the marker.
+- The **format bar** sticks at the foot of the note: Bold, Italic | Heading
+  (H1, H2, H3, then off) | Bullets, Checklist | Link, Code.
+  - Its buttons are 32×30 flat blocks with 6px corners, with tooltips like
+    "Bold ⌘B".
+  - The formatting at the caret is filled with primaryContainer and a 2px
+    inset base.
+- Web: CodeMirror 6 with Markdown decorations. Phone: `BasicTextField` with
+  an output transformation that styles the spans.
 - **Saving is automatic.** Notes saves 800ms after typing stops, when the
   field loses focus, and when you leave. There is no Save button.
   - The status follows the one-word rule. While a save is in flight a 14px
@@ -178,6 +227,9 @@ Ink is for marks only. It never goes on controls, cards or text.
     version rule.
   - If someone else saved first, a snackbar says "Someone else changed this.
     Yours is kept as a copy." with **Open copy**.
+  - An open note follows edits made elsewhere: on coming back to the window
+    and every 15s, a newer version comes in without moving the caret, unless
+    you have edits waiting.
 - The **phone works offline for reading**: the library and opened notes are
   cached and refreshed from Drive's change feed.
 

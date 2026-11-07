@@ -17,6 +17,14 @@ export const icons = {
   door: '<path d="M14 4H6v16h8"/><path d="M11 12h10M17 8l4 4-4 4"/>',
   rename: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
   book: '<path d="M4 5.5c2.5-1 5.5-1 8 .5v13c-2.5-1.5-5.5-1.5-8-.5zM20 5.5c-2.5-1-5.5-1-8 .5v13c2.5-1.5 5.5-1.5 8-.5z"/>',
+  bold: '<path d="M7 4.5h6a3.6 3.6 0 0 1 0 7.2H7zM7 11.7h7a3.9 3.9 0 0 1 0 7.8H7z"/>',
+  italic: '<path d="M10.5 4.5h7M6.5 19.5h7M14 4.5l-4 15"/>',
+  heading: '<path d="M5.5 5v14M14.5 5v14M5.5 12h9"/><path d="M17.5 11.5l2-1.5v9"/>',
+  bullets: '<circle cx="5" cy="7" r="1.2" fill="currentColor"/><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="5" cy="17" r="1.2" fill="currentColor"/><path d="M9.5 7H20M9.5 12H20M9.5 17H20"/>',
+  check: '<circle cx="6" cy="7.5" r="2.6"/><path d="m4.9 7.6.9.9 1.6-1.8"/><circle cx="6" cy="16.5" r="2.6"/><path d="M11 7.5h9M11 16.5h9"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/>',
+  code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/>',
+  down: '<path d="m6 9 6 6 6-6"/>',
 } as const;
 
 export type IconName = keyof typeof icons;
