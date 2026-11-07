@@ -207,10 +207,10 @@ services:
         # alone (headscale/config.yaml.tmpl) rather than from any container.
         # Outside the network's ip_range, so nothing else is handed it.
         ipv4_address: 10.89.1.2
-      # Reaches app containers directly for hostnames published without a
-      # tunnel. The reconciler's project joins this same network by name.
-      # Apps reach sign-in and the Portal here, by their own names, rather
-      # than out over the internet, which kimono-edge doesn't carry.
+      # The names Caddy answers by here are the ones the reconciler gives it on
+      # each published app's own network (cli/internal/reconcile/proxy.go), so
+      # apps reach sign-in and the Portal through Caddy rather than out over
+      # the internet, which an app's network doesn't carry.
       kimono-edge:
         aliases:
           - ${AUTHENTIK_DOMAIN}
@@ -241,8 +241,9 @@ networks:
           gateway: 10.89.1.1
   # Created here so the appliance's proxy can start before any app exists; the
   # generated apps project attaches to it by name rather than creating its own.
-  # Internal: it joins the proxy, connectors and published apps, and goes
-  # nowhere else, so an app kept off the internet stays off it.
+  # Internal, and no longer where apps meet the proxy: each published app has
+  # a network of its own with Caddy and its connectors, and an app still
+  # attached here from before is moved off by the next apply.
   kimono-edge:
     name: kimono-edge
     internal: true

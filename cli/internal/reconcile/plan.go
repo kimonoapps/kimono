@@ -24,8 +24,9 @@ const (
 	AppPrefix = "apps/"
 	// ProxySitePrefix marks a site file the appliance's own proxy serves.
 	ProxySitePrefix = "generated/caddy-"
-	// EdgeNetwork joins published apps to the appliance's proxy and connectors.
-	// The appliance creates it; this project attaches to it by name.
+	// EdgeNetwork is the appliance's proxy network. Apps no longer join it (each
+	// has its own, see proxy.go); the proxy's names on it are the ones it gets
+	// on each app's network.
 	EdgeNetwork = "kimono-edge"
 	// TunnelNetwork is the connectors' way out: the appliance creates it too,
 	// and no app joins it.
@@ -45,6 +46,9 @@ type Service struct {
 
 type Network struct {
 	Internal bool `json:"internal,omitempty"`
+	// Proxy: the appliance's proxy joins it (attachProxy). Each published app
+	// has one of its own, so apps never share a network with each other.
+	Proxy bool `json:"proxy,omitempty"`
 }
 
 type ProviderAction struct {

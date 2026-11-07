@@ -2,8 +2,8 @@
 	email {$ACME_EMAIL}
 	servers {
 		# Only tunnel connectors may speak for the client, so only kimono-tunnel,
-		# which no app joins: published apps share kimono-edge and could otherwise
-		# claim any visitor's address to sign-in. The range is the network's
+		# which no app joins: an app could otherwise claim any visitor's address
+		# to sign-in. The range is the network's
 		# container allocation (compose.yml), which leaves out its gateway: with
 		# Docker's userland proxy, a direct visitor arrives from the gateway and
 		# could otherwise claim any address in X-Forwarded-For.

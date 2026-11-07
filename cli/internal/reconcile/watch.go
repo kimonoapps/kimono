@@ -14,6 +14,7 @@ import (
 func (r *Reconciler) Watch(ctx context.Context, interval, retry time.Duration) error {
 	applied := ""
 	nextRetry := time.Time{}
+	proxyChecked := time.Time{}
 	for {
 		if r.Idle != nil {
 			if err := r.Idle(ctx); err != nil {
@@ -42,6 +43,15 @@ func (r *Reconciler) Watch(ctx context.Context, interval, retry time.Duration) e
 				nextRetry = r.retryAfter(retry)
 			}
 		}
+		// The proxy loses the apps' networks whenever the appliance recreates it.
+		if applied != "" && r.Now().Sub(proxyChecked) >= proxyCheckInterval {
+			proxyChecked = r.Now()
+			if plan, err := Load(r.Paths.PlanPath()); err == nil {
+				if err := r.attachProxy(plan); err != nil {
+					_, _ = fmt.Fprintf(r.Runner.Stderr, "published apps: %v\n", err)
+				}
+			}
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -49,6 +59,9 @@ func (r *Reconciler) Watch(ctx context.Context, interval, retry time.Duration) e
 		}
 	}
 }
+
+// proxyCheckInterval is how often Watch makes sure the proxy is on every app's network.
+const proxyCheckInterval = 15 * time.Second
 
 // retryAfter is when a successful pass is repeated: never, unless an app's own
 // setup still has to run.

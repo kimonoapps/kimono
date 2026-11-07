@@ -122,6 +122,10 @@ func (r *Reconciler) Apply() error {
 	// that reads its configuration at startup would otherwise serve the old
 	// copy until something unrelated restarted it.
 	failed := r.restartStaleServices(plan, rendered.ChangedFiles)
+	// Before the sites reload: the proxy reaches each app on that app's own network.
+	if err := r.attachProxy(plan); err != nil {
+		failed = append(failed, fmt.Sprintf("published apps: %s", err))
+	}
 	// Sites served by the appliance's own proxy live outside this Compose
 	// project, so a changed site file is reloaded rather than restarted.
 	if changedProxySites(rendered.ChangedFiles) {
@@ -182,7 +186,7 @@ func changedProxySites(changed []string) bool {
 }
 
 func (r *Reconciler) reloadProxy() error {
-	return r.Runner.Run("docker", "exec", "kimono-server-caddy-1",
+	return r.Runner.Run("docker", "exec", ProxyContainer,
 		"caddy", "reload", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile")
 }
 
