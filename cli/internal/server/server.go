@@ -593,7 +593,7 @@ const edgeSubnet = "10.89.0.0/24"
 // edgeMember is a container of another project (the reconciler's apps) that
 // was attached to kimono-edge, and the service name others reach it by.
 type edgeMember struct {
-	name, service string
+	id, name, service string
 }
 
 // migrateEdgeNetwork prepares an appliance whose kimono-edge predates the fixed
@@ -618,7 +618,7 @@ func (m *Manager) migrateEdgeNetwork() (func() error, error) {
 	// Stopped containers too: one left pointing at the removed network
 	// could not start again.
 	output, err = m.Runner.Output("docker", "ps", "--all", "--filter", "network="+reconcile.EdgeNetwork,
-		"--format", `{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}`)
+		"--format", `{{.ID}}\t{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}`)
 	if err != nil {
 		return nil, fmt.Errorf("list containers on %s: %w", reconcile.EdgeNetwork, err)
 	}
@@ -626,13 +626,23 @@ func (m *Manager) migrateEdgeNetwork() (func() error, error) {
 	reconnect := func() error {
 		var failures []error
 		for _, member := range detached {
+			// The reconciler starts with the appliance and may already have
+			// replaced the app, on a network of its own; that one is fine as
+			// it is, and the one it replaced is no longer there to attach.
+			state, err := m.Runner.Output("docker", "inspect", "--format", "{{.Id}} {{.State.Status}}", member.id)
+			if fields := strings.Fields(string(state)); err != nil || len(fields) != 2 || fields[1] == "removing" || fields[1] == "dead" {
+				continue
+			}
 			args := []string{"network", "connect"}
 			if member.service != "" {
 				args = append(args, "--alias", member.service)
 			}
-			args = append(args, reconcile.EdgeNetwork, member.name)
-			if err := m.Runner.Run("docker", args...); err != nil {
-				failures = append(failures, err)
+			args = append(args, reconcile.EdgeNetwork, member.id)
+			if output, err := m.Runner.OutputCombined("docker", args...); err != nil {
+				if gone := string(output); strings.Contains(gone, "marked for removal") || strings.Contains(gone, "No such container") {
+					continue
+				}
+				failures = append(failures, fmt.Errorf("%s: %w: %s", member.name, err, strings.TrimSpace(string(output))))
 			}
 		}
 		if len(failures) > 0 {
@@ -643,14 +653,14 @@ func (m *Manager) migrateEdgeNetwork() (func() error, error) {
 	// Not trimmed: a container outside Compose ends its line in empty labels.
 	for _, line := range strings.Split(string(output), "\n") {
 		fields := strings.Split(line, "\t")
-		if len(fields) != 3 || fields[0] == "" || fields[1] == "kimono-server" {
+		if len(fields) != 4 || fields[0] == "" || fields[2] == "kimono-server" {
 			// The appliance's own containers are Compose's to recreate.
 			continue
 		}
 		if err := m.Runner.Run("docker", "network", "disconnect", reconcile.EdgeNetwork, fields[0]); err != nil {
-			return nil, errors.Join(fmt.Errorf("detach %s from %s: %w", fields[0], reconcile.EdgeNetwork, err), reconnect())
+			return nil, errors.Join(fmt.Errorf("detach %s from %s: %w", fields[1], reconcile.EdgeNetwork, err), reconnect())
 		}
-		detached = append(detached, edgeMember{name: fields[0], service: fields[2]})
+		detached = append(detached, edgeMember{id: fields[0], name: fields[1], service: fields[3]})
 	}
 	_, _ = fmt.Fprintf(m.Runner.Stdout, "Moving %s to %s.\n", reconcile.EdgeNetwork, edgeSubnet)
 	return reconnect, nil
