@@ -45,24 +45,40 @@ const mathInline = String.raw`(\$\$[^$]+?\$\$)|(\\\([\s\S]+?\\\))|((?<![\\\w$])\
 /* \$ is a dollar sign written so it can't open maths: shown as the sign alone. */
 const plain = (text: string) => text.replace(/\\\$/g, "$");
 
-function inline(text: string, key = "i"): ReactNode[] {
+/*
+ * While a reply is being written its words fade in as they arrive. Each word is
+ * keyed by where it starts, so one already shown keeps its place and only new
+ * ones animate (a word still growing keeps its key and doesn't start over).
+ */
+function fadingWords(text: string, key: string, from: number): ReactNode[] {
+  const out: ReactNode[] = [];
+  let at = 0;
+  for (const part of text.split(/(\s+)/)) {
+    if (part && /\S/.test(part)) out.push(<span key={`${key}-w${from + at}`} className="cd-w">{part}</span>);
+    else if (part) out.push(part);
+    at += part.length;
+  }
+  return out;
+}
+
+function inline(text: string, key = "i", fade = false): ReactNode[] {
   const out: ReactNode[] = [];
   const pattern = new RegExp(String.raw`(\`[^\`\n]+\`)|${mathInline}|(\*\*[^*\n]+\*\*)|(\[[^\]\n]+\]\((https?:\/\/[^)\s]+)\))|(\*[^*\n]+\*|_[^_\n]+_)`, "g");
   let last = 0;
   let n = 0;
   for (const match of text.matchAll(pattern)) {
-    if (match.index > last) out.push(plain(text.slice(last, match.index)));
+    if (match.index > last) { const words = plain(text.slice(last, match.index)); if (fade) out.push(...fadingWords(words, key, last)); else out.push(words); }
     const k = `${key}-${n++}`;
     if (match[1]) out.push(<code key={k}>{match[1].slice(1, -1)}</code>);
     else if (match[2]) out.push(<Tex key={k} source={match[2].slice(2, -2)} display />);
     else if (match[3]) out.push(<Tex key={k} source={match[3].slice(2, -2)} display={false} />);
     else if (match[4]) out.push(<Tex key={k} source={match[4].slice(1, -1)} display={false} />);
-    else if (match[5]) out.push(<strong key={k}>{inline(match[5].slice(2, -2), k)}</strong>);
+    else if (match[5]) out.push(<strong key={k}>{inline(match[5].slice(2, -2), k, fade)}</strong>);
     else if (match[6]) { const href = match[7]; out.push(<button key={k} type="button" className="cd-link" title={href} onClick={() => window.open(href, "_blank", "noopener,noreferrer")}>{match[6].slice(1, match[6].indexOf("]"))}</button>); }
     else if (match[8]) out.push(<em key={k}>{match[8].slice(1, -1)}</em>);
     last = match.index + match[0].length;
   }
-  if (last < text.length) out.push(plain(text.slice(last)));
+  if (last < text.length) { const words = plain(text.slice(last)); if (fade) out.push(...fadingWords(words, key, last)); else out.push(words); }
   return out;
 }
 
@@ -136,18 +152,19 @@ function blocks(source: string): Block[] {
 }
 
 /* Drawn again only when its text changes: a long chat re-renders often while a reply streams in. */
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+export const Markdown = memo(function Markdown({ text, streaming = false }: { text: string; /** Being written: new words fade in. */ streaming?: boolean }) {
   const parsed = useMemo(() => blocks(text), [text]);
+  const f = streaming;
   return <div className="cd-md">{parsed.map((block, n) => {
     const key = `b${n}`;
     switch (block.type) {
       case "math": return <Tex key={key} source={block.text} display />;
       case "code": return <Scroller key={key} fit as="pre" tone="lift" viewClassName="cd-pre" data-lang={block.lang || undefined}><code>{block.text}</code></Scroller>;
-      case "h": return block.level <= 2 ? <h3 key={key}>{inline(block.text, key)}</h3> : <h4 key={key}>{inline(block.text, key)}</h4>;
-      case "ul": return <ul key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`)}</li>)}</ul>;
-      case "ol": return <ol key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`)}</li>)}</ol>;
-      case "quote": return <blockquote key={key}>{inline(block.text, key)}</blockquote>;
-      default: return <p key={key}>{block.text.split("\n").map((part, m) => <Fragment key={m}>{m ? <br /> : null}{inline(part, `${key}-${m}`)}</Fragment>)}</p>;
+      case "h": return block.level <= 2 ? <h3 key={key}>{inline(block.text, key, f)}</h3> : <h4 key={key}>{inline(block.text, key, f)}</h4>;
+      case "ul": return <ul key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`, f)}</li>)}</ul>;
+      case "ol": return <ol key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`, f)}</li>)}</ol>;
+      case "quote": return <blockquote key={key}>{inline(block.text, key, f)}</blockquote>;
+      default: return <p key={key}>{block.text.split("\n").map((part, m) => <Fragment key={m}>{m ? <br /> : null}{inline(part, `${key}-${m}`, f)}</Fragment>)}</p>;
     }
   })}</div>;
 });

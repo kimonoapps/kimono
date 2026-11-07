@@ -1676,3 +1676,18 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 @media (max-width: 720px) { .cd-timeline > .cd-ask { max-width: 88%; } }
 /* An empty field keeps its hint to one line, clipped, rather than a second line cut in half. */
 .cd .cd-entry textarea:placeholder-shown { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── arriving ──
+   Words of a reply being written fade in as they land, a touch of blur clearing.
+   Once a chat is open, whatever arrives rises into place; a message of yours
+   grows from its corner. What was there when it opened just shows. */
+.cd-w { animation: cd-word-in .55s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes cd-word-in { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: none; } }
+.cd-timeline.is-live > :not(.cd-say:not(.is-draft)) { transition: opacity .38s var(--k-ease-settle), translate .55s var(--k-spring), scale .5s var(--k-spring); }
+@starting-style { .cd-timeline.is-live > :not(.cd-say:not(.is-draft)) { opacity: 0; translate: 0 12px; } }
+.cd-timeline.is-live > .cd-ask { transform-origin: 100% 100%; }
+@starting-style { .cd-timeline.is-live > .cd-ask { opacity: 0; translate: 0 8px; scale: .92; } }
+@media (prefers-reduced-motion: reduce) {
+  .cd-w { animation: none; }
+  .cd-timeline.is-live > * { transition: none; }
+}

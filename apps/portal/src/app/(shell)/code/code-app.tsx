@@ -975,6 +975,42 @@ function SendStop({ mode, disabled, busy, onSend, onStop }: { mode: "send" | "st
   </Seal>;
 }
 
+/**
+ * A reply as it's written. Words reach the page in bursts of any size; they're
+ * let out at a steady pace that quickens when many are waiting, a word at a
+ * time, and each fades in as it lands.
+ */
+function DraftWords({ text }: { text: string }) {
+  const [shown, setShown] = useState(0);
+  const target = useRef(text);
+  const at = useRef(0);
+  useEffect(() => {
+    /* Rewritten rather than grown (a new reply): start from what still matches. */
+    if (!text.startsWith(target.current.slice(0, at.current))) at.current = 0;
+    target.current = text;
+  }, [text]);
+  useEffect(() => {
+    let frame = 0, last = 0;
+    const step = (now: number) => {
+      frame = requestAnimationFrame(step);
+      const goal = target.current.length;
+      if (at.current >= goal || now - last < 33) return;
+      last = now;
+      /* about 120 characters a second at rest, faster the further behind, never more than a fifth of the gap per step */
+      const behind = goal - at.current;
+      let next = Math.min(goal, at.current + Math.max(4, Math.ceil(behind / 5)));
+      /* to the end of a word, so a word lands whole */
+      const space = target.current.slice(next).search(/\s/);
+      next = space < 0 ? goal : Math.min(goal, next + space);
+      at.current = next;
+      setShown(next);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return <div className="cd-say is-draft"><Markdown text={text.slice(0, Math.min(shown, text.length) || 0)} streaming /></div>;
+}
+
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
 /* Every card in a chat asks at once: one answer serves them all for a few seconds. */
 let connectionsAsked: { at: number; answer: ReturnType<typeof code.connections> } | null = null;
@@ -1941,6 +1977,10 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   const writing = Object.entries(drafts.artifacts).filter(([, d]) => !placed.has(d.id));
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  /* What was there when the chat opened just shows; from a moment later, whatever arrives rises into place. */
+  const [live, setLive] = useState(false);
+  const any = items.length > 0;
+  useEffect(() => { if (!any || live) return; const timer = setTimeout(() => setLive(true), 500); return () => clearTimeout(timer); }, [any, live]);
   const [away, setAway] = useState(false);
 
   /* Follows the agent while you're at the bottom; leaves you alone once you scroll up. */
@@ -1974,7 +2014,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   const lastContext = (items.findLast((i) => i.type === "done" && i.event.context) as Extract<Item, { type: "done" }> | undefined)?.event.context ?? null;
   return <div className="cd-chat">
     <Scroller className="cd-scroll" viewClassName="cd-scroll-view" viewRef={scroller} onScroll={onScroll}>
-      <div className="cd-timeline" ref={timeline} aria-live="polite">
+      <div className={cx("cd-timeline", live && "is-live")} ref={timeline} aria-live="polite">
         {items.length === 0 ? <SkeletonChat /> : null}
         {items.map((item) => {
           switch (item.type) {
@@ -2001,7 +2041,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
               : <ArtifactCard key={`art-${item.id}`} name={item.name} />;
           }
         }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
-        {drafts.text ? <div className="cd-say is-draft"><Markdown text={drafts.text} /></div> : null}
+        {drafts.text ? <DraftWords text={drafts.text} /> : null}
         {/* Not while the reply's own words are coming in: those show it's working. */}
         {running && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
