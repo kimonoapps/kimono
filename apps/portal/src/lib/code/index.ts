@@ -49,7 +49,7 @@ type Live = {
   carryOn?: Map<string, { user: ApiUser; notes: string[] }>;
 };
 /* One connection and one set of listeners for the process, kept across hot reloads in development. */
-const cache = globalThis as unknown as { kimonoCode?: Live };
+const cache = globalThis as unknown as { kimonoCode?: Live; kimonoTyping?: Map<string, Map<string, number>> };
 const live: Live = cache.kimonoCode ??= { listeners: new Map(), turns: new Map() };
 
 export function db(): DatabaseSync {
@@ -197,6 +197,34 @@ async function keepSent(config: CodeConfig, workspace: Workspace, turn: string, 
     files.push({ name, path: `/attachments/${stored}`, size: body.byteLength, type: typeOf(name).split(";")[0] });
   }
   if (files.length) record(workspace.id, turn, { kind: "sent", files });
+}
+
+/* ── who's typing in a shared chat: held a few seconds in memory, never kept ── */
+
+const typingFor = 6000;
+const typing: Map<string, Map<string, number>> = (cache.kimonoTyping ??= new Map());
+
+/** [username] is typing in chat [workspaceId]: whoever is watching it hears so, and the lists ask. */
+export function typingIn(workspaceId: string, username: string, now = Date.now()) {
+  const here = typing.get(workspaceId) ?? new Map<string, number>();
+  here.set(username, now + typingFor);
+  typing.set(workspaceId, here);
+  /* The page says so every few seconds while it's typed in; each one keeps it showing a few seconds more. */
+  broadcast(workspaceId, null, { kind: "typing", by: username });
+}
+
+/** Who is typing now in each of these chats, leaving out [me]. Only chats with someone typing are named. */
+export function typersIn(ids: string[], me: string, now = Date.now()): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const id of ids) {
+    const here = typing.get(id);
+    if (!here) continue;
+    for (const [who, until] of here) if (until <= now) here.delete(who);
+    if (!here.size) { typing.delete(id); continue; }
+    const others = [...here.keys()].filter((who) => who !== me.toLowerCase());
+    if (others.length) out[id] = others;
+  }
+  return out;
 }
 
 /** Hears every event recorded in a workspace from now on. Returns the way to stop. */

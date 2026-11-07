@@ -70,9 +70,14 @@ export const frameHtml = (origin: string) => `<!doctype html>
     const elements = document.querySelectorAll("k-scene");
     found.forEach((m, i) => { const el = elements[i]; if (el && el.feed) el.feed(m[1], final || m[2].length > 0); });
   }
+  /* A page seen being written plays its scenes as they come; one that arrives finished (a chat
+     opened later, a link) holds them still until Play. Once written here, it's never still. */
+  let streamed = false;
   function render(content, final) {
     /* the same finished page again (the shower re-posts when it hears a load): leave it be */
     if (closed && content === written) return;
+    if (!final) streamed = true;
+    window.KIMONO_STILL = !streamed;
     if (!opened || closed || !content.startsWith(written)) reset();
     const delta = content.slice(written.length);
     if (delta) document.write(delta);

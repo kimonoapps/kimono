@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
@@ -89,6 +89,8 @@ function useTimeline(id: string | null, onDone: () => void) {
   const [events, setEvents] = useState<StoredEvent[]>([]);
   const [drafts, setDrafts] = useState<Drafts>(noDrafts);
   const [connected, setConnected] = useState(true);
+  /* Who's typing in this chat, and until when: each word they type keeps them here a few seconds more. */
+  const [typers, setTypers] = useState<Record<string, number>>({});
   const done = useRef(onDone);
   useEffect(() => { done.current = onDone; }, [onDone]);
   useEffect(() => {
@@ -100,7 +102,10 @@ function useTimeline(id: string | null, onDone: () => void) {
     let frame = 0;
     let settle = 0;
     const tell = () => { window.clearTimeout(settle); settle = window.setTimeout(() => done.current(), 300); };
+    let backup = 0;
     const flush = () => {
+      if (frame > 0) window.cancelAnimationFrame(frame);
+      window.clearTimeout(backup);
       frame = 0;
       const batch = queue;
       queue = [];
@@ -110,6 +115,7 @@ function useTimeline(id: string | null, onDone: () => void) {
       for (const stored of batch) {
         const event = stored.event;
         if (stored.seq === 0) {
+          if (event.kind === "typing") { const by = event.by, until = Date.now() + 6000; setTypers((now) => ({ ...now, [by]: until })); continue; }
           if (event.kind === "renamed") { changed = true; continue; }
           /* A message was changed: the chat from it on went, and runs again from there. */
           if (event.kind === "rewound") {
@@ -126,6 +132,8 @@ function useTimeline(id: string | null, onDone: () => void) {
           continue;
         }
         if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") drafts.push((d) => d.text === null ? d : { ...d, text: null });
+        /* What they typed has arrived: they've stopped typing. */
+        if (event.kind === "ask") { const by = event.by.toLowerCase(); setTypers((now) => { if (!(by in now)) return now; const rest = { ...now }; delete rest[by]; return rest; }); }
         if (event.kind === "artifact-saved") drafts.push((d) => { if (!(event.name in d.artifacts)) return d; const rest = { ...d.artifacts }; delete rest[event.name]; return { ...d, artifacts: rest }; });
         if (event.kind === "done") drafts.push(() => noDrafts);
         kept.push(stored);
@@ -143,16 +151,58 @@ function useTimeline(id: string | null, onDone: () => void) {
     source.onerror = () => setConnected(source.readyState === EventSource.OPEN);
     source.onmessage = (message) => {
       queue.push(JSON.parse(message.data) as StoredEvent);
-      /* A hidden tab gets no frames: a short timer stands in. */
-      if (!frame) frame = document.hidden ? window.setTimeout(flush, 100) * -1 : window.requestAnimationFrame(flush);
+      /* Drawn on the next frame; a window that gets no frames (hidden, covered, in the background) has a short timer stand in. */
+      if (!frame) { frame = window.requestAnimationFrame(flush); backup = window.setTimeout(flush, 120); }
     };
     return () => {
       source.close();
-      if (frame > 0) window.cancelAnimationFrame(frame); else if (frame < 0) window.clearTimeout(-frame);
+      if (frame) window.cancelAnimationFrame(frame);
+      window.clearTimeout(backup);
       window.clearTimeout(settle);
     };
   }, [id]);
-  return { events, connected, drafts };
+  /* Let go of anyone who stopped: looked at each second while someone's typing. */
+  const anyone = Object.keys(typers).length > 0;
+  useEffect(() => {
+    if (!anyone) return;
+    const timer = setInterval(() => setTypers((now) => {
+      const at = Date.now();
+      const left = Object.fromEntries(Object.entries(now).filter(([, until]) => until > at));
+      return Object.keys(left).length === Object.keys(now).length ? now : left;
+    }), 1000);
+    return () => clearInterval(timer);
+  }, [anyone]);
+  const typing = useMemo(() => Object.keys(typers), [typers]);
+  return { events, connected, drafts, typing };
+}
+
+/* Who's typing in each of the person's chats, for the list: asked every few seconds while some chat is shared. */
+const TypingContext = createContext<Record<string, string[]>>({});
+function useTypingInList(on: boolean) {
+  const [typing, setTyping] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    if (!on) return;
+    let live = true;
+    const look = () => { if (document.hidden) return; code.typers().then((t) => { if (live) setTyping((now) => JSON.stringify(now) === JSON.stringify(t) ? now : t); }, () => {}); };
+    look();
+    const timer = setInterval(look, 3000);
+    return () => { live = false; clearInterval(timer); };
+  }, [on]);
+  return on ? typing : noTyping;
+}
+const noTyping: Record<string, string[]> = {};
+
+/** A person's first name, as the household knows them. */
+function FirstName({ username }: { username: string }) {
+  const person = usePerson(username);
+  return <>{(person.name || username).split(" ")[0]}</>;
+}
+
+/** "Mina is typing", "Mina and Jo are typing", "3 people are typing", after three dots that rise in turn. */
+function TypingWords({ names }: { names: string[] }) {
+  return <span className="cd-typing"><i className="cd-typing-dots" aria-hidden="true"><b /><b /><b /></i>
+    {names.length > 2 ? `${names.length} people are typing` : <>{names.map((n, i) => <Fragment key={n}>{i ? " and " : ""}<FirstName username={n} /></Fragment>)} {names.length > 1 ? "are" : "is"} typing</>}
+  </span>;
 }
 
 /* ── Code ── */
@@ -415,6 +465,7 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
   }, [load]);
 
   const workspace = workspaces?.find((w) => w.id === current) ?? shared.chats.find((w) => w.id === current) ?? null;
+  const typingInList = useTypingInList(useMemo(() => [...(workspaces ?? []), ...shared.chats].some((w) => (w.people?.length ?? 0) > 0), [workspaces, shared.chats]));
   /* Archived chats leave the list for their own page. */
   const archived = useMemo(() => (workspaces ?? []).filter((w) => w.archivedAt).toSorted((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0)), [workspaces]);
   const listed = useMemo(() => (workspaces ?? []).filter((w) => !w.archivedAt), [workspaces]);
@@ -463,7 +514,7 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><div className="cd-page">
+  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><TypingContext.Provider value={typingInList}><div className="cd-page">
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span></div>
@@ -514,7 +565,7 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
             : <Start key={`${params.get("in") ?? ""}|${params.get("repo") ?? ""}`} blocked={blocked} admin={admin} repoAsked={params.get("repo")} folder={projects.find((p) => p.id === params.get("in")) ?? null} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
-  </div></MarksContext.Provider></ViewerContext.Provider>;
+  </div></TypingContext.Provider></MarksContext.Provider></ViewerContext.Provider>;
 }
 
 /* ── archived chats: out of the list, kept until deleted ── */
@@ -1099,6 +1150,7 @@ function WorkspaceList({ label, list, current, now, onNew }: { label?: string; l
 
 /** A chat in the list: opens it; its ··· menu renames, archives or deletes it. */
 function ChatRow({ w, current, now }: { w: Workspace; current: string | null; now: number }) {
+  const typingHere = useContext(TypingContext)[w.id];
   const [confirming, setConfirming] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   /* The share dialog, drawn outside the list so the list's own styles don't reach it. */
@@ -1129,8 +1181,11 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
       draggable={owns && w.kind === "chat"} onDragStart={(event) => { event.dataTransfer.setData(chatDrag, w.id); event.dataTransfer.effectAllowed = "move"; }}>
       <b>{w.title}</b>
       <small>
-        {/* One word, and only when it says something. */}
-        {state === "running" ? <span className="cd-word running"><MorphLoader ink={workingInk} label="Working" className="cd-working-ink" />working {elapsed(now - w.turn!.startedAt)}</span>
+        {/* A shared chat shows who else is in it. */}
+        {w.people?.length ? <span className="cd-row-faces" title={w.people.join(", ")}>{w.people.slice(0, 3).map((who) => <Face key={who} username={who} size={18} />)}{w.people.length > 3 ? <span className="cd-row-more">+{w.people.length - 3}</span> : null}</span> : null}
+        {/* One word, and only when it says something; someone typing in it says so first. */}
+        {typingHere?.length ? <TypingWords names={typingHere} />
+          : state === "running" ? <span className="cd-word running"><MorphLoader ink={workingInk} label="Working" className="cd-working-ink" />working {elapsed(now - w.turn!.startedAt)}</span>
           : state === "failed" ? <span className="cd-word">stopped</span>
             : w.preview && !w.preview.stopped ? <span className="cd-word">live</span>
             : w.pullRequest ? <span className="cd-word">#{w.pullRequest.number}</span>
@@ -1465,7 +1520,9 @@ function SuggestedApps() {
 /* ── a workspace ── */
 
 function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked, onChange, now }: { projects: Project[]; workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
-  const { events, connected, drafts } = useTimeline(workspace.id, onChange);
+  const { events, connected, drafts, typing } = useTimeline(workspace.id, onChange);
+  const { me } = useContext(ViewerContext);
+  const othersTyping = useMemo(() => typing.filter((who) => who !== me?.toLowerCase()), [typing, me]);
   /* Artifacts: the latest saved version of each, and where a big one is open (beside the chat, or full screen). */
   const versions = useMemo(() => {
     const found: Record<string, { version: number; title: string }> = {};
@@ -1547,7 +1604,7 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
           : !connected ? <span className="cd-status">Reconnecting…</span> : null}
       </div> : <div ref={segs} hidden />}
       {problem ? <p className="cd-problem cd-ws-problem" role="alert">{problem}</p> : null}
-      {tab === "chat" ? <Chat workspace={workspace} events={events} drafts={drafts} running={running} blocked={blocked} />
+      {tab === "chat" ? <Chat workspace={workspace} events={events} drafts={drafts} running={running} blocked={blocked} typing={othersTyping} />
         : tab === "files" ? <Files workspace={workspace} path={path} onOpen={(path) => go({ tab: "files", path })} />
           : tab === "app" ? <AppView workspace={workspace} running={running} blocked={blocked} onChange={onChange} />
             : <ChangesView workspace={workspace} running={running} lastSeq={events.at(-1)?.seq ?? 0} />}
@@ -1857,7 +1914,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
 }
 
 /* Memoised: the page around it ticks every second while a turn runs, and the chat needn't. */
-const Chat = memo(function Chat({ workspace, events, drafts, running, blocked }: { workspace: Workspace; events: StoredEvent[]; drafts: Drafts; running: boolean; blocked: string | null }) {
+const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, typing = [] }: { workspace: Workspace; events: StoredEvent[]; drafts: Drafts; running: boolean; blocked: string | null; typing?: string[] }) {
   const { access } = useContext(ChatAccess);
   const owns = access === "owner";
   const items = useMemo(() => itemsOf(events), [events]);
@@ -1947,6 +2004,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked }:
         {/* Not while the reply's own words are coming in: those show it's working. */}
         {running && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
+        {typing.length ? <p className="cd-note cd-typing-note" role="status"><TypingWords names={typing} /></p> : null}
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
     </Scroller>
@@ -2724,6 +2782,14 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   const [text, setText] = useUnsentText(workspace.id);
   const typed = useRef(text);
   useEffect(() => { typed.current = text; }, [text]);
+  /* In a chat others are in, typing says so to them: once every few seconds while the words change. */
+  const shared = (workspace.people?.length ?? 0) > 0 || (workspace.access !== undefined && workspace.access !== "owner");
+  const lastSaid = useRef(0);
+  const sayTyping = (value: string) => {
+    if (!shared || !value.trim() || Date.now() - lastSaid.current < 2500) return;
+    lastSaid.current = Date.now();
+    void code.typing(workspace.id).catch(() => {});
+  };
   const [pending, setPending] = useUnsent<Pending[]>(`${workspace.id}:files`, noPending);
   const [problem, setProblem] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -2796,7 +2862,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       <textarea ref={field} value={text} rows={1} aria-label="Message"
         placeholder={blocked ? blocked : running ? "Steer it: this is read as soon as the current step ends" : "Ask for a change, or reply"}
         disabled={Boolean(blocked)}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => { setText(event.target.value); sayTyping(event.target.value); }}
         onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}
         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       <div className="cd-entry-end">

@@ -9,6 +9,8 @@ export type Access = "owner" | "edit" | "read";
 export type Workspace = {
   /** Whose chat it is (a username), and what the person looking at it may do there. */
   owner?: string; access?: Access;
+  /** Who else is in it, when it's shared: its owner and the people it's shared with, never the one looking. */
+  people?: string[];
   /** A chat has no project; a project works on a Kimono Git repository. */
   kind: "chat" | "project";
   /** The project (a folder of chats) it's in, if any. */
@@ -33,6 +35,8 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string; pro?: boolean; tools?: string[]; /** A kimono-progress call: a start (label, about seconds), a wait, what the tool said (status, percent, seconds left), or done; at is when Kimono heard it. */ progress?: { label?: string; about?: number; wait?: number; done?: boolean; status?: string; percent?: number; left?: number; at: number } }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
+  /** Someone in a shared chat is typing (passing, never kept). */
+  | { kind: "typing"; by: string }
   /** What a Pro Tool call cost, in US dollars. */
   | { kind: "tool-cost"; id: string; usd: number }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; model?: "opus" | "sonnet" | "haiku"; context?: { used: number; window?: number } }
@@ -151,6 +155,9 @@ const ws = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
 export const code = {
   workspaces: () => call<Lists>("/workspaces").then((r) => r.workspaces),
   /** Your chats, and the chats and artifacts others shared with you. */
+  /** Says the person is typing in a shared chat; who's typing in the chats they're in. */
+  typing: (id: string) => call<void>(`${ws(id)}/typing`, { method: "POST" }),
+  typers: () => call<{ typing: Record<string, string[]> }>("/typing").then((r) => r.typing ?? {}),
   lists: () => call<Lists>("/workspaces").then((r) => ({ workspaces: r.workspaces, shared: r.shared ?? [], sharedArtifacts: r.sharedArtifacts ?? [] })),
   workspace: (id: string) => call<Workspace>(ws(id)),
   start: (input: { owner?: string; name?: string; base?: string; prompt: string; effort?: Effort; folder?: string; hold?: boolean }) => call<Workspace>("/workspaces", json("POST", { ...input, ...(modelNow() === "auto" ? { effort: undefined } : {}), model: modelNow() })),

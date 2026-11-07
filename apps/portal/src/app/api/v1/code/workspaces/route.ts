@@ -1,17 +1,24 @@
 import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { projectMissing } from "@/lib/code/config";
 import { ask, checkShare, code, requireProject, createWorkspace, db, efforts, modelChoices, taskFolder, workspaceFor, workspacesOf, sharedWithMe, artifactsSharedWith, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
+import { peopleIn } from "@/lib/code/sharing";
 
 /** Your workspaces, the most recently active first. */
 export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
-  /* Your own chats, then what others shared with you: chats to read or write in, and artifacts. */
-  return code(user, () => apiJson({
-    workspaces: workspacesOf(db(), user.username).map((w) => ({ ...w, access: "owner" })),
-    shared: sharedWithMe(db(), user.username),
-    sharedArtifacts: artifactsSharedWith(db(), user.username),
-  }), false);
+  /* Your own chats, then what others shared with you: chats to read or write in, and artifacts. Each names who else is in it. */
+  return code(user, () => {
+    const own = workspacesOf(db(), user.username);
+    const shared = sharedWithMe(db(), user.username);
+    const people = peopleIn(db(), [...own, ...shared].map((w) => ({ id: w.id, owner: w.owner })), user.username);
+    const withPeople = <T extends { id: string }>(w: T) => people[w.id] ? { ...w, people: people[w.id] } : w;
+    return apiJson({
+      workspaces: own.map((w) => withPeople({ ...w, access: "owner" })),
+      shared: shared.map(withPeople),
+      sharedArtifacts: artifactsSharedWith(db(), user.username),
+    });
+  }, false);
 }
 
 /**

@@ -28,6 +28,22 @@ const rank: Record<Access, number> = { read: 1, edit: 2, owner: 3 };
 /** A chat as one person sees it: whether it's theirs, or shared with them to read or write. */
 export type SharedWorkspace = Workspace & { access: Access };
 
+/** Who else is in each chat: the people it's shared with and its owner, leaving out [me]. Chats with nobody else aren't named. */
+export function peopleIn(db: DatabaseSync, chats: { id: string; owner: string }[], me: string): Record<string, string[]> {
+  if (!chats.length) return {};
+  const ids = chats.map((c) => c.id);
+  const rows = db.prepare(`SELECT workspace_id, username FROM chat_shares WHERE workspace_id IN (${ids.map(() => "?").join(",")}) ORDER BY created_at`).all(...ids) as { workspace_id: string; username: string }[];
+  const shares = new Map<string, string[]>();
+  for (const row of rows) shares.set(row.workspace_id, [...(shares.get(row.workspace_id) ?? []), row.username]);
+  const out: Record<string, string[]> = {};
+  const self = me.toLowerCase();
+  for (const chat of chats) {
+    const people = [...new Set([chat.owner, ...(shares.get(chat.id) ?? [])])].filter((who) => who && who !== self);
+    if (people.length) out[chat.id] = people;
+  }
+  return out;
+}
+
 /** The access [username] has to chat [id], or [token] (its link) gives. Null when neither gives any. */
 export function accessOf(db: DatabaseSync, id: string, username: string | null, token?: string | null): Access | null {
   const owner = (db.prepare("SELECT owner FROM workspaces WHERE id = ?").get(id) as { owner: string } | undefined)?.owner;

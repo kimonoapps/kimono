@@ -409,7 +409,7 @@
       this.controls.append(this.playButton, this.scrub, this.clock, this.state);
       this.errorBox = html("div", "k-error"); this.errorBox.hidden = true;
       this.prepend(this.stage); if (!this.external) this.append(this.controls); this.append(this.errorBox);
-      this.t = 0; this.playing = !reduced(); this.complete = false; this.timeline = null; this.source = ""; this.ran = "";
+      this.t = 0; this.playing = !reduced() && !window.KIMONO_STILL; this.complete = false; this.timeline = null; this.source = ""; this.ran = "";
       this.playButton.addEventListener("click", () => this.toggle());
       this.pointer();
       this.scrub.addEventListener("input", () => { this.t = (+this.scrub.value / 1000) * (this.timeline?.end || 0); this.playing = false; this.paint(); });
@@ -663,7 +663,8 @@
       this.timeline?.dispose?.();
       this.timeline = timeline;
       if (timeline.uses3d) this.ensure3d(); else if (was3d) this.drop3d();
-      if (!this.complete && !reduced()) this.playing = true;
+      /* playing as it is written; a finished page opened later waits for Play (frame.ts sets KIMONO_STILL) */
+      if (!this.complete && !reduced() && !window.KIMONO_STILL) this.playing = true;
       this.size();
     }
     ensure3d() {

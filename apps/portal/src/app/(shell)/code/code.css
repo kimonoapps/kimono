@@ -1655,3 +1655,22 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 /* a press sends the arrow up a touch */
 .cd .cd-sendstop:not(.is-stop):active .cd-ss-send { transform: translateY(-3px); }
 @media (prefers-reduced-motion: reduce) { .cd .cd-ss > span, .cd .cd-ss-head, .cd .cd-ss-shaft { transition: opacity .15s linear; } }
+
+/* ── who's in a shared chat, and who's typing ── */
+.cd-row-faces { display: inline-flex; align-items: center; margin-right: 6px; vertical-align: middle; }
+.cd-row-faces .cd-face { box-shadow: 0 0 0 2px var(--k-container-low); border-radius: 50%; }
+.cd-row-faces .cd-face + .cd-face { margin-left: -6px; }
+.cd-row-more { margin-left: 4px; font-size: 11px; color: var(--k-on-surface-variant); }
+.cd-typing { display: inline-flex; align-items: center; gap: 6px; color: var(--k-app-accent); font-weight: 600; }
+.cd-typing-dots { display: inline-flex; gap: 2.5px; font-style: normal; }
+.cd-typing-dots b { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: cd-typing 1.2s var(--k-ease-settle) infinite; }
+.cd-typing-dots b:nth-child(2) { animation-delay: .15s; }
+.cd-typing-dots b:nth-child(3) { animation-delay: .3s; }
+@keyframes cd-typing { 0%, 60%, 100% { transform: none; opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
+.cd-typing-note { margin: 4px 0 0; font-size: 13.5px; }
+@media (prefers-reduced-motion: reduce) { .cd-typing-dots b { animation: none; opacity: .8; } }
+
+/* A person's message is a bubble at the right, never the whole column wide (the timeline's own max-width rule came later and won). */
+.cd-timeline > .cd-ask { max-width: min(620px, 78%); }
+.cd-timeline > .cd-ask.cd-ask-edit { max-width: none; width: min(620px, 92%); }
+@media (max-width: 720px) { .cd-timeline > .cd-ask { max-width: 88%; } }
