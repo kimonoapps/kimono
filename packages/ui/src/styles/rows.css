@@ -123,7 +123,7 @@
 /* An arrival inside a surface: a short move with its opacity finished
    before half the distance is covered. Never used after a crossing. */
 @keyframes k-arrive { from { opacity: 0; translate: 0 6px; } 40% { opacity: 1; } to { opacity: 1; translate: 0 0; } }
-.k-arrive { animation: k-arrive var(--k-t-fold) var(--k-ease-settle) both; }
+.k-arrive { animation: k-arrive var(--k-t-fold) var(--k-ease-settle) backwards; }
 
 @media (max-width: 720px) {
   .k-row { align-items: flex-start; flex-direction: column; }

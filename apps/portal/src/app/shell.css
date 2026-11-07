@@ -251,7 +251,8 @@
 .cd-side button[aria-current] { animation: mo-pop .3s var(--mo-in); }
 
 /* Pressing anything round gives a little. */
-.seg > .row:active, .cd-dep-row:active, .cd-side button:active { transform: scale(.985); transition: transform .1s; }
+/* A row that holds a dropdown doesn't sink when pressed: its list would sink with it, out from under the pointer. */
+.seg > .row:not(:has(.k-choice)):active, .cd-dep-row:active, .cd-side button:active { transform: scale(.985); transition: transform .1s; }
 .seg > .row { transition: background-color .2s, border-radius .35s var(--spring), transform .25s var(--mo-spring); }
 
 @media (prefers-reduced-motion: reduce) {

@@ -175,7 +175,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
   border-radius: var(--k-r-3);
   background: var(--k-lift);
   box-shadow: var(--k-shadow-lift);
-  animation: k-arrive var(--k-t-fold) var(--k-ease-settle) both;
+  animation: k-arrive var(--k-t-fold) var(--k-ease-settle) backwards;
 }
 .profile-identity { display: grid; gap: 2px; padding: var(--k-space-3) var(--k-space-3) var(--k-space-3); border-bottom: var(--k-hairline) solid var(--k-hair); margin-bottom: var(--k-space-2); }
 .profile-identity strong { overflow-wrap: anywhere; font-size: 14px; font-weight: 600; color: var(--k-ink); }
@@ -225,7 +225,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
   border-radius: var(--k-r-3);
   background: var(--k-lift);
   box-shadow: var(--k-shadow-lift);
-  animation: k-arrive var(--k-t-fold) var(--k-ease-settle) both;
+  animation: k-arrive var(--k-t-fold) var(--k-ease-settle) backwards;
 }
 .update-popover-head { display: grid; gap: 2px; padding-bottom: var(--k-space-3); border-bottom: var(--k-hairline) solid var(--k-hair); }
 .update-popover-head strong { font: 600 20px/1.2 var(--k-display); color: var(--k-plum); }
