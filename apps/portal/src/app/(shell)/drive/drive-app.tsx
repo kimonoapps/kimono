@@ -7,11 +7,11 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useSearchParams } from "next/navigation";
 import { useCrossTo } from "@/components/crossing";
 import { InkCrest } from "@/components/ink-crest";
-import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, InkLoader, Seal } from "@kimono/ui";
+import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, InkLoader, Joint, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
-  type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type SharedSpace, type Space, type SpaceDetail,
+  type Crests, type DriveNode, type Folder, type LinkAccess, type Person, type Role, type ShareInfo, type SharedSpace, type Space, type SpaceDetail,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { FilePreview, TypeMark } from "@/components/file-preview/file-preview";
@@ -37,6 +37,12 @@ const roleWords: Record<Role, string> = { owner: "you own it", editor: "you can 
 const roleNames: Record<Role, string> = { owner: "Owner", editor: "Editor", viewer: "Viewer" };
 const problemText = (error: unknown, fallback = "That didn't work.") => error instanceof Error ? error.message : fallback;
 const labelFor = (nodes: DriveNode[]) => nodes.length === 1 ? `“${nodes[0].name}”` : `${nodes.length} items`;
+const firstName = (people: Record<string, Person>, username: string) => people[username.toLowerCase()]?.name.split(" ")[0] ?? username;
+
+/* Shared with you: what others shared from spaces you aren't in, as one room that opens like a space. */
+const SHARED = "shared-with-you";
+const sharedRoom: Space = { id: SHARED, name: "Shared with you", crest: "", color: "", rootId: SHARED, role: "viewer", members: 0, createdBy: "" };
+const sharedTop: DriveNode = { id: SHARED, spaceId: SHARED, parentId: null, kind: "folder", name: sharedRoom.name, size: 0, mime: null, createdBy: "", updatedAt: 0, trashedAt: null, link: null, role: "viewer" };
 
 /** Where you are is this page's own state, kept in the address: the next entry in history, no crossing. */
 function goTo(base: string, to: Record<string, string | null>) {
@@ -145,7 +151,7 @@ export function DriveApp({ me }: { me: Me }) {
     const sheet = body.current?.querySelector(":scope > section") ?? null;
     slide(sheet);
     // A space's rows rise as its folder loads; the other views rise here.
-    return view ? riseWhenReady(sheet) : undefined;
+    return view && view !== "shared" ? riseWhenReady(sheet) : undefined;
   }, [where, view]);
 
   const [spaces, setSpaces] = useState<Space[] | null>(null);
@@ -185,7 +191,7 @@ export function DriveApp({ me }: { me: Me }) {
           {spaces && !yours.length && !codeSpace ? <p className="dv-quiet-text dv-side-none">None yet.</p> : null}
         </div>
         {sharedWithYou.length ? <div>
-          <div className="dv-side-label">Shared with you</div>
+          <div className="dv-side-label">Others&apos; spaces</div>
           <div className="dv-nav">{sharedWithYou.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
         </div> : null}
         <button type="button" className="dv-newspace" onClick={() => setMaking(true)}><Icon name="plus" />New space</button>
@@ -194,11 +200,25 @@ export function DriveApp({ me }: { me: Me }) {
       {problem && !spaces ? <section className="dv-sheet"><div className="dv-empty"><h3>Drive isn&apos;t answering</h3><p>{problem}</p></div></section>
         : !spaces ? <section className="dv-sheet"><SkeletonRows rows={6} className="dv-skel" /></section>
         : view === "trash" ? <TrashView onToast={setToast} spaces={spaces} />
+        : view === "shared" ? <SpaceView
+            key={SHARED}
+            space={sharedRoom}
+            room
+            me={me}
+            folderId={folderParam || SHARED}
+            openFile={params.get("file")}
+            people={people}
+            landed={uploads.landed}
+            onGo={(folder, file) => go({ view: "shared", folder: folder === SHARED ? null : folder, file: file ?? null })}
+            onUpload={(files, folderId) => uploads.start(files, folderId, sharedRoom.name)}
+            onToast={setToast}
+          />
         : view === "recent" ? <RecentView spaces={spaces} people={people} onOpen={(node) => go({ space: node.spaceId, folder: node.parentId, file: node.id })} />
         : current && view === "settings" ? <SettingsView key={current.id} space={current} me={me} people={people} onChanged={loadSpaces} onLeft={() => { void loadSpaces(); go({}); }} back={() => go({ space: current.id })} />
         : current ? <SpaceView
             key={current.id}
             space={current}
+            me={me}
             folderId={folderParam || current.rootId}
             openFile={params.get("file")}
             people={people}
@@ -308,14 +328,14 @@ async function entriesOf(directory: FileSystemDirectoryEntry): Promise<FileSyste
   }
 }
 
-function SpaceView({ space, guest = null, folderId, openFile, people, landed, onGo, onSettings, onUpload, onToast }: {
+function SpaceView({ space, guest = null, room = false, me, folderId, openFile, people, landed, onGo, onSettings, onUpload, onToast }: {
   space: Space; guest?: Guest | null; folderId: string; openFile: string | null; people: Record<string, Person>; landed: Record<string, number>;
+  /** Shared with you, rather than a space: each thing in it says what you may do with it. */
+  room?: boolean; me?: Me;
   onGo: (folder: string, file?: string | null) => void; onSettings?: () => void;
   onUpload: (files: File[], folderId: string) => void; onToast: (toast: Toast) => void;
 }) {
   const token = guest?.token ?? null;
-  const canEdit = !guest && space.role !== "viewer";
-  const canAdd = guest ? guest.access === "add" : canEdit;
 
   const [folder, setFolder] = useState<Folder | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -335,6 +355,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   const [results, setFound] = useState<DriveNode[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const [detail, setDetail] = useState<SpaceDetail | null>(null);
+  const [sharing, setSharing] = useState<DriveNode | null>(null);
   const name = useSyncExternalStore(guestName.subscribe, guestName.get, () => "");
   const picker = useRef<HTMLInputElement>(null);
   const searchField = useRef<HTMLInputElement>(null);
@@ -353,7 +374,14 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     rise(list.current, { step: 24, limit: 16 });
   }, [shownFolder, shownDepth]);
 
-  const fetchFolder = useCallback((id: string) => token ? shared.folder(token, id) : drive.folder(id), [token]);
+  const fetchFolder = useCallback(async (id: string): Promise<Folder> => {
+    if (token) return shared.folder(token, id);
+    if (!room) return drive.folder(id);
+    if (id === SHARED) return { folder: sharedTop, path: [], children: await drive.sharedWithYou() };
+    /* The way up stops at what was shared, and then at Shared with you. */
+    const inside = await drive.folder(id);
+    return { ...inside, path: [sharedTop, ...inside.path] };
+  }, [token, room]);
   const fileUrl = useCallback((node: DriveNode) => token ? shared.fileUrl(token, node.id) : contentUrl(node), [token]);
   /* Only the folder open now is drawn: an action that ends after you moved on doesn't paint its old folder here. */
   const openNow = useRef(folderId);
@@ -371,7 +399,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     );
     return () => { live = false; };
   }, [fetchFolder, folderId, landedHere]);
-  useEffect(() => { if (token) return; void drive.space(space.id).then(setDetail).catch(() => {}); }, [space.id, token]);
+  useEffect(() => { if (token || room) return; void drive.space(space.id).then(setDetail).catch(() => {}); }, [space.id, token, room]);
   useEffect(() => {
     if (!query.trim() || token) return;
     /* An answer for what was typed before is dropped: "re" landing after "report" doesn't replace it. */
@@ -397,6 +425,11 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   const members = detail?.memberList ?? [];
   const menuNode = menu ? rows.find((n) => n.id === menu.id) ?? null : null;
   const here = folder?.folder.id ?? folderId;
+  /* In a space, your role there; in Shared with you, what each thing was shared as. */
+  const roleOf = (node: DriveNode | undefined): Role => room ? node?.role ?? "viewer" : space.role;
+  const canEdit = !guest && roleOf(folder?.folder) !== "viewer";
+  const canAdd = guest ? guest.access === "add" : canEdit;
+  const editable = (node: DriveNode) => !guest && roleOf(node) !== "viewer";
 
   /* ── going places ── */
   const crossTo = useCrossTo();
@@ -423,6 +456,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   const focusRow = (id: string) => list.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(id)}"] .nm button`)?.focus();
 
   /* ── doing things ── */
+  const leave = (node: DriveNode) => act(() => drive.share(node.id, me!.username, null), { text: `You left ${labelFor([node])}.` });
   const trash = (nodes: DriveNode[]) => act(async () => { for (const node of nodes) await drive.trash(node.id); setSelected(new Set()); }, {
     text: `${labelFor(nodes)} moved to Trash.`,
     undo: async () => { for (const node of nodes) await drive.restore(node.id).catch(() => {}); await load(); },
@@ -506,8 +540,8 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     if (!rowId || index < 0) return;
     const node = rows[index];
     if (key === " ") { event.preventDefault(); if (event.shiftKey) selectRange(rowId); else toggle(rowId); }
-    else if ((key === "Delete" || (key === "Backspace" && mod)) && canEdit) { event.preventDefault(); void trash(group(node)); }
-    else if (key === "F2" && canEdit) { event.preventDefault(); setRenaming(rowId); }
+    else if ((key === "Delete" || (key === "Backspace" && mod)) && group(node).every((n) => editable(n) && !n.sharedWithYou)) { event.preventDefault(); void trash(group(node)); }
+    else if (key === "F2" && editable(node)) { event.preventDefault(); setRenaming(rowId); }
     else if (key === "ContextMenu" || (key === "F10" && event.shiftKey)) {
       event.preventDefault();
       const more = list.current?.querySelector<HTMLElement>(`[data-row="${CSS.escape(rowId)}"] .dv-more`);
@@ -526,8 +560,9 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     : !space.code || found ? undefined
     : top === 0 ? repos.has(node.name.toLowerCase()) ? "project" as const : undefined : inRepo ? "task" as const : undefined;
   const folderWords = { notebook: "Notebook", task: "Chat", project: "Project" } as const;
-  const subtitle = (node: DriveNode) => node.kind === "folder" ? (() => { const role = codeRole(node); return role ? folderWords[role] : "Folder"; })()
-    : `${extension(node.name)}${!token && node.guest ? ` · added by ${node.guest}` : ""}`;
+  const subtitle = (node: DriveNode) => (node.kind === "folder" ? (() => { const role = codeRole(node); return role ? folderWords[role] : "Folder"; })()
+    : `${extension(node.name)}${!token && node.guest ? ` · added by ${node.guest}` : ""}`) + (node.sharedBy ? ` · from ${firstName(people, node.sharedBy)}` : "");
+  const atTop = room && here === SHARED;
 
   return <section className="dv-sheet"
     style={space.code ? { "--dv-code": space.code.accent } as React.CSSProperties : undefined}
@@ -539,11 +574,13 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     onDrop={(event) => { event.preventDefault(); depth.current = 0; setDragging(false); drop(event.dataTransfer); }}>
     <div className="dv-mast">
       <div className="dv-mast-id">
-        <Mark space={space} size="lg" />
+        {room ? <Wash icon="people" seed={SHARED} tint={FOLDER_TINT} tone="folder" size="lg" /> : <Mark space={space} size="lg" />}
         <div>
           {guest ? <div className="dv-kicker">{canAdd ? "Shared space · you can add files" : "Shared space"}</div> : null}
-          <h1>{space.name}</h1>
-          {!guest ? <p className="dv-members">
+          {room && !atTop && folder ? <div className="dv-kicker">{space.name}</div> : null}
+          <h1>{room && !atTop && folder ? (folder.path[1] ?? folder.folder).name : space.name}</h1>
+          {room && !atTop && folder ? <p className="dv-members"><small>{roleWords[roleOf(folder.folder)]}</small></p> : null}
+          {!guest && !room ? <p className="dv-members">
             <span className="pfps">{members.slice(0, 6).map((m) => <Portrait key={m.username} person={people[m.username.toLowerCase()]} username={m.username} size={26} />)}</span>
             <small>{space.members === 1 ? "Only you" : `${space.members} people`}{space.role !== "owner" ? ` · ${roleWords[space.role]}` : ""}</small>
           </p> : null}
@@ -554,7 +591,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
           <input value={name} maxLength={60} autoComplete="name" onChange={(e) => guestName.set(e.target.value)} />
         </label> : null}
         <div className="dv-acts">
-          {!guest ? <button type="button" className="dv-textbtn" onClick={onSettings}>People</button> : null}
+          {!guest && !room ? <button type="button" className="dv-textbtn" onClick={onSettings}>People</button> : null}
           {canEdit ? <Seal type="button" tone="quiet" onClick={() => setNaming(true)}><Icon name="folder" />New folder</Seal> : null}
           {canAdd ? <Seal type="button" onClick={() => picker.current?.click()}><Icon name="upload" />Upload</Seal> : null}
         </div>
@@ -574,8 +611,10 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
       </div>
       <div className="acts">
         {chosen.every((n) => n.kind === "file") ? <Seal type="button" tone="quiet" compact onClick={() => save(chosen)}><Icon name="download" />Download</Seal> : null}
-        {canEdit ? <Seal type="button" tone="quiet" compact onClick={() => setMoving(chosen)}><Icon name="move" />Move to…</Seal> : null}
-        {canEdit ? <Seal type="button" tone="danger" compact onClick={() => void trash(chosen)}><Icon name="trash" />Move to Trash</Seal> : null}
+        {chosen.every((n) => editable(n) && !n.sharedWithYou) ? <>
+          <Seal type="button" tone="quiet" compact onClick={() => setMoving(chosen)}><Icon name="move" />Move to…</Seal>
+          <Seal type="button" tone="danger" compact onClick={() => void trash(chosen)}><Icon name="trash" />Move to Trash</Seal>
+        </> : null}
         <button type="button" className="dv-linkbtn" onClick={() => setSelected(new Set())}>Clear</button>
       </div>
     </div> : <div className="dv-toolbar">
@@ -585,7 +624,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
           : <Fragment key={node.id}><button type="button" onClick={() => openFolder(node.id)}>{index === 0 ? space.name : node.name}</button><span className="sep">/</span></Fragment>)}
       </div> : null}
       <div className="dv-tools">
-        {!guest ? <label className="dv-search"><Icon name="search" />
+        {!guest && !room ? <label className="dv-search"><Icon name="search" />
           <input ref={searchField} type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setQuery(""); }} placeholder="Search this space" aria-label="Search this space" />
         </label> : null}
         <Choice compact className="dv-select" aria-label="Sort by" value={sort} onChange={(next) => setSort(next as Sort)} options={[{ value: "name", label: "Name, A–Z" }, { value: "modified", label: "Newest first" }, { value: "size", label: "Largest first" }]} />
@@ -617,10 +656,10 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
                       <small>{subtitle(node)}{node.kind === "file" ? <span className="dv-m"> · {readableSize(node.size)}</span> : null}</small>
                     </button>}
               </div>
-              {!guest ? <span className="c-share">{node.link ? <span className="dv-pub"><Icon name="link" />Public link</span> : node.kind === "file" ? <span className="dv-quiet-text">Space only</span> : null}</span> : null}
+              {!guest ? <span className="c-share">{node.link ? <span className="dv-pub"><Icon name="link" />Public link</span> : node.kind === "file" && !room ? <span className="dv-quiet-text">Space only</span> : null}</span> : null}
               <span className="num c-size">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
               <span className="num dv-when c-when">
-                {!guest ? <Portrait person={people[node.createdBy?.toLowerCase()]} username={node.createdBy || node.guest || "?"} size={22} /> : null}
+                {!guest ? <Portrait person={people[(node.sharedBy ?? node.createdBy)?.toLowerCase()]} username={node.sharedBy || node.createdBy || node.guest || "?"} size={22} /> : null}
                 <span>{when(node.updatedAt)}</span>
               </span>
               <span className="dv-rowmenu">
@@ -628,7 +667,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
                   onClick={(event) => openMenu(node, event.currentTarget)}><Icon name="more" /></button>
               </span>
             </div>
-            {opened?.id === node.id ? <Drawer node={node} url={fileUrl(node)} token={token} guest={Boolean(guest)} canEdit={canEdit} people={people}
+            {opened?.id === node.id ? <Drawer node={node} url={fileUrl(node)} token={token} guest={Boolean(guest)} canEdit={editable(node)} people={people}
               onSave={() => save([node])} onShare={() => void share(node)} onUnlink={() => void unlink(node)} onClose={() => onGo(here)} /> : null}
           </Fragment>)}
     </div>
@@ -637,15 +676,21 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
       <MenuItem icon="open" onPick={() => openNode(menuNode)}>{menuNode.purpose === "notebook" ? "Open in Notes" : menuNode.purpose === "chat" ? "Open chat" : "Open"}</MenuItem>
       {appHref(menuNode) ? <MenuItem icon="folder" onPick={() => openFolder(menuNode.id)}>Show files</MenuItem> : null}
       {menuNode.kind === "file" ? <MenuItem icon="download" onPick={() => save([menuNode])}>Download</MenuItem> : null}
-      {menuNode.kind === "file" && !guest && (menuNode.link || canEdit) ? <>
+      {!guest ? <MenuItem icon="people" onPick={() => setSharing(menuNode)}>Share</MenuItem> : null}
+      {menuNode.kind === "file" && !guest && (menuNode.link || editable(menuNode)) ? <>
         <hr />
         <MenuItem icon="link" onPick={() => void share(menuNode)}>{menuNode.link ? "Copy public link" : "Make public link"}</MenuItem>
-        {menuNode.link && canEdit ? <MenuItem icon="lock" onPick={() => void unlink(menuNode)}>Turn off public link</MenuItem> : null}
+        {menuNode.link && editable(menuNode) ? <MenuItem icon="lock" onPick={() => void unlink(menuNode)}>Turn off public link</MenuItem> : null}
       </> : null}
-      {canEdit ? <>
+      {editable(menuNode) ? <>
         <hr />
         <MenuItem icon="rename" onPick={() => setRenaming(menuNode.id)}>Rename</MenuItem>
-        <MenuItem icon="move" onPick={() => setMoving(group(menuNode))}>Move to…</MenuItem>
+        {!menuNode.sharedWithYou ? <MenuItem icon="move" onPick={() => setMoving(group(menuNode))}>Move to…</MenuItem> : null}
+      </> : null}
+      {menuNode.sharedWithYou ? <>
+        <hr />
+        <MenuItem icon="door" danger onPick={() => void leave(menuNode)}>Leave</MenuItem>
+      </> : editable(menuNode) ? <>
         <hr />
         <MenuItem icon="trash" danger onPick={() => void trash(group(menuNode))}>Move to Trash</MenuItem>
       </> : null}
@@ -657,6 +702,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     </div></div> : null}
 
     {naming && folder ? <NameDialog title="New folder" action="Make it" onClose={() => setNaming(false)} onSave={async (folderName) => { await drive.createFolder(folder.folder.id, folderName); setNaming(false); await load(); }} /> : null}
+    {sharing && me ? <ShareDialog node={sharing} me={me} people={people} canEdit={editable(sharing)} onClose={(changed) => { setSharing(null); if (changed) void load(); }} /> : null}
     {moving ? <MoveDialog space={space} nodes={moving} onClose={() => setMoving(null)} onMove={async (target) => {
       const nodes = moving;
       setMoving(null);
@@ -905,6 +951,71 @@ function NameDialog({ title, action, initial = "", onClose, onSave }: { title: s
   </Dialog>;
 }
 
+/**
+ * Sharing a folder or file with people outside its space, like a document:
+ * each an editor or a viewer on a joint switch, taken off with ×, every
+ * change applied as it is made. Viewers see who has it, and no switches.
+ */
+function ShareDialog({ node, me, people, canEdit, onClose }: { node: DriveNode; me: Me; people: Record<string, Person>; canEdit: boolean; onClose: (changed: boolean) => void }) {
+  const [info, setInfo] = useState<ShareInfo | null>(null);
+  const [busy, setBusy] = useState<Set<string>>(() => new Set());
+  const [problem, setProblem] = useState<string | null>(null);
+  const [find, setFind] = useState("");
+  const [changed, setChanged] = useState(false);
+  useEffect(() => { drive.shares(node.id).then(setInfo, (error) => setProblem(problemText(error))); }, [node.id]);
+  const nameOf = (username: string) => people[username.toLowerCase()]?.name ?? username;
+  const isMe = (username: string) => username.toLowerCase() === me.username.toLowerCase();
+  const working = (key: string, on: boolean) => setBusy((now) => { const next = new Set(now); if (on) next.add(key); else next.delete(key); return next; });
+  const change = async (username: string, role: "editor" | "viewer" | null) => {
+    setProblem(null); working(username, true);
+    try {
+      const next = await drive.share(node.id, username, role);
+      setChanged(true);
+      if ("left" in next) { onClose(true); return; }
+      setInfo(next);
+    } catch (error) { setProblem(problemText(error)); }
+    finally { working(username, false); }
+  };
+  const taken = new Set([me.username.toLowerCase(), ...(info?.shares ?? []).map((x) => x.username.toLowerCase())]);
+  const words = find.trim().toLowerCase().replace(/^@/, "");
+  const found = words ? Object.values(people).filter((p) => !taken.has(p.username.toLowerCase()) && (p.name.toLowerCase().includes(words) || p.username.toLowerCase().includes(words))).slice(0, 6) : [];
+  const pick = (p: Person) => { setFind(""); void change(p.username, "editor"); };
+  const lead = info && info.space.name && info.space.members > 1 ? `Everyone in ${info.space.name} can see this.` : undefined;
+  const can = (role: string) => role === "editor" ? "Can edit" : "Can view";
+  return <Dialog title={`Share “${node.name}”`} lead={lead} onClose={() => onClose(changed)} footer={<>
+    <span className={cx("left", problem && "bad")} role={problem ? "alert" : undefined}>{problem}</span>
+    <Seal type="button" onClick={() => onClose(changed)}>Done</Seal>
+  </>}>
+    {info === null && !problem ? <SkeletonRows rows={2} /> : null}
+    {info && canEdit ? <div className="dv-share-add">
+      <label className="dv-search dv-share-find"><Icon name="search" /><input autoFocus value={find} onChange={(event) => setFind(event.target.value)} placeholder="Add people" aria-label="Add people"
+        onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); pick(found[0]); } }} /></label>
+      {words ? <div className="dv-found" role="listbox" aria-label="People">
+        {found.map((p) => <button key={p.username} type="button" role="option" aria-selected={false} onClick={() => pick(p)}>
+          <Portrait person={p} username={p.username} size={32} /><span><b>{p.name}</b><small>@{p.username}</small></span>
+        </button>)}
+        {!found.length ? <p className="dv-quiet-text">No one by that name.</p> : null}
+      </div> : null}
+    </div> : null}
+    {info && (info.shares.length || info.inherited.length) ? <ul className="dv-people">
+      {info.shares.map((m) => <li key={m.username} className={cx(!canEdit && "is-in")}>
+        <Portrait person={people[m.username.toLowerCase()]} username={m.username} size={36} />
+        <span className="dv-who"><b>{nameOf(m.username)}{isMe(m.username) ? " (you)" : ""}</b><small>{can(m.role)}</small></span>
+        {busy.has(m.username) ? <InkLoader className="dv-saving" label="Saving" /> : null}
+        {canEdit ? <>
+          <Joint checked={m.role === "editor"} onText="EDIT" offText="VIEW" label={`${nameOf(m.username)} can edit`} disabled={busy.has(m.username)}
+            onChange={(on) => void change(m.username, on ? "editor" : "viewer")} />
+          <button type="button" className="dv-more" aria-label={`Take ${nameOf(m.username)} off`} title="Take off" disabled={busy.has(m.username)} onClick={() => void change(m.username, null)}><Icon name="close" /></button>
+        </> : null}
+      </li>)}
+      {info.inherited.map((m) => <li key={`${m.via.id}-${m.username}`} className="is-in">
+        <Portrait person={people[m.username.toLowerCase()]} username={m.username} size={36} />
+        <span className="dv-who"><b>{nameOf(m.username)}{isMe(m.username) ? " (you)" : ""}</b><small>{can(m.role)} · through {m.via.name}</small></span>
+      </li>)}
+    </ul> : info && !canEdit ? <p className="dv-quiet-text">Only you have it.</p> : null}
+  </Dialog>;
+}
+
 /** Move to…: the space's folders, browsed like the folder view, and "Move here". */
 function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: DriveNode[]; onClose: () => void; onMove: (folderId: string) => Promise<void> }) {
   const [where, setWhere] = useState(nodes[0]?.parentId ?? space.rootId);
@@ -929,8 +1040,8 @@ function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: Dr
     <div className="dv-pick">
       <div className="dv-crumbs">
         {trail.map((node, index) => index === trail.length - 1
-          ? <b key={node.id}>{index === 0 ? space.name : node.name}</b>
-          : <Fragment key={node.id}><button type="button" onClick={() => setWhere(node.id)}>{index === 0 ? space.name : node.name}</button><span className="sep">/</span></Fragment>)}
+          ? <b key={node.id}>{node.id === space.rootId ? space.name : node.name}</b>
+          : <Fragment key={node.id}><button type="button" onClick={() => setWhere(node.id)}>{node.id === space.rootId ? space.name : node.name}</button><span className="sep">/</span></Fragment>)}
       </div>
       <div className="dv-pick-list">
         {problem ? <p className="dv-quiet-text">{problem}</p>

@@ -68,6 +68,10 @@ export type DriveNode = {
   ref: string | null;
   /** Set when it was shared with this person on its own, from a space they aren't in: it stands at their top level. */
   sharedWithYou?: boolean;
+  /** What the person asking may do with it, when known: devices need it for things shared from spaces they aren't in. */
+  role?: Role;
+  /** Who shared it with them, on a shared-with-you item. */
+  sharedBy?: string;
 };
 
 /** A refusal a person can read. Routes turn it into a 4xx with this sentence. */
@@ -301,8 +305,8 @@ export function changesFor(db: DatabaseSync, username: string, since: number, li
   return { cursor, changed, removed, more, spaces: spacesOf(db, who) };
 }
 
-/* Something shared with someone outside its space stands on its own for them: no parent they can't see. */
-function asSeenBy(db: DatabaseSync, node: DriveNode, username: string): DriveNode {
+/** Something shared with someone outside its space stands on its own for them: no parent they can't see. */
+export function asSeenBy<T extends DriveNode>(db: DatabaseSync, node: T, username: string): T {
   if (node.parentId && !roleOn(db, node.parentId, username)) return { ...node, parentId: null, sharedWithYou: true };
   return node;
 }
@@ -362,7 +366,7 @@ const toNode = (row: NodeRow, role: Role | null): DriveNode => ({
   id: row.id, spaceId: row.space_id, parentId: row.parent_id, kind: row.kind, name: row.name, size: row.size,
   mime: row.mime, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
   trashedAt: row.trashed_at, link: seesLinks(role) ? row.link : null, guest: row.guest, version: row.version, contentVersion: row.content_version,
-  purpose: row.purpose ?? null, ref: row.ref ?? null,
+  purpose: row.purpose ?? null, ref: row.ref ?? null, ...(role ? { role } : {}),
 });
 
 function nodeRow(db: DatabaseSync, id: string): (NodeRow & { blob: string | null }) | undefined {
@@ -463,7 +467,7 @@ export function childrenOf(db: DatabaseSync, folderId: string, username: string)
     path.unshift(toNode(row, role));
     at = row.parent_id;
   }
-  return { folder: withoutBlob(folder), path, children };
+  return { folder: asSeenBy(db, withoutBlob(folder), username), path, children };
 }
 
 /** Everything in the person's spaces that is in the trash, newest first. */
@@ -741,7 +745,8 @@ export function shareNode(db: DatabaseSync, id: string, username: string, who: s
     shareRole(role);
     if (isRoot(db, node)) throw new DriveProblem("Add them to the space instead.");
     if (target === self) throw new DriveProblem("You already have it.");
-    if (roleIn(db, node.spaceId, target)) throw new DriveProblem(`${who} is already in ${spaceName(db, node.spaceId)}.`, 409);
+    /* Someone in it only through a share isn't told about the space. */
+    if (roleIn(db, node.spaceId, target)) throw new DriveProblem(roleIn(db, node.spaceId, self) ? `${who} is already in ${spaceName(db, node.spaceId)}.` : `${who} already has it.`, 409);
     db.prepare("INSERT INTO shares (node_id, username, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (node_id, username) DO UPDATE SET role = excluded.role")
       .run(id, target, role, self, now);
   } else {
@@ -778,14 +783,14 @@ export function sharesOn(db: DatabaseSync, id: string, username: string): ShareI
 /** What has been shared with the person from spaces they aren't in: the shared folders and files themselves, newest first. */
 export function sharedWithYou(db: DatabaseSync, username: string): DriveNode[] {
   const who = username.toLowerCase();
-  const rows = db.prepare(`SELECT ${nodeColumns}, sh.role AS share_role FROM shares sh JOIN nodes n ON n.id = sh.node_id
-    WHERE sh.username = ? AND n.space_id NOT IN (SELECT space_id FROM members WHERE username = ?) ORDER BY sh.added_at DESC`).all(who, who) as (NodeRow & { share_role: Role })[];
+  const rows = db.prepare(`SELECT ${nodeColumns}, sh.added_by AS shared_by FROM shares sh JOIN nodes n ON n.id = sh.node_id
+    WHERE sh.username = ? AND n.space_id NOT IN (SELECT space_id FROM members WHERE username = ?) ORDER BY sh.added_at DESC`).all(who, who) as (NodeRow & { shared_by: string })[];
   const ids = new Set(rows.map((r) => r.id));
   return rows
     .filter((row) => !inTrash(db, row.id))
     /* One inside another shared with them comes with that one. */
     .filter((row) => !sharesAbove(db, row.parent_id ?? "", who).some((s) => ids.has(s.nodeId)))
-    .map((row) => ({ ...toNode(row, roleOn(db, row.id, who)), parentId: null, sharedWithYou: true }));
+    .map((row) => ({ ...toNode(row, roleOn(db, row.id, who)), parentId: null, sharedWithYou: true, sharedBy: row.shared_by }));
 }
 
 /** A public link to a notebook: the notebook, and every live folder and file in it. No account is involved. */

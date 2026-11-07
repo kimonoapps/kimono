@@ -19,6 +19,7 @@ export default async function DrivePage({ searchParams }: { searchParams: Promis
   /* Drive's rooms sit under its pin in the rail, as in the mockup. */
   const rooms = [
     { href: "/drive", label: "Spaces", here: !view },
+    { href: "/drive?view=shared", label: "Shared with you", here: view === "shared" },
     { href: "/drive?view=recent", label: "Recent", here: view === "recent" },
     { href: "/drive?view=trash", label: "Trash", here: view === "trash" },
   ];

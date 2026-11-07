@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { childrenOf, db, drive, DriveProblem, moveNode, nodeFor, renameNode, trashNode, withoutBlob } from "@/lib/drive";
+import { asSeenBy, childrenOf, db, drive, DriveProblem, moveNode, nodeFor, renameNode, trashNode, withoutBlob } from "@/lib/drive";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: Context) {
   return drive(() => {
     const node = nodeFor(db(), id, user.username);
     if (node.kind === "folder") return apiJson(childrenOf(db(), id, user.username));
-    return apiJson({ file: withoutBlob(node) });
+    return apiJson({ file: asSeenBy(db(), withoutBlob(node), user.username) });
   });
 }
 

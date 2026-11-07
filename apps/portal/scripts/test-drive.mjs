@@ -320,6 +320,36 @@ test('the change feed tells each device what to add, update and remove', () => {
   assert.equal(next.spaces[0].role, 'editor');
 });
 
+test('something shared from a space you are not in stands on its own on your devices, with what you may do', () => {
+  const db = fresh();
+  const family = drive.createSpace(db, 'akram', { name: 'Family', members: [{ username: 'mina', role: 'editor' }] });
+  const docs = drive.createFolder(db, family.rootId, 'akram', 'Docs');
+  const trip = drive.createFolder(db, docs.id, 'akram', 'Trip');
+  const plan = drive.addFile(db, trip.id, 'akram', file('plan.pdf'));
+  const cursor = drive.changesFor(db, 'ren', 0).cursor;
+  drive.shareNode(db, trip.id, 'mina', 'ren', 'viewer');
+  const feed = drive.changesFor(db, 'ren', cursor);
+  assert.deepEqual(feed.changed.map((n) => [n.id, n.parentId, n.sharedWithYou, n.role]), [[trip.id, null, true, 'viewer']]);
+  assert.deepEqual(drive.sharedWithYou(db, 'ren').map((n) => [n.id, n.role, n.sharedBy]), [[trip.id, 'viewer', 'mina']]);
+  /* Opened on its own, it still has no parent they can't see; what's inside says what they may do. */
+  const opened = drive.childrenOf(db, trip.id, 'ren');
+  assert.deepEqual([opened.folder.parentId, opened.folder.sharedWithYou, opened.children.map((n) => [n.id, n.parentId, n.role])], [null, true, [[plan.id, trip.id, 'viewer']]]);
+  assert.equal(drive.asSeenBy(db, drive.nodeFor(db, plan.id, 'ren'), 'ren').parentId, trip.id);
+  assert.equal(drive.childrenOf(db, family.rootId, 'mina').children[0].role, 'editor', 'members hear their role too');
+  /* Made an editor, then taken off: their devices hear both. */
+  drive.shareNode(db, trip.id, 'akram', 'ren', 'editor');
+  let next = drive.changesFor(db, 'ren', feed.cursor);
+  assert.deepEqual(next.changed.map((n) => [n.id, n.role]), [[trip.id, 'editor']]);
+  assert.throws(() => drive.shareNode(db, plan.id, 'ren', 'mina', 'viewer'), /^Error: mina already has it\.$/, "the space isn't named to them");
+  drive.renameNode(db, plan.id, 'ren', 'plan v2.pdf');
+  next = drive.changesFor(db, 'ren', next.cursor);
+  assert.deepEqual(next.changed.map((n) => [n.name, n.parentId, n.role]), [['plan v2.pdf', trip.id, 'editor']]);
+  drive.shareNode(db, trip.id, 'akram', 'ren', null);
+  next = drive.changesFor(db, 'ren', next.cursor);
+  assert.deepEqual([next.changed, next.removed], [[], [trip.id]]);
+  assert.deepEqual(drive.sharedWithYou(db, 'ren'), []);
+});
+
 test('a folder made into a space leaves old members and arrives for new ones', () => {
   const db = fresh();
   const family = drive.createSpace(db, 'akram', { name: 'Family', members: [{ username: 'mina', role: 'editor' }] });

@@ -42,6 +42,7 @@ async function appRooms(): Promise<Record<string, RailRoom[]>> {
   const rooms: Record<string, RailRoom[]> = {
     "kimono-drive": [
       { href: "/drive", label: "Spaces", icon: "folder" },
+      { href: "/drive?view=shared", label: "Shared with you", icon: "people" },
       { href: "/drive?view=recent", label: "Recent", icon: "clock" },
       { href: "/drive?view=trash", label: "Trash", icon: "trash" },
     ],

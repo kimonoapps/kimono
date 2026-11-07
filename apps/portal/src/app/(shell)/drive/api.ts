@@ -26,6 +26,19 @@ export type DriveNode = {
   purpose?: "notebook" | "chat" | "project" | null;
   /** Which chat or project. */
   ref?: string | null;
+  /** What you may do with it. */
+  role?: Role;
+  /** Shared with you on its own, from a space you aren't in: it stands at the top of Shared with you. */
+  sharedWithYou?: boolean;
+  /** Who shared it with you. */
+  sharedBy?: string;
+};
+export type Share = { username: string; role: "editor" | "viewer"; addedBy: string; addedAt: number };
+export type ShareInfo = {
+  shares: Share[];
+  inherited: (Share & { via: { id: string; name: string } })[];
+  /** Its space, and how many are in it; no name when it was shared with you. */
+  space: { id: string; name: string; members: number };
 };
 export type Folder = { folder: DriveNode; path: DriveNode[]; children: DriveNode[] };
 export type Person = { username: string; name: string; picture: string | null };
@@ -77,6 +90,9 @@ export const drive = {
   recent: () => call<{ items: DriveNode[] }>("/recent").then((r) => r.items),
   search: (q: string) => call<{ items: DriveNode[] }>(`/search?q=${encodeURIComponent(q)}`).then((r) => r.items),
   people: () => call<{ people: Person[] }>("/people").then((r) => r.people),
+  sharedWithYou: () => call<{ items: DriveNode[] }>("/shared-with-you").then((r) => r.items),
+  shares: (id: string) => call<ShareInfo>(`/nodes/${id}/shares`),
+  share: (id: string, username: string, role: "editor" | "viewer" | null) => call<ShareInfo | { left: true }>(`/nodes/${id}/shares`, json("PUT", { username, role })),
   crests: () => call<Crests>("/crests"),
 };
 
