@@ -1325,6 +1325,15 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   }, [chosen]);
 
   useEffect(() => { field.current?.focus(); }, [repos]);
+  /* The field grows with what's written, up to a third of the screen, as the chat's does. */
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const max = window.innerHeight / 3;
+    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+  }, [prompt]);
   const ready = Boolean(prompt.trim()) && (!onProject || Boolean(chosen)) && !sending;
 
   async function send() {
@@ -1388,21 +1397,24 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
           <small>{f.failed ?? readableSize(f.size)}</small>
           <button type="button" aria-label={`Remove ${f.name}`} onClick={() => { forget([f.preview]); setFiles((list) => list.filter((x) => x.id !== f.id)); }}><Icon name="close" /></button>
         </span>)}</div> : null}
-        <textarea ref={field} value={prompt} rows={3} aria-label="Message" disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
-          onChange={(event) => setPrompt(event.target.value)}
-          onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); } }}
-          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-        <div className="cd-hello-row">
+        <div className="cd-entry">
           <input ref={picker} type="file" multiple hidden onChange={(event) => { hold([...(event.target.files ?? [])]); event.target.value = ""; }} />
-          <div className="cd-bar-tools">
-            <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
-            {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Code</button> : null}
-            {folder && !onProject ? <span className="cd-chip is-on cd-in-chip"><Icon name="folder" />{folder.name}<button type="button" aria-label={`Not in ${folder.name}`} title="Not in a project" onClick={() => goTo({ new: "1" })}><Icon name="close" /></button></span> : null}
-            <span className="cd-tuning">{hasDrive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
+          <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
+          <textarea ref={field} value={prompt} rows={1} aria-label="Message" disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
+            onChange={(event) => setPrompt(event.target.value)}
+            onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); } }}
+            onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
+          <div className="cd-entry-end">
+            <SendStop mode="send" busy={sending} disabled={!ready || Boolean(blocked)} onSend={() => void send()} />
           </div>
-          <SendStop mode="send" busy={sending} disabled={!ready || Boolean(blocked)} onSend={() => void send()} />
         </div>
         {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
+      </div>
+      <div className="cd-hello-tools">
+        {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Code</button> : null}
+        {folder && !onProject ? <span className="cd-chip is-on cd-in-chip"><Icon name="folder" />{folder.name}<button type="button" aria-label={`Not in ${folder.name}`} title="Not in a project" onClick={() => goTo({ new: "1" })}><Icon name="close" /></button></span> : null}
+        <span className="cd-grow" />
+        <span className="cd-tuning">{hasDrive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
       </div>
       {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={(items) => { setChoosing(false); setFiles((list) => [...list, ...items.map((item): Held => ({ id: crypto.randomUUID(), name: item.name, size: item.size, node: item.id, preview: null }))].slice(0, 10)); }} /> : null}
       {blocked ? <p className="cd-hello-note">{blocked}</p> : null}
@@ -2773,24 +2785,24 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }}><Icon name="close" /></button>
     </span>)}</div> : null}
     {switching && workspace.lastModel ? <p className="cd-switching" role="status">This chat has been on {modelWords[workspace.lastModel].label}. Switching to {modelWords[switching].label} uses more of your plan.</p> : null}
-    <textarea ref={field} value={text} rows={1} aria-label="Message"
-      placeholder={blocked ? blocked : running ? "Steer it: this is read as soon as the current step ends" : "Ask for a change, or reply"}
-      disabled={Boolean(blocked)}
-      onChange={(event) => setText(event.target.value)}
-      onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}
-      onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
-    <div className="cd-composer-bar">
+    {problem ? <p className="cd-problem cd-entry-problem" role="alert">{problem}</p> : null}
+    {/* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */}
+    <div className="cd-entry">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
-      <div className="cd-bar-tools">
-        <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
-        {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
-        <span className="cd-grow" />
+      <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
+      <textarea ref={field} value={text} rows={1} aria-label="Message"
+        placeholder={blocked ? blocked : running ? "Steer it: this is read as soon as the current step ends" : "Ask for a change, or reply"}
+        disabled={Boolean(blocked)}
+        onChange={(event) => setText(event.target.value)}
+        onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
+      <div className="cd-entry-end">
         {/* files, model and thinking, and all usage, in the … menu; the rings only past half */}
         <Meters workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} />
         <ComposerMore workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} files={Boolean(workspace.drive && owns)} />
+        <SendStop mode={running && !canSend && !text.trim() && !pending.length ? "stop" : "send"} disabled={running && !text.trim() && !pending.length ? false : !canSend}
+          onSend={() => void send()} onStop={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))} />
       </div>
-      <SendStop mode={running && !canSend && !text.trim() && !pending.length ? "stop" : "send"} disabled={running && !text.trim() && !pending.length ? false : !canSend}
-        onSend={() => void send()} onStop={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))} />
     </div>
     {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
     {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={async (items) => {

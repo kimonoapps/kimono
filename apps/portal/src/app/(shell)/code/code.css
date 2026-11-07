@@ -1619,3 +1619,18 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 @keyframes cd-seal-ready { from { transform: scale(.88); } to { transform: none; } }
 .cd .cd-composer.is-dropping, .cd .cd-hello-box.is-dropping { box-shadow: inset 0 0 0 2px var(--k-app-accent), 0 16px 36px -16px color-mix(in srgb, var(--k-app-accent) 45%, transparent); }
 @media (prefers-reduced-motion: reduce) { .cd .cd-composer::after, .cd .cd-hello-box::after { transition: none; } .cd .cd-sendstop:not(:disabled) { animation: none; } }
+
+/* ── the entry line ──
+   Attach, the words, and Send in one row, as chat apps have it. The words grow
+   upward; the buttons keep to their last line. */
+.cd .cd-composer, .cd .cd-hello-box { padding: 8px 8px 8px 8px; gap: 6px; }
+.cd-entry { display: flex; align-items: flex-end; gap: 6px; }
+.cd .cd-entry textarea { flex: 1; min-width: 0; min-height: 0; height: 40px; max-height: 33vh; padding: 9px 4px; margin: 0; border: 0; outline: 0; resize: none; background: transparent; font: 400 15.5px/22px var(--k-sans); color: var(--k-ink); }
+.cd .cd-hello-box .cd-entry textarea { font-size: 16.5px; }
+.cd-entry > .cd-attach, .cd-entry > div:first-of-type { flex: none; }
+.cd-entry-end { flex: none; display: flex; align-items: center; gap: 2px; min-height: 40px; }
+.cd .cd-entry .cd-sendstop { margin-left: 4px; }
+.cd-entry-problem { margin: 0 8px; }
+.cd .cd-composer .cd-pending, .cd .cd-hello-box .cd-pending { padding: 4px 4px 0; }
+/* the new chat's choices, under its box */
+.cd-hello-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin-top: 10px; padding: 0 6px; }
