@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -230,7 +236,7 @@ internal fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = 
 /** My apps, risen from the flower in the middle of the bar: pick one to go there. */
 @Composable
 fun AppsSheet(drive: Drive, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, home: () -> Unit, open: (LauncherApp) -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), wash = false, containerColor = MaterialTheme.colorScheme.surface) {
         Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, here, header = { KimonoTopBar("My apps") }, home = home, open = open) }
     }
 }

@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -184,20 +190,23 @@ private fun DeviceRow(device: VpnDevice, index: Int, count: Int, act: (VpnDevice
         trailingContent = {
             Box {
                 IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "Stop using ${device.name}") }
-                DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(text = { Text("Sign out") }, onClick = { menu = false; asking = "disconnect" })
-                    DropdownMenuItem(text = { Text("Remove", color = MaterialTheme.colorScheme.error) }, onClick = { menu = false; asking = "remove" })
+                InkMenu(menu, { menu = false }) {
+                    InkMenuItem("Sign out", onClick = { menu = false; asking = "disconnect" })
+                    InkMenuItem("Remove", danger = true, onClick = { menu = false; asking = "remove" })
                 }
             }
         },
     ) { Text(device.name, style = MaterialTheme.typography.bodyLarge) }
     asking?.let { intent ->
-        AlertDialog(
-            onDismissRequest = { asking = null },
-            title = { Text(if (intent == "remove") "Remove ${device.name}?" else "Sign out ${device.name}?") },
-            text = { Text(if (intent == "remove") "It's forgotten entirely. Joining again makes it a new device." else "It keeps its address and its place here, and comes back when someone signs in on it again.") },
-            confirmButton = { TextButton(onClick = { asking = null; act(device, intent) }) { Text(if (intent == "remove") "Remove" else "Sign out", color = if (intent == "remove") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) } },
-            dismissButton = { TextButton(onClick = { asking = null }) { Text("Keep it") } },
+        InkConfirm(
+            title = if (intent == "remove") "Remove ${device.name}?" else "Sign out ${device.name}?",
+            text = if (intent == "remove") "It's forgotten entirely. Joining again makes it a new device." else "It keeps its address and its place here, and comes back when someone signs in on it again.",
+            action = if (intent == "remove") "Remove" else "Sign out",
+            icon = if (intent == "remove") "trash" else "door",
+            danger = intent == "remove",
+            keep = "Keep it",
+            onConfirm = { asking = null; act(device, intent) },
+            onDismiss = { asking = null },
         )
     }
 }
@@ -227,8 +236,8 @@ private fun PeopleRoom(view: VpnView, set: (VpnPerson, Boolean) -> Unit) {
         var open by remember { mutableStateOf(false) }
         Box(Modifier.padding(start = 24.dp, top = 14.dp)) {
             Seal("Invite someone", onClick = { open = true }, tone = SealTone.Quiet, compact = true)
-            DropdownMenu(open, { open = false }) {
-                view.invitable.forEach { person -> DropdownMenuItem(text = { Text("${person.name} · @${person.username}") }, onClick = { open = false; set(person, true) }) }
+            InkMenu(open, { open = false }) {
+                view.invitable.forEach { person -> InkMenuItem("${person.name} · @${person.username}", onClick = { open = false; set(person, true) }) }
             }
         }
     }

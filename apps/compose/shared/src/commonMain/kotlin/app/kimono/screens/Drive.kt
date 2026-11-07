@@ -102,6 +102,7 @@ import kotlinx.io.readByteArray
 import app.kimono.ui.KimonoTopBar
 import app.kimono.ui.Problem
 import app.kimono.ui.Seal
+import app.kimono.ui.SealTone
 import app.kimono.ui.SwipeRow
 import app.kimono.ui.kimonoIcon
 import app.kimono.ui.InkBloom
@@ -708,16 +709,12 @@ internal fun NameDialog(title: String, action: String, initial: String, onDismis
     var name by remember { mutableStateOf(initial) }
     var problem by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-                Problem(problem)
-            }
-        },
-        confirmButton = {
+    InkDialog(
+        title = title,
+        icon = if (title.startsWith("New")) "plus" else "edit",
+        onDismiss = onDismiss,
+        actions = {
+            Seal("Cancel", compact = true, tone = SealTone.Quiet, onClick = onDismiss)
             Seal(action, compact = true, busy = busy, enabled = name.isNotBlank(), onClick = {
                 scope.launch {
                     busy = true
@@ -726,9 +723,12 @@ internal fun NameDialog(title: String, action: String, initial: String, onDismis
                 }
             })
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-    )
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+            Problem(problem)
+        }
+    }
 }
 
 /** Recently deleted: kept for 30 days, then gone for good. */
@@ -850,7 +850,7 @@ fun SharedWithYouScreen(model: DriveModel, platform: Platform, me: String?, open
     leaving?.let { node ->
         InkSheet(onDismissRequest = { leaving = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Leave ${node.name}?", style = MaterialTheme.typography.titleLarge)
+                InkTitle("Leave ${node.name}?", icon = "door")
                 Text("You'll need to be asked back.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 /* Only someone who can edit it can bring you back, so it's held to confirm. */
                 app.kimono.ui.HoldSeal("Leave", onConfirm = {

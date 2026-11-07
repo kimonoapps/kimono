@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -131,7 +137,7 @@ private fun CanChip(label: String, content: @Composable (close: () -> Unit) -> U
                 Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(14.dp))
             }
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = MaterialTheme.shapes.large) { content { open = false } }
+        InkMenu(expanded = open, onDismissRequest = { open = false }) { content { open = false } }
     }
 }
 
@@ -146,9 +152,9 @@ private fun LinkMark(open: Boolean) {
 @Composable
 private fun ShareSheet(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Share “$title”", style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            InkTitle("Share “$title”", icon = "share")
             content()
         }
     }
@@ -181,10 +187,10 @@ internal fun ChatShareSheet(code: Code, platform: Platform, w: CodeWorkspace, on
                     PersonRow(people[invite.username.lowercase()], invite.username, "@${invite.username}") {
                         CanChip(canWords[invite.access] ?: "Can view") { close ->
                             canWords.forEach { (access, word) ->
-                                DropdownMenuItem(text = { Text(word) }, trailingIcon = { if (access == invite.access) Icon(kimonoIcon("check"), null, modifier = Modifier.size(16.dp)) }, onClick = { close(); if (access != invite.access) change { code.shareChat(w.id, invite.username, access) } })
+                                InkMenuItem(word, chosen = access == invite.access, onClick = { close(); if (access != invite.access) change { code.shareChat(w.id, invite.username, access) } })
                             }
                             HorizontalDivider()
-                            DropdownMenuItem(text = { Text("Remove", color = MaterialTheme.colorScheme.error) }, onClick = { close(); change { code.shareChat(w.id, invite.username, null) } })
+                            InkMenuItem("Remove", danger = true, onClick = { close(); change { code.shareChat(w.id, invite.username, null) } })
                         }
                     }
                 }

@@ -259,12 +259,9 @@ fun HoldMenu(choices: List<MenuChoice>, onClick: () -> Unit = {}, modifier: Modi
         open = true
     })) {
         content()
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = MaterialTheme.shapes.large) {
+        InkMenu(expanded = open, onDismissRequest = { open = false }) {
             choices.forEach { choice ->
-                DropdownMenuItem(
-                    text = { Text(choice.label, style = MaterialTheme.typography.bodyLarge, color = if (choice.danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) },
-                    onClick = { open = false; choice.onClick() },
-                )
+                InkMenuItem(choice.label, danger = choice.danger, onClick = { open = false; choice.onClick() })
             }
         }
     }

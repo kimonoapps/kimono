@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
@@ -196,14 +202,14 @@ fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Uni
                             supportingContent = { Text(roleLabel(member.role) + if (isMe) " · you" else "") },
                             trailingContent = if (owner && !isMe) ({ Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) }) else null,
                         ) { Text(person?.name ?: member.username, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+                        InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             roleOrder.filter { it != member.role }.forEach { role ->
-                                DropdownMenuItem(text = { Text(roleLabel(role)) }, onClick = {
+                                InkMenuItem(roleLabel(role), onClick = {
                                     menu = false
                                     change("${person?.name ?: member.username} ${if (role == "owner") "is now an owner" else roleLabel(role).lowercase()}.") { model.drive.setMember(spaceId, member.username, role) }
                                 })
                             }
-                            DropdownMenuItem(text = { Text("Take out of this space", color = MaterialTheme.colorScheme.error) }, onClick = {
+                            InkMenuItem("Take out of this space", danger = true, onClick = {
                                 menu = false
                                 change("${person?.name ?: member.username} is out of this space.") { model.drive.setMember(spaceId, member.username, null) }
                             })
@@ -284,9 +290,9 @@ private fun PeopleSheet(model: DriveModel, already: Set<String>, me: String?, on
     var role by remember { mutableStateOf("viewer") }
     val added = remember { mutableStateListOf<String>() }
     LaunchedEffect(Unit) { try { everyone = model.people() } catch (p: KimonoProblem) { problem = p.message } }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.padding(horizontal = 20.dp).heightIn(min = 320.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Add people", style = MaterialTheme.typography.titleLarge)
+            InkTitle("Add people", icon = "people")
             RolePicker(role, includeOwner = false) { role = it }
             OutlinedTextField(search, { search = it }, singleLine = true, label = { Text("Name or username") }, modifier = Modifier.fillMaxWidth())
             Problem(problem)
@@ -339,9 +345,9 @@ fun NewSpaceSheet(model: DriveModel, me: String?, onDismiss: () -> Unit, onMade:
     var everyone by remember { mutableStateOf<Map<String, Person>>(emptyMap()) }
     val members = remember { mutableStateListOf<SpaceMember>() }
     LaunchedEffect(Unit) { everyone = runCatching { model.people() }.getOrDefault(emptyList()).associateBy { it.username } }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         LazyColumn(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 32.dp)) {
-            item { Text("New space", style = MaterialTheme.typography.titleLarge) }
+            item { InkTitle("New space", icon = "plus") }
             item { OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth()) }
             item { Text("Crest", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
             item { CrestPicker(model, crest, colour) { pickedCrest, pickedColour -> crest = pickedCrest; colour = pickedColour } }

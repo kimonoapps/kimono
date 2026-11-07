@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -291,12 +297,8 @@ private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int
 
 @Composable
 private fun PinMenu(open: Boolean, pinned: Boolean, name: String, close: () -> Unit, pin: () -> Unit) {
-    androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = close, shape = MaterialTheme.shapes.large) {
-        androidx.compose.material3.DropdownMenuItem(
-            text = { Text(if (pinned) "Unpin $name" else "Pin to Your apps") },
-            leadingIcon = { Icon(kimonoIcon("pin"), null, modifier = Modifier.size(18.dp)) },
-            onClick = { close(); pin() },
-        )
+    InkMenu(expanded = open, onDismissRequest = close) {
+        InkMenuItem(if (pinned) "Unpin $name" else "Pin to Your apps", icon = "pin", onClick = { close(); pin() })
     }
 }
 

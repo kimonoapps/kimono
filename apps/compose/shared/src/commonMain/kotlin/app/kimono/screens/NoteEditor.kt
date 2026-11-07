@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ScrollState
@@ -211,15 +217,15 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: Str
                 SaveWord(model, draft)
                 if (meta != null) Box {
                     HeadButton("more", "More") { menu = true }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                        DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = true })
-                        if (canWrite && !alone) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; moving = true })
-                        DropdownMenuItem(text = { Text("Send") }, leadingIcon = { Icon(kimonoIcon("out"), null, modifier = Modifier.size(18.dp)) }, onClick = {
+                    InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        InkMenuItem("Share", icon = "share", onClick = { menu = false; sharing = true })
+                        if (canWrite && !alone) InkMenuItem("Move", icon = "move", onClick = { menu = false; moving = true })
+                        InkMenuItem("Send", icon = "out", onClick = {
                             menu = false
                             platform.share(listOf(draft.title.text.toString().trim(), draft.body.text.toString()).filter { it.isNotBlank() }.joinToString("\n\n"))
                         })
-                        if (alone) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leaving = true })
-                        if (canWrite && !alone) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
+                        if (alone) InkMenuItem("Leave", icon = "door", danger = true, onClick = { menu = false; leaving = true })
+                        if (canWrite && !alone) InkMenuItem("Delete", icon = "trash", danger = true, onClick = {
                             menu = false
                             draft.discard()
                             model.delete(meta)

@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -256,13 +262,13 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
                             if (notebook.canWrite) IconButton(onClick = { model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) }, modifier = Modifier.size(26.dp)) { Icon(kimonoIcon("plus"), "New note in ${notebook.name}", modifier = Modifier.size(16.dp)) }
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(26.dp)) { Icon(kimonoIcon("more"), "More for ${notebook.name}", modifier = Modifier.size(16.dp)) }
                         }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                            if (notebook.canWrite) DropdownMenuItem(text = { Text("New note") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) })
-                            if (notebook.canWrite) DropdownMenuItem(text = { Text("New section") }, leadingIcon = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; naming = notebook.id to null })
-                            if (notebook.canWrite) DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; renaming = notebook })
-                            DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = notebook })
-                            if (notebook.sharedWithYou) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leaving = notebook })
-                            if (notebook.canWrite && !notebook.sharedWithYou) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
+                        InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (notebook.canWrite) InkMenuItem("New note", icon = "edit", onClick = { menu = false; model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) })
+                            if (notebook.canWrite) InkMenuItem("New section", icon = "plus", onClick = { menu = false; naming = notebook.id to null })
+                            if (notebook.canWrite) InkMenuItem("Rename", icon = "edit", onClick = { menu = false; renaming = notebook })
+                            InkMenuItem("Share", icon = "share", onClick = { menu = false; sharing = notebook })
+                            if (notebook.sharedWithYou) InkMenuItem("Leave", icon = "door", danger = true, onClick = { menu = false; leaving = notebook })
+                            if (notebook.canWrite && !notebook.sharedWithYou) InkMenuItem("Delete", icon = "trash", danger = true, onClick = {
                                 menu = false
                                 if (model.notesIn(NotePlace.InNotebook(notebook.id)).isEmpty()) scope.launch { try { model.notes.deleteNotebook(notebook.id); model.load() } catch (_: KimonoProblem) { problem = DIDNT_WORK } }
                                 else confirming = notebook.id
@@ -383,11 +389,11 @@ private fun SectionRow(
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(26.dp)) { Icon(kimonoIcon("more"), "More for ${section.name}", modifier = Modifier.size(16.dp)) }
             }
         }
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-            DropdownMenuItem(text = { Text("New note") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; newNote() })
-            DropdownMenuItem(text = { Text("New section") }, leadingIcon = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; newSection() })
-            DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; rename() })
-            DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; delete() })
+        InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            InkMenuItem("New note", icon = "edit", onClick = { menu = false; newNote() })
+            InkMenuItem("New section", icon = "plus", onClick = { menu = false; newSection() })
+            InkMenuItem("Rename", icon = "edit", onClick = { menu = false; rename() })
+            InkMenuItem("Delete", icon = "trash", danger = true, onClick = { menu = false; delete() })
         }
     }
 }
@@ -590,11 +596,11 @@ private fun NoteRow(
         if (draft?.state == SaveState.Saving) Box(Modifier.padding(top = 3.dp)) { InkLoader(size = 14.dp) }
         else Text(noteWhen(note.updatedAt.toLong(), now, model.notes.localOffset(now)), fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 3.dp))
         Box {
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; share() })
-                if (alone) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leave() })
-                if (canWrite && !alone) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; move() })
-                if (canWrite && !alone) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; delete() })
+            InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                InkMenuItem("Share", icon = "share", onClick = { menu = false; share() })
+                if (alone) InkMenuItem("Leave", icon = "door", danger = true, onClick = { menu = false; leave() })
+                if (canWrite && !alone) InkMenuItem("Move", icon = "move", onClick = { menu = false; move() })
+                if (canWrite && !alone) InkMenuItem("Delete", icon = "trash", danger = true, onClick = { menu = false; delete() })
             }
         }
     }
@@ -612,9 +618,9 @@ internal fun MoveSheet(model: NotesModel, note: NoteMeta, onDismiss: () -> Unit,
     /* Any notebook in the same space, and its sections. */
     val books = model.library?.notebooks.orEmpty().filter { it.space.id == notebook.space.id }
     val places = books.flatMap { book -> listOf(book.id to (book.name to 0)) + walk(book.id, 1).map { (s, d) -> s.id to (s.name to d) } }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.padding(horizontal = 12.dp).padding(bottom = 24.dp)) {
-            Text("Move ${note.title}", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 12.dp, bottom = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            InkTitle("Move ${note.title}", icon = "move", modifier = Modifier.padding(start = 12.dp, bottom = 12.dp), maxLines = 1)
             LazyColumn(Modifier.heightIn(max = 460.dp)) {
                 items(places, key = { it.first }) { (id, label) ->
                     val (name, depth) = label
@@ -659,9 +665,9 @@ internal fun NewNotebookSheet(model: NotesModel, onDismiss: () -> Unit, made: (S
     /* Your own space first: the one only you are in. */
     val writable = spaces.orEmpty().filter { it.role == "owner" || it.role == "editor" }.sortedWith(compareBy({ it.members > 1 }, { it.name }))
     val chosen = space ?: writable.firstOrNull()?.id
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("New notebook", style = MaterialTheme.typography.titleLarge)
+            InkTitle("New notebook", icon = "notes")
             androidx.compose.material3.OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             if (writable.size > 1) LazyColumn(Modifier.heightIn(max = 280.dp)) {
                 items(writable, key = { it.id }) { each ->
@@ -687,11 +693,11 @@ internal fun NewNotebookSheet(model: NotesModel, onDismiss: () -> Unit, made: (S
 internal fun LeaveSheet(model: NotesModel, name: String, id: String, notebook: Boolean, me: String?, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var problem by remember { mutableStateOf<String?>(null) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (notebook) NotebookMark(id, 40.dp)
-                Text("Leave $name?", style = MaterialTheme.typography.titleLarge)
+                InkTitle("Leave $name?", icon = if (notebook) null else "door")
             }
             Text("You'll need to be asked back.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Problem(problem)

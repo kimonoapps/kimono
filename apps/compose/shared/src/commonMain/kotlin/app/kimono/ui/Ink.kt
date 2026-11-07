@@ -176,7 +176,7 @@ fun inkBrush(
     val f1 = random.between(.05f, .09f) * wave; val f2 = random.between(.13f, .21f) * wave; val f3 = random.between(.03f, .06f) * wave
     val p1 = random.between(0f, 6.28f); val p2 = random.between(0f, 6.28f); val p3 = random.between(0f, 6.28f)
     /* A quick tremor off the line, as the website's turbulence filter gives its icons. */
-    val f4 = if (shake > 0f) random.between(1.1f, 1.6f) else 0f; val p4 = if (shake > 0f) random.between(0f, 6.28f) else 0f
+    val f4 = if (shake > 0f) random.between(.5f, .8f) else 0f; val p4 = if (shake > 0f) random.between(0f, 6.28f) else 0f
     fun pressure(d: Float) = 1f + swell * (.65f * sin(d * f1 + p1) + .35f * sin(d * f2 + p2))
     fun drift(d: Float) = width * wander * sin(d * f3 + p3) + (if (shake > 0f) shake * (.6f * sin(d * f4 + p4) + .4f * sin(d * f4 * 2.3f + p4 * 1.7f)) else 0f)
 

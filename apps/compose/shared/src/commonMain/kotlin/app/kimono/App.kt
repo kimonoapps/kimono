@@ -2,6 +2,12 @@
 
 package app.kimono
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -359,7 +365,7 @@ private fun ShareSheet(session: Session, me: AccountProfile?, item: SharedItem, 
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val image = item.mimeType.startsWith("image/")
-    ModalBottomSheet(onDismissRequest = done, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large, dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle(color = MaterialTheme.colorScheme.outline) }) {
+    InkSheet(onDismissRequest = done, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(kimonoIcon(if (image) "image" else "folder"), null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))

@@ -33,9 +33,9 @@ fun inkIcon(name: String): ImageVector = inkedCache.getOrPut(name) {
             val at = PathMeasure().apply { setPath(contour, false) }.getPosition(0f)
             inkBlot(random, at.x, at.y, 1.25f, lobes = 6, low = .9f, high = 1.08f)
         } else inkBrush(
-            contour, random, width = random.between(1.8f, 2.05f), closed = closed,
-            lift = 15f..26f, gap = .7f..1.2f, swell = .26f, wander = .14f,
-            step = .22f, tip = .5f, wave = 4f, shake = .26f,
+            contour, random, width = random.between(1.75f, 1.95f), closed = closed,
+            lift = 20f..34f, gap = .6f..1f, swell = .2f, wander = .1f,
+            step = .25f, tip = .6f, wave = 3f, shake = .09f,
         )
         nodes += pathNodes(mark)
     }

@@ -112,14 +112,5 @@ internal val iconPaths = mapOf(
     "list" to "M9 6.5h11 M9 12h11 M9 17.5h11 M4.5 6.5h.5 M4.5 12h.5 M4.5 17.5h.5",
 )
 
-private val iconCache = mutableMapOf<String, ImageVector>()
-
-fun kimonoIcon(name: String): ImageVector = iconCache.getOrPut(name) {
-    ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).addPath(
-        addPathNodes(iconPaths.getValue(name)),
-        stroke = SolidColor(Color.Black),
-        strokeLineWidth = 1.7f,
-        strokeLineCap = StrokeCap.Round,
-        strokeLineJoin = StrokeJoin.Round,
-    ).build()
-}
+/** One of Kimono's line icons, brushed in ink as on the website (see InkIcon.kt). */
+fun kimonoIcon(name: String): ImageVector = inkIcon(name)

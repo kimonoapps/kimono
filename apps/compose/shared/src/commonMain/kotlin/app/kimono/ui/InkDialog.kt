@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import kotlin.math.min
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -57,33 +59,14 @@ fun InkDialog(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        val sheet = MaterialTheme.colorScheme.surfaceContainerLow
-        val bleed = remember(title) { InkRandom(inkSeed("dialog:$title")).let { inkBlot(it, 4f, 2f, 30f, lobes = 11, low = .82f, high = 1.08f) } }
         Surface(
             shape = RoundedCornerShape(28.dp),
-            color = sheet,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
             shadowElevation = 12.dp,
             modifier = Modifier.padding(horizontal = 24.dp).widthIn(max = 420.dp).fillMaxWidth(),
         ) {
-            Column(
-                Modifier.drawBehind {
-                    /* The wash, in the 100 box laid over the sheet's top-left: colour pooling at its rim, the paper at its heart. */
-                    val s = size.width / 100f * .9f
-                    scale(s, s, pivot = Offset.Zero) {
-                        drawWash(
-                            bleed,
-                            inkWash(mix(tint, sheet, .93f), mix(tint, sheet, .87f), mix(tint, sheet, .8f), Offset(0f, -2f), 34f, paper = mix(tint, sheet, .97f)),
-                            tint, alpha = .8f, pool = .25f,
-                        )
-                    }
-                }.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 20.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    if (icon != null) InkBlot("dialog:$title", tint = tint, size = 44.dp) {
-                        Icon(inkIcon(icon), null, tint = Kata.plum, modifier = Modifier.size(22.dp))
-                    }
-                    Text(title, style = MaterialTheme.typography.headlineSmall, color = plumInk)
-                }
+            Column(Modifier.inkBleed("dialog:$title", tint).padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 20.dp)) {
+                InkTitle(title, icon, tint)
                 Column(Modifier.padding(top = 20.dp)) { content() }
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically, content = actions)
             }
@@ -91,6 +74,63 @@ fun InkDialog(
     }
 }
 
+/** A dialog's or a sheet's head: its mark in its own puddle, and its name in Mincho. */
+@Composable
+fun InkTitle(title: String, icon: String? = null, tint: Color = Kata.suo, modifier: Modifier = Modifier, maxLines: Int = 2) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (icon != null) InkBlot("head:$title", tint = tint, size = 44.dp) {
+            Icon(inkIcon(icon), null, tint = Kata.plum, modifier = Modifier.size(22.dp))
+        }
+        Text(title, style = MaterialTheme.typography.headlineSmall, color = plumInk, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * A wash of [tint] bled into the top-left corner of a sheet of [ground]:
+ * colour pooling at its rim, the paper at its heart.
+ */
+@Composable
+fun Modifier.inkBleed(seed: String, tint: Color = Kata.suo, ground: Color = MaterialTheme.colorScheme.surfaceContainerLow): Modifier {
+    val bleed = remember(seed) { InkRandom(inkSeed("bleed:$seed")).let { inkBlot(it, 4f, 2f, 30f, lobes = 11, low = .82f, high = 1.08f) } }
+    return drawBehind {
+        val s = min(size.width, 360.dp.toPx()) / 100f * .9f
+        scale(s, s, pivot = Offset.Zero) {
+            drawWash(
+                bleed,
+                inkWash(mix(tint, ground, .93f), mix(tint, ground, .87f), mix(tint, ground, .8f), Offset(0f, -2f), 34f, paper = mix(tint, ground, .97f)),
+                tint, alpha = .8f, pool = .25f,
+            )
+        }
+    }
+}
+
+/**
+ * Asks before something is done: its title, a line on what follows, a quiet
+ * seal to keep things as they are and a seal to go ahead ([danger] when it
+ * can't be undone).
+ */
+@Composable
+fun InkConfirm(
+    title: String,
+    text: String?,
+    action: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    icon: String? = null,
+    danger: Boolean = false,
+    keep: String = "Keep",
+) {
+    InkDialog(
+        title = title, onDismiss = onDismiss, icon = icon,
+        tint = if (danger) MaterialTheme.colorScheme.error else Kata.suo,
+        actions = {
+            Seal(keep, compact = true, tone = SealTone.Quiet, onClick = onDismiss)
+            Seal(action, compact = true, tone = if (danger) SealTone.Danger else SealTone.Primary, onClick = onConfirm)
+        },
+    ) {
+        if (text != null) Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 /** How a page looks in one appearance: its paper, its ink, and its seal. */
 class InkLook(val paper: Color, val ink: Color, val seal: Color)
