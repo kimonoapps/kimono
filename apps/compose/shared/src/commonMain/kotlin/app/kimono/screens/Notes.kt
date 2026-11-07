@@ -135,6 +135,17 @@ internal fun noteWhen(at: Long, now: Long, offset: Long): String {
 @Composable
 internal fun NotesMark(accent: String, size: androidx.compose.ui.unit.Dp = 30.dp) = InkBloom(Notes.APP_ID, accent, "notes", size)
 
+/**
+ * A notebook's mark: the notes glyph in a watercolour blot washed in Notes' colour, seeded by the
+ * notebook so each one's puddle is its own, as Drive shows it. A space keeps its crest; a notebook isn't one.
+ */
+@Composable
+internal fun NotebookMark(id: String, size: androidx.compose.ui.unit.Dp) {
+    InkBlot("notebook-$id", size = size, tint = app.kimono.ui.inkHex("#b56d78")) {
+        Icon(kimonoIcon("notes"), null, modifier = Modifier.size(size * .5f), tint = app.kimono.theme.Kata.ink)
+    }
+}
+
 /** A rule brushed across in ink: thicker in the middle, lifting off at both ends. */
 @Composable
 internal fun InkRule(modifier: Modifier = Modifier, seed: String = "rule") {
@@ -225,7 +236,7 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, clo
                         NotesRow(
                             selected = place == NotePlace.InNotebook(notebook.id), onClick = { go(NotePlace.InNotebook(notebook.id)) },
                             onLongClick = { menu = true },
-                            lead = { InkCrest(notebook.space.crest, notebook.space.color, 26.dp) },
+                            lead = { NotebookMark(notebook.id, 30.dp) },
                         ) {
                             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 Text(notebook.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -491,7 +502,7 @@ private fun NewNoteSeal(busy: Boolean, onClick: () -> Unit) {
 private fun NotebookHead(model: NotesModel, notebook: Notebook, me: String?, leave: () -> Unit) {
     if (notebook.shared) LaunchedEffect(notebook.id) { model.loadMembers(notebook.id); if (model.people.isEmpty()) model.loadPeople() }
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        InkCrest(notebook.space.crest, notebook.space.color, 64.dp)
+        NotebookMark(notebook.id, 64.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(notebook.name, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (notebook.shared) MemberFaces(model, notebook, me)
@@ -521,7 +532,7 @@ private fun NoteRow(
             Text(note.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (note.excerpt.isNotBlank()) Text(note.excerpt, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (crest != null) InkCrest(crest.space.crest, crest.space.color, 18.dp)
+        if (crest != null) NotebookMark(crest.id, 22.dp)
         if (draft?.state == SaveState.Saving) InkLoader(size = 14.dp)
         else Text(noteWhen(note.updatedAt.toLong(), now, model.notes.localOffset(now)), fontFamily = mono, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box {
@@ -554,7 +565,7 @@ internal fun MoveSheet(model: NotesModel, note: NoteMeta, onDismiss: () -> Unit,
                     val (name, depth) = label
                     NotesRow(
                         selected = id == note.parentId, indent = 16.dp + 24.dp * depth,
-                        lead = if (depth == 0) ({ InkCrest(notebook.space.crest, notebook.space.color, 24.dp) }) else null,
+                        lead = if (depth == 0) ({ NotebookMark(notebook.id, 28.dp) }) else null,
                         onClick = {
                             onDismiss()
                             if (id != note.parentId) scope.launch {
@@ -673,7 +684,7 @@ internal fun LeaveSheet(model: NotesModel, notebook: Notebook, me: String?, onDi
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                InkCrest(notebook.space.crest, notebook.space.color, 40.dp)
+                NotebookMark(notebook.id, 40.dp)
                 Text("Leave ${notebook.name}?", style = MaterialTheme.typography.titleLarge)
             }
             Text("You'll need to be asked back.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
