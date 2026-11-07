@@ -59,6 +59,15 @@ export function typeOf(name: string): string {
 const showsInline = (type: string) => [...inline.values()].includes(type);
 
 /**
+ * A file's bytes as a web stream, read a megabyte at a time. Node's default is
+ * 64 KB, and every piece costs a trip through the web stream and the response
+ * writer: served through Next that was about three times slower.
+ */
+export function fileStream(path: string, start?: number, end?: number): ReadableStream<Uint8Array> {
+  return Readable.toWeb(createReadStream(path, { start, end, highWaterMark: 1024 * 1024 })) as ReadableStream<Uint8Array>;
+}
+
+/**
  * Sends a file with HTTP ranges, so video seeks and resumes instead of
  * downloading whole. One range per request, which is all players ask for.
  */
@@ -94,6 +103,5 @@ export async function sendFile(request: Request, path: string, file: { name: str
   }
   headers.set("Content-Length", String(size === 0 ? 0 : end - start + 1));
   if (request.method === "HEAD" || size === 0) return new Response(null, { status, headers });
-  const stream = Readable.toWeb(createReadStream(path, { start, end })) as ReadableStream<Uint8Array>;
-  return new Response(stream, { status, headers });
+  return new Response(fileStream(path, start, end), { status, headers });
 }

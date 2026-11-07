@@ -224,10 +224,43 @@ export async function ensure(config: CodeConfig, workspace: Workspace, person: {
   const answer = await sandbox.ensure(config, workspace, person, tools, gitLogin);
   /* A new, empty sandbox: what was synced into the old one must go back in, not be taken as deleted. */
   if (answer.fresh) sandboxStartedOver(db(), workspace.id);
+  awake.at.set(workspace.id, Date.now());
   for (const id of answer.slept ?? []) {
+    awake.at.delete(id);
     try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }
   }
   return answer;
+}
+
+/* When each sandbox was last made ready, and the readying under way: kept across dev reloads. */
+const awake = ((globalThis as { __kimonoAwake?: { at: Map<string, number>; going: Map<string, Promise<unknown>> } }).__kimonoAwake ??= { at: new Map(), going: new Map() });
+const awakeFor = 60_000;
+
+/**
+ * Reading from a sandbox (a file, a folder, the changes): [ensure] costs several
+ * calls (Git, tools, the allowance, the node) before the first byte, so one
+ * made ready in the last minute is read straight away. If that read fails, it
+ * is made ready once more and read again. Reads at the same moment share one readying.
+ */
+export async function readFromSandbox<T>(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }, work: () => Promise<T>): Promise<T> {
+  const ready = () => {
+    let going = awake.going.get(workspace.id);
+    if (!going) {
+      going = ensure(config, workspace, person).finally(() => awake.going.delete(workspace.id));
+      awake.going.set(workspace.id, going);
+    }
+    return going;
+  };
+  if (Date.now() - (awake.at.get(workspace.id) ?? 0) > awakeFor) { await ready(); return work(); }
+  try {
+    return await work();
+  } catch (error) {
+    /* Not there, or not allowed: the sandbox answered, so waking it wouldn't change that. */
+    if (error instanceof CodeProblem && error.status < 500 && error.status !== 409) throw error;
+    awake.at.delete(workspace.id);
+    await ready();
+    return work();
+  }
 }
 
 const who = (user: ApiUser) => ({ name: user.name || user.username, email: user.email || `${user.username}@users.kimono` });

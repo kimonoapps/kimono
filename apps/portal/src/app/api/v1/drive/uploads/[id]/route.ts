@@ -14,7 +14,7 @@ type Context = { params: Promise<{ id: string }> };
  * partial file is checked against the record before writing, so a crash or
  * power cut at any point loses only the last few megabytes, never the upload.
  */
-const checkpointBytes = 8 * 1024 * 1024;
+const checkpointBytes = 32 * 1024 * 1024;
 
 /* One writer per upload. A newer request takes over from an older one, whose connection is gone as far as the client knows.
    Each one takes its place before waiting, so of several arriving together only the newest writes; the rest stand down. */
@@ -91,19 +91,30 @@ export async function PATCH(request: Request, { params }: Context) {
         recordReceived(db(), id, received);
         recorded = received;
       };
+      /* Bytes arrive in small pieces; they go to disk a megabyte or so at a time. */
+      let held: Uint8Array[] = [], heldBytes = 0;
+      const flush = async () => {
+        if (!heldBytes) return;
+        const out = held;
+        const bytes = heldBytes;
+        held = []; heldBytes = 0;
+        await handle.writev(out);
+        received += bytes;
+      };
       try {
         while (reader && !writer.stopped) {
           const { done, value } = await reader.read();
           if (done) break;
-          if (received + value.byteLength > upload.size) { tooBig = true; await reader.cancel(); break; }
-          await handle.write(value);
-          received += value.byteLength;
+          if (received + heldBytes + value.byteLength > upload.size) { tooBig = true; await reader.cancel(); break; }
+          held.push(value); heldBytes += value.byteLength;
+          if (heldBytes >= 1024 * 1024) await flush();
           if (received - recorded >= checkpointBytes) await checkpoint();
         }
       } catch {
         /* The connection dropped. What arrived is kept below, and the client resumes from it. */
       } finally {
-        await checkpoint().catch(() => {});
+        /* What was held is written before progress is recorded, so the record never runs ahead of the disk. */
+        await flush().then(checkpoint).catch(() => {});
         await handle.close();
       }
       if (tooBig) throw new DriveProblem("That's more than the size you said the file was.", 413);

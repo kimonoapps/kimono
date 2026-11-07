@@ -1,10 +1,8 @@
-import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
-import { Readable } from "node:stream";
 import { join } from "node:path";
 import { db, mediaDir } from "@/lib/code";
 import { artifactByMediaKey, mediaNames } from "@/lib/code/artifacts";
-import { typeOf } from "@/lib/drive/storage";
+import { fileStream, typeOf } from "@/lib/drive/storage";
 
 /*
  * An artifact's media (lib/code/artifacts.ts): a sound, video or picture its
@@ -55,8 +53,7 @@ export async function GET(request: Request, { params }: Context) {
   if (request.method === "HEAD" || size === 0) return new Response(null, { status, headers });
 
   /* Read as the client takes it, so a slow player never has the whole video held here. */
-  const body = Readable.toWeb(createReadStream(path, { start, end })) as ReadableStream<Uint8Array>;
-  return new Response(body, { status, headers });
+  return new Response(fileStream(path, start, end), { status, headers });
 }
 
 export const HEAD = GET;

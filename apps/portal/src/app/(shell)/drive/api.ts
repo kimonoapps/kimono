@@ -103,9 +103,10 @@ export const contentUrl = (node: DriveNode) => `/api/v1/drive/nodes/${node.id}/c
 /** A public link's address, from the token the API lists with a file. */
 export const linkUrl = (node: DriveNode) => node.link ? `${window.location.origin}/d/${node.link}/${encodeURIComponent(node.name)}` : null;
 
-/* ── uploads: tus in 8 MB pieces, picking up after a dropped connection ── */
+/* ── uploads: tus in 32 MB pieces, picking up after a dropped connection ── */
 
-const piece = 8 * 1024 * 1024;
+/* Each piece is a round trip and a flush to disk on the server: bigger pieces spend less time on those. */
+const piece = 32 * 1024 * 1024;
 const b64 = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
 
 export type UploadProgress = (sent: number) => void;
