@@ -8,6 +8,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.text.appendInlineContent
@@ -166,6 +167,11 @@ import kotlinx.coroutines.launch
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 
 /*
  * 工 One Kimono AI chat on the phone: the conversation, streamed while it is
@@ -275,7 +281,8 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
             TopAppBar(
                 title = {
                     Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable(enabled = w != null && owns) { renaming = true }) {
-                        Text(w?.title ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (renaming && w != null) InlineName(w.title, MaterialTheme.typography.titleMedium, Modifier.fillMaxWidth(), onSave = { name -> workspace = code.rename(id, name.take(120)) }, onEnd = { renaming = false })
+                        else Text(w?.title ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         val under = when {
                             w == null -> null
                             !connected -> "Reconnecting…"
@@ -348,11 +355,6 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
         }
     }
     if (sharing && w != null) ChatShareSheet(code, platform, w) { sharing = false }
-    if (renaming && w != null) NameDialog(title = "Rename chat", action = "Rename", initial = w.title, onDismiss = { renaming = false }) { name ->
-        val title = name.replace(Regex("\\s+"), " ").take(120)
-        if (title != w.title) workspace = code.rename(id, title)
-        renaming = false
-    }
     if (moving && w != null) AlertDialog(
         onDismissRequest = { moving = false },
         title = { Text("Project") },
@@ -456,7 +458,9 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     LaunchedEffect(w.id, hasItems) { if (hasItems && liveFrom == Long.MAX_VALUE) { kotlinx.coroutines.delay(500); liveFrom = itemsNow.lastOrNull()?.key ?: 0L } }
     var ratings by remember(w.id) { mutableStateOf<Map<Long, Int>>(emptyMap()) }
     LaunchedEffect(w.id) { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } }
-    Column(Modifier.fillMaxSize()) {
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    /* A tap on the conversation itself (not on something in it) puts the keyboard away, ending a rename as tapping away does on the website. */
+    Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 if (items.isEmpty() && !w.running) item(key = "empty") { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
@@ -1120,6 +1124,39 @@ private class Pending(val name: String, val size: Long) {
 }
 
 /**
+ * A name edited where it sits: the same words in the same type, selected, an ink line drawn under them.
+ * Done on the keyboard, or tapping away, keeps it; an empty or unchanged name leaves it as it was.
+ */
+@Composable
+internal fun InlineName(initial: String, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, onSave: suspend (String) -> Unit, onEnd: () -> Unit) {
+    var value by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(initial, androidx.compose.ui.text.TextRange(0, initial.length))) }
+    val focus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    var focused by remember { mutableStateOf(false) }
+    var done by remember { mutableStateOf(false) }
+    fun finish() {
+        if (done) return
+        done = true
+        val name = value.text.replace(Regex("\\s+"), " ").trim()
+        scope.launch { try { if (name.isNotEmpty() && name != initial) onSave(name) } catch (_: KimonoProblem) { }; onEnd() }
+    }
+    LaunchedEffect(Unit) { focus.requestFocus() }
+    val ink = MaterialTheme.colorScheme.primary
+    BasicTextField(
+        value, { if (it.text.contains('\n')) finish() else value = it }, singleLine = true,
+        textStyle = style.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(ink),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { finish() }),
+        modifier = modifier.focusRequester(focus)
+            /* Return on a hardware keyboard keeps it too, as Done does on the screen's */
+            .onPreviewKeyEvent { if (it.key == androidx.compose.ui.input.key.Key.Enter && it.type == androidx.compose.ui.input.key.KeyEventType.KeyDown) { finish(); true } else false }
+            .onFocusChanged { if (it.isFocused) focused = true else if (focused) finish() }
+            .drawBehind { val y = size.height + 1.dp.toPx(); drawLine(ink, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), 1.5.dp.toPx()) },
+    )
+}
+
+/**
  * Send and Stop are one square seal: while the agent works and nothing is written it stops it; a word
  * typed turns it back into Send. The arrow lifts away as the square turns in, the seal's ink changing with it.
  */
@@ -1169,8 +1206,8 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     fun send() {
         if (!canSend) return
-        /* On an iPhone, sending puts the keyboard away, as Messages does; Android keeps it up for the next line. */
-        if (platform.os == "ios") { focus.clearFocus(); keyboard?.hide() }
+        /* Sending puts the keyboard away, so the answer can be read as it comes. */
+        focus.clearFocus(); keyboard?.hide()
         sending = true; problem = null
         scope.launch {
             try { code.ask(w.id, text, ready); text = ""; code.keep("draft:${w.id}", null); pending.clear() } catch (p: KimonoProblem) { problem = p.message }

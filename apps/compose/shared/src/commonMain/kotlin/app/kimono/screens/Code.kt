@@ -96,6 +96,8 @@ import app.kimono.ui.kimonoIcon
 import app.kimono.ui.segmentColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 
 /*
  * 工 Kimono AI on the phone: the chats, the projects they're kept in, and a
@@ -149,7 +151,9 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = { KimonoTopBar("Kimono AI", onBack = back, mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
     ) { padding ->
-        KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.padding(padding).fillMaxSize()) {
+        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+        /* a tap on the list itself ends a project's rename, as tapping away does on the website */
+        KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.padding(padding).fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
             val shown = list
             if (shown == null && problem == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
             else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
@@ -186,7 +190,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
                 if (projects.isEmpty()) item(key = "projects-empty") { Text("Keep chats together in a project.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)) }
                 projects.forEach { project ->
                     item(key = "project-${project.id}") {
-                        ProjectHead(project, onNew = { open("ai/new/${project.id}") }, onRename = { naming = project }, onRemove = { removing = project })
+                        ProjectHead(project, onNew = { open("ai/new/${project.id}") }, onRename = { name -> code.renameProject(project.id, name); load() }, onRemove = { removing = project })
                     }
                     val inside = chatsOf(all).filter { it.folder?.id == project.id }
                     if (inside.isEmpty()) item(key = "project-${project.id}-empty") { Text("No chats yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 36.dp, bottom = 10.dp)) }
@@ -351,16 +355,19 @@ private fun LazyListScope.chatRows(group: String, chats: List<CodeWorkspace>, ti
 
 /** A project in the list: its name, a new chat in it, renaming and removing it. */
 @Composable
-private fun ProjectHead(project: CodeProject, onNew: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit) {
+private fun ProjectHead(project: CodeProject, onNew: () -> Unit, onRename: suspend (String) -> Unit, onRemove: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
+    /* Its name is renamed where it sits: a tap turns it into a field of the same size. */
+    var editing by remember(project.id) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         BlotIcon("folder", "project-${project.id}", 30.dp)
-        Text(project.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable(onClick = onRename))
+        if (editing) InlineName(project.name, MaterialTheme.typography.titleSmall, Modifier.weight(1f), onSave = onRename, onEnd = { editing = false })
+        else Text(project.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { editing = true })
         IconButton(onClick = onNew) { Icon(kimonoIcon("plus"), "New chat in ${project.name}") }
         Box {
             IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More") }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; onRename() })
+                DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; editing = true })
                 DropdownMenuItem(text = { Text("Remove", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onRemove() })
             }
         }
@@ -454,7 +461,6 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
         branches = listOf(r.defaultBranch)
         runCatching { code.branches(r.owner, r.name) }.getOrNull()?.let { list -> branches = if (r.defaultBranch in list) list else listOf(r.defaultBranch) + list }
     }
-    LaunchedEffect(Unit) { runCatching { field.requestFocus() } }
     fun makeProject() {
         val name = naming?.trim().orEmpty()
         if (name.isEmpty() || making) return
@@ -470,7 +476,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     fun send() {
         if (!ready) return
-        if (platform.os == "ios") { focus.clearFocus(); keyboard?.hide() }
+        focus.clearFocus(); keyboard?.hide()
         sending = true; problem = null
         scope.launch {
             try {
