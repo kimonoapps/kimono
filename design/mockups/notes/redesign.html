@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes redesign</title>
+<!--
+  Kimono Notes on the web, redesigned (2026-11-07). Static mockup, not code.
+  Served from the repo root (python3 -m http.server) so it reads the portal's
+  real tokens and fonts. With no query it shows three frames side by side;
+  each frame is this same file with ?view=desktop|phone&theme=dark|light.
+-->
+<link rel="stylesheet" href="../../../packages/ui/src/styles/tokens.css">
+<script>
+  const q = new URLSearchParams(location.search);
+  document.documentElement.dataset.theme = q.get("theme") || "light";
+  document.documentElement.dataset.view = q.get("view") || "board";
+</script>
+<style>
+@font-face { font-family: "Zen Maru Gothic Kimono"; font-weight: 400; src: url(../../../apps/portal/public/fonts/zen-maru-gothic-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "Zen Maru Gothic Kimono"; font-weight: 500; src: url(../../../apps/portal/public/fonts/zen-maru-gothic-latin-500-normal.woff2) format("woff2"); }
+@font-face { font-family: "Zen Maru Gothic Kimono"; font-weight: 700; src: url(../../../apps/portal/public/fonts/zen-maru-gothic-latin-700-normal.woff2) format("woff2"); }
+@font-face { font-family: "Shippori Mincho Kimono"; font-weight: 600; src: url(../../../apps/portal/public/fonts/shippori-mincho-600-latin.woff2) format("woff2"); }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--k-surface); color: var(--k-on-surface); font: 400 14px/1.4 var(--k-sans); }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── the board: three frames side by side ── */
+.board { display: none; padding: 28px 32px 40px; background: #e9e0da; min-height: 100%; }
+html[data-view="board"] .board { display: block; }
+html[data-view="board"] .app { display: none; }
+.board h1 { margin: 0 0 4px; font: 600 26px/1.2 var(--k-display); color: #4e2b37; }
+.board p { margin: 0 0 20px; color: #54443f; }
+.frames { display: flex; gap: 24px; align-items: flex-start; }
+.frame { display: grid; gap: 8px; }
+.frame b { font: 700 13px/1 var(--k-sans); color: #54443f; }
+.frame .clip { overflow: hidden; border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 18px 40px -18px rgba(0,0,0,.45); }
+.frame.desk .clip { width: 720px; height: 450px; }
+.frame.desk iframe { width: 1440px; height: 900px; border: 0; transform: scale(.5); transform-origin: 0 0; }
+.frame.phone .clip { width: 293px; height: 633px; border-radius: 22px; }
+.frame.phone iframe { width: 390px; height: 844px; border: 0; transform: scale(.75); transform-origin: 0 0; }
+
+/* ── the shell: rail (unchanged, rooms shortened) ── */
+.app { display: grid; grid-template-columns: 96px minmax(0, 1fr); height: 100vh; }
+.rail { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px 0; }
+.rail .dest { display: grid; justify-items: center; gap: 4px; font: 600 11px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.rail .pill { width: 52px; height: 30px; display: grid; place-items: center; border-radius: 15px; }
+.rail .here .pill { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.rail .bloom { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 50% 50%, var(--k-on-surface) 0 22%, transparent 23%), conic-gradient(from 10deg, #e9cbd1 0 20%, #d7b2bb 0 40%, #e9cbd1 0 60%, #d7b2bb 0 80%, #e9cbd1 0); opacity: .85; }
+.rail .room { opacity: .9; }
+
+/* ── Notes: one surface, three tones, no hairlines ── */
+.nt { display: grid; grid-template-columns: 248px 300px minmax(0, 1fr); margin: 8px 8px 8px 0; border-radius: 16px; overflow: hidden; background: var(--k-container-low); min-height: 0; }
+.side { background: var(--k-container); padding: 8px 6px; display: flex; flex-direction: column; gap: 6px; }
+.side-head { display: flex; align-items: center; min-height: 36px; padding: 0 2px 0 10px; }
+.side-head span { flex: 1; font: 600 18px/1 var(--k-display); color: var(--k-plum); }
+.icon-btn { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--k-on-surface-variant); }
+.newnote { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 2px 10px; border: 0; border-radius: 8px; background: var(--k-primary-container); color: var(--k-on-primary-container); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-on-primary-container) 20%, transparent); font: 700 13.5px/1 var(--k-sans); }
+.newnote kbd { margin-left: auto; font: 600 11px/1 var(--k-mono); opacity: .7; }
+.search { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px 0 10px; border-radius: 8px; background: var(--k-container-high); color: var(--k-on-surface-variant); font-size: 13.5px; }
+.search svg.i { width: 16px; height: 16px; }
+.search span { flex: 1; }
+kbd.key { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 4px; background: var(--k-container-highest); font: 600 11px/1 var(--k-mono); color: var(--k-on-surface-variant); }
+.places { display: grid; gap: 1px; margin-top: 4px; }
+.place { position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 calc(22px + var(--d, 0) * 14px); border-radius: 8px; font: 600 13.5px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.place.sub { font-weight: 500; }
+.place.here { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.place.hover { background: var(--k-container-high); }
+.place .name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.place .chev { position: absolute; left: calc(2px + var(--d, 0) * 14px); width: 20px; display: grid; place-items: center; color: var(--k-faint); }
+.place .chev svg.i { width: 13px; height: 13px; stroke-width: 2.2; }
+.place .chev.open svg.i { rotate: 90deg; }
+.crest { width: 20px; height: 20px; flex: none; border-radius: 50%; background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--k-suo) 70%, transparent) 0 30%, color-mix(in srgb, var(--k-suo) 22%, transparent) 31% 70%, transparent 72%); }
+.acts { display: flex; gap: 1px; margin-right: -5px; }
+.acts span { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--k-on-surface-variant); }
+.acts span.on { background: var(--k-container-highest); color: var(--k-on-surface); }
+.acts svg.i { width: 16px; height: 16px; }
+.label { margin: 12px 0 2px; padding: 0 10px; font: 700 11.5px/1 var(--k-sans); letter-spacing: .04em; color: var(--k-on-surface-variant); }
+.face { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--k-primary-container); color: var(--k-on-primary-container); font: 600 11px/1 var(--k-display); box-shadow: 0 0 0 2px color-mix(in srgb, var(--k-suo) 30%, transparent); }
+.tip { position: absolute; z-index: 5; padding: 5px 8px; border-radius: 6px; background: var(--k-on-surface); color: var(--k-surface); font: 600 11.5px/1 var(--k-sans); white-space: nowrap; }
+
+.list { background: var(--k-container-low); padding: 6px; overflow: hidden; }
+.listhead { display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 2px 0 8px; }
+.listhead h2 { flex: 1; margin: 0; font: 600 18px/1 var(--k-display); color: var(--k-plum); }
+.listhead small { display: block; margin-bottom: 3px; font: 600 11.5px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.plus { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--k-container-high); color: var(--k-on-surface); box-shadow: inset 0 -2px 0 var(--k-container-highest); }
+.row { display: flex; gap: 8px; min-height: 52px; padding: 7px 10px; border-radius: 8px; }
+.row.here { background: var(--k-container-lowest); box-shadow: 0 1px 2px rgba(78, 43, 55, .08); }
+.row .t { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.row b { font: 700 14px/1.3 var(--k-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row small { font: 400 12.5px/1.35 var(--k-sans); color: var(--k-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .when { font: 600 11.5px/1 var(--k-sans); color: var(--k-on-surface-variant); padding-top: 3px; }
+.saving { width: 14px; height: 14px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--k-suo) 70%, transparent); border-right-color: transparent; border-bottom-color: transparent; }
+
+.note { position: relative; display: flex; flex-direction: column; background: var(--k-container-lowest); padding: 6px 12px 0; overflow: hidden; }
+.notehead { display: flex; align-items: center; gap: 6px; height: 40px; font: 600 11.5px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.notehead .grow { flex: 1; }
+.col { width: 100%; max-width: 720px; margin: 0 auto; padding: 0 20px; }
+.title { position: relative; margin: 18px auto 10px; padding-bottom: 6px; font: 600 28px/1.25 var(--k-display); color: var(--k-on-surface); }
+.body { flex: 1; font: 400 16px/1.65 var(--k-sans); }
+.body p { margin: 0; }
+.h1 { font: 600 1.3em/1.35 var(--k-display); padding-top: .3em; }
+.mk { color: var(--k-faint); }
+.code { padding: 1px 4px; border-radius: 5px; background: var(--k-container-high); font: .88em var(--k-mono); }
+.link { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink, #5a3a44)); text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+.caret { display: inline-block; width: 2px; height: 1.1em; vertical-align: -.2em; margin: 0 -1px; background: var(--k-app-accent); }
+.bul { display: inline-block; width: 1.1em; text-align: center; }
+.bul::before { content: ""; display: inline-block; width: .36em; height: .36em; vertical-align: .12em; border-radius: 50%; background: var(--k-app-accent); }
+.bul.open::before { background: none; box-shadow: inset 0 0 0 1.5px var(--k-app-accent); }
+.ring { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -.22em; margin-right: .3em; }
+.ring svg { width: 100%; height: 100%; overflow: visible; }
+.ring circle { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-dasharray: 52 4; opacity: .7; transform: rotate(-70deg); transform-origin: center; }
+.ring path { fill: none; stroke: var(--k-app-accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.done { color: var(--k-faint); }
+.num { color: var(--k-on-surface-variant); }
+.quote { padding-left: 14px; box-shadow: inset 3px 0 0 color-mix(in srgb, var(--k-app-accent) 55%, transparent); color: var(--k-on-surface-variant); font-style: italic; }
+.ind { padding-left: 1.6em; }
+
+/* the format bar: a row of small flat blocks, sticky at the editor's foot */
+.formats { position: sticky; bottom: 0; display: flex; justify-content: center; gap: 2px; padding: 6px 12px 10px; margin: 0 -12px; background: color-mix(in srgb, var(--k-container-lowest) 92%, transparent); }
+.formats .f { position: relative; width: 32px; height: 30px; display: grid; place-items: center; border-radius: 6px; color: var(--k-on-surface-variant); }
+.formats .f.gap { margin-left: 8px; }
+.formats .f.on { background: var(--k-primary-container); color: var(--k-on-primary-container); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-on-primary-container) 22%, transparent); }
+.formats .f.hover { background: var(--k-container-high); color: var(--k-on-surface); }
+.formats .f svg.i { width: 17px; height: 17px; }
+.formats .tip { bottom: 38px; left: 50%; translate: -50% 0; }
+
+/* phone */
+html[data-view="phone"] .app { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 76px; }
+html[data-view="phone"] .rail { display: none; }
+html[data-view="phone"] .nt { grid-template-columns: 1fr; margin: 0; border-radius: 0; }
+html[data-view="phone"] .side, html[data-view="phone"] .list { display: none; }
+html[data-view="phone"] .note { padding: 4px 6px 0; }
+html[data-view="phone"] .col { padding: 0 10px; }
+html[data-view="phone"] .title { font-size: 24px; margin-top: 8px; }
+html[data-view="phone"] .formats { margin: 0 -6px; }
+.bottombar { display: none; }
+html[data-view="phone"] .bottombar { display: flex; justify-content: space-around; align-items: center; background: var(--k-container); font: 600 11px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+html[data-view="phone"] .bottombar span { display: grid; justify-items: center; gap: 6px; }
+html[data-view="phone"] .bottombar .here { color: var(--k-on-surface); }
+.back { display: none; }
+html[data-view="phone"] .back { display: grid; }
+</style>
+</head>
+<body>
+
+<section class="board">
+  <h1>Kimono Notes, redesigned</h1>
+  <p>One surface in three tones (panel, list, page), half the padding, pluses where you reach for them, and a Markdown editor that reads as a document, with a small format bar at its foot.</p>
+  <div class="frames">
+    <div class="frame desk"><b>Desktop, dark · 1440 × 900</b><div class="clip"><iframe src="?view=desktop&amp;theme=dark" title="Desktop dark"></iframe></div></div>
+    <div class="frame desk"><b>Desktop, light · 1440 × 900</b><div class="clip"><iframe src="?view=desktop&amp;theme=light" title="Desktop light"></iframe></div></div>
+    <div class="frame phone"><b>Phone · 390 × 844</b><div class="clip"><iframe src="?view=phone&amp;theme=light" title="Phone"></iframe></div></div>
+  </div>
+</section>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="pencil" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
+  <symbol id="panel" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></symbol>
+  <symbol id="chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></symbol>
+  <symbol id="book" viewBox="0 0 24 24"><path d="M4 5.5c2.5-1 5.5-1 8 .5v13c-2.5-1.5-5.5-1.5-8-.5zM20 5.5c-2.5-1-5.5-1-8 .5v13c2.5-1.5 5.5-1.5 8-.5z"/></symbol>
+  <symbol id="section" viewBox="0 0 24 24"><path d="M3 7.5V18a1.5 1.5 0 0 0 1.5 1.5h15A1.5 1.5 0 0 0 21 18V9a1.5 1.5 0 0 0-1.5-1.5H11L9 5H4.5A1.5 1.5 0 0 0 3 6.5z"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="people" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.5"/><path d="M2.5 19.5c.8-3.3 3.4-5 6.5-5s5.7 1.7 6.5 5"/><circle cx="17" cy="9.5" r="2.6"/><path d="M16.5 14.6c2.5.1 4.3 1.6 5 4.4"/></symbol>
+  <symbol id="bold" viewBox="0 0 24 24"><path d="M7 4.5h6a3.6 3.6 0 0 1 0 7.2H7zM7 11.7h7a3.9 3.9 0 0 1 0 7.8H7z"/></symbol>
+  <symbol id="italic" viewBox="0 0 24 24"><path d="M10.5 4.5h7M6.5 19.5h7M14 4.5l-4 15"/></symbol>
+  <symbol id="heading" viewBox="0 0 24 24"><path d="M5.5 5v14M14.5 5v14M5.5 12h9"/><path d="M17.5 11.5l2-1.5v9"/></symbol>
+  <symbol id="bullets" viewBox="0 0 24 24"><circle cx="5" cy="7" r="1.2" fill="currentColor"/><circle cx="5" cy="12" r="1.2" fill="currentColor"/><circle cx="5" cy="17" r="1.2" fill="currentColor"/><path d="M9.5 7H20M9.5 12H20M9.5 17H20"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><circle cx="6" cy="7.5" r="2.6"/><path d="m4.9 7.6.9.9 1.6-1.8"/><circle cx="6" cy="16.5" r="2.6"/><path d="M11 7.5h9M11 16.5h9"/></symbol>
+  <symbol id="link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/></symbol>
+  <symbol id="code" viewBox="0 0 24 24"><path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/></symbol>
+  <symbol id="home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6H9v6H4z"/></symbol>
+</svg>
+
+<div class="app">
+  <nav class="rail">
+    <span class="dest"><span class="pill"><svg class="i"><use href="#home"/></svg></span>Home</span>
+    <span class="dest"><span class="bloom"></span>Kimono AI</span>
+    <span class="dest"><span class="bloom"></span>Drive</span>
+    <span class="dest"><span class="bloom"></span>Notes</span>
+    <span class="dest room here"><span class="pill"><svg class="i"><use href="#book"/></svg></span>All</span>
+    <span class="dest room"><span class="pill"><svg class="i"><use href="#plus"/></svg></span>New</span>
+  </nav>
+
+  <div class="nt">
+    <aside class="side">
+      <div class="side-head"><span>Notes</span><span class="icon-btn"><svg class="i"><use href="#panel"/></svg></span></div>
+      <div class="newnote"><svg class="i"><use href="#pencil"/></svg>New note<kbd>N</kbd></div>
+      <div class="search"><svg class="i"><use href="#search"/></svg><span>Search</span><kbd class="key">/</kbd></div>
+      <div class="places">
+        <div class="place"><span class="chev"></span><svg class="i" style="width:17px;height:17px"><use href="#book"/></svg><span class="name">All notes</span></div>
+        <div class="place"><span class="chev open"><svg class="i"><use href="#chev"/></svg></span><span class="crest"></span><span class="name">Notes</span></div>
+        <div class="place sub here" style="--d:1"><svg class="i" style="width:17px;height:17px"><use href="#section"/></svg><span class="name">Recipes</span></div>
+        <div class="place sub hover" style="--d:1"><svg class="i" style="width:17px;height:17px"><use href="#section"/></svg><span class="name">Groceries</span>
+          <span class="acts"><span class="on"><svg class="i"><use href="#plus"/></svg></span><span><svg class="i"><use href="#more"/></svg></span></span>
+          <span class="tip" style="right:-2px; top:34px">New note in Groceries</span>
+        </div>
+        <div class="place"><span class="chev"><svg class="i"><use href="#chev"/></svg></span><span class="crest" style="filter:hue-rotate(80deg)"></span><span class="name">Household</span></div>
+        <div class="place sub" style="color:var(--k-faint)"><svg class="i" style="width:16px;height:16px"><use href="#plus"/></svg><span class="name">New notebook</span></div>
+        <div class="label">SHARED WITH YOU</div>
+        <div class="place"><span class="chev"></span><span class="crest" style="filter:hue-rotate(200deg)"></span><span class="name">Kyoto trip</span><span class="face">M</span></div>
+      </div>
+    </aside>
+
+    <section class="list">
+      <header class="listhead"><div style="flex:1"><small>Notes</small><h2>Recipes</h2></div><span class="icon-btn"><svg class="i"><use href="#people"/></svg></span><span class="plus" title="New note here ⌘N"><svg class="i"><use href="#plus"/></svg></span></header>
+      <div class="row here"><span class="t"><b>Weekend plan</b><small>Call mum, buy tea, bread from the rye place</small></span><span class="saving" title="Saving"></span></div>
+      <div class="row"><span class="t"><b>Miso soup</b><small>Dashi first, then the miso off the heat</small></span><span class="when">2h</span></div>
+      <div class="row"><span class="t"><b>Okonomiyaki</b><small>Cabbage, flour, eggs, a little dashi</small></span><span class="when">Tue</span></div>
+      <div class="row"><span class="t"><b>Rice, properly</b><small>Rinse until clear, rest 30 minutes</small></span><span class="when">3 Oct</span></div>
+      <div class="row"><span class="t"><b>Tamagoyaki</b><small>Three eggs, mirin, a pinch of salt</small></span><span class="when">28 Sep</span></div>
+    </section>
+
+    <article class="note">
+      <div class="notehead"><span class="icon-btn back"><svg class="i"><use href="#back"/></svg></span><span class="crest" style="width:14px;height:14px"></span>Notes <span style="color:var(--k-faint)">/</span> Recipes<span class="grow"></span><span class="icon-btn"><svg class="i"><use href="#more"/></svg></span></div>
+      <div class="col title">Weekend plan</div>
+      <div class="col body">
+        <p>Saturday is for the market, Sunday for <b><span class="mk">**</span>cooki<span class="caret"></span>ng<span class="mk">**</span></b> and nothing else.</p>
+        <p class="h1">Market</p>
+        <p><span class="ring"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/></svg></span>Call mum about Sunday</p>
+        <p class="done"><span class="ring"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.5 12.5l3 3 6-6.5"/></svg></span>Buy <i>good</i> tea</p>
+        <p><span class="bul"></span>Bread from <span class="link">the rye place</span></p>
+        <p class="ind"><span class="bul open"></span>two loaves, one sliced</p>
+        <p class="h1">Sunday</p>
+        <p><span class="num">1.</span> Soak the kombu in the morning</p>
+        <p><span class="num">2.</span> Rice at <span class="code">5:30</span>, soup at six</p>
+        <p class="quote">Cook as if for someone you love.</p>
+      </div>
+      <div class="formats">
+        <span class="f on"><svg class="i"><use href="#bold"/></svg><span class="tip">Bold ⌘B</span></span>
+        <span class="f"><svg class="i"><use href="#italic"/></svg></span>
+        <span class="f gap"><svg class="i"><use href="#heading"/></svg></span>
+        <span class="f"><svg class="i"><use href="#bullets"/></svg></span>
+        <span class="f"><svg class="i"><use href="#check"/></svg></span>
+        <span class="f gap"><svg class="i"><use href="#link"/></svg></span>
+        <span class="f"><svg class="i"><use href="#code"/></svg></span>
+      </div>
+    </article>
+  </div>
+
+  <nav class="bottombar"><span><svg class="i"><use href="#home"/></svg>Home</span><span class="here"><span class="bloom" style="width:22px;height:22px"></span>Notes</span><span><svg class="i"><use href="#search"/></svg>Search</span></nav>
+</div>
+</body>
+</html>
