@@ -315,6 +315,10 @@ export function migrate(db: DatabaseSync) {
       extra REAL NOT NULL, until INTEGER NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS usage_grants_by_person ON usage_grants (username, until);
+    CREATE TABLE IF NOT EXISTS credit_grants (
+      id INTEGER PRIMARY KEY, username TEXT NOT NULL, dollars REAL NOT NULL, until INTEGER NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS credit_grants_by_person ON credit_grants (username, until);
   `);
 }
 
@@ -394,6 +398,33 @@ export function extraOf(db: DatabaseSync, username: string, now = Date.now()) {
   const sum = (window: UsageWindow) => grants.filter((g) => g.window === window).reduce((total, g) => total + g.extra, 0);
   return { fiveHour: sum("five_hour"), week: sum("week") };
 }
+
+/* ── Pro Tools credits given on top of the monthly allowance (lib/code/media.ts) ── */
+
+export type CreditGrant = { id: number; username: string; dollars: number; until: number; by: string; at: number };
+
+/** Gives someone [dollars] more of Pro Tools (100 credits each), until the month's allowance comes back. */
+export function grantCredits(db: DatabaseSync, username: string, dollars: number, by: string, now = Date.now()) {
+  if (!(dollars > 0 && dollars <= 10_000)) throw new Error("That isn't an amount to give.");
+  const d = new Date(now);
+  const until = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  db.prepare("INSERT INTO credit_grants (username, dollars, until, by, at) VALUES (?, ?, ?, ?, ?)").run(username.toLowerCase(), dollars, until, by, now);
+}
+
+export function creditGrants(db: DatabaseSync, username?: string, now = Date.now()): CreditGrant[] {
+  const rows = username
+    ? db.prepare("SELECT * FROM credit_grants WHERE username = ? AND until > ? ORDER BY at").all(username.toLowerCase(), now)
+    : db.prepare("SELECT * FROM credit_grants WHERE until > ? ORDER BY at").all(now);
+  return rows as CreditGrant[];
+}
+
+export function takeBackCredits(db: DatabaseSync, id: number) {
+  db.prepare("DELETE FROM credit_grants WHERE id = ?").run(id);
+}
+
+/** The Pro Tools dollars someone was given this month, on top of everyone's allowance. */
+export const extraCredits = (db: DatabaseSync, username: string, now = Date.now()) =>
+  creditGrants(db, username, now).reduce((total, g) => total + g.dollars, 0);
 
 type WorkspaceRow = {
   id: string; owner: string; title: string; repo_owner: string; repo_name: string; base: string; branch: string;

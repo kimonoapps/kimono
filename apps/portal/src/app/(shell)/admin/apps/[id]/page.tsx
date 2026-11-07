@@ -20,7 +20,10 @@ import { JointSwitch } from "@/components/joint-switch";
 import { SaveBar } from "@/components/save-bar";
 import { accentOf, appRegistry } from "@/lib/apps";
 import { notFound, redirect } from "next/navigation";
-import { db, grantUsage, takeBackGrant } from "@/lib/code";
+import { db, grantCredits, grantUsage, takeBackCredits, takeBackGrant } from "@/lib/code";
+import { codeConfig } from "@/lib/code/config";
+import { holdMediaBudget } from "@/lib/code/media";
+import { portalOrigin } from "@/lib/account";
 import { AiUsage } from "./ai-usage";
 
 type View = "setup" | "settings" | "people" | "environment" | "backups";
@@ -31,6 +34,12 @@ const views: Array<{ id: View; label: string }> = [
   { id: "environment", label: "Advanced" },
   { id: "backups", label: "Backups" },
 ];
+
+/** Opens or closes someone's Pro Tools to match what they may spend now. */
+async function recheckCredits(username: string) {
+  const config = codeConfig(await getPlatformSettings());
+  await holdMediaBudget(db(), config, username, portalOrigin(), Date.now(), 0).catch(() => null);
+}
 
 async function requireAdmin() {
   const session = await auth();
@@ -146,6 +155,27 @@ export default async function AppManagementPage({
     "use server";
     await requireAdmin();
     takeBackGrant(db(), Number(form.get("grant")));
+    redirect(`${peopleHref}&saved=1`);
+  }
+
+  /* More Pro Tools credits for someone this month; their tools open again at once if they'd run out. */
+  async function giveProCredits(form: FormData) {
+    "use server";
+    const admin = await requireAdmin();
+    const username = String(form.get("username") || "");
+    try { grantCredits(db(), username, Number(form.get("credits")) / 100, admin.username || "admin"); }
+    catch (error) { redirect(`${peopleHref}&error=${encodeURIComponent(error instanceof Error ? error.message : "That couldn't be given")}`); }
+    await recheckCredits(username);
+    redirect(`${peopleHref}&saved=1`);
+  }
+
+  async function takeBackProCredits(form: FormData) {
+    "use server";
+    await requireAdmin();
+    const grant = Number(form.get("grant"));
+    const row = db().prepare("SELECT username FROM credit_grants WHERE id = ?").get(grant) as { username: string } | undefined;
+    takeBackCredits(db(), grant);
+    if (row) await recheckCredits(row.username);
     redirect(`${peopleHref}&saved=1`);
   }
 
@@ -275,7 +305,7 @@ export default async function AppManagementPage({
           <SaveBar formId={`app-${selectedView}`} label={selectedView === "settings" ? "Save settings" : "Save environment"} />
         </> : null}
 
-        {instance && selectedView === "people" ? <AiUsage give={giveUsage} takeBack={takeBackUsage} me={{ username: session.user.username ?? "", role: session.user.role }} /> : null}
+        {instance && selectedView === "people" ? <AiUsage give={giveUsage} takeBack={takeBackUsage} giveCredits={giveProCredits} takeBackCredits={takeBackProCredits} me={{ username: session.user.username ?? "", role: session.user.role }} /> : null}
 
         {instance && selectedView === "backups" ? (!backupConfig ? (
           <div className="card app-start"><span className="row-lead"><InkBlot tint="#5c7150" seed="no-storage"><LineIcon name="archive" /></InkBlot><span><h3>No storage yet</h3><p className="lead">Connect storage, then choose what to keep from {instance.name}.</p></span></span><Crossing kind="kakejiku" className="k-seal" href="/admin/backups">Set up backups</Crossing></div>

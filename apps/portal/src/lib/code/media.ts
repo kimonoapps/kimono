@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { CodeConfig } from "./config";
+import { extraCredits } from "./model";
 import { connections, instantCharges, instantOpen, instantSpent, instantToolkit, setInstant, SpendUnreadable } from "./composio";
 
 /*
@@ -23,6 +24,9 @@ export function monthOf(now: number) {
 
 const last = new Map<string, MediaAllowance>();
 
+/** What the person may spend this month: everyone's allowance, and what an administrator gave them. */
+export const budgetOf = (db: DatabaseSync, config: CodeConfig, username: string, now = Date.now()) => config.mediaBudget + extraCredits(db, username, now);
+
 /**
  * Reads what the person spent this month and opens or closes their Instant
  * tools to match. Null when there's no Composio, or they have no tool session yet.
@@ -32,8 +36,9 @@ export async function holdMediaBudget(db: DatabaseSync, config: CodeConfig, user
   const was = instantOpen(db, username);
   if (was === null) return null;
   const { from, resetsAt } = monthOf(now);
+  const budget = budgetOf(db, config, username, now);
   let spent: number | null = null, unreadable = false;
-  if (config.mediaBudget > 0) {
+  if (budget > 0) {
     try { spent = await instantSpent(config.composioKey, username, origin, from, now, fresh); }
     catch (error) {
       if (!(error instanceof SpendUnreadable)) throw error;
@@ -43,9 +48,9 @@ export async function holdMediaBudget(db: DatabaseSync, config: CodeConfig, user
     }
   }
   /* When the logs can't be reached for a moment, it stays as it was. */
-  const open = config.mediaBudget > 0 && !unreadable && (spent === null ? was : spent < config.mediaBudget);
+  const open = budget > 0 && !unreadable && (spent === null ? was : spent < budget);
   if (open !== was) await setInstant(db, config.composioKey, username, open);
-  const allowance = { budget: config.mediaBudget, spent, resetsAt, open: instantOpen(db, username) ?? open, unreadable };
+  const allowance = { budget, spent, resetsAt, open: instantOpen(db, username) ?? open, unreadable };
   last.set(username, allowance);
   return allowance;
 }
@@ -76,7 +81,7 @@ const guarded = new Map<string, number>();
 
 /** While a turn runs: after one of its tools answers, checks again (at most every 15 seconds), so a turn can't spend far past the allowance. */
 export function guardMediaBudget(db: DatabaseSync, config: CodeConfig, username: string, origin: string, now = Date.now()) {
-  if (!config.composioKey || config.mediaBudget <= 0 || now - (guarded.get(username) ?? 0) < 15_000) return;
+  if (!config.composioKey || budgetOf(db, config, username, now) <= 0 || now - (guarded.get(username) ?? 0) < 15_000) return;
   guarded.set(username, now);
   void holdMediaBudget(db, config, username, origin, now, 15_000).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error));
 }
@@ -104,7 +109,7 @@ const connected = new Map<string, { apps: Set<string>; at: number }>();
  * account first), and the app has Instant tools. False when it can't be told.
  */
 export async function ranAsPro(db: DatabaseSync, config: CodeConfig, username: string, origin: string, app: string, now = Date.now()): Promise<boolean> {
-  if (!config.composioKey || config.mediaBudget <= 0 || instantOpen(db, username) !== true) return false;
+  if (!config.composioKey || budgetOf(db, config, username, now) <= 0 || instantOpen(db, username) !== true) return false;
   let mine = connected.get(username);
   if (!mine || now - mine.at > 60_000) {
     try {

@@ -509,6 +509,8 @@ label.opt { margin: 0; }
 .tester-email .field { flex: 1; min-width: 220px; }
 /* Kimono AI's People view: each person's use, and more to give them. */
 .ai-usage > .row { flex-wrap: wrap; }
-.ai-usage .ai-give { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.ai-usage .ai-gives { display: grid; gap: 6px; justify-items: end; margin-left: auto; }
+.ai-usage .ai-give { display: flex; align-items: center; gap: 8px; }
 .ai-usage .ai-grant { display: flex; align-items: center; gap: 10px; }
+.ai-usage .ai-grant .txt { white-space: nowrap; }
 .ai-usage .ai-grant .txt { border: 0; background: none; padding: 0; font: inherit; font-size: 14px; color: var(--primary); cursor: pointer; }
