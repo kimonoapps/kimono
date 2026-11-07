@@ -176,6 +176,15 @@ data class PhoneAppStep(val title: String, val description: String, val kind: St
 /** The link that opens this phone app already pointed at its server (kimono-photos://connect?server=…), when it has one. */
 val PhoneApp.connectLink: String? get() = steps.firstOrNull { it.kind == "open" }?.href
 
+/*
+ * Whether a phone app Kimono hands out is newer than the one installed. What's
+ * offered is named for its file (3.3.6-kimono.1); the app itself may only say
+ * 3.3.6. Then only the numbers can be compared, or it would always look newer.
+ */
+private val versionCore = Regex("^\\d+(\\.\\d+)*")
+fun phoneAppNewer(offered: String, installed: String): Boolean =
+    newerVersion(if (versionCore.matchEntire(installed) != null) versionCore.find(offered)?.value ?: offered else offered, installed)
+
 /**
  * Whether version [offered] is newer than [installed] ("3.1.0-kimono.2" over
  * "3.1.0-kimono.1"): compared part by part, numbers as numbers.

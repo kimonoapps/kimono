@@ -31,6 +31,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -123,7 +125,14 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
 private const val WHERE = "kimono.where"
 
 @Composable
-private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, update: AppUpdate?, onLater: () -> Unit) {
+private fun SignedIn(session: Session, platform: Platform, profile: AccountProfile?, offered: AppUpdate?, onLater: () -> Unit) {
+    /*
+     * Read through state, not captured: the screens below are drawn from the
+     * nav graph's destinations, which keep the values they were first built
+     * with. Your profile and an update both arrive after that.
+     */
+    val me by rememberUpdatedState(profile)
+    val update by rememberUpdatedState(offered)
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
     val route = entry?.destination?.route
@@ -155,7 +164,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     }
     /* Opened from a notification: go where it said. */
     LaunchedEffect(nav) { Opening.route.collect { to -> if (to != null) { nav.navigate(to); Opening.route.value = null } } }
-    val admin = me?.role == "owner" || me?.role == "admin"
+    val admin by remember { derivedStateOf { me?.role == "owner" || me?.role == "admin" } }
     /* The bar's own action: the Apps grid that the bloom in the middle brings up. */
     var appsOpen by remember { mutableStateOf(false) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }

@@ -43,7 +43,7 @@ import app.kimono.data.appFor
 import app.kimono.data.KimonoProblem
 import app.kimono.data.Platform
 import app.kimono.data.connectLink
-import app.kimono.data.newerVersion
+import app.kimono.data.phoneAppNewer
 import app.kimono.theme.Kata
 import app.kimono.ui.AppAccentTheme
 import app.kimono.ui.InkBloom
@@ -70,7 +70,7 @@ fun phoneAppHere(app: LauncherApp, platform: Platform): PhoneAppHere {
     val installed = platform.isInstalled(pkg)
     val version = if (installed == true) platform.installedVersion(pkg) else null
     val offered = app.phoneApp.release?.version
-    return PhoneAppHere(installed, version, offered?.takeIf { version != null && newerVersion(it, version) })
+    return PhoneAppHere(installed, version, offered?.takeIf { version != null && phoneAppNewer(it, version) })
 }
 
 /** Whether [app]'s own phone app is installed here; null when it has none, or the phone won't say. */

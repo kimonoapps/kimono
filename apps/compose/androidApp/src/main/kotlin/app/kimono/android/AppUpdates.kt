@@ -19,7 +19,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.kimono.data.Drive
-import app.kimono.data.newerVersion
+import app.kimono.data.phoneAppNewer
 import java.util.concurrent.TimeUnit
 
 /*
@@ -85,7 +85,7 @@ class AppUpdatesWorker(context: Context, params: WorkerParameters) : CoroutineWo
             val release = phone.release ?: continue
             val pkg = phone.androidPackage ?: continue
             val installed = app.platform.installedVersion(pkg) ?: continue
-            if (newerVersion(release.version, installed)) {
+            if (phoneAppNewer(release.version, installed)) {
                 AppUpdates.tell(applicationContext, "$pkg:${release.version}", "${phone.name} ${release.version} is ready", "Tap to update it from Kimono.", "app/${each.id}")
             }
         }
