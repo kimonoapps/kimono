@@ -17,7 +17,7 @@ import {
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
-import { toolSession } from "./composio";
+import { instantCostOf, toolSession } from "./composio";
 import { guardMediaBudget, holdMediaBudget, lastAllowance, mediaNote, ranAsPro } from "./media";
 import { changeMemory, contextFor, forget, profileOf, remember } from "./memory";
 import { effortFor, modelFor, type ModelChoice } from "./models";
@@ -211,6 +211,21 @@ export function listen(workspaceId: string, listener: (event: StoredEvent) => vo
  * Makes sure a task's sandbox is awake. Waking one past the awake caps puts
  * another task to sleep; that task's timeline says so.
  */
+/**
+ * Records what a Pro Tool call cost, once Composio's log has it: it lands a few
+ * seconds after the call answers, so it's looked for then, and again a little
+ * later. Nothing is shown for a call that cost nothing.
+ */
+function priceProCall(config: CodeConfig, workspace: Workspace, turn: string, id: string, call: { at: number; tools: string[] }) {
+  const look = async (tries: number) => {
+    const usd = await instantCostOf(config.composioKey, workspace.owner, portalOrigin(), call.tools, call.at - 5_000, Date.now()).catch(() => null);
+    if (usd === null) { if (tries > 1) setTimeout(() => void look(tries - 1), 20_000); return; }
+    if (usd <= 0) return;
+    try { record(workspace.id, turn, { kind: "tool-cost", id, usd }); } catch { /* the chat was deleted meanwhile */ }
+  };
+  setTimeout(() => void look(3), 4_000);
+}
+
 export async function ensure(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }) {
   /* A project still in Kimono AI's own Kimono Git account moves to its person's, once they have one. */
   workspace = await ownProject(db(), config, workspace, { username: workspace.owner });
@@ -357,6 +372,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   let lastMessage: string | null = null;
   /* Calls to the person's own tools still waiting for their answer. */
   const composioCalls = new Set<string>();
+  const proCalls = new Map<string, { at: number; tools: string[] }>();
   try {
     await ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
@@ -466,6 +482,10 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           /* A tool of theirs answered: what it cost counts against the month's Pro Tools allowance at once. */
           if (event.kind === "tool" && event.name.startsWith("mcp__composio__")) composioCalls.add(event.id);
           if (event.kind === "tool-result" && composioCalls.delete(event.id)) guardMediaBudget(db(), config, workspace.owner, portalOrigin());
+          /* A Pro Tool's price: what Composio charged for it, shown beside its bolt. */
+          if (event.kind === "tool" && event.pro && event.tools?.length) proCalls.set(event.id, { at: Date.now(), tools: event.tools });
+          const pro = event.kind === "tool-result" ? proCalls.get(event.id) : undefined;
+          if (pro && event.kind === "tool-result") { proCalls.delete(event.id); priceProCall(config, workspace, turn, event.id, pro); }
           const call = event.kind === "tool-result" ? pendingArtifacts.get(event.id) : undefined;
           if (call && event.kind === "tool-result") {
             pendingArtifacts.delete(event.id);

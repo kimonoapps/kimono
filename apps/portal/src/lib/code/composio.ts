@@ -351,6 +351,39 @@ async function readSpent(key: string, username: string, origin: string, from: nu
   return spent;
 }
 
+/* Log entries already put down to a call, so two calls of the same tool at once aren't both given one charge. */
+const priced = new Set<string>();
+
+/**
+ * What one Pro Tool call cost, in US dollars: Composio's charges for these
+ * tools (by slug) on the person's Instant account between `from` and `to`, not
+ * already put down to another call. Null when no charge is in the log yet (it
+ * lands a few seconds after the call) or the log can't be read.
+ */
+export async function instantCostOf(key: string, username: string, origin: string, tools: string[], from: number, to: number): Promise<number | null> {
+  if (!key || !tools.length) return null;
+  const wanted = new Set(tools.map((t) => t.toUpperCase()));
+  const response = await call(key, "/logs/tool_execution", {
+    method: "POST",
+    body: JSON.stringify({ limit: 100, filters: [{ field: "user_id", operator: "==", value: composioUser(username, origin) }], time_range: { from, to } }),
+  }).catch(() => null);
+  if (!response?.ok) return null;
+  const answer = (await response.json().catch(() => ({}))) as { logs?: (ExecutionLog & { id?: string })[] };
+  let micros = 0, found = false;
+  for (const log of answer.logs ?? []) {
+    const meta = log.metadata as (ExecutionLog["metadata"] & { tool?: { slug?: string } }) | undefined;
+    if (meta?.credential_source !== "instant_account" || !wanted.has(String(meta.tool?.slug ?? "").toUpperCase())) continue;
+    if (log.id && priced.has(log.id)) continue;
+    const charge = Number(meta.instant_charge);
+    if (!Number.isFinite(charge)) continue;
+    if (log.id) priced.add(log.id);
+    micros += Math.round(Math.max(0, charge) * 1_000_000);
+    found = true;
+  }
+  if (priced.size > 5000) priced.clear();
+  return found ? micros / 1_000_000 : null;
+}
+
 /** The person's Instant charges since `from`, as last read by instantSpent. */
 export const instantCharges = (username: string, from: number): InstantCharge[] => {
   const cached = spends.get(username);

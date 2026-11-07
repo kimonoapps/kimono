@@ -13,8 +13,10 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; /** Sent while the agent was working: it reads it as soon as the current step ends. */ queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string; /** It ran on one of Composio's own accounts: a Pro Tool, charged to the person's allowance. */ pro?: boolean; /** A kimono-progress call: the steps of a long piece of work show as one card with a bar. */ progress?: ToolProgress }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string; /** It ran on one of Composio's own accounts: a Pro Tool, charged to the person's allowance. */ pro?: boolean; /** The Composio tools it ran ("HIGGSFIELD_GENERATE_VIDEO"), to find what each cost. */ tools?: string[]; /** A kimono-progress call: the steps of a long piece of work show as one card with a bar. */ progress?: ToolProgress }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
+  /** What a Pro Tool call cost, in US dollars, as Composio charged it; read a moment after it answered. */
+  | { kind: "tool-cost"; id: string; usd: number }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** Which Claude answered. */ model?: "opus" | "sonnet" | "haiku"; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
@@ -91,7 +93,7 @@ export function progressOf(command: unknown, at = Date.now()): ToolProgress | un
   return undefined;
 }
 
-function toolLabel(name: string, input: Record<string, unknown>): { label: string; detail?: string; change?: string; app?: string; space?: string } {
+function toolLabel(name: string, input: Record<string, unknown>): { label: string; detail?: string; change?: string; app?: string; space?: string; tools?: string[] } {
   if (name.startsWith("mcp__composio__")) return composioLabel(name.slice("mcp__composio__".length), input);
   const change = toolChange(name, input);
   const named = toolName(name, input);
@@ -148,19 +150,20 @@ function slugsIn(value: unknown, out: { tools: string[]; toolkits: string[]; tex
 /** GMAIL_SEND_EMAIL → "send email". */
 const action = (slug: string) => slug.slice(slug.indexOf("_") + 1).toLowerCase().replace(/_/g, " ");
 
-function composioLabel(meta: string, input: Record<string, unknown>): { label: string; detail?: string; app?: string } {
+function composioLabel(meta: string, input: Record<string, unknown>): { label: string; detail?: string; app?: string; tools?: string[] } {
   const found = slugsIn(input, { tools: [], toolkits: [] });
   const app = found.toolkits[0] ?? (found.tools[0] ? toolSlug.exec(found.tools[0])![1].toLowerCase() : undefined);
   const withApp = app ? { app } : {};
+  const ran = found.tools.length ? { tools: [...new Set(found.tools.map((t) => t.toUpperCase()))].slice(0, 20) } : {};
   switch (meta) {
-    case "COMPOSIO_MULTI_EXECUTE_TOOL": return { label: "Used", detail: [...new Set(found.tools.map(action))].join(", ") || undefined, ...withApp };
+    case "COMPOSIO_MULTI_EXECUTE_TOOL": return { label: "Used", detail: [...new Set(found.tools.map(action))].join(", ") || undefined, ...withApp, ...ran };
     case "COMPOSIO_SEARCH_TOOLS": return { label: "Looked for a way to", detail: found.text ? clip(found.text, 200) : undefined, ...withApp };
     case "COMPOSIO_MANAGE_CONNECTIONS": case "COMPOSIO_WAIT_FOR_CONNECTIONS": return { label: "Connecting", ...withApp };
     case "COMPOSIO_GET_TOOL_SCHEMAS": return { label: "Read how to use", detail: [...new Set(found.tools.map(action))].join(", ") || undefined, ...withApp };
     default: {
       /* A toolkit's own tool, called directly: GMAIL_SEND_EMAIL. */
       const direct = toolSlug.exec(meta);
-      if (direct && !meta.startsWith("COMPOSIO_")) return { label: "Used", detail: action(meta), app: direct[1].toLowerCase() };
+      if (direct && !meta.startsWith("COMPOSIO_")) return { label: "Used", detail: action(meta), app: direct[1].toLowerCase(), tools: [meta.toUpperCase()] };
       return { label: meta.replace(/^COMPOSIO_/, "").replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()), ...withApp };
     }
   }

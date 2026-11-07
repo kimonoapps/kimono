@@ -1718,7 +1718,7 @@ function AppReady({ workspace, url }: { workspace: Workspace; url: string }) {
 
 /* ── chat ── */
 
-type Tool = Extract<CodeEvent, { kind: "tool" }> & { result?: Extract<CodeEvent, { kind: "tool-result" }> };
+type Tool = Extract<CodeEvent, { kind: "tool" }> & { result?: Extract<CodeEvent, { kind: "tool-result" }>; /** A Pro Tool's price, once Composio said. */ cost?: number };
 type Item =
   | { type: "ask"; seq: number; at: number; event: Extract<CodeEvent, { kind: "ask" }> }
   | { type: "text"; seq: number; text: string }
@@ -1755,6 +1755,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
         break;
       }
       case "tool-result": { const tool = tools.get(event.id); if (tool) tool.result = event; break; }
+      case "tool-cost": { const tool = tools.get(event.id); if (tool) tool.cost = (tool.cost ?? 0) + event.usd; break; }
       case "done": items.push({ type: "done", seq, event }); break;
       case "published": items.push({ type: "published", seq, event }); break;
       case "image": if (last?.type === "shots") last.shots.push(event); else items.push({ type: "shots", seq, shots: [event] }); break;
@@ -2330,7 +2331,7 @@ function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
     <summary className="cd-progress-head">
       <span className="cd-progress-mark">{finished ? <Icon name="check" /> : stopped ? <GroupMarks tools={tools} /> : <MorphLoader tone="plain" label={label} className="cd-morph" />}</span>
       <span className="cd-progress-text">
-        <span className="cd-progress-label"><b>{label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}</span>
+        <span className="cd-progress-label"><b>{label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}<ProPrice usd={priceOf(tools)} /></span>
         <InkWave className="cd-progress-wave" label={label} value={fill} />
         <small>{finished ? `Done · ${clockWords(took)}` : stopped ? `Stopped after ${clockWords(took)}` : [clockWords(took), update?.status, known.words].filter(Boolean).join(" · ")}{failed ? ` · ${failed} step${failed === 1 ? "" : "s"} failed` : ""}</small>
       </span>
@@ -2350,12 +2351,21 @@ function PlainToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
     <summary className="tools-used">
       {live && pending ? <MorphLoader tone="plain" label="Using tools" className="cd-morph" /> : <GroupMarks tools={tools} />}
       <span>{live && pending ? "Using tools" : `Used ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`}</span>
+      <ProPrice usd={priceOf(tools)} />
       {touched.length ? <span className="cd-faint">· edited {touched.length === 1 ? touched[0] : `${touched.length} files`}</span> : null}
       {failed ? <span className="cd-word">{failed} failed</span> : null}
       <span className="chev" aria-hidden="true" />
     </summary>
     <div className="call-list">{tools.map((tool) => <ToolRow key={tool.id} tool={tool} />)}</div>
   </details>;
+}
+
+/** What Pro Tools cost, beside their bolt: to the tenth of a cent under a cent ("$0.007"), else to the cent. Nothing when free. */
+const priceOf = (tools: Tool[]) => tools.reduce((sum, t) => sum + (t.cost ?? 0), 0);
+function ProPrice({ usd }: { usd: number }) {
+  if (!(usd > 0)) return null;
+  const shown = usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`;
+  return <span className="cd-pro-price" title={`This cost ${shown} of this month's Pro Tools`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg>{shown}</span>;
 }
 
 /** The apps and spaces a group of calls touched, side by side; a gear when it was only the sandbox. */
@@ -2393,6 +2403,7 @@ function ToolRow({ tool }: { tool: Tool }) {
     <summary>
       <span className={cx("ci", (tool.app || tool.space) && "is-mark")} aria-hidden="true">{state === "running" ? <MorphLoader tone="plain" label="Running" className="cd-morph" /> : <ToolMark tool={tool} />}</span>
       <span className="cv">{tool.label}{tool.app && /^(Used|Connecting|Read how to use)$/.test(tool.label) ? <> <AppName slug={tool.app} /></> : null}</span>
+      {tool.cost ? <ProPrice usd={tool.cost} /> : null}
       {tool.space ? <SpaceChip name={tool.space} /> : null}
       {tool.detail ? <code>{(tool.space ? tool.detail.split(`/workspace/.kimono/files/${tool.space}/`).join("").split(`/files/${tool.space}/`).join("") : tool.detail).split("\n")[0] || "\u00a0"}</code> : null}
       <span className={state === "failed" ? "cm is-failed" : "cm"}>{toolMeta(tool)}</span>
