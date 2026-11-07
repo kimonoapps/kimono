@@ -35,7 +35,9 @@ export type LastSync = {
 type Requested = Record<string, number>;
 /** When each email was last sent a fresh invite, so a button pressed twice doesn't send two. */
 type Resent = Record<string, number>;
-type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; requested: Requested; resent: Resent; lastSync: LastSync | null; statuses: TesterStatus[] };
+/** The email of someone's Apple Account, by Kimono username, when it isn't their Kimono email: Apple only lets them accept there. */
+type AppleEmails = Record<string, string>;
+type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; requested: Requested; resent: Resent; appleEmails: AppleEmails; lastSync: LastSync | null; statuses: TesterStatus[] };
 
 async function readConfig(): Promise<Config | null> {
   try {
@@ -47,6 +49,7 @@ async function readConfig(): Promise<Config | null> {
       invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
       requested: parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {},
       resent: parsed.resent && typeof parsed.resent === "object" ? parsed.resent : {},
+      appleEmails: parsed.appleEmails && typeof parsed.appleEmails === "object" ? parsed.appleEmails : {},
       lastSync: parsed.lastSync ?? null,
       statuses: Array.isArray(parsed.statuses) ? parsed.statuses : [],
     };
@@ -69,15 +72,16 @@ export async function testflightSettings(): Promise<{ keyId: string; issuerId: s
 }
 
 /* Whom the Portal invited, and who asked, kept even without a key. */
-async function readKept(): Promise<{ invited: Invited; requested: Requested }> {
+async function readKept(): Promise<{ invited: Invited; requested: Requested; appleEmails: AppleEmails }> {
   try {
-    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited; requested?: Requested };
+    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited; requested?: Requested; appleEmails?: AppleEmails };
     return {
       invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
       requested: parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {},
+      appleEmails: parsed.appleEmails && typeof parsed.appleEmails === "object" ? parsed.appleEmails : {},
     };
   } catch {
-    return { invited: {}, requested: {} };
+    return { invited: {}, requested: {}, appleEmails: {} };
   }
 }
 
@@ -89,6 +93,26 @@ export async function requestTestflight(username: string): Promise<boolean> {
   if (config.requested[key]) return false;
   await writeConfig({ ...config, requested: { ...config.requested, [key]: Date.now() } });
   return true;
+}
+
+/** Whether text looks enough like an email to hand to Apple. */
+export const looksLikeEmail = (text: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text) && text.length <= 254;
+
+/**
+ * Invites someone at their Apple Account's email instead of their Kimono one
+ * (or back at their Kimono one, given null). The sync that follows cancels
+ * what the Portal sent to the old email and invites the new one.
+ */
+export async function setAppleEmail(username: string, email: string | null) {
+  const config = await readConfig();
+  if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
+  const key = username.toLowerCase();
+  const clean = email?.trim().toLowerCase() || null;
+  if (clean && !looksLikeEmail(clean)) throw new Error("That doesn't look like an email.");
+  const appleEmails = { ...config.appleEmails };
+  if (clean) appleEmails[key] = clean; else delete appleEmails[key];
+  await writeConfig({ ...config, appleEmails, requested: { ...config.requested, [key]: config.requested[key] ?? Date.now() } });
+  return syncTestflight();
 }
 
 export async function saveTestflightKey(input: { issuerId: string; keyId: string; privateKey: string; groupName: string }) {
@@ -171,7 +195,7 @@ async function kimonoAccounts(config: Config): Promise<{ list: PlanAccount[]; no
   const notAsked = new Set<string>();
   const list = await Promise.all(accounts.map(async (account) => {
     const standing = await readStanding(account.username).catch(() => null);
-    const email = account.email || null;
+    const email = config.appleEmails[account.username.toLowerCase()] || account.email || null;
     const wanted = Boolean(config.requested[account.username.toLowerCase()] || (email && invited.has(email.toLowerCase())));
     if (email && !wanted) notAsked.add(account.username.toLowerCase());
     return { username: account.username, name: account.name || account.username, email: wanted ? email : null, active: standing ? standing.active : null };

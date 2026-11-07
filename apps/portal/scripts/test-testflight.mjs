@@ -90,6 +90,19 @@ test('an expired invite, or a TestFlight invite never accepted, shows as stuck a
   ]);
 });
 
+test('moving someone to their Apple Account email cancels the old invite and sends a new one', () => {
+  const plan = planSync({
+    ...base,
+    accounts: [account('mina', 'mina@icloud.test', true, 'Mina Sato')],
+    invitations: [{ id: 'i-old', email: 'mina@kimono.test' }],
+    invited: { 'mina@kimono.test': { at: 1 } },
+  });
+  assert.deepEqual(plan.steps, [
+    { kind: 'invite', email: 'mina@icloud.test', firstName: 'Mina', lastName: 'Sato' },
+    { kind: 'removeInvitation', email: 'mina@kimono.test', invitationId: 'i-old' },
+  ]);
+});
+
 test('names split for Apple', () => {
   assert.deepEqual(nameParts('Mina Sato', 'mina'), { firstName: 'Mina', lastName: 'Sato' });
   assert.deepEqual(nameParts('Hana', 'hana.m'), { firstName: 'Hana', lastName: 'hana.m' });

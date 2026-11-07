@@ -24,3 +24,13 @@ Sync never sends anyone a second email. People whose invite needs resending show
 - **An admin:** on **Admin → Phone app**, **Re-invite** on a stuck row, or **Re-invite stuck** for everyone at once.
 
 A re-invite replaces a pending or expired team invite with a new one (Apple emails them again). For someone already on the team it resends TestFlight's invite for each app whose group they're in (`POST /v1/betaTesterInvitations`). The same person can't be sent another within ten minutes. A sync runs afterwards so the statuses are current.
+
+## Inviting at a different email
+
+Apple only lets someone accept at an Apple Account under the exact email the invite went to. When their Apple Account uses another address, the acceptance page keeps asking them to sign in again. To fix that, invite them at their Apple Account's email instead:
+
+- **The person themself:** **Use a different email** under Request access on **Get the app** (`POST /api/v1/app/testflight/email`, `{ "email": "…" }`; an empty email goes back to their Kimono email).
+- **An admin:** **Change email** on their row on **Admin → Phone app**; clearing it goes back to their Kimono email.
+
+It's kept per person in `testflight.json` (`appleEmails`). The sync that follows cancels what the Portal sent to the old email, or takes that address off the team if it was already accepted, and invites the new one. When their Kimono access ends, the new address is taken off like any other.
+

@@ -16,6 +16,8 @@
 .get-app-step p { margin: 0 0 12px; color: var(--k-ink-soft); line-height: 1.5; }
 .get-app-step .k-seal { text-decoration: none; display: inline-flex; }
 .get-app-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.get-app-email { display: grid; gap: 10px; margin-top: 12px; max-width: 420px; }
+.get-app-other { margin: 8px 0 0 -14px; }
 .get-app-problem { color: var(--k-suo-deep, #8a2f3c) !important; margin-top: 10px !important; }
 .get-app-none { color: var(--k-ink-soft); }
 

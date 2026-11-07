@@ -503,3 +503,7 @@ label.opt { margin: 0; }
 /* The rail is the bottom bar on a phone: its dividers belong to the side rail only (shell.css hides them, but .k-ink-rule's display wins). */
 @media (max-width: 720px) { .rail-divider.k-ink-rule { display: none; } }
 .cd-side-rule { width: calc(100% - 40px); margin: -2px 22px -2px 18px; }
+.tester-email summary { width: fit-content; margin-top: 2px; color: var(--primary); font: 700 13px/1.6 var(--sans); cursor: pointer; list-style: none; }
+.tester-email summary::-webkit-details-marker { display: none; }
+.tester-email form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.tester-email .field { flex: 1; min-width: 220px; }

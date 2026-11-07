@@ -66,6 +66,8 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
   /* Coming back after accepting Apple's email shows where things are. */
   useEffect(() => {
     let current = true;
@@ -103,6 +105,21 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
     }
     setBusy(false);
   }
+  /* Apple only lets people accept at their Apple Account's email, so they can be invited there instead. */
+  async function useEmail(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    try {
+      const response = await fetch("/api/v1/app/testflight/email", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: newEmail }) });
+      const body = await response.json().catch(() => ({})) as { status?: Standing; email?: string | null; error?: string };
+      if (body.status) { setStanding({ status: body.status, email: body.email ?? null }); setChanging(false); setResent(false); }
+      else setProblem(body.error || "That didn't work. Try again.");
+    } catch {
+      setProblem("Kimono isn't answering. Try again in a moment.");
+    }
+    setBusy(false);
+  }
   const status = standing?.status;
   const sent = status === "invited" || status === "tester" || status === "stuck";
   const email = standing?.email;
@@ -119,10 +136,20 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
         : status === "waiting"
         ? <p>Your invite is on its way. Try again in a minute.</p>
         : <p>Kimono asks Apple to invite you to try the app.</p>}
-      {status !== "tester" ? <div className="get-app-actions">
+      {status !== "tester" && !changing ? <div className="get-app-actions">
         <Seal onClick={request} busy={busy} tone={status === "stuck" && !resent ? "quiet" : undefined}>{sent ? "Check again" : "Request access"}</Seal>
         {(status === "invited" || status === "stuck") && !resent ? <Seal onClick={resend} busy={busy} tone={status === "stuck" ? undefined : "quiet"}>Send it again</Seal> : null}
       </div> : null}
+      {status && status !== "tester" && status !== "idle" ? changing
+        ? <form className="get-app-email" onSubmit={useEmail}>
+            <label className="field"><small>Your Apple Account&apos;s email</small><input type="email" required autoComplete="email" value={newEmail} onChange={(event) => setNewEmail(event.target.value)} /></label>
+            <div className="get-app-actions">
+              <Seal type="submit" busy={busy}>Invite this email</Seal>
+              <button type="button" className="txt" onClick={() => setChanging(false)}>Cancel</button>
+            </div>
+          </form>
+        : <button type="button" className="txt get-app-other" onClick={() => { setNewEmail(""); setChanging(true); }}>Use a different email</button>
+        : null}
       {problem ? <p className="get-app-problem" role="alert">{problem}</p> : null}
     </Step>
     <Step n={2} title="Download TestFlight">

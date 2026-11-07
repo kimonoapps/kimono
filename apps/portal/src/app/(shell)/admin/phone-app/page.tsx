@@ -11,7 +11,7 @@ import { getPlatformSettings } from "@/lib/settings";
 import { readReleases, setRequired } from "@/lib/app-releases";
 import type { AppPlatform } from "@/lib/app-updates";
 import { redirect } from "next/navigation";
-import { forgetTestflightKey, resendTestflight, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { forgetTestflightKey, resendTestflight, setAppleEmail, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
 import { isStuck } from "@/lib/testflight-plan";
 import { isApiKey } from "@/lib/testflight-token";
 
@@ -76,6 +76,15 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
       if (username && soon) throw new Error("An invite went out to them a few minutes ago.");
     });
   }
+  /* Invites someone at another email (their Apple Account's); empty goes back to their Kimono email. */
+  async function changeEmail(form: FormData) {
+    "use server";
+    await admin();
+    await then(async () => {
+      const outcome = await setAppleEmail(String(form.get("username") || ""), String(form.get("email") || "") || null);
+      if (!outcome.ok) throw new Error(outcome.message);
+    });
+  }
   async function forgetKey() {
     "use server";
     await admin();
@@ -130,7 +139,16 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
         {testflight.statuses.length ? <div className="seg">
           {testflight.statuses.map((row) => <div className="row" key={row.username}>
             <InkPortraitFrame seed={row.username} weight={5}><Portrait name={row.name} username={row.username} picture={pictures.get(row.username)} size={36} /></InkPortraitFrame>
-            <span className="text"><b>{row.name}</b><small>@{row.username} · {testerLine(row.status, row.email)}{Object.entries(row.also ?? {}).map(([app, status]) => ` · ${app}: ${status}`).join("")}</small></span>
+            <span className="text"><b>{row.name}</b><small>@{row.username} · {testerLine(row.status, row.email)}{Object.entries(row.also ?? {}).map(([app, status]) => ` · ${app}: ${status}`).join("")}</small>
+              {row.status !== "no Kimono access" && row.status !== "removed" ? <details className="tester-email">
+                <summary>Change email</summary>
+                <form action={changeEmail}>
+                  <input type="hidden" name="username" value={row.username} />
+                  <label className="field"><small>Apple Account email</small><input type="email" name="email" defaultValue={row.email ?? ""} placeholder="Their Kimono email" /></label>
+                  <button className="txt" type="submit">Invite this email</button>
+                </form>
+              </details> : null}
+            </span>
             {isStuck(row.status) ? <form action={resend}><input type="hidden" name="username" value={row.username} /><button className="txt" type="submit" aria-label={`Re-invite ${row.name}`}>Re-invite</button></form> : null}
             <span className={row.status === "tester" ? "k-ink-dot k-running" : row.status.startsWith("error") || row.status === "no email" ? "k-ink-dot k-wants" : "k-ink-dot"}>{row.status.startsWith("error") ? "Problem" : testerLabel(row.status)}</span>
           </div>)}
