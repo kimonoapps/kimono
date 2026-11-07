@@ -329,7 +329,7 @@ export function accessPrompt(db: DatabaseSync, workspace: Workspace): string {
   try {
     const owner = workspace.owner;
     const spaces = spacesOf(driveDb(), owner).map((s) => s.name);
-    const notebooks = notebooksOf(driveDb(), owner).map(notebookPlace);
+    const notebooks = notebooksOf(driveDb(), owner).filter((n) => !n.sharedWithYou).map(notebookPlace);
     const grants = grantsOf(db, owner);
     const open = (db.prepare("SELECT node_id, dir FROM opened WHERE workspace_id = ?").all(workspace.id) as { node_id: string; dir: string }[])
       .map((o) => ({ dir: o.dir, need: needOn(grants, owner, workspace.id, chainOf(o.node_id)) }))

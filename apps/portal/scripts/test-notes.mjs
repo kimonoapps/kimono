@@ -111,3 +111,81 @@ test('Kimono AI is told which notebooks are theirs and how to write notes', asyn
   assert.match(guide, /- \[ \] /);
   assert.match(guide, /kimono-remember is only for what you should know about them/);
 });
+
+test('a notebook shared with someone outside its space stays put, and they can write in it', () => {
+  const db = fresh();
+  const family = drive.createSpace(db, 'akram', { name: 'Family', members: [{ username: 'mina', role: 'editor' }] });
+  const book = notes.createNotebook(db, 'akram', { name: 'Recipes', space: family.id });
+  const curry = drive.addFile(db, book.id, 'akram', md('Curry.md'));
+  /* An editor in the space may share it. */
+  drive.shareNode(db, book.id, 'mina', 'ren', 'editor');
+  assert.equal(notes.notebooksOf(db, 'akram')[0].space.members, 2, 'Family keeps it');
+  const seen = notes.notebooksOf(db, 'ren').find((n) => n.id === book.id);
+  assert.ok(seen);
+  assert.equal(seen.sharedWithYou, true);
+  assert.equal(seen.space.name, '', "ren doesn't see the space's name");
+  assert.deepEqual(notes.libraryOf(db, 'ren').notes.map((n) => n.title), ['Curry']);
+  drive.addFile(db, book.id, 'ren', md('Dal.md'));
+  assert.throws(() => drive.childrenOf(db, family.rootId, 'ren'), (e) => e.status === 404, 'nothing else in Family');
+  assert.throws(() => drive.trashNode(db, book.id, 'ren'), /Leave it instead/);
+  assert.equal(drive.childrenOf(db, book.id, 'ren').path.length, 0, 'the way up stops at what was shared');
+  /* Their own first notebook still gets made, beside the shared one. */
+  assert.ok(notes.notebooksOf(db, 'ren').some((n) => !n.sharedWithYou));
+  /* Viewers read only; people can be changed and taken off; anyone may leave. */
+  drive.shareNode(db, book.id, 'akram', 'ren', 'viewer');
+  assert.throws(() => drive.addFile(db, book.id, 'ren', md('More.md')), (e) => e.status === 403);
+  assert.deepEqual(drive.sharesOn(db, book.id, 'akram').shares.map((s) => [s.username, s.role]), [['ren', 'viewer']]);
+  drive.shareNode(db, book.id, 'ren', 'ren', null);
+  assert.throws(() => notes.noteFor(db, curry.id, 'ren'), (e) => e.status === 404);
+});
+
+test("sharing is refused to viewers, to people already in the space, and for a space's top", () => {
+  const db = fresh();
+  const family = drive.createSpace(db, 'akram', { name: 'Family', members: [{ username: 'mina', role: 'viewer' }] });
+  const book = notes.createNotebook(db, 'akram', { name: 'Recipes', space: family.id });
+  assert.throws(() => drive.shareNode(db, book.id, 'mina', 'ren', 'viewer'), (e) => e.status === 403);
+  assert.throws(() => drive.shareNode(db, book.id, 'akram', 'mina', 'editor'), /already in Family/);
+  assert.throws(() => drive.shareNode(db, family.rootId, 'akram', 'ren', 'editor'), /space instead/);
+  assert.throws(() => drive.shareNode(db, book.id, 'akram', 'ren', 'owner'), /editor or a viewer/);
+});
+
+test('one note can be shared on its own; it stands outside their notebooks', () => {
+  const db = fresh();
+  const [book] = notes.ensureNotebook(db, 'akram');
+  const wifi = drive.addFile(db, book.id, 'akram', md('Wi-Fi.md'));
+  drive.addFile(db, book.id, 'akram', md('Private.md'));
+  drive.shareNode(db, wifi.id, 'akram', 'guest', 'viewer');
+  const lib = notes.libraryOf(db, 'guest');
+  assert.deepEqual(lib.notes.map((n) => [n.title, n.notebookId]), [['Wi-Fi', null]]);
+  assert.equal(notes.noteFor(db, wifi.id, 'guest').notebookId, null);
+  assert.deepEqual(drive.sharedWithYou(db, 'guest').map((n) => [n.name, n.parentId]), [['Wi-Fi.md', null]]);
+  /* The note's shares say it also comes with nothing above; the notebook's would show on the note as inherited. */
+  drive.shareNode(db, book.id, 'akram', 'mina', 'editor');
+  assert.deepEqual(drive.sharesOn(db, wifi.id, 'akram').inherited.map((s) => [s.username, s.via.name]), [['mina', 'Notes']]);
+});
+
+test('a share reaches their devices through the change log, and leaves it when taken off', () => {
+  const db = fresh();
+  const [book] = notes.ensureNotebook(db, 'akram');
+  const cursor = drive.latestChange(db);
+  drive.shareNode(db, book.id, 'akram', 'ren', 'editor');
+  const plan = drive.addFile(db, book.id, 'akram', md('Plan.md'));
+  const seen = drive.changesFor(db, 'ren', cursor);
+  assert.deepEqual(seen.changed.map((n) => [n.name, n.parentId === null]).sort(), [['Notes', true], ['Plan.md', false]]);
+  const after = seen.cursor;
+  drive.shareNode(db, book.id, 'akram', 'ren', null);
+  assert.ok(drive.changesFor(db, 'ren', after).removed.includes(book.id));
+  assert.ok(!drive.changesFor(db, 'ren', 0).changed.some((n) => n.id === plan.id));
+});
+
+test('a notebook can have a public link that shows its notes, and stops when trashed', () => {
+  const db = fresh();
+  const [book] = notes.ensureNotebook(db, 'akram');
+  drive.addFile(db, book.id, 'akram', md('Recipes.md'));
+  const token = drive.linkFile(db, book.id, 'akram');
+  assert.deepEqual(drive.publicFolder(db, token).nodes.map((n) => n.name), ['Recipes.md']);
+  const plain = drive.createFolder(db, drive.spacesOf(db, 'akram')[0].rootId, 'akram', 'Plain');
+  assert.throws(() => drive.linkFile(db, plain.id, 'akram'), /files and notebooks/);
+  drive.trashNode(db, book.id, 'akram');
+  assert.equal(drive.publicFolder(db, token), null);
+});

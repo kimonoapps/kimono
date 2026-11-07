@@ -24,6 +24,15 @@
  *     can't rename, move or remove anything. Turning the link off ends it for
  *     good; turning it on again makes a new one.
  *   - Being a Kimono admin gives no access to other people's spaces.
+ *   - One folder or file can also be shared with people outside its space,
+ *     as an editor or a viewer of it and everything in it (migration 8). It
+ *     stays where it is; for them it stands on its own ("shared with you").
+ *     Anyone who may edit it may share it, change who it's shared with, or
+ *     take someone off; anyone may take themselves off. Someone in it only
+ *     through a share can't trash it (they leave it instead). A share gives
+ *     no say over the space: its members, its link, its name.
+ *   - A notebook (a folder) can also have a public link, read-only, like a
+ *     file's.
  *
  * Every change is logged (see changesFor) so devices keep a copy in step:
  * the Files app on iPhone and Android, and the Kimono apps' offline cache.
@@ -57,6 +66,8 @@ export type DriveNode = {
   purpose: FolderPurpose | null;
   /** Which chat or project it is, for its app to open. */
   ref: string | null;
+  /** Set when it was shared with this person on its own, from a space they aren't in: it stands at their top level. */
+  sharedWithYou?: boolean;
 };
 
 /** A refusal a person can read. Routes turn it into a 4xx with this sentence. */
@@ -211,6 +222,20 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 8) {
+    /* A folder or file shared with someone outside its space, and what they may do with it. */
+    db.exec(`
+      BEGIN;
+      CREATE TABLE shares (
+        node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+        username TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('editor', 'viewer')),
+        added_by TEXT NOT NULL, added_at INTEGER NOT NULL, PRIMARY KEY (node_id, username)
+      );
+      CREATE INDEX shares_by_user ON shares (username);
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '8');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── the change log ── */
@@ -258,21 +283,28 @@ export function changesFor(db: DatabaseSync, username: string, since: number, li
   if (since > latest) throw new DriveProblem("That cursor isn't from this Drive. List everything again.", 410);
   const rows = db.prepare(`
     SELECT node_id, max(seq) AS seq FROM changes
-    WHERE seq > ? AND (username = ? OR space_id IN (SELECT space_id FROM members WHERE username = ?))
+    WHERE seq > ? AND (username = ? OR space_id IN (SELECT space_id FROM members WHERE username = ?)
+      OR space_id IN (SELECT n.space_id FROM shares s JOIN nodes n ON n.id = s.node_id WHERE s.username = ?))
     GROUP BY node_id ORDER BY seq LIMIT ?
-  `).all(since, who, who, limit + 1) as { node_id: string; seq: number }[];
+  `).all(since, who, who, who, limit + 1) as { node_id: string; seq: number }[];
   const more = rows.length > limit;
   const page = rows.slice(0, limit);
   const changed: DriveNode[] = [], removed: string[] = [];
   for (const { node_id } of page) {
     const row = nodeRow(db, node_id);
-    const role = row ? roleIn(db, row.space_id, who) : null;
-    if (row && role && !inTrash(db, node_id)) changed.push(toNode(row, role));
+    const role = row ? roleOn(db, node_id, who) : null;
+    if (row && role && !inTrash(db, node_id)) changed.push(asSeenBy(db, toNode(row, role), who));
     else removed.push(node_id);
   }
   /* With no more to come, the cursor is the log's end, so others' unrelated changes aren't asked about again. */
   const cursor = more ? page[page.length - 1].seq : Math.max(latest, since);
   return { cursor, changed, removed, more, spaces: spacesOf(db, who) };
+}
+
+/* Something shared with someone outside its space stands on its own for them: no parent they can't see. */
+function asSeenBy(db: DatabaseSync, node: DriveNode, username: string): DriveNode {
+  if (node.parentId && !roleOn(db, node.parentId, username)) return { ...node, parentId: null, sharedWithYou: true };
+  return node;
 }
 
 /** The log's end: a cursor for a device that has just listed everything. */
@@ -342,6 +374,31 @@ export function roleIn(db: DatabaseSync, spaceId: string, username: string): Rol
   return row?.role ?? null;
 }
 
+/** The roles at or above a node a share gives, nearest first: [nodeId, role][]. */
+function sharesAbove(db: DatabaseSync, nodeId: string, username: string): { nodeId: string; role: Role }[] {
+  const who = username.toLowerCase();
+  const out: { nodeId: string; role: Role }[] = [];
+  for (let at: string | null = nodeId, depth = 0; at && depth < 256; depth += 1) {
+    const share = db.prepare("SELECT role FROM shares WHERE node_id = ? AND username = ?").get(at, who) as { role?: Role } | undefined;
+    if (share?.role) out.push({ nodeId: at, role: share.role });
+    at = (db.prepare("SELECT parent_id FROM nodes WHERE id = ?").get(at) as { parent_id: string | null } | undefined)?.parent_id ?? null;
+  }
+  return out;
+}
+
+/**
+ * What the person may do with a node: their role in its space, or what a
+ * share of it (or of a folder above it) gives, whichever is more.
+ */
+export function roleOn(db: DatabaseSync, nodeId: string, username: string): Role | null {
+  const row = db.prepare("SELECT space_id FROM nodes WHERE id = ?").get(nodeId) as { space_id: string } | undefined;
+  if (!row) return null;
+  const inSpace = roleIn(db, row.space_id, username);
+  if (inSpace === "owner") return inSpace;
+  const best = sharesAbove(db, nodeId, username).reduce<Role | null>((most, s) => !most || rank[s.role] > rank[most] ? s.role : most, inSpace);
+  return best;
+}
+
 /** The person's role in the space, refused below [need]. Unknown spaces and spaces you aren't in look the same. */
 function require(db: DatabaseSync, spaceId: string, username: string, need: Role): Role {
   const role = roleIn(db, spaceId, username);
@@ -366,7 +423,9 @@ function inTrash(db: DatabaseSync, id: string): boolean {
 export function nodeFor(db: DatabaseSync, id: string, username: string, need: Role = "viewer", { trashed = false } = {}): DriveNode & { blob: string | null } {
   const row = nodeRow(db, id);
   if (!row) throw new DriveProblem("That file or folder doesn't exist.", 404);
-  const role = require(db, row.space_id, username, need);
+  const role = roleOn(db, id, username);
+  if (!role) throw new DriveProblem("That file or folder doesn't exist.", 404);
+  if (rank[role] < rank[need]) throw new DriveProblem(need === "owner" ? "Only the space's owners can do that." : "You can only view this.", 403);
   if (!trashed && inTrash(db, id)) throw new DriveProblem("That's in the trash.", 404);
   return { ...toNode(row, role), blob: row.blob };
 }
@@ -394,12 +453,13 @@ export function spaceFor(db: DatabaseSync, spaceId: string, username: string): S
 export function childrenOf(db: DatabaseSync, folderId: string, username: string): { folder: DriveNode; path: DriveNode[]; children: DriveNode[] } {
   const folder = nodeFor(db, folderId, username);
   if (folder.kind !== "folder") throw new DriveProblem("That's a file, not a folder.");
-  const role = roleIn(db, folder.spaceId, username);
+  const role = roleOn(db, folder.id, username);
   const children = (db.prepare(`SELECT ${nodeColumns} FROM nodes n WHERE n.parent_id = ? AND n.trashed_at IS NULL ORDER BY n.kind = 'file', lower(n.name)`).all(folderId) as NodeRow[]).map((row) => toNode(row, role));
   const path: DriveNode[] = [];
+  /* Someone in it only through a share sees the way down from what was shared with them, no further up. */
   for (let at: string | null = folder.parentId; at && path.length < 256;) {
     const row = nodeRow(db, at);
-    if (!row) break;
+    if (!row || !roleOn(db, at, username)) break;
     path.unshift(toNode(row, role));
     at = row.parent_id;
   }
@@ -417,8 +477,10 @@ export function trashOf(db: DatabaseSync, username: string): DriveNode[] {
  * too, though only the folder itself is marked.
  */
 const liveNodes = `WITH RECURSIVE live(id) AS (
-    SELECT s.root_id FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
-    UNION ALL
+    SELECT s.root_id FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?1
+    UNION
+    SELECT sh.node_id FROM shares sh JOIN nodes x ON x.id = sh.node_id WHERE sh.username = ?1 AND x.trashed_at IS NULL
+    UNION
     SELECT c.id FROM nodes c JOIN live ON c.parent_id = live.id WHERE c.trashed_at IS NULL
   )`;
 
@@ -434,7 +496,7 @@ export function searchNodes(db: DatabaseSync, username: string, query: string, l
     SELECT ${nodeColumns}, ${roleColumn} FROM nodes n JOIN live ON live.id = n.id
     WHERE n.parent_id IS NOT NULL AND lower(n.name) LIKE ? ESCAPE '\\'
     ORDER BY lower(n.name) = ? DESC, instr(lower(n.name), ?) = 1 DESC, n.updated_at DESC LIMIT ?`)
-    .all(username.toLowerCase(), username.toLowerCase(), pattern, words, words, Math.min(Math.max(1, limit), 200)) as (NodeRow & { role: Role })[]).map((row) => toNode(row, row.role));
+    .all(username.toLowerCase(), username.toLowerCase(), pattern, words, words, Math.min(Math.max(1, limit), 200)) as (NodeRow & { role: Role })[]).map((row) => toNode(row, row.role ?? roleOn(db, row.id, username)));
 }
 
 /** The person's most recently changed files, newest first. */
@@ -442,7 +504,7 @@ export function recentFiles(db: DatabaseSync, username: string, limit = 50): Dri
   return (db.prepare(`${liveNodes}
     SELECT ${nodeColumns}, ${roleColumn} FROM nodes n JOIN live ON live.id = n.id
     WHERE n.kind = 'file' ORDER BY n.updated_at DESC LIMIT ?`)
-    .all(username.toLowerCase(), username.toLowerCase(), Math.min(Math.max(1, limit), 200)) as (NodeRow & { role: Role })[]).map((row) => toNode(row, row.role));
+    .all(username.toLowerCase(), username.toLowerCase(), Math.min(Math.max(1, limit), 200)) as (NodeRow & { role: Role })[]).map((row) => toNode(row, row.role ?? roleOn(db, row.id, username)));
 }
 
 /* ── spaces and members ── */
@@ -591,6 +653,7 @@ export function moveNode(db: DatabaseSync, id: string, username: string, toFolde
 export function trashNode(db: DatabaseSync, id: string, username: string, now = Date.now()) {
   const node = nodeFor(db, id, username, "editor");
   if (isRoot(db, node)) throw new DriveProblem("A space's top folder can't be trashed.");
+  if (!roleIn(db, node.spaceId, username) && sharesAbove(db, id, username).some((s) => s.nodeId === id)) throw new DriveProblem("It was shared with you. Leave it instead.", 403);
   db.prepare("UPDATE nodes SET trashed_at = ?, trashed_by = ? WHERE id = ?").run(now, username.toLowerCase(), id);
   touch(db, id, node.spaceId, now);
 }
@@ -628,7 +691,7 @@ export function emptyOldTrash(db: DatabaseSync, now = Date.now()): string[] {
 /** Makes (or returns) the public link for a file. Folders aren't shared by link. */
 export function linkFile(db: DatabaseSync, id: string, username: string, now = Date.now()): string {
   const node = nodeFor(db, id, username, "editor");
-  if (node.kind !== "file") throw new DriveProblem("Only files can have a public link.");
+  if (node.kind !== "file" && node.purpose !== "notebook") throw new DriveProblem("Only files and notebooks can have a public link.");
   if (node.link) return node.link;
   const token = newId(9);
   db.prepare("INSERT INTO links (token, node_id, created_by, created_at) VALUES (?, ?, ?, ?)").run(token, id, username.toLowerCase(), now);
@@ -647,6 +710,93 @@ export function publicFile(db: DatabaseSync, token: string): { id: string; name:
   const row = db.prepare(`SELECT n.id, n.name, n.size, n.mime, n.blob, n.updated_at FROM links l JOIN nodes n ON n.id = l.node_id WHERE l.token = ? AND l.revoked_at IS NULL AND n.kind = 'file'`).get(token) as { id: string; name: string; size: number; mime: string | null; blob: string | null; updated_at: number } | undefined;
   if (!row?.blob || inTrash(db, row.id)) return null;
   return { id: row.id, name: row.name, size: row.size, mime: row.mime, blob: row.blob, updatedAt: row.updated_at };
+}
+
+/* ── shares: one folder or file, with people outside its space ── */
+
+export type Share = { username: string; role: Exclude<Role, "owner">; addedBy: string; addedAt: number };
+export type ShareInfo = {
+  /** People it is shared with on its own. */
+  shares: Share[];
+  /** People who have it through a folder above it that is shared: the folder, and them. */
+  inherited: (Share & { via: { id: string; name: string } })[];
+  /** The space it is in, and how many are in that space (who all see it already). */
+  space: { id: string; name: string; members: number };
+};
+
+const shareRole = (role: unknown): Exclude<Role, "owner"> => {
+  if (role === "editor" || role === "viewer") return role;
+  throw new DriveProblem("Someone it's shared with is an editor or a viewer.");
+};
+
+/**
+ * Shares a folder or file with someone (role editor or viewer), changes what
+ * they may do, or (null) takes them off it. Anyone who may edit it may; anyone
+ * may take themselves off. Someone already in its space needs no share.
+ */
+export function shareNode(db: DatabaseSync, id: string, username: string, who: string, role: Exclude<Role, "owner"> | null, now = Date.now()): ShareInfo {
+  const self = username.toLowerCase(), target = who.toLowerCase();
+  const node = nodeFor(db, id, username, role === null && target === self ? "viewer" : "editor");
+  if (role !== null) {
+    shareRole(role);
+    if (isRoot(db, node)) throw new DriveProblem("Add them to the space instead.");
+    if (target === self) throw new DriveProblem("You already have it.");
+    if (roleIn(db, node.spaceId, target)) throw new DriveProblem(`${who} is already in ${spaceName(db, node.spaceId)}.`, 409);
+    db.prepare("INSERT INTO shares (node_id, username, role, added_by, added_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (node_id, username) DO UPDATE SET role = excluded.role")
+      .run(id, target, role, self, now);
+  } else {
+    db.prepare("DELETE FROM shares WHERE node_id = ? AND username = ?").run(id, target);
+  }
+  /* It appears, disappears, or allows them something new: their devices look again. */
+  db.prepare("UPDATE nodes SET version = version + 1 WHERE id = ?").run(id);
+  db.prepare("INSERT INTO changes (node_id, username, at) VALUES (?, ?, ?)").run(id, target, now);
+  return role === null && target === self ? { shares: [], inherited: [], space: { id: node.spaceId, name: "", members: 0 } } : sharesOn(db, id, username);
+}
+
+function spaceName(db: DatabaseSync, spaceId: string): string {
+  return (db.prepare("SELECT name FROM spaces WHERE id = ?").get(spaceId) as { name: string } | undefined)?.name ?? "its space";
+}
+
+/** Who a folder or file is shared with, beyond its space. */
+export function sharesOn(db: DatabaseSync, id: string, username: string): ShareInfo {
+  const node = nodeFor(db, id, username);
+  const rows = (nodeId: string) => (db.prepare("SELECT username, role, added_by, added_at FROM shares WHERE node_id = ? ORDER BY added_at").all(nodeId) as { username: string; role: "editor" | "viewer"; added_by: string; added_at: number }[])
+    .map((r) => ({ username: r.username, role: r.role, addedBy: r.added_by, addedAt: r.added_at }));
+  const inherited: ShareInfo["inherited"] = [];
+  for (let at = node.parentId; at;) {
+    const row = nodeRow(db, at);
+    if (!row || row.parent_id === null) break;
+    for (const share of rows(at)) inherited.push({ ...share, via: { id: row.id, name: row.name } });
+    at = row.parent_id;
+  }
+  const members = (db.prepare("SELECT count(*) AS n FROM members WHERE space_id = ?").get(node.spaceId) as { n: number }).n;
+  /* Someone in it only through a share sees who else has it, not who is in a space they aren't in. */
+  const inSpace = Boolean(roleIn(db, node.spaceId, username));
+  return { shares: rows(id), inherited, space: { id: node.spaceId, name: inSpace ? spaceName(db, node.spaceId) : "", members: inSpace ? members : 0 } };
+}
+
+/** What has been shared with the person from spaces they aren't in: the shared folders and files themselves, newest first. */
+export function sharedWithYou(db: DatabaseSync, username: string): DriveNode[] {
+  const who = username.toLowerCase();
+  const rows = db.prepare(`SELECT ${nodeColumns}, sh.role AS share_role FROM shares sh JOIN nodes n ON n.id = sh.node_id
+    WHERE sh.username = ? AND n.space_id NOT IN (SELECT space_id FROM members WHERE username = ?) ORDER BY sh.added_at DESC`).all(who, who) as (NodeRow & { share_role: Role })[];
+  const ids = new Set(rows.map((r) => r.id));
+  return rows
+    .filter((row) => !inTrash(db, row.id))
+    /* One inside another shared with them comes with that one. */
+    .filter((row) => !sharesAbove(db, row.parent_id ?? "", who).some((s) => ids.has(s.nodeId)))
+    .map((row) => ({ ...toNode(row, roleOn(db, row.id, who)), parentId: null, sharedWithYou: true }));
+}
+
+/** A public link to a notebook: the notebook, and every live folder and file in it. No account is involved. */
+export function publicFolder(db: DatabaseSync, token: string): { folder: SharedNode; nodes: (SharedNode & { parentId: string; blob: string | null })[] } | null {
+  const row = db.prepare("SELECT n.id FROM links l JOIN nodes n ON n.id = l.node_id WHERE l.token = ? AND l.revoked_at IS NULL AND n.kind = 'folder'").get(token) as { id: string } | undefined;
+  if (!row || inTrash(db, row.id)) return null;
+  const top = nodeRow(db, row.id)!;
+  const nodes = db.prepare(`WITH RECURSIVE under(id) AS (SELECT ? UNION ALL SELECT c.id FROM nodes c JOIN under ON c.parent_id = under.id WHERE c.trashed_at IS NULL)
+    SELECT n.id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.updated_at FROM nodes n JOIN under ON under.id = n.id WHERE n.id != ?`).all(row.id, row.id) as { id: string; parent_id: string; kind: "folder" | "file"; name: string; size: number; mime: string | null; blob: string | null; updated_at: number }[];
+  const plain = (r: { id: string; kind: "folder" | "file"; name: string; size: number; mime: string | null; updated_at: number }): SharedNode => ({ id: r.id, kind: r.kind, name: r.name, size: r.size, mime: r.mime, updatedAt: r.updated_at });
+  return { folder: plain(top), nodes: nodes.map((r) => ({ ...plain(r), parentId: r.parent_id, blob: r.blob })) };
 }
 
 /* ── space links ── */
@@ -857,7 +1007,12 @@ export function finishUpload(db: DatabaseSync, upload: Upload, blob: string, now
     /* Access can change over the days an upload takes: whoever started it must still be allowed to add, or to overwrite. */
     if (upload.link) {
       if (guestSpace(db, upload.link, "add").id !== upload.spaceId) throw new DriveProblem("This link doesn't work any more.", 404);
-    } else require(db, upload.spaceId, upload.createdBy, "editor");
+    } else {
+      const at = upload.replaces ?? upload.parentId;
+      const role = roleOn(db, at, upload.createdBy);
+      if (!role) throw new DriveProblem("That space doesn't exist, or you're not in it.", 404);
+      if (rank[role] < rank.editor) throw new DriveProblem("You can only view this.", 403);
+    }
     if (upload.replaces) {
       const target = nodeRow(db, upload.replaces);
       const live = target && target.space_id === upload.spaceId && !inTrash(db, target.id);

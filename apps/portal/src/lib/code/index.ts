@@ -850,7 +850,8 @@ export async function tempLink(request: Request, id: string, token: string, name
 async function notesFor(owner: string): Promise<string> {
   try {
     if (!notesConfig(await getPlatformSettings()).enabled) return "";
-    return notesGuide(ensureNotebook(driveDb(), owner));
+    /* Ones shared with them from spaces they aren't in can't be opened in a chat yet. */
+    return notesGuide(ensureNotebook(driveDb(), owner).filter((n) => !n.sharedWithYou));
   } catch (error) {
     console.warn("Kimono AI couldn't read the notebooks:", error instanceof Error ? error.message : error);
     return "";

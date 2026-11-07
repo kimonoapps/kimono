@@ -7,7 +7,8 @@
  * same notes are in Drive (which shows a notebook as a notebook, not a
  * folder), in the Files app on the phone, and in Kimono AI, and Drive's rules
  * decide who may read or change them: a notebook is shared with whoever is in
- * its space (see ../drive/model.ts).
+ * its space, and can also be shared, staying where it is, with people outside
+ * it, as can a single note (Drive's shares; see ../drive/model.ts).
  *
  * Someone with no notebook gets one, "Notes", the first time they ask, in
  * their own space: the oldest one they own and nobody else is in, or a new
@@ -16,7 +17,7 @@
  * Pure logic over the Drive database, tested in scripts/test-notes.mjs.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { cleanName, createFolder, createSpace, DriveProblem, nodeFor, setPurpose, spacesOf, type DriveNode, type Role, type Space } from "../drive/model";
+import { cleanName, createFolder, createSpace, DriveProblem, nodeFor, roleOn, setPurpose, sharedWithYou, spacesOf, type DriveNode, type Role, type Space } from "../drive/model";
 
 export const firstNotebookName = "Notes";
 export const personalSpaceName = "Personal";
@@ -40,10 +41,13 @@ export type Notebook = {
   role: Role;
   /** Whether it is its space's top folder (made by sharing it on its own). */
   isSpace: boolean;
+  /** Shared with this person from a space they aren't in; its space is then not theirs to see (name "", members 0). */
+  sharedWithYou: boolean;
 };
 export type Section = { id: string; notebookId: string; parentId: string; name: string; updatedAt: number };
 export type NoteMeta = {
-  id: string; notebookId: string; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number;
+  /** notebookId is null for a note shared with this person on its own, outside any notebook of theirs. */
+  id: string; notebookId: string | null; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number;
   /** The version an edit must start from to save over it (Drive's contentVersion). */
   version: number;
 };
@@ -76,10 +80,15 @@ export function notebooksOf(db: DatabaseSync, username: string): Notebook[] {
       return [{
         id: r.id, name: r.name, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
         space: { id: space.id, name: space.name, crest: space.crest, color: space.color, members: space.members },
-        role: space.role, isSpace: space.rootId === r.id,
+        role: space.role, isSpace: space.rootId === r.id, sharedWithYou: false,
       }];
     })
-    .sort((a, b) => Number(b.createdBy === who) - Number(a.createdBy === who) || a.name.localeCompare(b.name));
+    .concat(sharedWithYou(db, who).filter((n) => n.kind === "folder" && n.purpose === "notebook" && !ids.has(n.id)).map((n) => ({
+      id: n.id, name: n.name, createdBy: n.createdBy, createdAt: n.createdAt, updatedAt: n.updatedAt,
+      space: { id: n.spaceId, name: "", crest: "kikyo", color: "plum", members: 0 },
+      role: roleOn(db, n.id, who) ?? "viewer", isSpace: false, sharedWithYou: true,
+    })))
+    .sort((a, b) => Number(a.sharedWithYou) - Number(b.sharedWithYou) || Number(b.createdBy === who) - Number(a.createdBy === who) || a.name.localeCompare(b.name));
 }
 
 function ancestors(db: DatabaseSync, from: string | null): string[] {
@@ -120,13 +129,13 @@ export function createNotebook(db: DatabaseSync, username: string, input: { name
 /** The person's notebooks, making their first if they have none. */
 export function ensureNotebook(db: DatabaseSync, username: string, now = Date.now()): Notebook[] {
   const found = notebooksOf(db, username);
-  return found.length ? found : [createNotebook(db, username, {}, now)];
+  return found.some((n) => !n.sharedWithYou) ? found : [createNotebook(db, username, {}, now), ...found];
 }
 
 /** Where a new note goes when none is named: their first notebook they may write in. */
 export function defaultNotebook(db: DatabaseSync, username: string): Notebook {
   const books = ensureNotebook(db, username);
-  return books.find((b) => b.role !== "viewer") ?? createNotebook(db, username, {});
+  return books.find((b) => b.role !== "viewer" && !b.sharedWithYou) ?? createNotebook(db, username, {});
 }
 
 /**
@@ -150,12 +159,19 @@ export function libraryOf(db: DatabaseSync, username: string): { notebooks: Note
     if (row.kind === "folder") sections.push({ id: row.id, notebookId: row.book, parentId: row.parent_id!, name: row.name, updatedAt: row.updated_at });
     else if (isNoteName(row.name)) notes.push({ ...meta(row, row.book), blob: row.blob });
   }
+  /* A note shared with them on its own stands outside their notebooks. */
+  const listed = new Set(notes.map((n) => n.id));
+  for (const shared of sharedWithYou(db, username)) {
+    if (shared.kind !== "file" || !isNoteName(shared.name) || listed.has(shared.id)) continue;
+    const row = db.prepare(`SELECT ${columns} FROM nodes n WHERE n.id = ?`).get(shared.id) as Row | undefined;
+    if (row && notebookAbove(db, row.parent_id ?? "")) notes.push({ ...meta(row, null), blob: row.blob });
+  }
   sections.sort((a, b) => a.name.localeCompare(b.name));
   notes.sort((a, b) => b.updatedAt - a.updatedAt);
   return { notebooks, sections, notes };
 }
 
-const meta = (row: Pick<Row, "id" | "parent_id" | "name" | "created_by" | "created_at" | "updated_at" | "content_version">, notebookId: string): NoteMeta => ({
+const meta = (row: Pick<Row, "id" | "parent_id" | "name" | "created_by" | "created_at" | "updated_at" | "content_version">, notebookId: string | null): NoteMeta => ({
   id: row.id, notebookId, parentId: row.parent_id!, title: titleOf(row.name), createdBy: row.created_by,
   createdAt: row.created_at, updatedAt: row.updated_at, version: row.content_version,
 });
@@ -170,9 +186,10 @@ export function noteFrom(db: DatabaseSync, node: DriveNode & { blob: string | nu
   };
 }
 
-/** A note the person may see, at [need] or above. */
+/** A note the person may see, at [need] or above. Its notebookId is null when they have the note but not its notebook. */
 export function noteFor(db: DatabaseSync, id: string, username: string, need: Role = "viewer") {
-  return noteFrom(db, nodeFor(db, id, username, need));
+  const note = noteFrom(db, nodeFor(db, id, username, need));
+  return note.notebookId && !roleOn(db, note.notebookId, username) ? { ...note, notebookId: null } : note;
 }
 
 /** A notebook or a section in one, which the person may write in; with the notebook it is in. */

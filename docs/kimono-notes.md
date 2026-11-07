@@ -21,9 +21,21 @@ anything that reads Markdown. Drive's rules decide who may read or change them.
   `ref` naming the chat. The app the folder belongs to sets it; people never
   do.
 - **A notebook is shared with whoever is in its space.** One in Family is
-  Family's. **Share on its own** moves a notebook into a new space of its own,
-  with just you and the people you pick. Drive does this with `folderToSpace`,
-  and it stays a notebook.
+  Family's. **Share** adds people outside the space to just that notebook, or
+  to just one note, as editors or viewers. It stays where it is. This uses
+  Drive's shares (`shares` table, migration 8), which work for any folder or
+  file:
+  - anyone who may edit it may share it, change someone's access, or take
+    someone off; anyone may leave;
+  - for the people it's shared with, it shows under **Shared with you** in
+    Notes, in Drive and in the Files app, standing on its own; they never see
+    the rest of the space, its name or its members;
+  - someone who has it only through a share can't delete it; they leave it;
+  - a note inside a shared notebook shows who has it through the notebook.
+- **Public link:** a notebook or a note can have a read-only link that works
+  without signing in, at `/n/<token>`. The admin's Drive switch for public
+  links turns these off too. The page shows the notes typeset, and nothing
+  about who wrote them or where they live.
 - Someone with no notebook gets **Notes** the first time they open the app or
   Kimono AI needs one. It goes in their own space: the oldest one they own with
   nobody else in it, or a new **Personal** space if they have none. **New
@@ -48,11 +60,19 @@ API: `/api/v1/notes` (code: `apps/portal/src/lib/notes`, `src/app/api/v1/notes`)
 | `POST /notes/sections` | `{ name, parent? }`. `PATCH` and `DELETE` work on `/notes/sections/:id` |
 | `POST /notes/notebooks` | `{ name, space? }` makes a notebook (in your own space if none is given) |
 | `PATCH`, `DELETE /notes/notebooks/:id` | `{ name }` renames it; `DELETE` trashes it (a notebook shared on its own is left instead) |
-| `POST /notes/notebooks/:id/share` | `{ members: [{ username, role }] }` shares it on its own, as a new space |
-| `GET`, `PUT /notes/notebooks/:id/members` | who shares it (its space). `PUT { username, role \| null }` works once it is shared on its own. Anyone may leave |
+| `GET /notes/notebooks/:id/members`, `GET /notes/:id/members` | `{ shares, inherited, space: { name, members }, role, link }`: who it's shared with, who has it through its notebook, how many see it in its space (0 and no name when it was shared with you) |
+| `PUT` the same | `{ username, role: "editor" \| "viewer" \| null }` shares, changes, or takes off. Anyone may leave |
+| `POST`, `DELETE /notes/notebooks/:id/link`, `/notes/:id/link` | turns the public link on (gives `{ link }`) or off |
+| `GET /notes/public/:token` | no sign-in: `{ note: { title, text, updatedAt } }` or `{ notebook: { name, sections, notes } }` |
+| `GET /notes/people` | everyone it can be shared with |
+
+Drive has the same for any folder or file: `GET`/`PUT /drive/nodes/:id/shares`
+and `GET /drive/shared-with-you`. Shared items also come through `/drive/changes`
+with `parentId: null` and `sharedWithYou: true`.
 
 A notebook in the API is `{ id, name, space: { id, name, crest, color, members },
-role, isSpace }`. A note's and a section's `notebookId` is the notebook folder's id.
+role, isSpace, sharedWithYou }`. A note's and a section's `notebookId` is the
+notebook folder's id. A note shared with you on its own has `notebookId: null`.
 
 **Kimono AI** knows your notebooks. Each message names them, and its system
 prompt says how notes work (`lib/notes/agent.ts`). It asks for a notebook with
@@ -120,9 +140,11 @@ Ink is for marks only. It never goes on controls, cards or text.
     or a `MorphLoader` while it saves;
   - in All notes, the notebook's small crest before the time.
 - A ··· menu shows on hover, and always on touch. A note's menu holds
-  **Move** and **Delete**. A notebook's menu (in the panel or drawer) holds
-  **Rename**, **Share on its own** (for owners of its space), **Leave** (once
-  it is shared on its own) and **Delete**.
+  **Share**, **Move** and **Delete**. A notebook's menu (in the panel or
+  drawer) holds **Rename**, **Share** and **Delete**, or **Leave** for one
+  shared with you. Below your own notebooks, the panel and drawer have a
+  **Shared with you** group: notebooks, then single notes, each with the
+  portrait of whoever shared it.
 - The open note's row gets the lightest container and a faint shadow, as the
   current chat does.
 - New rows rise 12px into place. On the phone they use `animateItem` (a 380ms
@@ -173,13 +195,24 @@ phone, the `InkLoader` sits beside the label, as `Seal.kt` does.
   for 6s. It is recoverable, so there is no confirm.
 - **Delete** a section that holds notes: an inline confirm, as for a chat:
   "Delete Recipes and its 4 notes?" with **Delete** and **Keep**.
-- **Leave** a shared notebook: hold to confirm (`HoldSeal`). Only an owner can
-  bring you back, so it gets the stronger gesture.
-- **Share on its own:** a sheet with the people picker Drive uses. Each person
-  is an editor or a viewer, set with a joint switch. The button is **Share**.
-  Before that, the sheet says who already shares it: "Everyone in Family can
-  see this." Afterwards the notebook's portraits show its people, with a short
-  spring.
+- **Leave** something shared with you: hold to confirm (`HoldSeal`). Only
+  someone who can edit it can bring you back, so it gets the stronger gesture.
+- **Share** (a notebook or a note) opens one sheet, like a document's:
+  - At the top: "Everyone in Family can see this." (when its space has others),
+    or for a note in a shared notebook, "Mina and Ren have it through Recipes."
+  - "Add people": the household picker. Each person's row has their portrait,
+    name, and a joint switch for EDIT / VIEW, plus Take off (×).
+  - Changes apply as you make them, each row showing a `MorphLoader` while it
+    saves. There is no Share button to press; the sheet's button is **Done**.
+  - A viewer sees who has it, but no switches.
+  - **Public link**, at the foot: a joint switch. When on, the link shows with
+    **Copy**, and "Anyone with the link can read this." Turning it off ends the
+    link at once. It's hidden when the admin has public links off.
+- **The public page** (`/n/<token>`) is read-only:
+  - a note is its title in Mincho and its text typeset like Drive's Markdown
+    preview (no raw HTML, pictures as their words);
+  - a notebook adds a side list of its sections and notes;
+  - the Notes bloom sits at the foot, and nothing else of Kimono shows.
 - **New notebook:** a name, and a choice of space (your own first). The
   button is **Make**.
 
