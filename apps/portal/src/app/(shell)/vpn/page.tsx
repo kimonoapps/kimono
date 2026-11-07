@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { describeLastSeen, devicesFor, disconnectDevice, readMesh, removeDevice } from "@/lib/mesh";
 import { meshContext } from "./shared";
+import { requestServiceRestart } from "@/lib/kimono-services";
 import { redirect } from "next/navigation";
 
 export const metadata = { title: "Devices · Kimono VPN" };
@@ -47,6 +48,18 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
     redirect(`/vpn?${outcome}`);
   }
 
+  /* The mesh not answering is the one problem a person can't fix from a device on it: an administrator restarts it from here. */
+  async function restartMesh() {
+    "use server";
+    const current = await auth();
+    if (!current?.user || !["owner", "admin"].includes(current.user.role)) redirect("/vpn");
+    let outcome = `done=${encodeURIComponent("Restarting the VPN. Give it a minute.")}`;
+    try { await requestServiceRestart("headscale"); }
+    catch (error) { outcome = `error=${encodeURIComponent(error instanceof Error ? error.message : "The VPN couldn't be restarted")}`; }
+    redirect(`/vpn?${outcome}`);
+  }
+  const admin = ["owner", "admin"].includes(session.user.role);
+
   const isPhone = (name: string) => /phone|pixel|ipad|android|galaxy|mobile/i.test(name);
 
   /* design/mockups/m3-everywhere.html, VPN: one list, a moss dot for online, sign out on hover, Connect as the floating button. */
@@ -60,7 +73,7 @@ export default async function VpnPage({ searchParams }: { searchParams: Promise<
         ? <div className="card vpn-empty"><b>Kimono VPN isn&rsquo;t switched on for you</b><p className="lead">Ask whoever runs this Kimono to switch it on for @{session.user.username}, and your devices will appear here.</p></div>
         : <>
             {!mesh.available
-              ? <div className="card vpn-empty"><b>Not connected to the mesh</b><p className="lead">{mesh.reason}</p></div>
+              ? <div className="card vpn-empty"><b>Not connected to the mesh</b><p className="lead">{mesh.reason}</p>{admin ? <form action={restartMesh}><Seal type="submit">Restart the VPN</Seal></form> : null}</div>
               : devices.length
                 ? <div className="seg devices">
                     {devices.map((device) => <div className="row swipe" key={device.id}>

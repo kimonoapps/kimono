@@ -11,6 +11,7 @@ import { readBackupConfig, readBackupStatus } from "@/lib/backups";
 import { renderDeploymentPlan } from "@/lib/deployment";
 import { planDigest, readReconcilerStatus } from "@/lib/desired-state";
 import { updateNotice } from "@/lib/kimono-release";
+import { describeService, readServicesStatus } from "@/lib/kimono-services";
 import { backupHealth } from "./backups/machinery";
 
 export const metadata = { title: "Admin" };
@@ -25,6 +26,8 @@ export default async function AdminPage() {
   if (!session?.user) redirect("/login");
   if (!["owner", "admin"].includes(session.user.role)) redirect("/");
   const [settings, scan, config, status, deployment, notice] = await Promise.all([getPlatformSettings(), scanAppDefinitions(), readBackupConfig(), readBackupStatus(), readReconcilerStatus(), updateNotice(session.user.username)]);
+  const services = await readServicesStatus();
+  const servicesDown = services.watched ? (services.status?.services ?? []).filter((state) => !describeService(state).ok).length : 0;
 
   const apps = appRegistry(settings, scan.definitions);
   const installed = apps.filter((app) => app.state !== "available");
@@ -78,6 +81,7 @@ export default async function AdminPage() {
         {section("/admin/apps", "folder", "#a84d63", "Applications", `${installed.length} apps · ${running.length} running`, needYou.length ? <span className="k-ink-dot k-wants">{needYou.length} need{needYou.length === 1 ? "s" : ""} you</span> : <span className="k-ink-dot k-running">All fine</span>)}
         {section("/admin/backups", "archive", "#5c7150", "Backups", config ? `${config.bucket} · ${config.enabled ? `nightly at ${String(config.hourUTC).padStart(2, "0")}:00 UTC` : "schedule paused"}` : "No storage yet", <span className={health.state === "running" ? "k-ink-dot k-running" : health.state === "wants" ? "k-ink-dot k-wants" : "k-ink-dot"}>{health.label}</span>)}
         {section("/admin/infrastructure", "cloud", "#74565c", "Connectivity", "Publish apps outside your home", <span className={live === "Live" ? "k-ink-dot k-running" : live === "Needs you" ? "k-ink-dot k-wants" : "k-ink-dot"}>{live}</span>)}
+        {section("/admin/services", "gear", "#4e2b37", "Services", "Sign-in, VPN and the rest; restart from here", !services.watched ? <span className="k-ink-dot">Not reporting</span> : servicesDown ? <span className="k-ink-dot k-wants">{servicesDown} not running</span> : <span className="k-ink-dot k-running">All running</span>)}
         {section("/admin/vpn", "shield", "#5c7150", "Kimono VPN", "Who may build a private mesh", null)}
         {section("/admin/phone-app", "phone", "#a84d63", "Phone app", "Releases and TestFlight testers", null)}
         {section("/admin/links", "link", "#8a7c77", "People and invites", "Invite someone, reset a password", null)}

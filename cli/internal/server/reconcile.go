@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kimonoapps/kimono/cli/internal/reconcile"
+	"github.com/kimonoapps/kimono/cli/internal/services"
 )
 
 const (
@@ -53,6 +54,11 @@ func (m *Manager) apply(args []string) error {
 		reconciler.Idle = worker.Tick
 	}
 	if *watch {
+		/* Kimono's own services are kept running beside the deployment loop, and
+		   restarted when an administrator asks from the Portal. */
+		if !m.Runner.DryRun {
+			go services.New(filepath.Dir(m.reconcilePaths().DeploymentDir), services.CLI).Run(context.Background(), watchInterval)
+		}
 		err := reconciler.Watch(context.Background(), watchInterval, retryInterval)
 		if errors.Is(err, context.Canceled) {
 			return nil
