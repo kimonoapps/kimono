@@ -75,6 +75,21 @@ test("another app's group gets the same people, without inviting or removing any
   assert.deepEqual([...also.statuses], [['mina', 'added'], ['ren', 'invited (waiting to accept)'], ['sora', 'tester']], 'nobody without an email or Kimono access');
 });
 
+test('an expired invite, or a TestFlight invite never accepted, shows as stuck and is not re-sent on its own', () => {
+  const { isStuck } = load('testflight-plan.ts');
+  const plan = planSync({
+    ...base,
+    accounts: [account('hana', 'hana@kimono.test'), account('ren', 'ren@kimono.test'), account('sora', 'sora@kimono.test'), account('mina', 'mina@kimono.test')],
+    invitations: [{ id: 'i-hana', email: 'hana@kimono.test', expired: true }, { id: 'i-mina', email: 'mina@kimono.test', expired: false }],
+    users: [{ id: 'u-ren', email: 'ren@kimono.test', roles: ['CUSTOMER_SUPPORT'] }, { id: 'u-sora', email: 'sora@kimono.test', roles: ['CUSTOMER_SUPPORT'] }],
+    testers: [{ id: 't-ren', email: 'ren@kimono.test', state: 'INVITED' }, { id: 't-sora', email: 'sora@kimono.test', state: 'INSTALLED' }],
+  });
+  assert.deepEqual(plan.steps, [], 'the hourly sync sends nobody a second email');
+  assert.deepEqual(plan.statuses.map((s) => [s.username, s.status, isStuck(s.status)]), [
+    ['hana', 'invite expired', true], ['ren', 'tester (not accepted)', true], ['sora', 'tester', false], ['mina', 'invited (waiting to accept)', true],
+  ]);
+});
+
 test('names split for Apple', () => {
   assert.deepEqual(nameParts('Mina Sato', 'mina'), { firstName: 'Mina', lastName: 'Sato' });
   assert.deepEqual(nameParts('Hana', 'hana.m'), { firstName: 'Hana', lastName: 'hana.m' });

@@ -1,5 +1,6 @@
 import { apiError, apiJson, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
 import { requestTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { standing } from "./standing";
 
 /** Where you stand with the iPhone app's TestFlight. */
 export async function GET() {
@@ -23,14 +24,4 @@ export async function POST(request: Request) {
   await syncTestflightIfDue(first ? 0 : 10 * 1000);
   const row = (await testflightSettings())?.statuses.find((s) => s.username.toLowerCase() === user.username.toLowerCase());
   return apiJson({ status: standing(row?.status), email: row?.email ?? null });
-}
-
-/** A person's TestFlight status, as the website explains it. */
-function standing(status: string | undefined): "tester" | "invited" | "waiting" | "problem" | "none" | "idle" {
-  if (!status || status === "not requested") return "idle";
-  if (status === "tester" || status === "added") return "tester";
-  if (status?.startsWith("invited")) return "invited";
-  if (status?.startsWith("error")) return "problem";
-  if (status === "no email") return "none";
-  return "waiting";
 }

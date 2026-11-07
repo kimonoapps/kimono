@@ -11,7 +11,8 @@ import { getPlatformSettings } from "@/lib/settings";
 import { readReleases, setRequired } from "@/lib/app-releases";
 import type { AppPlatform } from "@/lib/app-updates";
 import { redirect } from "next/navigation";
-import { forgetTestflightKey, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { forgetTestflightKey, resendTestflight, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { isStuck } from "@/lib/testflight-plan";
 import { isApiKey } from "@/lib/testflight-token";
 
 export const metadata = { title: "Phone app · Admin" };
@@ -63,6 +64,18 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
     await admin();
     await then(() => syncTestflight());
   }
+  /* A fresh invite for one person, or everyone stuck; a failure shows as the page's error. */
+  async function resend(form: FormData) {
+    "use server";
+    await admin();
+    const username = String(form.get("username") || "");
+    await then(async () => {
+      const outcome = await resendTestflight(username ? [username] : "stuck");
+      if (!outcome.ok) throw new Error(outcome.message);
+      const soon = outcome.results.find((r) => r.outcome === "too soon");
+      if (username && soon) throw new Error("An invite went out to them a few minutes ago.");
+    });
+  }
   async function forgetKey() {
     "use server";
     await admin();
@@ -110,6 +123,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
         <div className="testers-head">
           <div className="label">TestFlight testers</div>
           {testflight.lastSync ? <small>Checked {checked(testflight.lastSync.at)}</small> : null}
+          {testflight.statuses.some((row) => isStuck(row.status)) ? <form action={resend}><button className="txt" type="submit"><LineIcon name="out" />Re-invite stuck</button></form> : null}
           <form action={syncNow}><button className="txt" type="submit"><LineIcon name="restore" />Sync now</button></form>
         </div>
         {testflight.lastSync && !testflight.lastSync.ok ? <p role="alert" className="app-notice is-error">{testflight.lastSync.message}</p> : null}
@@ -117,6 +131,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
           {testflight.statuses.map((row) => <div className="row" key={row.username}>
             <InkPortraitFrame seed={row.username} weight={5}><Portrait name={row.name} username={row.username} picture={pictures.get(row.username)} size={36} /></InkPortraitFrame>
             <span className="text"><b>{row.name}</b><small>@{row.username} · {testerLine(row.status, row.email)}{Object.entries(row.also ?? {}).map(([app, status]) => ` · ${app}: ${status}`).join("")}</small></span>
+            {isStuck(row.status) ? <form action={resend}><input type="hidden" name="username" value={row.username} /><button className="txt" type="submit" aria-label={`Re-invite ${row.name}`}>Re-invite</button></form> : null}
             <span className={row.status === "tester" ? "k-ink-dot k-running" : row.status.startsWith("error") || row.status === "no email" ? "k-ink-dot k-wants" : "k-ink-dot"}>{row.status.startsWith("error") ? "Problem" : testerLabel(row.status)}</span>
           </div>)}
         </div> : <p className="lead phone-empty">Nobody has asked for the iPhone app yet. People ask from Get the app on their iPhone.</p>}
@@ -145,6 +160,8 @@ function testerLine(status: string, email?: string | null) {
   if (status === "tester") return "Kimono installed through TestFlight";
   if (status.startsWith("invited")) return email ? `Invite sent to ${email}` : "Invite sent";
   if (status === "added") return "Accepted, not installed yet";
+  if (status === "invite expired") return email ? `Invite to ${email} expired` : "Invite expired";
+  if (status === "tester (not accepted)") return "Hasn't accepted TestFlight's invite";
   if (status === "no email") return "Needs an email on their account";
   if (status === "not requested") return "Hasn't asked yet";
   if (status === "no Kimono access") return "Their Kimono access has ended";
@@ -161,6 +178,8 @@ function appList(apps: string[] | undefined) {
 /** A tester status as a short label beside the name. */
 function testerLabel(status: string) {
   if (status.startsWith("invited")) return "Invited";
+  if (status === "invite expired") return "Expired";
+  if (status === "tester (not accepted)") return "Not accepted";
   return ({ added: "Added", removed: "Removed", "no email": "No email", "not requested": "Not requested", "no Kimono access": "No access" } as Record<string, string>)[status] ?? status;
 }
 

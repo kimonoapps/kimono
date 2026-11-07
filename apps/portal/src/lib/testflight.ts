@@ -5,7 +5,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { listAccounts, readStanding } from "./directory";
 import { stateDir } from "./state";
-import { invitedRole, planAlso, planSync, type Invited, type PlanAccount, type TesterStatus } from "./testflight-plan";
+import { invitedRole, isStuck, nameParts, planAlso, planSync, type Invited, type PlanAccount, type TesterStatus } from "./testflight-plan";
 import { appStoreToken } from "./testflight-token";
 
 /*
@@ -33,7 +33,9 @@ export type LastSync = {
 };
 /** Who asked to try the iPhone app, by Kimono username: only they are invited. */
 type Requested = Record<string, number>;
-type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; requested: Requested; lastSync: LastSync | null; statuses: TesterStatus[] };
+/** When each email was last sent a fresh invite, so a button pressed twice doesn't send two. */
+type Resent = Record<string, number>;
+type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; requested: Requested; resent: Resent; lastSync: LastSync | null; statuses: TesterStatus[] };
 
 async function readConfig(): Promise<Config | null> {
   try {
@@ -44,6 +46,7 @@ async function readConfig(): Promise<Config | null> {
       groupName: parsed.groupName || "Kimono",
       invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
       requested: parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {},
+      resent: parsed.resent && typeof parsed.resent === "object" ? parsed.resent : {},
       lastSync: parsed.lastSync ?? null,
       statuses: Array.isArray(parsed.statuses) ? parsed.statuses : [],
     };
@@ -91,7 +94,7 @@ export async function requestTestflight(username: string): Promise<boolean> {
 export async function saveTestflightKey(input: { issuerId: string; keyId: string; privateKey: string; groupName: string }) {
   await writeConfig({
     issuerId: input.issuerId, keyId: input.keyId, privateKey: input.privateKey, groupName: input.groupName || "Kimono",
-    ...(await readKept()), lastSync: null, statuses: [],
+    ...(await readKept()), resent: {}, lastSync: null, statuses: [],
   });
 }
 
@@ -140,7 +143,7 @@ class AppStoreConnect {
   }
 
   async create(type: string, attributes: Record<string, unknown>, relationships: Record<string, unknown>): Promise<Resource> {
-    const body = await this.request(`/v1/${type}`, { method: "POST", body: JSON.stringify({ data: { type, attributes, relationships } }) });
+    const body = await this.request(`/v1/${type}`, { method: "POST", body: JSON.stringify({ data: { type, ...(Object.keys(attributes).length ? { attributes } : {}), relationships } }) });
     return body?.data as Resource;
   }
 
@@ -154,6 +157,11 @@ class AppStoreConnect {
 }
 
 const text = (resource: Resource, key: string) => String(resource.attributes?.[key] ?? "");
+const asInvitation = (i: Resource) => {
+  const expires = Date.parse(text(i, "expirationDate"));
+  return { id: i.id, email: text(i, "email"), expired: Number.isFinite(expires) && expires < Date.now() };
+};
+const asTester = (t: Resource) => ({ id: t.id, email: text(t, "email"), state: text(t, "state") || undefined });
 
 /** The Kimono accounts, with whether each may still sign in (null when the directory can't say). */
 async function kimonoAccounts(config: Config): Promise<{ list: PlanAccount[]; notAsked: Set<string> }> {
@@ -190,6 +198,112 @@ async function addTester(store: AppStoreConnect, groupId: string, step: { email:
   }
 }
 
+/** Kimono's phone apps as App Store Connect has them, and each one's internal group (made when missing). */
+async function findApps(store: AppStoreConnect, config: Config) {
+  const found = await Promise.all(phoneApps.map(async (phoneApp) => {
+    const apps = await store.all(`/v1/apps?filter[bundleId]=${phoneApp.bundleId}&limit=200`);
+    return { ...phoneApp, app: apps.find((a) => text(a, "bundleId") === phoneApp.bundleId) };
+  }));
+  const [main, ...others] = found;
+  const app = main.app;
+  if (!app) throw new Error(`There's no app with the bundle ID ${main.bundleId} in App Store Connect yet. Upload a first build, then sync.`);
+  /* Kimono's other apps join as they reach App Store Connect; one that hasn't yet holds nothing up. */
+  const present = others.filter((other): other is typeof other & { app: Resource } => Boolean(other.app));
+  const notYet = others.filter((other) => !other.app).map((other) => other.name);
+  const groupFor = async (appId: string) => {
+    const groups = await store.all(`/v1/apps/${appId}/betaGroups?limit=200`);
+    return groups.find((g) => text(g, "name") === config.groupName && g.attributes?.isInternalGroup === true)
+      ?? await store.create("betaGroups", { name: config.groupName, isInternalGroup: true, hasAccessToAllBuilds: true }, { app: { data: { type: "apps", id: appId } } });
+  };
+  return { main, app, present, notYet, groupFor };
+}
+
+/** Invites someone to the App Store Connect team, seeing only Kimono's apps; Apple emails them. */
+async function inviteToTeam(store: AppStoreConnect, config: Config, step: { email: string; firstName: string; lastName: string }, apps: Resource[]) {
+  const made = await store.create("userInvitations", {
+    email: step.email, firstName: step.firstName, lastName: step.lastName,
+    roles: [invitedRole], allAppsVisible: false, provisioningAllowed: false,
+  }, { visibleApps: { data: apps.map((a) => ({ type: "apps", id: a.id })) } });
+  config.invited[step.email] = { at: Date.now(), invitationId: made?.id };
+}
+
+/** How long before the same person can be sent another invite. */
+const resendGap = 10 * 60 * 1000;
+
+export type Resend = { username: string; outcome: "sent" | "too soon" | "nothing to send" | "error"; message?: string };
+
+/**
+ * Sends fresh invites: a new App Store Connect invite to someone whose
+ * invite expired or went unanswered, or TestFlight's invite again to
+ * someone in the group who never accepted it. Only for people who asked
+ * (or were already invited) and still have Kimono access. [who] is
+ * usernames, or "stuck" for everyone the last sync found stuck. Syncs
+ * afterwards so the statuses show what changed.
+ */
+export async function resendTestflight(who: string[] | "stuck"): Promise<{ ok: boolean; message: string; results: Resend[] }> {
+  const config = await readConfig();
+  if (!config) return { ok: false, message: "No App Store Connect key yet.", results: [] };
+  const usernames = who === "stuck"
+    ? config.statuses.filter((row) => isStuck(row.status)).map((row) => row.username.toLowerCase())
+    : who.map((name) => name.toLowerCase());
+  if (!usernames.length) return { ok: true, message: "Nobody is stuck.", results: [] };
+  const store = new AppStoreConnect(config);
+  const results: Resend[] = [];
+  try {
+    const { app, present, groupFor } = await findApps(store, config);
+    const { list: accounts } = await kimonoAccounts(config);
+    const [invitations, users] = await Promise.all([store.all("/v1/userInvitations?limit=200"), store.all("/v1/users?limit=200")]);
+    const groups = await Promise.all([app, ...present.map((other) => other.app)].map(async (a) => {
+      const group = await groupFor(a.id);
+      return { app: a, group, testers: await store.all(`/v1/betaGroups/${group.id}/betaTesters?limit=200`) };
+    }));
+    for (const username of usernames) {
+      const account = accounts.find((a) => a.username.toLowerCase() === username);
+      const email = account?.email?.trim().toLowerCase();
+      if (!account || !email || account.active === false) { results.push({ username, outcome: "nothing to send", message: "No Kimono access, or no email" }); continue; }
+      const last = config.resent[email];
+      if (last && Date.now() - last < resendGap) { results.push({ username: account.username, outcome: "too soon" }); continue; }
+      try {
+        const invitation = invitations.find((i) => text(i, "email").toLowerCase() === email);
+        const onTeam = users.some((u) => text(u, "username").toLowerCase() === email);
+        if (invitation || !onTeam) {
+          /* Apple's team invite: a new one replaces the old, whose link may have expired. */
+          if (invitation) await store.remove(`/v1/userInvitations/${invitation.id}`);
+          await inviteToTeam(store, config, { email, ...nameParts(account.name, account.username) }, [app, ...present.map((other) => other.app)]);
+        } else {
+          /* On the team: TestFlight's own invite again, for each app whose group they're in. */
+          let sent = 0;
+          for (const { app: groupApp, testers } of groups) {
+            const tester = testers.find((t) => text(t, "email").toLowerCase() === email);
+            if (!tester) continue;
+            await store.create("betaTesterInvitations", {}, { app: { data: { type: "apps", id: groupApp.id } }, betaTester: { data: { type: "betaTesters", id: tester.id } } });
+            sent += 1;
+          }
+          /* Not in a group yet: the sync below adds them, and adding sends the invite. */
+          if (!sent) { results.push({ username: account.username, outcome: "nothing to send", message: "Being added now" }); continue; }
+        }
+        config.resent[email] = Date.now();
+        results.push({ username: account.username, outcome: "sent" });
+      } catch (error) {
+        results.push({ username: account.username, outcome: "error", message: error instanceof Error ? error.message : "didn't work" });
+      }
+    }
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "App Store Connect couldn't be reached.", results };
+  }
+  /* Keep what was sent before the sync reads the file again. */
+  const latest = await readConfig();
+  if (latest && latest.keyId === config.keyId) await writeConfig({ ...latest, invited: { ...latest.invited, ...config.invited }, resent: config.resent });
+  await syncTestflight();
+  const sent = results.filter((r) => r.outcome === "sent").length;
+  const failed = results.filter((r) => r.outcome === "error").length;
+  return {
+    ok: failed === 0,
+    message: [sent ? `Sent ${sent} new ${sent === 1 ? "invite" : "invites"}.` : "No invites sent.", ...(failed ? [`${failed} couldn't be sent.`] : [])].join(" "),
+    results,
+  };
+}
+
 /** Brings TestFlight in step with Kimono's accounts now, for every Kimono phone app in App Store Connect. */
 export async function syncTestflight(): Promise<{ ok: boolean; message: string; statuses: TesterStatus[] }> {
   const config = await readConfig();
@@ -198,22 +312,8 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
   let statuses: TesterStatus[] = [];
   let outcome: { ok: boolean; message: string; apps?: string[] };
   try {
-    const found = await Promise.all(phoneApps.map(async (phoneApp) => {
-      const apps = await store.all(`/v1/apps?filter[bundleId]=${phoneApp.bundleId}&limit=200`);
-      return { ...phoneApp, app: apps.find((a) => text(a, "bundleId") === phoneApp.bundleId) };
-    }));
-    const [main, ...others] = found;
-    const app = main.app;
-    if (!app) throw new Error(`There's no app with the bundle ID ${main.bundleId} in App Store Connect yet. Upload a first build, then sync.`);
-    /* Kimono's other apps join as they reach App Store Connect; one that hasn't yet holds nothing up. */
-    const present = others.filter((other): other is typeof other & { app: Resource } => Boolean(other.app));
-    const notYet = others.filter((other) => !other.app).map((other) => other.name);
+    const { main, app, present, notYet, groupFor } = await findApps(store, config);
     const broken: string[] = [];
-    const groupFor = async (appId: string) => {
-      const groups = await store.all(`/v1/apps/${appId}/betaGroups?limit=200`);
-      return groups.find((g) => text(g, "name") === config.groupName && g.attributes?.isInternalGroup === true)
-        ?? await store.create("betaGroups", { name: config.groupName, isInternalGroup: true, hasAccessToAllBuilds: true }, { app: { data: { type: "apps", id: appId } } });
-    };
     const group = await groupFor(app.id);
     const [users, invitations, testers, { list: accounts, notAsked }] = await Promise.all([
       store.all("/v1/users?limit=200"),
@@ -226,8 +326,8 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
     const plan = planSync({
       accounts,
       users: planUsers,
-      invitations: invitations.map((i) => ({ id: i.id, email: text(i, "email") })),
-      testers: testers.map((t) => ({ id: t.id, email: text(t, "email") })),
+      invitations: invitations.map(asInvitation),
+      testers: testers.map(asTester),
       invited: config.invited,
     });
     /* People with an email who haven't asked show as such, not as missing an email. */
@@ -244,11 +344,7 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
       try {
         switch (step.kind) {
           case "invite": {
-            const made = await store.create("userInvitations", {
-              email: step.email, firstName: step.firstName, lastName: step.lastName,
-              roles: [invitedRole], allAppsVisible: false, provisioningAllowed: false,
-            }, { visibleApps: { data: [app, ...present.map((other) => other.app)].map((a) => ({ type: "apps", id: a.id })) } });
-            config.invited[step.email] = { at: Date.now(), invitationId: made?.id };
+            await inviteToTeam(store, config, step, [app, ...present.map((other) => other.app)]);
             break;
           }
           case "add": {
@@ -279,7 +375,7 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
         const otherGroup = await groupFor(other.app.id);
         const otherTesters = await store.all(`/v1/betaGroups/${otherGroup.id}/betaTesters?limit=200`);
         const removed = new Set(plan.steps.filter((step) => step.kind === "removeUser" || step.kind === "removeInvitation").map((step) => step.email));
-        const also = planAlso({ accounts, users: planUsers.filter((u) => !removed.has(u.email.toLowerCase())), testers: otherTesters.map((t) => ({ id: t.id, email: text(t, "email") })) });
+        const also = planAlso({ accounts, users: planUsers.filter((u) => !removed.has(u.email.toLowerCase())), testers: otherTesters.map(asTester) });
         for (const row of statuses) {
           const status = also.statuses.get(row.username.toLowerCase());
           if (status) row.also = { ...row.also, [other.name]: status };

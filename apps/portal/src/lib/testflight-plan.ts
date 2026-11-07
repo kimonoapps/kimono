@@ -23,8 +23,10 @@ export type PlanAccount = {
   active: boolean | null;
 };
 export type PlanUser = { id: string; email: string; roles: string[] };
-export type PlanInvitation = { id: string; email: string };
-export type PlanTester = { id: string; email: string };
+/** expired: Apple's link no longer works, so they need a fresh one. */
+export type PlanInvitation = { id: string; email: string; expired?: boolean };
+/** state: App Store Connect's word for where they are with TestFlight (INVITED, ACCEPTED, INSTALLED…), when it says. */
+export type PlanTester = { id: string; email: string; state?: string };
 export type Invited = Record<string, { at: number; userId?: string; invitationId?: string }>;
 
 export type Step =
@@ -45,6 +47,13 @@ export const invitedRole = "CUSTOMER_SUPPORT";
 
 const clean = (email: string) => email.trim().toLowerCase();
 
+/** Statuses a fresh invite helps: Apple's email expired, was never accepted, or TestFlight's was never opened. */
+export const stuckStatuses = ["invite expired", "invited (waiting to accept)", "tester (not accepted)"];
+export const isStuck = (status: string) => stuckStatuses.includes(status);
+
+/** In the group, but TestFlight's own invite still unanswered. */
+const notAccepted = (state: string | undefined) => state === "INVITED" || state === "NOT_INVITED";
+
 /** "Mina Sato" → Mina / Sato; one word → that, and the username for the family name Apple asks for. */
 export function nameParts(name: string, username: string): { firstName: string; lastName: string } {
   const words = name.trim().split(/\s+/).filter(Boolean);
@@ -61,7 +70,7 @@ export function planSync(input: {
 }): { steps: Step[]; statuses: TesterStatus[] } {
   const users = new Map(input.users.map((u) => [clean(u.email), u]));
   const invitations = new Map(input.invitations.map((i) => [clean(i.email), i]));
-  const testers = new Set(input.testers.map((t) => clean(t.email)));
+  const testers = new Map(input.testers.map((t) => [clean(t.email), t]));
   const steps: Step[] = [];
   const statuses: TesterStatus[] = [];
   const wanted = new Set<string>();
@@ -73,9 +82,9 @@ export function planSync(input: {
     if (account.active === false) { if (!input.invited[email]) row("no Kimono access"); continue; }
     wanted.add(email);
     const names = nameParts(account.name, account.username);
-    if (testers.has(email)) row("tester");
+    if (testers.has(email)) row(notAccepted(testers.get(email)?.state) ? "tester (not accepted)" : "tester");
     else if (users.has(email)) { steps.push({ kind: "add", email, ...names }); row("added"); }
-    else if (invitations.has(email)) row("invited (waiting to accept)");
+    else if (invitations.has(email)) row(invitations.get(email)?.expired ? "invite expired" : "invited (waiting to accept)");
     else { steps.push({ kind: "invite", email, ...names }); row("invited (waiting to accept)"); }
   }
 
@@ -103,7 +112,7 @@ export function planAlso(input: { accounts: PlanAccount[]; users: PlanUser[]; te
   const plan = planSync({ ...input, invitations: [], invited: {} });
   const steps = plan.steps.filter((step): step is Extract<Step, { kind: "add" }> => step.kind === "add");
   const statuses = new Map(plan.statuses
-    .filter((row) => row.status === "tester" || row.status === "added" || row.status.startsWith("invited"))
+    .filter((row) => row.status.startsWith("tester") || row.status === "added" || row.status.startsWith("invited"))
     .map((row) => [row.username.toLowerCase(), row.status]));
   return { steps, statuses };
 }

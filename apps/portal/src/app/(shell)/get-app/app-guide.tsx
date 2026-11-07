@@ -7,7 +7,7 @@ import { detectMobileOS } from "@/lib/mobile-app";
 import type { AppOffer } from "@/lib/app-offer";
 
 type Phone = "ios" | "android";
-type Standing = "tester" | "invited" | "waiting" | "problem" | "none" | "idle";
+type Standing = "tester" | "stuck" | "invited" | "waiting" | "problem" | "none" | "idle";
 const never = () => () => {};
 
 /** The steps for an iPhone or an Android phone; this phone's first, the other a tap away. */
@@ -65,6 +65,7 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
   const [standing, setStanding] = useState<{ status: Standing; email: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [resent, setResent] = useState(false);
   /* Coming back after accepting Apple's email shows where things are. */
   useEffect(() => {
     let current = true;
@@ -87,15 +88,30 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
     }
     setBusy(false);
   }
+  /* A fresh invite, when Apple's email expired or never came. */
+  async function resend() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const response = await fetch("/api/v1/app/testflight/resend", { method: "POST", credentials: "same-origin" });
+      const body = await response.json().catch(() => ({})) as { status?: Standing; email?: string | null; resent?: boolean; error?: string };
+      if (body.status) setStanding({ status: body.status, email: body.email ?? null });
+      if (body.resent) setResent(true);
+      else setProblem(body.error || "That didn't work. Try again.");
+    } catch {
+      setProblem("Kimono isn't answering. Try again in a moment.");
+    }
+    setBusy(false);
+  }
   const status = standing?.status;
-  const sent = status === "invited" || status === "tester";
+  const sent = status === "invited" || status === "tester" || status === "stuck";
   const email = standing?.email;
   return <ol className="get-app-steps">
     <Step n={1} title="Request access" done={sent}>
       {status === "tester"
         ? <p>You&apos;re in.</p>
-        : status === "invited"
-        ? <p>Sent an invite to <b>{email ?? "your email"}</b>.</p>
+        : status === "invited" || status === "stuck"
+        ? <p>Sent an invite to <b>{email ?? "your email"}</b>.{resent ? " Sent a new one too: use the newest email." : status === "stuck" ? " It expired or hasn't been accepted." : null}</p>
         : status === "none"
         ? <p>Your Kimono account needs an email first. Add one under Account.</p>
         : status === "problem"
@@ -103,7 +119,10 @@ function IosSteps({ address, apps }: { address: string | null; apps: string[] })
         : status === "waiting"
         ? <p>Your invite is on its way. Try again in a minute.</p>
         : <p>Kimono asks Apple to invite you to try the app.</p>}
-      {status !== "tester" ? <Seal onClick={request} busy={busy}>{sent ? "Check again" : "Request access"}</Seal> : null}
+      {status !== "tester" ? <div className="get-app-actions">
+        <Seal onClick={request} busy={busy} tone={status === "stuck" && !resent ? "quiet" : undefined}>{sent ? "Check again" : "Request access"}</Seal>
+        {(status === "invited" || status === "stuck") && !resent ? <Seal onClick={resend} busy={busy} tone={status === "stuck" ? undefined : "quiet"}>Send it again</Seal> : null}
+      </div> : null}
       {problem ? <p className="get-app-problem" role="alert">{problem}</p> : null}
     </Step>
     <Step n={2} title="Download TestFlight">
