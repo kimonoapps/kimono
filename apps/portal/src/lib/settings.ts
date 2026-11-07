@@ -122,19 +122,14 @@ function normalize(value: unknown): PlatformSettings {
     if (legacy.apps?.notes) {
       fallback.baseDomain = legacy.baseDomain || fallback.baseDomain;
       fallback.brand.colors = validPalette(legacy.brand?.colors, fallback.brand.colors);
-      const notes: AppInstance = {
-        id: "outline", definitionId: "outline", name: "Kimono Notes",
+      /* Notes was Outline once; it is Kimono's own now, keeping its address and colours. */
+      fallback.apps["kimono-notes"] = {
+        id: "kimono-notes", definitionId: "kimono-notes", name: "Kimono Notes",
         enabled: legacy.apps.notes.enabled ?? false,
         domain: legacy.apps.notes.domain || "notes",
         colors: validPalette(legacy.apps.notes.colors, ["#b56d78", "#5f3441", "#ecd2b7"]),
         tunnelId: null, environment: {},
         networkPolicy: { internetAccess: true, allowedApps: [] },
-      };
-      fallback.apps.outline = notes;
-      fallback.routes["outline-web"] = {
-        id: "outline-web", appId: notes.id, endpointId: "web",
-        hostname: appHostname(notes.domain, fallback.baseDomain), path: "/*",
-        tunnelId: "public", enabled: notes.enabled,
       };
     }
     return fallback;
@@ -163,13 +158,6 @@ function normalize(value: unknown): PlatformSettings {
       const route = raw as Partial<AppRoute>;
       if (idPattern.test(id) && route.appId && route.endpointId && route.hostname && route.tunnelId) routes[id] = { id, appId: route.appId, endpointId: route.endpointId, hostname: route.hostname, path: route.path || "/*", tunnelId: route.tunnelId, enabled: route.enabled !== false };
     }
-  } else {
-    const outline = apps.outline;
-    if (outline) routes["outline-web"] = {
-      id: "outline-web", appId: outline.id, endpointId: "web", path: "/*",
-      hostname: appHostname(outline.domain, input.baseDomain || fallback.baseDomain),
-      tunnelId: outline.tunnelId || "public", enabled: outline.enabled && Boolean(outline.tunnelId),
-    };
   }
   return { version: 4, baseDomain: input.baseDomain || fallback.baseDomain, identityDomain: input.identityDomain || fallback.identityDomain, meshDomain: fallback.meshDomain, brand: { colors: validPalette(input.brand?.colors, fallback.brand.colors) }, apps: { ...fallback.apps, ...apps }, tunnels, routes };
 }

@@ -13,6 +13,7 @@
     "test:tunnels": "node --test scripts/test-tunnel-settings.mjs",
     "test:account": "node --test scripts/test-account.mjs",
     "test:drive": "node --test scripts/test-drive.mjs",
+    "test:notes": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-notes.mjs",
     "test:marks": "node --test scripts/test-marks.mjs",
     "test:app-updates": "node --test scripts/test-app-updates.mjs",
     "test:testflight": "node --test scripts/test-testflight.mjs",

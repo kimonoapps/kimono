@@ -42,7 +42,8 @@ permissions policy, and document its authentication and navigation behavior.
 - Apps that cannot support the contract remain honestly labeled as connected.
 - Hosted applications keep their upstream UI and account model while Kimono
   owns their lifecycle, storage, routing, and launcher identity.
-- Kimono Notes is the first connected application: Outline owns the notes UI
-  and storage while Kimono provides deployment, OIDC SSO, branding, and launch.
+- Kimono Notes was first a connected application (Outline); it is native now,
+  kept as Markdown in Drive (docs/kimono-notes.md). Outline owned the notes UI
+  and storage while Kimono provided deployment, OIDC SSO, branding, and launch.
 - A future cross-app bridge may use a versioned `postMessage` protocol, but it
   will not be invented until a real embedded application requires it.

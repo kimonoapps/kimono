@@ -35,9 +35,12 @@ import { randomBytes } from "node:crypto";
 
 export type Role = "owner" | "editor" | "viewer";
 export type LinkAccess = "view" | "add";
+export type SpacePurpose = "notes";
 export type Space = {
   id: string; name: string; crest: string; color: string; rootId: string; createdBy: string; createdAt: number; role: Role; members: number;
   link: string | null; linkAccess: LinkAccess | null;
+  /** Null for a space of files; "notes" for one Kimono Notes keeps. */
+  purpose: SpacePurpose | null;
 };
 export type Member = { username: string; role: Role; addedAt: number };
 export type DriveNode = {
@@ -173,6 +176,16 @@ export function migrate(db: DatabaseSync) {
       BEGIN;
       ALTER TABLE spaces ADD COLUMN color TEXT NOT NULL DEFAULT 'plum';
       INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '5');
+      COMMIT;
+    `);
+  }
+  if (version < 6) {
+    /* What a space is for: null for files, 'notes' for a notebook Kimono Notes keeps as Markdown files. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE spaces ADD COLUMN purpose TEXT CHECK (purpose IN ('notes'));
+      CREATE INDEX spaces_by_purpose ON spaces (purpose) WHERE purpose IS NOT NULL;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '6');
       COMMIT;
     `);
   }
@@ -336,13 +349,13 @@ export function nodeFor(db: DatabaseSync, id: string, username: string, need: Ro
 
 export function spacesOf(db: DatabaseSync, username: string): Space[] {
   const rows = db.prepare(`
-    SELECT s.id, s.name, s.crest, s.color, s.root_id, s.created_by, s.created_at, s.link, s.link_access, m.role,
+    SELECT s.id, s.name, s.crest, s.color, s.root_id, s.created_by, s.created_at, s.link, s.link_access, s.purpose, m.role,
       (SELECT count(*) FROM members x WHERE x.space_id = s.id) AS members
     FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
     ORDER BY lower(s.name)
-  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; color: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; role: Role; members: number }[];
+  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; color: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; purpose: SpacePurpose | null; role: Role; members: number }[];
   return rows.map((r) => ({ id: r.id, name: r.name, crest: r.crest, color: r.color, rootId: r.root_id, createdBy: r.created_by, createdAt: r.created_at, role: r.role, members: r.members,
-    link: seesLinks(r.role) ? r.link : null, linkAccess: seesLinks(r.role) ? r.link_access : null }));
+    link: seesLinks(r.role) ? r.link : null, linkAccess: seesLinks(r.role) ? r.link_access : null, purpose: r.purpose ?? null }));
 }
 
 export function spaceFor(db: DatabaseSync, spaceId: string, username: string): Space & { memberList: Member[] } {
@@ -410,7 +423,7 @@ export function recentFiles(db: DatabaseSync, username: string, limit = 50): Dri
 
 /* ── spaces and members ── */
 
-export function createSpace(db: DatabaseSync, username: string, input: { name: unknown; crest?: unknown; color?: unknown; members?: { username: string; role: Role }[] }, now = Date.now()): Space {
+export function createSpace(db: DatabaseSync, username: string, input: { name: unknown; crest?: unknown; color?: unknown; members?: { username: string; role: Role }[]; purpose?: SpacePurpose }, now = Date.now()): Space {
   const name = cleanName(input.name, "space name");
   const crest = typeof input.crest === "string" && (crests as readonly string[]).includes(input.crest) ? input.crest : "sakura";
   const color = typeof input.color === "string" && (crestColours as readonly string[]).includes(input.color) ? input.color : "plum";
@@ -418,7 +431,7 @@ export function createSpace(db: DatabaseSync, username: string, input: { name: u
   const id = newId(), rootId = newId();
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO spaces (id, name, crest, color, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, name, crest, color, rootId, owner, now);
+    db.prepare("INSERT INTO spaces (id, name, crest, color, root_id, created_by, created_at, purpose) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, name, crest, color, rootId, owner, now, input.purpose ?? null);
     db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, created_by, created_at, updated_at) VALUES (?, ?, NULL, 'folder', ?, ?, ?, ?)").run(rootId, id, name, owner, now, now);
     db.prepare("INSERT INTO members (space_id, username, role, added_at) VALUES (?, ?, 'owner', ?)").run(id, owner, now);
     for (const member of input.members ?? []) {
@@ -882,7 +895,8 @@ export function folderToSpace(db: DatabaseSync, folderId: string, username: stri
   const id = newId();
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO spaces (id, name, crest, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, folder.name, crest, folder.id, owner, now);
+    /* A notebook shared out of Notes stays a notebook. */
+    db.prepare("INSERT INTO spaces (id, name, crest, root_id, created_by, created_at, purpose) VALUES (?, ?, ?, ?, ?, ?, (SELECT purpose FROM spaces WHERE id = ?))").run(id, folder.name, crest, folder.id, owner, now, folder.spaceId);
     db.prepare(`
       WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT n.id FROM nodes n JOIN tree t ON n.parent_id = t.id)
       UPDATE nodes SET space_id = ? WHERE id IN (SELECT id FROM tree)

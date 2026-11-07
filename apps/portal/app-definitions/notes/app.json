@@ -1,0 +1,32 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "kimono-notes",
+    "name": "Kimono Notes",
+    "shortName": "Notes",
+    "description": "Notebooks for the things your household writes down.",
+    "category": "Productivity",
+    "version": "0.1.0",
+    "icon": "icon.svg",
+    "colors": [
+      "#b56d78",
+      "#5f3441",
+      "#ecd2b7"
+    ],
+    "glyph": "notes"
+  },
+  "spec": {
+    "integration": "native",
+    "services": [],
+    "volumes": [],
+    "configuration": [],
+    "managedEnvironment": [],
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    },
+    "portalPath": "/notes",
+    "setupReady": true
+  }
+}
