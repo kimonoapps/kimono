@@ -163,28 +163,21 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
                 GroupItem("Appearance", detail = lookWords.getValue(look), icon = "moon") { choosingLook = true },
                 GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } },
             ))
-            if (choosingLook) androidx.compose.material3.AlertDialog(
-                onDismissRequest = { choosingLook = false },
-                title = { Text("Appearance") },
-                text = {
-                    Column {
-                        lookWords.forEach { (key, words) ->
-                            Row(
-                                Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable {
-                                    app.kimono.theme.Appearance.choice.value = key
-                                    choosingLook = false
-                                    scope.launch { platform.keep(app.kimono.theme.Appearance.KEY, key) }
-                                }.padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                androidx.compose.material3.RadioButton(selected = look == key, onClick = null)
-                                Text(words, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp))
-                            }
-                        }
+            if (choosingLook) app.kimono.ui.InkDialog(
+                title = "Appearance",
+                icon = "moon",
+                onDismiss = { choosingLook = false },
+                actions = { Seal("Done", compact = true, onClick = { choosingLook = false }) },
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    lookPages.forEach { (key, page) ->
+                        app.kimono.ui.InkPageChoice(page.first, page.second, chosen = look == key, modifier = Modifier.weight(1f), onChoose = {
+                            app.kimono.theme.Appearance.choice.value = key
+                            scope.launch { platform.keep(app.kimono.theme.Appearance.KEY, key) }
+                        })
                     }
-                },
-                confirmButton = { androidx.compose.material3.TextButton(onClick = { choosingLook = false }) { Text("Done") } },
-            )
+                }
+            }
             Spacer(Modifier.height(32.dp))
         }
     }
@@ -292,3 +285,8 @@ fun DevicesScreen(session: Session, back: () -> Unit) {
 }
 
 private val lookWords = linkedMapOf("system" to "As the phone is", "light" to "Light", "dark" to "Dark")
+private val lookPages = linkedMapOf(
+    "system" to ("As the phone" to listOf(app.kimono.ui.DayLook, app.kimono.ui.NightLook)),
+    "light" to ("Light" to listOf(app.kimono.ui.DayLook)),
+    "dark" to ("Dark" to listOf(app.kimono.ui.NightLook)),
+)

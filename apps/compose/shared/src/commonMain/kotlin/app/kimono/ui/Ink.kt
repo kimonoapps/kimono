@@ -164,16 +164,21 @@ fun inkBrush(
     swell: Float = .38f,
     wander: Float = .22f,
     step: Float = .9f,
+    tip: Float = .3f,
+    wave: Float = 1f,
+    shake: Float = 0f,
 ): Path {
     val measure = PathMeasure().apply { setPath(path, false) }
     val length = measure.length
     val out = Path()
     if (length <= 0f) return out
     /* Slow, seeded waves for the pressure and the drift off the line. */
-    val f1 = random.between(.05f, .09f); val f2 = random.between(.13f, .21f); val f3 = random.between(.03f, .06f)
+    val f1 = random.between(.05f, .09f) * wave; val f2 = random.between(.13f, .21f) * wave; val f3 = random.between(.03f, .06f) * wave
     val p1 = random.between(0f, 6.28f); val p2 = random.between(0f, 6.28f); val p3 = random.between(0f, 6.28f)
+    /* A quick tremor off the line, as the website's turbulence filter gives its icons. */
+    val f4 = if (shake > 0f) random.between(1.1f, 1.6f) else 0f; val p4 = if (shake > 0f) random.between(0f, 6.28f) else 0f
     fun pressure(d: Float) = 1f + swell * (.65f * sin(d * f1 + p1) + .35f * sin(d * f2 + p2))
-    fun drift(d: Float) = width * wander * sin(d * f3 + p3)
+    fun drift(d: Float) = width * wander * sin(d * f3 + p3) + (if (shake > 0f) shake * (.6f * sin(d * f4 + p4) + .4f * sin(d * f4 * 2.3f + p4 * 1.7f)) else 0f)
 
     /* Runs of line: where the brush is on the paper. */
     val runs = mutableListOf<Pair<Float, Float>>()
@@ -203,7 +208,7 @@ fun inkBrush(
             val tan = measure.getTangent(dd).let { val l = hypot(it.x, it.y); if (l == 0f) Offset(1f, 0f) else Offset(it.x / l, it.y / l) }
             val normal = Offset(-tan.y, tan.x)
             val fromEnd = min(d - a, b - d)
-            val ease = if (taper <= 0f) 1f else (.3f + .7f * smooth((fromEnd / taper).coerceIn(0f, 1f)))
+            val ease = if (taper <= 0f) 1f else (tip + (1 - tip) * smooth((fromEnd / taper).coerceIn(0f, 1f)))
             val half = width * pressure(d) * ease / 2
             val centre = pos + normal * drift(d)
             left += centre + normal * half

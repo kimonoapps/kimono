@@ -45,7 +45,7 @@ fun KimonoBranch(size: Dp = 30.dp, tint: Color = app.kimono.theme.plumInk, modif
 }
 
 /* 24px line icons with round joins, as drawn in the mockups. */
-private val iconPaths = mapOf(
+internal val iconPaths = mapOf(
     "home" to "M4 11 12 4l8 7M6 9.5V20h12V9.5 M10 20v-5h4v5",
     "back" to "M19 12H5M11 6l-6 6 6 6",
     "close" to "M6 6l12 12M18 6 6 18",
