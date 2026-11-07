@@ -40,7 +40,7 @@ fun Seal(
     val sized = modifier.heightIn(min = if (compact) 40.dp else 52.dp)
     val content: @Composable RowScope.() -> Unit = {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (busy) InkLoader(size = 24.dp)
+            if (busy) InkLoader(size = 20.dp, color = androidx.compose.material3.LocalContentColor.current)
             Text(label, style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall, maxLines = 1)
         }
     }

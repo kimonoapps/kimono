@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { InkBlot, MorphLoader } from "@kimono/ui";
+import { InkBlot, InkLoader } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
 import { code } from "./api";
 import { ArtifactFrame, SceneBar, type SceneControl, type SceneState } from "./artifact-frame";
@@ -23,7 +23,7 @@ export function JoinChat({ token }: { token: string }) {
   useEffect(() => {
     code.join(token).then((w) => crossTo("kakejiku", `/code#w=${encodeURIComponent(w.id)}`), (error) => setProblem(problemText(error)));
   }, [token, crossTo]);
-  return <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note">{problem ? <p>{problem}</p> : <MorphLoader label="Opening" className="cd-artifact-loading" />}</div></div>;
+  return <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note">{problem ? <p>{problem}</p> : <InkLoader label="Opening" className="cd-artifact-loading" />}</div></div>;
 }
 
 /** An artifact opened by its link: the page, as big as the window, in the same sandboxed frame. */
@@ -47,5 +47,5 @@ export function ArtifactAlone({ title, content, media }: { title: string; conten
 
 /** A chat read by someone not signed in. Its reader is the whole of Kimono AI's chat, so it's fetched only for them. */
 export const GuestChat = dynamic(() => import("./code-app").then((m) => m.GuestChat), {
-  loading: () => <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note"><MorphLoader label="Opening" className="cd-artifact-loading" /></div></div>,
+  loading: () => <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note"><InkLoader label="Opening" className="cd-artifact-loading" /></div></div>,
 });

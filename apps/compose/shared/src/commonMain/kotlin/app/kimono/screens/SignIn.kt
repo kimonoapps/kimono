@@ -10,7 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LinearWavyProgressIndicator
+import app.kimono.ui.InkLoader
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toShape
 import androidx.compose.ui.graphics.graphicsLayer
@@ -151,7 +151,7 @@ fun SignInScreen(session: Session, rememberedServer: String?) {
                     modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.Password },
                 )
             }
-            if (busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
+            if (busy) InkLoader(modifier = Modifier.fillMaxWidth(), size = 40.dp)
             Problem(problem)
             Seal(if (busy) "Signing in" else "Continue", onClick = go, enabled = ready, busy = busy, modifier = Modifier.fillMaxWidth())
             if (askingCode) TextButton(onClick = { session.cancelSignIn(); askingCode = false; problem = null }, enabled = !busy) {

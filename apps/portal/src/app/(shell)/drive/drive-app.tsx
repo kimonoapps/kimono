@@ -7,7 +7,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useSearchParams } from "next/navigation";
 import { useCrossTo } from "@/components/crossing";
 import { InkCrest } from "@/components/ink-crest";
-import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
+import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, InkLoader, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
   contentUrl, drive, DriveProblem, extension, hasThumb, isText, kindOf, linkUrl, thumbUrl, readableSize, shared, spaceLinkUrl, upload, when,
@@ -934,7 +934,7 @@ function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: Dr
       </div>
       <div className="dv-pick-list">
         {problem ? <p className="dv-quiet-text">{problem}</p>
-          : !ready ? <MorphLoader className="dv-open-shape" label="Opening" />
+          : !ready ? <InkLoader className="dv-open-shape" label="Opening" />
           : !children.length ? <p className="dv-quiet-text">Empty folder</p>
           : children.map((n) => n.kind === "folder" && !moving.has(n.id)
             ? <button key={n.id} type="button" className="dv-pick-row" onClick={() => setWhere(n.id)}><Kind node={n} /><b>{n.name}</b><i className="go" aria-hidden="true" /></button>
@@ -947,7 +947,7 @@ function MoveDialog({ space, nodes, onClose, onMove }: { space: Space; nodes: Dr
 function CrestPicker({ crest, color, onPick }: { crest: string; color: string; onPick: (crest: string, color: string) => void }) {
   const [catalogue, setCatalogue] = useState<Crests | null>(null);
   useEffect(() => { void drive.crests().then(setCatalogue).catch(() => {}); }, []);
-  if (!catalogue) return <MorphLoader className="dv-open-shape" label="Opening" />;
+  if (!catalogue) return <InkLoader className="dv-open-shape" label="Opening" />;
   return <div className="dv-crestpick">
     <div className="dv-colours" role="group" aria-label="Colour">{catalogue.colors.map((c) => <button key={c.id} type="button" aria-pressed={c.id === color} aria-label={c.name} title={c.name} style={{ backgroundColor: c.hex }} onClick={() => onPick(crest, c.id)} />)}</div>
     <div className="dv-crests" role="group" aria-label="Crest">{catalogue.crests.map((c) => <button key={c.id} type="button" aria-pressed={c.id === crest} aria-label={c.name} title={c.name} onClick={() => onPick(c.id, color)}>

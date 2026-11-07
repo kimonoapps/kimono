@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { BusyFace, Choice, cx, InkBlot, InkPortraitFrame, Joint, MorphLoader, Seal } from "@kimono/ui";
+import { BusyFace, Choice, cx, InkBlot, InkPortraitFrame, Joint, InkLoader, Seal } from "@kimono/ui";
 import { HoldSeal } from "@/components/hold-seal";
 import { InkCrest } from "@/components/ink-crest";
 import { Portrait as Face } from "@/components/portrait";
@@ -547,7 +547,7 @@ function NoteRow({ note, notebook, current, saving, now, showCrest, fresh, onOpe
       <span className="nt-row-text"><b>{note.title}</b>{note.excerpt ? <small>{note.excerpt}</small> : null}</span>
       <span className="nt-row-side">
         {showCrest && notebook ? <NotebookCrest notebook={notebook} size={16} /> : null}
-        {saving ? <MorphLoader className="nt-saving" label="Saving" /> : <span className="nt-when">{when(note.updatedAt, now)}</span>}
+        {saving ? <InkLoader className="nt-saving" label="Saving" /> : <span className="nt-when">{when(note.updatedAt, now)}</span>}
       </span>
     </button>
     {writable ? <RowMenu label={`More for ${note.title}`} items={[
@@ -626,7 +626,7 @@ function MoveSheet({ note, lib, onClose, onMove }: { note: Note; lib: Library; o
         aria-current={row.id === note.parentId ? "true" : undefined} onClick={() => { setBusy(row.id); void onMove(row.id).finally(() => setBusy(null)); }}>
         {row.depth ? <span className="nt-place-mark"><Icon name="section" /></span> : <NotebookCrest notebook={row.notebook} size={24} className="nt-place-mark" />}
         <span className="nt-place-name">{row.name}</span>
-        {busy === row.id ? <MorphLoader className="nt-saving" label="Moving" /> : null}
+        {busy === row.id ? <InkLoader className="nt-saving" label="Moving" /> : null}
       </button>)}
     </div>
   </Sheet>;
@@ -834,7 +834,7 @@ function NotePage({ note, draft, notebook, lib, readOnly, onBack, onSaving, onPa
       </small> : <span />}
       <span className="nt-grow" />
       <span className="nt-status" aria-live="polite">
-        {status === "saving" ? <MorphLoader className="nt-saving" label="Saving" />
+        {status === "saving" ? <InkLoader className="nt-saving" label="Saving" />
           : status === "failed" ? <><span className="nt-word">Not saved</span><Seal type="button" compact tone="quiet" onClick={() => void save()}>Retry</Seal></>
           : meta ? <span className="nt-when">{when(meta.updatedAt, now)}</span> : null}
       </span>

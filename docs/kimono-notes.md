@@ -137,7 +137,7 @@ Ink is for marks only. It never goes on controls, cards or text.
 - A row is a soft 56–72px row:
   - the **title** in bold 15px, then one line of excerpt in on-surface-variant;
   - on the right, one word, only when it says something: "now", "2h", "Tue",
-    or a `MorphLoader` while it saves;
+    or a `InkLoader` while it saves;
   - in All notes, the notebook's small crest before the time.
 - A ··· menu shows on hover, and always on touch. A note's menu holds
   **Share**, **Move** and **Delete**. A notebook's menu (in the panel or
@@ -169,7 +169,7 @@ Ink is for marks only. It never goes on controls, cards or text.
 - **Saving is automatic.** Notes saves 800ms after typing stops, when the
   field loses focus, and when you leave. There is no Save button.
   - The status follows the one-word rule. While a save is in flight a 14px
-    `MorphLoader` sits where the time is. Once saved it shows the time and
+    `InkLoader` sits where the time is. Once saved it shows the time and
     nothing else.
   - If a save fails: **"Not saved"** and a Retry seal. Keep the text, and keep
     trying in the background.
@@ -184,7 +184,7 @@ Ink is for marks only. It never goes on controls, cards or text.
 ### Buttons that are working
 
 A Seal shows it is busy with `busy`. The word is hidden but keeps its width,
-and a plain `MorphLoader` takes its place. The seal keeps its colour, because
+and a plain `InkLoader` takes its place. The seal keeps its colour, because
 it is working, not switched off. Labels never change to "Saving…". On the
 phone, the `InkLoader` sits beside the label, as `Seal.kt` does.
 
@@ -202,7 +202,7 @@ phone, the `InkLoader` sits beside the label, as `Seal.kt` does.
     or for a note in a shared notebook, "Mina and Ren have it through Recipes."
   - "Add people": the household picker. Each person's row has their portrait,
     name, and a joint switch for EDIT / VIEW, plus Take off (×).
-  - Changes apply as you make them, each row showing a `MorphLoader` while it
+  - Changes apply as you make them, each row showing a `InkLoader` while it
     saves. There is no Share button to press; the sheet's button is **Done**.
   - A viewer sees who has it, but no switches.
   - **Public link**, at the foot: a joint switch. When on, the link shows with

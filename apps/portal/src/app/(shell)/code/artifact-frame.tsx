@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { cx, MorphLoader } from "@kimono/ui";
+import { cx, InkLoader } from "@kimono/ui";
 import { Icon } from "./icons";
 
 /*
@@ -119,7 +119,7 @@ export function SceneBar({ scene, send }: { scene: SceneState; send: (action: Sc
       style={{ ["--p" as string]: `${scene.end ? scene.t / scene.end * 100 : 0}%` }}
       onChange={(event) => send("seek", (+event.target.value / 1000) * scene.end)} />
     <span className="cd-scene-time">{scene.t.toFixed(1)} / {scene.end.toFixed(1)}s</span>
-    {!scene.complete ? <MorphLoader tone="plain" label="Still being written" className="cd-morph cd-scene-writing" /> : null}
+    {!scene.complete ? <InkLoader tone="plain" label="Still being written" className="cd-morph cd-scene-writing" /> : null}
   </div>
   </div>;
 }

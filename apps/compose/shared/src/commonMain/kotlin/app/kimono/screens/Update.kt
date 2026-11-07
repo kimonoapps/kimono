@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import app.kimono.data.AppUpdate
 import app.kimono.data.Platform
 import app.kimono.data.readableSize
+import app.kimono.ui.InkProgress
 import app.kimono.ui.KimonoBranch
 import app.kimono.ui.Problem
 import app.kimono.ui.Seal
@@ -58,7 +58,7 @@ private fun rememberInstall(platform: Platform, update: AppUpdate): Pair<Install
 /** The download's progress bar, with how far it has come. */
 @Composable
 private fun Progress(progress: Float, update: AppUpdate) {
-    LinearWavyProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+    InkProgress(progress = { progress }, modifier = Modifier.fillMaxWidth())
     val percent = (progress * 100).toInt()
     val text = when {
         progress >= 1f -> "Installing…"

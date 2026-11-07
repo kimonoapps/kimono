@@ -2,7 +2,7 @@
 
 import { createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, MorphLoader, Seal } from "@kimono/ui";
+import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, InkLoader, Seal } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
@@ -979,7 +979,7 @@ function SendStop({ mode, disabled, busy, onSend, onStop }: { mode: "send" | "st
     aria-label={stop ? "Stop" : "Send"} title={stop ? "Stop" : "Send (↵, Shift-↵ for a new line)"} aria-keyshortcuts={stop ? undefined : "Enter"}
     onClick={() => (stop ? onStop?.() : onSend())}>
     <span className="cd-ss" aria-hidden="true">
-      <span className="cd-ss-send">{busy ? <MorphLoader tone="plain" label="Sending" className="cd-morph" /> : <svg viewBox="0 0 24 24"><path className="cd-ss-shaft" d="M12 19V6" /><path className="cd-ss-head" d="M6.5 11 12 5.5l5.5 5.5" /></svg>}</span>
+      <span className="cd-ss-send">{busy ? <InkLoader tone="plain" label="Sending" className="cd-morph" /> : <svg viewBox="0 0 24 24"><path className="cd-ss-shaft" d="M12 19V6" /><path className="cd-ss-head" d="M6.5 11 12 5.5l5.5 5.5" /></svg>}</span>
       <span className="cd-ss-stop"><svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2.2" /></svg></span>
     </span>
   </Seal>;
@@ -1258,7 +1258,7 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
         {w.people?.length ? <span className="cd-row-faces" title={w.people.join(", ")}>{w.people.slice(0, 3).map((who) => <Face key={who} username={who} size={18} />)}{w.people.length > 3 ? <span className="cd-row-more">+{w.people.length - 3}</span> : null}</span> : null}
         {/* One word, and only when it says something; someone typing in it says so first. */}
         {typingHere?.length ? <TypingWords names={typingHere} />
-          : state === "running" ? <span className="cd-word running"><MorphLoader ink={workingInk} label="Working" className="cd-working-ink" />working {elapsed(now - w.turn!.startedAt)}</span>
+          : state === "running" ? <span className="cd-word running"><InkLoader ink={workingInk} label="Working" className="cd-working-ink" />working {elapsed(now - w.turn!.startedAt)}</span>
           : state === "failed" ? <span className="cd-word">stopped</span>
             : w.preview && !w.preview.stopped ? <span className="cd-word">live</span>
             : w.pullRequest ? <span className="cd-word">#{w.pullRequest.number}</span>
@@ -2354,7 +2354,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
   return <figure className={cx("cd-artifact", `is-${mode}`, writing && "is-writing", inline && open && "is-elsewhere", shut && "is-folded")}>
     <figcaption className="cd-artifact-head">
       <InkBlot className="cd-artifact-mark" tint={inkTint.suo} seed={name}><Icon name="spark" /></InkBlot>
-      <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <small className="cd-artifact-writing"><MorphLoader tone="plain" label="Writing" className="cd-morph" />Writing</small> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
+      <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <small className="cd-artifact-writing"><InkLoader tone="plain" label="Writing" className="cd-morph" />Writing</small> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
       <span className="cd-artifact-acts">
         {inline && !open ? <button type="button" className="cd-roundbutton cd-artifact-fold" aria-expanded={!folded} aria-label={folded ? "Show" : "Collapse"} title={folded ? "Show" : "Collapse"} onClick={() => fold(!folded)}><Icon name="chevron" /></button> : null}
         {canShare ? <button type="button" className="cd-roundbutton" aria-label="Share" title="Share" onClick={() => setSharing(true)}><Icon name="people" /></button> : null}
@@ -2373,7 +2373,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
               onKeyDown={(event) => { if (!shown) return; if (event.key === "ArrowDown") { event.preventDefault(); resizeBy(shown + 40); } else if (event.key === "ArrowUp") { event.preventDefault(); resizeBy(shown - 40); } else if (event.key === "Enter" || event.key === "Escape") setChosen(null); }} /> : null}
             {scene && scene.end > 0 && !shut ? <SceneBar scene={scene} send={send} /> : null}
           </>
-        : <MorphLoader label="Opening" className="cd-artifact-loading" />}
+        : <InkLoader label="Opening" className="cd-artifact-loading" />}
     {sharing ? <ShareArtifact workspaceId={shared.workspaceId} name={name} title={title} onClose={() => setSharing(false)} /> : null}
   </figure>;
 }
@@ -2404,7 +2404,7 @@ function WorkingMark({ phase, doing }: { phase: Phase; doing: Now | null }) {
     return <span className="cd-now-seal" key={doing.app ?? doing.space} aria-hidden="true">{doing.app ? <AppLogo slug={doing.app} /> : <DriveMark />}</span>;
   }
   return <span className="cd-now-ink" aria-hidden="true">
-    <MorphLoader ink={phase === "artifact" ? undefined : phase === "thinking" ? thinkingInk : workingInk} label="" className="cd-morph" />
+    <InkLoader ink={phase === "artifact" ? undefined : phase === "thinking" ? thinkingInk : workingInk} label="" className="cd-morph" />
     {phase === "artifact" ? <><i /><i /><i /></> : null}
   </span>;
 }
@@ -2566,7 +2566,7 @@ function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   const label = start.progress!.label!;
   return <details className="calls cd-progress" data-state={finished ? "done" : stopped ? "stopped" : "running"}>
     <summary className="cd-progress-head">
-      <InkBlot className="cd-progress-mark" tint={finished ? inkTint.live : inkTint.suo} seed={tools[0]?.id ?? label}>{finished ? <Icon name="check" /> : stopped ? <GroupMarks tools={tools} /> : <MorphLoader tone="plain" label={label} className="cd-morph" />}</InkBlot>
+      <InkBlot className="cd-progress-mark" tint={finished ? inkTint.live : inkTint.suo} seed={tools[0]?.id ?? label}>{finished ? <Icon name="check" /> : stopped ? <GroupMarks tools={tools} /> : <InkLoader tone="plain" label={label} className="cd-morph" />}</InkBlot>
       <span className="cd-progress-text">
         <span className="cd-progress-label"><b>{label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}<ProPrice usd={priceOf(tools)} /></span>
         <InkWave className="cd-progress-wave" label={label} value={fill} />
@@ -2586,7 +2586,7 @@ function PlainToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   const touched = [...new Set(tools.filter((t) => t.label === "Edited" || t.label === "Wrote").map((t) => t.detail).filter(Boolean))];
   return <details className="calls" open={open} onToggle={(event) => { const next = (event.currentTarget as HTMLDetailsElement).open; if (next !== open) setChosen(next); }}>
     <summary className="tools-used">
-      {live && pending ? <MorphLoader tone="plain" label="Using tools" className="cd-morph" /> : <GroupMarks tools={tools} />}
+      {live && pending ? <InkLoader tone="plain" label="Using tools" className="cd-morph" /> : <GroupMarks tools={tools} />}
       <span>{live && pending ? "Using tools" : `Used ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`}</span>
       <ProPrice usd={priceOf(tools)} />
       {touched.length ? <span className="cd-faint">· edited {touched.length === 1 ? touched[0] : `${touched.length} files`}</span> : null}
@@ -2638,7 +2638,7 @@ function ToolRow({ tool }: { tool: Tool }) {
   const output = tool.result?.output.trim();
   return <details className="call" data-state={state}>
     <summary>
-      <InkBlot className={cx("ci", (tool.app || tool.space) && "is-mark")} tint={state === "failed" ? inkTint.suo : inkTint.quiet} seed={tool.id}>{state === "running" ? <MorphLoader tone="plain" label="Running" className="cd-morph" /> : <ToolMark tool={tool} />}</InkBlot>
+      <InkBlot className={cx("ci", (tool.app || tool.space) && "is-mark")} tint={state === "failed" ? inkTint.suo : inkTint.quiet} seed={tool.id}>{state === "running" ? <InkLoader tone="plain" label="Running" className="cd-morph" /> : <ToolMark tool={tool} />}</InkBlot>
       <span className="cv">{tool.label}{tool.app && /^(Used|Connecting|Read how to use)$/.test(tool.label) ? <> <AppName slug={tool.app} /></> : null}</span>
       {tool.cost ? <ProPrice usd={tool.cost} /> : null}
       {tool.space ? <SpaceChip name={tool.space} /> : null}
@@ -2863,7 +2863,7 @@ function OneFilePicker({ root, onPick }: { root: string; onPick: (file: string) 
   }, [at]);
   return <div className="cd-access-pick">
     {stack.length ? <button type="button" className="cd-access-row" onClick={() => { setAt(stack.at(-1)!); setStack((s) => s.slice(0, -1)); }}><Icon name="back" />Back</button> : null}
-    {items === null ? <MorphLoader tone="plain" label="Looking" className="cd-morph cd-note-shape" /> : !items.length ? <p className="cd-note">Nothing here.</p> : items.map((item) =>
+    {items === null ? <InkLoader tone="plain" label="Looking" className="cd-morph cd-note-shape" /> : !items.length ? <p className="cd-note">Nothing here.</p> : items.map((item) =>
       <button key={item.id} type="button" className="cd-access-row" onClick={() => { if (item.kind === "folder") { setStack((s) => [...s, at]); setAt(item.id); } else onPick(item.id); }}>
         <Icon name={item.kind === "folder" ? "folder" : "file"} /><span>{item.name}</span>
       </button>)}
@@ -2951,7 +2951,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {p.preview ? <img src={p.preview} alt="" /> : <FileThumb name={p.name} size={30} />}
       <span>{p.name}</span>
-      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <MorphLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
+      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <InkLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }}><Icon name="close" /></button>
     </span>)}</div> : null}
     {switching && workspace.lastModel ? <p className="cd-switching" role="status">This chat has been on {modelWords[workspace.lastModel].label}. Switching to {modelWords[switching].label} uses more of your plan.</p> : null}

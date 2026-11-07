@@ -22,7 +22,7 @@ function Arrivals({ children }: { children: ReactNode }) {
   const waiting = useRef<(() => void) | null>(null);
 
   /* Moving between pages, Material's shared x-axis: the page you leave slides a
-     little left and fades at once; if the next is slow, the painted shape-morph
+     little left and fades at once; if the next is slow, the brushed wavy
      loader holds the space; when it stands, it slides in from the right. Only
      the page moves: the rail stays where it is. */
   const [moving, setMoving] = useState(false);

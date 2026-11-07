@@ -17,7 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearWavyProgressIndicator
+import app.kimono.ui.InkProgress
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -143,7 +143,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
                     when {
                         flight != null -> TestflightAsk(flight, betaEmail, asking, ask = { ask(flight.bundleId) }, openTestflight = { platform.openUrl("itms-beta://") })
                         going != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            LinearWavyProgressIndicator(progress = { going }, modifier = Modifier.width(200.dp))
+                            InkProgress(progress = { going }, modifier = Modifier.width(200.dp))
                             Text(if (going < 1f) "Downloading ${phone.name}" else "Android will ask you to confirm", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         here.update != null -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

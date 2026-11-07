@@ -679,7 +679,7 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 
 /* the wavy bar for an upload filling (it has a progress); the shape while a file opens (it doesn't) */
 .dv-wave { margin: 4px 0 2px; }
-.dv-open-shape { width: 40px; height: 40px; margin: 32px auto; }
+.dv-open-shape { width: 140px; height: 14px; margin: 32px auto; }
 
 /* Folders, projects and chats wear a watercolour puddle, not a flat tile: Kimono's marks are brushed. */
 .dv-kind.dv-wash { overflow: visible; border-radius: 0; background: none; }
