@@ -964,3 +964,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 /* 紋 a crest washed in its colour (notebooks, spaces) */
 .ink-crest { width: var(--crest-size); height: var(--crest-size); display: inline-grid; place-items: center; flex: none; }
 .ink-crest > svg { width: 100%; height: 100%; rotate: var(--crest-turn); overflow: visible; }
+
+/* 墨 Every line icon brushed, not ruled: the ink filter (InkIconDefs) on each
+   shape, never on the <svg> (Safari draws an <svg> blank under a CSS filter). */
+svg[viewBox="0 0 24 24"] > :is(path, circle, rect, line, polyline, polygon, ellipse, g) { filter: url(#k-ink-icon); }
