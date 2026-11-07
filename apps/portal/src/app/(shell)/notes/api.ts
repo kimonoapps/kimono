@@ -7,13 +7,24 @@ export type Role = "owner" | "editor" | "viewer";
 /** A notebook is a folder in a Drive space; whoever is in the space shares it. `isSpace`: shared on its own, the space is just it. */
 export type Notebook = {
   id: string; name: string; createdBy: string; createdAt: number; updatedAt: number; role: Role; isSpace: boolean;
+  /** Shared with this person from a space they aren't in: it stands on its own, under Shared with you. */
+  sharedWithYou: boolean;
   space: { id: string; name: string; crest: string; color: string; members: number };
 };
 export type Section = { id: string; notebookId: string; parentId: string; name: string; updatedAt: number };
-export type Note = { id: string; notebookId: string; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number; version: number; excerpt?: string };
+/** `notebookId` is null for a note shared with you on its own, outside any notebook of yours. */
+export type Note = { id: string; notebookId: string | null; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number; version: number; excerpt?: string };
 export type Library = { notebooks: Notebook[]; sections: Section[]; notes: Note[] };
-export type Member = { username: string; role: Role };
 export type Person = { username: string; name: string; picture: string | null };
+export type Share = { username: string; role: "editor" | "viewer"; addedBy: string; addedAt: number };
+/** Who has a notebook or note beyond its space, who has it through its notebook, how many see it in its space, and its public link. */
+export type Sharing = {
+  shares: Share[]; inherited: (Share & { via: { id: string; name: string } })[];
+  space: { id: string; name: string; members: number }; role: Role | null; link: string | null;
+};
+/** What can be shared: a notebook, or a single note. */
+export type Shareable = { kind: "notebook" | "note"; id: string; name: string };
+const base = (thing: Pick<Shareable, "kind" | "id">) => thing.kind === "notebook" ? `/notebooks/${thing.id}` : `/${thing.id}`;
 
 export class NotesProblem extends Error {
   constructor(message: string, readonly status = 0) { super(message); }
@@ -57,11 +68,11 @@ export const notes = {
   spaces: () => call<{ spaces: { id: string; name: string; role: Role; code?: unknown }[] }>("/api/v1/drive/spaces").then((r) => r.spaces.filter((s) => s.role !== "viewer" && !s.code)),
   renameNotebook: (id: string, name: string) => call<Notebook>(`/notebooks/${id}`, json("PATCH", { name })),
   removeNotebook: (id: string) => call<unknown>(`/notebooks/${id}`, { method: "DELETE" }),
-  /** Shares a notebook on its own: it becomes a space of just it, with you and the people named. */
-  share: (id: string, members: Member[]) => call<Notebook>(`/notebooks/${id}/share`, json("POST", { members })),
-  members: (notebookId: string) => call<{ id: string; name: string; role: Role; isSpace: boolean; members: Member[] }>(`/notebooks/${notebookId}/members`),
-  setMember: (notebookId: string, username: string, role: Role | null) => call<unknown>(`/notebooks/${notebookId}/members`, json("PUT", { username, role })),
-  people: () => call<{ people: Person[] }>("/api/v1/drive/people").then((r) => r.people),
+  sharing: (thing: Pick<Shareable, "kind" | "id">) => call<Sharing>(`${base(thing)}/members`),
+  /** Shares it with someone, changes what they may do, or (null) takes them off; yourself with null is leaving. */
+  share: (thing: Pick<Shareable, "kind" | "id">, username: string, role: "editor" | "viewer" | null) => call<Sharing | { left: true }>(`${base(thing)}/members`, json("PUT", { username, role })),
+  link: (thing: Pick<Shareable, "kind" | "id">, on: boolean) => call<{ link: string | null }>(`${base(thing)}/link`, on ? { method: "POST" } : { method: "DELETE" }).then((r) => r.link),
+  people: () => call<{ people: Person[] }>("/people").then((r) => r.people),
 };
 
 /** One word for when, and only when it says something: "now", "5m", "2h", "Tue", "3 Oct". */
