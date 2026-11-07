@@ -12,12 +12,12 @@ export async function DELETE(_request: Request, { params }: Context) {
   return code(user, async () => { forget(db(), user.username, id); return apiJson(profileOf(db(), user.username)); }, false);
 }
 
-/** New words for one memory: { text }. */
+/** New words for one memory: { text, title? }. */
 export async function PATCH(request: Request, { params }: Context) {
   const user = await apiUser();
   if (!user) return unauthorized();
   const read = await readJson(request);
   if ("response" in read) return read.response;
   const { id } = await params;
-  return code(user, async () => { changeMemory(db(), user.username, id, (read.body as { text?: unknown }).text); return apiJson(profileOf(db(), user.username)); }, false);
+  return code(user, async () => { const body = read.body as { text?: unknown; title?: unknown }; changeMemory(db(), user.username, id, body.text, body.title); return apiJson(profileOf(db(), user.username)); }, false);
 }

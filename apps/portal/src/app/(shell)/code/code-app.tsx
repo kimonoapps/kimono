@@ -230,7 +230,6 @@ function Ring({ value, label }: { value: number | null; label: string }) {
 const fallbackWindow = 200_000;
 const kTokens = (n: number) => n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 const pct = (n: number) => `${Math.round(n * 100)}%`;
-const dollars = (n: number) => `$${n.toFixed(2)}`;
 /* Pro Tools are counted in credits, a hundred to the dollar: "247 of 1,000 credits". Under ten, to a tenth. */
 const creditNumber = (usd: number) => { const c = usd * 100; return c > 0 && c < 10 ? String(Math.round(c * 10) / 10) : Math.round(c).toLocaleString("en"); };
 const credits = (usd: number) => `${creditNumber(usd)} ${usd * 100 === 1 ? "credit" : "credits"}`;
@@ -382,6 +381,10 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
   const showingConnections = !current && params.get("connections") === "1";
   const showingMemory = !current && !showingConnections && params.get("memory") === "1";
   const showingArchived = !current && !showingConnections && !showingMemory && params.get("archived") === "1";
+  /* Moving between pages (a chat, connections, memory, archived, a new chat) carries the page in, as tabs do. */
+  const mainRef = useRef<HTMLElement>(null);
+  const page = current ? `w:${current}` : showingConnections ? `c:${params.get("app") ?? ""}` : showingMemory ? `memory:${params.get("page") ?? ""}` : showingArchived ? "archived" : `new:${params.get("in") ?? ""}:${params.get("repo") ?? ""}`;
+  useLayoutEffect(() => { swap(mainRef.current?.firstElementChild ?? null); }, [page]);
   /* On a narrow screen Code opens on the task list; the new-task form is its own screen, as on the phone. */
   const composing = params.get("new") === "1";
   const tab = (["chat", "files", "changes", "app"].includes(params.get("tab") ?? "") ? params.get("tab") : "chat") as Tab;
@@ -462,8 +465,6 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
 
   return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><div className="cd-page">
     <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
-    {/* With the list folded away, the button that brings it back stays where the one that hid it was: top left. */}
-    {folded ? <button type="button" className="cd-roundbutton cd-unfold-corner" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button> : null}
     <aside className="cd-side" aria-label="Chats">
       <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span></div>
       <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory && !showingArchived ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
@@ -480,7 +481,8 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       {searching ? <SearchResults words={find} chats={[...listed, ...shared.chats]} current={current} now={now} /> : <>
       <SideGroup gkey="recent" title={<span className="cd-folder-title">Recent</span>} icon="clock" chats={chatsOf(listed).filter((w) => !w.folder)} current={current} now={now} cap={10}
-        collapsed={folds.has("recent")} onToggle={() => toggleFold("recent")} onDropChat={(id) => fileChat(id, null)} />
+        collapsed={folds.has("recent")} onToggle={() => toggleFold("recent")} onDropChat={(id) => fileChat(id, null)}
+        actions={<button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1" })} aria-label="New chat" title="New chat"><Icon name="plus" /></button>} />
       <div className="cd-side-label cd-folders-head"><span>Projects</span><button type="button" className="cd-roundbutton cd-project-new is-shown" onClick={() => setNaming({ id: null, name: "" })} aria-label="New project" title="New project"><Icon name="plus" /></button></div>
       {naming && !naming.id ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); void saveProject(); }}>
         <input autoFocus value={naming.name} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={(event) => setNaming({ id: null, name: event.target.value })} onBlur={() => void saveProject()} onKeyDown={(event) => { if (event.key === "Escape") setNaming(null); }} />
@@ -493,13 +495,13 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
         /* A repository with no project of its name is a project of its own, in the same list. */
         : <SideGroup key={group.key} gkey={group.key} icon="branch" title={<span className="cd-folder-title" title={group.repo.key}>{group.repo.name}</span>} chats={group.repo.tasks} current={current} now={now}
             collapsed={folds.has(group.key)} onToggle={() => toggleFold(group.key)} onDropGroup={(from) => reorder(from, group.key)}
-            actions={admin ? <button type="button" className="cd-roundbutton cd-project-new" onClick={() => { try { localStorage.setItem("kimono-code-repo", group.repo.key); localStorage.setItem("kimono-ai-project", "1"); } catch { /* not remembered */ } goTo({ new: "1" }); }} aria-label={`New chat in ${group.repo.name}`} title={`New chat in ${group.repo.name}`}><Icon name="plus" /></button> : null} />)}
+            actions={admin ? <button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1", repo: group.repo.key })} aria-label={`New chat in ${group.repo.name}`} title={`New chat in ${group.repo.name}`}><Icon name="plus" /></button> : null} />)}
       {!groups.length && !naming ? <p className="cd-quiet cd-side-note">Keep chats together in a project.</p> : null}
       <SharedWithYou chats={chatsOf(shared.chats).concat(shared.chats.filter((w) => w.kind !== "chat"))} artifacts={shared.artifacts} current={current} now={now} />
       {workspaces && !listed.length ? <p className="cd-quiet cd-side-note">Your chats will be here.</p> : null}
       </>}
     </aside>
-    <main className="cd-main">
+    <main className="cd-main" ref={mainRef}>
       {current && workspace
         ? <WorkspaceView key={workspace.id} projects={projects} workspace={workspace} others={workspaces?.filter((w) => w.id !== workspace.id && w.preview && !w.preview.stopped) ?? []} tab={tab} path={path} blocked={blocked} onChange={load} now={now} />
         : current && workspaces
@@ -507,9 +509,9 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
           : current
             ? <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>
             : showingConnections ? <ConnectionsView now={now} app={params.get("app")} />
-            : showingMemory ? <MemoryView now={now} />
+            : showingMemory ? <MemoryView now={now} page={params.get("page")} />
             : showingArchived ? <ArchivedView chats={archived} loaded={workspaces !== null} now={now} onChange={load} />
-            : <Start blocked={blocked} admin={admin} folder={projects.find((p) => p.id === params.get("in")) ?? null} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
+            : <Start key={`${params.get("in") ?? ""}|${params.get("repo") ?? ""}`} blocked={blocked} admin={admin} repoAsked={params.get("repo")} folder={projects.find((p) => p.id === params.get("in")) ?? null} onStarted={async (made) => { setWorkspaces((list) => [made, ...(list ?? []).filter((w) => w.id !== made.id)]); goTo({ w: made.id }); void load(); }} />}
     </main>
     </div>
   </div></MarksContext.Provider></ViewerContext.Provider>;
@@ -553,31 +555,19 @@ function ArchivedView({ chats, loaded, now, onChange }: { chats: Workspace[]; lo
 
 /* ── memory: the person's instructions, and what it keeps about them ── */
 
-function MemoryView({ now }: { now: number }) {
+/*
+ * Memory: the person's instructions and what Kimono AI keeps about them, as
+ * pages. Each opens on a page of its own, a title and as many words as it
+ * needs, saved as they're written. One the agent kept is a sentence; once
+ * the person gives it a title, it's a page like theirs.
+ */
+const pageWords = (text: string, words = 30) => { const all = text.replace(/\s+/g, " ").trim().split(" "); return all.length > words ? `${all.slice(0, words).join(" ")}…` : all.join(" "); };
+
+function MemoryView({ now, page }: { now: number; page: string | null }) {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [draft, setDraft] = useState<string | null>(null);
-  const [adding, setAdding] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   useEffect(() => { code.memory().then(setProfile, (error) => setProblem(problemText(error))); }, []);
-  const instructions = draft ?? profile?.instructions ?? "";
-  const changed = draft !== null && draft !== profile?.instructions;
-  const save = () => {
-    setSaving(true); setProblem(null);
-    code.saveInstructions(instructions).then((next) => { setProfile(next); setDraft(null); setSaved(true); setTimeout(() => setSaved(false), 1600); }, (error) => setProblem(problemText(error))).finally(() => setSaving(false));
-  };
-  const add = () => {
-    if (!adding.trim()) return;
-    setProblem(null);
-    code.remember(adding).then((next) => { setProfile(next); setAdding(""); }, (error) => setProblem(problemText(error)));
-  };
-  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
-  const change = () => {
-    if (!editing?.text.trim()) return;
-    setProblem(null);
-    code.changeMemory(editing.id, editing.text).then((next) => { setProfile(next); setEditing(null); }, (error) => setProblem(problemText(error)));
-  };
+  if (page) return <MemoryPage key={page} page={page} profile={profile} now={now} onProfile={setProfile} />;
   const drop = (id: string) => {
     setProfile((p) => p && { ...p, memories: p.memories.filter((m) => m.id !== id) });
     code.forget(id).then(setProfile, (error) => { setProblem(problemText(error)); void code.memory().then(setProfile); });
@@ -587,42 +577,94 @@ function MemoryView({ now }: { now: number }) {
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
       <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
       <h1>Memory</h1>
+      <span className="cd-grow" />
+      <Seal type="button" compact onClick={() => goTo({ memory: "1", page: "new" })}><Icon name="plus" />New page</Seal>
     </header>
     <div className="cd-conn-body">
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
       {profile === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
-      {profile ? <>
-        <h2 className="cd-conn-sub">Instructions</h2>
-        <div className="cd-memory-box">
-          <textarea value={instructions} rows={5} maxLength={4000} aria-label="Instructions" placeholder="How it should work for you. For example: call me Mina, keep answers short, use metric units."
-            onChange={(event) => setDraft(event.target.value)} />
-          <div className="cd-memory-row">
-            <span className="cd-faint">{saved ? "Saved" : `${instructions.length} / 4000`}</span>
-            <span className="cd-grow" />
-            {changed ? <Seal type="button" compact tone="quiet" onClick={() => setDraft(null)}>Undo</Seal> : null}
-            <Seal type="button" compact busy={saving} disabled={!changed} onClick={save}>Save</Seal>
-          </div>
-        </div>
-        <h2 className="cd-conn-sub">What it remembers</h2>
-        <form className="cd-conn-search cd-memory-add" onSubmit={(event) => { event.preventDefault(); add(); }}>
-          <Icon name="plus" />
-          <input value={adding} maxLength={500} onChange={(event) => setAdding(event.target.value)} placeholder="Something it should remember" aria-label="Something it should remember" />
-          {adding.trim() ? <Seal type="submit" compact>Add</Seal> : null}
-        </form>
-        {profile.memories.length ? <ul className="cd-conn-list">{profile.memories.map((m) => editing?.id === m.id
-          ? <li key={m.id} className="cd-conn-card cd-memory-item is-editing">
-              <form className="cd-memory-edit" onSubmit={(event) => { event.preventDefault(); change(); }}>
-                <input autoFocus value={editing.text} maxLength={500} aria-label="Memory" onChange={(event) => setEditing({ id: m.id, text: event.target.value })} onKeyDown={(event) => { if (event.key === "Escape") setEditing(null); }} />
-                <Seal type="button" compact tone="quiet" onClick={() => setEditing(null)}>Cancel</Seal>
-                <Seal type="submit" compact disabled={!editing.text.trim() || editing.text.trim() === m.text}>Save</Seal>
-              </form>
-            </li>
-          : <li key={m.id} className="cd-conn-card cd-memory-item">
-              <button type="button" className="cd-conn-id cd-memory-text" title="Edit" onClick={() => setEditing({ id: m.id, text: m.text })}><b>{m.text}</b><small>{m.source === "ai" ? "It kept this" : "You added this"} · {when(m.createdAt, now)}</small></button>
-              <button type="button" className="cd-roundbutton" aria-label="Edit this" title="Edit this" onClick={() => setEditing({ id: m.id, text: m.text })}><Icon name="rename" /></button>
-              <button type="button" className="cd-roundbutton" aria-label="Forget this" title="Forget this" onClick={() => drop(m.id)}><Icon name="trash" /></button>
-            </li>)}</ul> : <p className="cd-conn-empty">Nothing yet. It keeps things you tell it to remember.</p>}
-      </> : null}
+      {profile ? <ul className="cd-pages">
+        <li><button type="button" className="cd-page-card is-instructions" onClick={() => goTo({ memory: "1", page: "instructions" })}>
+          <InkBlot className="cd-page-mark" tint={inkTint.suo} seed="instructions"><Icon name="spark" /></InkBlot>
+          <span className="cd-page-words"><b>Instructions</b><small>{profile.instructions ? pageWords(profile.instructions) : "How it should work for you, every chat"}</small></span>
+        </button></li>
+        {profile.memories.map((m) => <li key={m.id} className="cd-page-row">
+          <button type="button" className="cd-page-card" onClick={() => goTo({ memory: "1", page: m.id })}>
+            <InkBlot className="cd-page-mark" tint={m.source === "ai" ? inkTint.quiet : inkTint.live} seed={m.id}><Icon name={m.source === "ai" ? "chat" : "file"} /></InkBlot>
+            <span className="cd-page-words">
+              <b>{m.title ?? pageWords(m.text, 12)}</b>
+              <small>{m.title ? `${pageWords(m.text, 18)} · ` : ""}{m.source === "ai" ? "Kimono AI kept this" : "Yours"} · {when(m.createdAt, now)}</small>
+            </span>
+          </button>
+          <button type="button" className="cd-roundbutton cd-page-drop" aria-label={`Forget ${m.title ?? "this"}`} title="Forget this" onClick={() => drop(m.id)}><Icon name="trash" /></button>
+        </li>)}
+      </ul> : null}
+      {profile && !profile.memories.length ? <p className="cd-conn-empty">Nothing kept yet. Write a page, or ask it to remember something in a chat.</p> : null}
+    </div>
+  </section>;
+}
+
+/** One page of Memory: its title and its words, saved a moment after they stop changing. */
+function MemoryPage({ page, profile, now, onProfile }: { page: string; profile: Profile | null; now: number; onProfile: (p: Profile) => void }) {
+  const instructions = page === "instructions";
+  const memory = profile?.memories.find((m) => m.id === page) ?? null;
+  const [id, setId] = useState<string | null>(page === "new" || instructions ? null : page);
+  const [title, setTitle] = useState<string | null>(null);
+  const [text, setText] = useState<string | null>(null);
+  const [state, setState] = useState<"saved" | "saving" | "idle">("idle");
+  const [problem, setProblem] = useState<string | null>(null);
+  const shownTitle = title ?? (instructions ? "Instructions" : memory?.title ?? "");
+  const shownText = text ?? (instructions ? profile?.instructions ?? "" : memory?.text ?? "");
+  const limit = instructions ? 20_000 : 8000;
+  const body = useRef<HTMLTextAreaElement>(null);
+  /* the page grows with its words; the sheet scrolls, not the field */
+  useLayoutEffect(() => { const el = body.current; if (!el) return; el.style.height = "0px"; el.style.height = `${el.scrollHeight}px`; }, [shownText]);
+  const saving = useRef(Promise.resolve());
+  useEffect(() => {
+    if (title === null && text === null) return;
+    const timer = setTimeout(() => {
+      const words = shownText.trim();
+      if (!instructions && !words) return;
+      setState("saving"); setProblem(null);
+      /* one save at a time, in order, so a quick second edit never lands before the first */
+      saving.current = saving.current.then(async () => {
+        try {
+          let next: Profile;
+          if (instructions) next = await code.saveInstructions(shownText);
+          else if (id) next = await code.changeMemory(id, shownText, shownTitle);
+          else {
+            next = await code.remember(shownText, shownTitle);
+            const made = next.memories.find((m) => m.source === "person" && m.text === words.replace(/\r\n?/g, "\n"));
+            if (made) { setId(made.id); window.history.replaceState(null, "", `/code#memory=1&page=${made.id}`); }
+          }
+          onProfile(next);
+          setState("saved");
+        } catch (error) { setProblem(problemText(error)); setState("idle"); }
+      });
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [title, text]); // eslint-disable-line react-hooks/exhaustive-deps -- saves what was written; the rest is read as it stands
+  const missing = profile !== null && !instructions && page !== "new" && !memory && !id;
+  return <section className="cd-sheet cd-conn cd-memory cd-page">
+    <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({ memory: "1" })} aria-label="Memory" title="Memory"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+      <span className="cd-page-state" role="status">{problem ? <span className="cd-problem">{problem}</span> : state === "saving" ? "Saving…" : state === "saved" ? "Saved" : memory ? `${memory.source === "ai" ? "Kimono AI kept this" : "Yours"} · ${when(memory.createdAt, now)}` : ""}</span>
+      <span className="cd-grow" />
+      {id ? <button type="button" className="cd-roundbutton" aria-label="Forget this page" title="Forget this page" onClick={() => { void code.forget(id).then((next) => { onProfile(next); goTo({ memory: "1" }); }, (error) => setProblem(problemText(error))); }}><Icon name="trash" /></button> : null}
+    </header>
+    <div className="cd-conn-body cd-page-body">
+      {profile === null ? <SkeletonRows rows={3} mark={false} />
+        : missing ? <p className="cd-conn-empty">This page isn&rsquo;t here any more.</p>
+        : <>
+          {instructions ? <h1 className="cd-page-title is-fixed">Instructions</h1>
+            : <input className="cd-page-title" value={shownTitle} maxLength={120} placeholder="Untitled" aria-label="Title" autoFocus={page === "new"}
+                onChange={(event) => setTitle(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); body.current?.focus(); } }} />}
+          <textarea ref={body} className="cd-page-text" value={shownText} maxLength={limit} aria-label={instructions ? "Instructions" : "Page"}
+            placeholder={instructions ? "How it should work for you. Who you are, how you like answers, what to always or never do. Write as much as you like." : "Write anything it should know: about you, your household, how you like things done."}
+            onChange={(event) => setText(event.target.value)} />
+          {shownText.length > limit * .8 ? <p className="cd-faint cd-page-count">{shownText.length.toLocaleString("en")} / {limit.toLocaleString("en")}</p> : null}
+        </>}
     </div>
   </section>;
 }
@@ -865,6 +907,20 @@ function AppName({ slug }: { slug: string }) {
   return <>{useAppLook(slug).name}</>;
 }
 
+/**
+ * Send and Stop are one seal: while the agent works and nothing is written it
+ * stops it; a word typed turns it back into Send. It narrows to a square and
+ * the word gives way to the stop mark, and back again.
+ */
+function SendStop({ mode, disabled, busy, onSend, onStop }: { mode: "send" | "stop"; disabled?: boolean; busy?: boolean; onSend: () => void; onStop?: () => void }) {
+  const stop = mode === "stop";
+  return <Seal type="button" compact tone={stop ? "danger" : "primary"} className={cx("cd-sendstop", stop && "is-stop", busy && "is-sending")} disabled={disabled || busy}
+    aria-label={stop ? "Stop" : "Send"} title={stop ? "Stop" : "Send (↵, Shift-↵ for a new line)"} aria-keyshortcuts={stop ? undefined : "Enter"}
+    onClick={() => (stop ? onStop?.() : onSend())}>
+    <span className="cd-ss" aria-hidden="true"><span className="cd-ss-send">{busy ? <MorphLoader tone="plain" label="Sending" className="cd-morph" /> : "Send"}</span><span className="cd-ss-stop"><Icon name="stop" /></span></span>
+  </Seal>;
+}
+
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
 /* Every card in a chat asks at once: one answer serves them all for a few seconds. */
 let connectionsAsked: { at: number; answer: ReturnType<typeof code.connections> } | null = null;
@@ -993,10 +1049,13 @@ function FolderGroup({ gkey, project, chats, current, now, renaming, onRename, o
   const [confirm, setConfirm] = useState(false);
   return <SideGroup gkey={gkey} icon="folder" chats={chats} current={current} now={now} collapsed={collapsed} onToggle={onToggle} onDropChat={onDropChat} onDropGroup={onDropGroup}
     empty={<p className="cd-quiet cd-folder-empty">No chats yet. Drag one here.</p>}
-    head={renaming !== null ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); onSaveName(); }}>
-      <input autoFocus value={renaming} maxLength={60} aria-label="Project name" onChange={(event) => onRename(event.target.value)} onBlur={onSaveName} onKeyDown={(event) => { if (event.key === "Escape") onCancelName(); }} />
-    </form> : undefined}
-    title={<button type="button" className="cd-folder-title" title="Rename" onClick={() => onRename(project.name)}>{project.name}</button>}
+    /* Its name is edited where it sits: a double click turns the name into a field of the same size, Enter or a click away keeps it, Escape leaves it. */
+    title={renaming !== null
+      ? <input className="cd-folder-title is-editing" autoFocus value={renaming} maxLength={60} aria-label="Project name" size={Math.max(4, renaming.length + 1)}
+          onFocus={(event) => event.target.select()} onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onRename(event.target.value)} onBlur={onSaveName}
+          onKeyDown={(event) => { event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); onSaveName(); } if (event.key === "Escape") onCancelName(); }} />
+      : <span className="cd-folder-title" title="Double-click to rename" onDoubleClick={(event) => { event.stopPropagation(); onRename(project.name); }}>{project.name}</span>}
     actions={confirm
       ? <><button type="button" className="cd-quietbutton is-danger" onClick={onRemove}>Remove</button><button type="button" className="cd-quietbutton" onClick={() => setConfirm(false)}>Keep</button></>
       : <>
@@ -1203,11 +1262,12 @@ const noPending: Pending[] = [];
 /** A file chosen for a chat that doesn't exist yet: from this device, or a Drive file by its id. */
 type Held = { id: string; name: string; size: number; preview: string | null; file?: File; node?: string; failed?: string };
 
-function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; admin: boolean; folder: Project | null; onStarted: (w: Workspace) => Promise<void> }) {
-  /* A new chat is just what you ask. Administrators can instead work on a project (a Kimono Git repository). */
-  const [onProject, setOnProject] = useState(() => { try { return admin && localStorage.getItem("kimono-ai-project") === "1"; } catch { return false; } });
+function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: string | null; admin: boolean; folder: Project | null; repoAsked: string | null; onStarted: (w: Workspace) => Promise<void> }) {
+  /* A new chat is just what you ask. Administrators can instead work on a project (a Kimono Git repository).
+     Opened from a project's +, it's in that project; from a repository's +, on that repository. */
+  const [onProject, setOnProject] = useState(() => { if (repoAsked) return admin; if (folder) return false; try { return admin && localStorage.getItem("kimono-ai-project") === "1"; } catch { return false; } });
   const [repos, setRepos] = useState<Repository[] | null>(null);
-  const [repo, setRepo] = useState("");
+  const [repo, setRepo] = useState(repoAsked ?? "");
   const [fetched, setFetched] = useState<{ repo: string; list: string[] } | null>(null);
   const [picked, setPicked] = useState<{ repo: string; branch: string } | null>(null);
   const [prompt, setPrompt] = useUnsentText("new");
@@ -1247,10 +1307,10 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
       setRepos(list);
       let remembered = "";
       try { remembered = localStorage.getItem("kimono-code-repo") ?? ""; } catch { /* private window */ }
-      const first = list.find((r) => `${r.owner}/${r.name}` === remembered) ?? list[0];
+      const first = list.find((r) => `${r.owner}/${r.name}` === repoAsked) ?? list.find((r) => `${r.owner}/${r.name}` === remembered) ?? list[0];
       if (first) setRepo(`${first.owner}/${first.name}`);
     }, (error) => setProblem(problemText(error)));
-  }, [blocked, onProject]);
+  }, [blocked, onProject, repoAsked]);
 
   const chosen = onProject ? repos?.find((r) => `${r.owner}/${r.name}` === repo) : undefined;
   const listed = fetched?.repo === repo ? fetched.list : [];
@@ -1300,7 +1360,6 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
       <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
     </div>
     <h2 className="cd-hello">{onProject ? "What should we build?" : "What can I do for you?"}</h2>
-    {folder && !onProject ? <p className="cd-hello-in"><Icon name="folder" />In {folder.name}</p> : null}
     <>
       {onProject && !blocked ? naming !== null || (repos && !repos.length) ? <div className="cd-naming">
         <label className="cd-task">
@@ -1335,11 +1394,13 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
         <div className="cd-hello-row">
           <input ref={picker} type="file" multiple hidden onChange={(event) => { hold([...(event.target.files ?? [])]); event.target.value = ""; }} />
-          <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
-          {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Code</button> : null}
-          <span className="cd-tuning">{hasDrive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
-          <span className="cd-grow" />
-          <Seal type="button" compact busy={sending} disabled={!ready || Boolean(blocked)} onClick={() => void send()}>Send</Seal>
+          <div className="cd-bar-tools">
+            <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
+            {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Code</button> : null}
+            {folder && !onProject ? <span className="cd-chip is-on cd-in-chip"><Icon name="folder" />{folder.name}<button type="button" aria-label={`Not in ${folder.name}`} title="Not in a project" onClick={() => goTo({ new: "1" })}><Icon name="close" /></button></span> : null}
+            <span className="cd-tuning">{hasDrive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>
+          </div>
+          <SendStop mode="send" busy={sending} disabled={!ready || Boolean(blocked)} onSend={() => void send()} />
         </div>
         {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
       </div>
@@ -2720,14 +2781,16 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
     <div className="cd-composer-bar">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
-      <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
-      {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
-      <span className="cd-grow" />
-      {/* files, model and thinking, and all usage, in the … menu; the rings only past half */}
-      <Meters workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} />
-      <ComposerMore workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} files={Boolean(workspace.drive && owns)} />
-      {running ? <button type="button" className="cd-roundbutton cd-stop" aria-label="Stop" title="Stop" onClick={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))}><Icon name="stop" /></button> : null}
-      <Seal type="button" compact disabled={!canSend} onClick={() => void send()} aria-keyshortcuts="Enter" title="Send (↵, Shift-↵ for a new line)">Send</Seal>
+      <div className="cd-bar-tools">
+        <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
+        {problem ? <span className="cd-problem" role="alert">{problem}</span> : null}
+        <span className="cd-grow" />
+        {/* files, model and thinking, and all usage, in the … menu; the rings only past half */}
+        <Meters workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} />
+        <ComposerMore workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} files={Boolean(workspace.drive && owns)} />
+      </div>
+      <SendStop mode={running && !canSend && !text.trim() && !pending.length ? "stop" : "send"} disabled={running && !text.trim() && !pending.length ? false : !canSend}
+        onSend={() => void send()} onStop={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))} />
     </div>
     {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
     {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={async (items) => {

@@ -31,6 +31,8 @@ export function rise(root: Element | null, { step = 20, limit = 12, distance = 1
   const pieces = [...root.querySelectorAll<HTMLElement>(PIECES)].filter((element) => {
     if (getComputedStyle(element).position === "fixed") return false;
     const box = element.getBoundingClientRect();
+    /* Already rising (the page arriving and a list landing can both ask): once is enough. */
+    if (element.getAnimations().some((animation) => animation.id === "rise" && animation.playState !== "finished")) return false;
     return box.height > 0 && box.top < bottom && box.bottom > 0;
   });
   // A piece whose parent is already rising moves with it; only nest when the parent is big.
@@ -41,7 +43,7 @@ export function rise(root: Element | null, { step = 20, limit = 12, distance = 1
   chosen.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top || a.getBoundingClientRect().left - b.getBoundingClientRect().left);
   afterPaint(chosen.map((element, index) => element.animate(
     [{ opacity: 0, translate: `0 ${distance}px` }, { opacity: 1, translate: "0 0" }],
-    { duration: 340, delay: index * step, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" },
+    { id: "rise", duration: 340, delay: index * step, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" },
   )));
 }
 

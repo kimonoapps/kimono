@@ -11,7 +11,10 @@ import { getPlatformSettings } from "@/lib/settings";
 async function codeSpace(username: string) {
   try {
     const id = driveSpaceOf(codeDb(), username);
-    return id ? { id, accent: (await codeIdentity(await getPlatformSettings())).accent } : null;
+    if (!id) return null;
+    /* Its top-level folders that are code projects (a repository's), so only those wear the branch. */
+    const repos = (codeDb().prepare("SELECT DISTINCT repo_name FROM workspaces WHERE owner = ? AND repo_name <> ''").all(username.toLowerCase()) as { repo_name: string }[]).map((r) => r.repo_name);
+    return { id, accent: (await codeIdentity(await getPlatformSettings())).accent, repos };
   } catch { return null; } /* Code isn't set up here */
 }
 
@@ -24,7 +27,7 @@ export async function GET() {
     /* Kimono AI's space, still under a name it had before, takes its current one. */
     if (code) nameAiSpace(db(), code.id, user.username);
     return apiJson({ spaces: spacesOf(db(), user.username).map(withMark)
-    .map((space) => space.id === code?.id ? { ...space, code: { accent: code.accent } } : space) });
+    .map((space) => space.id === code?.id ? { ...space, code: { accent: code.accent, repos: code.repos } } : space) });
   });
 }
 

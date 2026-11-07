@@ -274,6 +274,10 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  /* A memory written as a page has a title of its own (lib/code/memory.ts). */
+  if (!(db.prepare("PRAGMA table_info(memories)").all() as { name: string }[]).some((c) => c.name === "title")) {
+    db.exec("ALTER TABLE memories ADD COLUMN title TEXT");
+  }
   /* When its owner archived a chat: out of the list, in Archived. Added by its column, not a version, so it sits beside any. */
   if (!(db.prepare("PRAGMA table_info(workspaces)").all() as { name: string }[]).some((c) => c.name === "archived_at")) {
     db.exec("ALTER TABLE workspaces ADD COLUMN archived_at INTEGER");

@@ -154,12 +154,9 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
             if (shown == null && problem == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
             else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                 if (problem != null) item { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f)) { Problem(problem) }; TextButton(onClick = { scope.launch { load() } }) { Text("Retry") } } }
-                /* Connections and Memory: what it can use, and what it keeps. */
-                item(key = "more") {
-                    Row(Modifier.fillMaxWidth().padding(bottom = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        MoreTile("link", "Connections", "Your apps", Modifier.weight(1f)) { open("ai/connections") }
-                        MoreTile("chat", "Memory", "What it keeps", Modifier.weight(1f)) { open("ai/memory") }
-                    }
+                /* A new chat starts here, at the top; Connections and Memory are in the bar. */
+                item(key = "new") {
+                    Seal("New chat", onClick = { open("ai/new") }, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp))
                 }
                 val everything = shown.orEmpty()
                 /* Archived chats leave the list for their own screen. */
@@ -350,19 +347,6 @@ private fun LazyListScope.chatRows(group: String, chats: List<CodeWorkspace>, ti
         ) { Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
     }
     item(key = "$group-gap") { Spacer(Modifier.size(10.dp)) }
-}
-
-@Composable
-private fun MoreTile(icon: String, title: String, detail: String, modifier: Modifier, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, modifier = modifier) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BlotIcon(icon, "ai-$icon", 44.dp)
-            Column {
-                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
-        }
-    }
 }
 
 /** A project in the list: its name, a new chat in it, renaming and removing it. */

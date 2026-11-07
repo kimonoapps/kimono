@@ -256,8 +256,13 @@ test('memory: instructions and what it keeps reach every turn, and only their pe
   assert.throws(() => memory.forget(db, 'sam', kept.id), (e) => e.status === 404);
   memory.forget(db, 'mina', kept.id);
   assert.equal(memory.profileOf(db, 'mina').memories.length, 0);
-  assert.throws(() => memory.setInstructions(db, 'mina', 'x'.repeat(4001)), /4000/);
-  assert.throws(() => memory.remember(db, 'mina', 'x'.repeat(501), 'person'), /500/);
+  assert.throws(() => memory.setInstructions(db, 'mina', 'x'.repeat(20_001)), /20000/);
+  assert.throws(() => memory.remember(db, 'mina', 'x'.repeat(8001), 'person'), /8000/);
+  /* one the agent keeps is still a sentence; a person's own can be a page, with a title and its line breaks */
+  assert.throws(() => memory.remember(db, 'mina', 'x'.repeat(501), 'ai'), /500/);
+  const page = memory.remember(db, 'mina', 'Tomatoes on the balcony.\n\nWater every other morning.', 'person', Date.now(), 'Garden');
+  assert.equal(page.title, 'Garden');
+  assert.equal(page.text, 'Tomatoes on the balcony.\n\nWater every other morning.');
 });
 
 test('projects are folders of chats: make, file, rename, remove (chats stay)', () => {

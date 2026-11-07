@@ -52,14 +52,15 @@ class RoomApp(val id: String, val name: String, val accent: String?, val glyph: 
 /* Kimono's own pages: Home (what's happening), the flower (every app), You. */
 private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home")))
 private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder")), listOf(Room("trash", "Trash", "trash")))
-private val code = RoomApp("kimono-code", "Kimono AI", "#2c7783", "code", listOf(Room("code", "Chats", "chat")), listOf(Room("ai/new", "New chat", "plus")))
+/* Kimono AI's bar is its pages; a new chat starts from the top of Chats, not from the bar. */
+private val code = RoomApp("kimono-code", "Kimono AI", "#2c7783", "code", listOf(Room("code", "Chats", "chat"), Room("ai/connections", "Connections", "link")), listOf(Room("ai/memory", "Memory", "spark")))
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
 
 /** Which app's bar a screen shows, or null for a screen opened from a room (it has its own back). */
 fun appOfRoom(route: String?): RoomApp? = when (route) {
     "home", "you" -> kimono
     "drive", "trash" -> drive
-    "code", "ai/new" -> code
+    "code", "ai/connections", "ai/memory" -> code
     "vpn", "vpn/people", "vpn/connect" -> vpn
     else -> null
 }

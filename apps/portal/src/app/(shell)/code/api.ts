@@ -57,7 +57,7 @@ export type CodeEvent =
   | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };
-export type Profile = { instructions: string; memories: { id: string; text: string; source: "person" | "ai"; createdAt: number }[] };
+export type Profile = { instructions: string; memories: { id: string; title?: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
 export type ConnectableApp = { app: string; name: string; logo: string; description: string; connected: boolean };
@@ -178,9 +178,9 @@ export const code = {
   /** What Kimono AI keeps about this person: their instructions, and its memories. */
   memory: () => call<Profile>("/memory"),
   saveInstructions: (instructions: string) => call<Profile>("/memory", json("POST", { instructions })),
-  remember: (text: string) => call<Profile>("/memory", json("POST", { remember: text })),
+  remember: (text: string, title?: string) => call<Profile>("/memory", json("POST", { remember: text, ...(title !== undefined ? { title } : {}) })),
   forget: (id: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  changeMemory: (id: string, text: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, json("PATCH", { text })),
+  changeMemory: (id: string, text: string, title?: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, json("PATCH", { text, ...(title !== undefined ? { title } : {}) })),
   /** The apps this person has connected through Composio, and whether connections are set up at all. */
   connections: () => call<{ available: boolean; connections: Connection[] }>("/connections"),
   findApps: (q: string, cursor?: string | null) => call<{ apps: ConnectableApp[]; next: string | null }>(`/connections/apps?q=${encodeURIComponent(q)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),

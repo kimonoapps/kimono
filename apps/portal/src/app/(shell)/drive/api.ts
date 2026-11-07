@@ -13,7 +13,8 @@ export type Space = {
   role: Role; members: number; createdBy: string;
   link?: string | null; linkAccess?: LinkAccess | null;
   /** Set on your Code space: each top-level folder is a project, each folder in one a task. */
-  code?: { accent: string };
+  /** Kimono AI's space: its colour, and the names of its top-level folders that are code projects. */
+  code?: { accent: string; repos?: string[] };
 };
 export type Member = { username: string; role: Role };
 export type SpaceDetail = Space & { memberList: Member[] };

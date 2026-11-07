@@ -508,9 +508,13 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     }
   };
 
-  /* In the Code space, the top level holds projects and each project its tasks. */
+  /* In Kimono AI's space, the top level holds its folders: a code project (a repository's) wears the
+     branch, and holds its tasks; "Chats" and plain projects are folders like any other. */
+  const repos = new Set((space.code?.repos ?? []).map((name) => name.toLowerCase()));
+  const top = folder?.path.length ?? 0;
+  const inRepo = top === 1 && folder ? repos.has(folder.folder.name.toLowerCase()) : false;
   const codeRole = (node: DriveNode) => !space.code || node.kind !== "folder" || found ? undefined
-    : (folder?.path.length ?? 0) === 0 ? "project" as const : (folder?.path.length ?? 0) === 1 ? "task" as const : undefined;
+    : top === 0 ? repos.has(node.name.toLowerCase()) ? "project" as const : undefined : inRepo ? "task" as const : undefined;
   const subtitle = (node: DriveNode) => node.kind === "folder" ? codeRole(node) === "project" ? "Project" : codeRole(node) === "task" ? "Chat" : "Folder"
     : `${extension(node.name)}${!token && node.guest ? ` · added by ${node.guest}` : ""}`;
 
@@ -579,7 +583,7 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
 
     <div className={cx("dv-list", guest && "guest")} ref={list}>
       {problem ? <div className="dv-empty"><p>{problem}</p></div>
-        : !folder ? <SkeletonRows rows={5} />
+        : !folder ? <FolderSkeleton />
         : !rows.length ? <div className="dv-empty">
             <h3>{found ? "Nothing by that name" : "Nothing here yet"}</h3>
             {!found && canAdd ? <p>Drop files here, or upload them.</p> : null}
@@ -673,6 +677,17 @@ function Kind({ node, as, token, plain }: { node: DriveNode; as?: "project" | "t
   </span>;
   if (!plain && !failed && kind === "video") return <span className="dv-kind pic vid"><Frame src={token ? shared.fileUrl(token, node.id) : contentUrl(node)} onFail={() => setFailed(true)} /></span>;
   return <span className="dv-kind typed"><TypeMark name={node.name} fallback={ext} /></span>;
+}
+
+/* A folder's rows on their way. Unlike the page's skeletons it doesn't hold the page's arrival:
+   Drive settles in as soon as its spaces are known, and the rows rise into place when they land. */
+function FolderSkeleton() {
+  return <div className="skel-rows" style={{ opacity: 0, animation: "skel-appear 240ms ease 350ms forwards" }} aria-busy="true" aria-label="Loading">
+    {Array.from({ length: 5 }, (_, index) => <div className="skel-row" key={index}>
+      <i className="skel skel-mark" />
+      <span><i className="skel" style={{ width: `${[58, 42, 66, 36, 50][index]}%` }} /><i className="skel skel-small" style={{ width: `${[28, 22, 34, 18, 26][index]}%` }} /></span>
+    </div>)}
+  </div>;
 }
 
 const FOLDER_TINT = "#c48a45";
