@@ -94,9 +94,9 @@
   /* The app's own colour, injected by the shell. Permitted on the bloom, the
      lockup name, the selection marker and an eight percent selection wash. */
   --k-app-accent: var(--k-suo);
-  /* how much of the app's colour is in its coloured text: all of it on paper, none by night (it's cream then) */
+  /* how much of the app's colour is in its coloured text: all of it on paper, half by night (softened with cream) */
   --k-app-ink: 100%;
-  /* Coloured text (suō, an app's accent): itself on paper; by night it turns the cream of the paper instead. */
+  /* Coloured text (suō, an app's accent): itself on paper; by night softened with cream to a rose that reads on the dark. */
   --k-tint: 100%;
   --k-night-ink: #f2e1ca;
   /* text on an accent fill (a seal, a chip): stays near-white by night too */
@@ -235,8 +235,8 @@
   --k-shadow-raised: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -12px rgba(0, 0, 0, .6);
   --k-shadow-sheet: 0 1px 0 rgba(0, 0, 0, .3), 0 14px 28px -20px rgba(0, 0, 0, .6);
   --k-shadow-lift: 0 2px 0 rgba(0, 0, 0, .3), 0 28px 48px -24px rgba(0, 0, 0, .7);
-  --k-app-ink: 0%;
-  --k-tint: 0%;
+  --k-app-ink: 50%;
+  --k-tint: 55%;
   --k-accent-deep: #b4566e;
 }
 @media (prefers-color-scheme: dark) {
@@ -282,8 +282,8 @@
     --k-shadow-raised: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -12px rgba(0, 0, 0, .6);
     --k-shadow-sheet: 0 1px 0 rgba(0, 0, 0, .3), 0 14px 28px -20px rgba(0, 0, 0, .6);
     --k-shadow-lift: 0 2px 0 rgba(0, 0, 0, .3), 0 28px 48px -24px rgba(0, 0, 0, .7);
-    --k-app-ink: 0%;
-  --k-tint: 0%;
+    --k-app-ink: 50%;
+  --k-tint: 55%;
     --k-accent-deep: #b4566e;
   }
 }

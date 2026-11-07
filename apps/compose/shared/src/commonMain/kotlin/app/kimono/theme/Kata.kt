@@ -76,12 +76,12 @@ private val kimonoColors = lightColorScheme(
 )
 
 /*
- * The same household at night: a warm near-black lifted in soft brown steps. Coloured text turns the
- * cream of the day's paper; suō stays in the seals and containers, plum and moss turn pale.
+ * The same household at night: a warm near-black lifted in soft brown steps. Display text (plum) turns
+ * the cream of the day's paper; suō softens to a rose for coloured text and stays red in the seals.
  */
 private val kimonoNight = darkColorScheme(
-    /* coloured text by night is the cream of the day's paper, not pink */
-    primary = Color(0xFFF2E1CA),
+    /* coloured text by night: suō softened with cream to a rose that reads on the dark */
+    primary = Color(0xFFE2A0A8),
     onPrimary = Color(0xFF3A2128),
     primaryContainer = Kata.suoDeep,
     onPrimaryContainer = Color(0xFFFFD9DF),
