@@ -201,7 +201,12 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
-            if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = {}, openApps = { appsOpen = true })
+            if (roomApp != null) RoomBar(
+                roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me,
+                /* Notes' Home is all its notes. */
+                go = { to -> if (to == "notes") notes.go(app.kimono.screens.NotePlace.All); goTab(to) },
+                startTask = { if (roomApp.id == app.kimono.data.Notes.APP_ID) notes.askSearch() }, openApps = { appsOpen = true },
+            )
         },
     ) { padding ->
         if (appsOpen) app.kimono.screens.AppsSheet(model.drive, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }, home = { appsOpen = false; goTab("home") }) { appsOpen = false; openApp(it) }

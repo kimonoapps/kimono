@@ -60,6 +60,10 @@ class NotesModel(val notes: Notes, val drive: Drive, val platform: Platform) {
 
     var library by mutableStateOf(notes.knownLibrary())
         private set
+    /** Counts the bar's Search presses, so the list opens its search each time. */
+    var searchAsked by mutableStateOf(0)
+        private set
+    fun askSearch() { searchAsked++ }
     /** Why the library couldn't be read, when nothing was kept to show instead. */
     var problem by mutableStateOf<String?>(null)
         private set

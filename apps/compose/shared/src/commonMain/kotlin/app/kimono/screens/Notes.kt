@@ -185,6 +185,9 @@ fun NotesDrawer(model: NotesModel, accent: String, me: String?, platform: app.ki
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var searching by remember { mutableStateOf(false) }
+    /* Search in the bar below opens the same search. */
+    var seen by remember { mutableStateOf(model.searchAsked) }
+    LaunchedEffect(model.searchAsked) { if (model.searchAsked != seen) { seen = model.searchAsked; searching = true; drawer.close() } }
     ModalNavigationDrawer(
         drawerState = drawer,
         drawerContent = {
@@ -484,7 +487,6 @@ private fun NotesList(model: NotesModel, platform: app.kimono.data.Platform, acc
                     if (notebook != null) ListHeadButton("people", if (notebook.sharedWithYou) "Leave" else "Share") { if (notebook.sharedWithYou) leaving = notebook else sharing = notebook.id to true }
                     /* A note in the place you're looking at. */
                     if (model.library != null && model.canWrite(place)) PlusBlock("New note") { open(model.startNew(place)) }
-                    ListHeadButton("home", "Home", onClick = back)
                 }
             }
         },

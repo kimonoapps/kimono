@@ -55,11 +55,15 @@ private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(R
 /* Kimono AI has no bar: its chats and pages are in its drawer. */
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
 
+/* Notes, as its mockup has it: Home (all notes), the bloom, Search. */
+private val notes = RoomApp(app.kimono.data.Notes.APP_ID, "Notes", "#b56d78", "notes", listOf(Room("notes", "Home", "home")), listOf(Room("notes/search", "Search", "search", action = true)))
+
 /** Which app's bar a screen shows, or null for a screen opened from a room (it has its own back). */
 fun appOfRoom(route: String?): RoomApp? = when (route) {
     "home", "you" -> kimono
     "drive", "trash" -> drive
     "vpn", "vpn/people", "vpn/connect" -> vpn
+    "notes", "notes/{notebook}" -> notes
     else -> null
 }
 
