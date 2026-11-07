@@ -178,7 +178,16 @@ export function NoteBody({ initial, readOnly, onChange, onBlur, onReady }: {
       }),
     });
     ready.current?.({
-      replace: (text) => view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, annotations: fromOutside.of(true) }),
+      /* Only what changed is swapped, so the cursor and the scroll stay where they were and nothing flashes. */
+      replace: (text) => {
+        const now = view.state.doc.toString();
+        if (now === text) return;
+        let from = 0;
+        while (from < now.length && from < text.length && now[from] === text[from]) from++;
+        let end = 0;
+        while (end < now.length - from && end < text.length - from && now[now.length - 1 - end] === text[text.length - 1 - end]) end++;
+        view.dispatch({ changes: { from, to: now.length - end, insert: text.slice(from, text.length - end) }, annotations: fromOutside.of(true) });
+      },
       focus: () => view.focus(),
     });
     return () => { view.destroy(); ready.current?.(null); };

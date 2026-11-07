@@ -194,6 +194,7 @@
 .nt-sheet-body { display: grid; align-content: start; gap: 12px; padding: 4px 16px 8px; overflow: auto; }
 .nt-sheet > footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding: 12px 24px 22px; }
 .nt-moves { display: grid; gap: 2px; }
+.nt-newbook { display: grid; gap: 14px; padding: 0 8px 4px; }
 .nt-moves .nt-place:disabled { cursor: default; }
 .nt-moves .nt-place[aria-current] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
 .nt-find { margin: 0 4px; }

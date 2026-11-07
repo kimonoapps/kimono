@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { BusyFace, cx, InkBlot, InkPortraitFrame, Joint, MorphLoader, Seal } from "@kimono/ui";
+import { BusyFace, Choice, cx, InkBlot, InkPortraitFrame, Joint, MorphLoader, Seal } from "@kimono/ui";
 import { HoldSeal } from "@/components/hold-seal";
 import { InkCrest } from "@/components/ink-crest";
 import { Portrait as Face } from "@/components/portrait";
@@ -81,7 +81,8 @@ function Empty({ seed, words }: { seed: string; words: string }) {
 export function NotesApp({ me }: { me: string }) {
   const params = useSearchParams();
   const openId = params.get("n");
-  const placeId = params.get("in");
+  /* Drive opens a notebook with ?notebook=<id>. */
+  const placeId = params.get("in") ?? params.get("notebook");
   const [lib, setLib] = useState<Library | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [people, setPeople] = useState<Record<string, Person>>({});
@@ -93,6 +94,7 @@ export function NotesApp({ me }: { me: string }) {
   const [drawer, setDrawer] = useState(false);
   const [arriving, setArriving] = useState<string | null>(null);
   const [sharingSection, setSharing] = useState<Notebook | null>(null);
+  const [leavingBook, setLeavingBook] = useState<Notebook | null>(null);
   const folded = useFolded();
   const now = useNow();
 
@@ -102,6 +104,13 @@ export function NotesApp({ me }: { me: string }) {
     return notes.library().then((next) => { if (n === asked.current) { setLib(next); setProblem(null); } }, () => { if (n === asked.current) setProblem(oops); });
   }, []);
   useEffect(() => { void load(); }, [load]);
+  /* The list follows edits made elsewhere too: on coming back to the window, and every 15s. */
+  useEffect(() => {
+    const again = () => { if (document.visibilityState !== "hidden") void load(); };
+    const timer = window.setInterval(again, 15_000);
+    window.addEventListener("focus", again);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", again); };
+  }, [load]);
   useEffect(() => { notes.people().then((list) => setPeople(Object.fromEntries(list.map((p) => [p.username.toLowerCase(), p]))), () => {}); }, []);
   /* A shared notebook shows up to two of the others in it. */
   const sharedIds = (lib?.notebooks ?? []).filter((n) => n.space.members > 1).map((n) => n.id).join(",");
@@ -223,7 +232,7 @@ export function NotesApp({ me }: { me: string }) {
 
   const panel = <Panel me={me} lib={lib} problem={problem} place={place} find={find} onFind={setFind} faces={faces} people={people} arriving={arriving}
     newBusy={Boolean(draft?.slow)} onNew={startNew} onPlace={openPlace} onReload={load} onToast={setToast} under={under}
-    onShare={setSharing} onFold={() => setPanelFolded(true)} />;
+    onShare={setSharing} onLeave={setLeavingBook} onFold={() => setPanelFolded(true)} />;
 
   return <div className={cx("nt", showing && "has-note", folded && "is-folded")}>
     <aside className="nt-side" aria-label="Notebooks">{panel}</aside>
@@ -233,7 +242,7 @@ export function NotesApp({ me }: { me: string }) {
     <main className="nt-main" ref={mainRef}>
       <section className="nt-listcol" aria-label="Notes">
         <ListHead place={place} searching={Boolean(find.trim())} faces={faces} people={people} me={me}
-          onMenu={() => setDrawer(true)} onLeft={() => { openPlace(null); void load(); }} onToast={setToast} onShare={setSharing} />
+          onMenu={() => setDrawer(true)} onShare={setSharing} onLeave={setLeavingBook} />
         {lib === null && !problem ? <SkeletonRows rows={5} mark={false} /> : null}
         {lib && !listed.length
           ? <Empty seed={find.trim() ? "search" : placeId ?? "all"} words={find.trim() ? "No notes match." : place.kind === "section" ? "Nothing here yet." : "Your notes will be here."} />
@@ -251,6 +260,7 @@ export function NotesApp({ me }: { me: string }) {
     </main>
     {sharingSection ? <ShareSheet notebook={sharingSection} me={me} people={people} onClose={() => setSharing(null)}
       onShared={(id) => { setSharing(null); setArriving(id); setTimeout(() => setArriving(null), 900); setFaces((all) => { const next = { ...all }; delete next[id]; return next; }); void load().then(() => openPlace(id)); }} /> : null}
+    {leavingBook ? <LeaveSheet notebook={leavingBook} me={me} onClose={() => setLeavingBook(null)} onToast={setToast} onLeft={() => { openPlace(null); void load(); }} /> : null}
     {toast ? <div className="nt-snack" role="status">
       <span>{toast.text}</span>
       {toast.action ? <button type="button" className="nt-snack-act" onClick={() => { const run = toast.action!.run; setToast(null); run(); }}>{toast.action.label}</button> : null}
@@ -272,11 +282,11 @@ function NotebookCrest({ notebook, size, className }: { notebook: Notebook; size
   return <InkCrest crest={notebook.space.crest} color={notebook.space.color} seed={notebook.id} size={size} className={className} />;
 }
 
-function Panel({ me, lib, problem, place, find, onFind, faces, people, arriving, newBusy, onNew, onPlace, onReload, onToast, under, onShare, onFold }: {
+function Panel({ me, lib, problem, place, find, onFind, faces, people, arriving, newBusy, onNew, onPlace, onReload, onToast, under, onShare, onLeave, onFold }: {
   me: string; lib: Library | null; problem: string | null; place: Place; find: string; onFind: (words: string) => void;
   faces: Record<string, string[]>; people: Record<string, Person>; arriving: string | null; newBusy: boolean;
   onNew: () => void; onPlace: (id: string | null) => void; onReload: () => Promise<void>; onToast: (toast: Toast) => void;
-  under: (folder: string) => Set<string>; onShare: (notebook: Notebook) => void; onFold: () => void;
+  under: (folder: string) => Set<string>; onShare: (notebook: Notebook) => void; onLeave: (notebook: Notebook) => void; onFold: () => void;
 }) {
   const [folds, setFolds] = useState<Set<string>>(() => typeof window === "undefined" ? new Set() : readFolds());
   const setFold = (id: string, folded: boolean) => setFolds((now) => {
@@ -286,6 +296,7 @@ function Panel({ me, lib, problem, place, find, onFind, faces, people, arriving,
     return next;
   });
   const [naming, setNaming] = useState<Naming | null>(null);
+  const [making, setMaking] = useState(false);
   /* Enter and the field's blur both save it: once is enough. */
   const savingName = useRef(false);
   const saveName = async () => {
@@ -298,7 +309,6 @@ function Panel({ me, lib, problem, place, find, onFind, faces, people, arriving,
       if (was.kind === "section" && was.id) await notes.renameSection(was.id, name);
       else if (was.kind === "section") { const made = await notes.createSection(name, was.parent); setFold(was.parent, false); onPlace(made.id); }
       else if (was.id) await notes.renameNotebook(was.id, name);
-      else { const made = await notes.createNotebook(name); await onReload(); onPlace(made.id); return; }
       await onReload();
     } catch { onToast({ text: oops }); } finally { savingName.current = false; }
   };
@@ -345,17 +355,16 @@ function Panel({ me, lib, problem, place, find, onFind, faces, people, arriving,
         faces={faces[notebook.id]?.length ? <Faces usernames={faces[notebook.id]} people={people} size={22} /> : null}
         here={here === notebook.id && !find.trim()} count={count(notebook.id)} folded={folds.has(notebook.id)} onFold={(f) => setFold(notebook.id, f)}
         hasKids={lib.sections.some((s) => s.parentId === notebook.id) || (naming?.kind === "section" && !naming.id && naming.parent === notebook.id)}
-        writable={notebook.role !== "viewer"} canShare={canShare(notebook, me)} canDelete={!notebook.isSpace}
+        writable={notebook.role !== "viewer"} canShare={canShareOnItsOwn(notebook)} canDelete={!notebook.isSpace} onLeave={canLeave(notebook, me) ? () => onLeave(notebook) : undefined}
         naming={naming?.id === notebook.id ? naming.name : null} onNaming={(name) => setNaming({ kind: "notebook", parent: "", id: notebook.id, name })} onSaveName={() => void saveName()} onCancelName={() => setNaming(null)}
         onOpen={() => onPlace(notebook.id)} onAdd={() => { setNaming({ kind: "section", parent: notebook.id, id: null, name: "" }); setFold(notebook.id, false); }} onShare={() => onShare(notebook)}
         onDeleted={deleted(notebook.id, notebook.name, null)} onFailed={() => onToast({ text: oops })}>
         {folds.has(notebook.id) ? null : tree(notebook.id, notebook, 1)}
       </FolderRow>)}
-      {naming?.kind === "notebook" && !naming.id
-        ? <NameField value={naming.name} label="Notebook name" onChange={(name) => setNaming({ ...naming, name })} onSave={() => void saveName()} onCancel={() => setNaming(null)} />
-        : lib ? <button type="button" className="nt-place nt-place-new" onClick={() => setNaming({ kind: "notebook", parent: "", id: null, name: "" })}>
-          <span className="nt-place-mark"><Icon name="plus" /></span><span className="nt-place-name">New notebook</span>
-        </button> : null}
+      {lib ? <button type="button" className="nt-place nt-place-new" onClick={() => setMaking(true)}>
+        <span className="nt-place-mark"><Icon name="plus" /></span><span className="nt-place-name">New notebook</span>
+      </button> : null}
+      {making ? <NewNotebookSheet onClose={() => setMaking(false)} onMade={async (id) => { setMaking(false); await onReload(); onPlace(id); }} /> : null}
     </nav>
   </>;
 }
@@ -368,11 +377,11 @@ function NameField({ value, label, onChange, onSave, onCancel }: { value: string
 }
 
 /** A notebook or a section in the panel: opens it; its ··· renames, adds a section, shares or deletes it. */
-function FolderRow({ kind, id, name, mark, faces, arriving, here, count, folded, hasKids, writable, canShare, canDelete, onFold, naming, onNaming, onSaveName, onCancelName, onOpen, onAdd, onShare, onDeleted, onFailed, children }: {
+function FolderRow({ kind, id, name, mark, faces, arriving, here, count, folded, hasKids, writable, canShare, canDelete, onFold, naming, onNaming, onSaveName, onCancelName, onOpen, onAdd, onShare, onLeave, onDeleted, onFailed, children }: {
   kind: "notebook" | "section"; id: string; name: string; mark: React.ReactNode; faces?: React.ReactNode; arriving?: boolean;
   here: boolean; count: number; folded: boolean; hasKids: boolean; writable: boolean; canShare?: boolean; canDelete: boolean; onFold: (folded: boolean) => void;
   naming: string | null; onNaming: (name: string) => void; onSaveName: () => void; onCancelName: () => void;
-  onOpen: () => void; onAdd: () => void; onShare?: () => void; onDeleted: (restorable: boolean) => Promise<void>; onFailed: () => void; children: React.ReactNode;
+  onOpen: () => void; onAdd: () => void; onShare?: () => void; onLeave?: () => void; onDeleted: (restorable: boolean) => Promise<void>; onFailed: () => void; children: React.ReactNode;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -388,11 +397,12 @@ function FolderRow({ kind, id, name, mark, faces, arriving, here, count, folded,
             {mark}<span className="nt-place-name">{name}</span>{faces}
           </button>
           {hasKids ? <button type="button" className={cx("nt-roundbutton nt-fold-toggle", !folded && "is-open")} aria-expanded={!folded} aria-label={folded ? "Show" : "Fold"} title={folded ? "Show" : "Fold"} onClick={() => onFold(!folded)}><Icon name="chevron" /></button> : null}
-          {writable && !confirming ? <RowMenu label={`More for ${name}`} items={[
-            { icon: "rename", label: "Rename", run: () => onNaming(name) },
-            { icon: "plus", label: "New section", run: onAdd },
-            ...(canShare && onShare ? [{ icon: "people" as const, label: "Share", run: onShare }] : []),
-            ...(canDelete ? [{ icon: "trash" as const, label: "Delete", danger: true, run: () => { if (count) setConfirming(true); else remove(); } }] : []),
+          {(writable || onLeave) && !confirming ? <RowMenu label={`More for ${name}`} items={[
+            ...(writable ? [{ icon: "rename" as const, label: "Rename", run: () => onNaming(name) }] : []),
+            ...(writable && kind === "section" ? [{ icon: "plus" as const, label: "New section", run: onAdd }] : []),
+            ...(canShare && onShare ? [{ icon: "people" as const, label: "Share on its own", run: onShare }] : []),
+            ...(onLeave ? [{ icon: "door" as const, label: "Leave", run: onLeave }] : []),
+            ...(writable && canDelete ? [{ icon: "trash" as const, label: "Delete", danger: true, run: () => { if (count) setConfirming(true); else remove(); } }] : []),
           ]} /> : null}
         </div>}
     {confirming ? <div className="nt-confirm" role="alertdialog" aria-label={`Delete ${name}?`}>
@@ -460,11 +470,10 @@ function RowMenu({ label, items }: { label: string; items: MenuItem[] }) {
 
 /* ── the note list ── */
 
-function ListHead({ place, searching, faces, people, me, onMenu, onLeft, onToast, onShare }: {
+function ListHead({ place, searching, faces, people, me, onMenu, onShare, onLeave }: {
   place: Place; searching: boolean; faces: Record<string, string[]>; people: Record<string, Person>; me: string;
-  onMenu: () => void; onLeft: () => void; onToast: (toast: Toast) => void; onShare: (notebook: Notebook) => void;
+  onMenu: () => void; onShare: (notebook: Notebook) => void; onLeave: (notebook: Notebook) => void;
 }) {
-  const [leaving, setLeaving] = useState(false);
   const menu = <button type="button" className="nt-roundbutton nt-menubutton" onClick={onMenu} aria-label="Notebooks" title="Notebooks"><Icon name="menu" /></button>;
   if (searching || place.kind === "all") return <header className="nt-listhead">{menu}<h1>{searching ? "Search" : "All notes"}</h1></header>;
   if (place.kind === "section") return <header className="nt-listhead">
@@ -483,16 +492,20 @@ function ListHead({ place, searching, faces, people, me, onMenu, onLeft, onToast
       <span className="nt-listhead-name"><h1>{notebook.name}</h1>{faces[notebook.id]?.length ? <Faces usernames={faces[notebook.id]} people={people} size={28} /> : null}</span>
     </div>
     {canShare(notebook, me) ? <Seal type="button" tone="quiet" compact onClick={() => onShare(notebook)}><Icon name="people" />Share</Seal> : null}
-    {notebook.isSpace && notebook.createdBy !== me.toLowerCase() ? <Seal type="button" tone="quiet" compact onClick={() => setLeaving(true)}><Icon name="door" />Leave</Seal> : null}
-    {leaving ? <Sheet title={`Leave ${notebook.name}?`} lead="You'll need to be asked back." onClose={() => setLeaving(false)}
-      footer={<form className="nt-leave" onSubmit={(event) => {
-        event.preventDefault();
-        notes.setMember(notebook.id, me, null).then(() => { setLeaving(false); onLeft(); }, () => { setLeaving(false); onToast({ text: oops }); });
-      }}>
-        <Seal type="button" tone="quiet" onClick={() => setLeaving(false)}>Stay</Seal>
-        <HoldSeal label="Leave" />
-      </form>} /> : null}
+    {canLeave(notebook, me) ? <Seal type="button" tone="quiet" compact onClick={() => onLeave(notebook)}><Icon name="door" />Leave</Seal> : null}
   </header>;
+}
+
+/** Leaving a notebook shared on its own: held to confirm, since only an owner can bring you back. */
+function LeaveSheet({ notebook, me, onClose, onLeft, onToast }: { notebook: Notebook; me: string; onClose: () => void; onLeft: () => void; onToast: (toast: Toast) => void }) {
+  return <Sheet title={`Leave ${notebook.name}?`} lead="You'll need to be asked back." onClose={onClose}
+    footer={<form className="nt-leave" onSubmit={(event) => {
+      event.preventDefault();
+      notes.setMember(notebook.id, me, null).then(() => { onClose(); onLeft(); }, () => { onClose(); onToast({ text: oops }); });
+    }}>
+      <Seal type="button" tone="quiet" onClick={onClose}>Stay</Seal>
+      <HoldSeal label="Leave" />
+    </form>} />;
 }
 
 function NoteList({ notes: list, lib, current, saving, now, showCrest, notebookOf, onOpen, onDelete, onMoved, onToast }: {
@@ -564,8 +577,40 @@ function Sheet({ title, lead, children, footer, onClose }: { title: string; lead
   </div>, document.body);
 }
 
+/** A new notebook: its name, and which space it goes in when there is more than one to choose. */
+function NewNotebookSheet({ onClose, onMade }: { onClose: () => void; onMade: (id: string) => Promise<void> }) {
+  const [name, setName] = useState("");
+  const [spaces, setSpaces] = useState<{ id: string; name: string }[]>([]);
+  const [space, setSpace] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { notes.spaces().then(setSpaces, () => {}); }, []);
+  const make = async () => {
+    if (!name.trim()) return;
+    setBusy(true); setProblem(null);
+    try { await onMade((await notes.createNotebook(name.trim(), space || undefined)).id); } catch { setBusy(false); setProblem(oops); }
+  };
+  return <Sheet title="New notebook" onClose={onClose} footer={<>
+    {problem ? <span className="nt-problem" role="alert">{problem}</span> : null}
+    <span className="nt-grow" />
+    <Seal type="button" tone="quiet" onClick={onClose}>Cancel</Seal>
+    <Seal type="button" busy={busy} disabled={!name.trim()} onClick={() => void make()}>Make</Seal>
+  </>}>
+    <form className="nt-newbook" onSubmit={(event) => { event.preventDefault(); void make(); }}>
+      <label className="k-field"><span>Name</span><input autoFocus value={name} maxLength={80} onChange={(event) => setName(event.target.value)} /></label>
+      {spaces.length > 1 ? <div className="k-field"><span>In</span>
+        <Choice aria-label="Space" value={space} onChange={setSpace} options={[{ value: "", label: "Your own" }, ...spaces.map((s) => ({ value: s.id, label: s.name }))]} />
+      </div> : null}
+    </form>
+  </Sheet>;
+}
+
 /** Who may share a notebook: an owner of its space; once it is shared on its own, the one who made it. */
 const canShare = (notebook: Notebook, me: string) => notebook.role === "owner" && (!notebook.isSpace || notebook.createdBy === me.toLowerCase());
+/** Moving a notebook into a space of its own: for owners of its space, once. */
+const canShareOnItsOwn = (notebook: Notebook) => notebook.role === "owner" && !notebook.isSpace;
+/** Leaving: once it is shared on its own, for anyone but the one who made it. */
+const canLeave = (notebook: Notebook, me: string) => notebook.isSpace && notebook.createdBy !== me.toLowerCase();
 
 /** Moves a note to another notebook or section in the same space. */
 function MoveSheet({ note, lib, onClose, onMove }: { note: Note; lib: Library; onClose: () => void; onMove: (parent: string) => Promise<void> }) {
@@ -612,7 +657,9 @@ function ShareSheet({ notebook, me, people, onClose, onShared }: { notebook: Not
     } catch { setBusy(false); setProblem(oops); }
   };
   const nameOf = (username: string) => people[username.toLowerCase()]?.name ?? username;
-  return <Sheet title={`Share ${notebook.name}`} onClose={onClose} footer={<>
+  /* Before it is shared on its own, it is shared with its whole space: the sheet says so. */
+  const lead = notebook.isSpace ? undefined : notebook.space.members > 1 ? `Everyone in ${notebook.space.name} can see this.` : undefined;
+  return <Sheet title={`Share ${notebook.name}`} lead={lead} onClose={onClose} footer={<>
     {problem ? <span className="nt-problem" role="alert">{problem}</span> : null}
     <span className="nt-grow" />
     <Seal type="button" tone="quiet" onClick={onClose}>Cancel</Seal>
@@ -726,6 +773,32 @@ function NotePage({ note, draft, notebook, lib, readOnly, onBack, onSaving, onPa
     window.clearTimeout(s.timer);
     s.timer = window.setTimeout(() => void save(), 800);
   }, [save]);
+
+  /*
+   * Kimono AI, the phone and others write here too: when the window comes
+   * back, and every 15s while the note is open, it looks again. A newer
+   * version comes in where you are; with your own edits waiting it stays
+   * yours, and saving keeps both.
+   */
+  useEffect(() => {
+    if (draft && !draft.id) return;
+    let gone = false;
+    const look = async () => {
+      const s = live.current;
+      if (!id.current || s.dirty || s.flying || document.visibilityState === "hidden") return;
+      try {
+        const fresh = await notes.open(id.current);
+        if (gone || s.dirty || s.flying || fresh.note.version <= s.version) return;
+        s.version = fresh.note.version; s.text = fresh.text;
+        body.current?.replace(fresh.text);
+        if (fresh.note.title !== s.title && document.activeElement !== titleField.current) { s.title = fresh.note.title; setTitle(fresh.note.title); }
+        onPatch(fresh.note, fresh.text);
+      } catch { /* it looks again soon */ }
+    };
+    const timer = window.setInterval(() => void look(), 15_000);
+    window.addEventListener("focus", look);
+    return () => { gone = true; window.clearInterval(timer); window.removeEventListener("focus", look); };
+  }, [draft, onPatch]);
 
   /* Leaving saves too: switching notes, and closing the page. */
   useEffect(() => {

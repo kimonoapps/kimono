@@ -51,7 +51,10 @@ export const notes = {
   createSection: (name: string, parent: string) => call<Section>("/sections", json("POST", { name, parent })),
   renameSection: (id: string, name: string) => call<Section>(`/sections/${id}`, json("PATCH", { name })),
   removeSection: (id: string) => call<unknown>(`/sections/${id}`, { method: "DELETE" }),
-  createNotebook: (name: string) => call<Notebook>("/notebooks", json("POST", { name })),
+  /** A new notebook, in the space named or the person's own. */
+  createNotebook: (name: string, space?: string) => call<Notebook>("/notebooks", json("POST", { name, space })),
+  /** The spaces a notebook can go in: Drive's list (only while Drive is on; Notes falls back to the person's own). */
+  spaces: () => call<{ spaces: { id: string; name: string; role: Role; code?: unknown }[] }>("/api/v1/drive/spaces").then((r) => r.spaces.filter((s) => s.role !== "viewer" && !s.code)),
   renameNotebook: (id: string, name: string) => call<Notebook>(`/notebooks/${id}`, json("PATCH", { name })),
   removeNotebook: (id: string) => call<unknown>(`/notebooks/${id}`, { method: "DELETE" }),
   /** Shares a notebook on its own: it becomes a space of just it, with you and the people named. */
