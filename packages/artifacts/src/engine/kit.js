@@ -650,7 +650,8 @@
       const random = Math.random;
       Math.random = seeded(7);
       try {
-        new Function(...Object.keys(timeline.api), `"use strict";\n${code}`)(...Object.values(timeline.api));
+        /* in a block of its own, so the scene may name its own things after the kit's (const clear = …) */
+        new Function(...Object.keys(timeline.api), `"use strict";\n{\n${code}\n}`)(...Object.values(timeline.api));
         this.errorBox.hidden = true;
       } catch (error) {
         this.errorBox.hidden = false; this.errorBox.textContent = String(error?.message || error);
@@ -712,7 +713,8 @@
   /* The scene's vocabulary. Each call adds a step at the timeline's cursor; wait() moves it on. */
   function makeTimeline(host) {
     const ops = [], trackers = [];
-    let cursor = 0, group = null, view = { x: [-1, 1], y: [-1, 1], set: false }, now = 0, end = 0;
+    /* Without axes() the stage is a diagram's page: 0 to 100 across from the left, 0 to 100 down from the top. */
+    let cursor = 0, group = null, view = { x: [0, 100], y: [100, 0], set: false }, now = 0, end = 0;
     const tl = { ops, end: 0, uses3d: false, three: null, params: [], labels: [], drags: [], voices: [] };
     const stretch = (t) => { end = Math.max(end, t); tl.end = end; };
     const add = (op, d = .8) => {
@@ -728,9 +730,11 @@
     const value = (v) => typeof v === "function" ? v() : v;
     const col = (o, i) => colour(o?.color, i);
     const top = () => tl.titled ? 48 : 20, bottom = () => tl.captioned ? 66 : 34;
-    const sx = (x, w) => 56 + (x - view.x[0]) / (view.x[1] - view.x[0]) * (w - 56 - 20);
+    /* axes leave room on the left for their numbers; a diagram is even on both sides */
+    const left = () => view.set ? 56 : 28, right = () => view.set ? 20 : 28;
+    const sx = (x, w) => left() + (x - view.x[0]) / (view.x[1] - view.x[0]) * (w - left() - right());
     const sy = (y, h) => top() + (1 - (y - view.y[0]) / (view.y[1] - view.y[0])) * (h - top() - bottom());
-    const ux = (X, w) => view.x[0] + (X - 56) / (w - 76) * (view.x[1] - view.x[0]);
+    const ux = (X, w) => view.x[0] + (X - left()) / (w - left() - right()) * (view.x[1] - view.x[0]);
     const uy = (Y, h) => view.y[0] + (1 - (Y - top()) / (h - top() - bottom())) * (view.y[1] - view.y[0]);
     /* a label over the drawing (crisp text, and $…$ typeset as maths) */
     const say = (key, kind, x, y, text, o = {}) => { tl.labels.push({ key, kind, x, y, text, ...o }); if (hasMath(text)) tl.usesTex = true; };
@@ -749,7 +753,7 @@
       animate(tr, to, d = 1, how = "inOut") { const t0 = group ? group.start : cursor; tr.segs.push({ t0, d, to, how }); if (group) group.longest = Math.max(group.longest, d); else cursor += d; stretch(t0 + d); },
       set(tr, to) { tr.segs.push({ t0: group ? group.start : cursor, d: 0, to, how: "linear" }); },
       /* words */
-      title(text) { tl.titled = true; if (hasMath(text)) tl.usesTex = true; const key = `l${labelId++}`; return add({ draw(ctx, p) { say(key, "title", 0, 0, value(text), { alpha: ctx.globalAlpha * p }); } }, .6); },
+      title(text) { tl.titled = true; if (hasMath(text)) tl.usesTex = true; const key = `l${labelId++}`; return add({ title: true, draw(ctx, p) { say(key, "title", 0, 0, value(text), { alpha: ctx.globalAlpha * p }); } }, .6); },
       caption(text, o = {}) {
         tl.captioned = true; if (hasMath(text)) tl.usesTex = true;
         const key = `l${labelId++}`;
@@ -942,6 +946,85 @@
       },
       vectorField(F, o = {}) { return api.field(F, o); },
       slopeField(F, o = {}) { return api.field(F, { ...o, slope: true }); },
+      /*
+       * Diagrams: things and how they connect, for ideas that aren't a graph (a filesystem, a network, a
+       * process). node() is a labelled card at [x, y] on the stage (0–100 across, 0–100 down without axes);
+       * link() joins two; move() slides a node; pulse() draws the eye to it; clear() takes the drawing away.
+       */
+      node(pos, words, o = {}) {
+        if (hasMath(words) || hasMath(o.sub ?? "")) tl.usesTex = true;
+        const key = `l${labelId++}`, start = value(pos);
+        const nx = api.tracker(start[0]), ny = api.tracker(start[1]);
+        const live = typeof pos === "function";
+        const n = {
+          where: () => live ? value(pos) : [nx.v, ny.v],
+          size: () => {
+            const label = String(value(words) ?? ""), sub = o.sub ? String(value(o.sub)) : "";
+            const wide = o.w ?? Math.max(o.shape === "circle" ? 0 : 84, Math.min(240, Math.max(label.length * 8.6, sub.length * 6.8) + 30));
+            const tall = o.h ?? (sub ? 58 : 44);
+            return o.shape === "circle" ? [Math.max(wide, tall), Math.max(wide, tall)] : [wide, tall];
+          },
+          shape: o.shape ?? "box", nx, ny,
+        };
+        n.box = (w, h) => { const [x, y] = n.where(); const [bw, bh] = n.size(); return { X: sx(x, w), Y: sy(y, h), bw, bh }; };
+        const step = add({ draw(ctx, p, w, h) {
+          const { X, Y, bw, bh } = n.box(w, h), s = .9 + .1 * ease.spring(p), c = col(o, 0);
+          const W = bw * s, H = bh * s, r = n.shape === "circle" ? W / 2 : n.shape === "pill" ? H / 2 : 10;
+          ctx.globalAlpha *= Math.min(1, p * 1.6);
+          ctx.beginPath(); ctx.roundRect ? ctx.roundRect(X - W / 2, Y - H / 2, W, H, r) : ctx.rect(X - W / 2, Y - H / 2, W, H);
+          ctx.fillStyle = css("--k-page"); ctx.fill();
+          ctx.fillStyle = c; const a = ctx.globalAlpha; ctx.globalAlpha = a * (o.fill === "solid" ? 1 : .14); ctx.fill(); ctx.globalAlpha = a;
+          ctx.strokeStyle = c; ctx.lineWidth = o.dashed ? 1.5 : 2; if (o.dashed) ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([]);
+          const ink = o.fill === "solid" ? css("--k-page") : undefined, sub = o.sub ? value(o.sub) : "";
+          say(key, "text", X, Y - (sub ? 8 : 0), value(words), { alpha: ctx.globalAlpha, color: ink, size: o.size });
+          if (sub) say(`${key}s`, "text", X, Y + 11, sub, { alpha: ctx.globalAlpha, color: ink ?? css("--k-soft"), size: 12 });
+        } }, o.dur ?? .5);
+        return Object.assign(n, step);
+      },
+      /* an arrow from one node (or point) to another, edge to edge; { label, dashed, color, both, arrow: false } */
+      link(a, b, o = {}) {
+        if (o.label && hasMath(o.label)) tl.usesTex = true;
+        const key = `l${labelId++}`;
+        const end = (n, toward, w, h) => {
+          if (!n?.box) { const P = value(n); return [sx(P[0], w), sy(P[1], h)]; }
+          const { X, Y, bw, bh } = n.box(w, h), dx = toward[0] - X, dy = toward[1] - Y, gap = 5;
+          if (!dx && !dy) return [X, Y];
+          if (n.shape === "circle") { const L = Math.hypot(dx, dy), R = bw / 2 + gap; return [X + dx / L * R, Y + dy / L * R]; }
+          const k = Math.min((bw / 2 + gap) / Math.abs(dx || 1e-9), (bh / 2 + gap) / Math.abs(dy || 1e-9));
+          return [X + dx * k, Y + dy * k];
+        };
+        const middle = (n, w, h) => n?.box ? (({ X, Y }) => [X, Y])(n.box(w, h)) : [sx(value(n)[0], w), sy(value(n)[1], h)];
+        const head = (ctx, x1, y1, x2, y2) => { const ang = Math.atan2(y2 - y1, x2 - x1), s = 9; ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - s * Math.cos(ang - .42), y2 - s * Math.sin(ang - .42)); ctx.lineTo(x2 - s * Math.cos(ang + .42), y2 - s * Math.sin(ang + .42)); ctx.closePath(); ctx.fill(); };
+        return add({ draw(ctx, p, w, h) {
+          const A0 = middle(a, w, h), B0 = middle(b, w, h), A = end(a, B0, w, h), B = end(b, A0, w, h);
+          const x2 = A[0] + (B[0] - A[0]) * p, y2 = A[1] + (B[1] - A[1]) * p;
+          ctx.strokeStyle = ctx.fillStyle = colour(o.color ?? "soft"); ctx.lineWidth = o.width ?? 2; ctx.lineCap = "round";
+          if (o.dashed) ctx.setLineDash([6, 5]);
+          line(ctx, A[0], A[1], x2, y2); ctx.setLineDash([]);
+          if (o.arrow !== false && p > .05) head(ctx, A[0], A[1], x2, y2);
+          if (o.both && p > .95) head(ctx, B[0], B[1], A[0], A[1]);
+          /* the label sits on the line, on a patch of the stage's own colour */
+          if (o.label) say(key, "edge", (A[0] + B[0]) / 2, (A[1] + B[1]) / 2, value(o.label), { alpha: ctx.globalAlpha * clamp(p * 2 - 1), color: o.color ? colour(o.color) : undefined });
+        } }, o.dur ?? .6);
+      },
+      /* slide a node to [x, y] */
+      move(n, to, d = 1, how = "inOut") { api.together(() => { api.animate(n.nx, to[0], d, how); api.animate(n.ny, to[1], d, how); }); },
+      /* a ring that goes out from a node, to draw the eye to it */
+      pulse(n, o = {}) {
+        return add({ draw(ctx, p, w, h) {
+          if (p >= 1) return;
+          const { X, Y, bw, bh } = n.box(w, h), grow = 4 + 12 * p, r = n.shape === "circle" ? bw / 2 + grow : n.shape === "pill" ? bh / 2 + grow : 10 + grow;
+          ctx.strokeStyle = colour(o.color ?? "suo"); ctx.lineWidth = 2.5; ctx.globalAlpha *= 1 - p;
+          ctx.beginPath(); ctx.roundRect ? ctx.roundRect(X - bw / 2 - grow, Y - bh / 2 - grow, bw + 2 * grow, bh + 2 * grow, r) : ctx.rect(X - bw / 2 - grow, Y - bh / 2 - grow, bw + 2 * grow, bh + 2 * grow); ctx.stroke();
+        } }, o.dur ?? .8);
+      },
+      /* fade everything drawn so far (but the title), to start the next idea on a clean stage */
+      clear(d = .5) {
+        const at = group ? group.start : cursor;
+        for (const op of ops) if (!op.title && !op.caption && op.fadeAt == null && (op.draw || op.three)) { op.fadeAt = at; op.fadeD = d; }
+        api.wait(d);
+      },
+
       /* numbers people's code can use */
       integrate(f, a, b, n = 400) { const dx = (b - a) / n; let s = f(a) + f(b); for (let k = 1; k < n; k++) s += f(a + k * dx) * (k % 2 ? 4 : 2); return s * dx / 3; },
       derivative(f, e = 1e-4) { return (x) => (f(x + e) - f(x - e)) / (2 * e); },

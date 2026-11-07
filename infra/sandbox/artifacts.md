@@ -105,7 +105,14 @@ Rules:
 - Maths in words goes between `$…$`, or `$$…$$` for an equation on its own
   line (KaTeX). In a JS string, write a backslash twice: `"$\\sqrt{x}$"`, or
   use `String.raw`.
-- Aim for 10 to 40 seconds, a caption for each idea, and one scene per artifact.
+- **Short: 15 to 40 seconds, never over a minute.** Three to six ideas, a
+  caption for each, and one scene per artifact. Show the one thing that is
+  hard to picture, not the whole topic: the reply's words carry the rest.
+  Before you write it, add up the waits and steps.
+- Maths (a function, a curve, an area, a vector) goes on `axes()`. Anything
+  else (how a thing works, its parts, steps, flows) is a diagram (see
+  Diagrams): no `axes()`, and never boxes built from `line()` or a row of
+  blocks from `bars()`.
 - `height` is 200 to 520.
 
 ### Time and values
@@ -133,6 +140,33 @@ Rules:
 - `vectorField((x, y) => [u, v])`, `slopeField((x, y) => dy/dx)`
 - `integrate(f, a, b)`, `derivative(f)` numbers for your own use
 - Every step returns `.fade(seconds)` to take it away later.
+
+### Diagrams
+For ideas that aren't a graph. With no `axes()`, the stage is 0 to 100 across
+from the left and 0 to 100 down from the top.
+- `node([x, y], words, { sub, color, shape: "box"|"pill"|"circle", fill: "solid", dashed, w, h })`
+  a labelled card centred at `[x, y]`; `sub` is a smaller second line. It sizes
+  itself to its words.
+- `link(a, b, { label, color, dashed, both, arrow: false })` an arrow from one
+  node (or point) to another, edge to edge; it follows them when they move.
+- `move(n, [x, y], seconds)` slides a node (its links follow), `pulse(n)` draws
+  the eye to it, `clear()` fades everything but the title, for the next idea.
+
+```
+title("Linux: one tree, not drive letters")
+caption("Windows gives each disk a letter of its own.")
+together(() => { node([20, 30], "C:\\", { color: "indigo" }); node([50, 30], "D:\\", { color: "indigo" }); node([80, 30], "E:\\ USB", { color: "indigo" }) })
+wait(2)
+clear()
+caption("Linux has one tree from /, and every disk hangs somewhere in it.")
+const root = node([50, 15], "/", { shape: "circle", fill: "solid" })
+const home = node([20, 55], "/home")
+const etc = node([50, 55], "/etc")
+const usb = node([80, 55], "/media/usb", { sub: "the USB stick", color: "amber" })
+together(() => { link(root, home); link(root, etc); link(root, usb, { label: "mounted" }) })
+pulse(usb)
+wait(2)
+```
 
 ### 3D (x right, y across, z up)
 - `axes3d({ x: [..], y: [..], z: [..] })` frames the camera on this box

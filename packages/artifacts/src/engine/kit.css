@@ -126,6 +126,7 @@ k-scene .k-error { padding: 6px 12px; font: 12px/1.4 var(--k-mono); color: var(-
 k-scene script { display: none; }
 k-scene .k-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 k-scene .k-label { position: absolute; left: 0; top: 0; white-space: nowrap; font: 600 14px/1.2 var(--k-sans); color: var(--k-ink); will-change: transform; }
+k-scene .k-label-edge { padding: 2px 7px; border-radius: 6px; background: var(--k-card); font-size: 12px; color: var(--k-soft); }
 k-scene .k-label-title { left: 18px; right: 18px; top: 13px; font: 700 19px/1.25 var(--k-display); overflow: hidden; text-overflow: ellipsis; }
 k-scene .k-label-caption { left: 24px; right: 24px; top: auto; bottom: 14px; text-align: center; white-space: normal; font: 500 15px/1.4 var(--k-sans); text-wrap: balance; }
 k-scene .k-label .katex { font-size: 1.08em; }
