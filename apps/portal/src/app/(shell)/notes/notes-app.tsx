@@ -576,9 +576,8 @@ function ListHead({ place, faces, people, open, buttonRef, writable, onPlaces, o
   return <header className="nt-listhead">
     <button ref={buttonRef} type="button" className="nt-iconbutton nt-placebutton" onClick={onPlaces} aria-expanded={open} aria-label="Notebooks" title="Notebooks"><Icon name="panel" /></button>
     <div className="nt-listhead-id">
-      {above ? <small className="nt-crumb">{notebook ? <NotebookCrest notebook={notebook} size={14} /> : null}{above}</small> : null}
+      {above ? <small className="nt-crumb">{above}</small> : null}
       <h1><button type="button" className="nt-placename nt-placebutton" onClick={onPlaces} aria-expanded={open}>
-        {place.kind === "notebook" && !above ? <NotebookCrest notebook={place.notebook} size={18} /> : null}
         <span>{name}</span><Icon name="down" />
       </button></h1>
     </div>

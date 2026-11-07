@@ -145,6 +145,14 @@ function decorate(view: EditorView): { decorations: DecorationSet; atomic: Decor
             const marker = node.getChild("ListMark");
             if (!marker) break;
             const task = node.getChild("Task")?.getChild("TaskMarker");
+            /* Nesting shows as 1.6em a level, not as the spaces typed. */
+            const line = doc.lineAt(marker.from);
+            const depth = depthOf(node);
+            if (marker.from > line.from && /^\s+$/.test(doc.sliceString(line.from, marker.from))) {
+              const indent = hidden.range(line.from, marker.from);
+              found.push(indent); solid.push(indent);
+            }
+            if (depth > 0) found.push(Decoration.line({ attributes: { style: `padding-left: ${depth * 1.6}em` } }).range(line.from));
             if (task) {
               const done = /x/i.test(doc.sliceString(task.from, task.to));
               /* The ring stands for "- [ ] ": the caret steps over it in one. */
@@ -152,7 +160,8 @@ function decorate(view: EditorView): { decorations: DecorationSet; atomic: Decor
               found.push(range); solid.push(range);
               if (done) lineClass(task.from, node.getChild("Task")!.to, "nt-md-done");
             } else if (parent?.name === "BulletList") {
-              const range = Decoration.replace({ widget: new Dot(depthOf(node) % 2 === 1) }).range(marker.from, marker.to);
+              /* The dot stands for "- ", as the ring does for "- [ ] ". */
+              const range = Decoration.replace({ widget: new Dot(depth % 2 === 1) }).range(marker.from, withSpace(marker.to));
               found.push(range); solid.push(range);
             } else found.push(number.range(marker.from, marker.to));
             break;
