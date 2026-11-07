@@ -259,7 +259,7 @@ fun HoldMenu(choices: List<MenuChoice>, onClick: () -> Unit = {}, modifier: Modi
         open = true
     })) {
         content()
-        InkMenu(expanded = open, onDismissRequest = { open = false }) {
+        InkMenu(expanded = open, onDismissRequest = { open = false }, atTop = true) {
             choices.forEach { choice ->
                 InkMenuItem(choice.label, danger = choice.danger, onClick = { open = false; choice.onClick() })
             }

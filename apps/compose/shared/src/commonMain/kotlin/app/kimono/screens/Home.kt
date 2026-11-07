@@ -297,7 +297,7 @@ private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int
 
 @Composable
 private fun PinMenu(open: Boolean, pinned: Boolean, name: String, close: () -> Unit, pin: () -> Unit) {
-    InkMenu(expanded = open, onDismissRequest = close) {
+    InkMenu(expanded = open, onDismissRequest = close, atTop = true) {
         InkMenuItem(if (pinned) "Unpin $name" else "Pin to Your apps", icon = "pin", onClick = { close(); pin() })
     }
 }
