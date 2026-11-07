@@ -2,7 +2,7 @@
 
 import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkCard, InkWave, MorphLoader, Seal } from "@kimono/ui";
+import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
@@ -231,6 +231,9 @@ const fallbackWindow = 200_000;
 const kTokens = (n: number) => n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 const dollars = (n: number) => `$${n.toFixed(2)}`;
+/* Pro Tools are counted in credits, a hundred to the dollar: "247 of 1,000 credits". Under ten, to a tenth. */
+const creditNumber = (usd: number) => { const c = usd * 100; return c > 0 && c < 10 ? String(Math.round(c * 10) / 10) : Math.round(c).toLocaleString("en"); };
+const credits = (usd: number) => `${creditNumber(usd)} ${usd * 100 === 1 ? "credit" : "credits"}`;
 const monthWords = (at: number) => new Date(at).toLocaleDateString("en", { month: "short", day: "numeric", timeZone: "UTC" });
 const resetWords = (at: number | null) => at ? new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" }) : null;
 
@@ -278,7 +281,7 @@ function UsageRows({ workspace, usage, context, running, blocked, show, onCompac
     </> : null}
     {show.five ? <div className="cd-meter"><Ring value={f.five} label="5-hour window" /><span><b>5-hour window</b><small>{f.noFiveHour ? "This plan has no 5-hour limit" : f.five == null ? "Not reported yet" : `${pct(f.five)} ${f.whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div> : null}
     {show.week ? <div className="cd-meter"><Ring value={f.week} label="This week" /><span><b>This week</b><small>{f.week == null ? "Not reported yet" : `${pct(f.week)} ${f.whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div> : null}
-    {show.tools && media ? <div className="cd-meter"><Ring value={f.tools} label="Pro Tools" /><span><b className="cd-pro"><Icon name="bolt" />Pro Tools</b><small>{media.spent == null ? "Not reported yet" : `${dollars(media.spent)} of ${dollars(media.budget)} this month${media.chatSpent ? ` · ${dollars(media.chatSpent)} in this chat` : ""} · resets ${monthWords(media.resetsAt)}`}</small></span></div> : null}
+    {show.tools && media ? <div className="cd-meter"><Ring value={f.tools} label="Pro Tools" /><span><b className="cd-pro"><Icon name="bolt" />Pro Tools</b><small>{media.spent == null ? "Not reported yet" : `${creditNumber(media.spent)} of ${credits(media.budget)} this month${media.chatSpent ? ` · ${creditNumber(media.chatSpent)} in this chat` : ""} · resets ${monthWords(media.resetsAt)}`}</small></span></div> : null}
     {usage && !usage.unlimited && (show.five || show.week) ? <p className="cd-meter-note">Your share is {f.noFiveHour ? `${pct(usage.week.share)} of the week` : `${pct(usage.fiveHour.share)} of each 5-hour window and ${pct(usage.week.share)} of the week`}.</p> : null}
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </>;
@@ -687,7 +690,7 @@ function YourApps({ now, conn }: { now: number; conn: Conn }) {
   return <ul className="cd-conn-list">{mine.map((c) => <li key={c.account} className="cd-conn-card is-link">
     <button type="button" className="cd-conn-open" onClick={() => openApp(c.app)} aria-label={`${c.name}: ${connStatus(c, now)}`} />
     {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
-    <span className="cd-conn-logo"><img src={c.logo} alt="" /></span>
+    <InkBlot className="cd-conn-logo" tint={inkTint.quiet} seed={c.app}><img src={c.logo} alt="" /></InkBlot>
     <span className="cd-conn-id"><b>{c.name}</b><small className={cx(c.status === "FAILED" && "is-bad")}>{connStatus(c, now)}</small></span>
     {c.status === "FAILED" ? <span className="cd-conn-acts"><Seal type="button" compact busy={conn.busy === c.app} onClick={() => conn.connect(c.app)}>Connect again</Seal></span> : null}
     <span className="cd-conn-chev" aria-hidden="true"><Icon name="chevron" /></span>
@@ -719,7 +722,7 @@ function AddApps({ conn }: { conn: Conn }) {
     {apps === null ? <SkeletonRows rows={2} mark={false} /> : !found?.apps.length ? <p className="cd-conn-empty">No app by that name.</p> : !apps.length ? null : <ul className="cd-conn-grid">{apps.map((a) => <li key={a.app} className="cd-conn-tile is-link">
       <button type="button" className="cd-conn-open" onClick={() => openApp(a.app)} aria-label={`About ${a.name}`} />
       {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
-      <span className="cd-conn-logo"><img src={a.logo} alt="" /></span>
+      <InkBlot className="cd-conn-logo" tint={inkTint.quiet} seed={a.app}><img src={a.logo} alt="" /></InkBlot>
       <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
       {a.connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span> : <Seal type="button" compact tone="quiet" busy={conn.busy === a.app} onClick={() => conn.connect(a.app)}>Connect</Seal>}
     </li>)}</ul>}
@@ -743,7 +746,7 @@ function AppPage({ slug, now, conn, head }: { slug: string; now: number; conn: C
       {conn.problem ? <p className="cd-problem" role="alert">{conn.problem}</p> : null}
       <div className="cd-app-hero">
         {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
-        <span className="cd-conn-logo cd-app-logo">{logo ? <img src={logo} alt="" /> : <Icon name="gear" />}</span>
+        <InkBlot className="cd-conn-logo cd-app-logo" tint={inkTint.quiet} seed={slug}>{logo ? <img src={logo} alt="" /> : <Icon name="gear" />}</InkBlot>
         <span className="cd-conn-id">
           <b>{name}</b>
           {about?.categories.length ? <small>{about.categories.join(" · ")}</small> : null}
@@ -846,6 +849,9 @@ function useAppLook(slug: string): Look {
   return look?.slug === slug ? look : { name: plainName(slug), logo: "" };
 }
 
+/* Marks sit on a watercolour wash (InkBlot), never a flat tile: quiet for what's at rest, suō for the agent's own work and what's open, moss for what's live. */
+const inkTint = { quiet: "#8a7c77", suo: "#a84d63", live: "#5c7150" } as const;
+
 /** An app's logo; one used as a Pro Tool wears a filled bolt on its top right. */
 function AppLogo({ slug, pro }: { slug: string; pro?: boolean }) {
   const look = useAppLook(slug);
@@ -880,7 +886,7 @@ function ConnectCard({ app, url }: { app: string; url: string }) {
     return () => { live = false; window.removeEventListener("focus", check); clearInterval(timer); };
   }, [app, connected]);
   return <div className={cx("cd-connect", connected && "is-done")}>
-    <span className="cd-connect-logo"><AppLogo slug={app} /></span>
+    <InkBlot className="cd-connect-logo" tint={connected ? inkTint.live : inkTint.quiet} seed={app}><AppLogo slug={app} /></InkBlot>
     <span className="cd-connect-words"><b>{connected ? <><AppName slug={app} /> is connected</> : <>Connect <AppName slug={app} /></>}</b><small>{connected ? "Kimono AI can use it now." : "Sign in, then come back here."}</small></span>
     {connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span>
       : <Seal type="button" compact onClick={() => openOutside(url)}>Connect</Seal>}
@@ -1374,7 +1380,7 @@ function SuggestedApps() {
     <div className="cd-home-apps-head"><h3>Connect your apps</h3><button type="button" className="cd-textbutton" onClick={() => goTo({ connections: "1" })}>All apps</button></div>
     <ul>{apps.map((a) => <li key={a.app}><button type="button" onClick={() => openApp(a.app)}>
       {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
-      <span className="cd-conn-logo"><img src={a.logo} alt="" /></span>
+      <InkBlot className="cd-conn-logo" tint={inkTint.quiet} seed={a.app}><img src={a.logo} alt="" /></InkBlot>
       <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
     </button></li>)}</ul>
   </div>;
@@ -1487,13 +1493,13 @@ function SidePanel({ workspace, others, tab, running, lastSeq }: { workspace: Wo
   const preview = workspace.preview;
   return <div className="cd-deployments cd-side-panel">
     {preview && !preview.stopped && tab !== "app" ? <SideApp workspace={workspace} url={preview.url} /> : null}
-    {preview?.stopped ? <button type="button" className="cd-dep-row is-link" onClick={() => goTo({ w: workspace.id, tab: "app" })}><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>The app is stopped</b><small>Start it again from the App tab.</small></span></button> : null}
+    {preview?.stopped ? <button type="button" className="cd-dep-row is-link" onClick={() => goTo({ w: workspace.id, tab: "app" })}><InkBlot className="cd-dep-icon" tint={inkTint.quiet} seed="app"><Icon name="rocket" /></InkBlot><span><b>The app is stopped</b><small>Start it again from the App tab.</small></span></button> : null}
     {project ? <SideWork workspace={workspace} running={running} lastSeq={lastSeq} /> : null}
-    {!preview && !project ? <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="rocket" /></span><span><b>No app running</b><small>Ask it to run one and it appears here.</small></span></div> : null}
+    {!preview && !project ? <div className="cd-dep-row"><InkBlot className="cd-dep-icon" tint={inkTint.quiet} seed="app"><Icon name="rocket" /></InkBlot><span><b>No app running</b><small>Ask it to run one and it appears here.</small></span></div> : null}
     {others.length ? <section className="cd-side-sec">
       <h2>Other running apps</h2>
       <div className="cd-dep-list">{others.map((w) => <button type="button" key={w.id} className="cd-dep-row is-link" onClick={() => goTo({ w: w.id })}>
-        <span className="cd-dep-icon is-live"><Icon name="rocket" /></span>
+        <InkBlot className="cd-dep-icon is-live" tint={inkTint.live} seed="app"><Icon name="rocket" /></InkBlot>
         <span><b>{w.title}</b><small className="cd-mono">{w.preview!.url.replace(/^https?:\/\//, "")}</small></span>
       </button>)}</div>
     </section> : null}
@@ -1541,8 +1547,8 @@ function SideWork({ workspace, running, lastSeq }: { workspace: Workspace; runni
     <section className="cd-side-sec">
       <h2>Pull request</h2>
       {pr
-        ? <button type="button" className="cd-dep-row is-link" onClick={() => openOutside(pr.url)}><span className="cd-dep-icon is-live"><Icon name="pr" /></span><span><b>#{pr.number} is open</b><small className="cd-mono">{workspace.branch} → {workspace.base}</small></span><Icon name="open" /></button>
-        : <div className="cd-dep-row"><span className="cd-dep-icon"><Icon name="pr" /></span><span><b>Not opened yet</b><small className="cd-mono">{workspace.branch} → {workspace.base}</small></span></div>}
+        ? <button type="button" className="cd-dep-row is-link" onClick={() => openOutside(pr.url)}><InkBlot className="cd-dep-icon is-live" tint={inkTint.live} seed="pr"><Icon name="pr" /></InkBlot><span><b>#{pr.number} is open</b><small className="cd-mono">{workspace.branch} → {workspace.base}</small></span><Icon name="open" /></button>
+        : <div className="cd-dep-row"><InkBlot className="cd-dep-icon" tint={inkTint.quiet} seed="pr"><Icon name="pr" /></InkBlot><span><b>Not opened yet</b><small className="cd-mono">{workspace.branch} → {workspace.base}</small></span></div>}
     </section>
     <section className="cd-side-sec">
       <h2>Changes{changes?.files.length ? <span className="cd-side-count cd-mono"><b className="is-add">+{added}</b> <b className="is-del">−{removed}</b></span> : null}</h2>
@@ -1568,7 +1574,7 @@ function AppView({ workspace, running, blocked, onChange }: { workspace: Workspa
   const [problem, setProblem] = useState<string | null>(null);
   if (!workspace.preview) return <Scroller className="cd-scroll" viewClassName="cd-appview">
     <div className="cd-app-empty">
-      <span className="cd-dep-icon"><Icon name="rocket" /></span>
+      <InkBlot className="cd-dep-icon" tint={inkTint.quiet} seed="app"><Icon name="rocket" /></InkBlot>
       <b>Nothing is running</b>
       <p className="cd-faint">It runs the app when it changes something you can see. You can ask it to now.</p>
       {writes ? <Seal type="button" busy={asking} disabled={Boolean(blocked)} onClick={() => { setAsking(true); setProblem(null); code.ask(workspace.id, "Run the app and show it to me.", [], effortNow()).then(() => goTo({ w: workspace.id }), (error) => { setProblem(problemText(error)); setAsking(false); }); }}>{running ? "Run it after this step" : "Run the app"}</Seal> : null}
@@ -1975,7 +1981,7 @@ function ShareChat({ workspace, onClose }: { workspace: Workspace; onClose: () =
       </ul>
       <h3 className="cd-share-sub">General access</h3>
       <div className="cd-share-general">
-        <span className={cx("cd-share-mark", general !== "off" && "is-open")} aria-hidden="true"><Icon name={general === "off" ? "lock" : "link"} /></span>
+        <InkBlot className={cx("cd-share-mark", general !== "off" && "is-open")} tint={general === "off" ? inkTint.quiet : inkTint.suo} seed="share"><Icon name={general === "off" ? "lock" : "link"} /></InkBlot>
         <Choice aria-label="General access" className="cd-share-link" value={general}
           options={(["off", "read", "edit"] as const).map((v) => ({ value: v, label: (sharing.publicLinks === false ? signedInWords : generalWords)[v] }))}
           onChange={(next) => change(code.setLink(workspace.id, next === "off" ? null : next as "read" | "edit"),
@@ -2023,7 +2029,7 @@ function ShareArtifact({ workspaceId, name, title, onClose }: { workspaceId: str
       {/* Public links switched off: no making it public (one made public before can still be closed). */}
       {sharing.publicLinks === false && !sharing.public ? null : <><h3 className="cd-share-sub">General access</h3>
       <div className="cd-share-general">
-        <span className={cx("cd-share-mark", sharing.public && "is-open")} aria-hidden="true"><Icon name={sharing.public ? "link" : "lock"} /></span>
+        <InkBlot className={cx("cd-share-mark", sharing.public && "is-open")} tint={sharing.public ? inkTint.suo : inkTint.quiet} seed="share"><Icon name={sharing.public ? "link" : "lock"} /></InkBlot>
         <Choice aria-label="General access" className="cd-share-link" value={sharing.public ? "public" : "people"}
           options={[{ value: "people", label: "Only people it\u2019s shared with" }, { value: "public", label: "Anyone with the link can view" }]}
           onChange={(next) => void change(code.setArtifactPublic(workspaceId, name, next === "public"), (now) => ({ ...now, public: next === "public" }))} />
@@ -2117,7 +2123,7 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
   const shut = inline && folded && !open;
   return <figure className={cx("cd-artifact", `is-${mode}`, writing && "is-writing", inline && open && "is-elsewhere", shut && "is-folded")}>
     <figcaption className="cd-artifact-head">
-      <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
+      <InkBlot className="cd-artifact-mark" tint={inkTint.suo} seed={name}><Icon name="spark" /></InkBlot>
       <span className="cd-artifact-name"><b title={title}>{title}</b>{writing ? <small className="cd-artifact-writing"><MorphLoader tone="plain" label="Writing" className="cd-morph" />Writing</small> : <small>{animated ? "Animation" : "Artifact"}</small>}</span>
       <span className="cd-artifact-acts">
         {inline && !open ? <button type="button" className="cd-roundbutton cd-artifact-fold" aria-expanded={!folded} aria-label={folded ? "Show" : "Collapse"} title={folded ? "Show" : "Collapse"} onClick={() => fold(!folded)}><Icon name="chevron" /></button> : null}
@@ -2329,7 +2335,7 @@ function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   const label = start.progress!.label!;
   return <details className="calls cd-progress" data-state={finished ? "done" : stopped ? "stopped" : "running"}>
     <summary className="cd-progress-head">
-      <span className="cd-progress-mark">{finished ? <Icon name="check" /> : stopped ? <GroupMarks tools={tools} /> : <MorphLoader tone="plain" label={label} className="cd-morph" />}</span>
+      <InkBlot className="cd-progress-mark" tint={finished ? inkTint.live : inkTint.suo} seed={tools[0]?.id ?? label}>{finished ? <Icon name="check" /> : stopped ? <GroupMarks tools={tools} /> : <MorphLoader tone="plain" label={label} className="cd-morph" />}</InkBlot>
       <span className="cd-progress-text">
         <span className="cd-progress-label"><b>{label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}<ProPrice usd={priceOf(tools)} /></span>
         <InkWave className="cd-progress-wave" label={label} value={fill} />
@@ -2360,12 +2366,12 @@ function PlainToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   </details>;
 }
 
-/** What Pro Tools cost, beside their bolt: to the tenth of a cent under a cent ("$0.007"), else to the cent. Nothing when free. */
+/** What Pro Tools cost, beside their bolt, in credits ("231 credits", "0.7 credits"). Nothing when free. */
 const priceOf = (tools: Tool[]) => tools.reduce((sum, t) => sum + (t.cost ?? 0), 0);
 function ProPrice({ usd }: { usd: number }) {
   if (!(usd > 0)) return null;
-  const shown = usd >= 0.01 ? `$${usd.toFixed(2)}` : `$${usd.toFixed(3)}`;
-  return <span className="cd-pro-price" title={`This cost ${shown} of this month's Pro Tools`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg>{shown}</span>;
+  const shown = credits(usd);
+  return <span className="cd-pro-price" title={`This used ${shown} of this month's Pro Tools`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg>{shown}</span>;
 }
 
 /** The apps and spaces a group of calls touched, side by side; a gear when it was only the sandbox. */
@@ -2401,7 +2407,7 @@ function ToolRow({ tool }: { tool: Tool }) {
   const output = tool.result?.output.trim();
   return <details className="call" data-state={state}>
     <summary>
-      <span className={cx("ci", (tool.app || tool.space) && "is-mark")} aria-hidden="true">{state === "running" ? <MorphLoader tone="plain" label="Running" className="cd-morph" /> : <ToolMark tool={tool} />}</span>
+      <InkBlot className={cx("ci", (tool.app || tool.space) && "is-mark")} tint={state === "failed" ? inkTint.suo : inkTint.quiet} seed={tool.id}>{state === "running" ? <MorphLoader tone="plain" label="Running" className="cd-morph" /> : <ToolMark tool={tool} />}</InkBlot>
       <span className="cv">{tool.label}{tool.app && /^(Used|Connecting|Read how to use)$/.test(tool.label) ? <> <AppName slug={tool.app} /></> : null}</span>
       {tool.cost ? <ProPrice usd={tool.cost} /> : null}
       {tool.space ? <SpaceChip name={tool.space} /> : null}
@@ -2584,7 +2590,7 @@ function AccessCard({ workspace, event, answer }: { workspace: Workspace; event:
     return <p className="cd-note cd-access-note"><DriveMark /><span>{who} let it {answer.need === "change" ? "read and change" : "read"} {answer.scope === "file" ? "one file from " : ""}{whatOf(event)} {scope}.</span></p>;
   }
   if (!owns) return <div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
-    <span className="cd-access-mark" aria-hidden="true"><DriveMark /></span>
+    <InkBlot className="cd-access-mark" tint={inkTint.quiet} seed={event.id}><DriveMark /></InkBlot>
     <div className="cd-access-id">
       <b>Kimono AI wants to {verb} {event.path ? <>{event.path.split("/").pop()} in </> : <>files in </>}{event.space}</b>
       <span>{event.why}</span>
@@ -2596,7 +2602,7 @@ function AccessCard({ workspace, event, answer }: { workspace: Workspace; event:
     code.answerAccess(workspace.id, event.id, choice, file).catch((error) => { setProblem(problemText(error)); setBusy(null); });
   };
   return <div className="cd-access" role="group" aria-label={`Kimono AI wants to ${verb} ${event.path || event.space}`}>
-    <span className="cd-access-mark" aria-hidden="true"><DriveMark /></span>
+    <InkBlot className="cd-access-mark" tint={inkTint.quiet} seed={event.id}><DriveMark /></InkBlot>
     <div className="cd-access-id">
       <b>Kimono AI wants to {verb} {event.path ? <><DriveName space={event.space} node={event.file ? event.node : undefined}>{event.path.split("/").pop()}</DriveName> in </> : <>files in </>}<SpaceChip name={event.space} /></b>
       <span>{event.why}</span>

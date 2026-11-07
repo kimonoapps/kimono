@@ -463,13 +463,12 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .call:last-child { border-bottom-left-radius: 18px; border-bottom-right-radius: 18px; }
 .call > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 14px 6px 8px; border-radius: inherit; }
 .call > summary:hover { background: var(--k-container); }
-.call .ci { width: 32px; height: 32px; display: grid; place-items: center; flex: none; border-radius: 10px; background: var(--k-container-high); color: var(--k-plum); }
+.call .ci { width: 32px; height: 32px; display: grid; place-items: center; flex: none; color: var(--k-plum); }
 .call .ci svg.i { width: 17px; height: 17px; }
 .call .cv { flex: none; font-weight: 700; font-size: 14px; }
 .call code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px var(--k-mono); color: var(--k-plum); }
 .call .cm { margin-left: auto; flex: none; font-size: 13px; color: var(--k-on-surface-variant); white-space: nowrap; }
 .call .cm.is-failed { color: var(--k-suo-deep); font-weight: 700; }
-.call[data-state="failed"] .ci { background: var(--k-primary-container); }
 .cbody { padding: 0 12px 12px 50px; }
 .cbody .urushi { margin: 0; max-height: 320px; overflow: auto; padding: 14px 16px; border-radius: var(--k-r-l); background: #2a1d22; color: #f3e9e0; font: 12.5px/1.6 var(--k-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cbody .urushi .c { color: #a8969c; }
@@ -588,7 +587,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-dep-row > span:not(.cd-dep-icon) { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .cd-dep-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .cd-dep-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--k-on-surface-variant); }
-.cd-dep-icon { width: 38px; height: 38px; display: grid; place-items: center; flex: none; border-radius: 12px; background: var(--k-container-high); color: var(--k-plum); }
+.cd-dep-icon { width: 38px; height: 38px; display: grid; place-items: center; flex: none; color: var(--k-plum); }
 .cd-dep-icon.is-live { background: var(--k-tertiary-container); color: var(--k-moss-deep); }
 .cd-dep-icon svg.i { width: 19px; height: 19px; }
 .cd-dep-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px; font-size: 13px; color: var(--k-on-surface-variant); }
@@ -862,7 +861,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 /* asking for the person's Drive: a card in kraft brown, its answer a quiet note */
 .cd-access-ink { display: block; }
 .cd-access { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 14px; padding: 16px; border-radius: var(--k-r-l); background: color-mix(in srgb, #8a6a3c 14%, var(--k-container-lowest)); color: var(--k-ink); }
-.cd-access-mark { width: 44px; height: 44px; display: grid; place-items: center; flex: none; border-radius: 14px; background: #8a6a3c; color: #fff; }
+.cd-access-mark { width: 44px; height: 44px; display: grid; place-items: center; flex: none; color: #fff; }
 .cd-access-mark svg { width: 22px; height: 22px; }
 .cd-access-id { display: grid; gap: 4px; flex: 1 1 220px; min-width: 0; }
 .cd-access-id b { font-weight: 600; overflow-wrap: anywhere; }
@@ -925,7 +924,6 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 /* ── marks: a call or card drawn as what it touched ──
    A person's own app shows its logo (from Composio); Drive shows its bloom,
    and a space its crest beside its name. */
-.call .ci.is-mark { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-outline-variant); }
 .cd-applogo { width: 20px; height: 20px; display: block; object-fit: contain; }
 /* A Pro Tool's logo: a filled bolt in the app's accent on its top right, cut out from the page by a ring of the surface. */
 .cd-pro-logo { position: relative; display: inline-flex; flex: none; }
@@ -993,7 +991,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-conn-card { display: flex; align-items: center; gap: 14px; min-height: 72px; padding: 12px 16px; border-radius: 8px; background: var(--k-container-lowest); }
 .cd-conn-card:first-child { border-top-left-radius: var(--k-r-xl); border-top-right-radius: var(--k-r-xl); }
 .cd-conn-card:last-child { border-bottom-left-radius: var(--k-r-xl); border-bottom-right-radius: var(--k-r-xl); }
-.cd-conn-logo { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 14px; background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-outline-variant); }
+.cd-conn-logo { width: 44px; height: 44px; flex: none; display: grid; place-items: center; }
 .cd-conn-logo img { width: 26px; height: 26px; object-fit: contain; }
 .cd-conn-id { display: grid; gap: 3px; min-width: 0; flex: 1; }
 .cd-conn-id b { font: 600 16px/1.3 var(--k-sans); color: var(--k-on-surface); }
@@ -1132,7 +1130,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 /* ── artifacts: a page it made, in the chat, beside it, or full screen ── */
 .cd-artifact { display: grid; gap: 0; margin: 0; border-radius: var(--k-r-xl); background: var(--k-container-low); overflow: hidden; min-width: 0; }
 .cd-artifact-head { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 8px 6px 14px; }
-.cd-artifact-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border-radius: 10px; background: var(--k-primary-container); color: var(--k-on-primary-container); }
+.cd-artifact-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: none; color: var(--k-suo-deep); }
 .cd-artifact-mark .i { width: 18px; height: 18px; }
 .cd-artifact-name { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .cd-artifact-name b { font: 600 15px/1.25 var(--k-display); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1259,7 +1257,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* an app to connect, in the chat: its logo, what to do, and Kimono's own button */
 .cd-connect { display: flex; align-items: center; gap: 14px; max-width: 520px; padding: 12px 12px 12px 14px; border-radius: var(--k-r-xl); background: var(--k-container-low); }
-.cd-connect-logo { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 14px; background: var(--k-container-high); }
+.cd-connect-logo { display: grid; place-items: center; width: 44px; height: 44px; flex: none; }
 .cd-connect-logo .cd-applogo { width: 26px; height: 26px; }
 .cd-connect-words { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .cd-connect-words b { font: 600 15px/1.25 var(--k-sans); color: var(--k-on-surface); }
@@ -1405,7 +1403,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-share-can.k-choice { width: auto; flex: none; }
 .cd-share-sub { margin: 10px 0 0; font: 600 14px/1.3 var(--k-sans); color: var(--k-on-surface); }
 .cd-share-general { display: flex; align-items: center; gap: 12px; min-height: 56px; }
-.cd-share-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--k-container-lowest); color: var(--k-on-surface-variant); }
+.cd-share-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; color: var(--k-on-surface-variant); }
 .cd-share-mark.is-open { background: var(--k-primary-container); color: var(--k-on-primary-container); }
 .cd-share-link.k-choice { flex: 1; min-width: 0; max-width: none; }
 .cd-share-link .k-choice-button { padding-block: 8px; }
@@ -1528,7 +1526,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-progress > summary.cd-progress-head { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container); cursor: pointer; list-style: none; }
 .cd-progress > summary.cd-progress-head::-webkit-details-marker { display: none; }
 .cd-progress[open] > summary.cd-progress-head { border-radius: var(--k-r-l) var(--k-r-l) 6px 6px; }
-.cd-progress-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 12px; background: var(--k-container-lowest); color: var(--k-suo); }
+.cd-progress-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; color: var(--k-suo); }
 .cd-progress-mark .i { width: 20px; height: 20px; }
 .cd-progress-text { display: grid; gap: 7px; flex: 1; min-width: 0; }
 .cd-progress-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -1539,3 +1537,9 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-progress[data-state="stopped"] .cd-progress-wave { color: var(--k-on-surface-variant); }
 .cd-progress-text small { font: 500 12px/1.2 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
 .cd-progress > .call-list { margin-top: 4px; }
+
+/* Marks on a watercolour wash (InkBlot) take the size their class gives, and no tile. */
+.cd .k-ink-blot.ci, .cd .k-ink-blot.cd-artifact-mark { width: 32px; height: 32px; }
+.cd .k-ink-blot.cd-share-mark, .cd .k-ink-blot.cd-progress-mark { width: 36px; height: 36px; }
+.cd .k-ink-blot.cd-dep-icon { width: 38px; height: 38px; }
+.cd .k-ink-blot.cd-conn-logo, .cd .k-ink-blot.cd-connect-logo, .cd .k-ink-blot.cd-access-mark { width: 44px; height: 44px; }

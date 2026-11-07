@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { MorphLoader } from "@kimono/ui";
+import { InkBlot, MorphLoader } from "@kimono/ui";
 import { useCrossTo } from "@/components/crossing";
 import { code } from "./api";
 import { ArtifactFrame, SceneBar, type SceneControl, type SceneState } from "./artifact-frame";
@@ -36,7 +36,7 @@ export function ArtifactAlone({ title, content, media }: { title: string; conten
   return <div className="cd cd-guest cd-artifact-alone">
     <figure className="cd-artifact is-full">
       <figcaption className="cd-artifact-head">
-        <span className="cd-artifact-mark" aria-hidden="true"><Icon name="spark" /></span>
+        <InkBlot className="cd-artifact-mark" tint="#a84d63" seed={title}><Icon name="spark" /></InkBlot>
         <span className="cd-artifact-name"><b title={title}>{title}</b><small>{/<k-scene\b/i.test(content) ? "Animation" : "Artifact"}</small></span>
       </figcaption>
       <div className="cd-artifact-body" style={height ? { height } : undefined}><ArtifactFrame content={content} final title={title} media={media} control={control} onHeight={setHeight} onScene={setScene} /></div>
