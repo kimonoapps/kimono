@@ -421,7 +421,8 @@
       const tick = (now) => {
         if (!this.isConnected) { this._loop = 0; this.silence(); return; }
         const dt = Math.min(.1, (now - last) / 1000); last = now;
-        if (this.playing && this.timeline) {
+        /* Time stands still while what the scene needs is still on its way: it starts, and goes on, only once it can be seen and heard. */
+        if (this.playing && this.timeline && !this.waiting(now)) {
           const end = this.timeline.end;
           this.t = Math.min(this.t + dt, end);
           if (this.t >= end && this.complete) { this.playing = false; }
@@ -518,6 +519,23 @@
       }
     }
     silence() { for (const a of this.audios?.values() ?? []) if (!a.paused) a.pause(); }
+    /*
+     * Whether to hold the clock: 3D before three.js is up, maths before KaTeX, words before
+     * the page's fonts, and a narrated step before its clip can play. Never more than 8
+     * seconds in a row, so something that won't load can't keep a scene from playing.
+     */
+    waiting(now) {
+      const tl = this.timeline;
+      let wait = (tl.uses3d && !this.gl) || (tl.usesTex && !window.katex) || document.fonts?.status === "loading";
+      if (!wait && tl.voices?.length && window.KIMONO_MEDIA && !this.muted && !this.blocked && this.audios) {
+        const v = tl.voices.find((x) => this.t >= x.t0 - .05 && this.t < x.t0 + x.d);
+        const a = v && this.audios.get(v.name);
+        if (a && !a.error && a.readyState < 3) wait = true;
+      }
+      if (!wait) { this._waitSince = 0; return false; }
+      this._waitSince ||= now;
+      return now - this._waitSince < 8000;
+    }
     learnLength(name, seconds) {
       if (!isFinite(seconds) || seconds <= 0 || clipLengths.get(name) === seconds) return;
       const step = this.timeline?.voices?.find((v) => v.name === name);
