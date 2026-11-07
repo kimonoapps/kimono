@@ -103,6 +103,27 @@ test('moving someone to their Apple Account email cancels the old invite and sen
   ]);
 });
 
+test('someone on the team but not approved for this app is not put in its group; anyone already there stays', () => {
+  const plan = planSync({
+    ...base,
+    accounts: [{ ...account('mina', 'mina@kimono.test'), wants: false }, { ...account('ren', 'ren@kimono.test'), wants: false }, { ...account('sora', 'sora@kimono.test'), wants: false }],
+    users: [{ id: 'u-mina', email: 'mina@kimono.test', roles: ['CUSTOMER_SUPPORT'] }, { id: 'u-ren', email: 'ren@kimono.test', roles: ['CUSTOMER_SUPPORT'] }],
+    testers: [{ id: 't-ren', email: 'ren@kimono.test', state: 'INSTALLED' }],
+  });
+  assert.deepEqual(plan.steps, [{ kind: 'invite', email: 'sora@kimono.test', firstName: 'sora', lastName: 'Kimono' }], 'sora still joins the team, for an app they were approved for');
+  assert.deepEqual(plan.statuses.map((s) => [s.username, s.status]), [['mina', 'not requested'], ['ren', 'tester'], ['sora', 'invited (waiting to accept)']]);
+});
+
+test("another app's group only gets people approved for it", () => {
+  const also = planAlso({
+    accounts: [{ ...account('mina', 'mina@kimono.test'), wants: true }, { ...account('ren', 'ren@kimono.test'), wants: false }, { ...account('sora', 'sora@kimono.test'), wants: false }],
+    users: [{ id: 'u-mina', email: 'mina@kimono.test', roles: [] }, { id: 'u-ren', email: 'ren@kimono.test', roles: [] }, { id: 'u-sora', email: 'sora@kimono.test', roles: [] }],
+    testers: [{ id: 't-sora', email: 'sora@kimono.test' }],
+  });
+  assert.deepEqual(also.steps.map((s) => s.email), ['mina@kimono.test']);
+  assert.deepEqual([...also.statuses], [['mina', 'added'], ['sora', 'tester']], 'ren never asked; sora was already in and stays');
+});
+
 test('names split for Apple', () => {
   assert.deepEqual(nameParts('Mina Sato', 'mina'), { firstName: 'Mina', lastName: 'Sato' });
   assert.deepEqual(nameParts('Hana', 'hana.m'), { firstName: 'Hana', lastName: 'hana.m' });

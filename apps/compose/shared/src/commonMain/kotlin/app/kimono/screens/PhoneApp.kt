@@ -23,6 +23,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.kimono.data.LauncherApp
 import app.kimono.data.PhoneApp
+import app.kimono.data.Testflight
+import app.kimono.data.TestflightApp
+import app.kimono.data.appFor
+import app.kimono.data.KimonoProblem
 import app.kimono.data.Platform
 import app.kimono.data.connectLink
 import app.kimono.data.newerVersion
@@ -72,7 +77,7 @@ fun phoneAppHere(app: LauncherApp, platform: Platform): PhoneAppHere {
 fun installedHere(app: LauncherApp, platform: Platform): Boolean? = phoneAppHere(app, platform).installed
 
 @Composable
-fun PhoneAppScreen(app: LauncherApp, platform: Platform, back: () -> Unit) {
+fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight? = null, back: () -> Unit) {
     val phone = app.phoneApp ?: return
     var here by remember { mutableStateOf(phoneAppHere(app, platform)) }
     LifecycleResumeEffect(app.id) { here = phoneAppHere(app, platform); onPauseOrDispose {} }
@@ -92,6 +97,24 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, back: () -> Unit) {
         }
     }
     fun open() { if (!openPhoneApp(phone, platform)) get() }
+
+    /* On an iPhone, an app this Kimono hands out through TestFlight is asked for, and an admin approves it. */
+    var beta by remember { mutableStateOf<TestflightApp?>(null) }
+    var betaEmail by remember { mutableStateOf<String?>(null) }
+    var asking by remember { mutableStateOf(false) }
+    if (platform.os == "ios" && testflight != null) LaunchedEffect(app.id) {
+        testflight.mine()?.let { mine -> beta = mine.appFor(phone, app.fullName); betaEmail = mine.email }
+    }
+    fun ask(bundleId: String) {
+        val flight = testflight ?: return
+        asking = true; problem = null
+        scope.launch {
+            try { val mine = flight.ask(bundleId); beta = mine.appFor(phone, app.fullName); betaEmail = mine.email }
+            catch (failure: KimonoProblem) { problem = failure.message }
+            catch (_: Exception) { problem = "Kimono isn't answering. Try again in a moment." }
+            asking = false
+        }
+    }
 
     AppAccentTheme(app.accent) {
         Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar(app.name, onBack = back) }) { padding ->
@@ -116,7 +139,9 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, back: () -> Unit) {
                     }
                     Spacer(Modifier.height(16.dp))
                     val going = progress
+                    val flight = beta
                     when {
+                        flight != null -> TestflightAsk(flight, betaEmail, asking, ask = { ask(flight.bundleId) }, openTestflight = { platform.openUrl("itms-beta://") })
                         going != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             LinearWavyProgressIndicator(progress = { going }, modifier = Modifier.width(200.dp))
                             Text(if (going < 1f) "Downloading ${phone.name}" else "Android will ask you to confirm", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -165,3 +190,30 @@ fun openPhoneApp(phone: PhoneApp, platform: Platform): Boolean {
     val link = phone.connectLink ?: return platform.openInstalled(pkg)
     return runCatching { platform.openUrl(link) }.isSuccess || platform.openInstalled(pkg)
 }
+
+/** Asking for an iPhone app through TestFlight, and where that stands. */
+@Composable
+private fun TestflightAsk(app: TestflightApp, email: String?, asking: Boolean, ask: () -> Unit, openTestflight: () -> Unit) {
+    val line = when (app.status) {
+        "requested" -> "Waiting for an admin to approve"
+        "declined" -> "Not approved"
+        "waiting" -> "Approved. Apple will email you"
+        "invited", "stuck" -> if (email != null) "Accept Apple's email to $email, then open TestFlight" else "Accept Apple's email, then open TestFlight"
+        "problem" -> "Apple didn't take your email. Ask whoever runs your Kimono"
+        "none" -> "Your Kimono account needs an email first"
+        else -> null
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        line?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
+        when (app.status) {
+            "idle", "declined" -> Seal(if (app.status == "declined") "Ask again" else "Ask for ${app.name}", onClick = ask, busy = asking)
+            "waiting" -> Seal("Check again", onClick = ask, tone = SealTone.Quiet, busy = asking)
+            "invited", "stuck" -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Seal("Open TestFlight", onClick = openTestflight)
+                Seal("Check again", onClick = ask, tone = SealTone.Quiet, busy = asking)
+            }
+            "tester" -> Seal("Open TestFlight", onClick = openTestflight)
+        }
+    }
+}
+

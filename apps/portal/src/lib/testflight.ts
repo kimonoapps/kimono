@@ -31,13 +31,22 @@ export type LastSync = {
   /** The phone apps found in App Store Connect, by name. */
   apps?: string[];
 };
-/** Who asked to try the iPhone app, by Kimono username: only they are invited. */
-type Requested = Record<string, number>;
+/** Kimono's iPhone apps by bundle ID, as people ask for them. */
+export type PhoneAppId = (typeof phoneApps)[number]["bundleId"];
+export const mainApp: PhoneAppId = "app.kimono.compose";
+export const phoneAppName = (bundleId: string) => phoneApps.find((a) => a.bundleId === bundleId)?.name ?? null;
+export const isPhoneApp = (bundleId: unknown): bundleId is PhoneAppId => typeof bundleId === "string" && phoneApps.some((a) => a.bundleId === bundleId);
+/** Someone's ask for one app: nothing is sent until an admin approves it. */
+export type AppRequest = { at: number; state: "pending" | "approved" | "declined"; decidedAt?: number; by?: string };
+/** Requests by Kimono username, then by app. */
+type Requests = Record<string, Partial<Record<PhoneAppId, AppRequest>>>;
+/** A request an admin hasn't answered yet. */
+export type PendingRequest = { username: string; bundleId: PhoneAppId; app: string; at: number };
 /** When each email was last sent a fresh invite, so a button pressed twice doesn't send two. */
 type Resent = Record<string, number>;
 /** The email of someone's Apple Account, by Kimono username, when it isn't their Kimono email: Apple only lets them accept there. */
 type AppleEmails = Record<string, string>;
-type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; requested: Requested; resent: Resent; appleEmails: AppleEmails; lastSync: LastSync | null; statuses: TesterStatus[] };
+type Config = { issuerId: string; keyId: string; privateKey: string; groupName: string; invited: Invited; requests: Requests; resent: Resent; appleEmails: AppleEmails; lastSync: LastSync | null; statuses: TesterStatus[] };
 
 async function readConfig(): Promise<Config | null> {
   try {
@@ -47,7 +56,7 @@ async function readConfig(): Promise<Config | null> {
       issuerId: parsed.issuerId, keyId: parsed.keyId, privateKey: parsed.privateKey,
       groupName: parsed.groupName || "Kimono",
       invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
-      requested: parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {},
+      requests: requestsFrom(parsed),
       resent: parsed.resent && typeof parsed.resent === "object" ? parsed.resent : {},
       appleEmails: parsed.appleEmails && typeof parsed.appleEmails === "object" ? parsed.appleEmails : {},
       lastSync: parsed.lastSync ?? null,
@@ -58,6 +67,16 @@ async function readConfig(): Promise<Config | null> {
   }
 }
 
+/* Requests as kept, from before approval too: whoever had asked was let in to Kimono, and stays so. */
+function requestsFrom(parsed: { requests?: Requests; requested?: Record<string, number> }): Requests {
+  const requests: Requests = parsed.requests && typeof parsed.requests === "object" ? structuredClone(parsed.requests) : {};
+  for (const [username, at] of Object.entries(parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {})) {
+    const mine = requests[username] ??= {};
+    mine[mainApp] ??= { at: Number(at) || Date.now(), state: "approved" };
+  }
+  return requests;
+}
+
 async function writeConfig(config: Config) {
   await mkdir(dirname(configPath), { recursive: true, mode: 0o700 });
   const temporary = `${configPath}.${randomUUID()}.new`;
@@ -66,33 +85,76 @@ async function writeConfig(config: Config) {
 }
 
 /** What the admin page shows: never the key itself. */
-export async function testflightSettings(): Promise<{ keyId: string; issuerId: string; groupName: string; lastSync: LastSync | null; statuses: TesterStatus[] } | null> {
+export async function testflightSettings(): Promise<{ keyId: string; issuerId: string; groupName: string; lastSync: LastSync | null; statuses: TesterStatus[]; pending: PendingRequest[] } | null> {
   const config = await readConfig();
-  return config ? { keyId: config.keyId, issuerId: config.issuerId, groupName: config.groupName, lastSync: config.lastSync, statuses: config.statuses } : null;
+  if (!config) return null;
+  const pending = Object.entries(config.requests).flatMap(([username, mine]) => Object.entries(mine)
+    .filter(([, request]) => request?.state === "pending")
+    .map(([bundleId, request]) => ({ username, bundleId: bundleId as PhoneAppId, app: phoneAppName(bundleId) ?? bundleId, at: request!.at })))
+    .sort((a, b) => a.at - b.at);
+  return { keyId: config.keyId, issuerId: config.issuerId, groupName: config.groupName, lastSync: config.lastSync, statuses: config.statuses, pending };
+}
+
+/** The iPhone apps people can ask for: Kimono, and the others once they're in App Store Connect. */
+export async function testflightApps(): Promise<{ bundleId: PhoneAppId; name: string }[]> {
+  const config = await readConfig().catch(() => null);
+  const found = config?.lastSync?.apps;
+  return phoneApps.filter((a) => a.bundleId === mainApp || found?.includes(a.name)).map((a) => ({ bundleId: a.bundleId, name: a.name }));
+}
+
+/** Where someone stands with each iPhone app: the last sync's word, or their request while it waits. */
+export async function myTestflight(username: string): Promise<{ email: string | null; apps: { bundleId: PhoneAppId; name: string; status: string }[] } | null> {
+  const config = await readConfig();
+  if (!config) return null;
+  const key = username.toLowerCase();
+  const row = config.statuses.find((s) => s.username.toLowerCase() === key);
+  const apps = (await testflightApps()).map((a) => {
+    const request = config.requests[key]?.[a.bundleId];
+    const synced = a.bundleId === mainApp ? row?.status : row?.also?.[a.name];
+    const status = request?.state === "pending" ? "awaiting approval"
+      : request?.state === "declined" ? "declined"
+      : synced && synced !== "not requested" && synced !== "no email" ? synced
+      : request?.state === "approved" ? "approved"
+      : synced ?? "not requested";
+    return { ...a, status };
+  });
+  return { email: row?.email ?? null, apps };
 }
 
 /* Whom the Portal invited, and who asked, kept even without a key. */
-async function readKept(): Promise<{ invited: Invited; requested: Requested; appleEmails: AppleEmails }> {
+async function readKept(): Promise<{ invited: Invited; requests: Requests; appleEmails: AppleEmails }> {
   try {
-    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited; requested?: Requested; appleEmails?: AppleEmails };
+    const parsed = JSON.parse(await readFile(configPath, "utf8")) as { invited?: Invited; requests?: Requests; requested?: Record<string, number>; appleEmails?: AppleEmails };
     return {
       invited: parsed.invited && typeof parsed.invited === "object" ? parsed.invited : {},
-      requested: parsed.requested && typeof parsed.requested === "object" ? parsed.requested : {},
+      requests: requestsFrom(parsed),
       appleEmails: parsed.appleEmails && typeof parsed.appleEmails === "object" ? parsed.appleEmails : {},
     };
   } catch {
-    return { invited: {}, requested: {}, appleEmails: {} };
+    return { invited: {}, requests: {}, appleEmails: {} };
   }
 }
 
-/** Notes that someone asked to try the iPhone app; true when they hadn't before. */
-export async function requestTestflight(username: string): Promise<boolean> {
+/** Notes that someone asked for one iPhone app, for an admin to answer; asking again after a decline asks anew. */
+export async function requestTestflight(username: string, bundleId: PhoneAppId = mainApp): Promise<AppRequest["state"]> {
   const config = await readConfig();
   if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
   const key = username.toLowerCase();
-  if (config.requested[key]) return false;
-  await writeConfig({ ...config, requested: { ...config.requested, [key]: Date.now() } });
-  return true;
+  const existing = config.requests[key]?.[bundleId];
+  if (existing && existing.state !== "declined") return existing.state;
+  await writeConfig({ ...config, requests: { ...config.requests, [key]: { ...config.requests[key], [bundleId]: { at: Date.now(), state: "pending" } } } });
+  return "pending";
+}
+
+/** An admin's answer to a request. Approving sends the invite (or adds them to the app's group) straight away. */
+export async function decideTestflight(username: string, bundleId: PhoneAppId, approve: boolean, by: string) {
+  const config = await readConfig();
+  if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
+  const key = username.toLowerCase();
+  const existing = config.requests[key]?.[bundleId];
+  const decided: AppRequest = { at: existing?.at ?? Date.now(), state: approve ? "approved" : "declined", decidedAt: Date.now(), by };
+  await writeConfig({ ...config, requests: { ...config.requests, [key]: { ...config.requests[key], [bundleId]: decided } } });
+  return approve ? syncTestflight() : null;
 }
 
 /** Whether text looks enough like an email to hand to Apple. */
@@ -111,7 +173,7 @@ export async function setAppleEmail(username: string, email: string | null) {
   if (clean && !looksLikeEmail(clean)) throw new Error("That doesn't look like an email.");
   const appleEmails = { ...config.appleEmails };
   if (clean) appleEmails[key] = clean; else delete appleEmails[key];
-  await writeConfig({ ...config, appleEmails, requested: { ...config.requested, [key]: config.requested[key] ?? Date.now() } });
+  await writeConfig({ ...config, appleEmails });
   return syncTestflight();
 }
 
@@ -187,20 +249,25 @@ const asInvitation = (i: Resource) => {
 };
 const asTester = (t: Resource) => ({ id: t.id, email: text(t, "email"), state: text(t, "state") || undefined });
 
-/** The Kimono accounts, with whether each may still sign in (null when the directory can't say). */
-async function kimonoAccounts(config: Config): Promise<{ list: PlanAccount[]; notAsked: Set<string> }> {
+/**
+ * The Kimono accounts, with whether each may still sign in (null when the
+ * directory can't say). Only people approved for an app have an email here,
+ * plus anyone already invited (so no one is taken off for not asking);
+ * [approved] says which apps each was approved for.
+ */
+async function kimonoAccounts(config: Config): Promise<{ list: PlanAccount[]; notAsked: Set<string>; approved: (username: string, bundleId: PhoneAppId) => boolean }> {
   const accounts = await listAccounts();
-  /* Only people who asked, plus anyone already invited (so no one is taken off for not asking). */
+  const approved = (username: string, bundleId: PhoneAppId) => config.requests[username.toLowerCase()]?.[bundleId]?.state === "approved";
   const invited = new Set(Object.keys(config.invited).map((email) => email.toLowerCase()));
   const notAsked = new Set<string>();
   const list = await Promise.all(accounts.map(async (account) => {
     const standing = await readStanding(account.username).catch(() => null);
     const email = config.appleEmails[account.username.toLowerCase()] || account.email || null;
-    const wanted = Boolean(config.requested[account.username.toLowerCase()] || (email && invited.has(email.toLowerCase())));
+    const wanted = phoneApps.some((a) => approved(account.username, a.bundleId)) || Boolean(email && invited.has(email.toLowerCase()));
     if (email && !wanted) notAsked.add(account.username.toLowerCase());
-    return { username: account.username, name: account.name || account.username, email: wanted ? email : null, active: standing ? standing.active : null };
+    return { username: account.username, name: account.name || account.username, email: wanted ? email : null, active: standing ? standing.active : null, wants: approved(account.username, mainApp) };
   }));
-  return { list, notAsked };
+  return { list, notAsked, approved };
 }
 
 /** Gives someone limited to some apps sight of this one too: internal testers must see the app. */
@@ -339,7 +406,7 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
     const { main, app, present, notYet, groupFor } = await findApps(store, config);
     const broken: string[] = [];
     const group = await groupFor(app.id);
-    const [users, invitations, testers, { list: accounts, notAsked }] = await Promise.all([
+    const [users, invitations, testers, { list: accounts, notAsked, approved }] = await Promise.all([
       store.all("/v1/users?limit=200"),
       store.all("/v1/userInvitations?limit=200"),
       store.all(`/v1/betaGroups/${group.id}/betaTesters?limit=200`),
@@ -399,7 +466,7 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
         const otherGroup = await groupFor(other.app.id);
         const otherTesters = await store.all(`/v1/betaGroups/${otherGroup.id}/betaTesters?limit=200`);
         const removed = new Set(plan.steps.filter((step) => step.kind === "removeUser" || step.kind === "removeInvitation").map((step) => step.email));
-        const also = planAlso({ accounts, users: planUsers.filter((u) => !removed.has(u.email.toLowerCase())), testers: otherTesters.map(asTester) });
+        const also = planAlso({ accounts: accounts.map((a) => ({ ...a, wants: approved(a.username, other.bundleId) })), users: planUsers.filter((u) => !removed.has(u.email.toLowerCase())), testers: otherTesters.map(asTester) });
         for (const row of statuses) {
           const status = also.statuses.get(row.username.toLowerCase());
           if (status) row.also = { ...row.also, [other.name]: status };

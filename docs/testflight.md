@@ -2,12 +2,21 @@
 
 The Portal keeps the iPhone apps' TestFlight testers in step with Kimono's accounts (`apps/portal/src/lib/testflight.ts`, rules in `testflight-plan.ts`). It uses the App Store Connect API key given under **Admin → Phone app**, stored in the Portal's state dir (`testflight.json`), never shown again. CI has its own copy (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY` secrets) for uploads only.
 
+## Asking and approval
+
+Nobody is invited until they ask and an admin approves, one app at a time (Kimono, Kimono Photos):
+
+- **People ask** for each app on **Get the app** on their iPhone, or from that app's screen in the Kimono app (`POST /api/v1/app/testflight`, `{ "app": "app.kimono.photos" }`; the Kimono app when left out). `GET` answers where they stand with each app.
+- **Admins answer** under **Asking for the iPhone apps** on **Admin → Phone app**. Approving sends the invite straight away; declining lets them ask again later.
+
+Requests live in `testflight.json` (`requests`, by username and bundle ID). People who had asked before approval existed count as approved for Kimono only. Anyone already in an app's group stays there.
+
 ## Sync
 
-Runs every hour on its own, when someone asks from **Get the app** on an iPhone, and from **Sync now** on the admin page. It:
+Runs every hour on its own, after an approval, and from **Sync now** on the admin page. It:
 
-- invites anyone who asked (and has Kimono access and an email) to the App Store Connect team,
-- adds them to each app's internal `Kimono` group once they accept, which sends TestFlight's invite,
+- invites anyone approved for an app (with Kimono access and an email) to the App Store Connect team,
+- adds them to the `Kimono` internal group of each app they were approved for once they accept, which sends TestFlight's invite,
 - takes off only people the Portal itself invited, when their Kimono access ends.
 
 Sync never sends anyone a second email. People whose invite needs resending show as stuck:

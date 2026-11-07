@@ -1,9 +1,10 @@
-import { InkPortraitFrame, Seal } from "@kimono/ui";
+import { InkPortraitFrame } from "@kimono/ui";
 import { JointSwitch } from "@/components/joint-switch";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
 import { Crossing } from "@/components/crossing";
 import { HoldSeal } from "@/components/hold-seal";
+import { PendingButton } from "@/components/pending-button";
 import { LineIcon } from "@/components/line-icon";
 import { Portrait } from "@/components/portrait";
 import { picturePathFor } from "@/lib/pictures";
@@ -11,7 +12,7 @@ import { getPlatformSettings } from "@/lib/settings";
 import { readReleases, setRequired } from "@/lib/app-releases";
 import type { AppPlatform } from "@/lib/app-updates";
 import { redirect } from "next/navigation";
-import { forgetTestflightKey, resendTestflight, setAppleEmail, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
+import { decideTestflight, forgetTestflightKey, isPhoneApp, resendTestflight, setAppleEmail, saveTestflightKey, syncTestflight, syncTestflightIfDue, testflightSettings } from "@/lib/testflight";
 import { isStuck } from "@/lib/testflight-plan";
 import { isApiKey } from "@/lib/testflight-token";
 
@@ -23,15 +24,17 @@ async function admin() {
   return current.user;
 }
 
-/** Runs an admin change and comes back, with what went wrong if anything did. */
-async function then(work: () => Promise<unknown>) {
-  try { await work(); } catch (error) {
+/** Runs an admin change and comes back, saying what happened ([done], or what the work returns) or what went wrong. */
+async function then(work: () => Promise<unknown>, done?: string) {
+  let said: unknown;
+  try { said = await work(); } catch (error) {
     redirect(`/admin/phone-app?error=${encodeURIComponent(error instanceof Error ? error.message : "That didn't work.")}`);
   }
-  redirect("/admin/phone-app");
+  const message = typeof said === "string" ? said : done;
+  redirect(message ? `/admin/phone-app?done=${encodeURIComponent(message)}` : "/admin/phone-app");
 }
 
-export default async function PhoneAppPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function PhoneAppPage({ searchParams }: { searchParams: Promise<{ error?: string; done?: string }> }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "owner" && session.user.role !== "admin") redirect("/");
@@ -56,13 +59,18 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
       if (!/^[A-Z0-9]{10}$/.test(keyId)) throw new Error("The key ID is ten letters and numbers, like 2X9R4HXF34.");
       if (!isApiKey(privateKey)) throw new Error("Choose the .p8 key file App Store Connect gave you.");
       await saveTestflightKey({ issuerId, keyId, privateKey, groupName: "Kimono" });
-      await syncTestflight();
+      const outcome = await syncTestflight();
+      return outcome.ok ? "Key saved, and TestFlight is in step." : `Key saved. ${outcome.message}`;
     });
   }
   async function syncNow() {
     "use server";
     await admin();
-    await then(() => syncTestflight());
+    await then(async () => {
+      const outcome = await syncTestflight();
+      if (!outcome.ok) throw new Error(outcome.message);
+      return "TestFlight is in step.";
+    });
   }
   /* A fresh invite for one person, or everyone stuck; a failure shows as the page's error. */
   async function resend(form: FormData) {
@@ -74,25 +82,43 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
       if (!outcome.ok) throw new Error(outcome.message);
       const soon = outcome.results.find((r) => r.outcome === "too soon");
       if (username && soon) throw new Error("An invite went out to them a few minutes ago.");
+      return outcome.message;
     });
   }
   /* Invites someone at another email (their Apple Account's); empty goes back to their Kimono email. */
   async function changeEmail(form: FormData) {
     "use server";
     await admin();
+    const username = String(form.get("username") || "");
+    const email = String(form.get("email") || "").trim();
     await then(async () => {
-      const outcome = await setAppleEmail(String(form.get("username") || ""), String(form.get("email") || "") || null);
+      const outcome = await setAppleEmail(username, email || null);
       if (!outcome.ok) throw new Error(outcome.message);
+      return email ? `${username} will be invited at ${email}.` : `${username} is back on their Kimono email.`;
+    });
+  }
+  /* An admin's answer to someone asking for an iPhone app: approving sends the invite. */
+  async function decide(form: FormData) {
+    "use server";
+    const me = await admin();
+    const username = String(form.get("username") || "");
+    const app = form.get("app");
+    const approve = form.get("decision") === "approve";
+    await then(async () => {
+      if (!isPhoneApp(app)) throw new Error("There's no such iPhone app.");
+      const outcome = await decideTestflight(username, app, approve, me.username ?? me.name ?? "admin");
+      if (outcome && !outcome.ok) throw new Error(`Approved, but ${outcome.message.charAt(0).toLowerCase()}${outcome.message.slice(1)}`);
+      return approve ? `${username} is approved. Apple will email them.` : `${username}'s request was declined.`;
     });
   }
   async function forgetKey() {
     "use server";
     await admin();
-    await then(() => forgetTestflightKey());
+    await then(() => forgetTestflightKey(), "The App Store Connect key is forgotten.");
   }
 
   const platforms: { platform: AppPlatform; label: string }[] = [{ platform: "android", label: "Android" }, { platform: "ios", label: "iPhone" }];
-  const pictures = new Map(await Promise.all((testflight?.statuses ?? []).map(async (row) => [row.username, await picturePathFor(row.username)] as const)));
+  const pictures = new Map(await Promise.all([...new Set([...(testflight?.statuses ?? []).map((row) => row.username), ...(testflight?.pending ?? []).map((r) => r.username)])].map(async (username) => [username, await picturePathFor(username)] as const)));
   const checked = (at: number | string) => new Date(at).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" });
 
   /*
@@ -108,6 +134,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
         <span><h1>Phone app</h1><p className="sub">Phones offer each release when opened. A required one must be installed first.</p></span>
       </div>
       {query.error ? <p role="alert" className="app-notice is-error">{query.error}</p> : null}
+      {query.done && !query.error ? <p role="status" className="app-notice">{query.done}</p> : null}
 
       <div className="cols">
         {platforms.map(({ platform, label }, index) => {
@@ -129,11 +156,36 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
       </div>
 
       {testflight ? <>
+        {testflight.pending.length ? <>
+          <div className="testers-head"><div className="label">Asking for the iPhone apps</div></div>
+          <div className="seg">
+            {testflight.pending.map((request) => {
+              const row = testflight.statuses.find((s) => s.username.toLowerCase() === request.username.toLowerCase());
+              const name = row?.name ?? request.username;
+              return <div className="row" key={`${request.username}:${request.bundleId}`}>
+                <InkPortraitFrame seed={request.username} weight={5}><Portrait name={name} username={request.username} picture={pictures.get(request.username)} size={36} /></InkPortraitFrame>
+                <span className="text"><b>{name}</b><small>@{request.username} · wants {request.app} · asked {checked(request.at)}</small></span>
+                <form action={decide} className="request-decide">
+                  <input type="hidden" name="username" value={request.username} />
+                  <input type="hidden" name="app" value={request.bundleId} />
+                  <input type="hidden" name="decision" value="decline" />
+                  <PendingButton className="txt" pending="Declining…" aria-label={`Decline ${name} for ${request.app}`}>Decline</PendingButton>
+                </form>
+                <form action={decide} className="request-decide">
+                  <input type="hidden" name="username" value={request.username} />
+                  <input type="hidden" name="app" value={request.bundleId} />
+                  <input type="hidden" name="decision" value="approve" />
+                  <PendingButton seal compact pending="Approving…" aria-label={`Approve ${name} for ${request.app}`}>Approve</PendingButton>
+                </form>
+              </div>;
+            })}
+          </div>
+        </> : null}
         <div className="testers-head">
           <div className="label">TestFlight testers</div>
           {testflight.lastSync ? <small>Checked {checked(testflight.lastSync.at)}</small> : null}
-          {testflight.statuses.some((row) => isStuck(row.status)) ? <form action={resend}><button className="txt" type="submit"><LineIcon name="out" />Re-invite stuck</button></form> : null}
-          <form action={syncNow}><button className="txt" type="submit"><LineIcon name="restore" />Sync now</button></form>
+          {testflight.statuses.some((row) => isStuck(row.status)) ? <form action={resend}><PendingButton className="txt" pending="Re-inviting…"><LineIcon name="out" />Re-invite stuck</PendingButton></form> : null}
+          <form action={syncNow}><PendingButton className="txt" pending="Syncing…"><LineIcon name="restore" />Sync now</PendingButton></form>
         </div>
         {testflight.lastSync && !testflight.lastSync.ok ? <p role="alert" className="app-notice is-error">{testflight.lastSync.message}</p> : null}
         {testflight.statuses.length ? <div className="seg">
@@ -145,16 +197,16 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
                 <form action={changeEmail}>
                   <input type="hidden" name="username" value={row.username} />
                   <label className="field"><small>Apple Account email</small><input type="email" name="email" defaultValue={row.email ?? ""} placeholder="Their Kimono email" /></label>
-                  <button className="txt" type="submit">Invite this email</button>
+                  <PendingButton className="txt" pending="Inviting…">Invite this email</PendingButton>
                 </form>
               </details> : null}
             </span>
-            {isStuck(row.status) ? <form action={resend}><input type="hidden" name="username" value={row.username} /><button className="txt" type="submit" aria-label={`Re-invite ${row.name}`}>Re-invite</button></form> : null}
+            {isStuck(row.status) ? <form action={resend}><input type="hidden" name="username" value={row.username} /><PendingButton className="txt" pending="Sending…" aria-label={`Re-invite ${row.name}`}>Re-invite</PendingButton></form> : null}
             <span className={row.status === "tester" ? "k-ink-dot k-running" : row.status.startsWith("error") || row.status === "no email" ? "k-ink-dot k-wants" : "k-ink-dot"}>{row.status.startsWith("error") ? "Problem" : testerLabel(row.status)}</span>
           </div>)}
         </div> : <p className="lead phone-empty">Nobody has asked for the iPhone app yet. People ask from Get the app on their iPhone.</p>}
         <div className="card testflight-key">
-          <span><b>App Store Connect key {testflight.keyId}</b><small>People who ask on their iPhone are invited at their Kimono email and added to {appList(testflight.lastSync?.apps)} once they accept. When their Kimono access ends, they&rsquo;re taken off.</small></span>
+          <span><b>App Store Connect key {testflight.keyId}</b><small>People ask for each of {appList(testflight.lastSync?.apps)} from Get the app or the Kimono app. Once you approve, they&rsquo;re invited at their Kimono email (or the email they chose) and added to that app once they accept. When their Kimono access ends, they&rsquo;re taken off.</small></span>
           <form action={forgetKey}><HoldSeal label="Hold to forget key" holdingLabel="Keep holding" /></form>
         </div>
       </> : <>
@@ -166,7 +218,7 @@ export default async function PhoneAppPage({ searchParams }: { searchParams: Pro
             <label className="field"><small>Key ID</small><input name="keyId" required autoComplete="off" placeholder="2X9R4HXF34" /></label>
           </div>
           <label className="field"><small>Key file (.p8)</small><input name="key" type="file" accept=".p8" required /></label>
-          <div className="sheet-actions"><Seal type="submit">Save and sync</Seal></div>
+          <div className="sheet-actions"><PendingButton seal pending="Saving…">Save and sync</PendingButton></div>
         </form>
       </>}
     </div>
@@ -182,6 +234,8 @@ function testerLine(status: string, email?: string | null) {
   if (status === "tester (not accepted)") return "Hasn't accepted TestFlight's invite";
   if (status === "no email") return "Needs an email on their account";
   if (status === "not requested") return "Hasn't asked yet";
+  if (status === "awaiting approval") return "Waiting for approval";
+  if (status === "declined") return "Not approved";
   if (status === "no Kimono access") return "Their Kimono access has ended";
   if (status === "removed") return "Taken off TestFlight";
   return status;

@@ -133,6 +133,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     code.appLink = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID } ?: code.appLink
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
+    val testflight = remember(session) { app.kimono.data.Testflight(session) }
     val order = remember(session) { app.kimono.screens.AppOrder(platform, session.answers.server) }
     LaunchedEffect(order) { order.load() }
     /*
@@ -279,7 +280,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
             composable("app/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
-                model.drive.launcher.collectAsState().value?.firstOrNull { it.id == id }?.let { found -> app.kimono.screens.PhoneAppScreen(found, platform) { nav.popBackStack() } }
+                model.drive.launcher.collectAsState().value?.firstOrNull { it.id == id }?.let { found -> app.kimono.screens.PhoneAppScreen(found, platform, testflight) { nav.popBackStack() } }
             }
             listOf("vpn", "vpn/people", "vpn/connect").forEach { room ->
                 composable(room) { app.kimono.screens.VpnScreen(vpn, platform, model.drive.launcher.value?.firstOrNull { it.id == "kimono-vpn" }, room, go = { goTab(it) }) { nav.popBackStack() } }

@@ -4,14 +4,16 @@
  * asks this for the steps, and carries them out, so the rules can be
  * tested on their own.
  *
- * Everyone with an active Kimono account and an email becomes an internal
- * tester: invited to the App Store Connect team (internal testers must be
- * on it), then added to the Kimono group once they've accepted. When their
+ * People ask for each app and an admin approves (lib/testflight.ts keeps
+ * that). Everyone approved for an app, with an active Kimono account and an
+ * email, becomes an internal tester: invited to the App Store Connect team
+ * (internal testers must be on it), then added to that app's group once
+ * they've accepted. Anyone already in a group stays. When their
  * Kimono access ends, only people this Portal invited are taken off again,
  * never anyone else on the team.
  *
- * Other Kimono phone apps (Kimono Photos) share the same people: planAlso
- * puts whoever is on the team into that app's group too. Invitations and
+ * Other Kimono phone apps (Kimono Photos): planAlso puts whoever is on the
+ * team and approved for that app into its group. Invitations and
  * removals are the team's, so only the Kimono app's plan makes them.
  */
 
@@ -21,6 +23,8 @@ export type PlanAccount = {
   email: string | null;
   /** null when the directory couldn't say: never a reason to remove someone. */
   active: boolean | null;
+  /** false when they haven't been approved for this app: they're invited to the team (for another app) but not put in this one's group. */
+  wants?: boolean;
 };
 export type PlanUser = { id: string; email: string; roles: string[] };
 /** expired: Apple's link no longer works, so they need a fresh one. */
@@ -83,7 +87,10 @@ export function planSync(input: {
     wanted.add(email);
     const names = nameParts(account.name, account.username);
     if (testers.has(email)) row(notAccepted(testers.get(email)?.state) ? "tester (not accepted)" : "tester");
-    else if (users.has(email)) { steps.push({ kind: "add", email, ...names }); row("added"); }
+    else if (users.has(email)) {
+      if (account.wants === false) row("not requested");
+      else { steps.push({ kind: "add", email, ...names }); row("added"); }
+    }
     else if (invitations.has(email)) row(invitations.get(email)?.expired ? "invite expired" : "invited (waiting to accept)");
     else { steps.push({ kind: "invite", email, ...names }); row("invited (waiting to accept)"); }
   }
@@ -109,7 +116,10 @@ export function planAlso(input: { accounts: PlanAccount[]; users: PlanUser[]; te
   steps: Extract<Step, { kind: "add" }>[];
   statuses: Map<string, string>;
 } {
-  const plan = planSync({ ...input, invitations: [], invited: {} });
+  /* Only people approved for this app, and anyone already in its group (kept as they are). */
+  const inGroup = new Set(input.testers.map((t) => clean(t.email)));
+  const accounts = input.accounts.filter((a) => a.wants !== false || (a.email && inGroup.has(clean(a.email))));
+  const plan = planSync({ ...input, accounts, invitations: [], invited: {} });
   const steps = plan.steps.filter((step): step is Extract<Step, { kind: "add" }> => step.kind === "add");
   const statuses = new Map(plan.statuses
     .filter((row) => row.status.startsWith("tester") || row.status === "added" || row.status.startsWith("invited"))
