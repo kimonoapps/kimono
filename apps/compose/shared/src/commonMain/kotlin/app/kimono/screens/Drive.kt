@@ -304,6 +304,8 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
                                     onClick = {
                                         when {
                                             selecting -> if (isPicked) selected.remove(node.id) else selected.add(node.id)
+                                            /* A notebook opens in Notes and a chat in Kimono AI; what's inside is a folder's worth away, from the menu. */
+                                            node.appRoute != null -> open(node.appRoute!!)
                                             node.isFolder -> open("folder/${node.id}")
                                             else -> openFile(node)
                                         }
@@ -328,6 +330,10 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
             node = node,
             thumbnail = { pixels -> platform.thumbnail(node, pixels) },
             choices = buildList {
+                node.appRoute?.let { route ->
+                    add(NodeChoice(if (node.purpose == "notebook") "Open in Notes" else "Open chat", if (node.purpose == "notebook") "notes" else "chat") { open(route) })
+                    add(NodeChoice("Show files", "folder") { open("folder/${node.id}") })
+                }
                 if (!node.isFolder) add(NodeChoice("Open", "file") { openFile(node) })
                 if (canEdit && !node.isFolder) add(NodeChoice("Share link", "share") { shareLinks(listOf(node)) })
                 if (!node.isFolder && (canEdit || node.link != null)) add(NodeChoice(if (node.link == null) "Copy public link" else "Copy link", "link") {
@@ -440,7 +446,13 @@ private fun NodeIcon(node: DriveNode, thumbnail: suspend (Int) -> String?, size:
     val marked = !node.isFolder && picture == null && !busy && remember(node.name) { fileMarkUri(node.name) != null }
     /* Anything without a picture of its own sits in a watercolour blot: folders in the app's ink, files in suō, a file's type mark on top. */
     if (!busy && picture == null) {
-        InkBlot(node.id, size = size, tint = if (node.isFolder) LocalInkTint.current ?: app.kimono.theme.Kata.plum else app.kimono.theme.Kata.suo) {
+        /* A notebook is washed in Notes' colour, a chat or project in Kimono AI's; other folders in the app's ink, files in suō. */
+        val tint = when (node.purpose.takeIf { node.isFolder }) {
+            "notebook" -> app.kimono.ui.inkHex(NOTES_TINT)
+            "chat", "project" -> app.kimono.ui.inkHex(CODE_TINT)
+            else -> if (node.isFolder) LocalInkTint.current ?: app.kimono.theme.Kata.plum else app.kimono.theme.Kata.suo
+        }
+        InkBlot(node.id, size = size, tint = tint) {
             val plain = @Composable { Icon(kimonoIcon(iconFor(node)), null, modifier = Modifier.size(size / 2), tint = app.kimono.theme.Kata.ink) }
             if (marked) FileTypeMark(node.name, Modifier.size(size * .5f), fallback = plain) else plain()
         }
@@ -599,7 +611,13 @@ private fun MovePicker(model: DriveModel, platform: Platform, moving: List<Drive
     }
 }
 
+private const val NOTES_TINT = "#b56d78"
+private const val CODE_TINT = "#3f6b6a"
+
 private fun iconFor(node: DriveNode) = when {
+    node.isFolder && node.purpose == "notebook" -> "notes"
+    node.isFolder && node.purpose == "chat" -> "chat"
+    node.isFolder && node.purpose == "project" -> "branch"
     node.isFolder -> "folder"
     node.mime?.startsWith("image/") == true -> "image"
     node.mime?.startsWith("video/") == true -> "video"
@@ -610,7 +628,7 @@ private fun detailOf(node: DriveNode): String = buildList {
     if (!node.isFolder) add(readableSize(node.size))
     if (node.link != null) add("Public link on")
     node.guest?.let { add("Added by $it") }
-}.joinToString(" · ").ifEmpty { "Folder" }
+}.joinToString(" · ").ifEmpty { when (node.purpose.takeIf { node.isFolder }) { "notebook" -> "Notebook"; "chat" -> "Chat"; "project" -> "Project"; else -> "Folder" } }
 
 @Composable
 private fun UploadRow(task: UploadStatus, retry: () -> Unit, dismiss: () -> Unit) {

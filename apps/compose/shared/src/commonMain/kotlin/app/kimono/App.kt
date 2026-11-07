@@ -187,7 +187,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "note/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "notes/{notebook}", "note/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -290,6 +290,14 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             composable("notes") {
                 AppAccentTheme(notesAccent()) {
                     app.kimono.screens.NotesScreen(notes, notesAccent(), admin, me?.username, back = { goTab("home") }, open = { nav.navigate("note/$it") }) { nav.navigate(it) }
+                }
+            }
+            /* A notebook opened from Drive. */
+            composable("notes/{notebook}") { backStack ->
+                val notebook = backStack.arguments?.read { getStringOrNull("notebook") } ?: ""
+                LaunchedEffect(notebook) { notes.go(app.kimono.screens.NotePlace.InNotebook(notebook)) }
+                AppAccentTheme(notesAccent()) {
+                    app.kimono.screens.NotesScreen(notes, notesAccent(), admin, me?.username, back = { nav.popBackStack() }, open = { nav.navigate("note/$it") }) { nav.navigate(it) }
                 }
             }
             composable("note/{id}") { backStack ->

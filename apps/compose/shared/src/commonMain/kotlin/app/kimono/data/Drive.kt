@@ -73,8 +73,20 @@ data class DriveNode(
     val guest: String? = null,
     val version: Int = 1,
     val contentVersion: Int = 1,
+    /** What a folder is to another app: "notebook" (Notes), "chat" or "project" (Kimono AI); null for a plain folder. */
+    val purpose: String? = null,
+    /** For a chat, the chat it holds. */
+    val ref: String? = null,
 ) {
     val isFolder get() = kind == "folder"
+
+    /** Where a notebook or chat opens, in its own app; null for anything Drive opens itself. */
+    val appRoute: String? get() = when {
+        !isFolder -> null
+        purpose == "notebook" -> "notes/$id"
+        purpose == "chat" && ref != null -> "code/$ref"
+        else -> null
+    }
 
     /** Photos, videos and PDFs: the files a small picture says more about than an icon. */
     val mayHaveThumbnail: Boolean get() {
