@@ -2001,6 +2001,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
 /* Memoised: the page around it ticks every second while a turn runs, and the chat needn't. */
 const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, typing = [] }: { workspace: Workspace; events: StoredEvent[]; drafts: Drafts; running: boolean; blocked: string | null; typing?: string[] }) {
   const { access } = useContext(ChatAccess);
+  const { me } = useContext(ViewerContext);
   const owns = access === "owner";
   const items = useMemo(() => itemsOf(events), [events]);
   /* Your thumbs, kept with the chat they belong to so another chat's never show. */
@@ -2019,8 +2020,13 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
       if (rating === null) delete next[seq]; else next[seq] = rating;
       return { chat, ratings: next };
     });
-    return code.rate(chat, seq, rating, note).then((next) => setRated({ chat, ratings: next }));
+    return code.rate(chat, seq, rating, note).then((next) => setRated({ chat, ratings: next }), (error) => {
+      /* Not saved: show what the server has, not what was hoped. */
+      code.ratings(chat).then((next) => setRated((now) => now.chat === chat ? { chat, ratings: next } : now), () => {});
+      throw error;
+    });
   };
+  const asking = me ? askingFor(items, ratings) : null;
   /* An artifact still being written has no place in the timeline yet: it is drawn at the end until its call lands. */
   const placed = new Set(items.flatMap((i) => i.type === "artifact" ? [i.id] : []));
   const writing = Object.entries(drafts.artifacts).filter(([, d]) => !placed.has(d.id));
@@ -2076,7 +2082,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
               ? <RevealWords key={item.seq} id={`${workspace.id}:${item.seq}`} text={item.text} className="cd-say" />
               : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
-            case "done": return <Done key={item.seq} event={item.event} rating={ratings[item.seq] ?? null} onRate={rateAnswer.bind(null, item.seq)} />;
+            case "done": return <Done key={item.seq} event={item.event} rating={ratings[item.seq] ?? null} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
             case "sent": return <div key={item.seq} className="cd-sent">{item.files.map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}</div>;
             case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
@@ -2656,18 +2662,44 @@ function ToolRow({ tool }: { tool: Tool }) {
   </details>;
 }
 
-function Done({ event, rating, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; rating: 1 | -1 | null; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
+/* What someone says next that shows how an answer landed: put out, or pleased. */
+const putOut = /\b(wtf|useless|stupid|terrible|awful|garbage|annoying|frustrat\w*|ridiculous|(that'?s|it'?s|still|all) wrong|still (broken|not|doesn'?t|isn'?t)|not what i (asked|wanted|meant|said)|why (did|would|do) you|you (didn'?t|keep|never|ignored))\b|\u{1F621}|\u{1F92C}|\u{1F624}|\u{1F644}|!{3,}/iu;
+const pleased = /\b(thanks?|thank you|thx|ty|perfect|great|awesome|amazing|excellent|brilliant|love (it|this|that)|nice|exactly|well done|good job|works now|that works|you'?re the best)\b|\u{1F64F}|\u2764|\u{1F389}|\u{1F44D}|\u{1F60D}|\u{1F970}/iu;
+const shouting = (text: string) => { const letters = text.replace(/[^A-Za-z]/g, ""); return letters.length >= 8 && letters === letters.toUpperCase(); };
+const feeling = (text: string) => putOut.test(text) || pleased.test(text) || shouting(text);
+/* A reply this slow is worth a word on. */
+const slowReply = 2 * 60_000;
+
+/**
+ * The answer worth a thumb, when one isn't given yet: the last one or the one before,
+ * if what came after it sounds put out or pleased, or the last one if it took long.
+ */
+function askingFor(items: Item[], ratings: Record<number, 1 | -1>): number | null {
+  const dones = items.flatMap((item, at) => item.type === "done" && !item.event.cancelled ? [at] : []);
+  for (const [i, at] of dones.slice(-2).reverse().entries()) {
+    const done = items[at] as Extract<Item, { type: "done" }>;
+    if (ratings[done.seq]) continue;
+    const next = items.findIndex((item, j) => j > at && item.type === "done");
+    const after = items.slice(at + 1, next < 0 ? undefined : next);
+    if (after.some((item) => item.type === "ask" && feeling(item.event.text))) return done.seq;
+    if (i === 0 && (done.event.durationMs ?? 0) >= slowReply) return done.seq;
+  }
+  return null;
+}
+
+function Done({ event, rating, asking, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; rating: 1 | -1 | null; asking: boolean; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
   const { me } = useContext(ViewerContext);
-  /* A thumb asks first: admins will see the answer, without the person's name. Taking one back doesn't. */
+  /* A thumb holds as soon as it's given; then there's room to say why, and who sees it. */
   const [confirming, setConfirming] = useState<1 | -1 | null>(null);
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
   /* Which Claude answered, and how long it took. Never what it cost. */
   const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null].filter(Boolean);
   const give = (next: 1 | -1) => {
-    if (rating === next) void onRate(null).catch(() => { /* the thumb comes back on the next load */ });
-    else setConfirming(next);
+    if (rating === next) void onRate(null).catch(() => { /* the thumb comes back as the server has it */ });
+    else { void onRate(next).catch(() => { /* Send in the dialog tries again */ }); setConfirming(next); }
   };
-  const thumbs = me ? <span className="cd-thumbs">
+  const thumbs = me ? <span className={cx("cd-thumbs", asking && "is-asking")}>
+    {asking ? <span className="cd-thumbs-ask">How was this?</span> : null}
     <button type="button" className="cd-iconbutton" aria-label="Good answer" aria-pressed={rating === 1} title="Good answer" onClick={() => give(1)}><Icon name="thumb-up" /></button>
     <button type="button" className="cd-iconbutton" aria-label="Bad answer" aria-pressed={rating === -1} title="Bad answer" onClick={() => give(-1)}><Icon name="thumb-down" /></button>
   </span> : null;
@@ -2679,7 +2711,7 @@ function Done({ event, rating, onRate }: { event: Extract<CodeEvent, { kind: "do
   </>;
 }
 
-/** Before a thumb is saved: who sees it, and room to say why. */
+/** Once a thumb is given: who sees it, and room to say why. */
 function RateDialog({ rating, onRate, onClose }: { rating: 1 | -1; onRate: (rating: 1 | -1, note?: string) => Promise<unknown>; onClose: () => void }) {
   const box = useRef<HTMLDialogElement>(null);
   const [note, setNote] = useState("");
@@ -2699,7 +2731,7 @@ function RateDialog({ rating, onRate, onClose }: { rating: 1 | -1; onRate: (rati
     <footer>
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
       <span className="cd-grow" />
-      <Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Cancel</Seal>
+      <Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Skip</Seal>
       <Seal type="button" compact disabled={sending} onClick={send}>{sending ? "Sending" : "Send"}</Seal>
     </footer>
   </dialog>;

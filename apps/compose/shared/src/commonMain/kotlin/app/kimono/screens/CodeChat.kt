@@ -471,6 +471,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     LaunchedEffect(w.id, hasItems) { if (hasItems && liveFrom == Long.MAX_VALUE) { kotlinx.coroutines.delay(500); liveFrom = itemsNow.lastOrNull()?.key ?: 0L } }
     var ratings by remember(w.id) { mutableStateOf<Map<Long, Int>>(emptyMap()) }
     LaunchedEffect(w.id) { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } }
+    val asking = askingFor(items, ratings)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     /* A tap on the conversation itself (not on something in it) puts the keyboard away, ending a rename as tapping away does on the website. */
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
@@ -489,9 +490,10 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                         /* Let out once: scrolled away and back, or already out, it just shows. */
                         is Item.Say -> if (item.key > liveFrom && (revealed[item.key] ?: -1) < item.text.length) RevealWords(item.text, from = revealed[item.key]) { revealed[item.key] = it } else Markdown(item.text)
                         is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
-                        is Item.Done -> DoneNote(item.event, ratings[item.key]) { rating, note ->
+                        is Item.Done -> DoneNote(item.event, ratings[item.key], asking = asking == item.key) { rating, note ->
                             ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
-                            scope.launch { runCatching { code.rate(w.id, item.key, rating, note) }.onSuccess { ratings = it } }
+                            /* Not saved: show what the server has, not what was hoped. */
+                            scope.launch { runCatching { code.rate(w.id, item.key, rating, note) }.onSuccess { ratings = it }.onFailure { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } } }
                         }
                         is Item.Shots -> ShotGallery(code, w, item.shots) { at -> viewing = item.shots.toList() to at }
                         is Item.Access -> AccessCard(code, drive, marks, people, w, item.event, item.answer, open)
@@ -979,15 +981,41 @@ private fun DiffLines(lines: List<String>, modifier: Modifier = Modifier) {
     }
 }
 
+/* What someone says next that shows how an answer landed: put out, or pleased (as on the website). */
+private val putOut = Regex("\\b(wtf|useless|stupid|terrible|awful|garbage|annoying|frustrat\\w*|ridiculous|(that'?s|it'?s|still|all) wrong|still (broken|not|doesn'?t|isn'?t)|not what i (asked|wanted|meant|said)|why (did|would|do) you|you (didn'?t|keep|never|ignored))\\b|\uD83D\uDE21|\uD83E\uDD2C|\uD83D\uDE24|\uD83D\uDE44|!{3,}", RegexOption.IGNORE_CASE)
+private val pleased = Regex("\\b(thanks?|thank you|thx|ty|perfect|great|awesome|amazing|excellent|brilliant|love (it|this|that)|nice|exactly|well done|good job|works now|that works|you'?re the best)\\b|\uD83D\uDE4F|\u2764|\uD83C\uDF89|\uD83D\uDC4D|\uD83D\uDE0D|\uD83E\uDD70", RegexOption.IGNORE_CASE)
+private fun shouting(text: String): Boolean { val letters = text.filter { it in 'A'..'Z' || it in 'a'..'z' }; return letters.length >= 8 && letters == letters.uppercase() }
+private fun feeling(text: String) = putOut.containsMatchIn(text) || pleased.containsMatchIn(text) || shouting(text)
+/* A reply this slow is worth a word on. */
+private const val SLOW_REPLY = 2 * 60_000L
+
+/** The answer worth a thumb, when one isn't given yet: the last one or the one before, if what came after it sounds put out or pleased, or the last one if it took long. */
+private fun askingFor(items: List<Item>, ratings: Map<Long, Int>): Long? {
+    val dones = items.indices.filter { (items[it] as? Item.Done)?.event?.cancelled == false }
+    dones.takeLast(2).reversed().forEachIndexed { i, at ->
+        val done = items[at] as Item.Done
+        if (ratings[done.key] != null) return@forEachIndexed
+        val next = (at + 1 until items.size).firstOrNull { items[it] is Item.Done } ?: items.size
+        if (items.subList(at + 1, next).any { it is Item.Ask && feeling(it.event.text) }) return done.key
+        if (i == 0 && (done.event.durationMs ?: 0) >= SLOW_REPLY) return done.key
+    }
+    return null
+}
+
 @Composable
-private fun DoneNote(e: CodeEvent.Done, rating: Int?, rate: (Int?, String?) -> Unit) {
-    /* A thumb asks first: admins will see the answer, without the person's name. Taking one back doesn't. */
+private fun DoneNote(e: CodeEvent.Done, rating: Int?, asking: Boolean, rate: (Int?, String?) -> Unit) {
+    /* A thumb holds as soon as it's given; then there's room to say why, and who sees it. */
     var confirming by remember { mutableStateOf<Int?>(null) }
-    val give = { next: Int -> if (rating == next) rate(null, null) else confirming = next }
+    val give = { next: Int -> if (rating == next) rate(null, null) else { rate(next, null); confirming = next } }
     val thumbs: @Composable () -> Unit = {
-        Row {
-            IconButton(onClick = { give(1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-up"), "Good answer", modifier = Modifier.size(18.dp), tint = if (rating == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
-            IconButton(onClick = { give(-1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-down"), "Bad answer", modifier = Modifier.size(18.dp), tint = if (rating == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            /* An answer worth a thumb (they sound put out or pleased, or it took long): the thumbs come forward and ask. */
+            androidx.compose.animation.AnimatedVisibility(asking && rating == null, enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.slideInHorizontally { it / 4 }, exit = androidx.compose.animation.fadeOut()) {
+                Text("How was this?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 2.dp))
+            }
+            val idle = if (asking) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+            IconButton(onClick = { give(1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-up"), "Good answer", modifier = Modifier.size(18.dp), tint = if (rating == 1) MaterialTheme.colorScheme.primary else idle) }
+            IconButton(onClick = { give(-1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-down"), "Bad answer", modifier = Modifier.size(18.dp), tint = if (rating == -1) MaterialTheme.colorScheme.primary else idle) }
         }
     }
     when {
@@ -1012,7 +1040,7 @@ private fun DoneNote(e: CodeEvent.Done, rating: Int?, rate: (Int?, String?) -> U
             icon = if (next == 1) "thumb-up" else "thumb-down",
             onDismiss = { confirming = null },
             actions = {
-                Seal("Cancel", compact = true, tone = SealTone.Quiet, onClick = { confirming = null })
+                Seal("Skip", compact = true, tone = SealTone.Quiet, onClick = { confirming = null })
                 Seal("Send", compact = true, onClick = { rate(next, note.trim().ifBlank { null }); confirming = null })
             },
         ) {

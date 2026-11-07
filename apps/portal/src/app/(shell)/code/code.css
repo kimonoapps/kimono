@@ -1286,6 +1286,12 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-thumbs .cd-iconbutton { width: 32px; height: 32px; color: var(--k-on-surface-variant); opacity: .7; }
 .cd-thumbs .cd-iconbutton:hover:not(:disabled) { opacity: 1; }
 .cd-thumbs .cd-iconbutton[aria-pressed="true"] { opacity: 1; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+/* An answer worth a thumb (they sound put out or pleased, or it took long): the thumbs come forward and ask. */
+.cd-thumbs.is-asking { align-items: center; gap: 4px; }
+.cd-thumbs.is-asking .cd-iconbutton { opacity: 1; color: var(--k-on-surface); }
+.cd-thumbs-ask { margin-right: 4px; font: 500 13px/1 var(--k-sans); color: var(--k-on-surface-variant); animation: cd-thumbs-ask .4s ease-out both; }
+@keyframes cd-thumbs-ask { from { opacity: 0; transform: translateX(6px); } }
+@media (prefers-reduced-motion: reduce) { .cd-thumbs-ask { animation: none; } }
 .cd-thumbs .i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .cd-rate-warn { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px 14px; border-radius: var(--k-r-m); background: var(--k-secondary-container); color: var(--k-on-secondary-container); font: 500 14px/1.45 var(--k-sans); }
 .cd-rate-warn svg.i { margin-top: 1px; }
