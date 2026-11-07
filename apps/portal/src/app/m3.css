@@ -500,4 +500,6 @@ label.opt { margin: 0; }
 .k-ink-rule:nth-of-type(even) { transform: scaleX(-1) rotate(.6deg); }
 .rail-divider.k-ink-rule { width: 48px; height: 6px; margin: 6px 0; border-radius: 0; transform: rotate(-1.5deg); }
 .rail-divider.k-ink-rule:nth-of-type(even) { transform: scaleX(-1) rotate(-1deg); }
+/* The rail is the bottom bar on a phone: its dividers belong to the side rail only (shell.css hides them, but .k-ink-rule's display wins). */
+@media (max-width: 720px) { .rail-divider.k-ink-rule { display: none; } }
 .cd-side-rule { width: calc(100% - 40px); margin: -2px 22px -2px 18px; }
