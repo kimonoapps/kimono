@@ -183,14 +183,8 @@ class NotesModel(val notes: Notes, val drive: Drive, val platform: Platform) {
     fun startNew(place: NotePlace): String {
         val key = "new-" + (1..10).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")
         val parent = parentFor(place)
-        val draft = NoteDraft(this, key, parent)
-        drafts[key] = draft
-        scope.launch {
-            val slow = scope.launch { delay(300); creating = true }
-            draft.create()
-            slow.cancel()
-            creating = false
-        }
+        /* Nothing is made until it has a title or some text (NoteDraft.save). */
+        drafts[key] = NoteDraft(this, key, parent)
         return key
     }
 
@@ -359,9 +353,19 @@ class NoteDraft internal constructor(private val model: NotesModel, val key: Str
     }
 
     /** Saves the body if it changed since the last save. */
+    private var making: Job? = null
+
+    /** A new note is made once it has a title or text, never before: a blank one leaves nothing behind. */
+    private fun makeIfWritten() {
+        if (id != null || making?.isActive == true) return
+        if (body.text.isBlank() && title.text.isBlank()) return
+        making = model.scope.launch { create() }
+    }
+
     suspend fun save() {
         if (gone) return
         if (id == null) {
+            makeIfWritten()
             /* Still being made: keep what's typed so far, should the phone be offline. */
             if (state == SaveState.Waiting) notes.keepWaiting(WaitingEdit(key, body.text.toString(), 0, new = true, parent = parent, title = title.text.toString()))
             return
@@ -410,6 +414,7 @@ class NoteDraft internal constructor(private val model: NotesModel, val key: Str
         val wanted = typed.ifEmpty { "Untitled" }
         if (typed.isEmpty() && title.text.isNotEmpty()) put(title, "")
         if (wanted == savedTitle) return
+        if (id == null) { makeIfWritten(); return }
         val id = id ?: return
         try {
             val note = notes.retitle(id, wanted)
@@ -419,12 +424,16 @@ class NoteDraft internal constructor(private val model: NotesModel, val key: Str
         } catch (_: KimonoProblem) { }
     }
 
-    /** Leaving: everything saved, and a new note left blank isn't kept. */
+    /** Leaving: everything saved, and a note left blank and Untitled quietly goes to the trash. */
     fun leave() {
         if (gone) return
+        val blank = body.text.isBlank() && title.text.toString().trim().let { it.isEmpty() || it == "Untitled" }
         model.scope.launch {
-            if (isNew && body.text.isBlank() && title.text.isBlank()) {
+            if (blank) {
+                /* A new one that never got words was never made; one being made goes once it is. */
+                if (id == null && making?.isActive != true) { notes.doneWaiting(key); return@launch }
                 val id = made.await()
+                gone = true
                 runCatching { notes.delete(id) }
                 model.changeLibrary { lib -> lib.copy(notes = lib.notes.filter { it.id != id }) }
                 return@launch

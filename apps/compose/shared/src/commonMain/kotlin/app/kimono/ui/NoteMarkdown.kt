@@ -28,23 +28,34 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.sp
 
 /*
- * 筆 A note's body stays Markdown and takes its look where it's typed: headings,
- * bold, italics, lists, quotes, code and links styled in place, the markup
- * itself faded to the outline colour. Checkboxes are drawn over their
- * brackets as ink rings; pictures stay as their words, and HTML is only text.
+ * 筆 A note's body stays Markdown and reads as it will look: markup shows
+ * only where the caret is (bold, italic, code and link markers when it
+ * touches the span; heading and quote markers when it's on the line; code
+ * fences while it's in the block). Bullets are drawn as dots, checkboxes as
+ * ink rings; numbers stay. Pictures stay as their words, and HTML is only text.
  */
 
-/** Where a checkbox's brackets are, whether it's ticked, and where its line ends. */
-data class NoteCheck(val at: Int, val checked: Boolean, val lineEnd: Int)
+/** A checkbox: which line it's on, where its brackets are, and whether it's ticked. */
+data class NoteCheck(val line: Int, val at: Int, val checked: Boolean)
+
+/** A bullet, drawn as a dot over its marker: filled at even depths, a ring at odd ones. */
+data class NoteBullet(val at: Int, val depth: Int)
 
 /** A link's words and where it goes. */
 data class NoteLink(val start: Int, val end: Int, val url: String)
 
 class NoteLook(
-    val text: Color, val mark: Color, val accent: Color, val quiet: Color, val code: Color, val headline: FontFamily?,
+    val text: Color, val mark: Color, val accent: Color, val quiet: Color, val code: Color, val codeBack: Color, val headline: FontFamily?,
 )
 
-class NoteSpans(val styles: List<Triple<SpanStyle, Int, Int>>, val checks: List<NoteCheck>, val links: List<NoteLink>)
+/**
+ * How the body looks: the styles to lay over it, what to draw (rings, dots,
+ * quote bars, by line start), and the formatting at the caret for the format bar.
+ */
+class NoteSpans(
+    val styles: List<Triple<SpanStyle, Int, Int>>, val checks: List<NoteCheck>, val links: List<NoteLink>,
+    val bullets: List<NoteBullet>, val quotes: List<IntRange>, val formats: Set<String>,
+)
 
 private val heading = Regex("^(#{1,6})[ \\t]+")
 private val item = Regex("^([ \\t]*)([-*+]|\\d{1,3}[.)])[ \\t]+(\\[[ xX]\\][ \\t]?)?")
@@ -58,119 +69,203 @@ private val inlines = listOf(
     Regex("~~(?=\\S)(.+?)(?<=\\S)~~") to "strike",
 )
 
-/** How [text] should look, line by line. */
-fun noteSpans(text: CharSequence, look: NoteLook): NoteSpans {
+/* Markup that isn't being edited takes no room at all. */
+private val gone = SpanStyle(color = Color.Transparent, fontSize = 0.01.sp, letterSpacing = 0.sp)
+
+/** How [text] should look with the caret at [caret] (null: nowhere, so all markup hides). */
+fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): NoteSpans {
     val styles = mutableListOf<Triple<SpanStyle, Int, Int>>()
     val checks = mutableListOf<NoteCheck>()
     val links = mutableListOf<NoteLink>()
+    val bullets = mutableListOf<NoteBullet>()
+    val quotes = mutableListOf<IntRange>()
+    val formats = mutableSetOf<String>()
     val faded = SpanStyle(color = look.mark)
     val mono = SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = look.code)
     fun add(style: SpanStyle, start: Int, end: Int) { if (end > start) styles += Triple(style, start, end) }
-    var inFence = false
-    var start = 0
     val all = text.toString()
+    val at = caret?.let { minOf(it.start, it.end) }
+    /* Code blocks first: their fences show only while the caret is inside. */
+    val blocks = mutableListOf<IntRange>()
+    run {
+        var start = 0
+        var open: Int? = null
+        while (start <= all.length) {
+            val end = all.indexOf('\n', start).let { if (it < 0) all.length else it }
+            if (fence.containsMatchIn(all.substring(start, end))) {
+                if (open == null) open = start else { blocks += open!!..end; open = null }
+            }
+            start = end + 1
+        }
+        open?.let { blocks += it..all.length }
+    }
+    var start = 0
+    var lineNo = 0
     while (start <= all.length) {
         val end = all.indexOf('\n', start).let { if (it < 0) all.length else it }
         val line = all.substring(start, end)
+        val here = at != null && at in start..end
+        val block = blocks.firstOrNull { start in it }
         when {
-            fence.containsMatchIn(line) -> { add(faded, start, end); inFence = !inFence }
-            inFence -> add(mono, start, end)
+            block != null -> {
+                val inBlock = at != null && at in block
+                if (fence.containsMatchIn(line)) add(if (inBlock) faded else gone, start, end)
+                else add(mono, start, end)
+                if (here) formats += "code"
+            }
             else -> {
                 var body = 0
                 heading.find(line)?.let { m ->
                     val level = m.groupValues[1].length
-                    add(faded, start, start + m.range.last + 1)
-                    val size = when (level) { 1 -> 26.sp; 2 -> 22.sp; 3 -> 19.sp; else -> 17.sp }
+                    add(if (here) faded else gone, start, start + m.range.last + 1)
+                    val size = when (level) { 1 -> 24.sp; 2 -> 20.sp; 3 -> 18.sp; else -> 17.sp }
                     add(SpanStyle(fontSize = size, fontWeight = FontWeight.Bold, fontFamily = if (level <= 2) look.headline else null), start + m.range.last + 1, end)
                     body = m.range.last + 1
+                    if (here) formats += "h$level"
                 }
                 if (body == 0) quote.find(line)?.let { m ->
-                    add(faded, start, start + m.range.last + 1)
+                    /* Off the line the marker keeps its room, as the quote's indent, and a bar is drawn beside it. */
+                    add(if (here) faded else SpanStyle(color = Color.Transparent), start, start + m.range.last + 1)
                     add(SpanStyle(fontStyle = FontStyle.Italic, color = look.quiet), start + m.range.last + 1, end)
+                    quotes += start..end
                     body = m.range.last + 1
+                    if (here) formats += "quote"
                 }
                 if (body == 0) item.find(line)?.let { m ->
                     val marker = m.groups[2]!!.range
-                    add(SpanStyle(color = look.accent, fontWeight = FontWeight.Bold), start + marker.first, start + marker.last + 1)
-                    m.groups[3]?.let { box ->
-                        val at = start + box.range.first
-                        val checked = line[box.range.first + 1] != ' '
-                        /* The brackets give way to the ink ring drawn over them. */
-                        /* Monospaced, so "[ ]" and "[x]" are the same width and the ring stays put as it's ticked. */
-                        add(SpanStyle(color = Color.Transparent, fontFamily = FontFamily.Monospace), at, at + 3)
-                        if (checked) add(SpanStyle(color = look.mark), at + 3, end)
-                        checks += NoteCheck(at, checked, end)
+                    val depth = m.groupValues[1].replace("\t", "  ").length / 2
+                    val box = m.groups[3]
+                    when {
+                        box != null -> {
+                            /* "- " takes no room, so the ring stands where the marker was. */
+                            add(gone, start + marker.first, start + box.range.first)
+                            val bracket = start + box.range.first
+                            val checked = line[box.range.first + 1] != ' '
+                            /* Monospaced, so "[ ]" and "[x]" are the same width and the ring stays put. */
+                            add(SpanStyle(color = Color.Transparent, fontFamily = FontFamily.Monospace), bracket, bracket + 3)
+                            if (checked) add(SpanStyle(color = look.mark), bracket + 3, end)
+                            checks += NoteCheck(lineNo, bracket, checked)
+                            if (here) formats += "check"
+                        }
+                        m.groups[2]!!.value.first().isDigit() -> {
+                            add(SpanStyle(color = look.quiet), start + marker.first, start + marker.last + 1)
+                            if (here) formats += "number"
+                        }
+                        else -> {
+                            /* The dash keeps its room, invisible; its dot is drawn over it. */
+                            add(SpanStyle(color = Color.Transparent), start + marker.first, start + marker.last + 1)
+                            bullets += NoteBullet(start + marker.first, depth)
+                            if (here) formats += "bullet"
+                        }
                     }
                     body = m.range.last + 1
                 }
-                inline(line, start, body, look, faded, mono, links, ::add)
+                inline(line, start, body, look, faded, mono, links, at, formats, ::add)
             }
         }
         start = end + 1
+        lineNo++
     }
-    return NoteSpans(styles, checks, links)
+    return NoteSpans(styles, checks, links, bullets, quotes, formats)
 }
 
-private fun inline(line: String, offset: Int, from: Int, look: NoteLook, faded: SpanStyle, mono: SpanStyle, links: MutableList<NoteLink>, add: (SpanStyle, Int, Int) -> Unit) {
+private fun inline(
+    line: String, offset: Int, from: Int, look: NoteLook, faded: SpanStyle, mono: SpanStyle, links: MutableList<NoteLink>,
+    at: Int?, formats: MutableSet<String>, add: (SpanStyle, Int, Int) -> Unit,
+) {
     val taken = BooleanArray(line.length)
     for ((pattern, kind) in inlines) {
         for (m in pattern.findAll(line, from.coerceAtMost(line.length))) {
             if ((m.range.first..m.range.last).any { taken[it] }) continue
             val s = offset + m.range.first
             val e = offset + m.range.last + 1
+            /* Its markers come back while the caret touches the span. */
+            val touched = at != null && at in s..e
+            val mark = if (touched) faded else gone
+            if (touched) formats += kind
             when (kind) {
-                "code" -> { add(mono, s, e); add(faded, s, s + 1); add(faded, e - 1, e) }
+                "code" -> { add(mono, s, e); add(SpanStyle(background = look.codeBack), s + 1, e - 1); add(mark, s, s + 1); add(mark, e - 1, e) }
                 "link" -> {
                     val words = m.groups[1]!!.range
                     val picture = m.value.startsWith("!")
-                    add(faded, s, offset + words.first)
-                    add(faded, offset + words.last + 1, e)
+                    add(if (picture) faded else mark, s, offset + words.first)
+                    add(if (picture) faded else mark, offset + words.last + 1, e)
                     if (!picture) {
                         add(SpanStyle(color = look.accent, textDecoration = TextDecoration.Underline), offset + words.first, offset + words.last + 1)
                         links += NoteLink(s, e, m.groupValues[2])
                     } else add(SpanStyle(color = look.quiet, fontStyle = FontStyle.Italic), offset + words.first, offset + words.last + 1)
                 }
-                "bold" -> { val w = m.groupValues[1].length; add(SpanStyle(fontWeight = FontWeight.Bold), s, e); add(faded, s, s + w); add(faded, e - w, e) }
-                "italic" -> { add(SpanStyle(fontStyle = FontStyle.Italic), s, e); add(faded, s, s + 1); add(faded, e - 1, e) }
-                "strike" -> { add(SpanStyle(textDecoration = TextDecoration.LineThrough), s + 2, e - 2); add(faded, s, s + 2); add(faded, e - 2, e) }
+                "bold" -> { val w = m.groupValues[1].length; add(SpanStyle(fontWeight = FontWeight.Bold), s, e); add(mark, s, s + w); add(mark, e - w, e) }
+                "italic" -> { add(SpanStyle(fontStyle = FontStyle.Italic), s, e); add(mark, s, s + 1); add(mark, e - 1, e) }
+                "strike" -> { add(SpanStyle(textDecoration = TextDecoration.LineThrough), s + 2, e - 2); add(mark, s, s + 2); add(mark, e - 2, e) }
             }
             for (i in m.range) taken[i] = true
         }
     }
 }
 
-/** Styles the body as it's drawn; the text itself stays as typed. */
-fun noteOutput(look: NoteLook) = OutputTransformation {
-    noteSpans(asCharSequence(), look).styles.forEach { (style, s, e) -> if (e <= length) addStyle(style, s, e) }
+/** Styles the body as it's drawn, following the caret in [state]; the text itself stays as typed. */
+fun noteOutput(look: NoteLook, state: TextFieldState, focused: () -> Boolean) = OutputTransformation {
+    noteSpans(asCharSequence(), look, if (focused()) state.selection else null).styles.forEach { (style, s, e) -> if (e <= length) addStyle(style, s, e) }
 }
 
-/**
- * A new line after a list item starts the next one ("- ", "- [ ] ", "2. ");
- * a new line on an empty item ends the list instead.
+/*
+ * Typing: a new line after a list item or quote starts the next one, and an
+ * empty one ends it; "[] " at a line's start becomes a checkbox; Backspace
+ * right after a marker takes the marker away.
  */
+private val marker = Regex("^([-*+]|\\d{1,3}[.)]|[-*+] \\[[ xX]\\]|>|#{1,6})$")
+
 val noteInput = InputTransformation {
     val changes = this.changes
     if (changes.changeCount != 1) return@InputTransformation
     val range = changes.getRange(0)
-    if (range.length != 1 || asCharSequence()[range.start] != '\n' || changes.getOriginalRange(0).length != 0) return@InputTransformation
+    val original = changes.getOriginalRange(0)
     val text = asCharSequence().toString()
+    /* Backspace: the space after a marker gone, so the marker goes too. */
+    if (range.length == 0 && original.length == 1) {
+        if (originalText[original.start] != ' ') return@InputTransformation
+        val p = range.start
+        val lineStart = text.lastIndexOf('\n', p - 1).let { if (it < 0) 0 else it + 1 }
+        val before = text.substring(lineStart, p)
+        val indent = before.length - before.trimStart().length
+        if (p > lineStart && marker.matches(before.trimStart())) {
+            delete(lineStart + indent, p)
+            placeCursorBeforeCharAt(lineStart + indent)
+        }
+        return@InputTransformation
+    }
+    if (original.length != 0 || range.length != 1) return@InputTransformation
+    val typed = asCharSequence()[range.start]
     val lineStart = text.lastIndexOf('\n', range.start - 1).let { if (it < 0) 0 else it + 1 }
+    /* "[] " becomes a checkbox. */
+    if (typed == ' ' && text.substring(lineStart, range.end).trimStart() == "[] ") {
+        val indent = text.substring(lineStart, range.end).takeWhile { it == ' ' || it == '\t' }.length
+        replace(lineStart + indent, range.end, "- [ ] ")
+        placeCursorBeforeCharAt(lineStart + indent + 6)
+        return@InputTransformation
+    }
+    if (typed != '\n') return@InputTransformation
     val line = text.substring(lineStart, range.start)
-    val m = item.find(line) ?: return@InputTransformation
-    if (line.trim() == m.value.trim()) {
-        /* An empty item: Return leaves the list. */
+    val q = quote.find(line)
+    val m = item.find(line)
+    val prefixed = m ?: q ?: return@InputTransformation
+    if (line.trim() == prefixed.value.trim()) {
+        /* An empty item or quote line: Return leaves the list. */
         delete(lineStart, range.start + 1)
         placeCursorBeforeCharAt(lineStart)
         return@InputTransformation
     }
-    val marker = m.groupValues[2]
-    val next = marker.toIntOrNull()?.let { "${it + 1}." } ?: marker.takeIf { it.length == 1 } ?: marker.dropLast(1).toIntOrNull()?.let { "${it + 1}${marker.last()}" } ?: marker
-    val prefix = m.groupValues[1] + next + " " + (if (m.groups[3] != null) "[ ] " else "")
+    val prefix = if (m != null) {
+        val bullet = m.groupValues[2]
+        val next = bullet.toIntOrNull()?.let { "${it + 1}." } ?: bullet.takeIf { it.length == 1 } ?: bullet.dropLast(1).toIntOrNull()?.let { "${it + 1}${bullet.last()}" } ?: bullet
+        m.groupValues[1] + next + " " + (if (m.groups[3] != null) "[ ] " else "")
+    } else q!!.value.let { if (it.endsWith(" ")) it else "$it " }
     insert(range.end, prefix)
     placeCursorBeforeCharAt(range.end + prefix.length)
 }
 
-/* ── the keyboard row's edits ── */
+/* ── the format bar's and keyboard's edits ── */
 
 private fun TextFieldBuffer.lineAt(at: Int): IntRange {
     val text = asCharSequence()
@@ -185,7 +280,7 @@ private fun TextFieldBuffer.lineAt(at: Int): IntRange {
 private fun TextFieldBuffer.setPrefix(prefix: (String) -> String?) {
     val line = lineAt(selection.start)
     val text = asCharSequence().substring(line.first, line.last + 1)
-    val now = heading.find(text) ?: item.find(text)
+    val now = heading.find(text) ?: item.find(text) ?: quote.find(text)
     val old = now?.value ?: ""
     val want = prefix(old) ?: ""
     val keep = selection.start - line.first - old.length
@@ -195,24 +290,75 @@ private fun TextFieldBuffer.setPrefix(prefix: (String) -> String?) {
 }
 
 fun TextFieldState.toggleChecklist() = edit { setPrefix { old -> if (old.contains("[")) null else "- [ ] " } }
-fun TextFieldState.toggleList() = edit { setPrefix { old -> if (old.isNotEmpty() && !old.startsWith("#") && !old.contains("[")) null else "- " } }
+fun TextFieldState.toggleList() = edit { setPrefix { old -> if (old.trim().let { it == "-" || it == "*" || it == "+" }) null else "- " } }
+fun TextFieldState.toggleNumbered() = edit { setPrefix { old -> if (old.trim().firstOrNull()?.isDigit() == true) null else "1. " } }
+/** H1, H2, H3, then plain. */
 fun TextFieldState.cycleHeading() = edit {
     setPrefix { old -> when (old.trim()) { "#" -> "## "; "##" -> "### "; "###" -> null; else -> "# " } }
 }
-fun TextFieldState.toggleBold() = edit {
-    val s = selection
-    if (s.collapsed) { insert(s.start, "****"); selection = TextRange(s.start + 2) }
-    else { insert(s.end, "**"); insert(s.start, "**"); selection = TextRange(s.start + 2, s.end + 2) }
+fun TextFieldState.setHeading(level: Int) = edit {
+    setPrefix { old -> if (old.trim() == "#".repeat(level)) null else "#".repeat(level) + " " }
 }
 
-/** Ticks or unticks the checkbox whose brackets start at [at]. */
-fun TextFieldState.toggleCheck(at: Int) = edit {
-    if (at + 2 >= length || asCharSequence()[at] != '[') return@edit
-    val ticked = asCharSequence()[at + 1] != ' '
+/**
+ * Wraps the selection in [mark] (** for bold, * italic, ` code), or with
+ * nothing selected unwraps the span the caret is in, or steps out of it when
+ * the caret is at its end, or starts a new one.
+ */
+private fun TextFieldState.wrap(mark: String, kind: String) = edit {
+    val s = selection
+    if (!s.collapsed) {
+        insert(s.max, mark); insert(s.min, mark)
+        selection = TextRange(s.min + mark.length, s.max + mark.length)
+        return@edit
+    }
+    val line = lineAt(s.start)
+    val lineText = asCharSequence().substring(line.first, line.last + 1)
+    val pattern = inlines.first { it.second == kind }.first
+    val span = pattern.findAll(lineText).map { (line.first + it.range.first)..(line.first + it.range.last + 1) }.firstOrNull { s.start in it }
+    when {
+        span == null -> { insert(s.start, mark + mark); selection = TextRange(s.start + mark.length) }
+        /* At its end: step out. */
+        s.start >= span.last - mark.length -> selection = TextRange(span.last)
+        else -> {
+            replace(span.last - mark.length, span.last, "")
+            replace(span.first, span.first + mark.length, "")
+            selection = TextRange((s.start - mark.length).coerceIn(span.first, span.last - 2 * mark.length))
+        }
+    }
+}
+
+fun TextFieldState.toggleBold() = wrap("**", "bold")
+fun TextFieldState.toggleItalic() = wrap("*", "italic")
+fun TextFieldState.toggleCode() = wrap("`", "code")
+
+/** A link: the selection becomes its words and the caret goes to the address; with nothing selected, to the words. */
+fun TextFieldState.makeLink() = edit {
+    val s = selection
+    if (!s.collapsed) {
+        insert(s.max, "]()"); insert(s.min, "[")
+        selection = TextRange(s.max + 3)
+    } else {
+        insert(s.start, "[]()")
+        selection = TextRange(s.start + 1)
+    }
+}
+
+/** Ticks or unticks the checkbox on [line], found by reading that line as it is now. */
+fun TextFieldState.toggleCheckOn(line: Int) = edit {
+    val all = asCharSequence().toString()
+    var start = 0
+    repeat(line) { start = all.indexOf('\n', start).let { if (it < 0) return@edit else it + 1 } }
+    val end = all.indexOf('\n', start).let { if (it < 0) all.length else it }
+    val m = item.find(all.substring(start, end)) ?: return@edit
+    val box = m.groups[3] ?: return@edit
+    val at = start + box.range.first + 1
+    val ticked = all[at] != ' '
     val keep = selection
-    replace(at + 1, at + 2, if (ticked) " " else "x")
+    replace(at, at + 1, if (ticked) " " else "x")
     selection = keep
 }
+
 
 /* ── the ink ring over a checkbox ── */
 

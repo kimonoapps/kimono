@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
@@ -81,6 +82,31 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.kimono.data.Platform
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.runtime.SideEffect
+import app.kimono.ui.makeLink
+import app.kimono.ui.setHeading
+import app.kimono.ui.toggleCheckOn
+import app.kimono.ui.toggleCode
+import app.kimono.ui.toggleItalic
+import app.kimono.ui.toggleNumbered
 import app.kimono.ui.InkCheck
 import app.kimono.ui.InkLoader
 import app.kimono.ui.NoteLook
@@ -92,7 +118,6 @@ import app.kimono.ui.noteInput
 import app.kimono.ui.noteOutput
 import app.kimono.ui.noteSpans
 import app.kimono.ui.toggleBold
-import app.kimono.ui.toggleCheck
 import app.kimono.ui.toggleChecklist
 import app.kimono.ui.toggleList
 import kotlinx.coroutines.FlowPreview
@@ -122,6 +147,7 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: Str
     val bodyFocus = remember { FocusRequester() }
     var titleFocused by remember { mutableStateOf(false) }
     var bodyFocused by remember { mutableStateOf(false) }
+    var formats by remember { mutableStateOf(emptySet<String>()) }
     var menu by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
@@ -151,7 +177,6 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: Str
     val canWrite = notebook?.canWrite != false
     /* Shared with you on its own: yours to leave, not to move or delete. */
     val alone = meta != null && meta.notebookId == null
-    val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -189,25 +214,28 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: Str
         Column(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize().imePadding()) {
             val scroll = rememberScrollState()
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)
-                    /* A tap below the words goes to the end of the note. */
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = canWrite) {
-                        draft.body.edit { selection = TextRange(length) }
-                        runCatching { bodyFocus.requestFocus() }
-                    }
-                    .padding(horizontal = 24.dp).padding(top = 4.dp, bottom = 160.dp),
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 24.dp).padding(top = 4.dp),
             ) {
                 NoteTitle(draft, canWrite, titleFocus, onFocus = { focused ->
                     if (titleFocused && !focused) scope.launch { draft.rename() }
                     titleFocused = focused
-                }) { runCatching { bodyFocus.requestFocus() } }
+                }) {
+                    /* After the edit that asked for it, so the keyboard follows the focus to the body. */
+                    scope.launch { kotlinx.coroutines.delay(50); runCatching { bodyFocus.requestFocus() } }
+                }
                 Spacer(Modifier.size(14.dp))
-                NoteBody(model, platform, draft, canWrite, scroll, bodyFocus) { focused ->
+                NoteBody(model, platform, draft, canWrite, scroll, bodyFocus, onFormats = { formats = it }) { focused ->
                     if (bodyFocused && !focused) scope.launch { draft.save() }
                     bodyFocused = focused
                 }
+                /* A tap below the words goes to the end of the note (only below: taps on the title stay in the title). */
+                Spacer(Modifier.fillMaxWidth().height(200.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = canWrite) {
+                    draft.body.edit { selection = TextRange(length) }
+                    runCatching { bodyFocus.requestFocus() }
+                })
             }
-            if (bodyFocused && keyboard && canWrite) KeyboardRow(draft) { focusManager.clearFocus() }
+            /* The format bar sits just above the keyboard (or at the foot, with a hardware one) while you write. */
+            if (bodyFocused && canWrite) FormatBar(draft, formats) { focusManager.clearFocus() }
         }
     }
     if (sharing && meta != null) ShareSheet(shareTarget(model, meta.id, false, draft.title.text.toString().ifBlank { meta.title }, canWrite), me, platform) { sharing = false }
@@ -244,8 +272,17 @@ private fun NoteTitle(draft: NoteDraft, canWrite: Boolean, focus: FocusRequester
         BasicTextField(
             draft.title, readOnly = !canWrite, textStyle = style, cursorBrush = SolidColor(ink),
             lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 3),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-            onKeyboardAction = { next() },
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+            /* A title is one line: Return goes on to the body instead. */
+            inputTransformation = {
+                val text = asCharSequence()
+                val at = text.indexOf('\n')
+                if (at >= 0) {
+                    replace(0, length, text.toString().replace("\n", ""))
+                    selection = TextRange(length)
+                    next()
+                }
+            },
             modifier = Modifier.fillMaxWidth().focusRequester(focus)
                 .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
                 .drawBehind {
@@ -266,26 +303,60 @@ private fun NoteTitle(draft: NoteDraft, canWrite: Boolean, focus: FocusRequester
     }
 }
 
-/** The body: Markdown, styled where it's typed, with checkboxes you can tap and links a long press opens. */
+/** The body: Markdown that reads as it will look, with dots for bullets, rings you can tick, and links a long press opens. */
 @Composable
-private fun NoteBody(model: NotesModel, platform: Platform, draft: NoteDraft, canWrite: Boolean, scroll: ScrollState, focus: FocusRequester, onFocus: (Boolean) -> Unit) {
+private fun NoteBody(
+    model: NotesModel, platform: Platform, draft: NoteDraft, canWrite: Boolean, scroll: ScrollState, focus: FocusRequester,
+    onFormats: (Set<String>) -> Unit, onFocus: (Boolean) -> Unit,
+) {
     val scheme = MaterialTheme.colorScheme
     val headline = MaterialTheme.typography.headlineMedium.fontFamily
-    val look = remember(scheme, headline) { NoteLook(text = scheme.onSurface, mark = scheme.outline, accent = scheme.primary, quiet = scheme.onSurfaceVariant, code = scheme.onSurface, headline = headline) }
-    val output = remember(look) { noteOutput(look) }
+    val look = remember(scheme, headline) {
+        NoteLook(text = scheme.onSurface, mark = scheme.outline, accent = scheme.primary, quiet = scheme.onSurfaceVariant, code = scheme.onSurface, codeBack = scheme.surfaceContainerHigh, headline = headline)
+    }
+    var focused by remember { mutableStateOf(false) }
+    /* The markup at the caret shows, so the styling follows the caret as well as the text. */
+    val output = remember(look) { noteOutput(look, draft.body) { focused } }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val haptics = LocalHapticFeedback.current
-    val spans = remember(draft.body.text, look) { noteSpans(draft.body.text, look) }
-    Box(Modifier.fillMaxWidth()) {
+    val caret = if (focused) draft.body.selection else null
+    val spans = remember(draft.body.text, caret, look) { noteSpans(draft.body.text, look, caret) }
+    SideEffect { onFormats(spans.formats) }
+    val dot = scheme.onSurfaceVariant
+    val bar = scheme.outlineVariant
+    Box(
+        Modifier.fillMaxWidth().drawWithContent {
+            drawContent()
+            val result = layout ?: return@drawWithContent
+            val length = result.layoutInput.text.length
+            /* Bullets as dots: filled at even depths, open rings at odd ones. */
+            spans.bullets.forEach { bullet ->
+                if (bullet.at >= length) return@forEach
+                val box = result.getBoundingBox(bullet.at)
+                val r = 3.dp.toPx()
+                val c = Offset(box.left + box.width / 2, box.top + box.height / 2 + 1.dp.toPx())
+                if (bullet.depth % 2 == 0) drawCircle(dot, r, c) else drawCircle(dot, r, c, style = Stroke(1.4.dp.toPx()))
+            }
+            /* A quote's bar, down its lines. */
+            spans.quotes.forEach { lines ->
+                if (lines.first >= length) return@forEach
+                val top = result.getBoundingBox(lines.first).top
+                val bottom = result.getBoundingBox((lines.last - 1).coerceIn(lines.first, length - 1)).bottom
+                drawRect(bar, Offset(0f, top + 3.dp.toPx()), Size(3.dp.toPx(), bottom - top - 6.dp.toPx()))
+            }
+        },
+    ) {
         BasicTextField(
             draft.body, readOnly = !canWrite,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface, fontSize = 17.sp, lineHeight = 27.sp),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface, fontSize = 16.sp, lineHeight = 25.sp),
             cursorBrush = SolidColor(scheme.primary),
             inputTransformation = noteInput, outputTransformation = output,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             onTextLayout = { result -> layout = result() },
             modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp).focusRequester(focus)
-                .onFocusChanged { onFocus(it.isFocused) }
+                .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
+                /* A hardware keyboard's shortcuts, where the phone or tablet passes them on. */
+                .onPreviewKeyEvent { event -> canWrite && event.type == KeyEventType.KeyDown && shortcut(draft, event) }
                 /* A long press on a link opens it. */
                 .pointerInput(spans) {
                     awaitEachGesture {
@@ -310,17 +381,17 @@ private fun NoteBody(model: NotesModel, platform: Platform, draft: NoteDraft, ca
                 if (check.at + 2 >= result.layoutInput.text.length) return@forEach
                 val box: Rect = result.getBoundingBox(check.at).let { first -> first.copy(right = result.getBoundingBox(check.at + 2).right) }
                 val side = with(density) { maxOf(box.height * .78f, 18.dp.toPx()) }
-                /* Centred on the brackets, nudged to the letters' middle. */
                 val x = box.left + (box.width - side) / 2
                 val y = box.top + (box.height - side) / 2 + with(density) { 2.dp.toPx() }
                 with(density) {
                     InkCheck(
-                        checked = check.checked, ring = scheme.outline, ink = scheme.primary, seed = "check-${check.at % 97}",
+                        checked = check.checked, ring = scheme.outline, ink = scheme.primary, seed = "check-${check.line}",
                         modifier = Modifier.offset { IntOffset(x.toInt(), y.toInt()) }.size(side.toDp())
                             .semantics { contentDescription = if (check.checked) "Ticked" else "Not ticked" }
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = canWrite) {
                                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                draft.body.toggleCheck(check.at)
+                                /* Found again by its line, as the text is now. */
+                                draft.body.toggleCheckOn(check.line)
                                 model.scope.launch { draft.save() }
                             },
                     )
@@ -330,17 +401,88 @@ private fun NoteBody(model: NotesModel, platform: Platform, draft: NoteDraft, ca
     }
 }
 
-/** Above the keyboard: checklist, heading, bold, list, and done. */
-@Composable
-private fun KeyboardRow(draft: NoteDraft, done: () -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { draft.body.toggleChecklist() }) { Icon(kimonoIcon("checklist"), "Checklist") }
-            IconButton(onClick = { draft.body.cycleHeading() }) { Icon(kimonoIcon("heading"), "Heading") }
-            IconButton(onClick = { draft.body.toggleBold() }) { Icon(kimonoIcon("bold"), "Bold") }
-            IconButton(onClick = { draft.body.toggleList() }) { Icon(kimonoIcon("list"), "List") }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = done) { Text("Done", style = MaterialTheme.typography.titleSmall) }
+/** ⌘ or Ctrl with B, I, E, K; ⇧7, ⇧8, ⇧9 for lists; ⌥1, ⌥2, ⌥3 for headings. */
+private fun shortcut(draft: NoteDraft, event: androidx.compose.ui.input.key.KeyEvent): Boolean {
+    if (!event.isMetaPressed && !event.isCtrlPressed) return false
+    val body = draft.body
+    when {
+        event.isShiftPressed -> when (event.key) {
+            Key.Seven -> body.toggleNumbered()
+            Key.Eight -> body.toggleList()
+            Key.Nine -> body.toggleChecklist()
+            else -> return false
         }
+        event.isAltPressed -> when (event.key) {
+            Key.One -> body.setHeading(1)
+            Key.Two -> body.setHeading(2)
+            Key.Three -> body.setHeading(3)
+            else -> return false
+        }
+        else -> when (event.key) {
+            Key.B -> body.toggleBold()
+            Key.I -> body.toggleItalic()
+            Key.E -> body.toggleCode()
+            Key.K -> body.makeLink()
+            else -> return false
+        }
+    }
+    return true
+}
+
+/**
+ * Just above the keyboard: Bold, Italic | Heading | Bullets, Checklist | Link,
+ * Code. Flat buttons; the one for the formatting at the caret sits filled, as
+ * a seal block with a pressed base. Done puts the keyboard away.
+ */
+@Composable
+private fun FormatBar(draft: NoteDraft, formats: Set<String>, done: () -> Unit) {
+    val body = draft.body
+    val level = (1..3).firstOrNull { "h$it" in formats }
+    /* A dock floating just above the keyboard, inset from the edges, on its own soft shadow. */
+    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(18.dp), shadowElevation = 8.dp,
+        ) {
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                FormatButton("bold", "Bold", "bold" in formats) { body.toggleBold() }
+                FormatButton("italic", "Italic", "italic" in formats) { body.toggleItalic() }
+                Gap()
+                FormatButton("heading", if (level == null) "Heading" else "Heading $level", level != null, label = level?.let { "H$it" }) { body.cycleHeading() }
+                Gap()
+                FormatButton("list", "Bullets", "bullet" in formats) { body.toggleList() }
+                FormatButton("checklist", "Checklist", "check" in formats) { body.toggleChecklist() }
+                Gap()
+                FormatButton("link", "Link", "link" in formats) { body.makeLink() }
+                FormatButton("code", "Code", "code" in formats) { body.toggleCode() }
+                Gap()
+                FormatButton("check", "Done", false, onClick = done)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Gap() = Box(Modifier.padding(horizontal = 3.dp).size(width = 1.dp, height = 20.dp).background(MaterialTheme.colorScheme.outlineVariant))
+
+@Composable
+private fun FormatButton(icon: String, name: String, on: Boolean, label: String? = null, onClick: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val base = scheme.onPrimaryContainer.copy(alpha = .2f)
+    Box(
+        Modifier.size(width = 36.dp, height = 38.dp).clip(RoundedCornerShape(8.dp))
+            .then(if (on) Modifier.background(scheme.primaryContainer).drawBehind {
+                /* A 2dp pressed base, so it reads as a seal block. */
+                drawRect(base, Offset(0f, size.height - 2.dp.toPx()), Size(size.width, 2.dp.toPx()))
+            } else Modifier)
+            .clickable(onClickLabel = name, onClick = onClick)
+            .semantics { contentDescription = name },
+        contentAlignment = Alignment.Center,
+    ) {
+        val tint = if (on) scheme.onPrimaryContainer else scheme.onSurfaceVariant
+        if (label != null) Text(label, style = MaterialTheme.typography.titleSmall, color = tint)
+        else Icon(kimonoIcon(icon), null, tint = tint, modifier = Modifier.size(20.dp))
     }
 }

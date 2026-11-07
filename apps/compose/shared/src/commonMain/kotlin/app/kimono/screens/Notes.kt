@@ -164,11 +164,11 @@ internal fun InkRule(modifier: Modifier = Modifier, seed: String = "rule") {
 /** The quiet ink blot holding the notes mark, and one line under it. */
 @Composable
 internal fun NotesQuiet(seed: String, line: String, action: (@Composable () -> Unit)? = null) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        InkBlot("notes-quiet-$seed", size = 96.dp, tint = quietGrey) { Icon(kimonoIcon("notes"), null, modifier = Modifier.size(40.dp), tint = app.kimono.theme.Kata.inkSoft) }
-        Spacer(Modifier.size(20.dp))
-        Text(line, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (action != null) { Spacer(Modifier.size(16.dp)); action() }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 56.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        InkBlot("notes-quiet-$seed", size = 64.dp, tint = quietGrey) { Icon(kimonoIcon("notes"), null, modifier = Modifier.size(28.dp), tint = app.kimono.theme.Kata.inkSoft) }
+        Spacer(Modifier.size(14.dp))
+        Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (action != null) { Spacer(Modifier.size(12.dp)); action() }
     }
 }
 
@@ -238,7 +238,7 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
                             selected = place == NotePlace.InNotebook(notebook.id), onClick = { go(NotePlace.InNotebook(notebook.id)) },
                             onLongClick = { menu = true },
                             lead = {
-                                if (notebook.sharedWithYou) model.people[notebook.createdBy.lowercase()].let { person -> InkPortraitFrame(notebook.createdBy, 30.dp) { Portrait(person?.picture, person?.name, notebook.createdBy, 22.dp) } }
+                                if (notebook.sharedWithYou) model.people[notebook.createdBy.lowercase()].let { person -> Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { Portrait(person?.picture, person?.name, notebook.createdBy, 20.dp) } }
                                 else NotebookMark(notebook.id, 30.dp)
                             },
                         ) {
@@ -246,9 +246,11 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
                                 Text(notebook.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                                 if (shared) MemberFaces(model, notebook, me)
                             }
-                            if (notebook.canWrite) IconButton(onClick = { naming = notebook.id to null }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("plus"), "New section", modifier = Modifier.size(18.dp)) }
+                            if (notebook.canWrite) IconButton(onClick = { model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("plus"), "New note in ${notebook.name}", modifier = Modifier.size(18.dp)) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("more"), "More for ${notebook.name}", modifier = Modifier.size(18.dp)) }
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+                            if (notebook.canWrite) DropdownMenuItem(text = { Text("New note") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) })
                             if (notebook.canWrite) DropdownMenuItem(text = { Text("New section") }, leadingIcon = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; naming = notebook.id to null })
                             if (notebook.canWrite) DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; renaming = notebook })
                             DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = notebook })
@@ -269,6 +271,8 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
                         SectionRow(
                             model, notebook, section, depth, selected = place == NotePlace.InSection(section.id), confirming = confirming == section.id,
                             open = { go(NotePlace.InSection(section.id)) },
+                            newNote = { model.go(NotePlace.InSection(section.id)); openNote(model.startNew(NotePlace.InSection(section.id))) },
+                            newSection = { naming = section.id to null },
                             rename = { naming = null to section },
                             delete = {
                                 val inside = model.within(section.id)
@@ -297,7 +301,7 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
             theirs.forEach(::book)
             items(loose, key = { "shared-note-${it.id}" }) { note ->
                 val person = model.people[note.createdBy.lowercase()]
-                NotesRow(selected = false, onClick = { openNote(note.id) }, lead = { InkPortraitFrame(note.createdBy, 30.dp) { Portrait(person?.picture, person?.name, note.createdBy, 22.dp) } }) {
+                NotesRow(selected = false, onClick = { openNote(note.id) }, lead = { Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { Portrait(person?.picture, person?.name, note.createdBy, 20.dp) } }) {
                     Text(note.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 }
             }
@@ -356,7 +360,7 @@ private fun MemberFaces(model: NotesModel, notebook: Notebook, me: String?) {
 @Composable
 private fun SectionRow(
     model: NotesModel, notebook: Notebook, section: NoteSection, depth: Int, selected: Boolean, confirming: Boolean,
-    open: () -> Unit, rename: () -> Unit, delete: () -> Unit, confirmed: () -> Unit, keep: () -> Unit,
+    open: () -> Unit, newNote: () -> Unit, newSection: () -> Unit, rename: () -> Unit, delete: () -> Unit, confirmed: () -> Unit, keep: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     if (confirming) {
@@ -367,8 +371,14 @@ private fun SectionRow(
     Box {
         NotesRow(selected = selected, onClick = open, onLongClick = if (notebook.canWrite) ({ menu = true }) else null, indent = 16.dp + 24.dp * depth) {
             Text(section.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (notebook.canWrite) {
+                IconButton(onClick = newNote, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("plus"), "New note in ${section.name}", modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("more"), "More for ${section.name}", modifier = Modifier.size(18.dp)) }
+            }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+            DropdownMenuItem(text = { Text("New note") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; newNote() })
+            DropdownMenuItem(text = { Text("New section") }, leadingIcon = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; newSection() })
             DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; rename() })
             DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; delete() })
         }
@@ -445,12 +455,16 @@ private fun NotesList(model: NotesModel, platform: app.kimono.data.Platform, acc
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
                         modifier = Modifier.fillMaxWidth().focusRequester(focus),
                         decorationBox = { field -> Box { if (query.isEmpty()) Text("Search notes", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant); field() } },
-                    ) else Text(when (place) { NotePlace.All -> "All notes"; is NotePlace.InSection -> section?.name.orEmpty(); is NotePlace.InNotebook -> "" }, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    ) else Text(when (place) { NotePlace.All -> "All notes"; is NotePlace.InSection -> section?.name.orEmpty(); is NotePlace.InNotebook -> "" }, style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 },
                 navigationIcon = { IconButton(onClick = menu) { Icon(kimonoIcon("menu"), "Notebooks") } },
                 actions = {
                     if (searching) IconButton(onClick = endSearch) { Icon(kimonoIcon("close"), "Stop searching") }
-                    else IconButton(onClick = back) { Icon(kimonoIcon("home"), "Home") }
+                    else {
+                        /* A note in the place you're looking at. */
+                        if (model.library != null && model.canWrite(place)) IconButton(onClick = { open(model.startNew(place)) }) { Icon(kimonoIcon("plus"), "New note") }
+                        IconButton(onClick = back) { Icon(kimonoIcon("home"), "Home") }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
             )
@@ -474,7 +488,11 @@ private fun NotesList(model: NotesModel, platform: app.kimono.data.Platform, acc
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 120.dp)) {
                     if (notebook != null && !searching) item(key = "head-${notebook.id}") { NotebookHead(model, notebook, me, share = { sharing = notebook.id to true }) { leaving = notebook } }
                     if (shown.isEmpty()) item(key = "quiet-${place.key}-$searching") {
-                        NotesQuiet(if (searching) "search" else place.key, when { searching && query.isNotBlank() -> "No notes match."; place is NotePlace.InSection -> "Nothing here yet."; else -> "Your notes will be here." })
+                        NotesQuiet(if (searching) "search" else place.key, when { searching && query.isNotBlank() -> "No notes match."; place is NotePlace.InSection -> "Nothing here yet."; else -> "Your notes will be here." }) {
+                            if (!searching && model.canWrite(place)) TextButton(onClick = { open(model.startNew(place)) }) {
+                                Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)); Spacer(Modifier.size(6.dp)); Text("New note")
+                            }
+                        }
                     }
                     items(shown, key = { it.id }) { note ->
                         val nb = model.notebook(note.notebookId)
@@ -555,16 +573,16 @@ private fun NoteRow(
             .then(if (lifted) Modifier.shadow(1.dp, shape, ambientColor = Color.Black.copy(alpha = .2f), spotColor = Color.Black.copy(alpha = .2f)) else Modifier)
             .clip(shape).background(if (lifted) MaterialTheme.colorScheme.surfaceContainerLowest else Color.Transparent)
             .combinedClickable(onClick = open, onLongClick = { menu = true })
-            .heightIn(min = 64.dp).padding(start = 16.dp, top = 10.dp, bottom = 10.dp),
+            .heightIn(min = 56.dp).padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(note.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (note.excerpt.isNotBlank()) Text(note.excerpt, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(note.title, fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (note.excerpt.isNotBlank()) Text(note.excerpt, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp, lineHeight = 17.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (crest != null) NotebookMark(crest.id, 22.dp)
         if (draft?.state == SaveState.Saving) InkLoader(size = 14.dp)
-        else Text(noteWhen(note.updatedAt.toLong(), now, model.notes.localOffset(now)), fontFamily = mono, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else Text(noteWhen(note.updatedAt.toLong(), now, model.notes.localOffset(now)), fontFamily = mono, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box {
             IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More", modifier = Modifier.size(20.dp)) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
