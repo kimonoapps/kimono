@@ -145,7 +145,8 @@ anything. Instant has to be switched on in the Composio project's settings.
   allowance); ElevenLabs only for a particular voice, accent or character,
   for Japanese, Mandarin and other languages `kimono-say` lacks, or when someone
   asks for it by name.
-- Real video defaults to Veo 3.1 Lite (`GEMINI_GENERATE_VIDEOS`, about 5
+- Recommended defaults, not rules (the agent goes past them when a request
+  calls for it): real video starts with Veo 3.1 Lite (`GEMINI_GENERATE_VIDEOS`, about 5
   credits a second with sound); Higgsfield, Kling or Runway only when asked
   for by name or for a look Veo can't give. Composio's Seedance 2.5 was about
   46 credits a second. Other tools: 480p unless it's to post or asked sharper,
