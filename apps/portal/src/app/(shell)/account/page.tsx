@@ -8,6 +8,7 @@ import { LineIcon } from "@/components/line-icon";
 import { Portrait } from "@/components/portrait";
 import { accountContext } from "./account-frame";
 import { PictureEditor } from "./picture-editor";
+import { AppearanceRow } from "@/components/appearance";
 
 export const metadata = { title: "You" };
 
@@ -44,6 +45,7 @@ export default async function YouPage({ searchParams }: { searchParams: Promise<
     <div className="seg">{row("/get-app", "phone", "#8a7c77", "Get the Kimono app", "Android and iPhone")}</div>
     <div className="label">This browser</div>
     <div className="seg">
+      <AppearanceRow />
       <form action={async () => { "use server"; await signOutCompletely(); redirect("/login"); }}>
         <button className="row danger" type="submit">
           <InkBlot tint="#a84d63" seed="sign out"><LineIcon name="door" /></InkBlot>

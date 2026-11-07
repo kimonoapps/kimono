@@ -60,7 +60,7 @@
 .k-code.k-urushi { border-left: 0; border-radius: var(--k-r-2); background: var(--k-urushi); color: var(--k-urushi-text); }
 .k-code.k-urushi .k-key { color: var(--k-sakura); }
 .k-code.k-urushi .k-str { color: var(--k-urushi-string); }
-.k-code.k-urushi .k-num { color: var(--k-lift); }
+.k-code.k-urushi .k-num { color: var(--k-urushi-text); }
 .k-code.k-urushi .k-lit, .k-code.k-urushi .k-comment { color: var(--k-urushi-comment); }
 
 /* A sequence, where the order is the information. */

@@ -23,6 +23,7 @@
 
   /* pigments */
   --k-plum: #4e2b37;             /* Mincho display text and the wordmark */
+  --k-on-wash: #4e2b37;          /* marks inside a watercolour wash: the wash stays pale by night, so this stays deep */
   --k-suo: #a84d63;              /* the action colour: primary fill, focus, error text */
   --k-suo-deep: #7e3448;
   --k-suo-pad: #5f2535;          /* the ink pad a pressed seal sits on */
@@ -93,6 +94,10 @@
   /* The app's own colour, injected by the shell. Permitted on the bloom, the
      lockup name, the selection marker and an eight percent selection wash. */
   --k-app-accent: var(--k-suo);
+  /* how much of the app's colour is in its coloured text: all of it on paper, less by night so it reads */
+  --k-app-ink: 100%;
+  /* text on an accent fill (a seal, a chip): stays near-white by night too */
+  --k-on-accent: #fffdf8;
 
   /* edges */
   --k-hairline: 1px;
@@ -177,6 +182,105 @@
   font-synthesis: none;
   /* Lets a disclosure fold open to its natural height in browsers that can. */
   interpolate-size: allow-keywords;
+}
+
+/*
+ * 夜 Night: the same house after dark, as the phone app draws it (Kata.kt). Paper turns to a warm
+ * near-black lifted in soft brown steps; ink, plum and moss turn pale; suō brightens just enough
+ * to read on the dark and still carry white on a seal. Wood and urushi stay what they are.
+ * Follows the system unless the person picked one (data-theme on <html>).
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --k-ink: #efe0da;
+  --k-ink-soft: #d8c2bd;
+  --k-faint: #b9a69f;
+  --k-plum: #f0cbd3;
+  --k-suo: #d06a82;
+  --k-suo-deep: #f2a7b8;
+  --k-suo-pad: #5f2535;
+  --k-suo-wash: #3a2229;
+  --k-sakura-wash: #5a2f3a;
+  --k-moss: #9fb88f;
+  --k-moss-deep: #c3d6b4;
+  --k-moss-wash: #263021;
+  --k-paper-lift: #2a211e;
+  --k-paper-0: #221a17;
+  --k-paper-1: #19120f;
+  --k-paper-2: #3a302c;
+  --k-hair: #4a3d39;
+  --k-hair-deep: #5c4c47;
+  --k-urushi: #120c0e;
+  --k-hover: #2d2420;
+  --k-selected: #3d2930;
+  --k-surface: #19120f;
+  --k-container-lowest: #130d0b;
+  --k-container-low: #221a17;
+  --k-container: #261e1b;
+  --k-container-high: #312825;
+  --k-container-highest: #3c3330;
+  --k-on-surface: #efe0da;
+  --k-on-surface-variant: #d8c2bd;
+  --k-outline-variant: #534340;
+  --k-primary-container: #7e3448;
+  --k-on-primary-container: #ffd9df;
+  --k-secondary-container: #5b3f45;
+  --k-on-secondary-container: #ffd9df;
+  --k-tertiary-container: #3e5236;
+  --k-on-tertiary-container: #dce8cf;
+  --k-accent-pale: #5a2f3a;
+  --k-shadow-raised: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -12px rgba(0, 0, 0, .6);
+  --k-shadow-sheet: 0 1px 0 rgba(0, 0, 0, .3), 0 14px 28px -20px rgba(0, 0, 0, .6);
+  --k-shadow-lift: 0 2px 0 rgba(0, 0, 0, .3), 0 28px 48px -24px rgba(0, 0, 0, .7);
+  --k-app-ink: 55%;
+  --k-accent-deep: #b4566e;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --k-ink: #efe0da;
+    --k-ink-soft: #d8c2bd;
+    --k-faint: #b9a69f;
+    --k-plum: #f0cbd3;
+    --k-suo: #d06a82;
+    --k-suo-deep: #f2a7b8;
+    --k-suo-pad: #5f2535;
+    --k-suo-wash: #3a2229;
+    --k-sakura-wash: #5a2f3a;
+    --k-moss: #9fb88f;
+    --k-moss-deep: #c3d6b4;
+    --k-moss-wash: #263021;
+    --k-paper-lift: #2a211e;
+    --k-paper-0: #221a17;
+    --k-paper-1: #19120f;
+    --k-paper-2: #3a302c;
+    --k-hair: #4a3d39;
+    --k-hair-deep: #5c4c47;
+    --k-urushi: #120c0e;
+    --k-hover: #2d2420;
+    --k-selected: #3d2930;
+    --k-surface: #19120f;
+    --k-container-lowest: #130d0b;
+    --k-container-low: #221a17;
+    --k-container: #261e1b;
+    --k-container-high: #312825;
+    --k-container-highest: #3c3330;
+    --k-on-surface: #efe0da;
+    --k-on-surface-variant: #d8c2bd;
+    --k-outline-variant: #534340;
+    --k-primary-container: #7e3448;
+    --k-on-primary-container: #ffd9df;
+    --k-secondary-container: #5b3f45;
+    --k-on-secondary-container: #ffd9df;
+    --k-tertiary-container: #3e5236;
+    --k-on-tertiary-container: #dce8cf;
+    --k-accent-pale: #5a2f3a;
+    --k-shadow-raised: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -12px rgba(0, 0, 0, .6);
+    --k-shadow-sheet: 0 1px 0 rgba(0, 0, 0, .3), 0 14px 28px -20px rgba(0, 0, 0, .6);
+    --k-shadow-lift: 0 2px 0 rgba(0, 0, 0, .3), 0 28px 48px -24px rgba(0, 0, 0, .7);
+    --k-app-ink: 55%;
+    --k-accent-deep: #b4566e;
+  }
 }
 
 /* The package cannot assume the host page set a box model. */

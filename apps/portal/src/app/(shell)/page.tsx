@@ -15,9 +15,10 @@ import type { RailApp } from "@/components/rail";
 import type { ReactNode } from "react";
 
 /*
- * 家 Home: a glance at the house, then every app. My apps first (the same
- * list as the rail and the phone's flower), what's happening in Kimono AI,
- * Drive and your devices, then the rest of the apps by what they're for.
+ * 家 Home, in three parts that don't run into each other: Your apps (the same
+ * list as the rail and the phone's flower), Now (a few lines each from Kimono
+ * AI, Drive and your devices, only those with something to say), and More
+ * apps, every other app by what it's for.
  */
 export default async function HomePage() {
   const session = await auth();
@@ -32,19 +33,6 @@ export default async function HomePage() {
   const byId = new Map(apps.map((app) => [app.id, app]));
   const today = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
 
-  const stats: { value: string; label: string; href: string }[] = [];
-  if (glance.chatTotals) {
-    stats.push(glance.chatTotals.working
-      ? { value: String(glance.chatTotals.working), label: glance.chatTotals.working === 1 ? "chat working" : "chats working", href: "/code" }
-      : { value: String(glance.chatTotals.all), label: glance.chatTotals.all === 1 ? "chat" : "chats", href: "/code" });
-    if (glance.chatTotals.apps) stats.push({ value: String(glance.chatTotals.apps), label: glance.chatTotals.apps === 1 ? "app running" : "apps running", href: "/code" });
-  }
-  if (glance.fileTotals) {
-    stats.push({ value: String(glance.fileTotals.week), label: "files this week", href: "/drive?view=recent" });
-    stats.push({ value: String(glance.fileTotals.spaces), label: glance.fileTotals.spaces === 1 ? "space" : "spaces", href: "/drive" });
-  }
-  if (glance.devices?.length) stats.push({ value: `${glance.devices.filter((d) => d.online).length}/${glance.devices.length}`, label: "devices online", href: "/vpn" });
-
   return (
     <AppShell user={user} brandColors={settings.brand.colors} active="home">
       <div className="page home-page">
@@ -53,22 +41,22 @@ export default async function HomePage() {
           <h1>Welcome home, <strong>{displayName}.</strong></h1>
         </header>
         <HomeApps apps={tiles} mine={mine} groups={groups}>
-          {stats.length ? <div className="home-stats">
-            {stats.map((stat) => <Crossing kind="kakejiku" key={stat.label} href={stat.href} className="home-stat"><b>{stat.value}</b><span>{stat.label}</span></Crossing>)}
-          </div> : null}
+          {glance.chats || glance.files || glance.devices?.length ? <section className="home-section home-now">
+          <h2 className="home-section-title">Now</h2>
           <div className="home-glances">
             {glance.chats ? <Glance app={byId.get("kimono-code")} title="Kimono AI" href="/code" note={glance.chatTotals?.working ? `${glance.chatTotals.working} working` : undefined}>
-              {glance.chats.length ? glance.chats.map((chat) => <Line key={chat.id} href={`/code#w=${chat.id}`} mark={<span className={chat.working ? "home-dot is-live" : "home-dot"} />} title={chat.title} detail={[chat.project, chat.working ? "working" : ago(chat.at)].filter(Boolean).join(" · ")} />)
+              {glance.chats.length ? glance.chats.slice(0, 3).map((chat) => <Line key={chat.id} href={`/code#w=${chat.id}`} mark={<span className={chat.working ? "home-dot is-live" : "home-dot"} />} title={chat.title} detail={[chat.project, chat.working ? "working" : ago(chat.at)].filter(Boolean).join(" · ")} />)
                 : <Line href="/code" mark={<InkBlot seed="new-chat" tint="#a84d63"><span className="home-plus">+</span></InkBlot>} title="Start a chat" />}
             </Glance> : null}
             {glance.files ? <Glance app={byId.get("kimono-drive")} title="Recent in Drive" href="/drive?view=recent" note={glance.fileTotals?.today ? `${glance.fileTotals.today} today` : undefined}>
-              {glance.files.length ? glance.files.map((file) => <Line key={file.id} href={`/drive?space=${encodeURIComponent(file.spaceId)}&file=${encodeURIComponent(file.id)}`} mark={<InkBlot seed={file.id} tint="#8a7c77"><span className="home-ext">{extension(file.name)}</span></InkBlot>} title={file.name} detail={[file.space, ago(file.at)].filter(Boolean).join(" · ")} />)
+              {glance.files.length ? glance.files.slice(0, 3).map((file) => <Line key={file.id} href={`/drive?space=${encodeURIComponent(file.spaceId)}&file=${encodeURIComponent(file.id)}`} mark={<InkBlot seed={file.id} tint="#8a7c77"><span className="home-ext">{extension(file.name)}</span></InkBlot>} title={file.name} detail={[file.space, ago(file.at)].filter(Boolean).join(" · ")} />)
                 : <Line href="/drive" mark={<InkBlot seed="drive-empty" tint="#a84d63"><span className="home-plus">+</span></InkBlot>} title="Add your first file" />}
             </Glance> : null}
             {glance.devices?.length ? <Glance app={byId.get("kimono-vpn")} title="Your devices" href="/vpn">
-              {glance.devices.map((device) => <Line key={device.id} href="/vpn" mark={<span className={device.online ? "home-dot is-live" : "home-dot"} />} title={device.name} detail={device.online ? "Connected" : device.seen} />)}
+              {glance.devices.slice(0, 3).map((device) => <Line key={device.id} href="/vpn" mark={<span className={device.online ? "home-dot is-live" : "home-dot"} />} title={device.name} detail={device.online ? "Connected" : device.seen} />)}
             </Glance> : null}
           </div>
+          </section> : null}
         </HomeApps>
         <KimonoAppOffer android={Boolean(offer.android)} ios={offer.ios} />
       </div>

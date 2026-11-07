@@ -24,6 +24,33 @@
   --spring: cubic-bezier(.38, 1.21, .22, 1); --spring-fast: cubic-bezier(.42, 1.67, .21, .9);
   --raised: 0 1px 2px rgba(78, 43, 55, .12), 0 16px 40px -12px rgba(78, 43, 55, .32);
 }
+/* Night: the mockup palette's dark tones, with Kata's (tokens.css). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --primary: #d06a82; --primary-deep: #f2a7b8;
+  --primary-container: #7e3448; --on-primary-container: #ffd9df;
+  --secondary: #e3bdc2; --secondary-container: #5b3f45; --on-secondary-container: #ffd9df;
+  --tertiary: #9fb88f; --tertiary-container: #3e5236; --on-tertiary-container: #dce8cf;
+  --error-container: #93000a; --on-error-container: #ffdad6;
+  --inverse: #efe0da; --on-inverse: #382e2b;
+  --plum: #f0cbd3;
+  --page: #120c0a;
+  --raised: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -12px rgba(0, 0, 0, .6);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --primary: #d06a82; --primary-deep: #f2a7b8;
+    --primary-container: #7e3448; --on-primary-container: #ffd9df;
+    --secondary: #e3bdc2; --secondary-container: #5b3f45; --on-secondary-container: #ffd9df;
+    --tertiary: #9fb88f; --tertiary-container: #3e5236; --on-tertiary-container: #dce8cf;
+    --error-container: #93000a; --on-error-container: #ffdad6;
+    --inverse: #efe0da; --on-inverse: #382e2b;
+    --plum: #f0cbd3;
+    --page: #120c0a;
+    --raised: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -12px rgba(0, 0, 0, .6);
+  }
+}
 /* ═════════ product: shell ═════════ */
 .topbar { display: flex; align-items: center; gap: 16px; min-height: 84px; padding: 18px 0 10px 8px; }
 .topbar h1 { font-size: 36px; line-height: 1.1; letter-spacing: -.01em; }
@@ -282,7 +309,7 @@ details[open] > summary .chev { transform: rotate(-135deg); margin-top: 3px; }
 /* in the Portal, sheets cover the window */
 .scrim { position: fixed; z-index: 60; }
 .line-icon { width: 24px; height: 24px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 22 1.1; }
-.k-ink-blot .line-icon { width: 22px; height: 22px; color: var(--plum); }
+.k-ink-blot .line-icon { width: 22px; height: 22px; color: var(--k-on-wash); }
 .row .k-ink-blot { width: 44px; height: 44px; }
 .k-seal.full { width: 100%; }
 .hold-petal { position: absolute; z-index: 1; width: 18px; height: 18px; }

@@ -13,7 +13,7 @@
 .fp .play i::after { content: ""; margin-left: 4px; border-left: 13px solid var(--k-lift); border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
 .fp .dur { position: absolute; right: 8px; bottom: 8px; padding: 1px 6px; background: rgba(36,34,31,.7); color: var(--k-lift); font: 500 11px/1.5 var(--k-mono); }
 .fp img, .fp video, .fp iframe { width: 100%; height: 100%; display: block; object-fit: contain; border: 0; background: var(--k-urushi); }
-.fp .ext { position: absolute; inset: 0; display: grid; place-items: center; font: 600 22px/1 var(--k-mono); letter-spacing: .06em; color: var(--k-lift); }
+.fp .ext { position: absolute; inset: 0; display: grid; place-items: center; font: 600 22px/1 var(--k-mono); letter-spacing: .06em; color: var(--k-on-accent); }
 .fp.plain { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
 .fp-type-big { display: grid; place-items: center; }
 .fp .fp-type-big img.fp-type { width: 72px; height: 72px; background: none; object-fit: contain; }
@@ -51,7 +51,7 @@
 .fp-md ul, .fp-md ol { padding-left: 1.4em; }
 .fp-md li { margin: .15em 0; }
 .fp-md li input[type="checkbox"] { margin: 0 6px 0 -1.2em; accent-color: var(--k-app-accent); }
-.fp-md a { color: var(--k-app-accent); text-decoration: underline; text-underline-offset: 2px; }
+.fp-md a { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); text-decoration: underline; text-underline-offset: 2px; }
 .fp-md code { padding: 1px 5px; border-radius: var(--k-r-s); background: var(--k-container-high); font: 500 12.5px/1.5 var(--k-mono); }
 .fp-md blockquote { padding: 2px 0 2px 14px; border-left: 3px solid var(--k-container-highest); color: var(--k-on-surface-variant); }
 .fp-md hr { margin: 1.2em 0; border: 0; border-top: 1px solid var(--k-container-highest); }

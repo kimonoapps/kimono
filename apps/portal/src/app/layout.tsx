@@ -1,6 +1,7 @@
 import { CrossingProvider } from "@/components/crossing";
 import { InkIconDefs } from "@/components/line-icon";
 import { NameTips } from "@/components/name-tips";
+import { appearanceScript } from "@/components/appearance";
 import type { Metadata } from "next";
 import "@kimono/ui/kata.css";
 import "./globals.css";
@@ -25,7 +26,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    /* The page's light or dark is set on <html> by the script before it paints (see components/appearance.tsx). */
+    <html lang="en" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: appearanceScript }} /></head>
       {/* Browser extensions (ColorZilla, password managers) add attributes to <body> before React loads; only <body>'s own attributes are let off, nothing inside it. */}
       <body suppressHydrationWarning><InkIconDefs /><CrossingProvider>{children}</CrossingProvider><NameTips /></body>
     </html>

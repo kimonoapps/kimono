@@ -987,8 +987,8 @@ function SendStop({ mode, disabled, busy, onSend, onStop }: { mode: "send" | "st
 
 /**
  * A reply as it's written. Words reach the page in bursts of any size; they're
- * let out at a steady pace that quickens when many are waiting, a word at a
- * time, and each fades in as it lands.
+ * let out a word at a time and each fades in as it lands. It never holds the
+ * reply back: whatever has arrived is out within about a fifth of a second.
  */
 function DraftWords({ text }: { text: string }) {
   return <RevealWords text={text} className="cd-say is-draft" />;
@@ -997,10 +997,16 @@ function DraftWords({ text }: { text: string }) {
 /* How far the reply being written has been let out. A finished reply that takes its draft's place
    carries on from here instead of jumping to its end; any other starts from its first word. */
 const revealed = { text: "", at: 0 };
+/* How far each live reply got, by chat and seq, so one shown again doesn't fade in again. */
+const lettedOut = new Map<string, number>();
 
-/** Lets [text] out a word at a time: about 90 letters a second, quickening gently while far behind, each word fading in. */
-function RevealWords({ text, className }: { text: string; className: string }) {
-  const [shown, setShown] = useState(() => revealed.at > 0 && revealed.at <= text.length && text.startsWith(revealed.text.slice(0, revealed.at)) ? revealed.at : 0);
+/** Lets [text] out a word at a time: at least 150 letters a second, faster the further behind, each word fading in; plain once it's all out. */
+function RevealWords({ text, className, id }: { text: string; className: string; id?: string }) {
+  const [shown, setShown] = useState(() => {
+    const kept = id ? lettedOut.get(id) : undefined;
+    if (kept !== undefined && kept <= text.length) return kept;
+    return revealed.at > 0 && revealed.at <= text.length && text.startsWith(revealed.text.slice(0, revealed.at)) ? revealed.at : 0;
+  });
   const target = useRef(text);
   const at = useRef(shown);
   useEffect(() => {
@@ -1009,26 +1015,33 @@ function RevealWords({ text, className }: { text: string; className: string }) {
     target.current = text;
   }, [text]);
   useEffect(() => {
-    let frame = 0, last = 0;
+    let frame = 0, last = 0, owed = 0;
     const step = (now: number) => {
-      const goal = target.current.length;
-      if (at.current >= goal) { revealed.text = target.current; revealed.at = goal; frame = requestAnimationFrame(step); return; }
       frame = requestAnimationFrame(step);
-      if (now - last < 33) return;
+      const dt = last ? Math.min(100, now - last) : 16;
       last = now;
-      const behind = goal - at.current;
-      let next = Math.min(goal, at.current + Math.max(3, Math.ceil(behind / 40)));
-      /* to the end of a word, so a word lands whole */
+      const goal = target.current.length;
+      if (at.current >= goal) { owed = 0; revealed.text = target.current; revealed.at = goal; if (id) lettedOut.set(id, goal); return; }
+      /* what's waiting goes out within ~200 ms; never slower than 150 letters a second */
+      owed += dt * Math.max(0.15, (goal - at.current) / 200);
+      if (owed < 1) return;
+      let next = Math.min(goal, at.current + Math.floor(owed));
+      owed -= Math.floor(owed);
+      /* to the end of a word, so a word lands whole (unless it's a long one) */
       const space = target.current.slice(next).search(/\s/);
-      next = space < 0 ? goal : Math.min(goal, next + space);
+      if (space >= 0 && space <= 24) next = Math.min(goal, next + space);
       at.current = next;
       revealed.text = target.current; revealed.at = next;
+      if (id) lettedOut.set(id, next);
       setShown(next);
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, []);
-  return <div className={className}><Markdown text={text.slice(0, Math.min(shown, text.length))} streaming /></div>;
+  }, [id]);
+  /* A finished reply, once it's all out, is drawn as any reply is, with no fading words left to fade again.
+     A draft keeps its words as they are: it may grow again any moment. */
+  const done = id !== undefined && shown >= text.length;
+  return <div className={className}><Markdown text={done ? text : text.slice(0, shown)} streaming={!done} /></div>;
 }
 
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
@@ -2058,7 +2071,10 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
         {items.map((item) => {
           switch (item.type) {
             case "ask": return <Ask key={item.seq} workspace={workspace} item={item} running={running} />;
-            case "text": return item.seq > liveFrom ? <RevealWords key={item.seq} text={item.text} className="cd-say" /> : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
+            /* Let out once: shown again (another tab, scrolled back, opened again), it just shows. */
+            case "text": return item.seq > liveFrom && (lettedOut.get(`${workspace.id}:${item.seq}`) ?? -1) < item.text.length
+              ? <RevealWords key={item.seq} id={`${workspace.id}:${item.seq}`} text={item.text} className="cd-say" />
+              : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
             case "done": return <Done key={item.seq} event={item.event} rating={ratings[item.seq] ?? null} onRate={rateAnswer.bind(null, item.seq)} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;

@@ -40,7 +40,7 @@
 .rail-room .rail-pill { height: 30px; width: 52px; }
 .rail-room .rail-pill .line-icon { width: 21px; height: 21px; color: var(--k-on-surface-variant); }
 .rail-room[aria-current] .rail-pill { background: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest)); }
-.rail-room[aria-current] .rail-pill .line-icon { color: var(--k-app-accent); }
+.rail-room[aria-current] .rail-pill .line-icon { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); }
 .rail-you .k-ink-portrait { width: 30px; height: 30px; }
 .rail-you .portrait { width: 22px; height: 22px; font-size: 11px; box-shadow: none; background: transparent; }
 
@@ -189,6 +189,24 @@
   --on-secondary-container: var(--k-on-secondary-container);
 }
 
+/* By night ink is pale, so the accent is mixed towards it less on text and more into containers. */
+:root[data-theme="dark"] .app-frame.in-app {
+  --k-suo: color-mix(in srgb, var(--k-app-accent) 62%, var(--k-ink));
+  --k-primary-container: color-mix(in srgb, var(--k-app-accent) 26%, var(--k-container-lowest));
+  --k-on-primary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
+  --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 18%, var(--k-container-lowest));
+  --k-on-secondary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-frame.in-app {
+    --k-suo: color-mix(in srgb, var(--k-app-accent) 62%, var(--k-ink));
+    --k-primary-container: color-mix(in srgb, var(--k-app-accent) 26%, var(--k-container-lowest));
+    --k-on-primary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
+    --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 18%, var(--k-container-lowest));
+    --k-on-secondary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
+  }
+}
+
 /* Inside an app the page is the same paper as Home, so moving between them
    never changes the ground under you; only the accent roles above change. */
 .app-frame.in-app { background: var(--k-surface); }
@@ -258,19 +276,15 @@ html, body, .app-frame { overflow-x: clip; }
 
 /* ── Home as a dashboard: My apps, the house at a glance, then every app by what it's for ── */
 .home-section { margin-bottom: 26px; }
-.home-section-title { margin: 0 0 12px 6px; font: 600 15px/1.3 var(--k-sans); letter-spacing: .02em; color: var(--k-on-surface-variant); }
+.home-section-title { margin: 0 0 14px 6px; font: 600 24px/1.2 var(--k-display); color: var(--k-plum); }
 .home-section .app-tiles { margin-bottom: 0; }
 .home-empty { margin: 0 6px; color: var(--k-on-surface-variant); }
 .app-tile.is-dragging { opacity: .45; }
 .app-tile.drop-before::before { content: ""; position: absolute; left: -8px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--k-suo); }
 
-.home-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
-.home-stat { display: grid; gap: 2px; padding: 16px 18px; border-radius: var(--k-r-l); background: var(--k-container-low); color: inherit; text-decoration: none; transition: background-color var(--k-t-state) var(--k-ease-settle), border-radius var(--k-t-seat) var(--k-spring); }
-.home-stat:hover { background: var(--k-container); border-radius: 28px; }
-.home-stat b { font: 600 32px/1.1 var(--k-display); color: var(--k-plum); font-variant-numeric: tabular-nums; }
-.home-stat span { font-size: 13.5px; color: var(--k-on-surface-variant); }
-
-.home-glances { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 30px; align-items: start; }
+.home-glances { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; align-items: start; }
+.home-more-group + .home-more-group { margin-top: 18px; }
+.home-more-label { margin: 0 0 10px 8px; font: 600 12.5px/1.3 var(--k-sans); letter-spacing: .04em; color: var(--k-on-surface-variant); opacity: .85; }
 .home-glance { border-radius: var(--k-r-xl); background: var(--k-container); padding: 6px 6px 8px; }
 .home-glance-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px; border-radius: 22px; color: inherit; text-decoration: none; }
 .home-glance-head .k-app-bloom { width: 30px; height: 30px; flex: none; }
@@ -280,20 +294,18 @@ html, body, .app-frame { overflow-x: clip; }
 .home-glance-lines { display: grid; }
 .home-line { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px; border-radius: 18px; color: inherit; text-decoration: none; transition: background-color var(--k-t-state) var(--k-ease-settle); }
 .home-line:hover { background: var(--k-container-high); }
-.home-line:focus-visible, .home-stat:focus-visible, .home-glance-head:focus-visible { outline: 3px solid var(--k-accent); outline-offset: 2px; }
+.home-line:focus-visible, .home-glance-head:focus-visible { outline: 3px solid var(--k-accent); outline-offset: 2px; }
 .home-line-mark { width: 36px; height: 36px; flex: none; display: grid; place-items: center; }
 .home-line-mark .k-ink-blot { width: 36px; height: 36px; }
 .home-line-text { display: grid; min-width: 0; }
 .home-line-text b { font: 500 15px/1.35 var(--k-sans); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-line-text small { font-size: 12.5px; line-height: 1.4; color: var(--k-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-ext { font: 700 9px/1 var(--k-sans); letter-spacing: .04em; color: var(--k-plum); }
+.home-ext { font: 700 9px/1 var(--k-sans); letter-spacing: .04em; color: var(--k-on-wash); }
 .home-plus { font: 500 20px/1 var(--k-sans); color: var(--k-suo); }
 .home-dot { width: 10px; height: 10px; border-radius: 50%; background: #b9a8a2; }
 .home-dot.is-live { background: var(--k-moss); box-shadow: 0 0 0 4px color-mix(in srgb, var(--k-moss) 18%, transparent); }
 @media (max-width: 720px) {
-  .home-stats { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
-  .home-stat { padding: 12px 14px; }
-  .home-stat b { font-size: 26px; }
-  .home-stat span { font-size: 12.5px; }
-  .home-glances { grid-template-columns: minmax(0, 1fr); }
+  /* Now slides sideways on a phone, so it never pushes the apps down. */
+  .home-glances { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .home-glances > .home-glance { flex: 0 0 min(84%, 320px); scroll-snap-align: start; }
 }

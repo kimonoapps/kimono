@@ -6,7 +6,7 @@
    checklist rings. Controls, cards and text are never brushed.
    ───────────────────────────────────────────────────────────── */
 
-.k-ink-blot { position: relative; isolation: isolate; display: inline-grid; place-items: center; width: 46px; height: 46px; flex: none; color: var(--k-plum); }
+.k-ink-blot { position: relative; isolation: isolate; display: inline-grid; place-items: center; width: 46px; height: 46px; flex: none; color: var(--k-on-wash); }
 .k-ink-blot > svg.k-ink-wash { position: absolute; inset: -12%; width: 124%; height: 124%; z-index: -1; overflow: visible; }
 .k-ink-portrait { position: relative; isolation: isolate; display: inline-grid; place-items: center; flex: none; }
 .k-ink-portrait > svg.k-ink-wash { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; overflow: visible; }
