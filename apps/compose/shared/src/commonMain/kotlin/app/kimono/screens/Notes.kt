@@ -177,7 +177,7 @@ internal fun NotesQuiet(seed: String, line: String, action: (@Composable () -> U
  * each, as Kimono AI's drawer holds its chats.
  */
 @Composable
-fun NotesDrawer(model: NotesModel, accent: String, me: String?, content: @Composable (menu: () -> Unit, search: Boolean, endSearch: () -> Unit) -> Unit) {
+fun NotesDrawer(model: NotesModel, accent: String, me: String?, platform: app.kimono.data.Platform, openNote: (String) -> Unit, content: @Composable (menu: () -> Unit, search: Boolean, endSearch: () -> Unit) -> Unit) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var searching by remember { mutableStateOf(false) }
@@ -190,14 +190,14 @@ fun NotesDrawer(model: NotesModel, accent: String, me: String?, content: @Compos
                 drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
                 modifier = Modifier.widthIn(max = 340.dp),
             ) {
-                NotesDrawerSheet(model, accent, me, close = { scope.launch { drawer.close() } }, search = { searching = true; scope.launch { drawer.close() } })
+                NotesDrawerSheet(model, accent, me, platform, close = { scope.launch { drawer.close() } }, search = { searching = true; scope.launch { drawer.close() } }) { id -> scope.launch { drawer.close() }; openNote(id) }
             }
         },
     ) { content({ scope.launch { drawer.open() } }, searching) { searching = false } }
 }
 
 @Composable
-private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, close: () -> Unit, search: () -> Unit) {
+private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, platform: app.kimono.data.Platform, close: () -> Unit, search: () -> Unit, openNote: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val library = model.library
     val place = model.place
@@ -224,10 +224,11 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, clo
                 }
             }
             if (problem != null) item(key = "problem") { Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { Problem(problem) } }
-            library?.notebooks.orEmpty().forEach { notebook ->
+            /* A notebook, its sections folded under it. */
+            fun book(notebook: Notebook) {
                 item(key = "nb-${notebook.id}") {
-                    val shared = notebook.shared
-                    if (shared) LaunchedEffect(notebook.id) { model.loadMembers(notebook.id) }
+                    LaunchedEffect(notebook.id) { model.loadMembers(notebook.id); if (notebook.sharedWithYou && model.people.isEmpty()) model.loadPeople() }
+                    val shared = model.members[notebook.id].orEmpty().isNotEmpty()
                     var menu by remember { mutableStateOf(false) }
                     if (confirming == notebook.id) InlineConfirm(notebook.name, model.notesIn(NotePlace.InNotebook(notebook.id)).size, keep = { confirming = null }) {
                         confirming = null
@@ -236,7 +237,10 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, clo
                         NotesRow(
                             selected = place == NotePlace.InNotebook(notebook.id), onClick = { go(NotePlace.InNotebook(notebook.id)) },
                             onLongClick = { menu = true },
-                            lead = { NotebookMark(notebook.id, 30.dp) },
+                            lead = {
+                                if (notebook.sharedWithYou) model.people[notebook.createdBy.lowercase()].let { person -> InkPortraitFrame(notebook.createdBy, 30.dp) { Portrait(person?.picture, person?.name, notebook.createdBy, 22.dp) } }
+                                else NotebookMark(notebook.id, 30.dp)
+                            },
                         ) {
                             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                                 Text(notebook.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
@@ -247,9 +251,9 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, clo
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
                             if (notebook.canWrite) DropdownMenuItem(text = { Text("New section") }, leadingIcon = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; naming = notebook.id to null })
                             if (notebook.canWrite) DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; renaming = notebook })
-                            if (notebook.role == "owner" && !notebook.isSpace) DropdownMenuItem(text = { Text("Share on its own") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = notebook })
-                            if (notebook.isSpace) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leaving = notebook })
-                            if (notebook.canWrite && !notebook.isSpace) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
+                            DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = notebook })
+                            if (notebook.sharedWithYou) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leaving = notebook })
+                            if (notebook.canWrite && !notebook.sharedWithYou) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
                                 menu = false
                                 if (model.notesIn(NotePlace.InNotebook(notebook.id)).isEmpty()) scope.launch { try { model.notes.deleteNotebook(notebook.id); model.load() } catch (_: KimonoProblem) { problem = DIDNT_WORK } }
                                 else confirming = notebook.id
@@ -276,10 +280,25 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, clo
                         )
                     }
                 }
-            }
+                        }
+            val books = library?.notebooks.orEmpty()
+            books.filter { !it.sharedWithYou }.forEach(::book)
             if (library != null) item(key = "new-notebook") {
                 NotesRow(selected = false, onClick = { making = true }, lead = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(20.dp)) }) {
                     Text("New notebook", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                }
+            }
+            /* Below your own: what others shared with you, notebooks then single notes, each with whoever's it is. */
+            val theirs = books.filter { it.sharedWithYou }
+            val loose = library?.notes.orEmpty().filter { it.notebookId == null }
+            if (theirs.isNotEmpty() || loose.isNotEmpty()) item(key = "shared-label") {
+                Text("Shared with you", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp))
+            }
+            theirs.forEach(::book)
+            items(loose, key = { "shared-note-${it.id}" }) { note ->
+                val person = model.people[note.createdBy.lowercase()]
+                NotesRow(selected = false, onClick = { openNote(note.id) }, lead = { InkPortraitFrame(note.createdBy, 30.dp) { Portrait(person?.picture, person?.name, note.createdBy, 22.dp) } }) {
+                    Text(note.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 }
             }
             if (library == null && model.problem == null) item(key = "loading") { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader(size = 28.dp) } }
@@ -303,8 +322,8 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, clo
         }
     }
     if (making) NewNotebookSheet(model, onDismiss = { making = false }) { made -> making = false; go(NotePlace.InNotebook(made)) }
-    sharing?.let { notebook -> ShareNotebookSheet(model, notebook, me, onDismiss = { sharing = null }) }
-    leaving?.let { notebook -> LeaveSheet(model, notebook, me, onDismiss = { leaving = null }) }
+    sharing?.let { notebook -> ShareSheet(shareTarget(model, notebook.id, true, notebook.name, notebook.canWrite), me, platform) { sharing = null; scope.launch { model.loadMembers(notebook.id) } } }
+    leaving?.let { notebook -> LeaveSheet(model, notebook.name, notebook.id, true, me, onDismiss = { leaving = null }) }
 }
 
 /** "Delete Recipes and its 4 notes?" in the row's place, with Delete and Keep. */
@@ -377,19 +396,21 @@ private fun NotesRow(selected: Boolean, onClick: () -> Unit, onLongClick: (() ->
 
 /** The notes of the place chosen in the drawer, newest first. */
 @Composable
-fun NotesScreen(model: NotesModel, accent: String, admin: Boolean, me: String?, back: () -> Unit, open: (String) -> Unit, go: (String) -> Unit) {
-    NotesDrawer(model, accent, me) { menu, searching, endSearch ->
-        NotesList(model, accent, admin, me, menu, searching, endSearch, back, open, go)
+fun NotesScreen(model: NotesModel, platform: app.kimono.data.Platform, accent: String, admin: Boolean, me: String?, back: () -> Unit, open: (String) -> Unit, go: (String) -> Unit) {
+    NotesDrawer(model, accent, me, platform, openNote = open) { menu, searching, endSearch ->
+        NotesList(model, platform, accent, admin, me, menu, searching, endSearch, back, open, go)
     }
 }
 
 @Composable
-private fun NotesList(model: NotesModel, accent: String, admin: Boolean, me: String?, menu: () -> Unit, searching: Boolean, endSearch: () -> Unit, back: () -> Unit, open: (String) -> Unit, go: (String) -> Unit) {
+private fun NotesList(model: NotesModel, platform: app.kimono.data.Platform, accent: String, admin: Boolean, me: String?, menu: () -> Unit, searching: Boolean, endSearch: () -> Unit, back: () -> Unit, open: (String) -> Unit, go: (String) -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var moving by remember { mutableStateOf<NoteMeta?>(null) }
     var leaving by remember { mutableStateOf<Notebook?>(null) }
+    var sharing by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var leavingNote by remember { mutableStateOf<NoteMeta?>(null) }
     LaunchedEffect(Unit) { model.load() }
     /* On coming back (from a note, or to the app) the list asks again, then follows Drive's change feed. */
     WhileShown(Unit) { model.load(); model.follow() }
@@ -451,7 +472,7 @@ private fun NotesList(model: NotesModel, accent: String, admin: Boolean, me: Str
                 library == null && model.problem != null -> NotesQuiet("problem", DIDNT_WORK) { Seal("Try again", compact = true, tone = SealTone.Quiet, onClick = { scope.launch { model.load() } }) }
                 library == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 120.dp)) {
-                    if (notebook != null && !searching) item(key = "head-${notebook.id}") { NotebookHead(model, notebook, me) { leaving = notebook } }
+                    if (notebook != null && !searching) item(key = "head-${notebook.id}") { NotebookHead(model, notebook, me, share = { sharing = notebook.id to true }) { leaving = notebook } }
                     if (shown.isEmpty()) item(key = "quiet-${place.key}-$searching") {
                         NotesQuiet(if (searching) "search" else place.key, when { searching && query.isNotBlank() -> "No notes match."; place is NotePlace.InSection -> "Nothing here yet."; else -> "Your notes will be here." })
                     }
@@ -465,7 +486,7 @@ private fun NotesList(model: NotesModel, accent: String, admin: Boolean, me: Str
                             NoteRow(
                                 model, note, crest = if (place == NotePlace.All || searching) nb else null, lifted = model.lastOpened == note.id, now = time,
                                 canWrite = nb?.canWrite != false,
-                                open = { open(note.id) }, move = { moving = note }, delete = { model.delete(note) { failed() } },
+                                open = { open(note.id) }, move = { moving = note }, share = { sharing = note.id to false }, leave = { leavingNote = note }, delete = { model.delete(note) { failed() } },
                             )
                         }
                     }
@@ -474,7 +495,13 @@ private fun NotesList(model: NotesModel, accent: String, admin: Boolean, me: Str
         }
     }
     moving?.let { note -> MoveSheet(model, note, onDismiss = { moving = null }, failed = ::failed) }
-    leaving?.let { nb -> LeaveSheet(model, nb, me, onDismiss = { leaving = null }) }
+    leaving?.let { nb -> LeaveSheet(model, nb.name, nb.id, true, me, onDismiss = { leaving = null }) }
+    leavingNote?.let { note -> LeaveSheet(model, note.title, note.id, false, me, onDismiss = { leavingNote = null }) }
+    sharing?.let { (id, notebook) ->
+        val name = if (notebook) model.notebook(id)?.name.orEmpty() else model.meta(id)?.title.orEmpty()
+        val canWrite = if (notebook) model.notebook(id)?.canWrite != false else true
+        ShareSheet(shareTarget(model, id, notebook, name, canWrite), me, platform) { sharing = null; if (notebook) scope.launch { model.loadMembers(id) } }
+    }
 }
 
 /** The square seal for a new note: the same shape as Send. */
@@ -499,15 +526,16 @@ private fun NewNoteSeal(busy: Boolean, onClick: () -> Unit) {
 
 /** A notebook's page head: its crest, large, its name, and who it's shared with. */
 @Composable
-private fun NotebookHead(model: NotesModel, notebook: Notebook, me: String?, leave: () -> Unit) {
-    if (notebook.shared) LaunchedEffect(notebook.id) { model.loadMembers(notebook.id); if (model.people.isEmpty()) model.loadPeople() }
+private fun NotebookHead(model: NotesModel, notebook: Notebook, me: String?, share: () -> Unit, leave: () -> Unit) {
+    LaunchedEffect(notebook.id) { model.loadMembers(notebook.id); if (model.people.isEmpty()) model.loadPeople() }
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         NotebookMark(notebook.id, 64.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(notebook.name, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (notebook.shared) MemberFaces(model, notebook, me)
+            MemberFaces(model, notebook, me)
         }
-        if (notebook.isSpace) Seal("Leave", compact = true, tone = SealTone.Quiet, onClick = leave)
+        if (notebook.sharedWithYou) Seal("Leave", compact = true, tone = SealTone.Quiet, onClick = leave)
+        else Seal("Share", compact = true, tone = SealTone.Quiet, onClick = share)
     }
 }
 
@@ -515,8 +543,10 @@ private fun NotebookHead(model: NotesModel, notebook: Notebook, me: String?, lea
 @Composable
 private fun NoteRow(
     model: NotesModel, note: NoteMeta, crest: Notebook?, lifted: Boolean, now: Long, canWrite: Boolean,
-    open: () -> Unit, move: () -> Unit, delete: () -> Unit,
+    open: () -> Unit, move: () -> Unit, share: () -> Unit, leave: () -> Unit, delete: () -> Unit,
 ) {
+    /* A note shared with you on its own is yours to leave, not to move or delete. */
+    val alone = note.notebookId == null
     var menu by remember { mutableStateOf(false) }
     val draft = if (model.hasDraft(note.id)) model.draft(note.id) else null
     val shape = RoundedCornerShape(20.dp)
@@ -538,8 +568,10 @@ private fun NoteRow(
         Box {
             IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More", modifier = Modifier.size(20.dp)) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                if (canWrite) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; move() })
-                if (canWrite) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; delete() })
+                DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; share() })
+                if (alone) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leave() })
+                if (canWrite && !alone) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; move() })
+                if (canWrite && !alone) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; delete() })
             }
         }
     }
@@ -579,66 +611,17 @@ internal fun MoveSheet(model: NotesModel, note: NoteMeta, onDismiss: () -> Unit,
     }
 }
 
-/** Shares a notebook on its own: the people picker Drive uses, each person an editor or a viewer. */
-@Composable
-internal fun ShareNotebookSheet(model: NotesModel, notebook: Notebook, me: String?, onDismiss: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    val chosen = remember { mutableStateMapOf<String, String>() }
-    var everyone by remember { mutableStateOf(model.people.values.sortedBy { it.name }.takeIf { it.isNotEmpty() }) }
-    var search by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var problem by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { model.loadPeople(); everyone = model.people.values.sortedBy { it.name } }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Share ${notebook.name}", style = MaterialTheme.typography.titleLarge)
-            /* Who already shares it, before it leaves its space. */
-            if (notebook.shared) Text("Everyone in ${notebook.space.name} can see this.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            androidx.compose.material3.OutlinedTextField(search, { search = it }, singleLine = true, label = { Text("Name or username") }, modifier = Modifier.fillMaxWidth())
-            val list = everyone?.filter { !it.username.equals(me, ignoreCase = true) }
-                ?.filter { search.isBlank() || it.name.contains(search, ignoreCase = true) || it.username.contains(search, ignoreCase = true) }
-            when {
-                list == null -> Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader() }
-                list.isEmpty() -> Text("No one called that.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> LazyColumn(Modifier.heightIn(max = 380.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
-                    items(list, key = { it.username }) { person ->
-                        val role = chosen[person.username]
-                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainer)) {
-                            Row(
-                                Modifier.fillMaxWidth().combinedClickable(onClick = { if (role == null) chosen[person.username] = "editor" else chosen.remove(person.username) }).padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                Portrait(person.picture, person.name, person.username, 36.dp)
-                                Text(person.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Icon(kimonoIcon(if (role != null) "check" else "plus"), null, tint = if (role != null) MaterialTheme.colorScheme.primary else LocalContentColor.current)
-                            }
-                            /* The joint switch: editor or viewer. */
-                            if (role != null) SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 12.dp)) {
-                                listOf("editor" to "Can edit", "viewer" to "Can view").forEachIndexed { index, (value, label) ->
-                                    SegmentedButton(selected = role == value, onClick = { chosen[person.username] = value }, shape = SegmentedButtonDefaults.itemShape(index, 2)) { Text(label) }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Problem(problem)
-            Seal("Share", busy = busy, enabled = chosen.isNotEmpty(), modifier = Modifier.fillMaxWidth(), onClick = {
-                busy = true
-                problem = null
-                scope.launch {
-                    try {
-                        model.notes.shareNotebook(notebook.id, chosen.toMap())
-                        model.members.remove(notebook.id)
-                        model.load()
-                        onDismiss()
-                    } catch (_: KimonoProblem) { problem = DIDNT_WORK }
-                    busy = false
-                }
-            })
-        }
-    }
-}
+/** How the share sheet reads and changes a notebook's or a note's sharing, and its public link. */
+internal fun shareTarget(model: NotesModel, id: String, notebook: Boolean, name: String, canEdit: Boolean) = ShareTarget(
+    name = name,
+    known = model.notes.knownSharing(id, notebook),
+    load = { model.notes.sharing(id, notebook) },
+    set = { username, role -> model.notes.share(id, notebook, username, role) },
+    people = { model.notes.people() },
+    knownPeople = model.people.values.toList(),
+    link = { on -> model.notes.link(id, notebook, on) },
+    canEdit = canEdit,
+)
 
 /** A new notebook: a name, and which space it goes in (your own first). */
 @Composable
@@ -676,23 +659,27 @@ internal fun NewNotebookSheet(model: NotesModel, onDismiss: () -> Unit, made: (S
     }
 }
 
-/** Leaving a shared notebook: only an owner can bring you back, so it's held to confirm. */
+/** Leaving something shared with you: only someone who can edit it can bring you back, so it's held to confirm. */
 @Composable
-internal fun LeaveSheet(model: NotesModel, notebook: Notebook, me: String?, onDismiss: () -> Unit) {
+internal fun LeaveSheet(model: NotesModel, name: String, id: String, notebook: Boolean, me: String?, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var problem by remember { mutableStateOf<String?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                NotebookMark(notebook.id, 40.dp)
-                Text("Leave ${notebook.name}?", style = MaterialTheme.typography.titleLarge)
+                if (notebook) NotebookMark(id, 40.dp)
+                Text("Leave $name?", style = MaterialTheme.typography.titleLarge)
             }
             Text("You'll need to be asked back.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Problem(problem)
             HoldSeal("Leave", onConfirm = {
                 scope.launch {
-                    try { model.notes.leave(notebook.id, me ?: return@launch); model.go(NotePlace.All); model.load(); onDismiss() }
-                    catch (_: KimonoProblem) { problem = DIDNT_WORK }
+                    try {
+                        model.notes.leave(id, notebook, me ?: return@launch)
+                        if (notebook) model.go(NotePlace.All)
+                        model.load()
+                        onDismiss()
+                    } catch (_: KimonoProblem) { problem = DIDNT_WORK }
                 }
             })
         }

@@ -111,7 +111,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** A note open to write in. [key] is its id, or a new note's key while it's made. */
 @OptIn(FlowPreview::class)
 @Composable
-fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, back: () -> Unit, open: (String) -> Unit) {
+fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: String?, back: () -> Unit, open: (String) -> Unit) {
     /* A new note's key from a launch before this one: there's nothing to open. */
     if (key.startsWith("new-") && !model.hasDraft(key)) { LaunchedEffect(Unit) { back() }; return }
     val draft = remember(key) { model.draft(key) }
@@ -124,6 +124,8 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, back: (
     var bodyFocused by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
+    var sharing by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
     LaunchedEffect(draft) {
         draft.open()
         model.lastOpened = draft.id
@@ -147,6 +149,8 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, back: (
     val meta = model.meta(draft.id)
     val notebook = model.notebook(meta?.notebookId)
     val canWrite = notebook?.canWrite != false
+    /* Shared with you on its own: yours to leave, not to move or delete. */
+    val alone = meta != null && meta.notebookId == null
     val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     Scaffold(
@@ -160,12 +164,14 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, back: (
                     if (meta != null) Box {
                         IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                            if (canWrite) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; moving = true })
+                            DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = true })
+                            if (canWrite && !alone) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; moving = true })
                             DropdownMenuItem(text = { Text("Send") }, leadingIcon = { Icon(kimonoIcon("out"), null, modifier = Modifier.size(18.dp)) }, onClick = {
                                 menu = false
                                 platform.share(listOf(draft.title.text.toString().trim(), draft.body.text.toString()).filter { it.isNotBlank() }.joinToString("\n\n"))
                             })
-                            if (canWrite) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
+                            if (alone) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leaving = true })
+                            if (canWrite && !alone) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
                                 menu = false
                                 draft.discard()
                                 model.delete(meta)
@@ -204,6 +210,8 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, back: (
             if (bodyFocused && keyboard && canWrite) KeyboardRow(draft) { focusManager.clearFocus() }
         }
     }
+    if (sharing && meta != null) ShareSheet(shareTarget(model, meta.id, false, draft.title.text.toString().ifBlank { meta.title }, canWrite), me, platform) { sharing = false }
+    if (leaving && meta != null) LeaveSheet(model, meta.title, meta.id, false, me, onDismiss = { leaving = false; back() })
     if (moving && meta != null) MoveSheet(model, meta, onDismiss = { moving = false }, failed = { scope.launch { snackbar.showSnackbar(DIDNT_WORK) } })
 }
 

@@ -77,6 +77,8 @@ data class DriveNode(
     val purpose: String? = null,
     /** For a chat, the chat it holds. */
     val ref: String? = null,
+    /** Your access to it, where the answer says (things shared with you). */
+    val role: String? = null,
 ) {
     val isFolder get() = kind == "folder"
 
@@ -320,6 +322,22 @@ class Drive(private val session: Session) {
     /** Everyone with a Kimono account. */
     suspend fun people(): List<Person> = json.decodeFromString<PeopleList>(session.fetch(PEOPLE)).people
 
+    /** Folders and files shared with you from spaces you aren't in, each standing on its own. */
+    suspend fun sharedWithYou(): List<DriveNode> = json.decodeFromString<TrashList>(session.fetch(SHARED)).items
+    fun knownSharedWithYou(): List<DriveNode>? = known<TrashList>(SHARED)?.items
+
+    /** Who a folder or file is shared with beyond its space. */
+    suspend fun shares(id: String): Sharing = json.decodeFromString(session.fetch("/api/v1/drive/nodes/$id/shares"))
+
+    /** Shares it with [username] as "editor" or "viewer", or (null) takes them off. */
+    suspend fun share(id: String, username: String, role: String?): Sharing? {
+        val text = session.call("/api/v1/drive/nodes/$id/shares", HttpMethod.Put) {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("username", username); if (role == null) put("role", kotlinx.serialization.json.JsonNull) else put("role", role) }.toString())
+        }
+        return runCatching { json.decodeFromString<Sharing>(text) }.getOrNull()?.takeIf { text.contains("\"shares\"") }
+    }
+
     suspend fun createFolder(parentId: String, name: String): DriveNode = json.decodeFromString(session.call("/api/v1/drive/nodes/$parentId/folders", HttpMethod.Post) {
         contentType(ContentType.Application.Json)
         setBody(buildJsonObject { put("name", name) }.toString())
@@ -527,6 +545,7 @@ class Drive(private val session: Session) {
     companion object {
         private const val SPACES = "/api/v1/drive/spaces"
         private const val TRASH = "/api/v1/drive/trash"
+        private const val SHARED = "/api/v1/drive/shared-with-you"
         private const val PEOPLE = "/api/v1/drive/people"
         private const val APPS = "/api/v1/apps"
         private const val MY_APPS = "/api/v1/me/apps"

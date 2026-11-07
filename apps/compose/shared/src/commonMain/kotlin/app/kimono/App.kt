@@ -289,7 +289,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             fun notesAccent() = model.drive.launcher.value?.firstOrNull { it.id == app.kimono.data.Notes.APP_ID }?.accent ?: "#b56d78"
             composable("notes") {
                 AppAccentTheme(notesAccent()) {
-                    app.kimono.screens.NotesScreen(notes, notesAccent(), admin, me?.username, back = { goTab("home") }, open = { nav.navigate("note/$it") }) { nav.navigate(it) }
+                    app.kimono.screens.NotesScreen(notes, platform, notesAccent(), admin, me?.username, back = { goTab("home") }, open = { nav.navigate("note/$it") }) { nav.navigate(it) }
                 }
             }
             /* A notebook opened from Drive. */
@@ -297,13 +297,13 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
                 val notebook = backStack.arguments?.read { getStringOrNull("notebook") } ?: ""
                 LaunchedEffect(notebook) { notes.go(app.kimono.screens.NotePlace.InNotebook(notebook)) }
                 AppAccentTheme(notesAccent()) {
-                    app.kimono.screens.NotesScreen(notes, notesAccent(), admin, me?.username, back = { nav.popBackStack() }, open = { nav.navigate("note/$it") }) { nav.navigate(it) }
+                    app.kimono.screens.NotesScreen(notes, platform, notesAccent(), admin, me?.username, back = { nav.popBackStack() }, open = { nav.navigate("note/$it") }) { nav.navigate(it) }
                 }
             }
             composable("note/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 AppAccentTheme(notesAccent()) {
-                    app.kimono.screens.NoteEditorScreen(notes, platform, id, back = { nav.popBackStack() }) { other -> nav.navigate("note/$other") }
+                    app.kimono.screens.NoteEditorScreen(notes, platform, id, me?.username, back = { nav.popBackStack() }) { other -> nav.navigate("note/$other") }
                 }
             }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }
@@ -313,8 +313,9 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             }
             composable("folder/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
-                FolderScreen(model, platform, id, open = { nav.navigate(it) }, back = { nav.popBackStack() })
+                FolderScreen(model, platform, id, me = me?.username, open = { nav.navigate(it) }, back = { nav.popBackStack() })
             }
+            composable("drive/shared") { app.kimono.screens.SharedWithYouScreen(model, platform, me?.username, open = { nav.navigate(it) }) { nav.popBackStack() } }
             composable("trash") { TrashScreen(model) { nav.popBackStack() } }
             composable("you") { YouScreen(session, platform, me) { nav.navigate(it) } }
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }

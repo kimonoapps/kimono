@@ -27,8 +27,10 @@ data class NotebookSpace(val id: String, val name: String = "", val crest: Strin
 data class Notebook(
     val id: String, val name: String, val createdBy: String = "", val createdAt: Double = 0.0, val updatedAt: Double = 0.0,
     val space: NotebookSpace, val role: String = "viewer",
-    /** It is its space's top folder: shared on its own. */
+    /** It is its space's top folder. */
     val isSpace: Boolean = false,
+    /** Shared with this person from a space they aren't in: it's theirs to leave, not to delete. */
+    val sharedWithYou: Boolean = false,
 ) {
     val canWrite get() = role == "owner" || role == "editor"
     val shared get() = space.members > 1
@@ -40,7 +42,8 @@ data class NoteSection(val id: String, val notebookId: String, val parentId: Str
 
 @Serializable
 data class NoteMeta(
-    val id: String, val notebookId: String, val parentId: String, val title: String, val createdBy: String = "",
+    /** Null for a note shared with this person on its own, outside any notebook of theirs. */
+    val id: String, val notebookId: String? = null, val parentId: String, val title: String, val createdBy: String = "",
     val createdAt: Double = 0.0, val updatedAt: Double = 0.0,
     /** The version an edit starts from, to save over it. */
     val version: Int = 0,
@@ -56,8 +59,37 @@ data class NoteText(val note: NoteMeta, val text: String)
 @Serializable
 data class NoteSaved(val note: NoteMeta, val conflict: Boolean = false)
 
+
+/* ── sharing: Drive's shares, for a notebook, a note, or any folder or file ── */
+
 @Serializable
-data class NotebookMembers(val id: String, val name: String, val role: String, val isSpace: Boolean = false, val space: NotebookSpace? = null, val members: List<SpaceMember> = emptyList())
+data class Share(val username: String, val role: String, val addedBy: String = "")
+
+@Serializable
+data class ShareVia(val id: String, val name: String)
+
+/** Someone who has it through a folder above it (a note through its notebook). */
+@Serializable
+data class InheritedShare(val username: String, val role: String, val via: ShareVia)
+
+/** Its space, for "Everyone in Family can see this." (no name and 0 when it was shared with you). */
+@Serializable
+data class ShareSpace(val id: String = "", val name: String = "", val members: Int = 0)
+
+@Serializable
+data class Sharing(
+    val shares: List<Share> = emptyList(), val inherited: List<InheritedShare> = emptyList(), val space: ShareSpace = ShareSpace(),
+    /** Your own access to it; null where the answer doesn't say (Drive's). */
+    val role: String? = null,
+    /** Its public, read-only link, when on. */
+    val link: String? = null,
+)
+
+@Serializable
+private data class NoteLinkAnswer(val link: String? = null)
+
+@Serializable
+private data class PeopleAnswer(val people: List<Person> = emptyList())
 
 /** An edit made with no connection, kept on the phone until it can be sent under the version rule. */
 @Serializable
@@ -83,7 +115,6 @@ class Notes(private val session: Session, private val platform: Platform) {
 
     fun knownLibrary(): NoteLibrary? = answers.peek(LIBRARY)?.let { runCatching { json.decodeFromString<NoteLibrary>(it) }.getOrNull() }
     fun knownNote(id: String): NoteText? = answers.peek("$LIBRARY/$id")?.let { runCatching { json.decodeFromString<NoteText>(it) }.getOrNull() }
-    fun knownMembers(notebookId: String): NotebookMembers? = answers.peek(membersPath(notebookId))?.let { runCatching { json.decodeFromString<NotebookMembers>(it) }.getOrNull() }
 
     suspend fun library(): NoteLibrary = read(session.fetch(LIBRARY))
     suspend fun note(id: String): NoteText = read(session.fetch("$LIBRARY/$id"))
@@ -118,20 +149,33 @@ class Notes(private val session: Session, private val platform: Platform) {
     suspend fun renameNotebook(id: String, name: String) { send("$LIBRARY/notebooks/$id", HttpMethod.Patch, buildJsonObject { put("name", name) }) }
     suspend fun deleteNotebook(id: String) { send("$LIBRARY/notebooks/$id", HttpMethod.Delete) }
 
-    /** Shares a notebook on its own, as a space of its own, with each person as "editor" or "viewer". */
-    suspend fun shareNotebook(id: String, people: Map<String, String>) {
-        send("$LIBRARY/notebooks/$id/share", HttpMethod.Post, buildJsonObject {
-            put("members", buildJsonArray { people.forEach { (username, role) -> add(buildJsonObject { put("username", username); put("role", role) }) } })
-        })
+    /* A notebook's sharing lives at /notes/notebooks/:id/…, a note's at /notes/:id/…. */
+    private fun base(id: String, notebook: Boolean) = if (notebook) "$LIBRARY/notebooks/$id" else "$LIBRARY/$id"
+
+    fun knownSharing(id: String, notebook: Boolean): Sharing? = answers.peek("${base(id, notebook)}/members")?.let { runCatching { json.decodeFromString<Sharing>(it) }.getOrNull() }
+
+    /** Who it's shared with, who has it through its notebook, who sees it in its space, and its link. */
+    suspend fun sharing(id: String, notebook: Boolean): Sharing = read(session.fetch("${base(id, notebook)}/members"))
+
+    /** Shares it with [username] as "editor" or "viewer", or (null) takes them off. */
+    suspend fun share(id: String, notebook: Boolean, username: String, role: String?): Sharing? {
+        val text = send("${base(id, notebook)}/members", HttpMethod.Put, buildJsonObject { put("username", username); if (role == null) put("role", JsonNull) else put("role", role) })
+        return runCatching { json.decodeFromString<Sharing>(text) }.getOrNull()?.takeIf { text.contains("\"shares\"") }
     }
 
-    suspend fun members(notebookId: String): NotebookMembers = read(session.fetch(membersPath(notebookId)))
+    /** Turns its public link on (giving it) or off. */
+    suspend fun link(id: String, notebook: Boolean, on: Boolean): String? =
+        read<NoteLinkAnswer>(send("${base(id, notebook)}/link", if (on) HttpMethod.Post else HttpMethod.Delete)).link
 
-    /** Leaves a shared notebook. */
-    suspend fun leave(notebookId: String, me: String) {
-        send(membersPath(notebookId), HttpMethod.Put, buildJsonObject { put("username", me); put("role", JsonNull) })
-        answers.drop(membersPath(notebookId))
+    /** Leaves something shared with you. */
+    suspend fun leave(id: String, notebook: Boolean, me: String) {
+        send("${base(id, notebook)}/members", HttpMethod.Put, buildJsonObject { put("username", me); put("role", JsonNull) })
+        answers.drop("${base(id, notebook)}/members")
     }
+
+    /** Everyone it can be shared with. */
+    suspend fun people(): List<Person> = read<PeopleAnswer>(session.fetch("$LIBRARY/people")).people
+    fun knownPeople(): List<Person>? = answers.peek("$LIBRARY/people")?.let { runCatching { json.decodeFromString<PeopleAnswer>(it).people }.getOrNull() }
 
     /* ── keeping in step with Drive's change feed ── */
 
@@ -183,7 +227,6 @@ class Notes(private val session: Session, private val platform: Platform) {
         private const val CHANGES = "/api/v1/drive/changes"
         private const val WAITING = "kimono.notes.waiting"
         private const val PLACE = "kimono.notes.place"
-        private fun membersPath(id: String) = "$LIBRARY/notebooks/$id/members"
     }
 }
 

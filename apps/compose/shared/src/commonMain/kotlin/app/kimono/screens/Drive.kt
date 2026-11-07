@@ -141,11 +141,13 @@ class DriveModel(val drive: Drive, val platform: Platform) {
 fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var spaces by remember { mutableStateOf(model.drive.knownSpaces()) }
+    var shared by remember { mutableStateOf(model.drive.knownSharedWithYou()) }
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var naming by remember { mutableStateOf(false) }
     suspend fun load() {
         try { spaces = model.drive.spaces(); problem = null } catch (p: KimonoProblem) { problem = p.message }
+        runCatching { model.drive.sharedWithYou() }.onSuccess { shared = it }
     }
     LaunchedEffect(model.landed) { load() }
     /* Drive's bloom comes with the list of apps; fetch it if Home hasn't. */
@@ -174,6 +176,19 @@ fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
                             trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) },
                         ) { Text(space.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                     }
+                    /* Folders and files shared with you from spaces you aren't in. */
+                    val theirs = shared.orEmpty()
+                    if (theirs.isNotEmpty()) item(key = "shared-with-you") {
+                        SegmentedListItem(
+                            onClick = { open("drive/shared") },
+                            shapes = ListItemDefaults.segmentedShapes(0, 1),
+                            colors = segmentColors(),
+                            modifier = Modifier.padding(top = 12.dp),
+                            leadingContent = { InkBlot("shared-with-you", size = 44.dp) { Icon(kimonoIcon("person"), null, modifier = Modifier.size(22.dp), tint = app.kimono.theme.Kata.ink) } },
+                            supportingContent = { Text(if (theirs.size == 1) "1 thing" else "${theirs.size} things") },
+                            trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) },
+                        ) { Text("Shared with you", style = MaterialTheme.typography.bodyLarge) }
+                    }
                 }
             }
         }
@@ -189,7 +204,7 @@ private fun roleWord(role: String) = when (role) { "owner" -> "Yours"; "editor" 
 /** One folder: its files and folders, uploads on their way, and what you can do with each. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: (String) -> Unit, back: () -> Unit) {
+fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: String? = null, open: (String) -> Unit, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
     val snackbar = remember { SnackbarHostState() }
@@ -209,6 +224,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
     /* Long-press picks things; while any are picked, a tap adds or drops one. */
     val selected = remember { mutableStateListOf<String>() }
     var acting by remember { mutableStateOf<DriveNode?>(null) }
+    var sharingNode by remember { mutableStateOf<DriveNode?>(null) }
     var moving by remember { mutableStateOf<List<DriveNode>?>(null) }
     val haptics = LocalHapticFeedback.current
 
@@ -340,6 +356,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
                     act(if (node.link == null) "Link copied. Anyone with it can open the file." else "Link copied.") { clipboard.setText(AnnotatedString(model.drive.link(node.id))) }
                 })
                 if (canEdit && node.link != null) add(NodeChoice("Turn off public link", "close") { act("The link no longer works.") { model.drive.unlink(node.id) } })
+                add(NodeChoice("Share", "person") { sharingNode = node })
                 if (canEdit) add(NodeChoice("Rename", "edit") { renaming = node })
                 if (canEdit) add(NodeChoice("Move to…", "move") { moving = listOf(node) })
                 add(NodeChoice("Select", "select") { selected.add(node.id) })
@@ -348,6 +365,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, open: 
             onDismiss = { acting = null },
         )
     }
+    sharingNode?.let { node -> ShareSheet(driveShareTarget(model, node, canEdit), me, platform) { sharingNode = null } }
     moving?.let { nodes ->
         if (here != null) MovePicker(model, platform, nodes, start = here.folder.id, onDismiss = { moving = null }) { target ->
             act("${count(nodes.size, "item")} moved.") {
@@ -626,6 +644,8 @@ private fun iconFor(node: DriveNode) = when {
 
 private fun detailOf(node: DriveNode): String = buildList {
     if (!node.isFolder) add(readableSize(node.size))
+    /* A notebook, chat or project says so first. */
+    when (node.purpose.takeIf { node.isFolder }) { "notebook" -> add("Notebook"); "chat" -> add("Chat"); "project" -> add("Project") }
     if (node.link != null) add("Public link on")
     node.guest?.let { add("Added by $it") }
 }.joinToString(" · ").ifEmpty { when (node.purpose.takeIf { node.isFolder }) { "notebook" -> "Notebook"; "chat" -> "Chat"; "project" -> "Project"; else -> "Folder" } }
@@ -753,6 +773,86 @@ private fun Empty(text: String) {
             }
             Spacer(Modifier.height(20.dp))
             Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(280.dp))
+        }
+    }
+}
+
+
+/** How the share sheet reads and changes a Drive folder's or file's sharing: the same sheet, without a public link. */
+internal fun driveShareTarget(model: DriveModel, node: DriveNode, canEdit: Boolean) = ShareTarget(
+    name = node.name,
+    known = null,
+    load = { model.drive.shares(node.id) },
+    set = { username, role -> model.drive.share(node.id, username, role) },
+    people = { model.people() },
+    knownPeople = model.drive.knownPeople().orEmpty(),
+    canEdit = canEdit,
+)
+
+/** Folders and files shared with you from spaces you aren't in, each standing on its own. */
+@Composable
+fun SharedWithYouScreen(model: DriveModel, platform: Platform, me: String?, open: (String) -> Unit, back: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    var items by remember { mutableStateOf(model.drive.knownSharedWithYou()) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var acting by remember { mutableStateOf<DriveNode?>(null) }
+    var sharing by remember { mutableStateOf<DriveNode?>(null) }
+    var leaving by remember { mutableStateOf<DriveNode?>(null) }
+    var opening by remember { mutableStateOf<DriveNode?>(null) }
+    suspend fun load() { try { items = model.drive.sharedWithYou(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
+    LaunchedEffect(Unit) { load() }
+    fun openFile(node: DriveNode) = scope.launch {
+        opening = node
+        try { platform.openFile(model.drive.download(node, platform.cacheDir()) {}, node.mime) } catch (p: KimonoProblem) { snackbar.showSnackbar(p.message ?: "That file couldn't be opened.") }
+        opening = null
+    }
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Shared with you", onBack = back) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+        val list = items
+        Box(Modifier.padding(padding).fillMaxSize()) {
+            when {
+                list == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
+                list.isNullOrEmpty() -> Empty(problem ?: "Nothing has been shared with you.")
+                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                    itemsIndexed(list, key = { _, n -> n.id }) { index, node ->
+                        NodeRow(
+                            node = node, thumbnail = { pixels -> platform.thumbnail(node, pixels) }, index = index, count = list.size,
+                            busy = opening?.id == node.id, progress = null, selecting = false, selected = false,
+                            onClick = { node.appRoute?.let(open) ?: if (node.isFolder) open("folder/${node.id}") else openFile(node) },
+                            onLongClick = { acting = node }, onMore = { acting = node },
+                        )
+                    }
+                }
+            }
+        }
+    }
+    acting?.let { node ->
+        ItemSheet(
+            node = node,
+            thumbnail = { pixels -> platform.thumbnail(node, pixels) },
+            choices = buildList {
+                node.appRoute?.let { route -> add(NodeChoice(if (node.purpose == "notebook") "Open in Notes" else "Open chat", if (node.purpose == "notebook") "notes" else "chat") { open(route) }) }
+                if (node.isFolder) add(NodeChoice("Show files", "folder") { open("folder/${node.id}") })
+                add(NodeChoice("Share", "person") { sharing = node })
+                add(NodeChoice("Leave", "door", danger = true) { leaving = node })
+            },
+            onDismiss = { acting = null },
+        )
+    }
+    sharing?.let { node -> ShareSheet(driveShareTarget(model, node, node.role != "viewer"), me, platform) { sharing = null } }
+    leaving?.let { node ->
+        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { leaving = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Leave ${node.name}?", style = MaterialTheme.typography.titleLarge)
+                Text("You'll need to be asked back.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                /* Only someone who can edit it can bring you back, so it's held to confirm. */
+                app.kimono.ui.HoldSeal("Leave", onConfirm = {
+                    scope.launch {
+                        try { model.drive.share(node.id, me ?: return@launch, null); leaving = null; load() }
+                        catch (p: KimonoProblem) { leaving = null; snackbar.showSnackbar(p.message ?: "That didn't work.") }
+                    }
+                })
+            }
         }
     }
 }
