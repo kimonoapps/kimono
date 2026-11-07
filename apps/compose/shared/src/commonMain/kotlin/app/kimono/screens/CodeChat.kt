@@ -190,7 +190,7 @@ internal class Drafts {
 }
 
 @Composable
-fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, showApp: Boolean = false, open: (String) -> Unit, back: () -> Unit) {
+fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, showApp: Boolean = false, chats: (() -> Unit)? = null, open: (String) -> Unit, back: () -> Unit) {
     val scope = rememberCoroutineScope()
     var workspace by remember { mutableStateOf(code.knownWorkspaces()?.firstOrNull { it.id == id }) }
     val events = remember { mutableStateListOf<StoredCodeEvent>() }
@@ -296,7 +296,8 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                     }
                 },
                 navigationIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (chats != null) IconButton(onClick = chats) { Icon(kimonoIcon("menu"), "Chats") }
+                    else Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = back) { Icon(kimonoIcon("back"), "Back") }
                         AiMark(code, 30.dp)
                     }
@@ -343,7 +344,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                     gone && w == null -> Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         Text("That chat isn’t here any more.", style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.size(16.dp))
-                        Seal("New chat", tone = SealTone.Quiet, onClick = { open("ai/new") })
+                        Seal("New chat", tone = SealTone.Quiet, onClick = { open("code") })
                     }
                     w == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                     shownTab == "files" -> Files(code, platform, w)
@@ -456,6 +457,8 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     var viewing by remember { mutableStateOf<Pair<List<CodeEvent.Image>, Int>?>(null) }
     /* Replies that land after the chat has opened are let out word by word; ones already there just show. */
     var liveFrom by remember(w.id) { mutableStateOf(Long.MAX_VALUE) }
+    /* How far each live reply has been let out, kept while the chat is open so a reply scrolled off and back doesn't start again. */
+    val revealed = remember(w.id) { mutableMapOf<Long, Int>() }
     val hasItems = items.isNotEmpty()
     val itemsNow by androidx.compose.runtime.rememberUpdatedState(items)
     LaunchedEffect(w.id, hasItems) { if (hasItems && liveFrom == Long.MAX_VALUE) { kotlinx.coroutines.delay(500); liveFrom = itemsNow.lastOrNull()?.key ?: 0L } }
@@ -476,7 +479,8 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                     )) {
                     when (item) {
                         is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
-                        is Item.Say -> if (item.key > liveFrom) RevealWords(item.text) else Markdown(item.text)
+                        /* Let out once: scrolled away and back, or already out, it just shows. */
+                        is Item.Say -> if (item.key > liveFrom && (revealed[item.key] ?: -1) < item.text.length) RevealWords(item.text, from = revealed[item.key]) { revealed[item.key] = it } else Markdown(item.text)
                         is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
                         is Item.Done -> DoneNote(item.event, ratings[item.key]) { rating, note ->
                             ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
@@ -582,7 +586,7 @@ private fun NowWords(phase: String, words: String) {
             val wave = androidx.compose.animation.core.rememberInfiniteTransition(label = "ink")
             val t by wave.animateFloat(0f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(if (magic) 1700 else 1900, easing = androidx.compose.animation.core.LinearEasing)), label = "t")
             val stroke by wave.animateFloat(0f, 1f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(2200, easing = androidx.compose.animation.core.LinearEasing)), label = "stroke")
-            val ink = if (magic) Kata.suoDeep else base
+            val ink = if (magic) MaterialTheme.colorScheme.primary else base
             val text = buildAnnotatedString {
                 words.forEachIndexed { i, c ->
                     /* Each letter's own moment in the wave. */
@@ -1921,9 +1925,10 @@ private fun displayMath(lines: List<String>, i: Int): Pair<String, Int>? {
 }
 
 /**
- * A reply as it's written. Words reach the phone in bursts of any size; they're let out at a steady
- * pace that quickens when many are waiting, a word at a time, and the newest few letters are drawn
- * fading, so each word fades in as the end of the reply moves past it.
+ * A reply as it's written. Words reach the phone in bursts of any size; they're let out a word at a
+ * time and the newest few letters are drawn fading, so each word fades in as the end of the reply
+ * moves past it. It never holds the reply back: whatever has arrived is out within about a fifth of
+ * a second, however fast it comes.
  */
 @Composable
 private fun DraftWords(text: String) = RevealWords(text)
@@ -1932,26 +1937,40 @@ private fun DraftWords(text: String) = RevealWords(text)
    carries on from here instead of jumping to its end; any other starts from its first word. */
 private object Revealed { var text = ""; var at = 0 }
 
-/** Lets [text] out a word at a time: about 90 letters a second, quickening gently while far behind, its newest words fading in. */
+/** Lets [text] out from [from] (or where its draft got to): at least 150 letters a second, and faster the further behind it is. */
 @Composable
-private fun RevealWords(text: String) {
+private fun RevealWords(text: String, from: Int? = null, onShown: (Int) -> Unit = {}) {
     val latest by androidx.compose.runtime.rememberUpdatedState(text)
-    var shown by remember { mutableStateOf(if (Revealed.at in 1..text.length && text.startsWith(Revealed.text.take(Revealed.at))) Revealed.at else 0) }
+    val report by androidx.compose.runtime.rememberUpdatedState(onShown)
+    var shown by remember {
+        mutableStateOf(when {
+            from != null && from in 0..text.length -> from
+            Revealed.at in 1..text.length && text.startsWith(Revealed.text.take(Revealed.at)) -> Revealed.at
+            else -> 0
+        })
+    }
     LaunchedEffect(Unit) {
         var last = 0L
+        var owed = 0f
         while (true) {
             androidx.compose.runtime.withFrameMillis { now ->
+                val step = if (last == 0L) 16L else (now - last).coerceIn(0L, 100L)
+                last = now
                 val goal = latest.length
                 /* a shorter text is a new reply: start it from the top */
                 if (shown > goal) shown = 0
-                if (shown < goal && now - last >= 33) {
-                    last = now
-                    val behind = goal - shown
-                    var next = minOf(goal, shown + maxOf(3, (behind + 39) / 40))
-                    val space = latest.substring(next).indexOfFirst { it.isWhitespace() }
-                    next = if (space < 0) goal else minOf(goal, next + space)
-                    shown = next
-                }
+                if (shown < goal) {
+                    /* what's waiting goes out within ~200 ms; never slower than 150 letters a second */
+                    owed += step * maxOf(.15f, (goal - shown) / 200f)
+                    if (owed >= 1f) {
+                        var next = minOf(goal, shown + owed.toInt())
+                        owed -= owed.toInt()
+                        val space = latest.substring(next).indexOfFirst { it.isWhitespace() }
+                        next = if (space < 0 || space > 24) next else minOf(goal, next + space)
+                        shown = next
+                        report(shown)
+                    }
+                } else owed = 0f
                 Revealed.text = latest; Revealed.at = shown
             }
         }

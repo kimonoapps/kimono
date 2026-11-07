@@ -8,6 +8,13 @@ import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -68,6 +75,61 @@ private val kimonoColors = lightColorScheme(
     scrim = Color.Black,
 )
 
+/*
+ * The same household at night: a warm near-black lifted in soft brown steps, suō turned to its
+ * pale tone for the primary, plum and moss likewise, so it reads as Kimono and not as a grey app.
+ */
+private val kimonoNight = darkColorScheme(
+    primary = Color(0xFFFFB1C1),
+    onPrimary = Color(0xFF5E1129),
+    primaryContainer = Kata.suoDeep,
+    onPrimaryContainer = Color(0xFFFFD9DF),
+    inversePrimary = Kata.suo,
+    secondary = Color(0xFFE3BDC2),
+    onSecondary = Color(0xFF422930),
+    secondaryContainer = Color(0xFF5B3F45),
+    onSecondaryContainer = Color(0xFFFFD9DF),
+    tertiary = Color(0xFFBFD0AE),
+    onTertiary = Color(0xFF2A3522),
+    tertiaryContainer = Kata.mossDeep,
+    onTertiaryContainer = Color(0xFFDCE8CF),
+    background = Color(0xFF19120F),
+    onBackground = Color(0xFFEFE0DA),
+    surface = Color(0xFF19120F),
+    onSurface = Color(0xFFEFE0DA),
+    surfaceVariant = Color(0xFF534340),
+    onSurfaceVariant = Color(0xFFD8C2BD),
+    surfaceTint = Color(0xFFFFB1C1),
+    surfaceBright = Color(0xFF413734),
+    surfaceDim = Color(0xFF19120F),
+    surfaceContainerLowest = Color(0xFF130D0B),
+    surfaceContainerLow = Color(0xFF221A17),
+    surfaceContainer = Color(0xFF261E1B),
+    surfaceContainerHigh = Color(0xFF312825),
+    surfaceContainerHighest = Color(0xFF3C3330),
+    outline = Color(0xFFA08C88),
+    outlineVariant = Color(0xFF534340),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    inverseSurface = Color(0xFFEFE0DA),
+    inverseOnSurface = Color(0xFF382E2B),
+    scrim = Color.Black,
+)
+
+/** Light, dark, or as the phone is: "system", "light" or "dark", kept on the phone. */
+object Appearance {
+    const val KEY = "kimono.appearance"
+    val choice = MutableStateFlow("system")
+}
+
+/** Whether Kimono is drawn at night just now. */
+val LocalNight = staticCompositionLocalOf { false }
+
+/** Plum ink: deep on paper, pale by night. For marks drawn straight on a surface. */
+val plumInk: Color @Composable get() = if (LocalNight.current) Color(0xFFF0CBD3) else Kata.plum
+
 @Composable
 private fun kataTypography(): Typography {
     val mincho = FontFamily(Font(Res.font.shippori_mincho_semibold, FontWeight.SemiBold))
@@ -99,11 +161,16 @@ private fun kataTypography(): Typography {
 
 @Composable
 fun KimonoTheme(content: @Composable () -> Unit) {
-    MaterialExpressiveTheme(
-        colorScheme = kimonoColors,
-        motionScheme = MotionScheme.expressive(),
-        shapes = Shapes(),
-        typography = kataTypography(),
-        content = content,
-    )
+    val choice by Appearance.choice.collectAsState()
+    val system = isSystemInDarkTheme()
+    val night = when (choice) { "dark" -> true; "light" -> false; else -> system }
+    CompositionLocalProvider(LocalNight provides night) {
+        MaterialExpressiveTheme(
+            colorScheme = if (night) kimonoNight else kimonoColors,
+            motionScheme = MotionScheme.expressive(),
+            shapes = Shapes(),
+            typography = kataTypography(),
+            content = content,
+        )
+    }
 }

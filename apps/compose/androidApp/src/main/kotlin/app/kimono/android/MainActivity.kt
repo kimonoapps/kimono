@@ -9,6 +9,9 @@ import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +48,16 @@ class MainActivity : ComponentActivity() {
         }
         handle(intent)
         val session = (application as KimonoApplication).session
+        /* The status and navigation bars follow Kimono's own light or dark, which can differ from the phone's. */
+        lifecycleScope.launch {
+            app.kimono.theme.Appearance.choice.collect { choice ->
+                val night = { res: android.content.res.Resources ->
+                    when (choice) { "dark" -> true; "light" -> false; else -> (res.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES }
+                }
+                val bars = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT, night)
+                enableEdgeToEdge(bars, bars)
+            }
+        }
         setContent { KimonoApp(session, platform, shared.value) { shared.value = null } }
     }
 

@@ -215,7 +215,7 @@ internal fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = 
             when {
                 here.update != null -> Text("Update", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 here.installed == false -> Text("Not installed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                here.installed == true -> Text("Installed", style = MaterialTheme.typography.labelSmall, color = Kata.mossDeep)
+                here.installed == true -> Text("Installed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                 !app.own && app.phoneApp == null -> Icon(kimonoIcon("out"), "Opens in the browser", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
             }
         }

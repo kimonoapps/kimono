@@ -122,8 +122,8 @@ private fun AnnotatedString.Builder.inlineText(text: String, accent: Color) {
         if (m.range.first > at) append(text.substring(at, m.range.first))
         val g = m.groupValues
         when {
-            g[1].isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0x14000000), fontSize = 13.sp)) { append(g[1]) }
-            m.value.startsWith("![") -> withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = Kata.inkSoft)) { append(g[2]) }
+            g[1].isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0x24918080), fontSize = 13.sp)) { append(g[1]) }
+            m.value.startsWith("![") -> withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = Color(0xFF8F807A))) { append(g[2]) }
             g[3].isNotEmpty() -> if (safeLink(g[4])) withLink(LinkAnnotation.Url(g[4], TextLinkStyles(SpanStyle(color = accent, textDecoration = TextDecoration.Underline)))) { inlineText(g[3], accent) } else inlineText(g[3], accent)
             g[5].isNotEmpty() || g[6].isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { inlineText(g[5].ifEmpty { g[6] }, accent) }
             g[7].isNotEmpty() || g[8].isNotEmpty() -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { inlineText(g[7].ifEmpty { g[8] }, accent) }
@@ -146,7 +146,7 @@ private fun Inline(text: String, style: androidx.compose.ui.text.TextStyle, modi
 fun MarkdownView(text: String, modifier: Modifier = Modifier) {
     val blocks = remember(text) { parse(text) }
     val type = MaterialTheme.typography
-    val body = type.bodyLarge.copy(color = Kata.ink, lineHeight = 24.sp)
+    val body = type.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, lineHeight = 24.sp)
     val accent = LocalInkTint.current ?: Kata.suo
     Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerLowest).verticalScroll(rememberScrollState())) {
         SelectionContainer {
@@ -154,34 +154,34 @@ fun MarkdownView(text: String, modifier: Modifier = Modifier) {
                 for (block in blocks) when (block) {
                     is Block.Heading -> Inline(block.text, when (block.level) {
                         1 -> type.headlineMedium; 2 -> type.headlineSmall; 3 -> type.titleLarge; else -> type.titleMedium
-                    }.copy(color = Kata.plum), Modifier.padding(top = if (block.level <= 2) 10.dp else 4.dp))
+                    }.copy(color = app.kimono.theme.plumInk), Modifier.padding(top = if (block.level <= 2) 10.dp else 4.dp))
                     is Block.Paragraph -> Inline(block.text, body)
                     is Block.Item -> Row(Modifier.padding(start = (block.depth * 18).dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (block.checked != null) Box(
                             Modifier.padding(top = 3.dp).size(18.dp)
                                 .background(if (block.checked) accent else Color.Transparent, RoundedCornerShape(5.dp))
-                                .border(1.5.dp, if (block.checked) accent else Kata.hairDeep, RoundedCornerShape(5.dp)),
+                                .border(1.5.dp, if (block.checked) accent else MaterialTheme.colorScheme.outline, RoundedCornerShape(5.dp)),
                             contentAlignment = Alignment.Center,
                         ) { if (block.checked) Icon(kimonoIcon("check"), null, tint = Color.White, modifier = Modifier.size(13.dp)) }
-                        else Text(if (block.ordered != null) "${block.ordered}." else "•", style = body.copy(color = Kata.inkSoft), modifier = Modifier.widthIn(min = 16.dp))
+                        else Text(if (block.ordered != null) "${block.ordered}." else "•", style = body.copy(color = MaterialTheme.colorScheme.onSurfaceVariant), modifier = Modifier.widthIn(min = 16.dp))
                         Inline(block.text, if (block.checked == true) body.copy(color = Kata.inkSoft, textDecoration = TextDecoration.LineThrough) else body)
                     }
                     is Block.Quote -> Row(Modifier.height(IntrinsicSize.Min)) {
-                        Box(Modifier.width(3.dp).fillMaxHeight().background(Kata.hair, RoundedCornerShape(2.dp)))
-                        Inline(block.text, body.copy(color = Kata.inkSoft), Modifier.padding(start = 12.dp))
+                        Box(Modifier.width(3.dp).fillMaxHeight().background(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(2.dp)))
+                        Inline(block.text, body.copy(color = MaterialTheme.colorScheme.onSurfaceVariant), Modifier.padding(start = 12.dp))
                     }
                     is Block.Code -> Box(Modifier.fillMaxWidth().background(Urushi, RoundedCornerShape(14.dp)).padding(vertical = 12.dp)) {
                         CodeLines(block.text, "x.${block.lang.ifEmpty { "txt" }}")
                     }
-                    is Block.Table -> Column(Modifier.horizontalScroll(rememberScrollState()).border(1.dp, Kata.hair, RoundedCornerShape(10.dp))) {
+                    is Block.Table -> Column(Modifier.horizontalScroll(rememberScrollState()).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))) {
                         val columns = block.head.size
                         (listOf(block.head) + block.rows).forEachIndexed { r, row ->
                             Row(Modifier.background(if (r == 0) MaterialTheme.colorScheme.surfaceContainer else Color.Transparent)) {
-                                for (c in 0 until columns) Inline(row.getOrElse(c) { "" }, type.bodyMedium.copy(color = Kata.ink, fontWeight = if (r == 0) FontWeight.SemiBold else null), Modifier.width(120.dp).padding(horizontal = 10.dp, vertical = 7.dp))
+                                for (c in 0 until columns) Inline(row.getOrElse(c) { "" }, type.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = if (r == 0) FontWeight.SemiBold else null), Modifier.width(120.dp).padding(horizontal = 10.dp, vertical = 7.dp))
                             }
                         }
                     }
-                    Block.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(Kata.hair))
+                    Block.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 6.dp).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
                 }
             }
         }

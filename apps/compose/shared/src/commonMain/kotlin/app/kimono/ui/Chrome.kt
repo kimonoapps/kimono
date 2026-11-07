@@ -2,6 +2,7 @@
 
 package app.kimono.ui
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +31,7 @@ import app.kimono.theme.Kata
 
 /** A plain bar: back, a title, actions at the right edge. */
 @Composable
-fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, mark: (@Composable () -> Unit)? = null, actions: @Composable () -> Unit = {}) {
+fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, mark: (@Composable () -> Unit)? = null, onMenu: (() -> Unit)? = null, actions: @Composable () -> Unit = {}) {
     TopAppBar(
         title = {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -38,7 +39,10 @@ fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, mark: (@Composable
                 Text(title, style = MaterialTheme.typography.titleLarge)
             }
         },
-        navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(kimonoIcon("back"), "Back") } },
+        navigationIcon = {
+            if (onMenu != null) IconButton(onClick = onMenu) { Icon(kimonoIcon("menu"), "Chats") }
+            else if (onBack != null) IconButton(onClick = onBack) { Icon(kimonoIcon("back"), "Back") }
+        },
         actions = { Row(Modifier.padding(end = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() } },
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
     )
@@ -77,7 +81,7 @@ fun KimonoGroup(items: List<GroupItem>, modifier: Modifier = Modifier) {
                     {
                         /* Each row's icon sits in its own watercolour puddle. */
                         InkBlot(item.label, tint = if (item.danger) MaterialTheme.colorScheme.error else Kata.suo) {
-                            Icon(kimonoIcon(name), null, tint = if (item.danger) MaterialTheme.colorScheme.onErrorContainer else Kata.plum, modifier = Modifier.size(20.dp))
+                            Icon(kimonoIcon(name), null, tint = if (item.danger) Color(0xFF93000A) else Kata.plum, modifier = Modifier.size(20.dp))
                         }
                     }
                 },

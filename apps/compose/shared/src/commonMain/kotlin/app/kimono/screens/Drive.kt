@@ -731,7 +731,7 @@ private fun Empty(text: String) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 40.dp, vertical = 80.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         item {
             InkBlot("drive-empty", size = 96.dp) {
-                Icon(kimonoIcon("folder"), null, modifier = Modifier.size(40.dp), tint = app.kimono.theme.Kata.plum)
+                Icon(kimonoIcon("folder"), null, modifier = Modifier.size(40.dp), tint = app.kimono.theme.Kata.ink)
             }
             Spacer(Modifier.height(20.dp))
             Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(280.dp))

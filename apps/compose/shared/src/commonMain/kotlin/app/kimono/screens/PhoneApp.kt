@@ -162,7 +162,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
                         when (step.kind) {
                             "download" -> if (here.installed == true) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(kimonoIcon("check"), null, tint = Kata.moss, modifier = Modifier.size(18.dp))
-                                Text("Installed", style = MaterialTheme.typography.labelLarge, color = Kata.mossDeep)
+                                Text("Installed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
                             } else if (handOut != null || store != null) Seal("Get ${phone.name}", onClick = ::get, tone = SealTone.Quiet, compact = true, enabled = progress == null)
                             "server" -> Copyable(app.web)
                             /* Hands the app this Kimono's address (kimono-photos://connect?server=…). */

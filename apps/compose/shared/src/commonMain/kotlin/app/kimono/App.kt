@@ -67,8 +67,8 @@ import app.kimono.screens.DetailsScreen
 import app.kimono.screens.DriveModel
 import app.kimono.screens.DriveScreen
 import app.kimono.screens.FolderScreen
-import app.kimono.screens.CodeScreen
 import app.kimono.screens.WorkspaceScreen
+import app.kimono.screens.AiDrawer
 import app.kimono.screens.TrashScreen
 import app.kimono.screens.UpdateScreen
 import app.kimono.data.AppUpdate
@@ -96,6 +96,7 @@ import app.kimono.ui.AppAccentTheme
  */
 @Composable
 fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onSharedHandled: () -> Unit) {
+    LaunchedEffect(Unit) { platform.readKept(app.kimono.theme.Appearance.KEY)?.let { app.kimono.theme.Appearance.choice.value = it } }
     KimonoTheme {
         LaunchedEffect(Unit) { session.start() }
         val state by session.state.collectAsState()
@@ -157,6 +158,14 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     /* The bar's own action: the Apps grid that the bloom in the middle brings up. */
     var appsOpen by remember { mutableStateOf(false) }
     fun goTab(to: String) = nav.navigate(to) { popUpTo("home") { inclusive = to == "home" }; launchSingleTop = true }
+    fun aiAccent() = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent
+    /* Within Kimono AI, a chat or a new chat takes the open one's place; anything else opens over it. */
+    fun aiGo(to: String) {
+        val chats = setOf("code", "ai/new", "ai/new/{in}", "code/{id}")
+        val swap = to == "code" || to == "ai/new" || to.startsWith("ai/new/") || (to.startsWith("code/") && !to.endsWith("/app"))
+        val here = nav.currentBackStackEntry?.destination?.route
+        nav.navigate(to) { if (swap && here in chats) popUpTo(here!!) { inclusive = true }; launchSingleTop = true }
+    }
     /* Kimono's own apps open their screens here when the phone has them; anything else, its phone app or its website. */
     fun openApp(target: app.kimono.data.LauncherApp) {
         when {
@@ -206,18 +215,28 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
             composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, model.drive, code, vpn, admin, here = { app.kimono.screens.phoneAppHere(it, platform) }, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
-            /* Code's screens wear Code's colour, as its pages do on the website. */
+            /*
+             * Kimono AI is one chat at a time with the rest in its drawer, as on the website. It opens
+             * on a new chat; a chat chosen in the drawer takes the open one's place, so Back leaves it.
+             */
             composable("code") {
-                val codeApp = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }
-                AppAccentTheme(codeApp?.accent) { CodeScreen(code, codeApp, admin, back = { nav.popBackStack() }) { nav.navigate(it) } }
+                AppAccentTheme(aiAccent()) {
+                    AiDrawer(code, admin, null, ::aiGo) { menu ->
+                        app.kimono.screens.NewChatScreen(code, model.drive, platform, admin, null, back = { nav.popBackStack() }, menu = menu, open = ::aiGo) { made ->
+                            nav.navigate("code/${made.id}") { popUpTo("code") { inclusive = true } }
+                        }
+                    }
+                }
             }
-            /* A new chat: from the bar, or in one of the person's projects. */
+            /* A new chat in one of the person's projects, or on a repository. */
             listOf("ai/new", "ai/new/{in}").forEach { room ->
                 composable(room) { backStack ->
                     val folder = backStack.arguments?.read { getStringOrNull("in") }
-                    AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
-                        app.kimono.screens.NewChatScreen(code, model.drive, platform, admin, folder, back = { nav.popBackStack() }, open = { nav.navigate(it) }) { made ->
-                            nav.navigate("code/${made.id}") { popUpTo(room) { inclusive = true } }
+                    AppAccentTheme(aiAccent()) {
+                        AiDrawer(code, admin, null, ::aiGo) { menu ->
+                            app.kimono.screens.NewChatScreen(code, model.drive, platform, admin, folder, back = { nav.popBackStack() }, menu = menu, open = ::aiGo) { made ->
+                                nav.navigate("code/${made.id}") { popUpTo(room) { inclusive = true } }
+                            }
                         }
                     }
                 }
@@ -252,8 +271,10 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             }
             composable("code/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
-                AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
-                    WorkspaceScreen(code, model.drive, platform, id, open = { nav.navigate(it) }) { nav.popBackStack() }
+                AppAccentTheme(aiAccent()) {
+                    AiDrawer(code, admin, id, ::aiGo) { menu ->
+                        WorkspaceScreen(code, model.drive, platform, id, chats = menu, open = ::aiGo) { nav.popBackStack() }
+                    }
                 }
             }
             composable("code/{id}/app") { backStack ->

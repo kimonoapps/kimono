@@ -67,14 +67,21 @@ import app.kimono.ui.KimonoBranch
 import app.kimono.ui.KimonoRefresh
 import app.kimono.ui.kimonoIcon
 import kotlinx.coroutines.launch
+import app.kimono.ui.segmentColors
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import kotlin.time.Clock
 
 /*
- * 家 Home: what's happening in your house now, then every app. A few numbers,
- * an update that's ready, Kimono AI's chats, what's new in Drive and which
- * of your devices are connected (a card shows only when it has something to
- * say), then all the apps by what they're for. The pin on an app puts it in
- * My apps, the few under the flower, the same as the website's rail.
+ * 家 Home, in three parts that don't run into each other:
+ *  - Your apps: the ones pinned (My apps, shared with the website's rail), a tap away.
+ *  - Now: a short row of glances, only those with something to say (Kimono AI's chats,
+ *    what's new in Drive, your devices, updates ready), sliding sideways so they never push
+ *    the apps down.
+ *  - Everything else: every other app under what it's for, as a quiet list.
+ * Hold an app anywhere to pin or unpin it.
  */
 @Composable
 fun HomeScreen(
@@ -105,133 +112,191 @@ fun HomeScreen(
     LaunchedEffect(codeApp != null, vpnApp != null) { load() }
 
     val updates = apps.orEmpty().mapNotNull { app -> here(app).update?.let { app to it } }
-    val waiting = tasks.orEmpty().filter { it.running }.sortedByDescending { it.updatedAt }
-    val shownTasks = (waiting.ifEmpty { tasks.orEmpty().sortedByDescending { it.updatedAt } }).take(3)
-    val newFiles = recent.orEmpty().filter { !it.isFolder }.take(4)
+    val chats = tasks.orEmpty().filter { !it.isProject || admin }
+    val working = chats.count { it.running }
+    val shownTasks = chats.sortedWith(compareByDescending<CodeWorkspace> { if (it.running) 1 else 0 }.thenByDescending { it.updatedAt }).take(3)
+    val newFiles = recent.orEmpty().filter { !it.isFolder }.take(3)
     val mesh = devices?.takeIf { it.member && it.available && it.devices.isNotEmpty() }
-    val stats = buildList {
-        val all = tasks.orEmpty()
-        val working = all.count { it.running }
-        if (codeApp != null && all.isNotEmpty()) add(if (working > 0) Triple("$working", "working", "code") else Triple("${all.size}", if (all.size == 1) "chat" else "chats", "code"))
-        val spaces = drive.knownSpaces()
-        if (driveOn != false && spaces != null) add(Triple("${spaces.size}", if (spaces.size == 1) "space" else "spaces", "drive"))
-        if (mesh != null) add(Triple("${mesh.devices.count { it.online }}/${mesh.devices.size}", "online", "vpn"))
-    }
-    /* Every app under what it's for; a Kimono from before the groups lists them all as one. */
-    val sections = apps.orEmpty().let { all ->
+    val pinned = apps?.let { all -> myAppsOf(all, mine) }.orEmpty()
+    val pinnedIds = pinned.map { it.id }.toSet()
+    /* Every other app under what it's for; a Kimono from before the groups lists them all as one. */
+    val rest = apps.orEmpty().filter { it.id !in pinnedIds }
+    val sections = rest.let { all ->
         val byId = all.associateBy { it.id }
         val placed = groups.flatMap { it.apps }.toSet()
         val listed = groups.map { it.label to it.apps.mapNotNull { id -> byId[id] } } + listOf("More" to all.filter { it.id !in placed })
-        listed.filter { it.second.isNotEmpty() }.let { if (groups.isEmpty()) listOf("Apps" to all).filter { it.second.isNotEmpty() } else it }
+        if (groups.isEmpty()) listOf("Apps" to all).filter { it.second.isNotEmpty() } else listed.filter { it.second.isNotEmpty() }
     }
     fun pin(app: LauncherApp) {
         val now = mine ?: return
         scope.launch { runCatching { drive.setMyApps(if (app.id in now) now - app.id else now + app.id) } }
     }
+    val canPin = mine != null
 
     KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
+            item(key = "head") {
                 Column {
                     TopAppBar(
                         title = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { KimonoBranch(30.dp); Text("kimono", style = MaterialTheme.typography.titleLarge) } },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                     )
-                    Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp)) {
-                        Text("Your household", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Text(buildAnnotatedString {
-                            append("Welcome home, ")
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("$first.") }
-                        }, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(top = 6.dp))
+                    Text(buildAnnotatedString {
+                        append("Welcome home, ")
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("$first.") }
+                    }, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp))
+                }
+            }
+            if (update != null) item(key = "update") { UpdateCard(update, platform, onLater) }
+
+            /* ── Your apps ── */
+            if (pinned.isNotEmpty() || apps != null) item(key = "mine-label") { Part("Your apps") }
+            if (apps == null) item(key = "loading") { Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { app.kimono.ui.InkLoader() } }
+            if (apps != null && pinned.isEmpty()) item(key = "mine-empty") {
+                Text("Hold an app below to pin it here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            }
+            pinned.chunked(4).forEachIndexed { row, four ->
+                item(key = "mine:$row") {
+                    Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth()) {
+                        four.forEach { app -> Box(Modifier.weight(1f)) { Launch(app, here(app), pinned = true, canPin = canPin, pin = { pin(app) }) { open(app) } } }
+                        repeat(4 - four.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
-            if (stats.isNotEmpty()) item {
-                Row(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    stats.forEach { (value, label, to) ->
-                        Column(
-                            Modifier.weight(1f).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceContainerLow).clickable { go(to) }.padding(horizontal = 14.dp, vertical = 12.dp),
-                        ) {
-                            Text(value, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
-                            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+
+            /* ── Now ── */
+            val glances = buildList<@Composable () -> Unit> {
+                if (codeApp != null && shownTasks.isNotEmpty()) add {
+                    Glance(codeApp, "Kimono AI", if (working > 0) "$working working" else null, onOpen = { go("code") }) {
+                        shownTasks.forEach { task ->
+                            Line(
+                                lead = { InkDot(if (task.running) Kata.moss else quietGrey, size = 8.dp, seed = task.id) },
+                                title = task.title,
+                                detail = if (task.running) "working" else whenAgo(task.updatedAt),
+                            ) { go("code/${task.id}") }
+                        }
+                    }
+                }
+                if (driveOn != false && newFiles.isNotEmpty()) add {
+                    val spaces = drive.knownSpaces().orEmpty()
+                    Glance(driveApp, "New in Drive", null, onOpen = { go("drive") }) {
+                        newFiles.forEach { file ->
+                            val space = spaces.firstOrNull { it.id == file.spaceId }
+                            Line(
+                                lead = {
+                                    if (fileMarkUri(file.name) != null) FileTypeMark(file.name, Modifier.size(18.dp)) { Icon(kimonoIcon("file"), null, modifier = Modifier.size(16.dp)) }
+                                    else Icon(kimonoIcon("file"), null, modifier = Modifier.size(16.dp))
+                                },
+                                title = file.name,
+                                detail = listOfNotNull(space?.name, whenAgo(file.updatedAt.toLong())).joinToString(" · "),
+                            ) { file.parentId?.let { go("folder/$it") } }
+                        }
+                    }
+                }
+                if (mesh != null) add {
+                    val connected = mesh.devices.count { it.online }
+                    Glance(vpnApp, "Your devices", "$connected of ${mesh.devices.size}", onOpen = { go("vpn") }) {
+                        mesh.devices.sortedByDescending { it.online }.take(3).forEach { device ->
+                            Line(lead = { InkDot(if (device.online) Kata.moss else quietGrey, size = 8.dp, seed = device.id) }, title = device.name, detail = if (device.online) "connected" else device.seen) { go("vpn") }
+                        }
+                    }
+                }
+                if (updates.isNotEmpty()) add {
+                    Glance(null, "Updates ready", "${updates.size}", onOpen = null) {
+                        updates.take(3).forEach { (app, version) ->
+                            Line(lead = { InkBloom(app.id, app.accent, app.glyph, 22.dp) }, title = app.phoneApp?.name ?: app.name, detail = version) { go("app/${app.id}") }
                         }
                     }
                 }
             }
-            if (update != null) item { UpdateCard(update, platform, onLater) }
-            if (updates.isNotEmpty()) item {
-                Glance(null, "Updates ready", null) {
-                    updates.forEach { (app, version) ->
-                        Line(lead = { InkBloom(app.id, app.accent, app.glyph, 32.dp) }, title = app.phoneApp?.name ?: app.name, detail = "$version is ready") { go("app/${app.id}") }
+            if (glances.isNotEmpty()) {
+                item(key = "now-label") { Part("Now") }
+                item(key = "now") {
+                    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(glances.size) { i -> glances[i]() }
                     }
                 }
             }
-            if (codeApp != null && shownTasks.isNotEmpty()) item {
-                val working = tasks.orEmpty().count { it.running }
-                Glance(codeApp, "Kimono AI", if (working > 0) "$working working" else null, onOpen = { go("code") }) {
-                    shownTasks.forEach { task ->
-                        Line(
-                            lead = { InkDot(if (task.running) Kata.moss else Color(0xFFB9A8A2), size = 10.dp, seed = task.id) },
-                            title = task.title,
-                            detail = listOfNotNull(task.repo.name.takeIf { task.isProject }, if (task.running) "working" else task.pullRequest?.let { "pull request #${it.number}" } ?: whenAgo(task.updatedAt)).joinToString(" · "),
-                            mono = true,
-                        ) { go("code/${task.id}") }
-                    }
-                }
-            }
-            if (driveOn != false && newFiles.isNotEmpty()) item {
-                val spaces = drive.knownSpaces().orEmpty()
-                Glance(driveApp, "New in Drive", null, onOpen = { go("drive") }) {
-                    newFiles.forEach { file ->
-                        val space = spaces.firstOrNull { it.id == file.spaceId }
-                        Line(
-                            /* The file's own mark when it has one (the space is named underneath), else the space's crest. */
-                            lead = {
-                                if (fileMarkUri(file.name) != null) Box(Modifier.size(32.dp).background(MaterialTheme.colorScheme.surfaceContainerLowest, RoundedCornerShape(10.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                                    FileTypeMark(file.name, Modifier.size(19.dp)) { Icon(kimonoIcon("file"), null, tint = Kata.plum, modifier = Modifier.size(16.dp)) }
-                                }
-                                else if (space != null) InkCrest(space.crest, space.color, 32.dp)
-                                else InkBlot(file.id, size = 32.dp) { Icon(kimonoIcon("file"), null, tint = Kata.plum, modifier = Modifier.size(16.dp)) }
-                            },
-                            title = file.name,
-                            detail = listOfNotNull(space?.name, whenAgo(file.updatedAt.toLong())).joinToString(" · "),
-                        ) { file.parentId?.let { go("folder/$it") } }
-                    }
-                }
-            }
-            if (mesh != null) item {
-                val connected = mesh.devices.count { it.online }
-                Glance(vpnApp, "Your devices", "$connected of ${mesh.devices.size} connected", onOpen = { go("vpn") }) {
-                    mesh.devices.sortedByDescending { it.online }.take(4).forEach { device ->
-                        Line(lead = { InkDot(if (device.online) Kata.moss else Color(0xFFB9A8A2), size = 10.dp, seed = device.id) }, title = device.name, detail = device.seen) { go("vpn") }
-                    }
-                }
-            }
+
+            /* ── Everything else ── */
+            if (rest.isNotEmpty()) item(key = "rest-label") { Part(if (pinned.isEmpty()) "Apps" else "More apps") }
             sections.forEach { (label, list) ->
-                item(key = "group:$label") {
-                    Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 22.dp, top = 14.dp, bottom = 2.dp))
+                if (sections.size > 1) item(key = "group:$label") {
+                    Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp, top = 10.dp, bottom = 6.dp))
                 }
-                list.chunked(2).forEachIndexed { row, pair ->
-                    item(key = "group:$label:$row") {
-                        Row(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            pair.forEach { app ->
-                                Box(Modifier.weight(1f)) {
-                                    AppTile(app, here(app)) { open(app) }
-                                    if (mine != null) {
-                                        val pinned = app.id in mine.orEmpty()
-                                        androidx.compose.material3.IconButton(onClick = { pin(app) }, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
-                                            Icon(kimonoIcon("pin"), if (pinned) "Remove ${app.name} from My apps" else "Add ${app.name} to My apps",
-                                                tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
-                                        }
-                                    }
-                                }
-                            }
-                            if (pair.size == 1) Spacer(Modifier.weight(1f))
-                        }
+                itemsIndexed(list, key = { _, app -> "rest:${app.id}" }) { index, app ->
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) {
+                        AppLine(app, here(app), index, list.size, canPin = canPin, pin = { pin(app) }) { open(app) }
                     }
                 }
             }
         }
+    }
+}
+
+/** A part of Home: big enough to tell the parts apart at a glance. */
+@Composable
+private fun Part(title: String) {
+    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 22.dp, bottom = 10.dp))
+}
+
+/** A pinned app: its bloom and its name, nothing more. Held, it can be unpinned. */
+@Composable
+private fun Launch(app: LauncherApp, here: PhoneAppHere, pinned: Boolean, canPin: Boolean, pin: () -> Unit, onClick: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Column(
+            Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large).combinedClickable(onClick = onClick, onLongClick = if (canPin) ({ menu = true }) else null).padding(vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(Modifier.size(60.dp), contentAlignment = Alignment.Center) {
+                InkBloom(app.id, app.accent, app.glyph, 60.dp)
+                if (app.glyph == null && app.icon != null) coil3.compose.AsyncImage(model = app.icon, contentDescription = null, modifier = Modifier.size(18.dp))
+                if (here.update != null) Box(Modifier.align(Alignment.TopEnd).size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(MaterialTheme.colorScheme.primary))
+            }
+            Text(app.name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 4.dp))
+        }
+        PinMenu(menu, pinned, app.name, { menu = false }, pin)
+    }
+}
+
+/** Any other app: a quiet row with what it's for. Held, it can be pinned. */
+@Composable
+private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int, canPin: Boolean, pin: () -> Unit, onClick: () -> Unit) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        androidx.compose.material3.SegmentedListItem(
+            onClick = onClick,
+            onLongClick = if (canPin) ({ menu = true }) else null,
+            shapes = androidx.compose.material3.ListItemDefaults.segmentedShapes(index, count),
+            colors = segmentColors(),
+            leadingContent = {
+                Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    InkBloom(app.id, app.accent, app.glyph, 40.dp)
+                    if (app.glyph == null && app.icon != null) coil3.compose.AsyncImage(model = app.icon, contentDescription = null, modifier = Modifier.size(12.dp))
+                }
+            },
+            supportingContent = { if (app.description.isNotBlank()) Text(app.description, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            trailingContent = {
+                when {
+                    here.update != null -> Text("Update", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    here.installed == false -> Text("Get", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    !app.own && app.phoneApp == null -> Icon(kimonoIcon("out"), "Opens in the browser", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                }
+            },
+        ) { Text(app.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        PinMenu(menu, false, app.name, { menu = false }, pin)
+    }
+}
+
+@Composable
+private fun PinMenu(open: Boolean, pinned: Boolean, name: String, close: () -> Unit, pin: () -> Unit) {
+    androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = close, shape = MaterialTheme.shapes.large) {
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text(if (pinned) "Unpin $name" else "Pin to Your apps") },
+            leadingIcon = { Icon(kimonoIcon("pin"), null, modifier = Modifier.size(18.dp)) },
+            onClick = { close(); pin() },
+        )
     }
 }
 
@@ -246,37 +311,35 @@ private fun whenAgo(at: Long): String? {
     }
 }
 
-/** One glance: the app's bloom, a title, a note, its lines; the whole card opens the app. */
+/** One glance, a card in Now's row: the app's bloom, a title, a note and a few lines; its head opens the app. */
 @Composable
 private fun Glance(app: LauncherApp?, title: String, note: String?, onOpen: (() -> Unit)? = null, lines: @Composable () -> Unit) {
     Card(
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth(),
+        modifier = Modifier.width(272.dp),
     ) {
         Row(
-            Modifier.fillMaxWidth().let { if (onOpen != null) it.clickable(onClick = onOpen) else it }.padding(start = 18.dp, end = 14.dp, top = 16.dp, bottom = 6.dp),
+            Modifier.fillMaxWidth().let { if (onOpen != null) it.clickable(onClick = onOpen) else it }.padding(start = 16.dp, end = 14.dp, top = 14.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            if (app != null) InkBloom(app.id, app.accent, app.glyph, 30.dp)
-            Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            if (app != null) InkBloom(app.id, app.accent, app.glyph, 28.dp)
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f), maxLines = 1)
             if (note != null) Text(note, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            if (onOpen != null) Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp))
+            if (onOpen != null) Icon(kimonoIcon("go"), null, modifier = Modifier.size(16.dp))
         }
         Column(Modifier.padding(bottom = 8.dp)) { lines() }
     }
 }
 
 @Composable
-private fun Line(lead: @Composable () -> Unit, title: String, detail: String?, mono: Boolean = false, onClick: () -> Unit) {
+private fun Line(lead: @Composable () -> Unit, title: String, detail: String?, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        androidx.compose.foundation.layout.Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) { lead() }
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (!detail.isNullOrBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, fontFamily = if (mono) FontFamily.Monospace else null, fontSize = if (mono) 12.sp else MaterialTheme.typography.bodySmall.fontSize)
-        }
+        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { lead() }
+        Text(title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (!detail.isNullOrBlank()) Text(detail, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
 }

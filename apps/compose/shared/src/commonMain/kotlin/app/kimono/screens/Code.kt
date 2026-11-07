@@ -98,6 +98,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.LocalContentColor
 
 /*
  * 工 Kimono AI on the phone: the chats, the projects they're kept in, and a
@@ -116,18 +121,43 @@ private fun reposOf(list: List<CodeWorkspace>) = list.filter { it.isProject }.gr
     .map { (key, tasks) -> Triple(key, tasks.first().repo.name, tasks.sortedWith(compareByDescending<CodeWorkspace> { working(it) }.thenByDescending { it.updatedAt })) }
     .sortedWith(compareByDescending<Triple<String, String, List<CodeWorkspace>>> { t -> t.third.maxOf { working(it) } }.thenByDescending { it.third.first().updatedAt })
 
-/* ── the chats ── */
+/* ── the drawer: every chat, as the website's side list ── */
+
+/**
+ * Kimono AI is one chat at a time, with the rest in a drawer, as on the website: a new chat,
+ * Connections, Memory and Archived up top, then Recent, Shared with you and Projects. The apps
+ * your chats published sit at the bottom. [current] is the open chat, or null on a new one.
+ */
+@Composable
+fun AiDrawer(code: Code, admin: Boolean, current: String?, open: (String) -> Unit, content: @Composable (menu: () -> Unit) -> Unit) {
+    val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    androidx.compose.material3.ModalNavigationDrawer(
+        drawerState = drawer,
+        drawerContent = {
+            androidx.compose.material3.ModalDrawerSheet(
+                drawerState = drawer,
+                drawerContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                drawerShape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                modifier = Modifier.widthIn(max = 340.dp),
+            ) {
+                AiDrawerSheet(code, admin, current, shown = drawer.targetValue == androidx.compose.material3.DrawerValue.Open) { to ->
+                    scope.launch { drawer.close() }
+                    if (!(to == "code" && current == null)) open(to)
+                }
+            }
+        },
+    ) { content { scope.launch { drawer.open() } } }
+}
 
 @Composable
-fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, back: () -> Unit, open: (String) -> Unit) {
+private fun AiDrawerSheet(code: Code, admin: Boolean, current: String?, shown: Boolean, go: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var list by remember { mutableStateOf(code.knownChats()?.own) }
     var shared by remember { mutableStateOf(code.knownChats()) }
     val people = rememberPeople(code)
     var projects by remember { mutableStateOf<List<CodeProject>>(emptyList()) }
     var problem by remember { mutableStateOf<String?>(null) }
-    var refreshing by remember { mutableStateOf(false) }
-    /* Naming a project: a new one (id null) or one being renamed. */
     var naming by remember { mutableStateOf<CodeProject?>(null) }
     var moreChats by remember { mutableStateOf(false) }
     var moreShared by remember { mutableStateOf(false) }
@@ -138,9 +168,10 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
     suspend fun load() {
         try { val chats = code.chats(); list = chats.own; shared = chats; projects = runCatching { code.projects() }.getOrDefault(projects); problem = null } catch (p: KimonoProblem) { problem = p.message }
     }
-    WhileShown(Unit) { while (true) { load(); delay(if (list?.any { it.running } == true) 3000 else 10_000) } }
-    val time = ticking(list?.any { it.running } == true)
-    /* A row's menu: archiving takes it out of the list straight away; deleting asks first. */
+    /* Kept fresh while it's open, and asked once as the screen opens so it's ready to slide out. */
+    LaunchedEffect(Unit) { load() }
+    if (shown) WhileShown(Unit) { while (true) { load(); delay(if (list?.any { it.running } == true) 3000 else 10_000) } }
+    val time = ticking(shown && list?.any { it.running } == true)
     val act: (CodeWorkspace, String) -> Unit = { w, what ->
         if (what == "delete") deleting = w
         else if (what == "report") reporting = w
@@ -149,114 +180,84 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
             try { code.archive(w.id, true); load() } catch (p: KimonoProblem) { problem = p.message; load() }
         }
     }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = { KimonoTopBar("Kimono AI", onBack = back, mark = { if (app != null) InkBloom(app.id, app.accent, app.glyph, 32.dp) }) },
-    ) { padding ->
-        val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-        /* a tap on the list itself ends a project's rename, as tapping away does on the website */
-        KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.padding(padding).fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
-            val shown = list
-            if (shown == null && problem == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-            else LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
-                if (problem != null) item { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f)) { Problem(problem) }; TextButton(onClick = { scope.launch { load() } }) { Text("Retry") } } }
-                /* A new chat starts here, at the top; Connections and Memory are in the bar. */
-                item(key = "new") {
-                    Seal("New chat", onClick = { open("ai/new") }, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp))
+    val everything = list.orEmpty()
+    val all = everything.filter { it.archivedAt == null }
+    val archived = everything.count { it.archivedAt != null }
+    val apps = everything.filter { it.preview != null && it.archivedAt == null }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AiMark(code, 32.dp)
+            Text("Kimono AI", style = MaterialTheme.typography.titleLarge)
+        }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp)) {
+            item(key = "new") { DrawerPlace("plus", "New chat", selected = current == null, strong = true) { go("code") } }
+            item(key = "connections") { DrawerPlace("link", "Connections") { go("ai/connections") } }
+            item(key = "memory") { DrawerPlace("spark", "Memory") { go("ai/memory") } }
+            if (archived > 0) item(key = "archived") { DrawerPlace("archive", "Archived", count = archived) { go("ai/archived") } }
+            if (problem != null) item(key = "problem") { Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f)) { Problem(problem) }; TextButton(onClick = { scope.launch { load() } }) { Text("Retry") } } }
+            if (list == null && problem == null) item(key = "loading") { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader(size = 28.dp) } }
+
+            val allLoose = chatsOf(all).filter { it.folder == null }
+            val loose = if (moreChats) allLoose else allLoose.take(5)
+            if (loose.isNotEmpty()) {
+                item(key = "recent-label") { DrawerLabel("Recent") }
+                items(loose, key = { "recent-${it.id}" }) { w -> DrawerChat(w, current, time, go, act) }
+                if (allLoose.size > 5) item(key = "recent-more") { DrawerMore(moreChats, allLoose.size - 5) { moreChats = !moreChats } }
+            }
+
+            val allTheirs = shared?.shared.orEmpty().sortedByDescending { it.updatedAt }
+            val allPages = shared?.sharedArtifacts.orEmpty()
+            val theirs = if (moreShared) allTheirs else allTheirs.take(5)
+            val pages = if (moreShared) allPages else allPages.take(maxOf(0, 5 - theirs.size))
+            if (theirs.isNotEmpty() || pages.isNotEmpty()) {
+                item(key = "shared-label") { DrawerLabel("Shared with you") }
+                items(theirs, key = { "shared-${it.id}" }) { w ->
+                    val person = people[w.owner.lowercase()]
+                    DrawerChat(w, current, time, go, act = null, lead = { Portrait(person?.picture, person?.name, w.owner, 22.dp) })
                 }
-                val everything = shown.orEmpty()
-                /* Archived chats leave the list for their own screen. */
-                val all = everything.filter { it.archivedAt == null }
-                val archived = everything.count { it.archivedAt != null }
-                /* The apps your chats published: each one to rename, stop or start. */
-                val apps = everything.filter { it.preview != null }
-                if (apps.isNotEmpty()) {
-                    item(key = "apps-label") { Label("Your apps") }
-                    item(key = "apps") {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 18.dp)) {
-                            items(apps, key = { it.id }) { w -> AppCard(w) { open("code/${w.id}/app") } }
-                        }
+                items(pages, key = { "shared-artifact-${it.token}" }) { a ->
+                    DrawerRow(selected = false, onClick = { go("ai/a/${a.token}") }, lead = { Icon(kimonoIcon("spark"), null, modifier = Modifier.size(18.dp)) }) {
+                        Text(a.title.ifBlank { a.name }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }
-                val allLoose = chatsOf(all).filter { it.folder == null }
-                /* The newest few; the rest a tap away. */
-                val loose = if (moreChats) allLoose else allLoose.take(5)
-                if (loose.isNotEmpty()) {
-                    item(key = "chats-label") { Label("Chats") }
-                    chatRows("loose", loose, time, open, act)
-                    if (allLoose.size > 5) item(key = "chats-more") { TextButton(onClick = { moreChats = !moreChats }) { Text(if (moreChats) "Fewer" else "··· ${allLoose.size - 5} more") } }
+                if (allTheirs.size + allPages.size > 5) item(key = "shared-more") { DrawerMore(moreShared, allTheirs.size + allPages.size - 5) { moreShared = !moreShared } }
+            }
+
+            item(key = "projects-label") { DrawerLabel("Projects") { IconButton(onClick = { naming = CodeProject("", "") }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("plus"), "New project", modifier = Modifier.size(18.dp)) } } }
+            if (projects.isEmpty() && list != null) item(key = "projects-empty") { Text("Keep chats together in a project.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 8.dp)) }
+            projects.forEach { project ->
+                item(key = "project-${project.id}") {
+                    ProjectHead(project, onNew = { go("ai/new/${project.id}") }, onRename = { name -> code.renameProject(project.id, name); load() }, onRemove = { removing = project })
                 }
-                /* What others shared: their chats to read or write in, and their artifacts. */
-                val allTheirs = shared?.shared.orEmpty().sortedByDescending { it.updatedAt }
-                val allPages = shared?.sharedArtifacts.orEmpty()
-                val sharedTotal = allTheirs.size + allPages.size
-                val theirs = if (moreShared) allTheirs else allTheirs.take(5)
-                val pages = if (moreShared) allPages else allPages.take(maxOf(0, 5 - theirs.size))
-                if (theirs.isNotEmpty() || pages.isNotEmpty()) {
-                    item(key = "shared-label") { Label("Shared with you") }
-                    val count = theirs.size + pages.size
-                    itemsIndexed(theirs, key = { _, w -> "shared-${w.id}" }) { index, w ->
-                        val person = people[w.owner.lowercase()]
-                        SegmentedListItem(
-                            onClick = { open("code/${w.id}") },
-                            shapes = ListItemDefaults.segmentedShapes(index, count), colors = segmentColors(),
-                            leadingContent = { Portrait(person?.picture, person?.name, w.owner, 32.dp) },
-                            supportingContent = { Text(people.nameOf(w.owner), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingContent = { StatusWord(w, time) },
-                        ) { Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                    }
-                    itemsIndexed(pages, key = { _, a -> "shared-artifact-${a.token}" }) { index, a ->
-                        SegmentedListItem(
-                            onClick = { open("ai/a/${a.token}") },
-                            shapes = ListItemDefaults.segmentedShapes(theirs.size + index, count), colors = segmentColors(),
-                            leadingContent = { BlotIcon("spark", "artifact-${a.token}", 32.dp) },
-                            supportingContent = { Text(people.nameOf(a.owner), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingContent = { Text(whenText(a.updatedAt, time), fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        ) { Text(a.title.ifBlank { a.name }, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                    }
-                    if (sharedTotal > 5) item(key = "shared-more") { TextButton(onClick = { moreShared = !moreShared }) { Text(if (moreShared) "Fewer" else "··· ${sharedTotal - 5} more") } }
-                    item(key = "shared-gap") { Spacer(Modifier.size(10.dp)) }
-                }
-                item(key = "projects-label") {
-                    Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) { Label("Projects") }
-                        IconButton(onClick = { naming = CodeProject("", "") }) { Icon(kimonoIcon("plus"), "New project") }
+                val inside = chatsOf(all).filter { it.folder?.id == project.id }
+                items(inside, key = { "p-${project.id}-${it.id}" }) { w -> DrawerChat(w, current, time, go, act, indent = true) }
+            }
+            /* Administrators' projects on Kimono Git, each repository's chats together. */
+            val repos = reposOf(all)
+            if (repos.isNotEmpty()) item(key = "repos-label") { DrawerLabel("Repositories") }
+            repos.forEach { (key, name, tasks) ->
+                item(key = "repo-$key") {
+                    Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(kimonoIcon("branch"), null, modifier = Modifier.size(18.dp))
+                        Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (admin) IconButton(onClick = { code.workOnProject = true; code.lastRepo = key; go("ai/new") }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("plus"), "New chat in $name", modifier = Modifier.size(18.dp)) }
                     }
                 }
-                if (projects.isEmpty()) item(key = "projects-empty") { Text("Keep chats together in a project.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)) }
-                projects.forEach { project ->
-                    item(key = "project-${project.id}") {
-                        ProjectHead(project, onNew = { open("ai/new/${project.id}") }, onRename = { name -> code.renameProject(project.id, name); load() }, onRemove = { removing = project })
-                    }
-                    val inside = chatsOf(all).filter { it.folder?.id == project.id }
-                    if (inside.isEmpty()) item(key = "project-${project.id}-empty") { Text("No chats yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 36.dp, bottom = 10.dp)) }
-                    else chatRows(project.id, inside, time, open, act)
-                }
-                /* Administrators' projects on Kimono Git, each repository's chats together. */
-                val repos = reposOf(all)
-                if (repos.isNotEmpty()) item(key = "repos-label") { Box(Modifier.padding(top = 14.dp)) { Label("Repositories") } }
-                repos.forEach { (key, name, tasks) ->
-                    item(key = "repo-$key") {
-                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            BlotIcon("code", "repo-$key", 30.dp)
-                            Text(name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                            Text("${tasks.size}", fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            if (admin) IconButton(onClick = { code.workOnProject = true; code.lastRepo = key; open("ai/new") }) { Icon(kimonoIcon("plus"), "New chat in $name") }
-                        }
-                    }
-                    chatRows(key, tasks, time, open, act)
-                }
-                if (all.isEmpty() && theirs.isEmpty() && pages.isEmpty() && problem == null) item(key = "quiet") { Quiet("Your chats will be here.") }
-                if (archived > 0) item(key = "archived") {
-                    SegmentedListItem(
-                        onClick = { open("ai/archived") },
-                        shapes = ListItemDefaults.segmentedShapes(0, 1), colors = segmentColors(),
-                        leadingContent = { BlotIcon("archive", "ai-archive", 32.dp) },
-                        trailingContent = { Text("$archived", fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    ) { Text("Archived", style = MaterialTheme.typography.bodyLarge) }
-                }
+                items(tasks, key = { "r-$key-${it.id}" }) { w -> DrawerChat(w, current, time, go, act, indent = true) }
+            }
+            if (list != null && all.isEmpty() && theirs.isEmpty() && pages.isEmpty() && problem == null) item(key = "quiet") {
+                Text("Your chats will be here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
             }
         }
+        /* The apps your chats published, at the foot of the drawer: each opens its settings. */
+        if (apps.isNotEmpty()) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
+            Text("Your apps", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 6.dp))
+            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.navigationBarsPadding().padding(bottom = 14.dp)) {
+                items(apps, key = { it.id }) { w -> AppChip(w) { go("code/${w.id}/app") } }
+            }
+        } else Spacer(Modifier.navigationBarsPadding())
     }
     naming?.let { project ->
         NameDialog(title = if (project.id.isEmpty()) "New project" else "Rename project", action = if (project.id.isEmpty()) "Make it" else "Rename", initial = project.name, onDismiss = { naming = null }) { name ->
@@ -270,7 +271,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
             onDismissRequest = { deleting = null },
             title = { Text("Delete this chat?") },
             text = { Text("Its files stay in Drive.") },
-            confirmButton = { TextButton(onClick = { deleting = null; scope.launch { try { code.remove(w.id); load() } catch (p: KimonoProblem) { problem = p.message } } }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+            confirmButton = { TextButton(onClick = { deleting = null; scope.launch { try { code.remove(w.id); load(); if (w.id == current) go("code") } catch (p: KimonoProblem) { problem = p.message } } }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
         )
     }
@@ -283,6 +284,85 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
             confirmButton = { TextButton(onClick = { removing = null; scope.launch { try { code.removeProject(project.id); load() } catch (p: KimonoProblem) { problem = p.message } } }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
         )
+    }
+}
+
+@Composable
+private fun DrawerLabel(text: String, action: (@Composable () -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(start = 16.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        action?.invoke()
+    }
+}
+
+/** A place in the drawer's head: New chat, Connections, Memory, Archived. */
+@Composable
+private fun DrawerPlace(icon: String, label: String, selected: Boolean = false, strong: Boolean = false, count: Int? = null, onClick: () -> Unit) {
+    DrawerRow(selected = selected, onClick = onClick, lead = { Icon(kimonoIcon(icon), null, modifier = Modifier.size(20.dp), tint = if (strong) MaterialTheme.colorScheme.primary else LocalContentColor.current) }) {
+        Text(label, style = if (strong) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        if (count != null) Text("$count", fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** One row of the drawer: a full round pill, filled when it's where you are. */
+@Composable
+private fun DrawerRow(selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, indent: Boolean = false, lead: (@Composable () -> Unit)? = null, body: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    val colour = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
+    androidx.compose.runtime.CompositionLocalProvider(LocalContentColor provides if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(CircleShape).background(colour)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(start = if (indent) 40.dp else 16.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            lead?.invoke()
+            body()
+        }
+    }
+}
+
+@Composable
+private fun DrawerMore(more: Boolean, hidden: Int, toggle: () -> Unit) {
+    TextButton(onClick = toggle, modifier = Modifier.padding(start = 4.dp)) { Text(if (more) "Fewer" else "··· $hidden more") }
+}
+
+/** A chat in the drawer: its title and, when it says something, how it is. Held, it can be archived, reported or deleted. */
+@Composable
+private fun DrawerChat(w: CodeWorkspace, current: String?, time: Long, go: (String) -> Unit, act: ((CodeWorkspace, String) -> Unit)?, indent: Boolean = false, lead: (@Composable () -> Unit)? = null) {
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        DrawerRow(selected = w.id == current, onClick = { go("code/${w.id}") }, onLongClick = act?.let { { menu = true } }, indent = indent, lead = lead) {
+            Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            val turn = w.turn
+            when {
+                turn?.state == "running" -> InkLoader(size = 16.dp)
+                w.preview != null && !w.preview.stopped -> InkDot(Kata.moss, size = 8.dp, seed = w.id)
+                else -> Text(whenText(w.updatedAt, time), fontFamily = mono, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (act != null) DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+            DropdownMenuItem(text = { Text("Archive") }, leadingIcon = { Icon(kimonoIcon("archive"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "archive") })
+            DropdownMenuItem(text = { Text("Report") }, leadingIcon = { Icon(kimonoIcon("flag"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "report") })
+            DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; act(w, "delete") })
+        }
+    }
+}
+
+/** One published app at the foot of the drawer: its name and whether it's up. */
+@Composable
+private fun AppChip(w: CodeWorkspace, onClick: () -> Unit) {
+    val preview = w.preview ?: return
+    Surface(onClick = onClick, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.heightIn(min = 52.dp).padding(start = 8.dp, end = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            InkBlot("app-${w.id}", size = 36.dp) { Icon(kimonoIcon("out"), null, modifier = Modifier.size(16.dp), tint = Kata.ink) }
+            Column {
+                Text(preview.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 140.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    InkDot(if (preview.stopped) quietGrey else Kata.moss, size = 7.dp, seed = w.id)
+                    Text(if (preview.stopped) "Stopped" else "Live", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
     }
 }
 
@@ -333,43 +413,14 @@ fun ArchivedScreen(code: Code, back: () -> Unit, open: (String) -> Unit) {
     }
 }
 
-@Composable
-private fun Label(text: String) = Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
-
-private fun LazyListScope.chatRows(group: String, chats: List<CodeWorkspace>, time: Long, open: (String) -> Unit, act: (CodeWorkspace, String) -> Unit) {
-    itemsIndexed(chats, key = { _, w -> "$group-${w.id}" }) { index, w ->
-        var menu by remember { mutableStateOf(false) }
-        SegmentedListItem(
-            onClick = { open("code/${w.id}") },
-            shapes = ListItemDefaults.segmentedShapes(index, chats.size),
-            colors = segmentColors(),
-            trailingContent = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StatusWord(w, time)
-                    /* Archive and delete, from the list. */
-                    Box {
-                        IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("more"), "More for ${w.title}", modifier = Modifier.size(20.dp)) }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                            DropdownMenuItem(text = { Text("Archive") }, leadingIcon = { Icon(kimonoIcon("archive"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "archive") })
-                            DropdownMenuItem(text = { Text("Report") }, leadingIcon = { Icon(kimonoIcon("flag"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "report") })
-                            DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; act(w, "delete") })
-                        }
-                    }
-                }
-            },
-        ) { Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-    }
-    item(key = "$group-gap") { Spacer(Modifier.size(10.dp)) }
-}
-
 /** A project in the list: its name, a new chat in it, renaming and removing it. */
 @Composable
 private fun ProjectHead(project: CodeProject, onNew: () -> Unit, onRename: suspend (String) -> Unit, onRemove: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     /* Its name is renamed where it sits: a tap turns it into a field of the same size. */
     var editing by remember(project.id) { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        BlotIcon("folder", "project-${project.id}", 30.dp)
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(kimonoIcon("folder"), null, modifier = Modifier.size(18.dp))
         if (editing) InlineName(project.name, MaterialTheme.typography.titleSmall, Modifier.weight(1f), onSave = onRename, onEnd = { editing = false })
         else Text(project.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).clickable { editing = true })
         IconButton(onClick = onNew) { Icon(kimonoIcon("plus"), "New chat in ${project.name}") }
@@ -380,38 +431,6 @@ private fun ProjectHead(project: CodeProject, onNew: () -> Unit, onRename: suspe
                 DropdownMenuItem(text = { Text("Remove", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onRemove() })
             }
         }
-    }
-}
-
-/** One published app: its link's name, whether it's up, and where its settings are. */
-@Composable
-private fun AppCard(w: CodeWorkspace, onClick: () -> Unit) {
-    val preview = w.preview ?: return
-    Surface(onClick = onClick, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.width(168.dp)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            InkBlot("app-${w.id}", size = 44.dp) { Icon(kimonoIcon("out"), null, modifier = Modifier.size(20.dp), tint = Kata.plum) }
-            Text(preview.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                InkDot(if (preview.stopped) quietGrey else Kata.moss, size = 9.dp, seed = w.id)
-                Text(if (preview.stopped) "Stopped" else "Live", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-/** One word, and only when it says something. Working is quiet ink. */
-@Composable
-private fun StatusWord(w: CodeWorkspace, time: Long) {
-    val turn = w.turn
-    when {
-        turn?.state == "running" -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            InkLoader(size = 16.dp)
-            Text("working ${elapsedText(time - turn.startedAt)}", fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.SemiBold)
-        }
-        turn?.state == "failed" -> Text("stopped", fontFamily = mono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        w.preview != null && !w.preview.stopped -> Text("live", fontFamily = mono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        w.pullRequest != null -> Text("#${w.pullRequest.number}", fontFamily = mono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        else -> Text(whenText(w.updatedAt, time), fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -435,7 +454,7 @@ private class Held(val name: String, val size: Long, val file: PickedFile? = nul
  * Under it, the person's own use, and a few apps they could connect.
  */
 @Composable
-fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, folderId: String?, back: () -> Unit, open: (String) -> Unit, started: (CodeWorkspace) -> Unit) {
+fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, folderId: String?, back: () -> Unit, menu: (() -> Unit)? = null, open: (String) -> Unit, started: (CodeWorkspace) -> Unit) {
     val scope = rememberCoroutineScope()
     var onProject by remember { mutableStateOf(admin && code.workOnProject) }
     var repos by remember { mutableStateOf<List<CodeRepository>?>(null) }
@@ -504,7 +523,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
             } catch (p: KimonoProblem) { problem = p.message; sending = false }
         }
     }
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Kimono AI", onBack = back, mark = { AiMark(code, 32.dp) }) }) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Kimono AI", onBack = back.takeIf { menu == null }, onMenu = menu, mark = { AiMark(code, 32.dp) }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 18.dp).padding(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (onProject) "What should we build?" else "What can I do for you?", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
             if (folder != null && !onProject) Note("folder", "In ${folder!!.name}")

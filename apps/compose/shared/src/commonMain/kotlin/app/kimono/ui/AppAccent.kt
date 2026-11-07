@@ -27,8 +27,19 @@ fun AppAccentTheme(accent: String?, content: @Composable () -> Unit) {
     if (accent == null) return content()
     val base = MaterialTheme.colorScheme
     val ramp = remember(accent) { accentRamp(accent) }
-    val scheme = remember(accent, base) {
-        base.copy(
+    val night = app.kimono.theme.LocalNight.current
+    val scheme = remember(accent, base, night) {
+        /* By night the accent's pale tone leads and its containers sink into the dark. */
+        if (night) base.copy(
+            primary = mix(ramp.soft, Color.White, .35f),
+            onPrimary = mix(ramp.deep, Color.Black, .45f),
+            primaryContainer = mix(ramp.deep, Color.Black, .25f),
+            onPrimaryContainer = mix(ramp.tint, Color.White, .6f),
+            inversePrimary = ramp.deep,
+            secondaryContainer = mix(ramp.deep, base.surface, .55f),
+            onSecondaryContainer = mix(ramp.tint, Color.White, .6f),
+            surfaceTint = ramp.soft,
+        ) else base.copy(
             primary = ramp.deep,
             onPrimary = Color.White,
             primaryContainer = mix(ramp.tint, Color.White, .25f),

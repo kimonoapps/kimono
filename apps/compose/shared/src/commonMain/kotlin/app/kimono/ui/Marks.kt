@@ -40,7 +40,7 @@ val KimonoBranchVector: ImageVector by lazy {
 }
 
 @Composable
-fun KimonoBranch(size: Dp = 30.dp, tint: Color = Kata.plum, modifier: Modifier = Modifier) {
+fun KimonoBranch(size: Dp = 30.dp, tint: Color = app.kimono.theme.plumInk, modifier: Modifier = Modifier) {
     Image(KimonoBranchVector, contentDescription = null, colorFilter = ColorFilter.tint(tint), modifier = modifier.size(size, size * 106f / 111f))
 }
 
@@ -101,6 +101,8 @@ private val iconPaths = mapOf(
     "thumb-down" to "M7.5 13.5v-9h-3v9z M7.5 13.5L11 20.2a1.8 1.8 0 0 0 3.3-1.2l-.8-4.5h5a1.6 1.6 0 0 0 1.6-1.9l-1.4-6.6a1.8 1.8 0 0 0-1.8-1.5H7.5",
     "flag" to "M5.5 20.5v-16 M5.5 4.5h11l-2.5 4 2.5 4h-11",
     "pin" to "M9 3.5h6 M10 3.5v6l-3 3.5h10l-3-3.5v-6 M12 13v7.5",
+    "menu" to "M4 7h16 M4 12h10 M4 17h16",
+    "moon" to "M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z",
 )
 
 private val iconCache = mutableMapOf<String, ImageVector>()

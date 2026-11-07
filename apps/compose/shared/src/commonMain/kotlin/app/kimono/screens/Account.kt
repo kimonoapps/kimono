@@ -41,6 +41,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -155,7 +157,34 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
                 KimonoGroup(listOf(GroupItem("Manage apps", icon = "apps") { open("manage") }))
             }
             GroupLabel("This phone")
-            KimonoGroup(listOf(GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } }))
+            val look by app.kimono.theme.Appearance.choice.collectAsState()
+            var choosingLook by remember { mutableStateOf(false) }
+            KimonoGroup(listOf(
+                GroupItem("Appearance", detail = lookWords.getValue(look), icon = "moon") { choosingLook = true },
+                GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } },
+            ))
+            if (choosingLook) androidx.compose.material3.AlertDialog(
+                onDismissRequest = { choosingLook = false },
+                title = { Text("Appearance") },
+                text = {
+                    Column {
+                        lookWords.forEach { (key, words) ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).clickable {
+                                    app.kimono.theme.Appearance.choice.value = key
+                                    choosingLook = false
+                                    scope.launch { platform.keep(app.kimono.theme.Appearance.KEY, key) }
+                                }.padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                androidx.compose.material3.RadioButton(selected = look == key, onClick = null)
+                                Text(words, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(start = 12.dp))
+                            }
+                        }
+                    }
+                },
+                confirmButton = { androidx.compose.material3.TextButton(onClick = { choosingLook = false }) { Text("Done") } },
+            )
             Spacer(Modifier.height(32.dp))
         }
     }
@@ -261,3 +290,5 @@ fun DevicesScreen(session: Session, back: () -> Unit) {
         }
     }
 }
+
+private val lookWords = linkedMapOf("system" to "As the phone is", "light" to "Light", "dark" to "Dark")
