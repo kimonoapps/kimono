@@ -172,7 +172,7 @@ data class UsageWindow(val used: Double = 0.0, val share: Double = 1.0, val rese
 @Serializable
 data class MediaAllowance(val budget: Double = 0.0, val spent: Double? = null, val resetsAt: Long? = null, val chatSpent: Double = 0.0) {
     val fraction get() = spent?.let { if (budget <= 0.0) 0.0 else (it / budget).coerceAtMost(1.0) }
-    val words get() = spent?.let { "${dollars(it)} of ${dollars(budget)} this month${if (chatSpent > 0) " · ${dollars(chatSpent)} in this chat" else ""}" }
+    val words get() = spent?.let { "${credits(it)} of ${credits(budget)} credits this month${if (chatSpent > 0) " · ${credits(chatSpent)} in this chat" else ""}" }
 }
 
 /**
@@ -199,9 +199,12 @@ data class ShownMeters(val context: Double?, val fiveHour: Double?, val week: Do
     }
 }
 
-private fun dollars(n: Double): String {
-    val cents = kotlin.math.round(n * 100).toLong()
-    return "$" + (cents / 100) + "." + (cents % 100).toString().padStart(2, '0')
+/** Pro Tools are counted in credits, a hundred to the dollar: "247 of 1,000 credits". Under ten, to a tenth. */
+private fun credits(usd: Double): String {
+    val c = usd * 100
+    if (c > 0 && c < 10) return (kotlin.math.round(c * 10) / 10).toString().removeSuffix(".0")
+    val whole = kotlin.math.round(c).toLong().toString()
+    return whole.reversed().chunked(3).joinToString(",").reversed()
 }
 
 /** The person's own use of the plan (this 5-hour window and this week, against their share), and of this month's Pro Tools allowance. */

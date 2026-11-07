@@ -94,7 +94,7 @@
         "group": "sharing",
         "target": "settings",
         "default": "10",
-        "description": "US dollars a month each person may spend on Pro Tools: tools that need no account of theirs, such as voice, video, pictures and web search, charged to the Composio balance. 0 switches them off."
+        "description": "US dollars a month each person may spend on Pro Tools: tools that need no account of theirs, such as voice, video, pictures and web search, charged to the Composio balance. People see it as credits, 100 to the dollar. 0 switches them off."
       },
       {
         "key": "share_five_hour",

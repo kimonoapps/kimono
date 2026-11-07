@@ -81,7 +81,8 @@ export function guardMediaBudget(db: DatabaseSync, config: CodeConfig, username:
   void holdMediaBudget(db, config, username, origin, now, 15_000).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error));
 }
 
-const dollars = (n: number) => `$${n.toFixed(2)}`;
+/* Pro Tools are counted in credits, a hundred to the dollar, everywhere a person sees them. */
+const dollars = (n: number) => `${Math.round(n * 100).toLocaleString("en")} credits`;
 const dayOf = (at: number) => new Date(at).toLocaleDateString("en", { month: "long", day: "numeric", timeZone: "UTC" });
 
 /** What the agent is told this turn about the Pro Tools allowance; nothing when there's none. */
@@ -92,7 +93,7 @@ export function mediaNote(allowance: MediaAllowance | null): string {
     return `This person's Pro Tools allowance for the month (${dollars(allowance.budget)}) is used up, and comes back on ${dayOf(allowance.resetsAt)}. Pro Tools (voice, video, pictures, web search and the like) now work only through an account the person connected themselves: don't ask them to connect one for this. Say it's used up and when it returns, and offer an artifact where one would do.`;
   }
   const left = allowance.spent === null ? null : Math.max(0, allowance.budget - allowance.spent);
-  return `Pro Tools (tools that need no account of theirs: voice, video, pictures, web search and the like) cost this person's monthly Pro Tools allowance: ${left === null ? "some" : dollars(left)} of ${dollars(allowance.budget)} left, until ${dayOf(allowance.resetsAt)}.`;
+  return `Pro Tools (tools that need no account of theirs: voice, video, pictures, web search and the like) cost this person's monthly Pro Tools allowance: ${left === null ? "some" : dollars(left)} of ${dollars(allowance.budget)} left, until ${dayOf(allowance.resetsAt)}. Speak of it in credits, never dollars: a credit is a US cent, so a tool that says it costs $2.31 used 231 credits.`;
 }
 
 const connected = new Map<string, { apps: Set<string>; at: number }>();

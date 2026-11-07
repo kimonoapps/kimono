@@ -207,7 +207,7 @@ test('media allowance: spending past it switches Instant off, and a new month sw
     assert.equal(under.open, true);
     assert.equal(under.resetsAt, Date.UTC(2026, 11, 1));
     assert.ok(!composio.calls.some((c) => c.method === 'PATCH'), 'nothing to change while under');
-    assert.match(media.mediaNote(under), /\$3\.00 of \$5\.00 left/);
+    assert.match(media.mediaNote(under), /300 credits of 500 credits left/);
 
     composio.logs.push(charge('mina', month + 3 * day, '3.10'));
     const fresh_ = await media.holdMediaBudget(db, settings(5), 'mina', origin, month + 3 * day + 1);
@@ -238,7 +238,7 @@ test('media allowance: unreadable logs keep it as it was; 0 switches Instant off
     const unknown = await media.holdMediaBudget(db, settings(5), 'sam', origin, month + 1);
     assert.equal(unknown.spent, null);
     assert.equal(unknown.open, true, 'still open, as it was');
-    assert.match(media.mediaNote(unknown), /some of \$5\.00 left/);
+    assert.match(media.mediaNote(unknown), /some of 500 credits left/);
     const off = await media.holdMediaBudget(db, settings(0), 'sam', origin, month + 2);
     assert.equal(off.open, false);
     assert.deepEqual(composio.calls.at(-1).body, { instant: false });
