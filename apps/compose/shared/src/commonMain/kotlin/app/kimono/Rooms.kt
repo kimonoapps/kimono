@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,11 +82,18 @@ fun RoomBar(app: RoomApp, route: String?, launcherApp: LauncherApp?, me: Account
             icon = { Icon(kimonoIcon(room.icon), null) }, label = { Text(room.label, maxLines = 1) }, colors = colors, modifier = Modifier.weight(1f),
         )
         /* The bloom stays dead centre whatever the app: its rooms share the left half, the rest and You the right. */
+        /*
+         * The bar reaches down into the home indicator's room rather than stacking a whole
+         * inset under itself: a thin gesture inset (iOS, Android gestures) keeps a little
+         * clearance, three Android buttons keep all of theirs.
+         */
+        val inset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val below = if (inset >= 40.dp) inset else (inset - 20.dp).coerceAtLeast(minOf(inset, 6.dp))
         Surface(color = MaterialTheme.colorScheme.surface) {
-            Row(Modifier.fillMaxWidth().navigationBarsPadding().heightIn(min = 72.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(bottom = below).heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f)) { app.before.forEach { place(it) } }
                 Column(
-                    Modifier.width(92.dp).clip(RoundedCornerShape(24.dp)).clickable(onClickLabel = "Every app", onClick = openApps).padding(vertical = 6.dp),
+                    Modifier.width(92.dp).clip(RoundedCornerShape(24.dp)).clickable(onClickLabel = "Every app", onClick = openApps).padding(vertical = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     if (accent == null) KimonoBranch(36.dp) else InkBloom(launcherApp?.id ?: app.id, accent, launcherApp?.glyph ?: app.glyph, 42.dp)
