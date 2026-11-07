@@ -103,3 +103,20 @@ export function crestSvg(name: string, colour: string): string {
     + `<g fill="${paper}">${draw(kind.paper)}</g>`
     + `<path d="${ring}" fill="none" stroke="${ink}" stroke-width="3.6" stroke-linecap="round" stroke-dasharray="${(120 + random() * 60).toFixed(0)} ${(5 + random() * 5).toFixed(0)}" opacity=".88" filter="url(#ink-brush-${unique})"></path></svg>`;
 }
+
+/**
+ * A crest's flower alone, as paths for a bloom's heart (a space's mark is
+ * an app-style bloom with its crest at the centre). Paper cut-outs are
+ * punched out with a mask, so the flower reads in one colour.
+ */
+export function crestFlowerMarkup(name: string): string {
+  const kind = crestKinds[(name in crestKinds ? name : "sakura") as CrestName];
+  const paths = (shapes: Shape[]) => shapes.flatMap((shape) => shape.turns.map((turn) =>
+    `<path d="${shape.d}"${turn ? ` transform="rotate(${turn} 50 50)"` : ""}></path>`)).join("");
+  return `<mask id="__MASK__" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="#fff"></rect><g fill="#000">${paths(kind.paper)}</g></mask><g mask="url(#__MASK__)">${paths(kind.ink)}</g>`;
+}
+
+/** A crest colour's ink, for blooming a space in it. */
+export function crestHex(colour: string): string {
+  return crestColours[(colour in crestColours ? colour : "plum") as CrestColour].hex;
+}

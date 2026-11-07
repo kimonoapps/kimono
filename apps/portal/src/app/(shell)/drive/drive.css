@@ -689,6 +689,5 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-wash.is-project, .dv-wash.is-task { color: var(--dv-code, #3f6b6a); }
 .dv-wash.is-notebook { color: var(--dv-notes, #b56d78); }
 
-/* A space's crest in its ink wash: free of the disc, so the wash can bleed. */
-.dv-mark.inked { background: none; box-shadow: none; border-radius: 0; overflow: visible; }
-.dv-mark.inked > .ink-crest { width: 100%; height: 100%; }
+/* A space's bloom in the crest picker keeps its petals: no round crop. */
+.dv-crests button .dv-code-mark svg { border-radius: 0; }
