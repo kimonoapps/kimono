@@ -189,6 +189,10 @@ class AndroidPlatform(private val context: Context) : Platform {
         )
     }
 
+    override val reduceMotion: Boolean get() =
+        android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    override fun utcOffsetMillis(at: Long): Long = java.util.TimeZone.getDefault().getOffset(at).toLong()
+
     override fun share(text: String) {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
         val chooser = Intent.createChooser(send, null)

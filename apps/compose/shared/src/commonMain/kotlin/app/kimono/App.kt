@@ -135,6 +135,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
     val testflight = remember(session) { app.kimono.data.Testflight(session) }
+    val notes = remember(session) { app.kimono.screens.NotesModel(app.kimono.data.Notes(session, platform), model.drive, platform) }
     /*
      * Where you were: every screen on the way there is kept as you move, and the app
      * opens on them again, so Back still leads where it did. A notification's screen wins.
@@ -172,6 +173,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             target.id == "kimono-drive" -> goTab("drive")
             target.id == app.kimono.data.Code.APP_ID -> goTab("code")
             target.id == "kimono-vpn" -> goTab("vpn")
+            target.id == app.kimono.data.Notes.APP_ID -> goTab("notes")
             /* An app with a phone app of its own: open it when it's here, and when it isn't, its page here to get it. Never its website. */
             target.phoneApp != null -> {
                 if (!app.kimono.screens.openPhoneApp(target.phoneApp, platform)) nav.navigate("app/${target.id}")
@@ -185,7 +187,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "note/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -281,6 +283,19 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
                     WorkspaceScreen(code, model.drive, platform, id, showApp = true, open = { nav.navigate(it) }) { nav.popBackStack() }
+                }
+            }
+            /* Notes: the list with its drawer of notebooks, and a note full screen over it. */
+            fun notesAccent() = model.drive.launcher.value?.firstOrNull { it.id == app.kimono.data.Notes.APP_ID }?.accent ?: "#b56d78"
+            composable("notes") {
+                AppAccentTheme(notesAccent()) {
+                    app.kimono.screens.NotesScreen(notes, notesAccent(), admin, me?.username, back = { goTab("home") }, open = { nav.navigate("note/$it") }) { nav.navigate(it) }
+                }
+            }
+            composable("note/{id}") { backStack ->
+                val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
+                AppAccentTheme(notesAccent()) {
+                    app.kimono.screens.NoteEditorScreen(notes, platform, id, back = { nav.popBackStack() }) { other -> nav.navigate("note/$other") }
                 }
             }
             composable("drive") { DriveScreen(model, me?.username) { nav.navigate(it) } }

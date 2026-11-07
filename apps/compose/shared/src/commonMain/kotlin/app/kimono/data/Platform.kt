@@ -50,6 +50,10 @@ interface Platform {
     fun openInstalled(packageId: String): Boolean = false
     /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */
     fun share(text: String) {}
+    /** How far the phone's clock is from UTC at [at] (ms since 1970), for showing times as the person reads them. */
+    fun utcOffsetMillis(at: Long): Long = 0
+    /** Whether the person asked the phone for less motion. */
+    val reduceMotion: Boolean get() = false
     /** Drive was switched on or off on the server: the Files app entry follows. */
     fun driveAvailable(on: Boolean) {}
     /** A small picture of a photo, video or PDF, at least [pixels] across, as a local file; null if there can't be one. */

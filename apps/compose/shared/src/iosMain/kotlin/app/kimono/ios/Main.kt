@@ -19,6 +19,10 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSData
+import platform.Foundation.NSDate
+import platform.Foundation.NSTimeZone
+import platform.Foundation.dateWithTimeIntervalSince1970
+import platform.Foundation.localTimeZone
 import platform.Foundation.create
 import platform.UIKit.UIViewController
 import platform.posix.memcpy
@@ -105,6 +109,9 @@ private class IosPlatform(private val host: IosHost) : Platform {
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
     override fun share(text: String) = host.share(text)
     override fun driveAvailable(on: Boolean) = host.driveAvailable(on)
+    override val reduceMotion: Boolean get() = platform.UIKit.UIAccessibilityIsReduceMotionEnabled()
+    override fun utcOffsetMillis(at: Long): Long =
+        NSTimeZone.localTimeZone.secondsFromGMTForDate(NSDate.dateWithTimeIntervalSince1970(at / 1000.0)) * 1000L
     override val build: Long get() = host.appBuild()
     override suspend fun pickFiles(): List<PickedFile> =
         suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }
