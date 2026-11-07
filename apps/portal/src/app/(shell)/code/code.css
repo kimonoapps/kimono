@@ -1563,7 +1563,8 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 @media (prefers-reduced-motion: reduce) { .cd-sendstop, .cd-ss > span { transition: none; } }
 
 /* A project's name, edited in place: the same words, the same spot, an ink line under them. */
-.cd-folder-title.is-editing { all: unset; flex: 1; min-width: 0; font: 700 14px/1.2 var(--k-sans); color: var(--k-on-surface); padding: 2px 0; border-bottom: 1.5px solid var(--k-app-accent); cursor: text; }
+/* exactly the name's box, so nothing moves: the ink line is drawn under it, not added to it */
+.cd-folder-title.is-editing { all: unset; flex: 1; min-width: 0; font: 700 14px/1.2 var(--k-sans); color: var(--k-on-surface); box-shadow: 0 1.5px 0 var(--k-app-accent); cursor: text; }
 .cd-folder-title.is-editing::selection { background: color-mix(in srgb, var(--k-app-accent) 25%, transparent); }
 
 /* Memory, as pages: a list of cards, each a title and its first words; a page is a title and a sheet of words. */
@@ -1691,3 +1692,8 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
   .cd-w { animation: none; }
   .cd-timeline.is-live > * { transition: none; }
 }
+
+/* A chat renamed in place: its row as it was, the name a field of the same size with an ink line under it. */
+.cd-list .cd-row-open.is-naming { position: relative; display: grid; gap: 5px; width: 100%; min-height: 64px; padding: 14px 18px; border-radius: 16px; background: var(--k-container-lowest); }
+.cd-row-name { all: unset; display: block; min-width: 0; font: 700 15px/19.5px var(--k-sans); color: var(--k-ink); box-shadow: 0 1.5px 0 var(--k-app-accent); cursor: text; }
+.cd-row-name::selection { background: color-mix(in srgb, var(--k-app-accent) 25%, transparent); }

@@ -1218,14 +1218,18 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
     if (!name || name === w.title) { setRenaming(null); return; }
     act(() => code.rename(w.id, name), false);
   };
-  if (renaming !== null) return <form className={cx("cd-row cd-row-naming", busy && "is-busy")} onSubmit={(event) => { event.preventDefault(); saveName(); }}>
-    <input autoFocus value={renaming} maxLength={120} aria-label="Chat name" onFocus={(event) => event.target.select()}
-      onChange={(event) => setRenaming(event.target.value)} onBlur={saveName} onKeyDown={(event) => { if (event.key === "Escape") setRenaming(null); }} />
+  /* Renamed where it sits: the name becomes a field of the same size, the rest of the row stays as it was. */
+  if (renaming !== null) return <form className={cx("cd-row", busy && "is-busy")} onSubmit={(event) => { event.preventDefault(); saveName(); }}>
+    <div className="cd-row-open is-naming">
+      <input className="cd-row-name" autoFocus value={renaming} maxLength={120} aria-label="Chat name" onFocus={(event) => event.target.select()}
+        onChange={(event) => setRenaming(event.target.value)} onBlur={saveName} onKeyDown={(event) => { if (event.key === "Escape") setRenaming(null); }} />
+      <small><span className="cd-when">{when(w.updatedAt, now)}</span></small>
+    </div>
   </form>;
   return <div className={cx("cd-row", busy && "is-busy", confirming && "is-confirming")}>
     <button type="button" className="cd-row-open" aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}
       draggable={owns && w.kind === "chat"} onDragStart={(event) => { event.dataTransfer.setData(chatDrag, w.id); event.dataTransfer.effectAllowed = "move"; }}>
-      <b>{w.title}</b>
+      <b onDoubleClick={owns ? (event) => { event.preventDefault(); event.stopPropagation(); setRenaming(w.title); } : undefined}>{w.title}</b>
       <small>
         {/* A shared chat shows who else is in it. */}
         {w.people?.length ? <span className="cd-row-faces" title={w.people.join(", ")}>{w.people.slice(0, 3).map((who) => <Face key={who} username={who} size={18} />)}{w.people.length > 3 ? <span className="cd-row-more">+{w.people.length - 3}</span> : null}</span> : null}
