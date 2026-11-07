@@ -2,6 +2,13 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
+import app.kimono.ui.bottomChrome
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -284,7 +291,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: St
         },
         bottomBar = {
             if (selecting) Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Row(Modifier.fillMaxWidth().bottomChrome().padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                     if (canEdit) BarAction("Move", "move") { moving = picked }
                     if (canEdit && picked.any { !it.isFolder }) BarAction("Share", "share") { shareLinks(picked) }
                     if (canEdit) BarAction("Trash", "trash", danger = true) { trash(picked) }
@@ -539,7 +546,7 @@ private fun NodeRow(
 @Composable
 private fun ItemSheet(node: DriveNode, thumbnail: suspend (Int) -> String?, choices: List<NodeChoice>, onDismiss: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 32.dp)) {
             Row(Modifier.padding(start = 4.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 NodeIcon(node, thumbnail, size = 56.dp)
@@ -582,7 +589,7 @@ private fun MovePicker(model: DriveModel, platform: Platform, moving: List<Drive
     LaunchedEffect(at) { folder = model.drive.knownFolder(at); load() }
     val movingIds = moving.map { it.id }.toSet()
     val alreadyHere = moving.all { it.parentId == at }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surface) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(.88f)) {
             val here = folder
             Row(Modifier.padding(horizontal = 8.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -680,7 +687,7 @@ private fun UploadRow(task: UploadStatus, retry: () -> Unit, dismiss: () -> Unit
 @Composable
 private fun AddSheet(onDismiss: () -> Unit, onUpload: () -> Unit, onFolder: () -> Unit) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
             listOf(Triple("Upload files", "upload", onUpload), Triple("New folder", "folder", onFolder)).forEachIndexed { index, (label, icon, action) ->
                 SegmentedListItem(
@@ -841,7 +848,7 @@ fun SharedWithYouScreen(model: DriveModel, platform: Platform, me: String?, open
     }
     sharing?.let { node -> ShareSheet(driveShareTarget(model, node, node.role != "viewer"), me, platform) { sharing = null } }
     leaving?.let { node ->
-        androidx.compose.material3.ModalBottomSheet(onDismissRequest = { leaving = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+        InkSheet(onDismissRequest = { leaving = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Leave ${node.name}?", style = MaterialTheme.typography.titleLarge)
                 Text("You'll need to be asked back.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -2,6 +2,7 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.bottomChrome
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -254,10 +257,10 @@ private fun AiDrawerSheet(code: Code, admin: Boolean, current: String?, shown: B
         if (apps.isNotEmpty()) {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
             Text("Your apps", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 24.dp, top = 12.dp, bottom = 6.dp))
-            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.navigationBarsPadding().padding(bottom = 14.dp)) {
+            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.bottomChrome().padding(bottom = 14.dp)) {
                 items(apps, key = { it.id }) { w -> AppChip(w) { go("code/${w.id}/app") } }
             }
-        } else Spacer(Modifier.navigationBarsPadding())
+        } else Spacer(Modifier.bottomChrome())
     }
     naming?.let { project ->
         NameDialog(title = if (project.id.isEmpty()) "New project" else "Rename project", action = if (project.id.isEmpty()) "Make it" else "Rename", initial = project.name, onDismiss = { naming = null }) { name ->
@@ -523,7 +526,12 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
             } catch (p: KimonoProblem) { problem = p.message; sending = false }
         }
     }
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Kimono AI", onBack = back.takeIf { menu == null }, onMenu = menu, mark = { AiMark(code, 32.dp) }) }) { padding ->
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        /* The composer stands on the screen's hem itself (bottomChrome), so the scaffold leaves the bottom alone. */
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets.systemBars.only(androidx.compose.foundation.layout.WindowInsetsSides.Top + androidx.compose.foundation.layout.WindowInsetsSides.Horizontal),
+        topBar = { KimonoTopBar("Kimono AI", onBack = back.takeIf { menu == null }, onMenu = menu, mark = { AiMark(code, 32.dp) }) },
+    ) { padding ->
         /* As in any chat, the box sits at the bottom, over the keyboard; what's above it scrolls. */
         Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -548,7 +556,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
             HomeUsage(code)
             if (!onProject) SuggestedApps(code, open)
         }
-        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.fillMaxWidth().bottomChrome().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             /* What kind of chat, and how it answers: above the box. */
             FlowRow(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                         if (admin) Surface(onClick = { onProject = !onProject }, shape = androidx.compose.foundation.shape.CircleShape, color = if (onProject) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {

@@ -2,6 +2,7 @@
 
 package app.kimono
 
+import app.kimono.ui.bottomChrome
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -14,9 +15,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -82,15 +80,9 @@ fun RoomBar(app: RoomApp, route: String?, launcherApp: LauncherApp?, me: Account
             icon = { Icon(kimonoIcon(room.icon), null) }, label = { Text(room.label, maxLines = 1) }, colors = colors, modifier = Modifier.weight(1f),
         )
         /* The bloom stays dead centre whatever the app: its rooms share the left half, the rest and You the right. */
-        /*
-         * The bar reaches down into the home indicator's room rather than stacking a whole
-         * inset under itself: a thin gesture inset (iOS, Android gestures) keeps a little
-         * clearance, three Android buttons keep all of theirs.
-         */
-        val inset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val below = if (inset >= 40.dp) inset else (inset - 20.dp).coerceAtLeast(minOf(inset, 6.dp))
+        /* It stands on the screen's hem (see bottomChrome), not a whole inset above it. */
         Surface(color = MaterialTheme.colorScheme.surface) {
-            Row(Modifier.fillMaxWidth().padding(bottom = below).heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().bottomChrome().heightIn(min = 64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f)) { app.before.forEach { place(it) } }
                 Column(
                     Modifier.width(92.dp).clip(RoundedCornerShape(24.dp)).clickable(onClickLabel = "Every app", onClick = openApps).padding(vertical = 4.dp),

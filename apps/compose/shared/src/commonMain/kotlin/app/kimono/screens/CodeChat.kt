@@ -2,6 +2,7 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.bottomChrome
 import kotlin.math.roundToInt
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -527,7 +528,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
         }
         if (w.canWrite) Composer(code, drive, platform, marks, w, lastContext)
         else Text("You can view this chat", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp))
+            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().padding(horizontal = 24.dp, vertical = 16.dp))
     }
     viewing?.let { (shots, at) -> ShotViewer(code, w, shots, at) { viewing = null } }
     artifacts.full?.let { name -> ArtifactFull(code, platform, artifacts, name) }
@@ -1222,7 +1223,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
             sending = false
         }
     }
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp)) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp)) {
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (switching != null) {
