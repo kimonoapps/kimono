@@ -940,8 +940,9 @@ private fun ProgressGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, liv
                         Text(card.label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                         apps.forEach { app -> AppLogo(code, app, 16.dp, pro = calls.any { it.event.app == app && it.event.pro }) }
                     }
-                    /* Kimono's own wavy ink bar: filled by a real percent, else the open wave */
-                    if (!ended) app.kimono.ui.InkWaveBar(card.percent?.let { p -> { (p / 100).toFloat() } }, Modifier.fillMaxWidth().height(10.dp), null)
+                    /* Kimono's own wavy ink bar, only once there's a real percent: before that the shape above says it's working */
+                    val percent = card.percent
+                    if (!ended && percent != null) app.kimono.ui.InkWaveBar({ (percent / 100).toFloat() }, Modifier.fillMaxWidth().height(10.dp), null)
                     Text(card.words(failed), style = MaterialTheme.typography.labelSmall, color = if (card.state == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (steps.isNotEmpty()) Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(14.dp).rotate(if (shown) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
