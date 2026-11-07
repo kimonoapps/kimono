@@ -5,6 +5,10 @@
 # supervisor (it keeps running after the turn, and starts again if it crashes);
 # this waits until the port answers. Running it again replaces the app.
 set -u
+if [ "${KIMONO_CHAT:-}" = 1 ]; then
+  echo "kimono-serve: this is a chat, and only projects publish apps. Show it as an artifact instead, or kimono-send the files." >&2
+  exit 1
+fi
 usage() {
   cat >&2 <<'EOF'
 usage: kimono-serve <port> [--kind <what it is>] -- <command…>

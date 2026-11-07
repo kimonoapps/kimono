@@ -23,6 +23,7 @@ import { effortFor, modelFor, type ModelChoice } from "./models";
 export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
+import { serveTempLink, tempLinkBase } from "./temp-links";
 export { efforts, type Effort } from "./node";
 import { retitle, shotToDrive, syncDrive } from "./drive";
 import { historyNote, syncHistory } from "./history";
@@ -326,7 +327,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null }, controller.signal);
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id) }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
@@ -629,3 +630,20 @@ export async function forgetAttachments(workspaceId: string) {
 
 export { who };
 export { fromDrive, syncDrive, taskFolder } from "./drive";
+
+/**
+ * A file the agent linked for a tool with kimono-link, for whoever has the link: the
+ * tools fetching it are outside Kimono. The link's own unguessable token is what opens it.
+ */
+export async function tempLink(request: Request, id: string, token: string, name: string): Promise<Response> {
+  try {
+    const config = codeConfig(await getPlatformSettings());
+    if (!config.enabled) return new Response("Not found", { status: 404 });
+    const row = db().prepare("SELECT owner FROM workspaces WHERE id = ?").get(id) as { owner: string } | undefined;
+    if (!row) return new Response("Not found", { status: 404 });
+    return await serveTempLink(request, config, workspaceFor(db(), id, row.owner), token, name);
+  } catch (error) {
+    if (!(error instanceof CodeProblem)) console.warn("Kimono AI couldn't serve a file link:", error instanceof Error ? error.message : error);
+    return new Response("Not found", { status: 404 });
+  }
+}

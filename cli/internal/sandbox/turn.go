@@ -29,6 +29,9 @@ type turnRequest struct {
 	// message (its uuid), and what came after is dropped. A person edited an
 	// earlier message, and this turn runs it again from there.
 	ResumeAt string `json:"resumeAt"`
+	// Links is where kimono-link's files can be fetched from the internet:
+	// Portal's public address for this workspace's temporary file links.
+	Links string `json:"links"`
 }
 
 const maxContext = 24 * 1024
@@ -119,7 +122,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 		system += "\n\n" + request.Context
 	}
 	if chat {
-		system += "\n\nThis is a chat, not a project: there is no repository to commit to, push or open a pull request for. /workspace is this chat's own scratch space, and it is kept in the person's Drive."
+		system += "\n\nThis is a chat, not a project: there is no repository to commit to, push or open a pull request for, and no app to publish (kimono-serve is for projects only, so don't use it or any other way to put a server up). To show something, make an artifact; to hand over a file, kimono-send it; to give a tool a file by link, kimono-link it. /workspace is this chat's own scratch space, and it is kept in the person's Drive."
+	} else {
+		system += "\n\n" + AppPrompt
 	}
 	used, measuredAt := s.diskUse(id)
 	if s.now().Sub(measuredAt) > time.Minute {
@@ -131,7 +136,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_CHAT=" + chatFlag(chat)}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()
@@ -321,4 +326,20 @@ func (l *lineWriter) raw(line string) {
 func (l *lineWriter) json(value any) {
 	encoded, _ := json.Marshal(value)
 	l.raw(string(encoded))
+}
+
+// linksBase is Portal's base for temporary file links, or "" when it isn't a
+// plain http(s) address (kimono-link then says it can't make one).
+func linksBase(raw string) string {
+	if (!strings.HasPrefix(raw, "https://") && !strings.HasPrefix(raw, "http://")) || strings.ContainsAny(raw, " \t\n\r\"'`$\\") || len(raw) > 512 {
+		return ""
+	}
+	return strings.TrimRight(raw, "/")
+}
+
+func chatFlag(chat bool) string {
+	if chat {
+		return "1"
+	}
+	return ""
 }

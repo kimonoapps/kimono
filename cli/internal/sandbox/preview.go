@@ -399,6 +399,11 @@ func (s *Server) reportOutbox(space *workspace, out *lineWriter) {
 		}
 	}
 	branch := space.repo.Branch
+	/* A chat publishes no apps: whatever it puts up never gets a link. */
+	if space.ensured && space.repo.URL == "" {
+		box.serve = nil
+		box.restarting = false
+	}
 	space.mu.Unlock()
 	for _, note := range box.memories {
 		if _, err := s.docker.run(ctx, nil, "exec", "-u", "agent", containerName(space.id), "rm", "-f", "/outbox/memories/"+note.ID); err != nil {

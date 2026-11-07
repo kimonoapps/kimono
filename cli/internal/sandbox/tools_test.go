@@ -125,9 +125,35 @@ func TestAgentStreamsAndKnowsArtifacts(t *testing.T) {
 	if !strings.Contains(DefaultAgent, "--include-partial-messages") {
 		t.Fatal("the agent must stream partial messages, or artifacts only appear once finished")
 	}
-	for _, want := range []string{"/workspace/artifacts/<name>.html", "/opt/kimono/artifacts.md", "kimono-show <name>", "kimono-send <file>", "no network", "kimono-fetch <link>", "kimono-progress --wait", "even when they say \"video\"", "kimono-say \"<text>\"", "ElevenLabs only for"} {
+	for _, want := range []string{"/workspace/artifacts/<name>.html", "/opt/kimono/artifacts.md", "kimono-show <name>", "kimono-send <file>", "no network", "kimono-fetch <link>", "kimono-progress --wait", "even when they say \"video\"", "kimono-say \"<text>\"", "ElevenLabs only for", "kimono-link <file>", "COMPOSIO_SEARCH_TOOLS", "without having searched"} {
 		if !strings.Contains(SystemPrompt, want) {
 			t.Fatalf("the system prompt doesn't mention %q", want)
 		}
+	}
+}
+
+// kimono-link's base reaches the sandbox only as a plain http(s) address.
+func TestLinksBase(t *testing.T) {
+	for raw, want := range map[string]string{
+		"https://kimono.example/api/v1/code/temp/abc/": "https://kimono.example/api/v1/code/temp/abc",
+		"http://localhost:3000/api/v1/code/temp/abc":   "http://localhost:3000/api/v1/code/temp/abc",
+		"":                        "",
+		"file:///etc/passwd":      "",
+		"https://x.example/$(id)": "",
+		"https://x.example/a b":   "",
+	} {
+		if got := linksBase(raw); got != want {
+			t.Fatalf("linksBase(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// Only projects publish apps: a chat's prompt never tells it how.
+func TestAppsAreForProjects(t *testing.T) {
+	if strings.Contains(SystemPrompt, "kimono-serve <port>") {
+		t.Fatal("the shared system prompt must not teach kimono-serve; AppPrompt does, in projects")
+	}
+	if !strings.Contains(AppPrompt, "kimono-serve <port>") {
+		t.Fatal("AppPrompt must teach kimono-serve")
 	}
 }

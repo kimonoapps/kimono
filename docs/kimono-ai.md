@@ -152,6 +152,21 @@ anything. Instant has to be switched on in the Composio project's settings.
   Only pictures, sounds and videos, up to 200 MB, and only from public
   addresses. A link nobody's tool returned is refused, so it isn't a way onto
   the web (`cli/internal/sandbox/media.go`).
+- Files go out the same way in reverse. A tool that takes a file by link (a
+  photo to animate, a sound to transcribe) gets one from
+  `kimono-link <file> [--hours n]`: it copies the file to
+  `.kimono/links/<token>/` with its expiry (two hours by default, a day at
+  most) and prints `<portal>/api/v1/code/temp/<chat>/<token>/<name>`, the base
+  coming to the turn as `KIMONO_LINKS`. The first fetch copies it out of the
+  sandbox to the Portal, which serves it to anyone with the link until it
+  expires; the 128-bit token is the only key (`lib/code/temp-links.ts`).
+- Only projects publish apps. A chat's turns leave out the app-publishing
+  part of the system prompt (`AppPrompt`), `kimono-serve` refuses when
+  `KIMONO_CHAT=1`, and the node never gives a chat's server a link (and takes
+  down one it had). Chats show things as artifacts instead.
+- The agent is told to search Composio's tools every time something needs a
+  service or the internet, before ever saying it can't: it otherwise answers
+  from what it happens to have loaded and refuses things Composio has.
 
 ## Your files, and asking
 
