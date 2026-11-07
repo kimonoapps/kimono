@@ -11,7 +11,7 @@ import { signedOutBefore } from "../session-epochs";
 import { appHostname, getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
 import { notesAppId, notesConfig } from "./config";
-import { createNote, libraryOf, noteFor, noteName, notebooksOf, placeFor, saveNote, textOf, type NoteMeta } from "./index";
+import { createNote, libraryOf, noteFor, noteName, notebookPlace, notebooksOf, placeFor, saveNote, textOf, type NoteMeta } from "./index";
 import { clientFor, migrateOAuth, notesScope, OAuthProblem, redirectMatches, scopeFrom, validChallenge, verifyAccess, type Client } from "./mcp-oauth";
 import { rank, ToolProblem, type Runner } from "./mcp-protocol";
 
@@ -130,7 +130,7 @@ export function runnerFor(username: string): Runner {
     list_notebooks: () => {
       const { notebooks, sections } = libraryOf(driveDb(), username);
       return {
-        notebooks: notebooks.map((book) => ({ id: book.id, name: book.name, role: book.role })),
+        notebooks: notebooks.map((book) => ({ id: book.id, name: book.name, place: notebookPlace(book), space: { id: book.space.id, name: book.space.name, members: book.space.members }, isSpace: book.isSpace, role: book.role })),
         sections: sections.map((section) => ({ id: section.id, notebookId: section.notebookId, parentId: section.parentId, name: section.name })),
       };
     },
@@ -143,7 +143,7 @@ export function runnerFor(username: string): Runner {
     read_note: async ({ id }) => {
       const note = noteFor(driveDb(), String(id), username);
       const notebook = notebooksOf(driveDb(), username).find((book) => book.id === note.notebookId);
-      return { ...shown(note), notebook: notebook?.name ?? null, text: await textOf(note.blob) };
+      return { ...shown(note), notebook: notebook ? notebookPlace(notebook) : null, text: await textOf(note.blob) };
     },
     create_note: async ({ title, text, parent }) => shown(await createNote(username, { title, text, parent })),
     update_note: async ({ id, version, text, title }) => {

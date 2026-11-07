@@ -31,7 +31,7 @@ const id = (what: string) => ({ type: "string", description: what, minLength: 1 
 export const tools: ToolDefinition[] = [
   {
     name: "list_notebooks", title: "List notebooks",
-    description: "Your notebooks and the sections in them. A note goes in a notebook or a section: either's id is a parent.",
+    description: "Your notebooks and the sections in them. A notebook is in a space and shared with everyone in that space; place is its readable name (\"Space / Notebook\"). A note goes in a notebook or a section: either's id is a parent.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { title: "List notebooks", readOnlyHint: true, openWorldHint: false },
   },
@@ -51,7 +51,7 @@ export const tools: ToolDefinition[] = [
   },
   {
     name: "read_note", title: "Read a note",
-    description: "A note's Markdown text, with its version. Send that version back with update_note.",
+    description: "A note's Markdown text, with its version and the notebook it is in. Send that version back with update_note.",
     inputSchema: { type: "object", properties: { id: id("The note's id.") }, required: ["id"], additionalProperties: false },
     annotations: { title: "Read a note", readOnlyHint: true, openWorldHint: false },
   },
