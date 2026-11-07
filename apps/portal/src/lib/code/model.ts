@@ -294,6 +294,16 @@ export function migrate(db: DatabaseSync) {
   if (!(db.prepare("PRAGMA table_info(turns)").all() as { name: string }[]).some((c) => c.name === "resume_at")) {
     db.exec("ALTER TABLE turns ADD COLUMN session TEXT; ALTER TABLE turns ADD COLUMN resume_at TEXT;");
   }
+  /* The feedback bank (lib/code/feedback.ts): thumbs on answers, and chats reported with no name. */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ai_ratings (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, seq INTEGER NOT NULL, username TEXT NOT NULL,
+      rating INTEGER NOT NULL CHECK (rating IN (1, -1)), note TEXT NOT NULL DEFAULT '', answer TEXT NOT NULL, at INTEGER NOT NULL,
+      PRIMARY KEY (workspace_id, seq, username)
+    );
+    CREATE INDEX IF NOT EXISTS ai_ratings_by_time ON ai_ratings (at);
+    CREATE TABLE IF NOT EXISTS ai_reports (id TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', chat TEXT NOT NULL, at INTEGER NOT NULL);
+  `);
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */

@@ -130,6 +130,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
     var makingProject by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<CodeProject?>(null) }
     var deleting by remember { mutableStateOf<CodeWorkspace?>(null) }
+    var reporting by remember { mutableStateOf<CodeWorkspace?>(null) }
     suspend fun load() {
         try { val chats = code.chats(); list = chats.own; shared = chats; projects = runCatching { code.projects() }.getOrDefault(projects); problem = null } catch (p: KimonoProblem) { problem = p.message }
     }
@@ -138,6 +139,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
     /* A row's menu: archiving takes it out of the list straight away; deleting asks first. */
     val act: (CodeWorkspace, String) -> Unit = { w, what ->
         if (what == "delete") deleting = w
+        else if (what == "report") reporting = w
         else scope.launch {
             list = list?.map { if (it.id == w.id) it.copy(archivedAt = 1) else it }
             try { code.archive(w.id, true); load() } catch (p: KimonoProblem) { problem = p.message; load() }
@@ -262,6 +264,7 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
         )
     }
+    reporting?.let { w -> ReportDialog(code, w) { reporting = null } }
     removing?.let { project ->
         AlertDialog(
             onDismissRequest = { removing = null },
@@ -281,6 +284,7 @@ fun ArchivedScreen(code: Code, back: () -> Unit, open: (String) -> Unit) {
     var list by remember { mutableStateOf(code.knownChats()?.own?.filter { it.archivedAt != null }) }
     var problem by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<CodeWorkspace?>(null) }
+    var reporting by remember { mutableStateOf<CodeWorkspace?>(null) }
     suspend fun load() {
         try { list = code.chats().own.filter { it.archivedAt != null }.sortedByDescending { it.archivedAt }; problem = null } catch (p: KimonoProblem) { problem = p.message }
     }
@@ -337,6 +341,7 @@ private fun LazyListScope.chatRows(group: String, chats: List<CodeWorkspace>, ti
                         IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("more"), "More for ${w.title}", modifier = Modifier.size(20.dp)) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
                             DropdownMenuItem(text = { Text("Archive") }, leadingIcon = { Icon(kimonoIcon("archive"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "archive") })
+                            DropdownMenuItem(text = { Text("Report") }, leadingIcon = { Icon(kimonoIcon("flag"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "report") })
                             DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; act(w, "delete") })
                         }
                     }
@@ -726,4 +731,31 @@ internal fun rememberAiMarks(drive: Drive): AiMarks {
     val spaces by androidx.compose.runtime.produceState(drive.knownSpaces().orEmpty()) { value = runCatching { drive.spaces() }.getOrDefault(value) }
     val driveApp = drive.knownApps()?.firstOrNull { it.id == "kimono-drive" }
     return remember(spaces, driveApp) { AiMarks(driveApp, spaces) }
+}
+
+/** Reports a whole chat: it goes with no name on it. */
+@Composable
+private fun ReportDialog(code: Code, w: CodeWorkspace, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var reason by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var sent by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text(if (sent) "Reported" else "Report “${w.title}”", maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        text = {
+            if (sent) Text("Thanks. It was sent without your name.")
+            else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("The whole chat is sent, without your name.")
+                OutlinedTextField(reason, { reason = it.take(4000) }, placeholder = { Text("What went wrong? (optional)") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+                problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            if (sent) TextButton(onClick = onDone) { Text("Done") }
+            else TextButton(enabled = !sending, onClick = { sending = true; problem = null; scope.launch { try { code.report(w.id, reason.trim()); sent = true } catch (p: KimonoProblem) { problem = p.message } finally { sending = false } } }) { Text(if (sending) "Sending" else "Send report") }
+        },
+        dismissButton = { if (!sent) TextButton(onClick = onDone) { Text("Cancel") } },
+    )
 }

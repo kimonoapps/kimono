@@ -228,6 +228,19 @@ memories; it keeps, changes and forgets them with `kimono-remember` (`--change
 ID`, `--forget ID`), and the chat says so. Both reach the node with every turn
 as context joined to the system prompt; another person's never do.
 
+## Feedback
+
+Each answer's Done line has a thumbs up and down; a thumbs down asks, once and
+optionally, what went wrong. A chat's menu has Report, which sends the whole chat
+with an optional reason. Both go to one bank in code.db (`lib/code/feedback.ts`):
+a rating keeps a copy of its answer (the ask, what it said, the tools it used and
+how they went, the model, how long it took), so the bank stands without the chat;
+a report keeps every turn and no name, chat or link back to it. A rating keeps
+its person's name only so they can change it. Administrators export the bank
+without names from `GET /api/v1/code/feedback` (`?since=<ms>`, `?format=jsonl`)
+to read it, or hand it to an AI to look for patterns. Words inside a chat can
+still name someone; nothing scrubs them.
+
 ## Choosing the model
 
 Auto by default (`lib/code/models.ts`): Sonnet at medium, until the chat builds

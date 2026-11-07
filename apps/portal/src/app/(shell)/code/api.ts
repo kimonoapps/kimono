@@ -160,6 +160,11 @@ export const code = {
   editAsk: (id: string, seq: number, text: string, effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("PATCH", { seq, text, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
   usage: (chat?: string) => call<Usage>(chat ? `/usage?chat=${encodeURIComponent(chat)}` : "/usage"),
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
+  /** Your thumbs on this chat's answers, by the seq of each answer's end. */
+  ratings: (id: string) => call<{ ratings: Record<number, 1 | -1> }>(`${ws(id)}/feedback`).then((r) => r.ratings),
+  rate: (id: string, seq: number, rating: 1 | -1 | null, note?: string) => call<{ ratings: Record<number, 1 | -1> }>(`${ws(id)}/feedback`, json("POST", { seq, rating, ...(note ? { note } : {}) })).then((r) => r.ratings),
+  /** Reports the whole chat, with no name on it. */
+  report: (id: string, reason: string) => call<void>(`${ws(id)}/report`, json("POST", { reason })),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),
   /** Projects: folders a person keeps chats in. */

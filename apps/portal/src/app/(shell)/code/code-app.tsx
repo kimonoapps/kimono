@@ -1035,6 +1035,7 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
   const [renaming, setRenaming] = useState<string | null>(null);
   /* The share dialog, drawn outside the list so the list's own styles don't reach it. */
   const [sharing, setSharing] = useState<Element | null>(null);
+  const [reporting, setReporting] = useState<Element | null>(null);
   const [busy, setBusy] = useState(false);
   const owns = !w.access || w.access === "owner";
   const state = w.turn?.state;
@@ -1074,9 +1075,11 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
           { icon: "people", label: "Share", run: () => setSharing(document.querySelector(".cd") ?? document.body) },
           { icon: "rename", label: "Rename", run: () => setRenaming(w.title) },
           { icon: "archive", label: "Archive", run: () => act(() => code.archive(w.id, true)) },
+          { icon: "flag", label: "Report", run: () => setReporting(document.querySelector(".cd") ?? document.body) },
           { icon: "trash", label: "Delete", danger: true, run: () => setConfirming(true) },
         ]} />}
     {sharing ? createPortal(<ShareChat workspace={w} onClose={() => setSharing(null)} />, sharing) : null}
+    {reporting ? createPortal(<ReportChat workspace={w} onClose={() => setReporting(null)} />, reporting) : null}
   </div>;
 }
 
@@ -1775,6 +1778,24 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked }:
   const { access } = useContext(ChatAccess);
   const owns = access === "owner";
   const items = useMemo(() => itemsOf(events), [events]);
+  /* Your thumbs, kept with the chat they belong to so another chat's never show. */
+  const [rated, setRated] = useState<{ chat: string; ratings: Record<number, 1 | -1> }>({ chat: "", ratings: {} });
+  const ratings = rated.chat === workspace.id ? rated.ratings : {};
+  useEffect(() => {
+    let current = true;
+    const chat = workspace.id;
+    code.ratings(chat).then((next) => { if (current) setRated({ chat, ratings: next }); }, () => { /* read by its link, or not reachable: no thumbs shown as given */ });
+    return () => { current = false; };
+  }, [workspace.id]);
+  const rateAnswer = (seq: number, rating: 1 | -1 | null, note?: string) => {
+    const chat = workspace.id;
+    setRated((now) => {
+      const next = { ...(now.chat === chat ? now.ratings : {}) };
+      if (rating === null) delete next[seq]; else next[seq] = rating;
+      return { chat, ratings: next };
+    });
+    return code.rate(chat, seq, rating, note).then((next) => setRated({ chat, ratings: next }));
+  };
   /* An artifact still being written has no place in the timeline yet: it is drawn at the end until its call lands. */
   const placed = new Set(items.flatMap((i) => i.type === "artifact" ? [i.id] : []));
   const writing = Object.entries(drafts.artifacts).filter(([, d]) => !placed.has(d.id));
@@ -1820,7 +1841,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked }:
             case "ask": return <Ask key={item.seq} workspace={workspace} item={item} running={running} />;
             case "text": return <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
-            case "done": return <Done key={item.seq} event={item.event} />;
+            case "done": return <Done key={item.seq} event={item.event} rating={ratings[item.seq] ?? null} onRate={rateAnswer.bind(null, item.seq)} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
             case "sent": return <div key={item.seq} className="cd-sent">{item.files.map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}</div>;
             case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
@@ -2387,12 +2408,62 @@ function ToolRow({ tool }: { tool: Tool }) {
   </details>;
 }
 
-function Done({ event }: { event: Extract<CodeEvent, { kind: "done" }> }) {
+function Done({ event, rating, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; rating: 1 | -1 | null; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
+  const { me } = useContext(ViewerContext);
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState("");
+  const [sent, setSent] = useState(false);
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
-  if (!event.ok) return <p className="cd-note is-failed" role="alert"><Icon name="close" />{event.error || "It stopped with an error."}</p>;
   /* Which Claude answered, and how long it took. Never what it cost. */
   const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null].filter(Boolean);
-  return <p className="cd-note cd-done"><Icon name="check" /><span>Done</span>{facts.length ? <span className="cd-done-facts">{facts.join(" · ")}</span> : null}</p>;
+  const give = (next: 1 | -1) => {
+    const taken = rating === next;
+    setAsking(!taken && next === -1); setSent(false); setNote("");
+    void onRate(taken ? null : next).catch(() => { /* the thumb goes back on the next load */ });
+  };
+  const thumbs = me ? <span className="cd-thumbs">
+    <button type="button" className="cd-iconbutton" aria-label="Good answer" aria-pressed={rating === 1} title="Good answer" onClick={() => give(1)}><Icon name="thumb-up" /></button>
+    <button type="button" className="cd-iconbutton" aria-label="Bad answer" aria-pressed={rating === -1} title="Bad answer" onClick={() => give(-1)}><Icon name="thumb-down" /></button>
+  </span> : null;
+  return <>
+    {event.ok
+      ? <p className="cd-note cd-done"><Icon name="check" /><span>Done</span>{facts.length ? <span className="cd-done-facts">{facts.join(" · ")}</span> : null}{thumbs}</p>
+      : <p className="cd-note cd-done is-failed" role="alert"><Icon name="close" /><span>{event.error || "It stopped with an error."}</span>{thumbs}</p>}
+    {asking && rating === -1 ? <form className="cd-thumbs-why" onSubmit={(e) => { e.preventDefault(); if (!note.trim()) { setAsking(false); return; } void onRate(-1, note.trim()).then(() => { setSent(true); setAsking(false); }, () => {}); }}>
+      <input autoFocus value={note} maxLength={2000} placeholder="What went wrong?" aria-label="What went wrong?" onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setAsking(false); }} />
+      <Seal type="submit" compact tone="quiet">{note.trim() ? "Send" : "Skip"}</Seal>
+    </form> : null}
+    {sent ? <p className="cd-note cd-thumbs-thanks">Thanks.</p> : null}
+  </>;
+}
+
+/** Reports a whole chat: it goes with no name on it. */
+function ReportChat({ workspace, onClose }: { workspace: Workspace; onClose: () => void }) {
+  const box = useRef<HTMLDialogElement>(null);
+  const [reason, setReason] = useState("");
+  const [state, setState] = useState<"writing" | "sending" | "sent">("writing");
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { box.current?.showModal(); }, []);
+  const send = () => {
+    setState("sending"); setProblem(null);
+    code.report(workspace.id, reason).then(() => setState("sent"), (error) => { setState("writing"); setProblem(problemText(error)); });
+  };
+  return <dialog ref={box} className="cd-share cd-report" aria-labelledby="cd-report-title" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+    <header><h2 id="cd-report-title">{state === "sent" ? "Reported" : `Report \u201c${workspace.title}\u201d`}</h2></header>
+    <div className="cd-share-body">
+      {state === "sent" ? <p className="cd-faint">Thanks. It was sent without your name.</p> : <>
+        <p className="cd-faint">The whole chat is sent, without your name.</p>
+        <textarea value={reason} maxLength={4000} rows={4} placeholder="What went wrong? (optional)" aria-label="What went wrong?" onChange={(e) => setReason(e.target.value)} />
+      </>}
+    </div>
+    <footer>
+      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+      <span className="cd-grow" />
+      {state === "sent"
+        ? <Seal type="button" compact onClick={() => box.current?.close()}>Done</Seal>
+        : <><Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Cancel</Seal><Seal type="button" compact disabled={state === "sending"} onClick={send}>{state === "sending" ? "Sending" : "Send report"}</Seal></>}
+    </footer>
+  </dialog>;
 }
 
 /* ── what the agent shows: screenshots, and the app it is running ── */

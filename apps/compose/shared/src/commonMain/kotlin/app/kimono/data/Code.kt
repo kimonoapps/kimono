@@ -539,6 +539,19 @@ class Code(private val session: Session, private val platform: Platform? = null)
 
     suspend fun stop(id: String) { session.call("${ws(id)}/stop", HttpMethod.Post) }
 
+    private fun ratingsOf(text: String): Map<Long, Int> =
+        (json.parseToJsonElement(text).jsonObject["ratings"] as? JsonObject).orEmpty().mapNotNull { (seq, v) -> seq.toLongOrNull()?.let { s -> (v as? JsonPrimitive)?.intOrNull?.let { s to it } } }.toMap()
+
+    /** Your thumbs on this chat's answers (1 up, -1 down), by the seq of each answer's end. */
+    suspend fun ratings(id: String): Map<Long, Int> = ratingsOf(session.call("${ws(id)}/feedback"))
+
+    /** Thumbs up (1) or down (-1) on the answer ending at [seq], with what went wrong; null takes it back. */
+    suspend fun rate(id: String, seq: Long, rating: Int?, note: String? = null): Map<Long, Int> =
+        ratingsOf(session.call("${ws(id)}/feedback", HttpMethod.Post, jsonBody(buildJsonObject { put("seq", seq); if (rating == null) put("rating", JsonNull) else put("rating", rating); if (!note.isNullOrBlank()) put("note", note) })))
+
+    /** Reports the whole chat; it goes with no name on it. */
+    suspend fun report(id: String, reason: String) { session.call("${ws(id)}/report", HttpMethod.Post, jsonBody(JsonObject.of("reason" to reason))) }
+
     /** Answers its request to open some of Drive: "file" (with the one [file]), "chat", "always" or "deny". */
     suspend fun answerAccess(id: String, request: String, choice: String, file: String? = null) {
         session.call("${ws(id)}/access/${request.encodeURLParameter()}", HttpMethod.Post, jsonBody(buildJsonObject { put("choice", choice); if (file != null) put("file", file) }))

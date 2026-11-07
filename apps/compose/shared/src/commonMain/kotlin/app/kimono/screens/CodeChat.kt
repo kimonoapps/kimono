@@ -448,6 +448,8 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     val lastPreview = items.lastOrNull { (it as? Item.Plain)?.event is CodeEvent.Preview }?.key
     val lastContext = items.lastOrNull { it is Item.Done && it.event.context != null }?.let { (it as Item.Done).event.context }
     var viewing by remember { mutableStateOf<Pair<List<CodeEvent.Image>, Int>?>(null) }
+    var ratings by remember(w.id) { mutableStateOf<Map<Long, Int>>(emptyMap()) }
+    LaunchedEffect(w.id) { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
@@ -457,7 +459,10 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                         is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
                         is Item.Say -> Markdown(item.text)
                         is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
-                        is Item.Done -> DoneNote(item.event)
+                        is Item.Done -> DoneNote(item.event, ratings[item.key]) { rating, note ->
+                            ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
+                            scope.launch { runCatching { code.rate(w.id, item.key, rating, note) }.onSuccess { ratings = it } }
+                        }
                         is Item.Shots -> ShotGallery(code, w, item.shots) { at -> viewing = item.shots.toList() to at }
                         is Item.Access -> AccessCard(code, drive, marks, people, w, item.event, item.answer, open)
                         is Item.Plain -> when (val e = item.event) {
@@ -942,17 +947,36 @@ private fun DiffLines(lines: List<String>, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun DoneNote(e: CodeEvent.Done) {
-    when {
-        e.cancelled -> Note(null, "Stopped.")
-        !e.ok -> Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(kimonoIcon("close"), null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
-                Text(e.error ?: "It stopped with an error.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+private fun DoneNote(e: CodeEvent.Done, rating: Int?, rate: (Int?, String?) -> Unit) {
+    var asking by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf("") }
+    val give = { next: Int -> val taken = rating == next; asking = !taken && next == -1; note = ""; rate(if (taken) null else next, null) }
+    val thumbs: @Composable () -> Unit = {
+        Row {
+            IconButton(onClick = { give(1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-up"), "Good answer", modifier = Modifier.size(18.dp), tint = if (rating == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+            IconButton(onClick = { give(-1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-down"), "Bad answer", modifier = Modifier.size(18.dp), tint = if (rating == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        when {
+            e.cancelled -> Note(null, "Stopped.")
+            !e.ok -> Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(kimonoIcon("close"), null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(e.error ?: "It stopped with an error.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
+                    thumbs()
+                }
+            }
+            /* Which Claude answered, and how long it took. Never what it cost. */
+            else -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Note("check", listOfNotNull("Done", e.model?.let { modelNames[it] }, e.durationMs?.let { elapsedText(it) }).joinToString(" · "), Modifier.weight(1f))
+                thumbs()
             }
         }
-        /* Which Claude answered, and how long it took. Never what it cost. */
-        else -> Note("check", listOfNotNull("Done", e.model?.let { modelNames[it] }, e.durationMs?.let { elapsedText(it) }).joinToString(" · "))
+        if (asking && rating == -1) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(note, { note = it.take(2000) }, placeholder = { Text("What went wrong?") }, singleLine = true, modifier = Modifier.weight(1f))
+            TextButton(onClick = { if (note.isNotBlank()) rate(-1, note.trim()); asking = false }) { Text(if (note.isBlank()) "Skip" else "Send") }
+        }
     }
 }
 
