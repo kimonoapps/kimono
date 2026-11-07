@@ -31,7 +31,7 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string; pro?: boolean; /** A kimono-progress call: a start (label, about seconds), a wait, or done; at is when Kimono heard it. */ progress?: { label?: string; about?: number; wait?: number; done?: boolean; at: number } }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string; pro?: boolean; /** A kimono-progress call: a start (label, about seconds), a wait, what the tool said (status, percent, seconds left), or done; at is when Kimono heard it. */ progress?: { label?: string; about?: number; wait?: number; done?: boolean; status?: string; percent?: number; left?: number; at: number } }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
   | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; model?: "opus" | "sonnet" | "haiku"; context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }

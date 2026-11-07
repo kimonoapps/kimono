@@ -98,11 +98,15 @@ export function FileOverlay({ className, actions, onClose, into, ...source }: So
   </div>, into ?? document.body);
 }
 
-/** A file as a small tile: its picture when [picture] gives one, otherwise its type's mark. */
-export function FileThumb({ name, picture, size, className }: { name: string; picture?: string | null; size?: number; className?: string }) {
+/** A file as a small tile: its picture when [picture] gives one, a frame of the video at [video], otherwise its type's mark. */
+export function FileThumb({ name, picture, video, size, className }: { name: string; picture?: string | null; video?: string | null; size?: number; className?: string }) {
   const [failed, setFailed] = useState(false);
   const style = size ? { "--fp-thumb": `${size}px` } as React.CSSProperties : undefined;
   const label = extensionLabel(name);
+  /* The browser draws the frame at half a second in (the very first is often black); nothing plays. */
+  if (video && !picture && !failed) return <span className={`fp-thumb pic vid${className ? ` ${className}` : ""}`} style={style} aria-hidden="true">
+    <video src={`${video}#t=0.5`} preload="metadata" muted playsInline tabIndex={-1} onError={() => setFailed(true)} />
+  </span>;
   if (picture && !failed) return <span className={`fp-thumb pic${className ? ` ${className}` : ""}`} style={style} aria-hidden="true">
     {/* eslint-disable-next-line @next/next/no-img-element -- a small picture of the file itself */}
     <img src={picture} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />

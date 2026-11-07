@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """kimono-progress "WHAT YOU'RE DOING" --about SECONDS
 kimono-progress --wait SECONDS
+kimono-progress --status "WHAT THE TOOL SAYS" [--percent N] [--left SECONDS]
 kimono-progress --done ["WHAT'S READY"]
 
 For work that takes a while (a video being generated, a long render), show the
 person one progress card instead of every check: start it with what you're
-doing and about how long it takes, wait between checks with --wait (never
-sleep), and finish with --done when it's ready. The steps in between fold away
-under the card. --wait waits at most 100 seconds at a time; call it again.
+doing and how long it takes (the tool's own estimate when it gives one), wait
+between checks with --wait (never sleep), and after every check report what the
+tool said with --status: its state ("In queue", "Rendering"), and its percent
+done or seconds left when it gives them. The card's bar follows those, not a
+guess. Finish with --done when it's ready. The steps in between fold away under
+the card. --wait waits at most 100 seconds at a time; call it again.
 """
 import sys, time
 
@@ -22,7 +26,28 @@ if args[0] == "--wait":
         sys.exit("kimono-progress: --wait takes seconds, as in --wait 30")
     seconds = max(1, min(seconds, 100))
     time.sleep(seconds)
-    print(f"Waited {seconds:g} s. Check on it, then --wait again or --done.")
+    print(f"Waited {seconds:g} s. Check its status with the tool, report it with --status, then --wait again or --done.")
+elif args[0] == "--status":
+    rest = args[1:]
+    if not rest or rest[0].startswith("-") or not rest[0].strip():
+        sys.exit('kimono-progress: say what the tool reports, as in kimono-progress --status "Rendering" --percent 40')
+    status, rest = rest[0], rest[1:]
+    told = []
+    while rest:
+        if rest[0] in ("--percent", "--left") and len(rest) >= 2:
+            try:
+                value = float(rest[1])
+            except ValueError:
+                sys.exit(f"kimono-progress: {rest[0]} takes a number")
+            if rest[0] == "--percent" and not 0 <= value <= 100:
+                sys.exit("kimono-progress: --percent is between 0 and 100")
+            if rest[0] == "--left" and not 0 <= value <= 3600:
+                sys.exit("kimono-progress: --left is seconds, up to 3600")
+            told.append(f"{value:g}%" if rest[0] == "--percent" else f"about {value:g} s left")
+            rest = rest[2:]
+        else:
+            sys.exit(f"kimono-progress: --status takes --percent N and --left SECONDS, not {rest[0]}")
+    print(f"The card shows: {status}" + (f" ({', '.join(told)})" if told else "") + ". --wait, check again, or --done.")
 elif args[0] == "--done":
     print("Done: the card shows it finished." + (f" ({' '.join(args[1:])})" if len(args) > 1 else ""))
 else:

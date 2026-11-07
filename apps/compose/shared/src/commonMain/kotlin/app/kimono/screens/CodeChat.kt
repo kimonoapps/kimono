@@ -2,6 +2,7 @@
 
 package app.kimono.screens
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -849,7 +850,17 @@ private fun ProgressGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, liv
     LaunchedEffect(finished, stopped) { while (!finished && !stopped) { now = app.kimono.screens.now(); kotlinx.coroutines.delay(1000) } }
     val took = (doneAt ?: now) - start.at
     val about = ((start.about ?: 60.0) * 1000).toLong()
-    val fill = if (finished) 1f else if (took < about) 0.9f * took / about else (0.9 + 0.08 * (1 - kotlin.math.exp(-(took - about).toDouble() / about))).toFloat()
+    /* What the tool itself last said: its percent when it gave one; else its time left moves the expected end; else the estimate. */
+    val update = calls.lastOrNull { it.event.progress?.status != null && it.event.progress.at >= start.at }?.event?.progress
+    val total = update?.let { u -> u.left?.let { maxOf(1000L, u.at - start.at + (it * 1000).toLong()) } } ?: about
+    val timed = if (took < total) 0.9f * took / total else (0.9 + 0.08 * (1 - kotlin.math.exp(-(took - total).toDouble() / total))).toFloat()
+    val fill = if (finished) 1f else update?.percent?.let { minOf(0.98f, (it / 100).toFloat()) } ?: timed
+    val remaining = (total - took) / 1000.0
+    val estimate = when {
+        update?.percent != null -> "${update.percent!!.roundToInt()}%"
+        update?.left != null -> if (remaining > 5) "${aboutWords(remaining)} left" else "almost done"
+        else -> aboutWords(about / 1000.0)
+    }
     val apps = calls.mapNotNull { it.event.app }.distinct().take(3)
     var shown by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
@@ -867,7 +878,7 @@ private fun ProgressGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, liv
                     }
                     /* Kimono's own wavy ink bar; grey once it stopped */
                     app.kimono.ui.InkProgress({ fill }, Modifier.fillMaxWidth(), color = if (stopped) MaterialTheme.colorScheme.onSurfaceVariant else null)
-                    Text(if (finished) "Done · ${clockWords(took)}" else if (stopped) "Stopped after ${clockWords(took)}" else "${clockWords(took)} · ${aboutWords(about / 1000.0)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(if (finished) "Done · ${clockWords(took)}" else if (stopped) "Stopped after ${clockWords(took)}" else listOfNotNull(clockWords(took), update?.status, estimate).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(14.dp).rotate(if (shown) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

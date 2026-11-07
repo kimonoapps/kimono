@@ -71,7 +71,7 @@ function toolChange(name: string, input: Record<string, unknown>): string | unde
  * What a kimono-progress call says (infra/sandbox/bin/kimono-progress): it began something long (what, about how
  * many seconds), it's waiting, or it's done; with when Kimono heard it, so the bar keeps time across reloads.
  */
-export type ToolProgress = { label?: string; about?: number; wait?: number; done?: boolean; at: number };
+export type ToolProgress = { label?: string; about?: number; wait?: number; done?: boolean; /** What the tool last said ("In queue", "Rendering"), with its percent done or seconds left when it gave them. */ status?: string; percent?: number; left?: number; at: number };
 
 export function progressOf(command: unknown, at = Date.now()): ToolProgress | undefined {
   if (typeof command !== "string") return undefined;
@@ -79,6 +79,11 @@ export function progressOf(command: unknown, at = Date.now()): ToolProgress | un
   if (!call) return undefined;
   const rest = call[1].trim();
   if (rest.startsWith("--done")) return { done: true, at };
+  const status = /^--status\s+(["'])([\s\S]*?)\1((?:\s+--(?:percent|left)\s+\d+(?:\.\d+)?)*)\s*$/.exec(rest);
+  if (status && status[2].trim()) {
+    const percent = /--percent\s+(\d+(?:\.\d+)?)/.exec(status[3]), left = /--left\s+(\d+(?:\.\d+)?)/.exec(status[3]);
+    return { status: status[2].trim().slice(0, 60), ...(percent ? { percent: Math.min(100, Number(percent[1])) } : {}), ...(left ? { left: Math.min(3600, Number(left[1])) } : {}), at };
+  }
   const wait = /^--wait\s+(\d+(?:\.\d+)?)/.exec(rest);
   if (wait) return { wait: Math.min(100, Number(wait[1])), at };
   const start = /^(["'])([\s\S]*?)\1\s+--about\s+(\d+(?:\.\d+)?)/.exec(rest);

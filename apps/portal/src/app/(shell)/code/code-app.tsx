@@ -1101,6 +1101,48 @@ function SharedBy({ username, words = "" }: { username: string; words?: string }
   return <span className="cd-sharedby"><Face username={username} size={18} /><span>{words}{person.name}</span></span>;
 }
 
+/* ── what's typed and attached but not sent yet ── */
+
+/*
+ * Files waiting in a composer, per chat ("new" for one not started yet), kept outside the
+ * composer so they're still there after you look at another chat and come back. An upload
+ * that finishes meanwhile lands here too. Gone on a reload: a picked file can't be kept.
+ */
+const unsent = new Map<string, unknown>();
+const unsentListeners = new Map<string, Set<() => void>>();
+
+function useUnsent<T>(key: string, empty: T): [T, (next: T | ((previous: T) => T)) => void] {
+  const subscribe = useCallback((listener: () => void) => {
+    const set = unsentListeners.get(key) ?? new Set();
+    set.add(listener);
+    unsentListeners.set(key, set);
+    return () => { set.delete(listener); };
+  }, [key]);
+  const value = useSyncExternalStore(subscribe, () => (unsent.has(key) ? unsent.get(key) : empty) as T, () => empty);
+  const update = useCallback((next: T | ((previous: T) => T)) => {
+    const previous = (unsent.has(key) ? unsent.get(key) : empty) as T;
+    unsent.set(key, typeof next === "function" ? (next as (previous: T) => T)(previous) : next);
+    for (const listener of unsentListeners.get(key) ?? []) listener();
+  }, [key, empty]);
+  return [value, update];
+}
+
+/** The text typed into a composer, kept for this tab (a reload keeps it too). */
+function useUnsentText(key: string): [string, (text: string) => void] {
+  const storageKey = `kimono-code-draft-${key}`;
+  const [text, setText] = useUnsent<string | null>(`${key}:text`, null);
+  const shown = text ?? (typeof window === "undefined" ? "" : (() => { try { return sessionStorage.getItem(storageKey) ?? ""; } catch { return ""; } })());
+  const change = useCallback((next: string) => {
+    setText(next);
+    try { if (next) sessionStorage.setItem(storageKey, next); else sessionStorage.removeItem(storageKey); } catch { /* not kept */ }
+  }, [setText, storageKey]);
+  return [shown, change];
+}
+
+const forget = (previews: (string | null)[]) => { for (const url of previews) if (url?.startsWith("blob:")) URL.revokeObjectURL(url); };
+const noHeld: Held[] = [];
+const noPending: Pending[] = [];
+
 /* ── a new task: which repository, which branch, and what to do ── */
 
 /** A file chosen for a chat that doesn't exist yet: from this device, or a Drive file by its id. */
@@ -1113,14 +1155,14 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
   const [repo, setRepo] = useState("");
   const [fetched, setFetched] = useState<{ repo: string; list: string[] } | null>(null);
   const [picked, setPicked] = useState<{ repo: string; branch: string } | null>(null);
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useUnsentText("new");
   const [problem, setProblem] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [naming, setNaming] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   /* Files for the first message: held here until the chat exists, then sent with it. */
-  const [files, setFiles] = useState<Held[]>([]);
+  const [files, setFiles] = useUnsent<Held[]>("new:files", noHeld);
   const [dragging, setDragging] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -1128,7 +1170,6 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
   const hasDrive = marks.spaces.size > 0;
   /* Drive is known from the start; its spaces arrive later, and an early click shouldn't skip the menu. */
   const drivePresent = marks.drive !== null;
-  useEffect(() => () => { for (const f of files) if (f.preview) URL.revokeObjectURL(f.preview); }, [files]);
   const hold = (picked: File[]) => setFiles((list) => [...list, ...picked.map((file): Held => ({ id: crypto.randomUUID(), name: file.name, size: file.size, file, preview: isPicture(file.type) ? URL.createObjectURL(file) : null, failed: file.size > 20 * 1024 * 1024 ? "Over 20 MB" : undefined }))].slice(0, 10));
   const project = (on: boolean) => { setOnProject(on); try { localStorage.setItem("kimono-ai-project", on ? "1" : "0"); } catch { /* not remembered */ } };
 
@@ -1187,6 +1228,10 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
         const copied = nodes.length ? await code.fromDrive(made.id, nodes).catch(() => [] as Attachment[]) : [];
         await code.ask(made.id, prompt, [...uploads.filter((a): a is Attachment => a !== null), ...copied], effortNow());
       }
+      /* Sent: the next new chat starts empty. */
+      forget(files.map((f) => f.preview));
+      setFiles([]);
+      setPrompt("");
       await onStarted(made);
     } catch (error) {
       setProblem(problemText(error));
@@ -1227,7 +1272,7 @@ function Start({ blocked, admin, folder, onStarted }: { blocked: string | null; 
           {f.preview ? <img src={f.preview} alt="" /> : <FileThumb name={f.name} size={30} />}
           <span>{f.name}</span>
           <small>{f.failed ?? readableSize(f.size)}</small>
-          <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles((list) => list.filter((x) => x.id !== f.id))}><Icon name="close" /></button>
+          <button type="button" aria-label={`Remove ${f.name}`} onClick={() => { forget([f.preview]); setFiles((list) => list.filter((x) => x.id !== f.id)); }}><Icon name="close" /></button>
         </span>)}</div> : null}
         <textarea ref={field} value={prompt} rows={3} aria-label="Message" disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
           onChange={(event) => setPrompt(event.target.value)}
@@ -2237,7 +2282,7 @@ function SentFile({ workspace, file }: { workspace: Workspace; file: Attachment 
   const shows = previewable(file.name, file.type) || previewKind(file.name, file.type) === "audio";
   const download = () => saveAs(url, file.name);
   const face = <>
-    <FileThumb name={file.name} picture={isPicture(file.type) ? url : null} size={48} className="cd-sentfile-thumb" />
+    <FileThumb name={file.name} picture={isPicture(file.type) ? url : null} video={previewKind(file.name, file.type) === "video" ? url : null} size={48} className="cd-sentfile-thumb" />
     <span className="cd-sentfile-name"><b title={file.name}>{file.name}</b><small>{fileKind(file.name, file.type)} · {readableSize(file.size)}</small></span>
   </>;
   return <figure className={cx("cd-sentfile", shows && "is-open-able")}>
@@ -2269,6 +2314,19 @@ function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   return <PlainToolGroup tools={tools} live={live} />;
 }
 
+/**
+ * How full a long job's bar is. The tool's own percent when it gave one; else its time left, which
+ * moves the expected end; else the agent's estimate. Time-based, it reaches 90% at the expected end
+ * and then creeps toward 98%: it never claims done before it is.
+ */
+function progressFill({ took, about, begun, update }: { took: number; about: number; begun: number; update?: Tool["progress"] }): { fill: number; words: string } {
+  if (update?.percent != null) return { fill: Math.min(0.98, update.percent / 100), words: `${Math.round(update.percent)}%` };
+  const total = update?.left != null ? Math.max(1000, update.at - begun + update.left * 1000) : about;
+  const fill = took < total ? 0.9 * took / total : 0.9 + 0.08 * (1 - Math.exp(-(took - total) / total));
+  const remaining = (total - took) / 1000;
+  return { fill, words: update?.left != null ? (remaining > 5 ? `${aboutWords(remaining)} left` : "almost done") : aboutWords(about / 1000) };
+}
+
 const clockWords = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 const aboutWords = (seconds: number) => seconds < 90 ? `about ${Math.round(seconds / 5) * 5 || 5} s` : `about ${Math.round(seconds / 60)} min`;
 
@@ -2293,8 +2351,10 @@ function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
     return () => clearInterval(timer);
   }, [finished, stopped]);
   const took = (doneAt ?? now) - begun;
-  /* up to 90% by the time expected, then creeping toward 98%: it never claims done before it is */
-  const fill = finished ? 1 : took < about ? 0.9 * took / about : 0.9 + 0.08 * (1 - Math.exp(-(took - about) / about));
+  /* What the tool itself last said (kimono-progress --status): its state, and its percent or time left. */
+  const update = [...tools].reverse().find((t) => t.progress?.status && t.progress.at >= begun)?.progress;
+  const known = progressFill({ took, about, begun, update });
+  const fill = finished ? 1 : known.fill;
   const label = start.progress!.label!;
   return <details className="calls cd-progress" data-state={finished ? "done" : stopped ? "stopped" : "running"}>
     <summary className="cd-progress-head">
@@ -2302,7 +2362,7 @@ function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
       <span className="cd-progress-text">
         <span className="cd-progress-label"><b>{label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}</span>
         <InkWave className="cd-progress-wave" label={label} value={fill} />
-        <small>{finished ? `Done · ${clockWords(took)}` : stopped ? `Stopped after ${clockWords(took)}` : `${clockWords(took)} · ${aboutWords(about / 1000)}`}{failed ? ` · ${failed} step${failed === 1 ? "" : "s"} failed` : ""}</small>
+        <small>{finished ? `Done · ${clockWords(took)}` : stopped ? `Stopped after ${clockWords(took)}` : [clockWords(took), update?.status, known.words].filter(Boolean).join(" · ")}{failed ? ` · ${failed} step${failed === 1 ? "" : "s"} failed` : ""}</small>
       </span>
       <span className="chev" aria-hidden="true" />
     </summary>
@@ -2528,9 +2588,8 @@ type Pending = { id: string; name: string; size: number; preview: string | null;
 
 function Composer({ workspace, running, blocked, context }: { workspace: Workspace; running: boolean; blocked: string | null; context: { used: number; window?: number } | null }) {
   const owns = useOwns();
-  const draftKey = `kimono-code-draft-${workspace.id}`;
-  const [text, setText] = useState(() => { try { return sessionStorage.getItem(draftKey) ?? ""; } catch { return ""; } });
-  const [pending, setPending] = useState<Pending[]>([]);
+  const [text, setText] = useUnsentText(workspace.id);
+  const [pending, setPending] = useUnsent<Pending[]>(`${workspace.id}:files`, noPending);
   const [problem, setProblem] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
@@ -2541,8 +2600,6 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   const model = useModel();
   const switching = model !== "auto" && workspace.lastModel && model !== workspace.lastModel ? model : null;
 
-  useEffect(() => { try { if (text) sessionStorage.setItem(draftKey, text); else sessionStorage.removeItem(draftKey); } catch { /* not kept */ } }, [text, draftKey]);
-  useEffect(() => () => { for (const p of pending) if (p.preview) URL.revokeObjectURL(p.preview); }, [pending]);
   /* The field grows with what you type, up to a third of the screen. */
   useLayoutEffect(() => {
     const el = field.current;
@@ -2563,7 +2620,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
         (error) => setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: problemText(error, "Didn't attach") } : p)),
       );
     }
-  }, [workspace.id]);
+  }, [workspace.id, setPending]);
 
   const usage = useUsage(workspace.id, running);
   const uploading = pending.some((p) => !p.attachment && !p.failed);
@@ -2577,6 +2634,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     try {
       await code.ask(workspace.id, text, ready, effortNow());
       setText("");
+      forget(pending.map((p) => p.preview));
       setPending([]);
     } catch (error) { setProblem(problemText(error)); } finally { setSending(false); field.current?.focus(); }
   }
@@ -2590,7 +2648,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       {p.preview ? <img src={p.preview} alt="" /> : <FileThumb name={p.name} size={30} />}
       <span>{p.name}</span>
       <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <MorphLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
-      <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPending((list) => list.filter((x) => x.id !== p.id))}><Icon name="close" /></button>
+      <button type="button" aria-label={`Remove ${p.name}`} onClick={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }}><Icon name="close" /></button>
     </span>)}</div> : null}
     {switching && workspace.lastModel ? <p className="cd-switching" role="status">This chat has been on {modelWords[workspace.lastModel].label}. Switching to {modelWords[switching].label} uses more of your plan.</p> : null}
     <textarea ref={field} value={text} rows={1} aria-label="Message"

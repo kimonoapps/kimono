@@ -320,8 +320,11 @@ val modelNames = mapOf("opus" to "Opus", "sonnet" to "Sonnet", "haiku" to "Haiku
 
 private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
 
-/** A kimono-progress call: it began something long ([label], about [about] seconds), it's waiting, or it's [done]; [at] is when Kimono heard it (ms). */
-data class ToolProgress(val label: String?, val about: Double?, val done: Boolean, val at: Long)
+/**
+ * A kimono-progress call: it began something long ([label], about [about] seconds), it's waiting, the tool
+ * reported its [status] (with [percent] done or [left] seconds when it gave them), or it's [done]; [at] is when Kimono heard it (ms).
+ */
+data class ToolProgress(val label: String?, val about: Double?, val done: Boolean, val at: Long, val status: String? = null, val percent: Double? = null, val left: Double? = null)
 
 private fun JsonObject.text(key: String) = this[key]?.jsonPrimitive?.takeIf { it.isString }?.content
 private fun JsonObject.flag(key: String) = (this[key] as? JsonPrimitive)?.booleanOrNull
@@ -333,7 +336,7 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "started" -> CodeEvent.Started
     "text" -> CodeEvent.Say(o.text("text") ?: "")
     "tool" -> CodeEvent.Tool(o.text("id") ?: "", o.text("name") ?: "", o.text("label") ?: "", o.text("detail"), o.text("change"), o.text("app"), o.text("space"), o.flag("pro") == true,
-        (o["progress"] as? JsonObject)?.let { p -> p.long("at")?.let { at -> ToolProgress(p.text("label"), (p["about"] as? JsonPrimitive)?.doubleOrNull, p.flag("done") == true, at) } })
+        (o["progress"] as? JsonObject)?.let { p -> p.long("at")?.let { at -> ToolProgress(p.text("label"), (p["about"] as? JsonPrimitive)?.doubleOrNull, p.flag("done") == true, at, p.text("status"), (p["percent"] as? JsonPrimitive)?.doubleOrNull, (p["left"] as? JsonPrimitive)?.doubleOrNull) } })
     "tool-result" -> CodeEvent.ToolResult(o.text("id") ?: "", o.flag("ok") ?: true, o.text("output") ?: "")
     "done" -> CodeEvent.Done(
         o.flag("ok") ?: false, o.flag("cancelled") ?: false, o.text("error"), o.long("durationMs"), o.text("model"),

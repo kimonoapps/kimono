@@ -5,6 +5,8 @@
  * Used by Drive and Kimono AI.
  */
 .fp { aspect-ratio: 16/10; border-radius: var(--k-r-l); overflow: hidden; background: var(--k-urushi); position: relative; display: grid; place-items: center; }
+/* One cell the size of the box: a picture or video fits inside it, however tall, instead of growing the row and being cut off. */
+.fp { grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
 .fp svg { width: 100%; height: 100%; display: block; }
 .fp .play { position: absolute; inset: 0; display: grid; place-items: center; }
 .fp .play i { width: 44px; height: 44px; border-radius: 50%; background: rgba(36,34,31,.55); display: grid; place-items: center; }
@@ -97,3 +99,8 @@
 .fp-thumb > img:not(.fp-type) { width: 100%; height: 100%; object-fit: cover; display: block; }
 .fp-thumb .fp-type { width: 62%; height: 62%; object-fit: contain; display: block; }
 .fp-thumb .ext { font: 600 9px/1 var(--k-mono); letter-spacing: .04em; color: var(--k-on-surface-variant); }
+
+/* A video's tile: a frame from early in it, with a play mark. */
+.fp-thumb.vid { position: relative; grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
+.fp-thumb.vid video { width: 100%; height: 100%; display: block; object-fit: cover; pointer-events: none; }
+.fp-thumb.vid::after { content: ""; position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform: translate(-35%, -50%); border-style: solid; border-width: 7px 0 7px 11px; border-color: transparent transparent transparent rgba(255, 255, 255, .92); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .45)); }
