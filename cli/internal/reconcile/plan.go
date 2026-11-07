@@ -27,6 +27,9 @@ const (
 	// EdgeNetwork joins published apps to the appliance's proxy and connectors.
 	// The appliance creates it; this project attaches to it by name.
 	EdgeNetwork = "kimono-edge"
+	// TunnelNetwork is the connectors' way out: the appliance creates it too,
+	// and no app joins it.
+	TunnelNetwork = "kimono-tunnel"
 )
 
 type Service struct {
@@ -93,11 +96,11 @@ var (
 	environmentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	// The only host paths a plan may mount: the tunnel credentials the Portal
 	// writes into its own deployment directory.
-	hostMountPattern   = regexp.MustCompile(`^/var/lib/kimono-portal/deployment/tunnel-[A-Za-z0-9_-]{1,64}\.json$`)
-	hostnamePattern    = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
-	userPattern        = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
-	uuidPattern        = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
-	secretPattern      = regexp.MustCompile(`\$\{(KIMONO_SECRET_[A-Z0-9_]+)\}`)
+	hostMountPattern = regexp.MustCompile(`^/var/lib/kimono-portal/deployment/tunnel-[A-Za-z0-9_-]{1,64}\.json$`)
+	hostnamePattern  = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
+	userPattern      = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+	uuidPattern      = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
+	secretPattern    = regexp.MustCompile(`\$\{(KIMONO_SECRET_[A-Z0-9_]+)\}`)
 )
 
 func Load(path string) (Plan, error) {

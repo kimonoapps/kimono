@@ -597,7 +597,7 @@ type edgeMember struct {
 }
 
 // migrateEdgeNetwork prepares an appliance whose kimono-edge predates the fixed
-// subnet. Compose recreates a network whose definition changed, but refuses
+// subnet, or being internal. Compose recreates a network whose definition changed, but refuses
 // while another project's containers are attached; those are detached here
 // and the returned function attaches them again, under their service names,
 // once Compose has made the new network.
@@ -606,12 +606,13 @@ func (m *Manager) migrateEdgeNetwork() (func() error, error) {
 	if m.Runner.DryRun {
 		return none, nil
 	}
-	output, err := m.Runner.OutputCombined("docker", "network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}", reconcile.EdgeNetwork)
+	output, err := m.Runner.OutputCombined("docker", "network", "inspect", "--format", "{{.Internal}} {{range .IPAM.Config}}{{.Subnet}} {{end}}", reconcile.EdgeNetwork)
 	if err != nil {
 		// Not created yet; Compose makes it on the right subnet.
 		return none, nil
 	}
-	if slices.Contains(strings.Fields(string(output)), edgeSubnet) {
+	// Internal too: one made before it was carries apps out to the internet.
+	if fields := strings.Fields(string(output)); len(fields) > 0 && fields[0] == "true" && slices.Contains(fields[1:], edgeSubnet) {
 		return none, nil
 	}
 	// Stopped containers too: one left pointing at the removed network

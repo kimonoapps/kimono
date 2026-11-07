@@ -209,7 +209,15 @@ services:
         ipv4_address: 10.89.1.2
       # Reaches app containers directly for hostnames published without a
       # tunnel. The reconciler's project joins this same network by name.
+      # Apps reach sign-in and the Portal here, by their own names, rather
+      # than out over the internet, which kimono-edge doesn't carry.
       kimono-edge:
+        aliases:
+          - ${AUTHENTIK_DOMAIN}
+          - ${KIMONO_PORTAL_DOMAIN}
+      # The tunnel connectors' way out, and the only place Caddy believes a
+      # forwarded client address from.
+      kimono-tunnel:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Site files the Portal generates for directly published hostnames.
@@ -233,13 +241,25 @@ networks:
           gateway: 10.89.1.1
   # Created here so the appliance's proxy can start before any app exists; the
   # generated apps project attaches to it by name rather than creating its own.
+  # Internal: it joins the proxy, connectors and published apps, and goes
+  # nowhere else, so an app kept off the internet stays off it.
   kimono-edge:
     name: kimono-edge
+    internal: true
     ipam:
       config:
         - subnet: 10.89.0.0/24
           ip_range: 10.89.0.128/25
           gateway: 10.89.0.1
+  # The tunnel connectors' own network, with Caddy and the internet: apps are
+  # never on it, so none can pose as a connector.
+  kimono-tunnel:
+    name: kimono-tunnel
+    ipam:
+      config:
+        - subnet: 10.89.2.0/24
+          ip_range: 10.89.2.128/25
+          gateway: 10.89.2.1
 
 volumes:
   authentik_database:

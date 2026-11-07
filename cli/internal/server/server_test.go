@@ -128,13 +128,13 @@ func TestProxyTrustMatchesTheApplianceNetworks(t *testing.T) {
 		return string(data)
 	}
 	compose, caddyfile, headscale := read("compose.yml"), read("Caddyfile"), read(filepath.Join("headscale", "config.yaml.tmpl"))
-	for _, expected := range []string{"subnet: " + edgeSubnet, "ip_range: 10.89.0.128/25", "ipv4_address: 10.89.1.2", "ip_range: 10.89.1.128/25"} {
+	for _, expected := range []string{"subnet: " + edgeSubnet, "ip_range: 10.89.0.128/25", "internal: true", "subnet: 10.89.2.0/24", "ip_range: 10.89.2.128/25", "ipv4_address: 10.89.1.2", "ip_range: 10.89.1.128/25"} {
 		if !strings.Contains(compose, expected) {
 			t.Fatalf("compose.yml lacks %q", expected)
 		}
 	}
-	if !strings.Contains(caddyfile, "trusted_proxies static 10.89.0.128/25\n") {
-		t.Fatal("Caddy trusts something other than kimono-edge's containers")
+	if !strings.Contains(caddyfile, "trusted_proxies static 10.89.2.128/25\n") {
+		t.Fatal("Caddy trusts something other than kimono-tunnel's connectors")
 	}
 	if !strings.Contains(headscale, "trusted_proxies:\n  - 10.89.1.2/32\n") {
 		t.Fatal("Headscale trusts something other than Caddy")

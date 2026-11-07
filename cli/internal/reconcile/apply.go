@@ -161,11 +161,13 @@ func (r *Reconciler) Apply() error {
 // servicesMountingChangedFiles reports which services bind-mount a generated
 // file this pass rewrote, deterministically so a repeat apply is quiet.
 func (r *Reconciler) requireEdgeNetwork(plan Plan) error {
-	if _, declared := plan.Compose.Networks[EdgeNetwork]; !declared {
-		return nil
-	}
-	if _, err := r.Runner.OutputCombined("docker", "network", "inspect", EdgeNetwork); err != nil {
-		return fmt.Errorf("the %s network does not exist yet; update the appliance with `sudo kimono update` so it can create it", EdgeNetwork)
+	for _, name := range []string{EdgeNetwork, TunnelNetwork} {
+		if _, declared := plan.Compose.Networks[name]; !declared {
+			continue
+		}
+		if _, err := r.Runner.OutputCombined("docker", "network", "inspect", name); err != nil {
+			return fmt.Errorf("the %s network does not exist yet; update the appliance with `sudo kimono update` so it can create it", name)
+		}
 	}
 	return nil
 }

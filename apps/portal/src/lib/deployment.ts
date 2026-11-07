@@ -257,7 +257,7 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
     backupItems: backupCatalog(settings, definitions),
     apiVersion: "deployment.kimono.dev/v1alpha1",
     runtime: { id: "server", engine: "docker-compose" },
-    compose: { name: "kimono-apps", services: {}, volumes: {}, networks: { "kimono-edge": {} } },
+    compose: { name: "kimono-apps", services: {}, volumes: {}, networks: { "kimono-edge": {}, "kimono-tunnel": {} } },
     files: {}, providerActions: [], bootstraps: [], secrets: [], warnings: [],
   };
 
@@ -384,13 +384,13 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
     const name = `tunnel-${tunnel.id}`;
     const originCertificate = tunnel.configuration.ORIGIN_CERTIFICATE?.value || "";
     if (token) {
-      plan.compose.services[name] = { image: provider.connectorImage, restart: "unless-stopped", environment: { TUNNEL_TOKEN: secretReference(`tunnel-${tunnel.id}`, "TOKEN") }, command: ["tunnel", "--no-autoupdate", "run"], networks: ["kimono-edge"], security_opt: ["no-new-privileges:true"] };
+      plan.compose.services[name] = { image: provider.connectorImage, restart: "unless-stopped", environment: { TUNNEL_TOKEN: secretReference(`tunnel-${tunnel.id}`, "TOKEN") }, command: ["tunnel", "--no-autoupdate", "run"], networks: ["kimono-edge", "kimono-tunnel"], security_opt: ["no-new-privileges:true"] };
       for (const route of routes) plan.providerActions.push({ provider: "cloudflare", tunnelId: tunnel.id, mode: "token", tunnelUuid: tunnelId || "", originCertificate, cname: "", ...route });
     } else if (tunnelId && credentialFile) {
       const ingress = cloudflareIngress(tunnelId, credentialFile, routes);
       const configPath = `generated/cloudflare-${tunnel.id}.yml`;
       plan.files[configPath] = ingress.contents;
-      plan.compose.services[name] = { image: provider.connectorImage, restart: "unless-stopped", command: ["tunnel", "--config", "/etc/cloudflared/config.yml", "run"], volumes: [`./${configPath}:/etc/cloudflared/config.yml:ro`, `${tunnelCredentialsPath(tunnel.id)}:/etc/cloudflared/credentials.json:ro`], networks: ["kimono-edge"], security_opt: ["no-new-privileges:true"] };
+      plan.compose.services[name] = { image: provider.connectorImage, restart: "unless-stopped", command: ["tunnel", "--config", "/etc/cloudflared/config.yml", "run"], volumes: [`./${configPath}:/etc/cloudflared/config.yml:ro`, `${tunnelCredentialsPath(tunnel.id)}:/etc/cloudflared/credentials.json:ro`], networks: ["kimono-edge", "kimono-tunnel"], security_opt: ["no-new-privileges:true"] };
       // A credentials-mode connector still needs a CNAME per hostname before Cloudflare will route to it.
       if (originCertificate) for (const route of routes) plan.providerActions.push({ provider: "cloudflare", tunnelId: tunnel.id, mode: "credentials", tunnelUuid: tunnelId, originCertificate, cname: "", ...route });
       else plan.warnings.push(`${tunnel.name}: no origin certificate, so DNS records cannot be created automatically`);

@@ -79,7 +79,7 @@ func RenderCompose(plan Plan) string {
 	for _, name := range sortedKeys(plan.Compose.Networks) {
 		// The appliance owns the edge network so its proxy can serve a hostname
 		// published without a tunnel. This project attaches rather than creates.
-		if name == EdgeNetwork {
+		if name == EdgeNetwork || name == TunnelNetwork {
 			fmt.Fprintf(&builder, "  %s:\n    name: %s\n    external: true\n", name, name)
 			continue
 		}
