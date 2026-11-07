@@ -570,11 +570,20 @@ func (m *Manager) compose(args ...string) error {
 // composeUp brings the appliance up, first moving an existing kimono-edge
 // onto the subnet compose.yml now gives it.
 func (m *Manager) composeUp() error {
+	// Asked before the move below, which is what makes kimono-edge current.
+	recreate := m.networksMove()
 	reconnect, err := m.migrateEdgeNetwork()
 	if err != nil {
 		return err
 	}
-	upErr := m.compose("up", "-d", "--remove-orphans")
+	up := []string{"up", "-d", "--remove-orphans"}
+	if recreate {
+		// Compose remakes the network but can leave containers it didn't
+		// recreate on the old one, where Authentik no longer finds its
+		// database; recreating them all puts each on the new network.
+		up = append(up, "--force-recreate")
+	}
+	upErr := m.compose(up...)
 	// Even after a failed start: an app left off the network is unreachable.
 	if err := reconnect(); err != nil {
 		if upErr != nil {
@@ -589,6 +598,28 @@ func (m *Manager) composeUp() error {
 // addresses from part of it, so a network left on another subnet would leave
 // every tunnelled visitor looking like the connector.
 const edgeSubnet = "10.89.0.0/24"
+
+// defaultSubnet is the subnet compose.yml gives the appliance's own network.
+const defaultSubnet = "10.89.1.0/24"
+
+// networksMove says whether the appliance's own network or kimono-edge exists
+// with other settings than compose.yml's, so this start has Compose make it
+// again.
+func (m *Manager) networksMove() bool {
+	if m.Runner.DryRun {
+		return false
+	}
+	if output, err := m.Runner.OutputCombined("docker", "network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}", "kimono-server_default"); err == nil &&
+		!slices.Contains(strings.Fields(string(output)), defaultSubnet) {
+		return true
+	}
+	output, err := m.Runner.OutputCombined("docker", "network", "inspect", "--format", "{{.Internal}} {{range .IPAM.Config}}{{.Subnet}} {{end}}", reconcile.EdgeNetwork)
+	if err != nil {
+		return false
+	}
+	fields := strings.Fields(string(output))
+	return len(fields) == 0 || fields[0] != "true" || !slices.Contains(fields[1:], edgeSubnet)
+}
 
 // edgeMember is a container of another project (the reconciler's apps) that
 // was attached to kimono-edge, and the service name others reach it by.
