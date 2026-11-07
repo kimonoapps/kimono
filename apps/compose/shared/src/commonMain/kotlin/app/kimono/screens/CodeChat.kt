@@ -449,6 +449,11 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     val lastPreview = items.lastOrNull { (it as? Item.Plain)?.event is CodeEvent.Preview }?.key
     val lastContext = items.lastOrNull { it is Item.Done && it.event.context != null }?.let { (it as Item.Done).event.context }
     var viewing by remember { mutableStateOf<Pair<List<CodeEvent.Image>, Int>?>(null) }
+    /* Replies that land after the chat has opened are let out word by word; ones already there just show. */
+    var liveFrom by remember(w.id) { mutableStateOf(Long.MAX_VALUE) }
+    val hasItems = items.isNotEmpty()
+    val itemsNow by androidx.compose.runtime.rememberUpdatedState(items)
+    LaunchedEffect(w.id, hasItems) { if (hasItems && liveFrom == Long.MAX_VALUE) { kotlinx.coroutines.delay(500); liveFrom = itemsNow.lastOrNull()?.key ?: 0L } }
     var ratings by remember(w.id) { mutableStateOf<Map<Long, Int>>(emptyMap()) }
     LaunchedEffect(w.id) { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } }
     Column(Modifier.fillMaxSize()) {
@@ -464,7 +469,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                     )) {
                     when (item) {
                         is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
-                        is Item.Say -> Markdown(item.text)
+                        is Item.Say -> if (item.key > liveFrom) RevealWords(item.text) else Markdown(item.text)
                         is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
                         is Item.Done -> DoneNote(item.event, ratings[item.key]) { rating, note ->
                             ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
@@ -1879,9 +1884,17 @@ private fun displayMath(lines: List<String>, i: Int): Pair<String, Int>? {
  * fading, so each word fades in as the end of the reply moves past it.
  */
 @Composable
-private fun DraftWords(text: String) {
+private fun DraftWords(text: String) = RevealWords(text)
+
+/* How far the reply being written has been let out. A finished reply that takes its draft's place
+   carries on from here instead of jumping to its end; any other starts from its first word. */
+private object Revealed { var text = ""; var at = 0 }
+
+/** Lets [text] out a word at a time: about 90 letters a second, quickening gently while far behind, its newest words fading in. */
+@Composable
+private fun RevealWords(text: String) {
     val latest by androidx.compose.runtime.rememberUpdatedState(text)
-    var shown by remember { mutableStateOf(0) }
+    var shown by remember { mutableStateOf(if (Revealed.at in 1..text.length && text.startsWith(Revealed.text.take(Revealed.at))) Revealed.at else 0) }
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) {
@@ -1892,15 +1905,17 @@ private fun DraftWords(text: String) {
                 if (shown < goal && now - last >= 33) {
                     last = now
                     val behind = goal - shown
-                    var next = minOf(goal, shown + maxOf(4, (behind + 4) / 5))
+                    var next = minOf(goal, shown + maxOf(3, (behind + 39) / 40))
                     val space = latest.substring(next).indexOfFirst { it.isWhitespace() }
                     next = if (space < 0) goal else minOf(goal, next + space)
                     shown = next
                 }
+                Revealed.text = latest; Revealed.at = shown
             }
         }
     }
-    Markdown(text.take(shown), fadeTail = true)
+    /* once it's all out, it's drawn as any reply is */
+    if (shown >= text.length) Markdown(text) else Markdown(text.take(shown), fadeTail = true)
 }
 
 @Composable

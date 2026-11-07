@@ -981,34 +981,44 @@ function SendStop({ mode, disabled, busy, onSend, onStop }: { mode: "send" | "st
  * time, and each fades in as it lands.
  */
 function DraftWords({ text }: { text: string }) {
-  const [shown, setShown] = useState(0);
+  return <RevealWords text={text} className="cd-say is-draft" />;
+}
+
+/* How far the reply being written has been let out. A finished reply that takes its draft's place
+   carries on from here instead of jumping to its end; any other starts from its first word. */
+const revealed = { text: "", at: 0 };
+
+/** Lets [text] out a word at a time: about 90 letters a second, quickening gently while far behind, each word fading in. */
+function RevealWords({ text, className }: { text: string; className: string }) {
+  const [shown, setShown] = useState(() => revealed.at > 0 && revealed.at <= text.length && text.startsWith(revealed.text.slice(0, revealed.at)) ? revealed.at : 0);
   const target = useRef(text);
-  const at = useRef(0);
+  const at = useRef(shown);
   useEffect(() => {
-    /* Rewritten rather than grown (a new reply): start from what still matches. */
+    /* Rewritten rather than grown (a new reply): start again. */
     if (!text.startsWith(target.current.slice(0, at.current))) at.current = 0;
     target.current = text;
   }, [text]);
   useEffect(() => {
     let frame = 0, last = 0;
     const step = (now: number) => {
-      frame = requestAnimationFrame(step);
       const goal = target.current.length;
-      if (at.current >= goal || now - last < 33) return;
+      if (at.current >= goal) { revealed.text = target.current; revealed.at = goal; frame = requestAnimationFrame(step); return; }
+      frame = requestAnimationFrame(step);
+      if (now - last < 33) return;
       last = now;
-      /* about 120 characters a second at rest, faster the further behind, never more than a fifth of the gap per step */
       const behind = goal - at.current;
-      let next = Math.min(goal, at.current + Math.max(4, Math.ceil(behind / 5)));
+      let next = Math.min(goal, at.current + Math.max(3, Math.ceil(behind / 40)));
       /* to the end of a word, so a word lands whole */
       const space = target.current.slice(next).search(/\s/);
       next = space < 0 ? goal : Math.min(goal, next + space);
       at.current = next;
+      revealed.text = target.current; revealed.at = next;
       setShown(next);
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
   }, []);
-  return <div className="cd-say is-draft"><Markdown text={text.slice(0, Math.min(shown, text.length) || 0)} streaming /></div>;
+  return <div className={className}><Markdown text={text.slice(0, Math.min(shown, text.length))} streaming /></div>;
 }
 
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
@@ -1980,7 +1990,10 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   /* What was there when the chat opened just shows; from a moment later, whatever arrives rises into place. */
   const [live, setLive] = useState(false);
   const any = items.length > 0;
-  useEffect(() => { if (!any || live) return; const timer = setTimeout(() => setLive(true), 500); return () => clearTimeout(timer); }, [any, live]);
+  /* Replies that land after this point are let out word by word; ones already there just show. */
+  const lastSeq = items.at(-1)?.seq ?? 0;
+  const [liveFrom, setLiveFrom] = useState(Number.MAX_SAFE_INTEGER);
+  useEffect(() => { if (!any || live) return; const timer = setTimeout(() => { setLive(true); setLiveFrom(lastSeq); }, 500); return () => clearTimeout(timer); }, [any, live, lastSeq]);
   const [away, setAway] = useState(false);
 
   /* Follows the agent while you're at the bottom; leaves you alone once you scroll up. */
@@ -2019,7 +2032,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
         {items.map((item) => {
           switch (item.type) {
             case "ask": return <Ask key={item.seq} workspace={workspace} item={item} running={running} />;
-            case "text": return <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
+            case "text": return item.seq > liveFrom ? <RevealWords key={item.seq} text={item.text} className="cd-say" /> : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
             case "done": return <Done key={item.seq} event={item.event} rating={ratings[item.seq] ?? null} onRate={rateAnswer.bind(null, item.seq)} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
