@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 import { artifactByLink, CodeProblem, db } from "@/lib/code";
 import { codeConfig, codeIdentity } from "@/lib/code/config";
 import { getPlatformSettings } from "@/lib/settings";
-import { ArtifactAlone } from "../../../(shell)/code/code-app";
+import { ArtifactAlone } from "../../../(shell)/code/link-views";
 import { LinkFrame, LinkNote } from "../../_link/link-frame";
 
 type Props = { params: Promise<{ token: string }> };

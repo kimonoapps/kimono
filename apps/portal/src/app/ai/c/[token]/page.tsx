@@ -6,7 +6,7 @@ import { chatOfLink, db } from "@/lib/code";
 import { codeConfig, codeIdentity } from "@/lib/code/config";
 import { listAccounts } from "@/lib/directory";
 import { getPlatformSettings } from "@/lib/settings";
-import { GuestChat, JoinChat } from "../../../(shell)/code/code-app";
+import { GuestChat, JoinChat } from "../../../(shell)/code/link-views";
 import { LinkFrame, LinkNote } from "../../_link/link-frame";
 
 type Props = { params: Promise<{ token: string }> };
