@@ -1674,3 +1674,5 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-timeline > .cd-ask { max-width: min(620px, 78%); }
 .cd-timeline > .cd-ask.cd-ask-edit { max-width: none; width: min(620px, 92%); }
 @media (max-width: 720px) { .cd-timeline > .cd-ask { max-width: 88%; } }
+/* An empty field keeps its hint to one line, clipped, rather than a second line cut in half. */
+.cd .cd-entry textarea:placeholder-shown { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

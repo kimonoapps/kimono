@@ -270,6 +270,9 @@ export async function ensure(config: CodeConfig, workspace: Workspace, person: {
   awake.at.set(workspace.id, Date.now());
   for (const id of answer.slept ?? []) {
     awake.at.delete(id);
+    /* A project is told it was put to sleep (its app stopped); a plain chat just wakes when it's opened. */
+    const repo = (db().prepare("SELECT repo_name FROM workspaces WHERE id = ?").get(id) as { repo_name?: string | null } | undefined)?.repo_name;
+    if (!repo) continue;
     try { record(id, null, { kind: "slept", for: workspace.title }); } catch { /* not a task this Portal knows */ }
   }
   return answer;

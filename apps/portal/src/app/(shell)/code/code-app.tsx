@@ -1986,7 +1986,8 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
             case "sent": return <div key={item.seq} className="cd-sent">{item.files.map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}</div>;
             case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
             case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
-            case "slept": return <p key={item.seq} className="cd-note">Put to sleep to make room for &ldquo;{item.for}&rdquo;. It wakes when you open it.</p>;
+            /* Only a project says it was put to sleep; a plain chat just wakes when opened. */
+            case "slept": return workspace.kind !== "project" ? null : <p key={item.seq} className="cd-note">Put to sleep to make room for &ldquo;{item.for}&rdquo;. It wakes when you open it.</p>;
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
               ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
               : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
