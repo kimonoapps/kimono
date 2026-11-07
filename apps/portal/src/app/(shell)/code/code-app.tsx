@@ -55,6 +55,9 @@ function goTo(to: Record<string, string | null>, replace = false) {
   window.dispatchEvent(new Event(codeNav));
 }
 
+/** A phone or tablet: a touch screen whose keyboard covers half of it. */
+const onTouch = () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+
 function hashNow() { return window.location.hash.slice(1); }
 function subscribeNav(listener: () => void) {
   window.addEventListener("hashchange", listener);
@@ -1432,7 +1435,8 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
     try { localStorage.setItem("kimono-code-repo", key); } catch { /* not remembered */ }
   }, [chosen]);
 
-  useEffect(() => { field.current?.focus(); }, [repos]);
+  /* Ready to type on a computer; on a phone the keyboard waits for a tap, so it doesn't cover the screen on arrival. */
+  useEffect(() => { if (!onTouch()) field.current?.focus(); }, [repos]);
   /* The field grows with what's written, up to a third of the screen, as the chat's does. */
   useLayoutEffect(() => {
     const el = field.current;
@@ -2897,7 +2901,11 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       if (typed.current === said) setText("");
       forget(pending.map((p) => p.preview));
       setPending([]);
-    } catch (error) { setProblem(problemText(error)); } finally { setSending(false); field.current?.focus(); }
+    } catch (error) { setProblem(problemText(error)); } finally {
+      setSending(false);
+      /* On a computer the cursor stays for the next line; on a phone sending puts the keyboard away so the answer can be read. */
+      if (onTouch()) field.current?.blur(); else field.current?.focus();
+    }
   }
 
   return <div className={cx("cd-composer", dragging && "is-dropping")}
