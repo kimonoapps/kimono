@@ -29,9 +29,9 @@ fun AppAccentTheme(accent: String?, content: @Composable () -> Unit) {
     val ramp = remember(accent) { accentRamp(accent) }
     val night = app.kimono.theme.LocalNight.current
     val scheme = remember(accent, base, night) {
-        /* By night the accent's pale tone leads and its containers sink into the dark. */
+        /* By night coloured text is cream, as everywhere; the accent lives in the containers. */
         if (night) base.copy(
-            primary = mix(ramp.soft, Color.White, .35f),
+            primary = Color(0xFFFBF3EE),
             onPrimary = mix(ramp.deep, Color.Black, .45f),
             primaryContainer = mix(ramp.deep, Color.Black, .25f),
             onPrimaryContainer = mix(ramp.tint, Color.White, .6f),

@@ -198,10 +198,10 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .profile-item > span { font-size: 14px; font-weight: 600; line-height: 1.3; }
 .profile-item > small { font-size: 12px; line-height: 1.3; color: var(--k-ink-soft); }
 .profile-item:hover { background: var(--k-hover); color: var(--k-plum); }
-.profile-item.profile-return > span { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); }
-.profile-item.profile-signout { margin-top: var(--k-space-1); color: var(--k-suo-deep); }
-.profile-item.profile-signout > small { color: var(--k-suo-deep); }
-.profile-item.profile-signout:hover { background: var(--k-suo-wash); color: var(--k-suo-deep); }
+.profile-item.profile-return > span { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); }
+.profile-item.profile-signout { margin-top: var(--k-space-1); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
+.profile-item.profile-signout > small { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
+.profile-item.profile-signout:hover { background: var(--k-suo-wash); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .profile-version { margin: var(--k-space-2) 0 0; padding: var(--k-space-2) var(--k-space-3) var(--k-space-1); border-top: var(--k-hairline) solid var(--k-hair); font: 500 11.5px/1.4 var(--k-mono); color: var(--k-faint); }
 
 /* A newer Kimono: a suō seal in the header beside the account menu, opening
@@ -233,7 +233,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .update-popover p { margin: 0; font-size: 13px; color: var(--k-ink-soft); }
 .update-popover code { padding: 8px 10px; border: var(--k-hairline) solid var(--k-hair); border-radius: var(--k-r-2); background: var(--k-fold); font: 500 13px/1.3 var(--k-mono); color: var(--k-ink); user-select: all; }
 .update-popover-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--k-space-3); }
-.update-popover-actions a { font-size: 13px; font-weight: 600; color: var(--k-suo-deep); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.update-popover-actions a { font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .update-popover-actions form { display: contents; }
 @media (max-width: 720px) {
   .update-seal > span:first-child, .update-seal-from { display: none; }
@@ -263,7 +263,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
   font-size: 14px;
 }
 .admin-notice.success { border-left-color: var(--k-moss); }
-.admin-notice.error { border-left-color: var(--k-suo); color: var(--k-suo-deep); }
+.admin-notice.error { border-left-color: var(--k-suo); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .admin-section-nav { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-space-2); margin: var(--k-space-5) 0 0; }
 .admin-section-nav + .admin-notice, .k-page-header + .admin-notice { margin-top: var(--k-space-2); }
 /* A hand-written page heading reads the same as PageHeader. */
@@ -272,7 +272,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .page-header > p { margin: var(--k-space-3) 0 0; font: 16px/1.5 var(--k-sans); color: var(--k-ink-soft); }
 
 .scan-errors { margin-bottom: var(--k-space-5); border: var(--k-hairline) solid var(--k-hair); border-left: 3px solid var(--k-suo); border-radius: var(--k-r-2); background: var(--k-sheet); }
-.scan-errors summary { min-height: 44px; display: flex; align-items: center; padding: 0 var(--k-space-4); color: var(--k-suo-deep); cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; }
+.scan-errors summary { min-height: 44px; display: flex; align-items: center; padding: 0 var(--k-space-4); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; }
 .scan-errors summary::-webkit-details-marker { display: none; }
 .scan-errors ul { margin: 0; padding: 0 var(--k-space-4) var(--k-space-4) var(--k-space-6); color: var(--k-ink-soft); font: 500 13px/1.6 var(--k-mono); }
 
@@ -282,9 +282,9 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 
 .home-hero { position: relative; display: flex; align-items: center; min-height: 240px; }
 .hero-copy { position: relative; z-index: 2; padding: var(--k-space-8) 0 var(--k-space-6); }
-.hero-kicker { margin: 0 0 var(--k-space-3); color: var(--k-suo-deep); font: 600 12px/1.4 var(--k-sans); letter-spacing: .02em; }
+.hero-kicker { margin: 0 0 var(--k-space-3); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font: 600 12px/1.4 var(--k-sans); letter-spacing: .02em; }
 .hero-copy h1 { max-width: 20ch; margin: 0; color: var(--k-plum); font: 600 clamp(36px, 5vw, 56px)/1.08 var(--k-display); letter-spacing: -.02em; }
-.hero-copy h1 strong { color: var(--k-suo); font-weight: 600; }
+.hero-copy h1 strong { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font-weight: 600; }
 
 /* Registered applications hang as ema wish plaques, not generic product cards. */
 .launcher-section { padding: 48px 0 34px; }
@@ -365,7 +365,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .launcher-app:nth-child(even) .ema-copy { transform: rotate(1deg); }
 .launcher-name { display: block; color: #493139; font: 600 16px/1.35 var(--k-display); letter-spacing: 0; }
 .launcher-status { display: block; margin-top: 4px; color: var(--k-ink-soft); font: 500 12px/1.4 var(--k-sans); letter-spacing: 0; }
-.ema-seal { position: absolute; z-index: 2; right: 13px; bottom: 13px; width: 25px; height: 28px; display: grid; place-items: center; border: 2px solid rgba(168,77,99,.78); color: var(--k-suo); background: rgba(255,241,226,.35); font: 15px/1 "Yu Mincho", serif; opacity: .8; transform: rotate(3deg); }
+.ema-seal { position: absolute; z-index: 2; right: 13px; bottom: 13px; width: 25px; height: 28px; display: grid; place-items: center; border: 2px solid rgba(168,77,99,.78); color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); background: rgba(255,241,226,.35); font: 15px/1 "Yu Mincho", serif; opacity: .8; transform: rotate(3deg); }
 .ema-tassel { position: absolute; z-index: 0; right: 15px; bottom: 3px; width: 30px; height: 43px; transform-origin: top center; transition: transform 480ms cubic-bezier(.16,1,.3,1); }
 .ema-tassel::before { position: absolute; top: 0; left: 12px; width: 7px; height: 10px; border-radius: 50%; content: ""; background: var(--k-plum); }
 .ema-tassel i { position: absolute; top: 8px; width: 3px; height: 31px; border-radius: var(--k-r-s) 0 4px 4px; background: var(--k-suo); transform-origin: top; }
@@ -408,7 +408,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .catalog-filters .k-seal.is-active { color: var(--k-plum); background: var(--k-selected); box-shadow: inset 0 0 0 1px var(--k-sakura-soft); }
 .catalog-filters .k-seal.is-active::before { display: none; }
 .catalog-filters .k-seal.is-active span { color: var(--k-plum); }
-.catalog-filters .k-seal.has-problems { color: var(--k-suo-deep); }
+.catalog-filters .k-seal.has-problems { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .catalog-groups { display: grid; gap: var(--k-space-6); }
 .catalog-results-heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--k-space-3); margin-bottom: var(--k-space-4); }
 .catalog-results-heading h2 { margin: 0; color: var(--k-plum); font: 600 28px/1.2 var(--k-display); letter-spacing: -.01em; }
@@ -445,8 +445,8 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .catalog-card-footer { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: var(--k-space-3); margin-top: auto; padding-top: var(--k-space-3); border-top: var(--k-hairline) solid var(--k-hair); color: var(--k-ink-soft); font-size: 13px; }
 .catalog-card-footer > :first-child { min-width: 0; overflow-wrap: anywhere; }
 .catalog-card-footer code { font: 500 13px/1 var(--k-mono); }
-.catalog-card-footer .is-wanted { color: var(--k-suo-deep); font-weight: 600; }
-.catalog-arrow { flex: 0 0 auto; color: var(--k-suo-deep); font-size: 13px; font-weight: 600; transition: transform var(--k-t-state) var(--k-ease-settle); }
+.catalog-card-footer .is-wanted { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 600; }
+.catalog-arrow { flex: 0 0 auto; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-size: 13px; font-weight: 600; transition: transform var(--k-t-state) var(--k-ease-settle); }
 .catalog-arrow b { margin-left: var(--k-space-1); }
 .catalog-app:hover .catalog-arrow { transform: translateX(3px); }
 .catalog-empty { margin: var(--k-space-6) 0; padding: var(--k-space-6); border: var(--k-hairline) dashed var(--k-hair); border-radius: var(--k-r-3); color: var(--k-ink-soft); font-size: 14px; text-align: center; }
@@ -546,15 +546,15 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .manual-setup { display: grid; gap: var(--k-space-3); }
 .manual-setup > p { margin: 0; color: var(--k-ink-soft); font-size: 14px; line-height: 1.6; }
 .manual-setup ol { display: grid; gap: var(--k-space-2); margin: 0; padding-left: 20px; color: var(--k-ink); font-size: 14px; line-height: 1.6; }
-.manual-setup li::marker { color: var(--k-suo); font-weight: 600; }
+.manual-setup li::marker { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font-weight: 600; }
 .setup-address.needs-tunnel > .k-body { padding: var(--k-space-4) var(--k-space-5); border-radius: var(--k-r-2); background: var(--k-selected); }
 .tunnel-empty-state h4 { margin: 0 0 var(--k-space-2); color: var(--k-plum); font: 600 24px/1.2 var(--k-display); letter-spacing: -.01em; }
 .tunnel-empty-state > p { max-width: 48ch; margin: 0; color: var(--k-ink-soft); font-size: 14px; line-height: 1.55; }
-.tunnel-empty-state .tunnel-missing-warning { margin-top: var(--k-space-3); color: var(--k-suo-deep); font-weight: 600; }
+.tunnel-empty-state .tunnel-missing-warning { margin-top: var(--k-space-3); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 600; }
 .tunnel-empty-actions { display: flex; flex-wrap: wrap; gap: var(--k-space-3); margin-top: var(--k-space-4); }
 .tunnel-picker { display: grid; gap: var(--k-space-2); margin: 0; padding: 0; border: 0; }
 .tunnel-picker > legend { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--k-space-2); padding: 0; color: var(--k-ink-soft); font: 600 12px/1.4 var(--k-sans); }
-.tunnel-picker > legend > a { min-height: 32px; display: inline-flex; align-items: center; color: var(--k-suo-deep); font-size: 13px; font-weight: 600; }
+.tunnel-picker > legend > a { min-height: 32px; display: inline-flex; align-items: center; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-size: 13px; font-weight: 600; }
 .tunnel-picker > legend > a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .tunnel-choice { border: var(--k-hairline) solid var(--k-hair); border-radius: var(--k-r-2); background: var(--k-fold); transition: border-color var(--k-t-state), background-color var(--k-t-state); }
 .tunnel-choice:has(input[type="radio"]:checked) { border-color: var(--k-sakura-soft); background: var(--k-selected); }
@@ -667,7 +667,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .invite-field { display: grid; }
 .invite-field select { min-height: var(--k-control); width: 100%; max-width: 360px; padding: 0 var(--k-space-4); border: var(--k-hairline) solid var(--k-hair); border-radius: var(--k-r-2); background: var(--k-fold); color: var(--k-ink); font: 14px/1.5 var(--k-sans); }
 .invite-field select:focus-visible { outline: 0; border-color: var(--k-suo); background: var(--k-lift); box-shadow: 0 0 0 3px color-mix(in srgb, var(--k-suo) 22%, transparent); }
-.plan-warnings { margin: 0 0 var(--k-space-3); padding: var(--k-space-3) var(--k-space-4) var(--k-space-3) var(--k-space-6); border-left: 3px solid var(--k-suo); border-radius: var(--k-r-s) var(--k-r-2) var(--k-r-2) 0; color: var(--k-suo-deep); background: var(--k-suo-wash); font-size: 13px; line-height: 1.55; }
+.plan-warnings { margin: 0 0 var(--k-space-3); padding: var(--k-space-3) var(--k-space-4) var(--k-space-3) var(--k-space-6); border-left: 3px solid var(--k-suo); border-radius: var(--k-r-s) var(--k-r-2) var(--k-r-2) 0; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); background: var(--k-suo-wash); font-size: 13px; line-height: 1.55; }
 .plan-actions { display: flex; justify-content: flex-end; padding: var(--k-space-3) 0; }
 
 /* 裏 Technical settings — a sheet of disclosures. */
@@ -719,7 +719,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .runtime-preview summary > span:first-child { display: grid; gap: 2px; }
 .runtime-preview summary strong { font-size: 14px; font-weight: 600; }
 .runtime-preview summary small { color: var(--k-ink-soft); font-size: 13px; }
-.runtime-preview summary > span:last-child { margin-left: auto; color: var(--k-suo-deep); font-size: 13px; font-weight: 600; }
+.runtime-preview summary > span:last-child { margin-left: auto; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-size: 13px; font-weight: 600; }
 .runtime-preview pre { max-height: 500px; margin: 0 0 var(--k-space-4); padding: var(--k-space-4); overflow: auto; border-left: var(--k-rule) solid var(--k-ink); border-radius: var(--k-r-s) var(--k-r-2) var(--k-r-2) 0; color: var(--k-ink); background: var(--k-fold); font: 500 13px/1.6 var(--k-mono); }
 
 /* Cloudflare */
@@ -745,7 +745,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .connected-tunnel-list strong { font-size: 14px; font-weight: 600; }
 .connected-tunnel-list small, .connected-tunnel-list code { color: var(--k-ink-soft); font-size: 12px; }
 .connected-tunnel-list form { margin-top: var(--k-space-2); }
-.connection-state { display: inline-flex; align-items: center; min-height: 24px; padding: 2px var(--k-space-2); border-radius: var(--k-r-1); color: var(--k-suo-deep); background: var(--k-suo-wash); font: 600 12px/1.4 var(--k-sans); }
+.connection-state { display: inline-flex; align-items: center; min-height: 24px; padding: 2px var(--k-space-2); border-radius: var(--k-r-1); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); background: var(--k-suo-wash); font: 600 12px/1.4 var(--k-sans); }
 .connection-state.connected { color: var(--k-moss-deep); background: var(--k-moss-wash); }
 .manual-cloudflare-connect { margin-top: var(--k-space-5); border: var(--k-hairline) solid var(--k-hair); border-radius: var(--k-r-3); background: var(--k-sheet); }
 .manual-cloudflare-connect > summary { min-height: 64px; padding: var(--k-space-3) var(--k-space-6); }
@@ -793,9 +793,9 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .login-page { min-height: 100vh; display: grid; grid-template-columns: minmax(380px, .82fr) 1.18fr; background: var(--k-ground); }
 .login-panel { min-height: 100vh; position: relative; z-index: 2; display: flex; flex-direction: column; padding: clamp(32px, 5vw, 72px); background-color: var(--k-sheet); background-image: var(--k-grain); box-shadow: 1px 0 0 var(--k-hair); }
 .login-copy { max-width: 480px; margin: auto 0; padding: var(--k-space-8) 0; }
-.eyebrow { margin: 0; color: var(--k-suo-deep); font: 600 12px/1.4 var(--k-sans); letter-spacing: .02em; }
+.eyebrow { margin: 0; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font: 600 12px/1.4 var(--k-sans); letter-spacing: .02em; }
 .login-copy h1 { margin: var(--k-space-4) 0 var(--k-space-5); color: var(--k-plum); font: 600 clamp(52px, 6.5vw, 88px)/.96 var(--k-display); letter-spacing: -.025em; }
-.login-copy h1 em { color: var(--k-suo); font-style: normal; font-weight: inherit; }
+.login-copy h1 em { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font-style: normal; font-weight: inherit; }
 .login-copy > p:last-child { max-width: 38ch; margin: 0; color: var(--k-ink-soft); font-size: 16px; line-height: 1.6; }
 .login-button { width: 100%; max-width: 480px; min-height: 52px; justify-content: space-between; padding: 0 var(--k-space-5); font-size: 15px; }
 /* A sakura sun over faint seigaiha waves, inside a thin frame, on four
@@ -920,7 +920,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .connection-rename label { display: grid; gap: var(--k-space-2); flex: 1; min-width: min(100%, 200px); }
 .connection-rename input { min-width: 0; width: 100%; padding: 12px; border: 1px solid var(--k-hair); background: var(--k-lift); font-size: 16px; }
 .connection-delete { border-top: 1px solid var(--k-hair); }
-.connection-delete > summary { color: var(--k-suo-deep); }
+.connection-delete > summary { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .connection-delete form { display: grid; gap: var(--k-space-3); padding-bottom: var(--k-space-4); }
 .connection-delete p { margin: 0; line-height: 1.6; }
 .connection-delete .k-seal { justify-self: start; }
@@ -934,7 +934,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .app-offer .k-seal { justify-self: start; text-decoration: none; }
 .app-offer-detail { font-size: .85rem; }
 .app-offer ol { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; color: var(--k-ink-soft); }
-.app-offer a:not(.k-seal) { color: var(--k-suo); text-decoration: underline; }
+.app-offer a:not(.k-seal) { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); text-decoration: underline; }
 .app-offer-later { justify-self: start; border: 0; background: none; padding: 4px 0; color: var(--k-faint); font: inherit; font-size: .85rem; cursor: pointer; }
 
 /*

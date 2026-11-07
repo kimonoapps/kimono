@@ -187,7 +187,7 @@
 .dv-menu a { min-height: 38px; display: flex; align-items: center; gap: 12px; padding: 0 10px; border-radius: var(--k-r-s); font-size: 14px; font-weight: 600; color: var(--k-ink); }
 .dv-menu a:hover, .dv-menu a.hot { background: var(--k-hover); color: var(--k-plum); }
 .dv-menu a kbd { margin-left: auto; }
-.dv-menu a.danger { color: var(--k-suo-deep); }
+.dv-menu a.danger { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .dv-menu a.danger:hover { background: var(--k-suo-wash); }
 .dv-menu hr { margin: 6px 8px; border: 0; border-top: 1px solid var(--k-container-highest); }
 .dv-menu .why { padding: 2px 10px 6px 40px; font-size: 12px; color: var(--k-ink-soft); }
@@ -199,7 +199,7 @@
 .dv-selbar .acts { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .dv-selbar.float .acts { flex-wrap: nowrap; margin-left: 24px; }
 .dv-selbar.float { position: absolute; left: 50%; bottom: 24px; translate: -50% 0; z-index: 10; margin: 0; box-shadow: var(--k-shadow-raised); white-space: nowrap; }
-.dv-linkbtn { min-height: 36px; padding: 0 10px; border: 0; background: transparent; font-weight: 700; font-size: 14px; color: var(--k-accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-accent) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
+.dv-linkbtn { min-height: 36px; padding: 0 10px; border: 0; background: transparent; font-weight: 700; font-size: 14px; color: color-mix(in srgb, var(--k-accent) var(--k-tint), var(--k-night-ink)); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-accent) 35%, transparent); text-underline-offset: 3px; cursor: pointer; }
 .dv-linkbtn:hover { color: var(--k-plum); }
 
 /* notices */
@@ -248,7 +248,7 @@
 .dv-up > div { min-width: 0; }
 .dv-up b { display: block; font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dv-up small { display: block; font-size: 13px; color: var(--k-on-surface-variant); }
-.dv-up small.err { color: var(--k-suo-deep); }
+.dv-up small.err { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .dv-bar { height: 4px; margin: 6px 0 4px; border-radius: var(--k-r-s); background: var(--k-primary-container); overflow: hidden; }
 .dv-bar i { display: block; height: 100%; border-radius: var(--k-r-s); background: var(--k-app-accent); transition: width var(--k-t-seat) var(--k-ease-settle); }
 
@@ -412,7 +412,7 @@
 .dv-ppl label small { color: var(--k-ink-soft); font-size: 12.5px; }
 .dv-ppl label.off b { color: var(--k-faint); text-decoration: line-through; }
 .dv-ppl label .after { font-size: 12.5px; color: var(--k-ink-soft); }
-.dv-ppl label.off .after { color: var(--k-suo-deep); }
+.dv-ppl label.off .after { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .dv-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border: 1px solid var(--k-hair); border-radius: var(--k-r-s); background: var(--k-lift); }
 .dv-summary > div { padding: 12px 16px; }
 .dv-summary > div + div { border-left: 1px solid var(--k-hair); }
@@ -465,7 +465,7 @@
 .dv-space { color: inherit; }
 .dv-menu button { min-height: 44px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: var(--k-r-m); font-size: 15px; font-weight: 500; color: var(--k-on-surface); }
 .dv-menu button:hover { background: var(--k-container-high); color: var(--k-plum); }
-.dv-menu button.danger { color: var(--k-suo-deep); }
+.dv-menu button.danger { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .dv-menu button.danger:hover { background: var(--k-primary-container); }
 .dv-crumbs button { width: auto; padding: 0; color: var(--k-ink-soft); font-weight: 600; font-size: 14px; }
 .dv-crumbs button:hover { color: var(--k-plum); }
@@ -538,7 +538,7 @@
 .dv-dialog-body { min-height: 0; overflow: auto; padding: 0 28px 18px; }
 .dv-dialog-body:empty { display: none; }
 .dv-dialog:focus { outline: none; }
-.dv-dialog > footer .left.bad { color: var(--k-suo-deep); }
+.dv-dialog > footer .left.bad { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .dv-stack { display: grid; gap: 14px; }
 .dv-crestpick { min-width: 0; }
 
@@ -621,7 +621,7 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-mast .dv-members .pfps > *:first-child { margin-left: 0; }
 .dv-mast .dv-members small { font-size: 14px; color: var(--k-on-surface-variant); }
 .dv-acts { display: flex; align-items: center; gap: 8px; }
-.dv-textbtn { min-height: 40px; padding: 0 14px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.dv-textbtn { min-height: 40px; padding: 0 14px; border: 0; border-radius: var(--k-r-full); background: transparent; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font: 700 14px/1 var(--k-sans); cursor: pointer; }
 .dv-textbtn:hover { background: var(--k-secondary-container); }
 .dv-toolbar { min-height: 0; padding: 4px 8px 12px 20px; }
 .dv-tools { display: flex; align-items: center; gap: 10px; margin-left: 0; }
@@ -632,9 +632,9 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-r { padding: 0 8px 0 16px; }
 .dv-r:hover { background: var(--k-container); }
 .dv-side { gap: 18px; padding-top: 14px; }
-.dv-side-label { padding: 8px 16px 6px; color: var(--k-suo); font-size: 14px; }
+.dv-side-label { padding: 8px 16px 6px; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font-size: 14px; }
 .dv-space { min-height: 58px; padding: 6px 14px 6px 10px; border-radius: var(--k-r-xl); grid-template-columns: 36px minmax(0, 1fr); }
-.dv-newspace { display: inline-flex; align-items: center; gap: 8px; width: fit-content; min-height: 40px; margin-left: 8px; padding: 0 14px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.dv-newspace { display: inline-flex; align-items: center; gap: 8px; width: fit-content; min-height: 40px; margin-left: 8px; padding: 0 14px; border: 0; border-radius: var(--k-r-full); background: transparent; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font: 700 14px/1 var(--k-sans); cursor: pointer; }
 .dv-newspace:hover { background: var(--k-secondary-container); }
 .dv-newspace svg.i { width: 18px; height: 18px; }
 .dv-tools { flex-wrap: nowrap; }

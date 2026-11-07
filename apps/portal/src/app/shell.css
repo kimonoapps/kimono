@@ -40,7 +40,7 @@
 .rail-room .rail-pill { height: 30px; width: 52px; }
 .rail-room .rail-pill .line-icon { width: 21px; height: 21px; color: var(--k-on-surface-variant); }
 .rail-room[aria-current] .rail-pill { background: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest)); }
-.rail-room[aria-current] .rail-pill .line-icon { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); }
+.rail-room[aria-current] .rail-pill .line-icon { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); }
 .rail-you .k-ink-portrait { width: 30px; height: 30px; }
 .rail-you .portrait { width: 22px; height: 22px; font-size: 11px; box-shadow: none; background: transparent; }
 
@@ -65,7 +65,7 @@
 .home-greeting { padding: var(--k-space-5) 8px var(--k-space-5); }
 .home-greeting .hero-kicker { margin: 0 0 8px; }
 .home-greeting h1 { margin: 0; font: 600 clamp(34px, 4.6vw, 46px)/1.08 var(--k-display); letter-spacing: -.015em; color: var(--k-plum); }
-.home-greeting h1 strong { font-weight: inherit; color: var(--k-suo); }
+.home-greeting h1 strong { font-weight: inherit; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .app-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-bottom: var(--k-space-6); }
 .app-tile { position: relative; }
 .app-tile-link { display: grid; justify-items: start; align-content: start; gap: 4px; height: 100%; padding: 22px 22px 20px; border-radius: var(--k-r-xl); background: var(--k-container); color: inherit; text-decoration: none; transition: border-radius var(--k-t-seat) var(--k-spring), background-color var(--k-t-state) var(--k-ease-settle), transform var(--k-t-fold) var(--k-spring); }
@@ -81,7 +81,7 @@
 .app-tile-pin svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .app-tile:hover .app-tile-pin, .app-tile-pin:focus-visible, .app-tile-pin[aria-pressed="true"] { opacity: 1; }
 .app-tile-pin:hover { background: rgba(255, 255, 255, .7); }
-.app-tile-pin[aria-pressed="true"] { color: var(--k-suo); }
+.app-tile-pin[aria-pressed="true"] { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .app-tile-pin[aria-pressed="true"] svg path { fill: currentColor; fill-opacity: .25; }
 .app-tile-pin:active { transform: scale(.85); }
 .app-tiles.is-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
@@ -92,7 +92,7 @@
 .app-tiles.is-compact .app-tile-link small { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; }
 
 /* sign out on the account page, and the update notice above admin pages */
-.account-signout button { display: grid; gap: 1px; width: 100%; margin-top: var(--k-space-4); padding: 12px 16px; border: 0; border-radius: var(--k-r-l); background: transparent; color: var(--k-suo-deep); font: 700 15px/1.3 var(--k-sans); text-align: left; cursor: pointer; }
+.account-signout button { display: grid; gap: 1px; width: 100%; margin-top: var(--k-space-4); padding: 12px 16px; border: 0; border-radius: var(--k-r-l); background: transparent; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font: 700 15px/1.3 var(--k-sans); text-align: left; cursor: pointer; }
 .account-signout button small { font-weight: 500; font-size: 13px; color: var(--k-on-surface-variant); }
 .account-signout button:hover { background: var(--k-primary-container); }
 .admin-update { display: flex; justify-content: flex-end; padding: var(--k-space-4) var(--k-shell-gutter) 0; }
@@ -271,7 +271,7 @@ html, body, .app-frame { overflow-x: clip; }
 
 /* Waiting on Cloudflare: the shape, then the words. */
 .login-progress { display: flex; align-items: flex-start; gap: 10px; max-width: 520px; }
-.login-shape { width: 20px; height: 20px; flex: none; color: var(--k-suo); margin-top: 1px; }
+.login-shape { width: 20px; height: 20px; flex: none; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); margin-top: 1px; }
 .login-progress p { margin: 0; }
 
 /* ── Home as a dashboard: My apps, the house at a glance, then every app by what it's for ── */
@@ -289,8 +289,8 @@ html, body, .app-frame { overflow-x: clip; }
 .home-glance-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px; border-radius: 22px; color: inherit; text-decoration: none; }
 .home-glance-head .k-app-bloom { width: 30px; height: 30px; flex: none; }
 .home-glance-head h2 { margin: 0; flex: 1; font: 600 21px/1.2 var(--k-display); color: var(--k-plum); }
-.home-glance-note { font: 600 13px/1 var(--k-sans); color: var(--k-suo); }
-.home-glance-head:hover h2 { color: var(--k-suo); }
+.home-glance-note { font: 600 13px/1 var(--k-sans); color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
+.home-glance-head:hover h2 { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .home-glance-lines { display: grid; }
 .home-line { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px; border-radius: 18px; color: inherit; text-decoration: none; transition: background-color var(--k-t-state) var(--k-ease-settle); }
 .home-line:hover { background: var(--k-container-high); }
@@ -301,7 +301,7 @@ html, body, .app-frame { overflow-x: clip; }
 .home-line-text b { font: 500 15px/1.35 var(--k-sans); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-line-text small { font-size: 12.5px; line-height: 1.4; color: var(--k-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-ext { font: 700 9px/1 var(--k-sans); letter-spacing: .04em; color: var(--k-on-wash); }
-.home-plus { font: 500 20px/1 var(--k-sans); color: var(--k-suo); }
+.home-plus { font: 500 20px/1 var(--k-sans); color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .home-dot { width: 10px; height: 10px; border-radius: 50%; background: #b9a8a2; }
 .home-dot.is-live { background: var(--k-moss); box-shadow: 0 0 0 4px color-mix(in srgb, var(--k-moss) 18%, transparent); }
 @media (max-width: 720px) {

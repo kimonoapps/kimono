@@ -77,7 +77,7 @@
 /* Danger: the consequence in words and in suō, filled only once you reach for it. */
 .k-seal.k-tone-danger {
   --k-seal-base: color-mix(in srgb, var(--k-suo) 28%, var(--k-suo-wash));
-  color: var(--k-suo-deep);
+  color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink));
   background: var(--k-suo-wash);
 }
 .k-seal.k-tone-danger::before { opacity: 0; }
@@ -132,11 +132,11 @@
 .k-chip.k-private { color: var(--k-ink); }
 .k-chip.k-running, .k-chip.k-ok { background: var(--k-moss-wash); color: var(--k-moss-deep); }
 .k-chip.k-wants { background: var(--k-suo); color: var(--k-on-accent); }
-.k-chip.k-warn { background: var(--k-suo-wash); color: var(--k-suo-deep); }
+.k-chip.k-warn { background: var(--k-suo-wash); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .k-chip.k-danger { background: var(--k-urushi); color: var(--k-urushi-text); }
 .k-chip.k-faint { color: var(--k-faint); }
 /* The one uppercase besides a label: an HTTP method, in mono. */
 .k-chip.k-method { font: 600 12px/1.4 var(--k-mono); letter-spacing: .04em; text-transform: uppercase; color: var(--k-ink); }
-.k-chip.k-method.k-write { color: var(--k-suo-deep); }
+.k-chip.k-method.k-write { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .k-chip.k-method.k-destroy { background: var(--k-suo); color: var(--k-on-accent); }
 .k-chip > code { font: 600 12px/1.4 var(--k-mono); color: inherit; }

@@ -23,7 +23,7 @@
 
 /* ── to the mockup (design/mockups/m3-everywhere.html, Get the app) ── */
 .get-app-page { padding-top: 24px; }
-.get-app-kicker { font: 700 13px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-suo); }
+.get-app-kicker { font: 700 13px/1.2 var(--k-sans); letter-spacing: .03em; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .get-app-head h1 { font-weight: 600; color: var(--k-plum); font-size: 36px; }
 .get-app-switch { gap: 4px; padding: 4px; border: 0; border-radius: var(--k-r-full); background: var(--k-container-high); }
 .get-app-switch button { min-height: 40px; padding: 0 18px; border-radius: var(--k-r-full); font-weight: 700; font-size: 14px; }

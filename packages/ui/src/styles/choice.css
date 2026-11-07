@@ -61,7 +61,7 @@
 .k-choice.has-label .k-choice-button { min-height: 56px; padding: 8px 14px 8px 16px; }
 .k-choice-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .k-choice-text small { font: 700 12px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-on-surface-variant); }
-.k-choice.is-open .k-choice-text small, .k-choice-button:focus-visible .k-choice-text small { color: var(--k-accent); }
+.k-choice.is-open .k-choice-text small, .k-choice-button:focus-visible .k-choice-text small { color: color-mix(in srgb, var(--k-accent) var(--k-tint), var(--k-night-ink)); }
 .k-choice-text .k-choice-value { font-size: 16px; }
 
 /* Compact: a tonal chip for toolbars that opens the same sheet. */

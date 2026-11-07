@@ -35,7 +35,7 @@
 }
 /* A compartment that wants something from you says so in the house colour,
    with a mark beside the word. Nothing else earns the accent. */
-.k-compartment.k-wants > .k-tab > * { color: var(--k-suo-deep); }
+.k-compartment.k-wants > .k-tab > * { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .k-compartment.k-wants > .k-tab > *::before { content: ""; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--k-suo); }
 .k-compartment > .k-body { min-width: 0; }
 

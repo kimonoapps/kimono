@@ -76,12 +76,13 @@ private val kimonoColors = lightColorScheme(
 )
 
 /*
- * The same household at night: a warm near-black lifted in soft brown steps, suō turned to its
- * pale tone for the primary, plum and moss likewise, so it reads as Kimono and not as a grey app.
+ * The same household at night: a warm near-black lifted in soft brown steps. Coloured text turns the
+ * cream of the day's paper; suō stays in the seals and containers, plum and moss turn pale.
  */
 private val kimonoNight = darkColorScheme(
-    primary = Color(0xFFFFB1C1),
-    onPrimary = Color(0xFF5E1129),
+    /* coloured text by night is the cream of the day's paper, not pink */
+    primary = Color(0xFFFBF3EE),
+    onPrimary = Color(0xFF3A2128),
     primaryContainer = Kata.suoDeep,
     onPrimaryContainer = Color(0xFFFFD9DF),
     inversePrimary = Kata.suo,
@@ -99,7 +100,7 @@ private val kimonoNight = darkColorScheme(
     onSurface = Color(0xFFEFE0DA),
     surfaceVariant = Color(0xFF534340),
     onSurfaceVariant = Color(0xFFD8C2BD),
-    surfaceTint = Color(0xFFFFB1C1),
+    surfaceTint = Color(0xFFD06A82),
     surfaceBright = Color(0xFF413734),
     surfaceDim = Color(0xFF19120F),
     surfaceContainerLowest = Color(0xFF130D0B),
@@ -128,7 +129,7 @@ object Appearance {
 val LocalNight = staticCompositionLocalOf { false }
 
 /** Plum ink: deep on paper, pale by night. For marks drawn straight on a surface. */
-val plumInk: Color @Composable get() = if (LocalNight.current) Color(0xFFF0CBD3) else Kata.plum
+val plumInk: Color @Composable get() = if (LocalNight.current) Color(0xFFFBF3EE) else Kata.plum
 
 @Composable
 private fun kataTypography(): Typography {

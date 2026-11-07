@@ -12,7 +12,7 @@
 .cd-mono { font-family: var(--k-mono); font-size: 12px; }
 .cd-faint { color: var(--k-faint); }
 .cd-quiet { margin: 0; font-size: 13.5px; color: var(--k-ink-soft); }
-.cd-problem { margin: 0; font-size: 13px; font-weight: 600; color: var(--k-suo-deep); }
+.cd-problem { margin: 0; font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-grow { flex: 1 1 auto; }
 .cd-pad { padding: 22px var(--cd-gutter); }
 .cd-textbutton { border: 0; padding: 0; background: none; font: inherit; font-weight: 600; color: var(--k-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
@@ -120,7 +120,7 @@ button.cd-sentfile-face:focus-visible { outline: 2px solid var(--k-primary); out
 .cd-filechip button { width: 28px; height: 28px; display: grid; place-items: center; flex: none; border: 0; background: none; color: var(--k-ink-soft); cursor: pointer; }
 .cd-filechip button svg.i { width: 14px; height: 14px; }
 .cd-filechip.is-sending { color: var(--k-ink-soft); border-style: dashed; }
-.cd-filechip.is-failed small { color: var(--k-suo-deep); font-weight: 600; }
+.cd-filechip.is-failed small { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 600; }
 
 .cd-say { font-size: 14.5px; line-height: 1.62; color: var(--k-ink); }
 .cd-md > * { margin: 0 0 10px; }
@@ -156,7 +156,7 @@ button.cd-sentfile-face:focus-visible { outline: 2px solid var(--k-primary); out
 .cd-toollabel { flex: none; font-weight: 600; color: var(--k-ink-soft); }
 .cd-toolmark { width: 16px; height: 16px; display: grid; place-items: center; flex: none; color: var(--k-ink-soft); }
 .cd-toolmark svg.i { width: 14px; height: 14px; stroke-width: 2; }
-li[data-state="failed"] .cd-toolmark { color: var(--k-suo-deep); }
+li[data-state="failed"] .cd-toolmark { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-spin { width: 7px; height: 7px; border-radius: var(--k-r-s); background: var(--k-moss); }
 .cd-output { margin: 4px 0 8px 30px; max-height: 280px; font-size: 12px; }
 
@@ -164,7 +164,7 @@ li[data-state="failed"] .cd-toolmark { color: var(--k-suo-deep); }
 .cd-note svg.i { width: 16px; height: 16px; }
 .cd-note a { color: var(--k-ink); text-decoration: underline; text-underline-offset: 3px; }
 .cd-note .cd-mono { font-weight: 500; color: var(--k-faint); }
-.cd-note.is-failed { align-items: flex-start; padding: 10px 12px; border: 1px solid var(--k-hair); border-radius: var(--k-r-s); background: var(--k-suo-wash); color: var(--k-suo-deep); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cd-note.is-failed { align-items: flex-start; padding: 10px 12px; border: 1px solid var(--k-hair); border-radius: var(--k-r-s); background: var(--k-suo-wash); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cd-thinking { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 12px/1 var(--k-mono); color: var(--k-ink-soft); }
 .cd-latest-wrap { position: sticky; bottom: 12px; display: flex; justify-content: center; pointer-events: none; }
 .cd-latest { pointer-events: auto; min-height: 34px; padding: 0 14px; border: 2px solid var(--k-ink); border-radius: var(--k-r-s); background: var(--k-lift); font: 600 12.5px/1 var(--k-sans); color: var(--k-ink); cursor: pointer; box-shadow: 3px 3px 0 var(--k-hair-deep); }
@@ -309,7 +309,7 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
 .cd-picker-name { font: 500 15.5px/1.3 var(--k-sans); color: var(--k-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-picker-sheet li small { grid-column: 1; font-size: 13px; line-height: 1.35; color: var(--k-ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-picker-sheet li em { grid-column: 2; grid-row: 1; font: normal 500 12px/1.5 var(--k-sans); color: var(--k-faint); }
-.cd-picker-sheet li svg.i { grid-column: 3; grid-row: 1 / span 2; align-self: center; width: 18px; height: 18px; color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); }
+.cd-picker-sheet li svg.i { grid-column: 3; grid-row: 1 / span 2; align-self: center; width: 18px; height: 18px; color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); }
 .cd-picker-none { color: var(--k-faint); cursor: default !important; font-size: 14px; }
 .cd-task { display: grid; gap: 6px; }
 .cd-task > span { font: 500 12.5px/1.2 var(--k-sans); color: var(--k-ink-soft); }
@@ -349,7 +349,7 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
 
 .cd-picker-action { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 16px; border: 0; border-top: 1px solid var(--k-hair); background: var(--k-ground); font: 700 15px/1 var(--k-sans); color: var(--k-ink); text-align: left; cursor: pointer; }
 .cd-picker-action:hover, .cd-picker-action:focus-visible { background: var(--k-hover); color: var(--k-plum); outline: none; }
-.cd-picker-action svg.i { width: 18px; height: 18px; color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); }
+.cd-picker-action svg.i { width: 18px; height: 18px; color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); }
 .cd-naming { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
 .cd-naming .cd-task { flex: 1 1 260px; }
 .cd-naming input { min-height: 52px; padding: 0 16px; border: 2px solid var(--k-hair); border-radius: var(--k-r-s); background: var(--k-lift); font: 500 17px/1 var(--k-sans); color: var(--k-ink); outline: none; }
@@ -468,7 +468,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .call .cv { flex: none; font-weight: 700; font-size: 14px; }
 .call code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 13px var(--k-mono); color: var(--k-plum); }
 .call .cm { margin-left: auto; flex: none; font-size: 13px; color: var(--k-on-surface-variant); white-space: nowrap; }
-.call .cm.is-failed { color: var(--k-suo-deep); font-weight: 700; }
+.call .cm.is-failed { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 700; }
 .cbody { padding: 0 12px 12px 50px; }
 .cbody .urushi { margin: 0; max-height: 320px; overflow: auto; padding: 14px 16px; border-radius: var(--k-r-l); background: #2a1d22; color: #f3e9e0; font: 12.5px/1.6 var(--k-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cbody .urushi .c { color: #a8969c; }
@@ -520,7 +520,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-menu button { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border: 0; border-radius: var(--k-r-m); background: none; font: 600 14px/1.2 var(--k-sans); color: var(--k-on-surface); text-align: left; cursor: pointer; }
 .cd-menu button:hover:not(:disabled) { background: var(--k-container-high); }
 .cd-menu button:disabled { opacity: .45; cursor: default; }
-.cd-menu button.is-danger { color: var(--k-suo-deep); background: var(--k-primary-container); }
+.cd-menu button.is-danger { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); background: var(--k-primary-container); }
 .cd-tabs { margin-left: 20px; }
 .cd-tabs [role="tab"] svg.i { display: none; }
 .cd-quietbutton { min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--k-r-full); background: transparent; font: 700 13px/1 var(--k-sans); color: inherit; cursor: pointer; }
@@ -573,7 +573,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-deploy-view { max-height: calc(100vh - 56px); padding: 6px; }
 .cd-deploy-tab { display: none !important; }
 .cd-deployments { display: grid; gap: 14px; }
-.cd-deployments h2 { margin: 6px 4px 2px; font: 700 15px/1.2 var(--k-sans); letter-spacing: .02em; color: var(--k-suo); }
+.cd-deployments h2 { margin: 6px 4px 2px; font: 700 15px/1.2 var(--k-sans); letter-spacing: .02em; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .cd-deployments h3 { margin: 12px 4px 0; font: 700 13px/1.2 var(--k-sans); color: var(--k-on-surface-variant); }
 .cd-deployments .cd-preview { display: grid; grid-template-columns: auto minmax(0, 1fr); }
 .cd-deployments .cd-preview-acts { grid-column: 1 / -1; }
@@ -593,7 +593,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-dep-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px; font-size: 13px; color: var(--k-on-surface-variant); }
 .cd-dep-foot svg.i { width: 16px; height: 16px; margin-right: 6px; }
 .cd-quietbutton { display: inline-flex; align-items: center; }
-.cd-quietbutton.is-danger { color: var(--k-suo-deep); background: var(--k-primary-container); }
+.cd-quietbutton.is-danger { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); background: var(--k-primary-container); }
 .cd-deploy-inline { padding: 18px 24px 28px; }
 .cd-deploy-inline .cd-deployments { max-width: 560px; }
 
@@ -624,7 +624,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-ws-acts { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 2px 4px; margin-left: auto; }
 .cd-ws-acts .cd-faint { margin-right: 6px; font-size: 13px; }
 .cd-ws-acts .k-seal { margin-left: 8px; }
-.cd-linkbutton { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--k-r-full); background: transparent; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; white-space: nowrap; }
+.cd-linkbutton { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border: 0; border-radius: var(--k-r-full); background: transparent; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font: 700 14px/1 var(--k-sans); cursor: pointer; white-space: nowrap; }
 .cd-linkbutton:hover { background: var(--k-secondary-container); }
 .cd-linkbutton svg.i { width: 16px; height: 16px; }
 /* the three views as one segmented control across the card */
@@ -698,14 +698,14 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 /* steering: a message sent while it works waits, faintly, until it's read */
 .cd-ask.is-queued { opacity: .7; }
 .cd-ask.is-queued::after { content: "Queued · read when this step ends"; justify-self: end; font-size: 12px; color: var(--k-on-primary-container); }
-.cd-stop { color: var(--k-suo-deep); }
+.cd-stop { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-stop:hover { background: var(--k-primary-container) !important; }
 
 /* thinking level and share, in the message box */
 .cd-effort.k-choice.is-compact .k-choice-button { min-height: 34px; padding: 0 6px 0 12px; }
 .cd-effort .k-choice-text small { font-weight: 700; opacity: .7; }
 .cd-usage { font-size: 12.5px; color: var(--k-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.cd-usage.is-full { color: var(--k-suo-deep); font-weight: 700; }
+.cd-usage.is-full { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 700; }
 @media (max-width: 720px) { .cd-usage { display: none; } }
 /* the message box is the same paper as the conversation, held by a faint rule */
 .cd-composer { background: var(--k-container-lowest); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
@@ -720,7 +720,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-picker-field:hover:not(:disabled) { background: color-mix(in srgb, var(--k-on-surface) 6%, var(--k-container-highest)); }
 .cd-picker.is-open .cd-picker-field, .cd-picker-field:focus-visible { background: var(--k-container-high); box-shadow: inset 0 -2px 0 var(--k-app-accent); }
 .cd-picker-label { font: 700 12px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-on-surface-variant); }
-.cd-picker.is-open .cd-picker-label { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); }
+.cd-picker.is-open .cd-picker-label { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); }
 .cd-picker-value { font: 400 16px/1.3 var(--k-sans); color: var(--k-on-surface); }
 /* the cue: a chevron in a round well that turns over while open */
 .cd-picker-field > svg.i { width: 24px; height: 24px; padding: 4px; border-radius: 50%; transform: rotate(90deg); transition: transform var(--k-t-seat) var(--k-spring), background-color var(--k-t-state); }
@@ -736,7 +736,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-picker-sheet li[aria-selected="true"]::before { left: 8px; top: 50%; bottom: auto; width: 4px; height: 18px; margin-top: -9px; border-radius: var(--k-r-s); }
 .cd-picker-name { font-weight: 700; color: var(--k-on-surface); }
 .cd-picker-sheet li em { display: none; }
-.cd-picker-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; margin-top: 4px; padding: 0 14px; border: 0; border-top: 1px solid var(--k-container-highest); border-radius: var(--k-r-s) 0 var(--k-r-m) var(--k-r-m); background: none; color: var(--k-suo); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.cd-picker-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; margin-top: 4px; padding: 0 14px; border: 0; border-top: 1px solid var(--k-container-highest); border-radius: var(--k-r-s) 0 var(--k-r-m) var(--k-r-m); background: none; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font: 700 14px/1 var(--k-sans); cursor: pointer; }
 .cd-picker-action:hover { background: var(--k-container-high); }
 .cd-task > span { font: 700 12px/1.2 var(--k-sans); letter-spacing: .03em; color: var(--k-on-surface-variant); }
 .cd-task textarea, .cd-task input { border: 0; border-radius: var(--k-r-m) var(--k-r-m) 4px 4px; background: var(--k-container-highest); box-shadow: inset 0 -2px 0 transparent; font-size: 16px; }
@@ -745,7 +745,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 /* tasks grouped by project */
 .cd-project { display: grid; gap: 2px; }
 .cd-project-head { display: flex; align-items: center; gap: 8px; margin: 10px 0 4px; padding-right: 4px; }
-.cd-project-head .cd-mono { font: 700 13px/1.2 var(--k-mono); color: var(--k-suo); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-project-head .cd-mono { font: 700 13px/1.2 var(--k-mono); color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-project-head small { font: 600 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
 .cd-project-new { width: 30px !important; height: 30px !important; margin-left: auto; opacity: 0; transition: opacity var(--k-t-state); }
 .cd-project:hover .cd-project-new, .cd-project-new:focus-visible { opacity: 1; }
@@ -838,7 +838,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-run[data-state="running"] .cd-run-state i { background: var(--k-moss); box-shadow: 0 0 0 4px color-mix(in srgb, var(--k-moss) 22%, transparent); }
 .cd-run[data-state="starting"] .cd-run-state i { background: var(--k-moss); animation: cd-run-beat 1.2s var(--k-spring) infinite alternate; }
 .cd-run[data-state="crashed"] .cd-run-state i, .cd-run[data-state="down"] .cd-run-state i { background: var(--k-suo-deep); box-shadow: 0 0 0 4px var(--k-primary-container); }
-.cd-run[data-state="crashed"] .cd-run-state b { color: var(--k-suo-deep); }
+.cd-run[data-state="crashed"] .cd-run-state b { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 @keyframes cd-run-beat { from { opacity: .35; transform: scale(.8); } }
 .cd-run-kind { padding: 5px 12px; border-radius: var(--k-r-full); background: var(--k-container-highest); font: 600 12.5px/1.2 var(--k-sans); color: var(--k-on-surface-variant); }
 .cd-run-acts { display: flex; align-items: center; gap: 4px; margin-left: auto; }
@@ -854,9 +854,9 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-limits-disk { display: inline-flex; align-items: center; gap: 8px; }
 .cd-limits-disk i { width: 72px; height: 6px; border-radius: var(--k-r-full); background: var(--k-container-highest); overflow: hidden; }
 .cd-limits-disk b { display: block; height: 100%; border-radius: inherit; background: var(--k-app-accent); }
-.cd-limits.is-full .cd-limits-disk { color: var(--k-suo-deep); font-weight: 700; }
+.cd-limits.is-full .cd-limits-disk { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 700; }
 .cd-limits.is-full .cd-limits-disk b { background: var(--k-suo-deep); }
-.cd-limits em { flex-basis: 100%; font-style: normal; color: var(--k-suo-deep); }
+.cd-limits em { flex-basis: 100%; font-style: normal; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 
 /* asking for the person's Drive: a card in kraft brown, its answer a quiet note */
 .cd-access-ink { display: block; }
@@ -963,8 +963,8 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 /* Not the open title's room taken: the name runs under the button only while it shows. */
 .cd-row:hover .cd-row-open b, .cd-row:focus-within .cd-row-open b { padding-right: 32px; }
 .cd-row-menu { position: fixed; left: auto; bottom: auto; min-width: 180px; transform-origin: top right; }
-.cd-row-menu button.is-danger { color: var(--k-suo-deep); }
-.cd-row-menu button.is-danger:hover, .cd-row-menu button.is-danger:focus-visible { background: color-mix(in srgb, var(--k-suo) 14%, transparent); color: var(--k-suo-deep); }
+.cd-row-menu button.is-danger { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
+.cd-row-menu button.is-danger:hover, .cd-row-menu button.is-danger:focus-visible { background: color-mix(in srgb, var(--k-suo) 14%, transparent); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-row-naming { padding: 6px 4px; }
 .cd-row-naming input { width: 100%; height: 44px; padding: 0 12px; border: 2px solid var(--k-app-accent); border-radius: var(--k-r-l); background: var(--k-container-lowest); color: var(--k-on-surface); font: 500 15px/1 var(--k-sans); outline: none; }
 .cd-row-confirm { padding: 2px 2px 2px 12px; font: 600 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
@@ -1107,7 +1107,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 @keyframes cd-seal-breathe { 50% { transform: scale(.93); } }
 @keyframes cd-seal-ring { 0% { opacity: .45; transform: scale(.85); } 70%, 100% { opacity: 0; transform: scale(1.25); } }
 /* The magic: suō letters rising in turn, a brush stroke drawn under them, ink sparks off the shape. */
-.cd-thinking.is-artifact { color: var(--k-suo-deep); }
+.cd-thinking.is-artifact { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-thinking.is-artifact .cd-now-letter { animation: cd-magic 1.7s var(--k-ease-settle) infinite; animation-delay: calc(var(--i) * 55ms); }
 @keyframes cd-magic { 0%, 70%, 100% { transform: none; opacity: 1; } 25% { transform: translateY(-3px) rotate(-3deg); opacity: .7; } }
 .cd-thinking.is-artifact .cd-now::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 2px; border-radius: 2px 1px 2px 1px; background: var(--k-suo); opacity: .55; transform-origin: left; animation: cd-stroke 2.2s var(--k-ease-settle) infinite; }
@@ -1127,13 +1127,13 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 /* ── artifacts: a page it made, in the chat, beside it, or full screen ── */
 .cd-artifact { display: grid; gap: 0; margin: 0; border-radius: var(--k-r-xl); background: var(--k-container-low); overflow: hidden; min-width: 0; }
 .cd-artifact-head { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 8px 6px 14px; }
-.cd-artifact-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: none; color: var(--k-suo-deep); }
+.cd-artifact-mark { display: grid; place-items: center; width: 32px; height: 32px; flex: none; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-artifact-mark .i { width: 18px; height: 18px; }
 .cd-artifact-name { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .cd-artifact-name b { font: 600 15px/1.25 var(--k-display); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-artifact-name small { font: 500 12px/1 var(--k-sans); color: var(--k-on-surface-variant); }
 .cd-artifact-writing { display: inline-flex; align-items: center; gap: 6px; }
-.cd-artifact-writing .cd-morph { width: 13px; height: 13px; color: var(--k-suo); }
+.cd-artifact-writing .cd-morph { width: 13px; height: 13px; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .cd-artifact-acts { display: flex; gap: 2px; flex: none; }
 .cd-artifact-body { position: relative; margin: 0 6px 6px; border-radius: calc(var(--k-r-xl) - 6px); overflow: hidden; background: var(--k-surface); transition: height var(--k-t-seat) var(--k-ease-settle); }
 .cd-artifact-frame { display: block; width: 100%; height: 100%; border: 0; background: transparent; }
@@ -1222,14 +1222,14 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-scene-volume-range:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 2px; border-radius: 6px; }
 .cd-scene-mute { margin-top: 2px; }
 .cd-scene-time { font: 600 12px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); white-space: nowrap; }
-.cd-scene-writing { color: var(--k-suo); }
+.cd-scene-writing { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 
 /* an animation's sliders: the scene's parameters, Kimono's controls */
 .cd-scene-controls { display: grid; gap: 0; }
 .cd-scene-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px 18px; margin: -2px 6px 0; padding: 10px 16px 4px; background: var(--k-container); }
 .cd-scene-param { display: grid; gap: 2px; min-width: 0; }
 .cd-scene-param-head { display: flex; justify-content: space-between; gap: 8px; font: 600 13px/1.2 var(--k-sans); color: var(--k-on-surface); }
-.cd-scene-param-head output { font-variant-numeric: tabular-nums; color: var(--k-suo); }
+.cd-scene-param-head output { font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .cd-scene-params + .cd-scenebar { margin-top: 0; }
 
 /* the model and thinking chips: small and quiet, beside the limits */
@@ -1364,7 +1364,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-sharedby { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .cd-sharedby > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-face.portrait { flex: none; }
-.cd-list b svg.i { width: 15px; height: 15px; margin-right: 6px; vertical-align: -2px; color: var(--k-suo); }
+.cd-list b svg.i { width: 15px; height: 15px; margin-right: 6px; vertical-align: -2px; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .cd-ws-id .cd-ws-shared { margin: 4px 0 0; font: 500 13.5px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
 
 /* in a shared chat, whose message it is, just above it */
@@ -1448,7 +1448,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-side-sec > h2 { display: flex; align-items: center; gap: 8px; margin: 0 4px; }
 .cd-side-count { margin-left: auto; font: 600 12.5px/1 var(--k-mono); letter-spacing: 0; }
 .is-add { color: var(--k-moss-deep); font-style: normal; }
-.is-del { color: var(--k-suo-deep); font-style: normal; }
+.is-del { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-style: normal; }
 .cd-side-app { overflow: hidden; border-radius: var(--k-r-xl); background: var(--k-container-high); box-shadow: inset 0 0 0 1px var(--k-container-highest); }
 .cd-side-app .cd-app-bar { padding: 6px 6px 6px 14px; }
 .cd-side-app .cd-app-bar .cd-mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
@@ -1523,14 +1523,14 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-progress > summary.cd-progress-head { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container); cursor: pointer; list-style: none; }
 .cd-progress > summary.cd-progress-head::-webkit-details-marker { display: none; }
 .cd-progress[open] > summary.cd-progress-head { border-radius: var(--k-r-l) var(--k-r-l) 6px 6px; }
-.cd-progress-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; color: var(--k-suo); }
+.cd-progress-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .cd-progress-mark .i { width: 20px; height: 20px; }
 .cd-progress-text { display: grid; gap: 7px; flex: 1; min-width: 0; }
 .cd-progress-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .cd-progress-label b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.25 var(--k-sans); color: var(--k-on-surface); }
 .cd-progress-label .cd-groupmarks { flex: none; }
 /* Kimono's own wavy ink bar (InkWave), in suō; grey once it stopped */
-.cd-progress-wave { display: block; width: 100%; color: var(--k-suo); }
+.cd-progress-wave { display: block; width: 100%; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .cd-progress[data-state="stopped"] .cd-progress-wave { color: var(--k-on-surface-variant); }
 .cd-progress-text small { font: 500 12px/1.2 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
 .cd-progress > .call-list { margin-top: 4px; }
@@ -1662,7 +1662,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-row-faces .cd-face { box-shadow: 0 0 0 2px var(--k-container-low); border-radius: 50%; }
 .cd-row-faces .cd-face + .cd-face { margin-left: -6px; }
 .cd-row-more { margin-left: 4px; font-size: 11px; color: var(--k-on-surface-variant); }
-.cd-typing { display: inline-flex; align-items: center; gap: 6px; color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); font-weight: 600; }
+.cd-typing { display: inline-flex; align-items: center; gap: 6px; color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); font-weight: 600; }
 .cd-typing-dots { display: inline-flex; gap: 2.5px; font-style: normal; }
 .cd-typing-dots b { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: cd-typing 1.2s var(--k-ease-settle) infinite; }
 .cd-typing-dots b:nth-child(2) { animation-delay: .15s; }
@@ -1714,4 +1714,4 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* Near the longest message it takes, a quiet count beside the box's tools. */
 .cd-entry-count { align-self: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); white-space: nowrap; }
-.cd-entry-count.is-over { color: var(--k-suo-deep); font-weight: 700; }
+.cd-entry-count.is-over { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 700; }

@@ -51,7 +51,7 @@
 .fp-md ul, .fp-md ol { padding-left: 1.4em; }
 .fp-md li { margin: .15em 0; }
 .fp-md li input[type="checkbox"] { margin: 0 6px 0 -1.2em; accent-color: var(--k-app-accent); }
-.fp-md a { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-ink)); text-decoration: underline; text-underline-offset: 2px; }
+.fp-md a { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); text-decoration: underline; text-underline-offset: 2px; }
 .fp-md code { padding: 1px 5px; border-radius: var(--k-r-s); background: var(--k-container-high); font: 500 12.5px/1.5 var(--k-mono); }
 .fp-md blockquote { padding: 2px 0 2px 14px; border-left: 3px solid var(--k-container-highest); color: var(--k-on-surface-variant); }
 .fp-md hr { margin: 1.2em 0; border: 0; border-top: 1px solid var(--k-container-highest); }

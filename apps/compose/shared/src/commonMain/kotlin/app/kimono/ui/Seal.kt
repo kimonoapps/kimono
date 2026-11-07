@@ -46,11 +46,17 @@ fun Seal(
     }
     when (tone) {
         /* Busy keeps its colour: it is working, not unavailable. */
-        SealTone.Primary -> Button(
-            onClick = onClick, modifier = sized, enabled = enabled && !busy, shapes = ButtonDefaults.shapes(), contentPadding = padding,
-            colors = if (busy) ButtonDefaults.buttonColors(disabledContainerColor = MaterialTheme.colorScheme.primary, disabledContentColor = MaterialTheme.colorScheme.onPrimary) else ButtonDefaults.buttonColors(),
-            content = content,
-        )
+        /* By night primary is cream (text's colour); the seal keeps its red, from the container. */
+        SealTone.Primary -> {
+            val night = app.kimono.theme.LocalNight.current
+            val fill = if (night) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.primary
+            val ink = if (night) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onPrimary
+            Button(
+                onClick = onClick, modifier = sized, enabled = enabled && !busy, shapes = ButtonDefaults.shapes(), contentPadding = padding,
+                colors = ButtonDefaults.buttonColors(containerColor = fill, contentColor = ink, disabledContainerColor = if (busy) fill else ButtonDefaults.buttonColors().disabledContainerColor, disabledContentColor = if (busy) ink else ButtonDefaults.buttonColors().disabledContentColor),
+                content = content,
+            )
+        }
         SealTone.Quiet -> FilledTonalButton(onClick = onClick, modifier = sized, enabled = enabled && !busy, shapes = ButtonDefaults.shapes(), contentPadding = padding, content = content)
         SealTone.Danger -> Button(
             onClick = onClick, modifier = sized, enabled = enabled && !busy, shapes = ButtonDefaults.shapes(), contentPadding = padding,

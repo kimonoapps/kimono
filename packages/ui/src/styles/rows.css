@@ -55,7 +55,7 @@
 .k-code > code, .k-command > code { font: inherit; color: inherit; white-space: inherit; }
 .k-code .k-key { color: var(--k-plum); }
 .k-code .k-str { color: var(--k-moss-deep); }
-.k-code .k-num { color: var(--k-suo-deep); }
+.k-code .k-num { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .k-code .k-lit { color: var(--k-ink-soft); }
 .k-code.k-urushi { border-left: 0; border-radius: var(--k-r-2); background: var(--k-urushi); color: var(--k-urushi-text); }
 .k-code.k-urushi .k-key { color: var(--k-sakura); }
@@ -66,7 +66,7 @@
 /* A sequence, where the order is the information. */
 .k-steps { display: flex; flex-direction: column; gap: var(--k-space-5); margin: 0; padding: 0; list-style: none; counter-reset: k-step; }
 .k-steps > li { counter-increment: k-step; position: relative; padding-left: var(--k-space-6); }
-.k-steps > li::before { content: counter(k-step); position: absolute; left: 0; top: 1px; font: 600 13px/1.5 var(--k-mono); color: var(--k-suo); }
+.k-steps > li::before { content: counter(k-step); position: absolute; left: 0; top: 1px; font: 600 13px/1.5 var(--k-mono); color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .k-steps > li > h3 { margin: 0 0 var(--k-space-1); font: 600 16px/1.4 var(--k-sans); color: var(--k-ink); }
 .k-steps > li > p { margin: 0; max-width: 68ch; font: 14px/1.55 var(--k-sans); color: var(--k-ink-soft); }
 

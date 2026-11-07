@@ -77,11 +77,11 @@
 }
 .tools-masthead-bloom { position: absolute; right: -60px; bottom: -120px; width: 320px; height: 320px; opacity: .16; pointer-events: none; }
 .tools-masthead-copy { position: relative; min-width: 0; }
-.tools-kicker { font: 600 12px/1.4 var(--k-sans); letter-spacing: .01em; color: var(--k-suo-deep); }
+.tools-kicker { font: 600 12px/1.4 var(--k-sans); letter-spacing: .01em; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .tools-masthead h1 { margin-top: var(--k-space-2); font: 600 36px/1.1 var(--k-display); letter-spacing: -.015em; color: var(--k-plum); }
 .tools-lead { max-width: 58ch; margin-top: var(--k-space-3); font: 16px/1.5 var(--k-sans); color: var(--k-ink-soft); }
 .tools-masthead-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--k-space-2) var(--k-space-4); margin-top: var(--k-space-5); font-size: 13px; color: var(--k-ink-soft); }
-.tools-masthead-meta a { min-height: 32px; display: inline-flex; align-items: center; gap: 4px; color: var(--k-suo-deep); font-weight: 600; }
+.tools-masthead-meta a { min-height: 32px; display: inline-flex; align-items: center; gap: 4px; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 600; }
 .tools-masthead-meta a:hover { text-decoration: underline; text-underline-offset: 4px; }
 .tools-masthead-actions { position: relative; z-index: 1; justify-self: end; }
 
@@ -92,7 +92,7 @@
 .tools-disabled-note > .k-seal { margin-left: auto; }
 .tools-disabled-note strong { color: var(--k-ink); font-weight: 600; }
 .tools-disabled-note code { padding: 1px 6px; border-radius: var(--k-r-1); background: var(--k-sheet); color: var(--k-ink); font-size: 12px; }
-.tools-disabled-note a:not(.k-seal) { color: var(--k-suo-deep); font-weight: 600; }
+.tools-disabled-note a:not(.k-seal) { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 600; }
 .tools-disabled-note a:not(.k-seal):hover { text-decoration: underline; text-underline-offset: 4px; }
 
 /* ─── the key drawer ─── a flat wood plank, pulled out of the sheet, pushing the rows down. */
@@ -226,7 +226,7 @@
 .tools-response-empty { padding: var(--k-space-2) 0; font-size: 13px; line-height: 1.5; color: var(--k-ink-soft); }
 .tools-response-empty > span { display: block; margin-bottom: var(--k-space-1); font-weight: 600; color: var(--k-ink); }
 .tools-response-empty > p { margin: 0; }
-.tools-error { margin-top: var(--k-space-2); font-size: 13px; font-weight: 600; color: var(--k-suo-deep); }
+.tools-error { margin-top: var(--k-space-2); font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 
 .tools-reference-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--k-space-3); padding: var(--k-space-5) 40px; border-top: var(--k-hairline) solid var(--k-hair); background: color-mix(in srgb, var(--k-ground) 55%, transparent); font-size: 13px; color: var(--k-ink-soft); }
 .tools-reference-footer code { padding: 1px 5px; border-radius: var(--k-r-1); background: var(--k-fold); color: var(--k-ink); font-size: 12px; }
@@ -268,7 +268,7 @@
   .tools-parameter-table td:first-child { white-space: normal; }
 }
 
-.tools-key-warning { padding: 12px 18px; margin: 0; background: var(--k-fold); color: var(--k-suo-deep); font-weight: 700; }
+.tools-key-warning { padding: 12px 18px; margin: 0; background: var(--k-fold); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 700; }
 .tools-key-warning a { color: inherit; text-underline-offset: 3px; }
 
 /* ── to the mockup (design/mockups/m3-everywhere.html, Tools) ──
@@ -305,7 +305,7 @@
 .tools-parameter-table td:first-child { border-radius: 12px 0 0 12px; }
 .tools-parameter-table td:last-child { border-radius: var(--k-r-s) 12px 12px 0; }
 .tools-foot { margin: 18px 8px 0; font-size: 14px; color: var(--k-on-surface-variant); }
-.tools-foot a { color: var(--k-suo); font-weight: 700; }
+.tools-foot a { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); font-weight: 700; }
 .tools-operation-summary .k-method { flex: none; display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: var(--k-r-s); background: var(--k-container-highest); font: 700 12px/1 var(--k-mono); color: var(--k-on-surface-variant); }
 .tools-operation-summary { display: flex; align-items: center; flex-wrap: wrap; }
 .tools-operation-summary .tools-access { margin-left: auto; }

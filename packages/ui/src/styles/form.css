@@ -9,7 +9,7 @@
 
 .k-field { display: grid; gap: var(--k-space-2); }
 .k-field > span { font: 700 13px/1.4 var(--k-sans); letter-spacing: .02em; color: var(--k-on-surface-variant); }
-.k-field > span > em { margin-left: var(--k-space-2); font: 500 13px/1.4 var(--k-sans); color: var(--k-suo-deep); }
+.k-field > span > em { margin-left: var(--k-space-2); font: 500 13px/1.4 var(--k-sans); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .k-field > small { font: 14px/1.45 var(--k-sans); color: var(--k-on-surface-variant); }
 
 .k-field input, .k-field select, .k-field textarea,
