@@ -16,8 +16,8 @@ export type Rating = 1 | -1;
 
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max)}…`;
 
-type Step = { said?: string; tool?: string; detail?: string; ok?: boolean; sent?: string[]; artifact?: string };
-type Answer = { asked: string; attachments: string[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
+export type Step = { said?: string; tool?: string; detail?: string; ok?: boolean; sent?: string[]; artifact?: string };
+export type Answer = { asked: string; attachments: string[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
 
 /** One turn as the bank keeps it: from the ask before [doneSeq] to that done. */
 function answerAt(db: DatabaseSync, workspaceId: string, doneSeq: number): Answer | null {
