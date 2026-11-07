@@ -1,5 +1,5 @@
 import { accentRamp } from "./accent";
-import { inkFilters, inkRandom, mixHex, ringPath, washGradient } from "./ink";
+import { brushAttributes, inkFilters, inkRandom, mixHex, ringPath, washGradient } from "./ink";
 
 /*
  * 家紋 Kamon — each Drive space's crest: one flower cut from paper in a ring,
@@ -94,12 +94,22 @@ export function crestSvg(name: string, colour: string): string {
   const random = inkRandom(seedOf(unique));
   const draw = (shapes: Shape[]) => shapes.flatMap((shape) => shape.turns.map((turn) =>
     `<path d="${shape.d}"${turn ? ` transform="rotate(${turn} 50 50)"` : ""}></path>`)).join("");
+  /* Each petal laid on by hand, as an app's bloom is: a touch off its turn and
+     its size, washed so the colour pools at the rim, then outlined with a
+     broken brush line that lifts off now and then. */
+  const outline = mixHex(ink, "#000000", .3);
+  const brushed = kind.ink.flatMap((shape) => shape.turns.map((turn) => {
+    const t = (turn + (random() - .5) * 7).toFixed(1), k = (.95 + random() * .08).toFixed(3);
+    const place = `transform="rotate(${t} 50 50) translate(50 50) scale(${k}) translate(-50 -50)"`;
+    return `<g ${place}><path d="${shape.d}" fill="url(#cf-${unique})" filter="url(#ink-wash-${unique})" opacity=".94"></path>`
+      + `<path d="${shape.d}" ${brushAttributes(random, unique, .5, outline)}></path></g>`;
+  })).join("");
   const ring = ringPath(random, 46.5, .18 + random() * .25);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" style="overflow:visible"><defs>${inkFilters(unique, 1 + seedOf(unique) % 60)}`
     + washGradient(`cw-${unique}`, mixHex(paper, "#ffffff", .55), paper, mixHex(paper, ink, .18), "62%")
-    + `<radialGradient id="cf-${unique}" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="44"><stop offset="0" stop-color="${mixHex(ink, "#ffffff", .28)}"></stop><stop offset=".7" stop-color="${ink}"></stop><stop offset="1" stop-color="${mixHex(ink, "#000000", .12)}"></stop></radialGradient></defs>`
+    + `<radialGradient id="cf-${unique}" gradientUnits="userSpaceOnUse" cx="50" cy="50" r="44"><stop offset="0" stop-color="${mixHex(ink, "#ffffff", .5)}"></stop><stop offset=".55" stop-color="${mixHex(ink, "#ffffff", .2)}"></stop><stop offset=".85" stop-color="${ink}"></stop><stop offset="1" stop-color="${mixHex(ink, "#000000", .15)}"></stop></radialGradient></defs>`
     + `<circle cx="50" cy="50" r="46" fill="url(#cw-${unique})" filter="url(#ink-wash-${unique})"></circle>`
-    + `<g fill="url(#cf-${unique})" opacity=".96" filter="url(#ink-fine-${unique})">${draw(kind.ink)}</g>`
-    + `<g fill="${paper}">${draw(kind.paper)}</g>`
+    + `<g>${brushed}</g>`
+    + `<g fill="${paper}" filter="url(#ink-fine-${unique})">${draw(kind.paper)}</g>`
     + `<path d="${ring}" fill="none" stroke="${ink}" stroke-width="3.6" stroke-linecap="round" stroke-dasharray="${(120 + random() * 60).toFixed(0)} ${(5 + random() * 5).toFixed(0)}" opacity=".88" filter="url(#ink-brush-${unique})"></path></svg>`;
 }
