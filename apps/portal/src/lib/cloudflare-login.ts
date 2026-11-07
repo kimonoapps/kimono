@@ -25,7 +25,7 @@ function invocation(home: string, args: (path: { cert: string }) => string[]) {
   const configured = process.env.CLOUDFLARED_BIN;
   const binary = configured || "/usr/local/bin/cloudflared";
   const certPath = join(home, ".cloudflared", "cert.pem");
-  if (existsSync(binary)) return { command: binary, args: args({ cert: certPath }), env: { ...process.env, HOME: home }, certPath };
+  if (existsSync(/*turbopackIgnore: true*/ binary)) return { command: binary, args: args({ cert: certPath }), env: { ...process.env, HOME: home }, certPath };
   const uid = process.getuid?.() ?? 1000;
   const gid = process.getgid?.() ?? 1000;
   return {
@@ -38,7 +38,7 @@ function invocation(home: string, args: (path: { cert: string }) => string[]) {
 
 function execute(home: string, args: (path: { cert: string }) => string[]) {
   const command = invocation(home, args);
-  const child = spawn(command.command, command.args, { env: command.env, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(/*turbopackIgnore: true*/ command.command, command.args, { env: command.env, stdio: ["ignore", "pipe", "pipe"] });
   return { child, certPath: command.certPath };
 }
 

@@ -23,9 +23,9 @@ const nextConfig: NextConfig = {
       keep("/art/:file*", 86_400),
     ];
   },
-  /* Pages move between each other with the browser's view transitions (components/page-transition.tsx). */
+  /* Pages move between each other with the browser's view transitions
+     (components/page-transition.tsx); Next needs no setting for them now. */
   experimental: {
-    viewTransition: true,
     /* Links fetch their whole page on hover (components/crossing.tsx). A page
        fetched that way is reused for 30 seconds at most, so a quick press is
        instant and a later one is never more than half a minute stale. */

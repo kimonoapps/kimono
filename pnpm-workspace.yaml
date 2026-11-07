@@ -7,4 +7,4 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 patchedDependencies:
-  next@16.2.2: patches/next@16.2.2.patch
+  next@16.4.5: patches/next@16.4.5.patch
