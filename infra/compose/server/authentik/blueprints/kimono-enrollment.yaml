@@ -142,6 +142,19 @@ entries:
     attrs:
       session_duration: seconds=0
 
+  # A finished flow otherwise lands on Authentik's own user page. Send the new
+  # account to the Portal at its public address instead, where the sign-in it
+  # just got carries straight through.
+  - id: kimono-enrollment-redirect
+    model: authentik_stages_redirect.redirectstage
+    state: present
+    identifiers:
+      name: kimono-enrollment-redirect
+    attrs:
+      mode: static
+      target_static: !Env KIMONO_PORTAL_URL
+      keep_context: false
+
   - model: authentik_flows.flowstagebinding
     state: present
     identifiers:
@@ -169,3 +182,10 @@ entries:
       target: !KeyOf kimono-enrollment-flow
       stage: !KeyOf kimono-enrollment-login
       order: 40
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf kimono-enrollment-flow
+      stage: !KeyOf kimono-enrollment-redirect
+      order: 50
