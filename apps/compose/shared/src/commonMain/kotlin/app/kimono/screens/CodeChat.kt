@@ -400,6 +400,9 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
         val last = items.lastOrNull()
         when (val e = stored.event) {
             is CodeEvent.Ask -> items += Item.Ask(stored.seq, e)
+            /* sent while it worked: read now, so no longer waiting; or never read, because it was stopped */
+            is CodeEvent.Steered -> for (i in items.indices) { val a = items[i]; if (a is Item.Ask && a.key in e.seqs) items[i] = a.copy(event = a.event.copy(queued = false)) }
+            is CodeEvent.Dropped -> for (i in items.indices) { val a = items[i]; if (a is Item.Ask && a.key in e.seqs) items[i] = a.copy(event = a.event.copy(dropped = true)) }
             is CodeEvent.Say -> items += Item.Say(stored.seq, e.text)
             is CodeEvent.Tool -> {
                 val call = ToolCall(e).also { calls[e.id] = it }
@@ -703,7 +706,7 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
             app.kimono.ui.Portrait(person?.picture, person?.name, other, 22.dp)
         }
         Column(
-            Modifier.widthIn(max = 320.dp).alpha(if (ask.queued) .72f else 1f).clip(RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp))
+            Modifier.widthIn(max = 320.dp).alpha(if (ask.dropped) .5f else if (ask.queued) .72f else 1f).clip(RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp))
                 .then(if (editable) Modifier.combinedClickable(onClick = {}, onLongClickLabel = "Edit", onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); problem = null; editing = ask.text }) else Modifier)
                 .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -716,7 +719,8 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
                 }
             }
         }
-        if (ask.queued) Text("Read as soon as the current step ends", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, end = 6.dp))
+        if (ask.dropped) Text("Not sent: it was stopped first", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, end = 6.dp))
+        else if (ask.queued) Text("Read after its current step", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, end = 6.dp))
     }
     opened?.let { a -> OpenAttachment(code, platform, w, a) { opened = null } }
 }
@@ -1241,7 +1245,8 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         }
                     }, onDrive = if (w.drive != null && w.isOwner) ({ choosing = true }) else null)
                     BasicTextField(
-                        value = text, onValueChange = { text = it; code.keep("draft:${w.id}", it) },
+                        /* the longest message it takes (the server refuses more) */
+                        value = text, onValueChange = { val kept = it.take(32_000); text = kept; code.keep("draft:${w.id}", kept) },
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                         cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
                         maxLines = 8,

@@ -44,7 +44,9 @@ type Live = {
   listeners: Map<string, Set<(event: StoredEvent) => void>>;
   turns: Map<string, AbortController>;
   /** Messages sent while a turn was running, per workspace: the next turn reads them. */
-  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[]; effort?: Effort; model?: ModelChoice }[]>;
+  queued?: Map<string, { user: ApiUser; prompt: string; attachments: Attachment[]; effort?: Effort; model?: ModelChoice; seq?: number }[]>;
+  /** Of those, the ones handed to the running agent (.kimono/steer/<seq>.txt), not yet read, per workspace. */
+  steering?: Map<string, Set<number>>;
   /** What to tell the agent when it should carry on by itself (an access answer), once the current turn ends. */
   carryOn?: Map<string, { user: ApiUser; notes: string[] }>;
 };
@@ -227,6 +229,40 @@ export function typersIn(ids: string[], me: string, now = Date.now()): Record<st
   return out;
 }
 
+/* ── steering: a message sent while the agent works is read at its next step ── */
+
+async function steer(config: CodeConfig, workspace: Workspace, user: ApiUser, seq: number, prompt: string) {
+  try {
+    const from = workspace.owner === user.username.toLowerCase() ? "" : `From ${user.name || user.username}: `;
+    await sandbox.write(config, workspace, `.kimono/steer/${seq}.txt`, new TextEncoder().encode(from + prompt));
+    const pending = (live.steering ??= new Map()).get(workspace.id) ?? new Set<number>();
+    pending.add(seq);
+    live.steering.set(workspace.id, pending);
+  } catch (error) { console.warn("Kimono AI couldn't hand a message to the running agent:", error instanceof Error ? error.message : error); }
+}
+
+/** Which handed-over messages the agent has read (their files gone): marked read on the timeline, and out of the queue for the next turn. */
+async function checkSteered(config: CodeConfig, workspace: Workspace, turn: string) {
+  const pending = live.steering?.get(workspace.id);
+  if (!pending?.size) return;
+  const listed = await sandbox.files(config, workspace, ".kimono/steer").catch((error) => error instanceof CodeProblem && error.status === 404 ? { entries: [] } : null);
+  if (!listed) return;
+  const left = new Set(listed.entries.map((e) => Number.parseInt(e.name, 10)));
+  const read = [...pending].filter((seq) => !left.has(seq));
+  if (!read.length) return;
+  for (const seq of read) pending.delete(seq);
+  const queue = live.queued?.get(workspace.id);
+  if (queue) live.queued!.set(workspace.id, queue.filter((m) => m.seq === undefined || !read.includes(m.seq)));
+  try { record(workspace.id, turn, { kind: "steered", seqs: read }); } catch { /* the chat was deleted */ }
+}
+
+/** Takes back what was handed over and not read, so a later turn doesn't find it again. */
+async function unsteer(config: CodeConfig, workspace: Workspace) {
+  const pending = live.steering?.get(workspace.id);
+  live.steering?.delete(workspace.id);
+  for (const seq of pending ?? []) await sandbox.removeFile(config, workspace, `.kimono/steer/${seq}.txt`).catch(() => {});
+}
+
 /** Hears every event recorded in a workspace from now on. Returns the way to stop. */
 export function listen(workspaceId: string, listener: (event: StoredEvent) => void) {
   const set = live.listeners.get(workspaceId) ?? new Set();
@@ -331,8 +367,11 @@ export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, tex
   const busy = runningTurn(db(), workspace.id);
   if (busy) {
     const queue = (live.queued ??= new Map());
-    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments, effort, model }]);
-    return record(workspace.id, busy, { kind: "ask", by: user.username, text: prompt, attachments, queued: true });
+    const asked = record(workspace.id, busy, { kind: "ask", by: user.username, text: prompt, attachments, queued: true });
+    queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments, effort, model, seq: asked.seq }]);
+    /* Handed to the agent as it works: its hooks read it after the next step (cli/internal/sandbox SteerSettings). */
+    if (prompt && !attachments.length) void steer(config, workspace, user, asked.seq, prompt);
+    return asked;
   }
   const turn = startTurn(db(), workspace.id);
   const asked = record(workspace.id, turn, { kind: "ask", by: user.username, text: prompt, attachments });
@@ -513,6 +552,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           /* A tool of theirs answered: what it cost counts against the month's Pro Tools allowance at once. */
           if (event.kind === "tool" && event.name.startsWith("mcp__composio__")) composioCalls.add(event.id);
           if (event.kind === "tool-result" && composioCalls.delete(event.id)) guardMediaBudget(db(), config, workspace.owner, portalOrigin());
+          /* after each step, see whether it read what was sent meanwhile */
+          if (event.kind === "tool-result" && live.steering?.get(workspace.id)?.size) void checkSteered(config, workspace, turn);
           /* A Pro Tool's price: what Composio charged for it, shown beside its bolt. */
           if (event.kind === "tool" && event.pro && event.tools?.length) proCalls.set(event.id, { at: Date.now(), tools: event.tools });
           const pro = event.kind === "tool-result" ? proCalls.get(event.id) : undefined;
@@ -539,6 +580,16 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
       return;
     }
     const outcome = { ...finish(result, done, failure, context), model };
+    /* What it read while it worked is answered already; what it didn't is taken back. */
+    await checkSteered(config, workspace, turn).catch(() => {});
+    await unsteer(config, workspace).catch(() => {});
+    /* Stopped means stopped: what was waiting is dropped, not started as the next turn. */
+    if (outcome.cancelled) {
+      const dropped = (live.queued?.get(workspace.id) ?? []).flatMap((m) => m.seq === undefined ? [] : [m.seq]);
+      live.queued?.delete(workspace.id);
+      live.carryOn?.delete(workspace.id);
+      if (dropped.length) record(workspace.id, turn, { kind: "dropped", seqs: dropped });
+    }
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
     noteTurnEnd(db(), turn, workspaceFor(db(), workspace.id, workspace.owner).session, lastMessage);

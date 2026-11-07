@@ -227,7 +227,8 @@ data class ContextUse(val used: Long, val window: Long?)
 
 /** One entry on a chat's timeline, in the kinds Portal stores (lib/code/events.ts). */
 sealed interface CodeEvent {
-    data class Ask(val by: String, val text: String, val attachments: List<CodeAttachment>, val queued: Boolean) : CodeEvent
+    /** [dropped]: sent while it worked and never read, because it was stopped first (set from a later "dropped" event). */
+    data class Ask(val by: String, val text: String, val attachments: List<CodeAttachment>, val queued: Boolean, val dropped: Boolean = false) : CodeEvent
     data object Started : CodeEvent
     data class Say(val text: String) : CodeEvent
     /** [pro]: it ran on one of Composio's own accounts, a Pro Tool. */
@@ -254,6 +255,9 @@ sealed interface CodeEvent {
     data class Renamed(val title: String) : CodeEvent
     /** Never stored: a message was changed, so the chat from it ([seq]) on went, and runs again from there. */
     data class Rewound(val seq: Long) : CodeEvent
+    /** Messages sent while it worked: read by it now ([Steered]), or never, because it was stopped first ([Dropped]). */
+    data class Steered(val seqs: List<Long>) : CodeEvent
+    data class Dropped(val seqs: List<Long>) : CodeEvent
     /** What it is doing right now: working, thinking, writing, tools (with the app, space or sort of tool) or artifact. */
     data class Phase(val phase: String, val tool: String?, val app: String?, val space: String?) : CodeEvent
     data object Unknown : CodeEvent
@@ -363,6 +367,8 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "artifact-draft" -> CodeEvent.ArtifactDraft(o.text("id") ?: "", o.text("name") ?: "", o.text("content") ?: "")
     "renamed" -> CodeEvent.Renamed(o.text("title") ?: "")
     "rewound" -> CodeEvent.Rewound(o["seq"]?.jsonPrimitive?.longOrNull ?: 0L)
+    "steered" -> CodeEvent.Steered((o["seqs"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it.jsonPrimitive.longOrNull } ?: emptyList())
+    "dropped" -> CodeEvent.Dropped((o["seqs"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it.jsonPrimitive.longOrNull } ?: emptyList())
     "phase" -> CodeEvent.Phase(o.text("phase") ?: "working", o.text("tool"), o.text("app"), o.text("space"))
     else -> CodeEvent.Unknown
 }

@@ -1697,3 +1697,21 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-list .cd-row-open.is-naming { position: relative; display: grid; gap: 5px; width: 100%; min-height: 64px; padding: 14px 18px; border-radius: 16px; background: var(--k-container-lowest); }
 .cd-row-name { all: unset; display: block; min-width: 0; font: 700 15px/19.5px var(--k-sans); color: var(--k-ink); box-shadow: 0 1.5px 0 var(--k-app-accent); cursor: text; }
 .cd-row-name::selection { background: color-mix(in srgb, var(--k-app-accent) 25%, transparent); }
+
+/* A message sent while it worked: waiting until it's read; and one that never was, because it was stopped. */
+.cd-ask.is-queued::after { content: "Read after its current step"; }
+.cd-ask.is-dropped { opacity: .55; }
+.cd-ask-note { justify-self: end; margin: -8px 4px 0 0; font-size: 12px; color: var(--k-on-surface-variant); }
+
+/* Markdown: a rule is a hairline; a table sits on the page in hairlines, its head a shade darker, scrolling sideways when wide. */
+.cd-md hr.cd-rule { height: 1.5px; margin: 18px 0; border: 0; border-radius: 2px; background: var(--k-outline-variant); }
+.cd-md .cd-table-wrap { margin: 10px 0; }
+.cd-table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: .94em; border: 1px solid var(--k-outline-variant); border-radius: 12px; overflow: hidden; }
+.cd-table th, .cd-table td { padding: 8px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--k-container-highest); }
+.cd-table th { font-weight: 700; background: var(--k-container); color: var(--k-on-surface); }
+.cd-table tr:last-child td { border-bottom: 0; }
+.cd-table td + td, .cd-table th + th { border-left: 1px solid var(--k-container-highest); }
+
+/* Near the longest message it takes, a quiet count beside the box's tools. */
+.cd-entry-count { align-self: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); white-space: nowrap; }
+.cd-entry-count.is-over { color: var(--k-suo-deep); font-weight: 700; }

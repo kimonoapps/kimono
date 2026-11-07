@@ -961,6 +961,13 @@ function AppName({ slug }: { slug: string }) {
   return <>{useAppLook(slug).name}</>;
 }
 
+/* The longest message it takes (the server refuses more): the box stops there, and counts down near it. */
+const maxMessage = 32_000;
+function MessageCount({ length }: { length: number }) {
+  if (length < maxMessage * .9) return null;
+  return <span className={cx("cd-entry-count", length >= maxMessage && "is-over")} aria-live="polite">{length.toLocaleString("en")} / {maxMessage.toLocaleString("en")}</span>;
+}
+
 /**
  * Send and Stop are one seal: while the agent works and nothing is written it
  * stops it; a word typed turns it back into Send. The arrow lifts away as the
@@ -1512,11 +1519,12 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
         <div className="cd-entry">
           <input ref={picker} type="file" multiple hidden onChange={(event) => { hold([...(event.target.files ?? [])]); event.target.value = ""; }} />
           <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
-          <textarea ref={field} value={prompt} rows={1} aria-label="Message" disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
+          <textarea ref={field} value={prompt} rows={1} aria-label="Message" maxLength={maxMessage} disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
             onChange={(event) => setPrompt(event.target.value)}
             onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); } }}
             onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
           <div className="cd-entry-end">
+            <MessageCount length={prompt.length} />
             <SendStop mode="send" busy={sending} disabled={!ready || Boolean(blocked)} onSend={() => void send()} />
           </div>
         </div>
@@ -1913,7 +1921,7 @@ function AppReady({ workspace, url }: { workspace: Workspace; url: string }) {
 
 type Tool = Extract<CodeEvent, { kind: "tool" }> & { result?: Extract<CodeEvent, { kind: "tool-result" }>; /** A Pro Tool's price, once Composio said. */ cost?: number };
 type Item =
-  | { type: "ask"; seq: number; at: number; event: Extract<CodeEvent, { kind: "ask" }> }
+  | { type: "ask"; seq: number; at: number; event: Extract<CodeEvent, { kind: "ask" }>; /** sent while it worked and never read: it was stopped first */ dropped?: boolean }
   | { type: "text"; seq: number; text: string }
   | { type: "tools"; seq: number; tools: Tool[]; open: boolean }
   | { type: "done"; seq: number; event: Extract<CodeEvent, { kind: "done" }> }
@@ -1940,6 +1948,11 @@ function itemsOf(events: StoredEvent[]): Item[] {
     const last = items.at(-1);
     switch (event.kind) {
       case "ask": items.push({ type: "ask", seq, at, event }); break;
+      /* sent while it worked: read now, so no longer waiting; or never read, because it was stopped */
+      case "steered": case "dropped": for (const item of items) if (item.type === "ask" && event.seqs.includes(item.seq)) {
+        if (event.kind === "steered") item.event = { ...item.event, queued: false };
+        else item.dropped = true;
+      } break;
       case "text": items.push({ type: "text", seq, text: event.text }); break;
       case "tool": {
         const tool: Tool = { ...event };
@@ -2428,10 +2441,11 @@ function Ask({ workspace, item, running }: { workspace: Workspace; item: Extract
   </form>;
   return <>
     {someoneElse ? <p className="cd-ask-by"><Face username={by} size={20} /><span>{author.name}</span></p> : null}
-    <div className={cx("cd-ask", queued && "is-queued", someoneElse && "is-theirs")} title={queued ? "Sent while it was working: read as soon as the current step ends" : undefined}>
+    <div className={cx("cd-ask", queued && !item.dropped && "is-queued", item.dropped && "is-dropped", someoneElse && "is-theirs")} title={queued && !item.dropped ? "Sent while it was working: read as soon as the current step ends" : undefined}>
       {text ? <p>{text}</p> : null}
       {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
     </div>
+    {item.dropped ? <p className="cd-ask-note">Not sent: it was stopped first</p> : null}
     {editable ? <div className="cd-ask-acts"><button type="button" className="cd-roundbutton" aria-label="Edit" title="Edit" onClick={() => { setEditing(text); setProblem(null); }}><Icon name="rename" /></button></div> : null}
   </>;
 }
@@ -2925,13 +2939,14 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     <div className="cd-entry">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
-      <textarea ref={field} value={text} rows={1} aria-label="Message"
+      <textarea ref={field} value={text} rows={1} aria-label="Message" maxLength={maxMessage}
         placeholder={blocked ? blocked : "Ask for a change, or reply"}
         disabled={Boolean(blocked)}
         onChange={(event) => { setText(event.target.value); sayTyping(event.target.value); }}
         onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}
         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       <div className="cd-entry-end">
+        <MessageCount length={text.length} />
         {/* files, model and thinking, and all usage, in the … menu; the rings only past half */}
         <Meters workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} />
         <ComposerMore workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} files={Boolean(workspace.drive && owns)} />

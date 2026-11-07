@@ -23,7 +23,7 @@ const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.9.0"
 //
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
-const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
+const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" ${KIMONO_SETTINGS:+--settings "$KIMONO_SETTINGS"} --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
 
 // Model is the Claude a turn runs on when Portal names none: the strongest, for building things.
 const Model = "claude-opus-5-5"
@@ -198,3 +198,10 @@ func (c *Config) defaults() error {
 
 // macOS runs Docker in a VM: containers reach the host as host.docker.internal.
 var dockerDesktop = runtime.GOOS == "darwin"
+
+// SteerSettings gives the agent two hooks for steering: what the person sends
+// while it works is written to .kimono/steer/<seq>.txt (by the Portal, through
+// the file API), read after each tool call as more context, and, if it arrives
+// as the agent is about to finish, keeps it going to answer. Each message is
+// read once: the hook removes its file, and the Portal sees it gone.
+const SteerSettings = `{"hooks":{"PostToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"node -e 'const fs=require(\"fs\"),d=(process.env.CLAUDE_PROJECT_DIR||\".\")+\"/.kimono/steer\";let n=[];try{n=fs.readdirSync(d).filter(x=>x.endsWith(\".txt\")).sort((a,b)=>parseInt(a)-parseInt(b))}catch{}const t=n.map(x=>{const p=d+\"/\"+x;try{const s=fs.readFileSync(p,\"utf8\");fs.rmSync(p);return s}catch{return \"\"}}).filter(Boolean).join(\"\\n\\n\");if(t)process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:\"PostToolUse\",additionalContext:\"The person sent this while you were working. Take it into account from now on:\\n\\n\"+t}}))'"}]}],"Stop":[{"hooks":[{"type":"command","command":"node -e 'const fs=require(\"fs\"),d=(process.env.CLAUDE_PROJECT_DIR||\".\")+\"/.kimono/steer\";let n=[];try{n=fs.readdirSync(d).filter(x=>x.endsWith(\".txt\")).sort((a,b)=>parseInt(a)-parseInt(b))}catch{}const t=n.map(x=>{const p=d+\"/\"+x;try{const s=fs.readFileSync(p,\"utf8\");fs.rmSync(p);return s}catch{return \"\"}}).filter(Boolean).join(\"\\n\\n\");if(t)process.stdout.write(JSON.stringify({decision:\"block\",reason:\"The person sent this while you were working. Answer it before you finish:\\n\\n\"+t}))'"}]}]}}`

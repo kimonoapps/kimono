@@ -136,7 +136,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_CHAT=" + chatFlag(chat)}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()

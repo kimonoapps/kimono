@@ -528,7 +528,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                             }
                         }, onDrive = if (marks.driveApp != null || marks.spaces.isNotEmpty()) ({ choosing = true }) else null)
                         BasicTextField(
-                            prompt, { prompt = it },
+                            prompt, { prompt = it.take(32_000) },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                             cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
                             maxLines = 10,

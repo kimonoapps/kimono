@@ -15,6 +15,10 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string; /** It ran on one of Composio's own accounts: a Pro Tool, charged to the person's allowance. */ pro?: boolean; /** The Composio tools it ran ("HIGGSFIELD_GENERATE_VIDEO"), to find what each cost. */ tools?: string[]; /** A kimono-progress call: the steps of a long piece of work show as one card with a bar. */ progress?: ToolProgress }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
+  /** Messages sent while it worked that it has now read (steering), by their seq. */
+  | { kind: "steered"; seqs: number[] }
+  /** Messages sent while it worked that were never read: it was stopped first. */
+  | { kind: "dropped"; seqs: number[] }
   /** Never stored: someone in a shared chat is typing (seq 0, gone in a few seconds). */
   | { kind: "typing"; by: string }
   /** What a Pro Tool call cost, in US dollars, as Composio charged it; read a moment after it answered. */

@@ -35,6 +35,9 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string; pro?: boolean; tools?: string[]; /** A kimono-progress call: a start (label, about seconds), a wait, what the tool said (status, percent, seconds left), or done; at is when Kimono heard it. */ progress?: { label?: string; about?: number; wait?: number; done?: boolean; status?: string; percent?: number; left?: number; at: number } }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
+  /** Messages sent while it worked that it has read, or that were dropped because it was stopped first. */
+  | { kind: "steered"; seqs: number[] }
+  | { kind: "dropped"; seqs: number[] }
   /** Someone in a shared chat is typing (passing, never kept). */
   | { kind: "typing"; by: string }
   /** What a Pro Tool call cost, in US dollars. */

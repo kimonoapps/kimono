@@ -88,7 +88,13 @@ type Block =
   | { type: "ul" | "ol"; items: string[] }
   | { type: "quote"; text: string }
   | { type: "code"; lang: string; text: string }
-  | { type: "math"; text: string };
+  | { type: "math"; text: string }
+  | { type: "hr" }
+  | { type: "table"; head: string[]; align: ("left" | "center" | "right" | undefined)[]; rows: string[][] };
+
+/* A table's row: its cells between the pipes, an escaped \| kept as a pipe. */
+const cells = (line: string) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+const tableRule = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 
 function blocks(source: string): Block[] {
   const lines = source.replace(/\r\n/g, "\n").split("\n");
@@ -125,6 +131,18 @@ function blocks(source: string): Block[] {
       }
     }
     if (!line.trim()) { i++; continue; }
+    /* a rule: ---, *** or ___ on a line of its own */
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { out.push({ type: "hr" }); i++; continue; }
+    /* a table: a row of cells, then a row of dashes, then its rows */
+    if (line.includes("|") && i + 1 < lines.length && tableRule.test(lines[i + 1])) {
+      const head = cells(line);
+      const align = cells(lines[i + 1]).map((c) => c.startsWith(":") && c.endsWith(":") ? "center" as const : c.endsWith(":") ? "right" as const : c.startsWith(":") ? "left" as const : undefined);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim()) rows.push(cells(lines[i++]));
+      out.push({ type: "table", head, align, rows });
+      continue;
+    }
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);
     if (heading) { out.push({ type: "h", level: heading[1].length, text: heading[2] }); i++; continue; }
     if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
@@ -145,7 +163,8 @@ function blocks(source: string): Block[] {
       continue;
     }
     const body: string[] = [];
-    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*```|\s*~~~|\s*[-*+]\s+|\s*\d+[.)]\s+|>|\s*\$\$|\s*\\\[)/.test(lines[i])) body.push(lines[i++]);
+    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|\s*```|\s*~~~|\s*[-*+]\s+|\s*\d+[.)]\s+|>|\s*\$\$|\s*\\\[)/.test(lines[i]) && !/^\s*([-*_])(\s*\1){2,}\s*$/.test(lines[i]) && !(lines[i].includes("|") && i + 1 < lines.length && tableRule.test(lines[i + 1]))) body.push(lines[i++]);
+    if (!body.length) body.push(lines[i++]);
     out.push({ type: "p", text: body.join("\n") });
   }
   return out;
@@ -164,6 +183,11 @@ export const Markdown = memo(function Markdown({ text, streaming = false }: { te
       case "ul": return <ul key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`, f)}</li>)}</ul>;
       case "ol": return <ol key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`, f)}</li>)}</ol>;
       case "quote": return <blockquote key={key}>{inline(block.text, key, f)}</blockquote>;
+      case "hr": return <hr key={key} className="cd-rule" />;
+      case "table": return <Scroller key={key} fit tone="lift" viewClassName="cd-table-wrap"><table className="cd-table">
+        <thead><tr>{block.head.map((c, m) => <th key={m} style={{ textAlign: block.align[m] }}>{inline(c, `${key}-h${m}`, f)}</th>)}</tr></thead>
+        <tbody>{block.rows.map((row, r) => <tr key={r}>{block.head.map((_, m) => <td key={m} style={{ textAlign: block.align[m] }}>{inline(row[m] ?? "", `${key}-${r}-${m}`, f)}</td>)}</tr>)}</tbody>
+      </table></Scroller>;
       default: return <p key={key}>{block.text.split("\n").map((part, m) => <Fragment key={m}>{m ? <br /> : null}{inline(part, `${key}-${m}`, f)}</Fragment>)}</p>;
     }
   })}</div>;
