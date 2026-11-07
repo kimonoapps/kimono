@@ -524,7 +524,9 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
         }
     }
     Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Kimono AI", onBack = back.takeIf { menu == null }, onMenu = menu, mark = { AiMark(code, 32.dp) }) }) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 18.dp).padding(bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        /* As in any chat, the box sits at the bottom, over the keyboard; what's above it scrolls. */
+        Column(Modifier.padding(padding).fillMaxSize().imePadding()) {
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (onProject) "What should we build?" else "What can I do for you?", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
             if (folder != null && !onProject) Note("folder", "In ${folder!!.name}")
             if (onProject) {
@@ -541,6 +543,23 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     Picker("Project", repo?.name ?: if (repos == null) "Loading…" else "None yet", (repos ?: emptyList()).map { Option("${it.owner}/${it.name}", it.name, it.description.ifBlank { it.owner }) }, action = "New project" to { naming = "" }) { key -> repo = repos?.firstOrNull { "${it.owner}/${it.name}" == key } }
                     Picker("Starting from", base.ifEmpty { "—" }, branches.map { Option(it, it, if (it == repo?.defaultBranch) "The main version" else null) }) { base = it }
                 }
+            }
+            Problem(problem)
+            HomeUsage(code)
+            if (!onProject) SuggestedApps(code, open)
+        }
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            /* What kind of chat, and how it answers: above the box. */
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                        if (admin) Surface(onClick = { onProject = !onProject }, shape = androidx.compose.foundation.shape.CircleShape, color = if (onProject) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
+                            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(kimonoIcon(if (onProject) "check" else "code"), null, modifier = Modifier.size(16.dp))
+                                Text("Code", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                        if (marks.spaces.isNotEmpty()) AccessChip(code)
+                        ModelChip(code)
+                        EffortChip(code)
             }
             /* The message, its files, and how it should answer. */
             Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
@@ -567,21 +586,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     }
                 }
             }
-            /* What kind of chat, and how it answers: under the box. */
-            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
-                        if (admin) Surface(onClick = { onProject = !onProject }, shape = androidx.compose.foundation.shape.CircleShape, color = if (onProject) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
-                            Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(kimonoIcon(if (onProject) "check" else "code"), null, modifier = Modifier.size(16.dp))
-                                Text("Code", style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                        if (marks.spaces.isNotEmpty()) AccessChip(code)
-                        ModelChip(code)
-                        EffortChip(code)
-            }
-            Problem(problem)
-            HomeUsage(code)
-            if (!onProject) SuggestedApps(code, open)
+        }
         }
     }
     if (choosing) FromDriveSheet(drive, onDismiss = { choosing = false }) { nodes ->
