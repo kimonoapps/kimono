@@ -288,15 +288,21 @@ which suits a sandbox with no web.
   `/ai/frame`, with three.js and KaTeX pinned beside it; the phone app will
   load the same frame. The agent's reference is `infra/sandbox/artifacts.md`,
   in the sandbox at `/opt/kimono/artifacts.md`, and a test keeps it in step
-  with the kit.
+  with the kit. A SessionStart hook (on startup and after compaction) hands it
+  to the agent whole, so no turn spends a step reading it.
 - **No web, no Kimono.** The frame is a sandboxed iframe with scripts only, so
   it has no origin, no cookies and no API, and its policy loads nothing but the
   engine and reaches nothing at all. Data goes in the page.
 - **Long work as one card.** For something slow (a video being generated),
   the agent runs `kimono-progress "<what>" --about <seconds>`, waits with
   `kimono-progress --wait` (at most 100 s at a time, under the tool time
-  limit, where a long `sleep` fails) and ends with `--done`. Portal tags those
-  calls (`progress` on the tool event, with when it heard them), and the chat
+  limit, where a long `sleep` fails) and ends with `--done`. Work that runs in
+  the sandbox (a render, an ffmpeg job) starts with `--run "<command>"`: it runs
+  in the background and `--wait` returns the moment it ends, with its exit and
+  last output (and a percent when it prints one), so a check is one command:
+  `kimono-progress --status "…" --percent N; kimono-progress --wait 60`.
+  Portal tags those calls wherever they sit in a chained command (`progress`
+  on the tool event, with when it heard them), and the chat
   draws the group as one card: what it's doing, a bar filling toward the
   estimate (then slowing, never full until done), the time so far; the steps
   fold under it. Web and phone.

@@ -166,6 +166,40 @@ test('progress: kimono-progress calls become a start, a wait or the end; anythin
   assert.equal(progressOf('echo kimono-progress --done'), undefined);
 });
 
+test('progress: a kimono-progress step anywhere in a chained command still makes the card', () => {
+  assert.deepEqual(
+    progressOf('cd /workspace/build2; rm -f still_*; kimono-progress "Making the short video on why current changes" --about 330; python3 render.py why-current', 7),
+    { label: 'Making the short video on why current changes', about: 330, at: 7 },
+    'a start after other steps');
+  assert.deepEqual(progressOf('cd build && kimono-progress "Rendering" --about 60 && python3 render.py', 7), { label: 'Rendering', about: 60, at: 7 });
+  assert.deepEqual(progressOf('kimono-progress "Drawing" --about 120\npython3 render.py > log.txt 2>&1 &', 7), { label: 'Drawing', about: 120, at: 7 }, 'newlines and a background job');
+});
+
+test('progress: --status is read whatever follows it, and a status with a wait keeps both', () => {
+  assert.deepEqual(
+    progressOf('kimono-progress --status "Drawing the frames" --percent 35 --left 200; kimono-progress --wait 150; tail -1 /workspace/build2/log.txt', 7),
+    { status: 'Drawing the frames', percent: 35, left: 200, wait: 100, at: 7 });
+  assert.deepEqual(progressOf('kimono-progress --status "Rendering" --percent 40 2>&1 | tail -1', 7), { status: 'Rendering', percent: 40, at: 7 }, 'a redirect and a pipe after it');
+  assert.deepEqual(progressOf('kimono-progress --status "In queue"', 7), { status: 'In queue', at: 7 });
+  assert.deepEqual(progressOf('kimono-progress --status "Rendering" --percent 400', 7), { status: 'Rendering', percent: 100, at: 7 }, 'at most 100%');
+  assert.equal(progressOf('kimono-progress --status ""'), undefined, 'an empty status says nothing');
+});
+
+test('progress: quotes keep their ; and &&, and only real kimono-progress steps count', () => {
+  assert.deepEqual(progressOf('kimono-progress "Mixing; then joining && sending" --about 90 --run "ffmpeg -i a.mp4 b.mp4; echo done"', 7),
+    { label: 'Mixing; then joining && sending', about: 90, at: 7 });
+  assert.deepEqual(progressOf(`kimono-progress --status "It said \\"almost\\"; nearly" --percent 90`, 7), { status: 'It said "almost"; nearly', percent: 90, at: 7 });
+  assert.equal(progressOf('echo "kimono-progress --done"; ls'), undefined);
+  assert.equal(progressOf('grep kimono-progress log.txt | tail -1'), undefined);
+  assert.equal(progressOf('ls; echo kimono-progress "x" --about 30'), undefined);
+});
+
+test('progress: a start and its end in one command, and the later step wins', () => {
+  assert.deepEqual(progressOf('kimono-progress "Quick render" --about 10; python3 r.py; kimono-progress --done', 7),
+    { label: 'Quick render', about: 10, done: true, at: 7 });
+  assert.deepEqual(progressOf('kimono-progress --status "A" --percent 10; kimono-progress --status "B" --percent 20', 7), { status: 'B', percent: 20, at: 7 });
+});
+
 test('a sandbox made again from nothing gets its Drive files back, and none of them are trashed', () => {
   const db = new DatabaseSync(':memory:');
   model.migrate(db);

@@ -81,21 +81,72 @@ function toolChange(name: string, input: Record<string, unknown>): string | unde
  */
 export type ToolProgress = { label?: string; about?: number; wait?: number; done?: boolean; /** What the tool last said ("In queue", "Rendering"), with its percent done or seconds left when it gave them. */ status?: string; percent?: number; left?: number; at: number };
 
+/**
+ * A command line may chain kimono-progress with other steps ("cd build; kimono-progress … --about 300;
+ * python3 render.py", "kimono-progress --status … ; kimono-progress --wait 60"): every kimono-progress
+ * step in it counts, later ones over earlier ones. A step that only mentions it ("echo kimono-progress") doesn't.
+ */
 export function progressOf(command: unknown, at = Date.now()): ToolProgress | undefined {
   if (typeof command !== "string") return undefined;
-  const call = /^\s*kimono-progress\s+([\s\S]*)$/.exec(command.trim());
+  let found: Omit<ToolProgress, "at"> | undefined;
+  for (const step of shellSteps(command)) {
+    const said = progressStep(step);
+    if (said) found = { ...found, ...said };
+  }
+  return found ? { ...found, at } : undefined;
+}
+
+/** The steps of a shell line, split at ; && || | & and newlines outside quotes. */
+function shellSteps(line: string): string[] {
+  const steps: string[] = [];
+  let step = "", quote = "";
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === "\\" && quote === '"' && i + 1 < line.length) { step += c + line[++i]; continue; }
+      if (c === quote) quote = "";
+      step += c;
+    } else if (c === '"' || c === "'") { quote = c; step += c; }
+    else if (c === ";" || c === "\n" || c === "|" || c === "&") {
+      /* 2>&1 and >&2 redirect; they don't end a step. */
+      if (c === "&" && (line[i - 1] === ">" || line[i + 1] === ">")) { step += c; continue; }
+      steps.push(step); step = "";
+    } else step += c;
+  }
+  steps.push(step);
+  return steps.map((s) => s.trim()).filter(Boolean);
+}
+
+function progressStep(step: string): Omit<ToolProgress, "at"> | undefined {
+  const call = /^kimono-progress\s+([\s\S]*)$/.exec(step);
   if (!call) return undefined;
   const rest = call[1].trim();
-  if (rest.startsWith("--done")) return { done: true, at };
-  const status = /^--status\s+(["'])([\s\S]*?)\1((?:\s+--(?:percent|left)\s+\d+(?:\.\d+)?)*)\s*$/.exec(rest);
-  if (status && status[2].trim()) {
-    const percent = /--percent\s+(\d+(?:\.\d+)?)/.exec(status[3]), left = /--left\s+(\d+(?:\.\d+)?)/.exec(status[3]);
-    return { status: status[2].trim().slice(0, 60), ...(percent ? { percent: Math.min(100, Number(percent[1])) } : {}), ...(left ? { left: Math.min(3600, Number(left[1])) } : {}), at };
+  if (rest.startsWith("--done")) return { done: true };
+  const status = /^--status\s+([\s\S]*)$/.exec(rest);
+  if (status) {
+    const said = quoted(status[1]);
+    if (!said?.text.trim()) return undefined;
+    const percent = /--percent\s+(\d+(?:\.\d+)?)/.exec(said.after), left = /--left\s+(\d+(?:\.\d+)?)/.exec(said.after);
+    return { status: said.text.trim().slice(0, 60), ...(percent ? { percent: Math.min(100, Number(percent[1])) } : {}), ...(left ? { left: Math.min(3600, Number(left[1])) } : {}) };
   }
   const wait = /^--wait\s+(\d+(?:\.\d+)?)/.exec(rest);
-  if (wait) return { wait: Math.min(100, Number(wait[1])), at };
-  const start = /^(["'])([\s\S]*?)\1\s+--about\s+(\d+(?:\.\d+)?)/.exec(rest);
-  if (start && start[2].trim()) return { label: start[2].trim().slice(0, 80), about: Math.min(3600, Math.max(5, Number(start[3]))), at };
+  if (wait) return { wait: Math.min(100, Number(wait[1])) };
+  const what = quoted(rest), about = what && /^\s+--about\s+(\d+(?:\.\d+)?)/.exec(what.after);
+  if (what && about && what.text.trim()) return { label: what.text.trim().slice(0, 80), about: Math.min(3600, Math.max(5, Number(about[1]))) };
+  return undefined;
+}
+
+/** A shell-quoted word at the start of text: its words ("It said \\"hi\\"" reads It said "hi"), and what follows. */
+function quoted(text: string): { text: string; after: string } | undefined {
+  const q = text[0];
+  if (q !== '"' && q !== "'") return undefined;
+  let out = "";
+  for (let i = 1; i < text.length; i++) {
+    const c = text[i];
+    if (c === "\\" && q === '"' && i + 1 < text.length && '"\\$`'.includes(text[i + 1])) { out += text[++i]; continue; }
+    if (c === q) return { text: out, after: text.slice(i + 1) };
+    out += c;
+  }
   return undefined;
 }
 
