@@ -1,8 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
-import katex from "katex";
-import "katex/dist/katex.min.css";
+import { Fragment, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Scroller } from "@/components/scroller";
 
 /*
@@ -13,9 +11,27 @@ import { Scroller } from "@/components/scroller";
  * (with \href, \url and the like left off) and escapes.
  */
 
-/** Maths drawn by KaTeX; what it can't read stays as the source, in the error colour. */
+/* Maths is rare, so KaTeX (and its fonts) load the first time some shows up, not with the page. */
+type Katex = typeof import("./tex-engine").default;
+let engine: Katex | null = null;
+let loading: Promise<Katex> | null = null;
+function useKatex() {
+  const [ready, setReady] = useState(engine);
+  useEffect(() => {
+    if (ready) return;
+    let live = true;
+    loading ??= import("./tex-engine").then((m) => (engine = m.default));
+    loading.then((k) => { if (live) setReady(() => k); }, () => { loading = null; });
+    return () => { live = false; };
+  }, [ready]);
+  return ready;
+}
+
+/** Maths drawn by KaTeX; what it can't read stays as the source, in the error colour. Until it loads, the source shows. */
 function Tex({ source, display }: { source: string; display: boolean }) {
-  const html = katex.renderToString(source, { displayMode: display, throwOnError: false, trust: false, strict: "ignore", output: "htmlAndMathml" });
+  const katex = useKatex();
+  const html = useMemo(() => katex?.renderToString(source, { displayMode: display, throwOnError: false, trust: false, strict: "ignore", output: "htmlAndMathml" }) ?? null, [katex, source, display]);
+  if (html === null) return display ? <div className="cd-math">{source}</div> : <span className="cd-math-inline">{source}</span>;
   return display
     ? <div className="cd-math" dangerouslySetInnerHTML={{ __html: html }} />
     : <span className="cd-math-inline" dangerouslySetInnerHTML={{ __html: html }} />;
@@ -119,8 +135,10 @@ function blocks(source: string): Block[] {
   return out;
 }
 
-export function Markdown({ text }: { text: string }) {
-  return <div className="cd-md">{blocks(text).map((block, n) => {
+/* Drawn again only when its text changes: a long chat re-renders often while a reply streams in. */
+export const Markdown = memo(function Markdown({ text }: { text: string }) {
+  const parsed = useMemo(() => blocks(text), [text]);
+  return <div className="cd-md">{parsed.map((block, n) => {
     const key = `b${n}`;
     switch (block.type) {
       case "math": return <Tex key={key} source={block.text} display />;
@@ -132,4 +150,4 @@ export function Markdown({ text }: { text: string }) {
       default: return <p key={key}>{block.text.split("\n").map((part, m) => <Fragment key={m}>{m ? <br /> : null}{inline(part, `${key}-${m}`)}</Fragment>)}</p>;
     }
   })}</div>;
-}
+});

@@ -1,5 +1,6 @@
 import { validateMobileApp, type MobileApp } from "./mobile-app";
 import { readdir, readFile } from "node:fs/promises";
+import { cache } from "react";
 import { basename, join } from "node:path";
 import type { Palette } from "./settings";
 import type { GlyphName } from "@kimono/ui";
@@ -285,8 +286,9 @@ async function scanRoot(root: string, source: AppDefinition["source"], errors: s
     errors.push(`${source}: ${error instanceof Error ? error.message : "could not read definition directory"}`);
     return definitions;
   }
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (!entry.isDirectory()) continue;
+  /* Each app's files are read side by side; the list keeps its order. */
+  const found = await Promise.all(entries.sort((left, right) => left.name.localeCompare(right.name)).map(async (entry): Promise<AppDefinition | null> => {
+    if (!entry.isDirectory()) return null;
     const directory = join(root, entry.name);
     try {
       const manifest = await readFile(join(directory, "app.json"), "utf8");
@@ -296,22 +298,24 @@ async function scanRoot(root: string, source: AppDefinition["source"], errors: s
       const icon = await readFile(definition.iconPath, "utf8");
       if (icon.length > 256 * 1024 || !/^\s*<svg[\s>]/i.test(icon)) throw new Error("icon is not a valid SVG file");
       if (/<(?:script|foreignObject|iframe|object|embed)\b|\son[a-z]+\s*=|(?:href|src)\s*=\s*["'](?!#)/i.test(icon)) throw new Error("icon.svg must be a self-contained glyph without scripts, event handlers, or external references");
-      definitions.push(definition);
+      return definition;
     } catch (error) {
       errors.push(`${source}/${entry.name}: ${error instanceof Error ? error.message : "invalid definition"}`);
+      return null;
     }
-  }
+  }));
+  definitions.push(...found.filter((definition): definition is AppDefinition => definition !== null));
   return definitions;
 }
 
-export async function scanAppDefinitions(): Promise<DefinitionScan> {
+/* A page asks for the catalog from several places (the rail, its rooms, the page itself); one scan answers them all. */
+export const scanAppDefinitions = cache(async (): Promise<DefinitionScan> => {
   const errors: string[] = [];
-  const embedded = await scanRoot(embeddedRoot, "embedded", errors);
-  const filesystem = await scanRoot(filesystemRoot, "filesystem", errors);
+  const [embedded, filesystem] = await Promise.all([scanRoot(embeddedRoot, "embedded", errors), scanRoot(filesystemRoot, "filesystem", errors)]);
   const layered = new Map(embedded.map((definition) => [definition.metadata.id, definition]));
   for (const definition of filesystem) layered.set(definition.metadata.id, definition);
   return { definitions: [...layered.values()].sort((left, right) => left.metadata.name.localeCompare(right.metadata.name)), errors };
-}
+});
 
 export async function getAppDefinition(id: string) {
   const { definitions } = await scanAppDefinitions();

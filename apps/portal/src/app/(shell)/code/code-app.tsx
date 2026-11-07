@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkCard, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
@@ -93,27 +93,63 @@ function useTimeline(id: string | null, onDone: () => void) {
   useEffect(() => {
     if (!id) return;
     const source = new EventSource(code.eventsUrl(id, 0));
+    /* Events land in bursts (a whole chat replays on open, a draft streams token by token):
+       they're gathered and drawn once a frame, and the list is told once things settle. */
+    let queue: StoredEvent[] = [];
+    let frame = 0;
+    let settle = 0;
+    const tell = () => { window.clearTimeout(settle); settle = window.setTimeout(() => done.current(), 300); };
+    const flush = () => {
+      frame = 0;
+      const batch = queue;
+      queue = [];
+      let changed = false;
+      let drafts: ((d: Drafts) => Drafts)[] = [];
+      let kept: StoredEvent[] = [];
+      for (const stored of batch) {
+        const event = stored.event;
+        if (stored.seq === 0) {
+          if (event.kind === "renamed") { changed = true; continue; }
+          /* A message was changed: the chat from it on went, and runs again from there. */
+          if (event.kind === "rewound") {
+            const from = event.seq;
+            kept = kept.filter((e) => e.seq < from);
+            setEvents((list) => list.filter((e) => e.seq < from));
+            drafts = [() => noDrafts];
+            changed = true;
+            continue;
+          }
+          if (event.kind === "draft") drafts.push((d) => ({ ...d, text: event.text }));
+          if (event.kind === "artifact-draft") drafts.push((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
+          if (event.kind === "phase") drafts.push((d) => ({ ...d, now: event }));
+          continue;
+        }
+        if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") drafts.push((d) => d.text === null ? d : { ...d, text: null });
+        if (event.kind === "artifact-saved") drafts.push((d) => { if (!(event.name in d.artifacts)) return d; const rest = { ...d.artifacts }; delete rest[event.name]; return { ...d, artifacts: rest }; });
+        if (event.kind === "done") drafts.push(() => noDrafts);
+        kept.push(stored);
+        if (event.kind === "done" || event.kind === "ask" || event.kind === "published") changed = true;
+      }
+      if (drafts.length) setDrafts((d) => drafts.reduce((now, step) => step(now), d));
+      if (kept.length) setEvents((list) => {
+        const last = list.length ? list[list.length - 1].seq : -1;
+        const fresh = kept.filter((e) => e.seq > last);
+        return fresh.length ? [...list, ...fresh] : list;
+      });
+      if (changed) tell();
+    };
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(source.readyState === EventSource.OPEN);
     source.onmessage = (message) => {
-      const stored = JSON.parse(message.data) as StoredEvent;
-      const event = stored.event;
-      if (stored.seq === 0) {
-        if (event.kind === "renamed") { done.current(); return; }
-        /* A message was changed: the chat from it on went, and runs again from there. */
-        if (event.kind === "rewound") { setEvents((list) => list.filter((e) => e.seq < event.seq)); setDrafts(noDrafts); done.current(); return; }
-        if (event.kind === "draft") setDrafts((d) => ({ ...d, text: event.text }));
-        if (event.kind === "artifact-draft") setDrafts((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
-        if (event.kind === "phase") setDrafts((d) => ({ ...d, now: event }));
-        return;
-      }
-      if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") setDrafts((d) => d.text === null ? d : { ...d, text: null });
-      if (event.kind === "artifact-saved") setDrafts((d) => { if (!(event.name in d.artifacts)) return d; const rest = { ...d.artifacts }; delete rest[event.name]; return { ...d, artifacts: rest }; });
-      if (event.kind === "done") setDrafts(noDrafts);
-      setEvents((list) => list.length && list[list.length - 1].seq >= stored.seq ? list : [...list, stored]);
-      if (stored.event.kind === "done" || stored.event.kind === "ask" || stored.event.kind === "published") done.current();
+      queue.push(JSON.parse(message.data) as StoredEvent);
+      /* A hidden tab gets no frames: a short timer stands in. */
+      if (!frame) frame = document.hidden ? window.setTimeout(flush, 100) * -1 : window.requestAnimationFrame(flush);
     };
-    return () => source.close();
+    return () => {
+      source.close();
+      if (frame > 0) window.cancelAnimationFrame(frame); else if (frame < 0) window.clearTimeout(-frame);
+      window.clearTimeout(settle);
+    };
   }, [id]);
   return { events, connected, drafts };
 }
@@ -352,7 +388,9 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
   const [problem, setProblem] = useState<string | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const load = useCallback(() => Promise.all([code.lists(), code.projects().catch(() => [] as Project[])]).then(([lists, folders]) => { setWorkspaces(lists.workspaces); setShared({ chats: lists.shared, artifacts: lists.sharedArtifacts }); setProjects(folders); setProblem(null); }, (error) => setProblem(problemText(error, "Kimono AI isn't answering."))), []);
+  /* Only the newest answer is drawn: an older one landing late would put back what changed since. */
+  const asked = useRef(0);
+  const load = useCallback(() => { const n = ++asked.current; return Promise.all([code.lists(), code.projects().catch(() => [] as Project[])]).then(([lists, folders]) => { if (n !== asked.current) return; setWorkspaces(lists.workspaces); setShared({ chats: lists.shared, artifacts: lists.sharedArtifacts }); setProjects(folders); setProblem(null); }, (error) => { if (n === asked.current) setProblem(problemText(error, "Kimono AI isn't answering.")); }); }, []);
   const [naming, setNaming] = useState<{ id: string | null; name: string } | null>(null);
   const saveProject = async () => {
     if (!naming?.name.trim()) { setNaming(null); return; }
@@ -821,12 +859,19 @@ function AppName({ slug }: { slug: string }) {
 }
 
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
+/* Every card in a chat asks at once: one answer serves them all for a few seconds. */
+let connectionsAsked: { at: number; answer: ReturnType<typeof code.connections> } | null = null;
+function connectionsNow() {
+  if (!connectionsAsked || Date.now() - connectionsAsked.at > 4000) connectionsAsked = { at: Date.now(), answer: code.connections() };
+  return connectionsAsked.answer;
+}
+
 function ConnectCard({ app, url }: { app: string; url: string }) {
   const [connected, setConnected] = useState(false);
   useEffect(() => {
     if (connected) return;
     let live = true;
-    const check = () => { code.connections().then((r) => { if (live && r.connections.some((c) => c.app === app && c.status === "ACTIVE")) setConnected(true); }, () => {}); };
+    const check = () => { if (document.hidden) return; connectionsNow().then((r) => { if (live && r.connections.some((c) => c.app === app && c.status === "ACTIVE")) setConnected(true); }, () => {}); };
     check();
     /* Back from signing in (another tab), look again. */
     window.addEventListener("focus", check);
@@ -1724,7 +1769,8 @@ function itemsOf(events: StoredEvent[]): Item[] {
   return items;
 }
 
-function Chat({ workspace, events, drafts, running, blocked }: { workspace: Workspace; events: StoredEvent[]; drafts: Drafts; running: boolean; blocked: string | null }) {
+/* Memoised: the page around it ticks every second while a turn runs, and the chat needn't. */
+const Chat = memo(function Chat({ workspace, events, drafts, running, blocked }: { workspace: Workspace; events: StoredEvent[]; drafts: Drafts; running: boolean; blocked: string | null }) {
   const { access } = useContext(ChatAccess);
   const owns = access === "owner";
   const items = useMemo(() => itemsOf(events), [events]);
@@ -1801,7 +1847,7 @@ function Chat({ workspace, events, drafts, running, blocked }: { workspace: Work
     </Scroller>
     {access === "read" ? <p className="cd-viewonly">You can view this chat</p> : <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />}
   </div>;
-}
+});
 
 
 /* ── sharing a chat, or one artifact (lib/code/sharing.ts) ──
@@ -1872,8 +1918,16 @@ function ShareChat({ workspace, onClose }: { workspace: Workspace; onClose: () =
   const [sharing, setSharing] = useState<ChatSharing | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const { copied, problem: copyProblem, copy } = useCopy();
-  useEffect(() => { code.sharing(workspace.id).then(setSharing, (error) => setProblem(problemText(error))); }, [workspace.id]);
-  const change = (work: Promise<ChatSharing>) => { setProblem(null); work.then(setSharing, (error) => setProblem(problemText(error))); };
+  /* Each change shows at once; only the newest answer is kept, so a slow earlier one can't put the old choice back. */
+  const asked = useRef(0);
+  useEffect(() => { const n = ++asked.current; code.sharing(workspace.id).then((next) => { if (n === asked.current) setSharing(next); }, (error) => setProblem(problemText(error))); }, [workspace.id]);
+  const change = (work: Promise<ChatSharing>, guess?: (now: ChatSharing) => ChatSharing) => {
+    const n = ++asked.current;
+    const before = sharing;
+    setProblem(null);
+    if (guess) setSharing((now) => now && guess(now));
+    work.then((next) => { if (n === asked.current) setSharing(next); }, (error) => { if (n === asked.current) { setSharing(before); setProblem(problemText(error)); } });
+  };
   const taken = new Set(sharing?.people.map((p) => p.username.toLowerCase()) ?? []);
   const writers = Boolean(sharing && (sharing.people.some((p) => p.access === "edit") || sharing.link?.access === "edit"));
   const general = sharing?.link?.access ?? "off";
@@ -1891,7 +1945,8 @@ function ShareChat({ workspace, onClose }: { workspace: Workspace; onClose: () =
         {sharing.people.map((p) => <SharePerson key={p.username} username={p.username}>
           <Choice compact aria-label={`What ${p.username} can do`} className="cd-share-can" value={p.access}
             options={[{ value: "read", label: "Can view" }, { value: "edit", label: "Can write" }]}
-            onChange={(next) => change(code.shareWith(workspace.id, p.username, next as "read" | "edit"))} />
+            onChange={(next) => change(code.shareWith(workspace.id, p.username, next as "read" | "edit"),
+              (now) => ({ ...now, people: now.people.map((q) => q.username === p.username ? { ...q, access: next as "read" | "edit" } : q) }))} />
           <button type="button" className="cd-roundbutton" aria-label={`Remove ${p.username}`} title="Remove" onClick={() => change(code.shareWith(workspace.id, p.username, null))}><Icon name="close" /></button>
         </SharePerson>)}
       </ul>
@@ -1900,7 +1955,8 @@ function ShareChat({ workspace, onClose }: { workspace: Workspace; onClose: () =
         <span className={cx("cd-share-mark", general !== "off" && "is-open")} aria-hidden="true"><Icon name={general === "off" ? "lock" : "link"} /></span>
         <Choice aria-label="General access" className="cd-share-link" value={general}
           options={(["off", "read", "edit"] as const).map((v) => ({ value: v, label: (sharing.publicLinks === false ? signedInWords : generalWords)[v] }))}
-          onChange={(next) => change(code.setLink(workspace.id, next === "off" ? null : next as "read" | "edit"))} />
+          onChange={(next) => change(code.setLink(workspace.id, next === "off" ? null : next as "read" | "edit"),
+            (now) => ({ ...now, link: next === "off" ? null : { token: now.link?.token ?? "", access: next as "read" | "edit" } }))} />
       </div>
       {writers ? <p className="cd-share-note">People who can write send messages as themselves, but it works with your files and apps.</p> : null}
     </> : null}
@@ -1913,8 +1969,15 @@ function ShareArtifact({ workspaceId, name, title, onClose }: { workspaceId: str
   const [sharing, setSharing] = useState<ArtifactSharing | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const { copied, problem: copyProblem, copy } = useCopy();
-  useEffect(() => { code.artifactSharing(workspaceId, name).then(setSharing, (error) => setProblem(problemText(error))); }, [workspaceId, name]);
-  const change = (work: Promise<ArtifactSharing>) => { setProblem(null); return work.then((next) => { setSharing(next); return next; }, (error) => { setProblem(problemText(error)); return null; }); };
+  const asked = useRef(0);
+  useEffect(() => { const n = ++asked.current; code.artifactSharing(workspaceId, name).then((next) => { if (n === asked.current) setSharing(next); }, (error) => setProblem(problemText(error))); }, [workspaceId, name]);
+  const change = (work: Promise<ArtifactSharing>, guess?: (now: ArtifactSharing) => ArtifactSharing) => {
+    const n = ++asked.current;
+    const before = sharing;
+    setProblem(null);
+    if (guess) setSharing((now) => now && guess(now));
+    return work.then((next) => { if (n === asked.current) setSharing(next); return next; }, (error) => { if (n === asked.current) { setSharing(before); setProblem(problemText(error)); } return null; });
+  };
   const on = new Set(sharing?.people.map((u) => u.toLowerCase()) ?? []);
   /* The link exists once it's first shared; copying before that makes it, for the people it's shared with. */
   const copyLink = async () => {
@@ -1940,7 +2003,7 @@ function ShareArtifact({ workspaceId, name, title, onClose }: { workspaceId: str
         <span className={cx("cd-share-mark", sharing.public && "is-open")} aria-hidden="true"><Icon name={sharing.public ? "link" : "lock"} /></span>
         <Choice aria-label="General access" className="cd-share-link" value={sharing.public ? "public" : "people"}
           options={[{ value: "people", label: "Only people it\u2019s shared with" }, { value: "public", label: "Anyone with the link can view" }]}
-          onChange={(next) => void change(code.setArtifactPublic(workspaceId, name, next === "public"))} />
+          onChange={(next) => void change(code.setArtifactPublic(workspaceId, name, next === "public"), (now) => ({ ...now, public: next === "public" }))} />
       </div></>}
     </> : null}
   </ShareDialog>;
@@ -2589,6 +2652,8 @@ type Pending = { id: string; name: string; size: number; preview: string | null;
 function Composer({ workspace, running, blocked, context }: { workspace: Workspace; running: boolean; blocked: string | null; context: { used: number; window?: number } | null }) {
   const owns = useOwns();
   const [text, setText] = useUnsentText(workspace.id);
+  const typed = useRef(text);
+  useEffect(() => { typed.current = text; }, [text]);
   const [pending, setPending] = useUnsent<Pending[]>(`${workspace.id}:files`, noPending);
   const [problem, setProblem] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -2632,8 +2697,10 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     setSending(true);
     setProblem(null);
     try {
-      await code.ask(workspace.id, text, ready, effortNow());
-      setText("");
+      const said = text;
+      await code.ask(workspace.id, said, ready, effortNow());
+      /* Words typed while it was sending stay. */
+      if (typed.current === said) setText("");
       forget(pending.map((p) => p.preview));
       setPending([]);
     } catch (error) { setProblem(problemText(error)); } finally { setSending(false); field.current?.focus(); }
@@ -2763,14 +2830,16 @@ function DrivePicker({ onClose, onPick }: { onClose: () => void; onPick: (items:
   const showPeek = (item: DriveItem | null) => { setPeek(item); if (item) peeking.current = true; else setTimeout(() => { peeking.current = false; }, 0); };
   useEffect(() => { box.current?.showModal(); }, []);
   useEffect(() => { drive.spaces().then(setSpaces, (error) => setProblem(problemText(error))); }, []);
-  const open = (id: string) => drive.folder(id).then((f) => { setAt(f); setProblem(null); }, (error) => setProblem(problemText(error)));
+  /* Only the folder asked for last is shown: a slow answer for an earlier one is dropped. */
+  const wanted = useRef<string | null>(null);
+  const open = (id: string) => { wanted.current = id; return drive.folder(id).then((f) => { if (wanted.current !== id) return; setAt(f); setProblem(null); }, (error) => { if (wanted.current === id) setProblem(problemText(error)); }); };
   const toggle = (item: DriveItem) => setChosen((m) => { const next = new Map(m); if (next.has(item.id)) next.delete(item.id); else if (next.size < 10) next.set(item.id, item); return next; });
 
   return <dialog ref={box} className="cd-drivepick" aria-labelledby="cd-drivepick-title" onClose={onClose} onCancel={(event) => { if (peeking.current) event.preventDefault(); }} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
     <header>
       <h2 id="cd-drivepick-title">From Drive</h2>
       {at ? <nav className="cd-drivepick-path" aria-label="Folder">
-        <button type="button" onClick={() => { setAt(null); setInSpace(null); }}>Spaces</button>
+        <button type="button" onClick={() => { wanted.current = null; setAt(null); setInSpace(null); }}>Spaces</button>
         {[...at.path, at.folder].map((step, n, all) => <span key={step.id}><Icon name="chevron" /><button type="button" aria-current={n === all.length - 1 ? "location" : undefined} onClick={() => void open(step.id)}>{n === 0 && inSpace?.mark ? <span className="cd-crest" aria-hidden="true" dangerouslySetInnerHTML={{ __html: inSpace.mark }} /> : null}{n === 0 && inSpace ? inSpace.name : step.name}</button></span>)}
       </nav> : null}
     </header>

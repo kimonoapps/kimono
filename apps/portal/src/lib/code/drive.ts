@@ -1,5 +1,6 @@
 import "server-only";
 
+import { bounded } from "./bounded";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -193,14 +194,15 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
   const actions = planSync(syncedRows(db, workspace.id), tree, driveFiles(place.folderId, owner));
   const fromDrive: string[] = [];
   const shaOf = new Map(tree.map((f) => [f.path, f.sha1]));
-  for (const action of actions) {
+  /* A few files at a time: each is a round trip to the sandbox, and each touches only its own path. */
+  await bounded(actions, 6, async (action) => {
     try {
       fromDrive.push(...(await apply(db, config, workspace, place.folderId, action, shaOf.get(action.path))));
     } catch (error) {
       /* One file that won't go doesn't stop the rest; it is tried again next time. */
       console.warn(`Code couldn't sync ${action.path}:`, error instanceof Error ? error.message : error);
     }
-  }
+  });
   noteDriveNews(db, workspace.id, fromDrive);
   return fromDrive;
 }

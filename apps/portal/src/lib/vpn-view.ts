@@ -64,6 +64,6 @@ export async function setGuest(person: Person, guest: string, invited: boolean) 
   if (!member) throw new Error("You don't have Kimono VPN yet.");
   const who = guest.toLowerCase();
   if (invited && !members[who]) throw new Error(`@${who} doesn't have Kimono VPN yet.`);
-  await setMeshGuests(member.username, invited ? [...member.guests, who] : member.guests.filter((item) => item !== who));
+  await setMeshGuests(member.username, (current) => invited ? [...current, who] : current.filter((item) => item !== who));
   await publishDesiredState(await getPlatformSettings());
 }

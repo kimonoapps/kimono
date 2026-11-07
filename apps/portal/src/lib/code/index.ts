@@ -1,7 +1,7 @@
 import "server-only";
 
 import { mkdirSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { apiError, type ApiUser } from "../api-v1";
@@ -10,6 +10,7 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
+import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
   abandonRunningTurns, appendEvent, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
@@ -159,14 +160,26 @@ export const mediaDir = (workspaceId: string) => join(root, "media", workspaceId
 async function keepMedia(config: CodeConfig, workspace: Workspace, content: string) {
   const names = mediaNames(content);
   if (!names.length) return;
-  await mkdir(mediaDir(workspace.id), { recursive: true, mode: 0o700 });
-  for (const name of names) {
+  const dir = mediaDir(workspace.id);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await bounded(names, 4, async (name) => {
     const response = await sandbox.file(config, workspace, `media/${name}`, true).catch(() => null);
-    if (!response?.ok) continue;
+    if (!response?.ok || !response.body) return;
+    const target = join(dir, name);
+    /* Said too big: not read at all. */
+    if (Number(response.headers.get("content-length")) > maxMediaBytes) { await response.body.cancel().catch(() => {}); return; }
     const body = new Uint8Array(await response.arrayBuffer());
-    if (body.byteLength > maxMediaBytes) continue;
-    await writeFile(join(mediaDir(workspace.id), name), body, { mode: 0o600 });
-  }
+    if (body.byteLength > maxMediaBytes) return;
+    /* Beside it first, then into place: a page playing it never reads half a file. */
+    const part = `${target}.${newId(3)}.part`;
+    try {
+      await writeFile(part, body, { mode: 0o600 });
+      await rename(part, target);
+    } catch (error) {
+      await rm(part, { force: true });
+      throw error;
+    }
+  });
 }
 
 /** Copies the files kimono-send gave the person out of the sandbox, beside their attachments, and puts them in the chat. */
@@ -202,8 +215,10 @@ export async function ensure(config: CodeConfig, workspace: Workspace, person: {
   /* A project still in Kimono AI's own Kimono Git account moves to its person's, once they have one. */
   workspace = await ownProject(db(), config, workspace, { username: workspace.owner });
   /* Their Kimono Git account, found by email (its username may not be theirs in Kimono), for the node to open pull requests as. */
-  const gitLogin = workspace.kind === "project" ? await gitAccountOf(config, { username: workspace.owner }, false).catch(() => null) : null;
-  const tools = await toolSession(db(), config.composioKey, workspace.owner, portalOrigin());
+  const [gitLogin, tools] = await Promise.all([
+    workspace.kind === "project" ? gitAccountOf(config, { username: workspace.owner }, false).catch(() => null) : null,
+    toolSession(db(), config.composioKey, workspace.owner, portalOrigin()),
+  ]);
   /* Their paid tools open or close with this month's allowance before the agent wakes. */
   if (tools) await holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error));
   const answer = await sandbox.ensure(config, workspace, person, tools, gitLogin);
@@ -312,12 +327,13 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   try {
     await ensure(config, workspace, who(user));
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
+    /* The person's other chats, for it to look back on (none in a chat shared with others), brought in alongside the files. */
+    const historySynced = prompt.startsWith("/") ? Promise.resolve(false) : syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
-    /* The person's other chats, for it to look back on; none in a chat shared with others. */
-    const history = prompt.startsWith("/") ? false : await syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
     /* Files the person let it use follow Drive, and what is no longer allowed goes. */
     const openedNews = await syncOpened(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
+    const history = await historySynced;
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
     const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
     const access = prompt.startsWith("/") ? "" : accessPrompt(db(), workspace);
@@ -432,6 +448,12 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   } finally {
     drafts?.close();
     live.turns.delete(turn);
+    /* Deleted while it worked: nothing left to record to, or to carry on in. */
+    if (!db().prepare("SELECT 1 FROM workspaces WHERE id = ?").get(workspace.id)) {
+      live.queued?.delete(workspace.id);
+      live.carryOn?.delete(workspace.id);
+      return;
+    }
     const outcome = { ...finish(result, done, failure, context), model };
     record(workspace.id, turn, outcome);
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
@@ -447,15 +469,16 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     live.queued?.delete(workspace.id);
     live.carryOn?.delete(workspace.id);
     if (waiting.length || carry) {
-      void wroteBack.then(() => {
-        try {
-          const by = waiting[0]?.user ?? carry!.user;
-          checkShare(config, by);
-          const next = startTurn(db(), workspace.id);
-          const said = [...(carry?.notes ?? []), ...waiting.map((m) => m.prompt)].filter(Boolean).join("\n\n");
-          void run(config, workspace, by, next, said || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort, waiting.at(-1)?.model);
-        } catch (error) { console.warn("Code couldn't start the next turn:", error instanceof Error ? error.message : error); }
-      });
+      /* The next turn is taken now, so nothing sent in the meantime starts one of its own and pushes these out;
+         it runs once what this one changed is written back. */
+      try {
+        const by = waiting[0]?.user ?? carry!.user;
+        checkShare(config, by);
+        const next = startTurn(db(), workspace.id);
+        const said = [...(carry?.notes ?? []), ...waiting.map((m) => m.prompt)].filter(Boolean).join("\n\n");
+        void wroteBack.then(() => run(config, workspace, by, next, said || "Look at the attached files.", waiting.flatMap((m) => m.attachments), waiting.at(-1)?.effort, waiting.at(-1)?.model))
+          .catch((error) => console.warn("Code couldn't run the next turn:", error instanceof Error ? error.message : error));
+      } catch (error) { console.warn("Code couldn't start the next turn:", error instanceof Error ? error.message : error); }
     }
   }
 }
@@ -609,12 +632,29 @@ const attachmentDir = (workspaceId: string) => join(root, "attachments", workspa
 const safeName = (name: string) => name.normalize("NFC").replace(/[\\/\0-\x1f]/g, "").replace(/^\.+/, "").slice(-120) || "file";
 
 export async function attach(config: CodeConfig, workspace: Workspace, user: ApiUser, name: string, type: string, body: Uint8Array): Promise<Attachment> {
-  const stored = `${newId(3)}-${safeName(name)}`;
   await ensure(config, workspace, who(user));
+  return keepAttachment(config, workspace, name, type, body);
+}
+
+/** Several files for one message: the sandbox is woken once, and a few go in at a time. */
+export async function attachAll(config: CodeConfig, workspace: Workspace, user: ApiUser, files: { name: string; type: string; bytes: Uint8Array }[]): Promise<Attachment[]> {
+  if (!files.length) return [];
+  await ensure(config, workspace, who(user));
+  return bounded(files, 4, (file) => keepAttachment(config, workspace, file.name, file.type, file.bytes));
+}
+
+async function keepAttachment(config: CodeConfig, workspace: Workspace, name: string, type: string, body: Uint8Array): Promise<Attachment> {
+  const stored = `${newId(3)}-${safeName(name)}`;
   const { path } = await sandbox.attach(config, workspace, stored, body);
   await mkdir(attachmentDir(workspace.id), { recursive: true, mode: 0o700 });
   await writeFile(join(attachmentDir(workspace.id), stored), body, { mode: 0o600 });
   return { name: safeName(name), path, size: body.byteLength, type: type || "application/octet-stream" };
+}
+
+/** Where an attachment is kept, for sending it with ranges (a video seeks; iOS plays nothing without them). */
+export function attachmentPath(workspace: Workspace, stored: string) {
+  if (stored !== safeName(stored) || stored.includes("/")) throw new CodeProblem("That file isn't here.", 404);
+  return join(attachmentDir(workspace.id), stored);
 }
 
 export async function attachmentBytes(workspace: Workspace, stored: string) {

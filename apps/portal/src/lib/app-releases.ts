@@ -3,6 +3,7 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { serialize } from "./serial";
 import { stateDir } from "./state";
 import { runningVersion } from "./kimono-release";
 import type { AppPlatform, AppRelease } from "./app-updates";
@@ -53,12 +54,23 @@ const repository = process.env.KIMONO_REPOSITORY || "kimonoapps/kimono";
 type Released = AppRelease & { source?: string };
 const lookedUp = new Map<AppPlatform, { at: number; version: string; release: Released | null }>();
 
+const lookingUp = new Map<AppPlatform, Promise<Released | null>>();
+
 async function releasedBuild(platform: AppPlatform, fresh = false): Promise<Released | null> {
   const version = runningVersion();
   if (!version || process.env.KIMONO_UPDATE_CHECK === "off") return null;
   const last = lookedUp.get(platform);
   /* Found: kept six hours. Not found (still building, say): asked again after five minutes. */
   if (!fresh && last && last.version === version && Date.now() - last.at < (last.release ? 6 * 60 : 5) * 60 * 1000) return last.release;
+  /* One lookup per platform at a time, shared by whoever asks meanwhile. */
+  const running = lookingUp.get(platform);
+  if (running) return running;
+  const work = lookUp(platform, version).finally(() => lookingUp.delete(platform));
+  lookingUp.set(platform, work);
+  return work;
+}
+
+async function lookUp(platform: AppPlatform, version: string): Promise<Released | null> {
   let release: Released | null = null;
   try {
     const base = `https://github.com/${repository}/releases/download/v${version}`;
@@ -95,9 +107,11 @@ async function write(index: Index) {
 /** Whether phones on an older build must install this one before carrying on. */
 export async function setRequired(platform: AppPlatform, build: number, required: boolean) {
   if (!(await readReleases()).releases.some((r) => r.platform === platform && r.build === build)) throw new Error("That version isn't out.");
-  const index = await readIndex();
-  index.required[key(platform, build)] = required;
-  await write(index);
+  await serialize(indexPath, async () => {
+    const index = await readIndex();
+    index.required[key(platform, build)] = required;
+    await write(index);
+  });
 }
 
 /** An Android package's path and size, for downloading. */

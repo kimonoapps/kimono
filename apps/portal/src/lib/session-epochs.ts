@@ -1,43 +1,47 @@
-import { readFileSync, statSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { serialize, writeFileAtomic } from "./serial";
 import { stateDir } from "./state";
+
+/*
+ * Both lists are checked on every request. Only this process writes them, so
+ * each is read from disk once and then kept in memory, changed in place by the
+ * writes below: no file is touched on the way to answering a request.
+ */
+type Held<T> = { value: T | null; loading: Promise<T> | null };
+async function load<T>(held: Held<T>, path: string, pick: (parsed: Record<string, unknown>) => T, empty: () => T): Promise<T> {
+  if (held.value) return held.value;
+  held.loading ??= readFile(path, "utf8").then(
+    (text) => pick(JSON.parse(text) as Record<string, unknown>),
+    () => empty(),
+  ).catch(() => empty()).then((value) => { held.value ??= value; held.loading = null; return held.value; });
+  return held.loading;
+}
+const record = (value: unknown) => value && typeof value === "object" ? value as Record<string, number> : {};
 
 /**
  * When each person last asked to be signed out everywhere.
  *
  * Portal sessions are signed cookies, so ending one means refusing it: a
- * session that signed in before this moment is no longer honoured. Checked on
- * every request, so the file is read once and re-read only when it changes.
+ * session that signed in before this moment is no longer honoured.
  */
 const epochPath = join(stateDir, "session-epochs.json");
-let cached: { mtimeMs: number; epochs: Record<string, number> } | null = null;
-
-function epochs(): Record<string, number> {
-  try {
-    const { mtimeMs } = statSync(epochPath);
-    if (cached?.mtimeMs === mtimeMs) return cached.epochs;
-    const parsed = JSON.parse(readFileSync(epochPath, "utf8")) as { epochs?: Record<string, number> };
-    cached = { mtimeMs, epochs: parsed.epochs && typeof parsed.epochs === "object" ? parsed.epochs : {} };
-    return cached.epochs;
-  } catch {
-    return {};
-  }
-}
+const epochsHeld: Held<Record<string, number>> = { value: null, loading: null };
+const epochs = () => load(epochsHeld, epochPath, (parsed) => record(parsed.epochs), (): Record<string, number> => ({}));
 
 /** Sessions for this person that signed in before this time are refused. */
-export function signedOutBefore(username: string): number {
-  const value = epochs()[username.toLowerCase()];
+export async function signedOutBefore(username: string): Promise<number> {
+  const value = (await epochs())[username.toLowerCase()];
   return typeof value === "number" ? value : 0;
 }
 
-export async function signOutEverywhere(username: string, at = Date.now()) {
-  const next = { ...epochs(), [username.toLowerCase()]: at };
-  await mkdir(stateDir, { recursive: true, mode: 0o700 });
-  const temporary = `${epochPath}.new`;
-  await writeFile(temporary, `${JSON.stringify({ epochs: next }, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, epochPath);
-  cached = null;
+export function signOutEverywhere(username: string, at = Date.now()) {
+  return serialize(epochPath, async () => {
+    const next = { ...(await epochs()), [username.toLowerCase()]: at };
+    await mkdir(stateDir, { recursive: true, mode: 0o700 });
+    await writeFileAtomic(epochPath, `${JSON.stringify({ epochs: next }, null, 2)}\n`, 0o600);
+    epochsHeld.value = next;
+  });
 }
 
 /* ─── single sessions ───
@@ -45,32 +49,21 @@ export async function signOutEverywhere(username: string, at = Date.now()) {
    moment the session would have expired anyway, so a copy of the cookie made
    before signing out is refused too. */
 const revokedPath = join(stateDir, "revoked-sessions.json");
-let revokedCache: { mtimeMs: number; revoked: Record<string, number> } | null = null;
+const revokedHeld: Held<Record<string, number>> = { value: null, loading: null };
+const revoked = () => load(revokedHeld, revokedPath, (parsed) => record(parsed.revoked), (): Record<string, number> => ({}));
 
-function revoked(): Record<string, number> {
-  try {
-    const { mtimeMs } = statSync(revokedPath);
-    if (revokedCache?.mtimeMs === mtimeMs) return revokedCache.revoked;
-    const parsed = JSON.parse(readFileSync(revokedPath, "utf8")) as { revoked?: Record<string, number> };
-    revokedCache = { mtimeMs, revoked: parsed.revoked && typeof parsed.revoked === "object" ? parsed.revoked : {} };
-    return revokedCache.revoked;
-  } catch {
-    return {};
-  }
-}
-
-export function isRevoked(sessionId: string): boolean {
-  return Boolean(revoked()[sessionId]);
+export async function isRevoked(sessionId: string): Promise<boolean> {
+  return Boolean((await revoked())[sessionId]);
 }
 
 /** Refuses this session from now on. `expiresAt` (ms) is when the entry can be forgotten. */
-export async function revokeSession(sessionId: string, expiresAt: number) {
-  const now = Date.now();
-  const kept = Object.fromEntries(Object.entries(revoked()).filter(([, until]) => until > now));
-  kept[sessionId] = Math.max(expiresAt, now + 60_000);
-  await mkdir(stateDir, { recursive: true, mode: 0o700 });
-  const temporary = `${revokedPath}.new`;
-  await writeFile(temporary, `${JSON.stringify({ revoked: kept }, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, revokedPath);
-  revokedCache = null;
+export function revokeSession(sessionId: string, expiresAt: number) {
+  return serialize(revokedPath, async () => {
+    const now = Date.now();
+    const kept = Object.fromEntries(Object.entries(await revoked()).filter(([, until]) => until > now));
+    kept[sessionId] = Math.max(expiresAt, now + 60_000);
+    await mkdir(stateDir, { recursive: true, mode: 0o700 });
+    await writeFileAtomic(revokedPath, `${JSON.stringify({ revoked: kept }, null, 2)}\n`, 0o600);
+    revokedHeld.value = kept;
+  });
 }

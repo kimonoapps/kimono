@@ -587,7 +587,10 @@ export function abandonRunningTurns(db: DatabaseSync, now = Date.now()): { works
 
 /** Appends an event and returns it with its sequence number. */
 export function appendEvent(db: DatabaseSync, workspaceId: string, turnId: string | null, event: CodeEvent, now = Date.now()): StoredEvent {
-  const { last_seq } = db.prepare("UPDATE workspaces SET last_seq = last_seq + 1 WHERE id = ? RETURNING last_seq").get(workspaceId) as { last_seq: number };
+  const row = db.prepare("UPDATE workspaces SET last_seq = last_seq + 1 WHERE id = ? RETURNING last_seq").get(workspaceId) as { last_seq: number } | undefined;
+  /* Deleted while something was still writing to it. */
+  if (!row) throw new CodeProblem("That workspace isn't here.", 404);
+  const { last_seq } = row;
   db.prepare("INSERT INTO events (workspace_id, seq, turn_id, at, data) VALUES (?, ?, ?, ?, ?)").run(workspaceId, last_seq, turnId, now, JSON.stringify(event));
   return { seq: last_seq, turn: turnId, at: now, event };
 }

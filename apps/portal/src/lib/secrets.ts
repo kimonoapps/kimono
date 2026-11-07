@@ -1,8 +1,9 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { serialize, writeFileAtomic } from "./serial";
 import { secretsPath } from "./state";
 
 export type SecretStore = Record<string, string>;
@@ -21,9 +22,7 @@ async function read(): Promise<SecretStore> {
 
 async function write(store: SecretStore) {
   await mkdir(dirname(secretsPath), { recursive: true, mode: 0o700 });
-  const temporary = `${secretsPath}.new`;
-  await writeFile(temporary, `${JSON.stringify(store, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, secretsPath);
+  await writeFileAtomic(secretsPath, `${JSON.stringify(store, null, 2)}\n`, 0o600);
 }
 
 /**
@@ -31,7 +30,11 @@ async function write(store: SecretStore) {
  * that do not exist yet. Values are hex so that consumers such as Outline, which
  * require hexadecimal keys, accept them unchanged.
  */
-export async function resolveSecrets(names: readonly string[]): Promise<SecretStore> {
+export function resolveSecrets(names: readonly string[]): Promise<SecretStore> {
+  return serialize(secretsPath, () => mint(names));
+}
+
+async function mint(names: readonly string[]): Promise<SecretStore> {
   const store = await read();
   const resolved: SecretStore = {};
   let minted = false;
@@ -56,8 +59,10 @@ export async function readSecret(name: string): Promise<string> {
 /** Keeps a value the Portal obtained rather than minted, such as a token another app issued. */
 export async function storeSecret(name: string, value: string) {
   if (!namePattern.test(name) || !value) return;
-  const store = await read();
-  if (store[name] === value) return;
-  store[name] = value;
-  await write(store);
+  await serialize(secretsPath, async () => {
+    const store = await read();
+    if (store[name] === value) return;
+    store[name] = value;
+    await write(store);
+  });
 }

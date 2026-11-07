@@ -26,7 +26,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
       const mine = known[current.user.username];
       if (!mine) throw new Error("You do not have Kimono VPN yet");
       if (!known[guest]) throw new Error(`@${guest} does not have Kimono VPN yet`);
-      await setMeshGuests(current.user.username, [...mine.guests, guest]);
+      await setMeshGuests(current.user.username, (guests) => guests.includes(guest) ? guests : [...guests, guest]);
       await publishDesiredState(await getPlatformSettings());
     } catch (error) {
       redirect(`/vpn/people?error=${encodeURIComponent(error instanceof Error ? error.message : "That invitation could not be sent")}`);
@@ -42,7 +42,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
     const known = await readMeshMembers();
     const mine = known[current.user.username];
     if (mine) {
-      await setMeshGuests(current.user.username, mine.guests.filter((item) => item !== guest));
+      await setMeshGuests(current.user.username, (guests) => guests.filter((item) => item !== guest));
       await publishDesiredState(await getPlatformSettings());
     }
     redirect("/vpn/people");

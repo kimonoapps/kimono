@@ -1,4 +1,6 @@
-import { open, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { Readable } from "node:stream";
 import { join } from "node:path";
 import { db, mediaDir } from "@/lib/code";
 import { artifactByMediaKey, mediaNames } from "@/lib/code/artifacts";
@@ -50,18 +52,10 @@ export async function GET(request: Request, { params }: Context) {
     headers["Content-Range"] = `bytes ${start}-${end}/${size}`;
   }
   headers["Content-Length"] = String(end - start + 1);
-  if (request.method === "HEAD") return new Response(null, { status, headers });
+  if (request.method === "HEAD" || size === 0) return new Response(null, { status, headers });
 
-  const file = await open(path, "r");
-  const stream = file.createReadStream({ start, end });
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      stream.on("data", (chunk) => controller.enqueue(new Uint8Array(chunk as Buffer)));
-      stream.on("end", () => { controller.close(); void file.close(); });
-      stream.on("error", (error) => { controller.error(error); void file.close(); });
-    },
-    cancel() { stream.destroy(); void file.close(); },
-  });
+  /* Read as the client takes it, so a slow player never has the whole video held here. */
+  const body = Readable.toWeb(createReadStream(path, { start, end })) as ReadableStream<Uint8Array>;
   return new Response(body, { status, headers });
 }
 

@@ -1,5 +1,6 @@
 import type { AccountSession } from "@kimono/account";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { serialize, writeFileAtomic } from "./serial";
 import { dirname, join } from "node:path";
 import { stateDir } from "./state";
 import { isAdministrator } from "./roles";
@@ -150,6 +151,7 @@ async function meshGroupId(): Promise<string> {
 }
 
 export async function setMeshAccess(username: string, granted: boolean) {
+  meshHeld.delete(username.toLowerCase());
   const user = await findUser(username);
   const group = await meshGroupId();
   // Written from the user rather than through the group's add_user endpoint:
@@ -163,12 +165,15 @@ export async function setMeshAccess(username: string, granted: boolean) {
     method: "PATCH",
     body: JSON.stringify({ groups }),
   });
+  meshHeld.delete(username.toLowerCase());
   if (!granted) {
     /* Somebody who has lost access must also stop reaching everyone else. */
     for (const other of await fetchPeople()) {
-      const guests = guestsOf(other);
-      if (!guests.includes(username.toLowerCase())) continue;
-      await writeGuests(other, guests.filter((guest) => guest !== username.toLowerCase()));
+      if (!other.username || !guestsOf(other).includes(username.toLowerCase())) continue;
+      await personTurn(other.username, async () => {
+        const fresh = await findUser(other.username as string);
+        await writeGuests(fresh, guestsOf(fresh).filter((guest) => guest !== username.toLowerCase()));
+      });
     }
   }
 }
@@ -180,9 +185,13 @@ async function writeGuests(user: IdentityUser, guests: string[]) {
   });
 }
 
-export async function setMeshGuests(username: string, guests: string[]) {
-  const user = await findUser(username);
-  await writeGuests(user, [...new Set(guests.map((guest) => guest.toLowerCase()))]);
+/** Sets who may reach this person's devices: the list, or a change made to the list as it stands now. */
+export function setMeshGuests(username: string, guests: string[] | ((current: string[]) => string[])) {
+  return personTurn(username, async () => {
+    const user = await findUser(username);
+    const next = typeof guests === "function" ? guests(guestsOf(user)) : guests;
+    await writeGuests(user, [...new Set(next.map((guest) => guest.toLowerCase()))]);
+  });
 }
 
 /**
@@ -207,29 +216,37 @@ export async function syncAccountsFromIdentity(): Promise<{ synced: number } | {
     const payload = await response.json() as { results?: IdentityUser[] };
     const people = (payload.results || []).filter((user) =>
       Boolean(user.username) && user.is_active !== false && user.type !== "service_account" && user.type !== "internal_service_account");
-    for (const person of people) {
-      await recordAccount({ username: person.username as string, name: person.name, email: person.email });
-    }
+    await recordAccounts(people.map((person) => ({ username: person.username as string, name: person.name, email: person.email })));
     return { synced: people.length };
   } catch {
     return { error: "The identity provider did not answer." };
   }
 }
 
-export async function recordAccount(input: { username: string; name?: string | null; email?: string | null }) {
-  const username = input.username?.trim().toLowerCase();
-  if (!username) return;
-  const accounts = Object.fromEntries((await listAccounts()).map((account) => [account.username, account]));
-  const existing = accounts[username];
-  const name = input.name?.trim() || existing?.name || username;
-  const email = input.email?.trim().toLowerCase() || existing?.email || "";
-  /* A write per page load would be wasteful; only a real change is persisted. */
-  if (existing && existing.name === name && existing.email === email) return;
-  accounts[username] = { username, name, email, lastSeen: new Date().toISOString() };
-  await mkdir(dirname(directoryPath), { recursive: true, mode: 0o700 });
-  const temporary = `${directoryPath}.new`;
-  await writeFile(temporary, `${JSON.stringify({ accounts }, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, directoryPath);
+export function recordAccount(input: { username: string; name?: string | null; email?: string | null }) {
+  return recordAccounts([input]);
+}
+
+/** Notes everyone given in one read and at most one write, with no other change to the file in between. */
+export function recordAccounts(inputs: { username: string; name?: string | null; email?: string | null }[]) {
+  return serialize(directoryPath, async () => {
+    const accounts = Object.fromEntries((await listAccounts()).map((account) => [account.username, account]));
+    let changed = false;
+    for (const input of inputs) {
+      const username = input.username?.trim().toLowerCase();
+      if (!username) continue;
+      const existing = accounts[username];
+      const name = input.name?.trim() || existing?.name || username;
+      const email = input.email?.trim().toLowerCase() || existing?.email || "";
+      /* A write per page load would be wasteful; only a real change is persisted. */
+      if (existing && existing.name === name && existing.email === email) continue;
+      accounts[username] = { username, name, email, lastSeen: new Date().toISOString() };
+      changed = true;
+    }
+    if (!changed) return;
+    await mkdir(dirname(directoryPath), { recursive: true, mode: 0o700 });
+    await writeFileAtomic(directoryPath, `${JSON.stringify({ accounts }, null, 2)}\n`, 0o600);
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -255,7 +272,15 @@ export async function readIdentityProfile(username: string): Promise<IdentityPro
   return { username: (user.username as string).toLowerCase(), name: user.name?.trim() || "", email: user.email?.trim() || "" };
 }
 
-export async function updateIdentityProfile(username: string, change: { name?: string; email?: string; avatar?: string | null }) {
+/* One person's attributes are written whole, so changes to them go one at a
+   time, each from a fresh read: a picture and a guest list saved together both land. */
+const personTurn = <T>(username: string, work: () => Promise<T>) => serialize(`identity:${username.toLowerCase()}`, work);
+
+export function updateIdentityProfile(username: string, change: { name?: string; email?: string; avatar?: string | null }) {
+  return personTurn(username, () => writeIdentityProfile(username, change));
+}
+
+async function writeIdentityProfile(username: string, change: { name?: string; email?: string; avatar?: string | null }) {
   const user = await findUser(username);
   const body: Record<string, unknown> = {};
   if (change.name !== undefined) body.name = change.name;
@@ -448,11 +473,16 @@ export async function readStanding(username: string): Promise<Standing | null> {
 }
 
 /** Whether an account carries Kimono VPN, without pulling the whole mesh. */
-export async function holdsMeshAccess(username: string): Promise<boolean> {
-  try {
-    const user = await findUser(username);
-    return (user.groups_obj || []).some((group) => group.name === meshGroup);
-  } catch {
-    return false;
-  }
+/* Asked on every page (the rail shows VPN only to those who hold it): one
+   answer is kept half a minute, and granting or taking access drops it. */
+const meshHeld = new Map<string, { at: number; holds: Promise<boolean> }>();
+const meshTtl = 30_000;
+
+export function holdsMeshAccess(username: string): Promise<boolean> {
+  const key = username.toLowerCase();
+  const hit = meshHeld.get(key);
+  if (hit && Date.now() - hit.at < meshTtl) return hit.holds;
+  const holds = findUser(username).then((user) => (user.groups_obj || []).some((group) => group.name === meshGroup), () => false);
+  meshHeld.set(key, { at: Date.now(), holds });
+  return holds;
 }

@@ -21,13 +21,23 @@ function recent(username: string, now: number) {
 
 export const tooManyGuesses = "Too many wrong passwords. Try again in 15 minutes.";
 
-export function assertGuessesLeft(username: string) {
-  if (recent(username.toLowerCase(), Date.now()).length >= limit) throw new Error(tooManyGuesses);
-}
-
-export function recordWrongGuess(username: string) {
+/**
+ * Counts a guess the moment it's made, before the answer comes back: guesses
+ * sent all at once each see the ones before them, so they can't all slip under
+ * the limit together. Returns how to take it back when the check never ran.
+ */
+export function takeGuess(username: string): () => void {
   const key = username.toLowerCase();
-  failures.set(key, [...recent(key, Date.now()), Date.now()]);
+  const now = Date.now();
+  const kept = recent(key, now);
+  if (kept.length >= limit) throw new Error(tooManyGuesses);
+  failures.set(key, [...kept, now]);
+  return () => {
+    const list = failures.get(key);
+    const at = list?.indexOf(now) ?? -1;
+    if (list && at >= 0) list.splice(at, 1);
+    if (list && !list.length) failures.delete(key);
+  };
 }
 
 export function clearGuesses(username: string) {

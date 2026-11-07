@@ -16,14 +16,19 @@ type Context = { params: Promise<{ id: string }> };
  */
 const checkpointBytes = 8 * 1024 * 1024;
 
-/* One writer per upload. A newer request takes over from an older one, whose connection is gone as far as the client knows. */
-const writers = new Map<string, { stop: () => void; done: Promise<void> }>();
+/* One writer per upload. A newer request takes over from an older one, whose connection is gone as far as the client knows.
+   Each one takes its place before waiting, so of several arriving together only the newest writes; the rest stand down. */
+type Writer = { stopped: boolean; stop: () => void; done: Promise<void> };
+const writers = new Map<string, Writer>();
 
-async function takeOver(id: string) {
-  const writer = writers.get(id);
-  if (!writer) return;
-  writer.stop();
-  await writer.done;
+async function takeOver(id: string, onStop: () => void = () => {}) {
+  let finished!: () => void;
+  const writer: Writer = { stopped: false, stop: () => { writer.stopped = true; onStop(); }, done: new Promise<void>((resolve) => { finished = resolve; }) };
+  const previous = writers.get(id);
+  writers.set(id, writer);
+  previous?.stop();
+  if (previous) await previous.done;
+  return { writer, release: () => { if (writers.get(id) === writer) writers.delete(id); finished(); } };
 }
 
 /** Members' uploads are theirs; a guest's is reached by its id alone, while the link still lets people add. */
@@ -50,13 +55,15 @@ async function settle(upload: Upload): Promise<number> {
 /** How much has arrived, so a client can carry on where it stopped. */
 export async function HEAD(_request: Request, { params }: Context) {
   const { id } = await params;
+  const turn = await takeOver(id);
   try {
-    await takeOver(id);
     const upload = await uploadOf(id);
     const received = await settle(upload);
     return new Response(null, { status: 200, headers: { ...tusHeaders, "Upload-Offset": String(received), "Upload-Length": String(upload.size) } });
   } catch {
     return new Response(null, { status: 404, headers: tusHeaders });
+  } finally {
+    turn.release();
   }
 }
 
@@ -66,17 +73,14 @@ export async function PATCH(request: Request, { params }: Context) {
   if (refused) return refused;
   if (request.headers.get("content-type") !== "application/offset+octet-stream") return apiError(415, "Send bytes as application/offset+octet-stream.");
   const { id } = await params;
-  await takeOver(id);
-  let stopped = false;
-  let finished!: () => void;
   const reader = request.body?.getReader();
-  const writer = { stop: () => { stopped = true; void reader?.cancel().catch(() => {}); }, done: new Promise<void>((resolve) => { finished = resolve; }) };
-  writers.set(id, writer);
+  const { writer, release } = await takeOver(id, () => { void reader?.cancel().catch(() => {}); });
   try {
     return await drive(async () => {
       const upload = await uploadOf(id);
       const start = await settle(upload);
-      if (Number(request.headers.get("upload-offset")) !== start) {
+      /* A newer request came while this one waited its turn: that one writes. */
+      if (writer.stopped || Number(request.headers.get("upload-offset")) !== start) {
         return new Response(null, { status: 409, headers: { ...tusHeaders, "Upload-Offset": String(start) } });
       }
       const handle = await open(partPath(root, id), "a", 0o600);
@@ -88,7 +92,7 @@ export async function PATCH(request: Request, { params }: Context) {
         recorded = received;
       };
       try {
-        while (reader && !stopped) {
+        while (reader && !writer.stopped) {
           const { done, value } = await reader.read();
           if (done) break;
           if (received + value.byteLength > upload.size) { tooBig = true; await reader.cancel(); break; }
@@ -123,8 +127,7 @@ export async function PATCH(request: Request, { params }: Context) {
       return new Response(null, { status: 204, headers });
     });
   } finally {
-    if (writers.get(id) === writer) writers.delete(id);
-    finished();
+    release();
   }
 }
 
@@ -133,11 +136,15 @@ export async function DELETE(request: Request, { params }: Context) {
   const refused = crossSite(request);
   if (refused) return refused;
   const { id } = await params;
-  return drive(async () => {
-    await takeOver(id);
-    await uploadOf(id);
-    endUpload(db(), id);
-    await removePart(root, id);
-    return new Response(null, { status: 204, headers: tusHeaders });
-  });
+  const turn = await takeOver(id);
+  try {
+    return await drive(async () => {
+      await uploadOf(id);
+      endUpload(db(), id);
+      await removePart(root, id);
+      return new Response(null, { status: 204, headers: tusHeaders });
+    });
+  } finally {
+    turn.release();
+  }
 }

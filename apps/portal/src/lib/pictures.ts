@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { serialize, writeFileAtomic } from "./serial";
 import { join } from "node:path";
 import { stateDir } from "./state";
 import { sanitizePicturePng } from "./picture-png";
@@ -33,9 +34,7 @@ async function readIndex(): Promise<PictureIndex> {
 
 async function writeIndex(pictures: PictureIndex) {
   await mkdir(pictureDir, { recursive: true, mode: 0o700 });
-  const temporary = `${indexPath}.new`;
-  await writeFile(temporary, `${JSON.stringify({ pictures }, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, indexPath);
+  await writeFileAtomic(indexPath, `${JSON.stringify({ pictures }, null, 2)}\n`, 0o600);
 }
 
 /** The picture's path on this Portal, or null for someone without one. */
@@ -59,23 +58,28 @@ export async function storePicture(username: string, upload: Uint8Array): Promis
   const temporary = join(pictureDir, `${file}.new`);
   await writeFile(temporary, png, { mode: 0o600 });
   await rename(temporary, join(pictureDir, file));
-  const index = await readIndex();
-  const previous = index[key]?.file;
-  index[key] = { file, updatedAt: new Date().toISOString() };
-  await writeIndex(index);
-  /* The old address stops working, so a replaced picture is really gone. */
-  if (previous && previous !== file && fileName.test(previous)) await rm(join(pictureDir, previous), { force: true });
+  /* Two people saving at once each keep their entry. */
+  await serialize(indexPath, async () => {
+    const index = await readIndex();
+    const previous = index[key]?.file;
+    index[key] = { file, updatedAt: new Date().toISOString() };
+    await writeIndex(index);
+    /* The old address stops working, so a replaced picture is really gone. */
+    if (previous && previous !== file && fileName.test(previous)) await rm(join(pictureDir, previous), { force: true });
+  });
   return `/api/v1/pictures/${file}`;
 }
 
-export async function removePicture(username: string) {
+export function removePicture(username: string) {
   const key = username.toLowerCase();
-  const index = await readIndex();
-  const previous = index[key]?.file;
-  if (!previous) return;
-  delete index[key];
-  await writeIndex(index);
-  if (fileName.test(previous)) await rm(join(pictureDir, previous), { force: true });
+  return serialize(indexPath, async () => {
+    const index = await readIndex();
+    const previous = index[key]?.file;
+    if (!previous) return;
+    delete index[key];
+    await writeIndex(index);
+    if (fileName.test(previous)) await rm(join(pictureDir, previous), { force: true });
+  });
 }
 
 export async function readPictureFile(file: string): Promise<Uint8Array | null> {

@@ -1,9 +1,10 @@
 import { renameTunnelSettings, deleteTunnelSettings } from "./tunnel-settings";
 import { callerKeyConfiguration, validateApiSettings } from "./tool-apis/catalog";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { AppDefinition } from "./definitions";
 import { publishDesiredState } from "./desired-state";
+import { serialize, writeFileAtomic } from "./serial";
 import { legacySettingsPath, settingsPath } from "./state";
 import { getTunnelProvider, parseCloudflareTunnelToken, providerRunsConnector } from "./tunnel-providers";
 
@@ -175,18 +176,40 @@ function normalize(value: unknown): PlatformSettings {
 
 async function persist(settings: PlatformSettings) {
   await mkdir(dirname(settingsPath), { recursive: true, mode: 0o700 });
-  const temporary = `${settingsPath}.new`;
-  await writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, settingsPath);
+  await writeFileAtomic(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, 0o600);
+  forgetSettings();
   await publishDesiredState(settings);
 }
 
-export async function getPlatformSettings(): Promise<PlatformSettings> {
+/* Every request reads the settings, often several times over. One read serves
+   everyone for a couple of seconds, and any write here drops it at once. Each
+   caller gets its own copy, since the save functions change what they're given. */
+const fresh = 2000;
+let held: { at: number; settings: Promise<PlatformSettings> } | null = null;
+let generation = 0;
+function forgetSettings() { generation += 1; held = null; }
+
+async function readSettings(): Promise<PlatformSettings> {
   for (const path of [settingsPath, legacySettingsPath]) {
     try { return normalize(JSON.parse(await readFile(path, "utf8"))); } catch { continue; }
   }
   return defaults();
 }
+
+export async function getPlatformSettings(): Promise<PlatformSettings> {
+  if (!held || Date.now() - held.at > fresh) {
+    const asked = generation;
+    const reading = readSettings();
+    const entry = { at: Date.now(), settings: reading };
+    held = entry;
+    /* A read that a write overtook mustn't stay as the answer. */
+    reading.then(() => { if (generation !== asked && held === entry) held = null; }, () => { if (held === entry) held = null; });
+  }
+  return structuredClone(await held.settings);
+}
+
+/** Read, change and write the settings with no other change in between. */
+const settingsTurn = <T>(work: () => Promise<T>) => serialize(settingsPath, work);
 
 export function appHostname(domain: string, baseDomain: string) {
   const value = domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -214,129 +237,139 @@ export function tunnelZones(tunnel: TunnelInstance | undefined): CloudflareZone[
 
 /** Creates saved configuration; deployment happens only after enablement. */
 export async function configureDefinition(definition: AppDefinition) {
-  const settings = await getPlatformSettings();
-  if (definition.spec.setupReady === false) throw new Error("Configuration is not available for this app yet");
-  const id = definition.metadata.id;
-  if (!settings.apps[id]) {
-    settings.apps[id] = {
-      id, definitionId: id, name: definition.metadata.name, enabled: false, domain: definition.metadata.shortName.toLowerCase(),
-      colors: definition.metadata.colors, tunnelId: null, environment: {}, networkPolicy: definition.spec.defaultNetworkPolicy,
-    };
-    await persist(settings);
-  }
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    if (definition.spec.setupReady === false) throw new Error("Configuration is not available for this app yet");
+    const id = definition.metadata.id;
+    if (!settings.apps[id]) {
+      settings.apps[id] = {
+        id, definitionId: id, name: definition.metadata.name, enabled: false, domain: definition.metadata.shortName.toLowerCase(),
+        colors: definition.metadata.colors, tunnelId: null, environment: {}, networkPolicy: definition.spec.defaultNetworkPolicy,
+      };
+      await persist(settings);
+    }
+  });
 }
 
 export async function saveAppOverview(definition: AppDefinition, form: FormData) {
-  if (definition.spec.setupReady === false && form.get("enabled") === "on") throw new Error("This app cannot be enabled until its configuration is available");
-  const settings = await getPlatformSettings();
-  const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Start setup before saving app configuration");
-  const domain = String(form.get("domain") || "").trim().toLowerCase();
-  if (!(labelPattern.test(domain) || domainPattern.test(domain))) throw new Error("Enter a short app name or full hostname");
-  const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
-  if (!colors.every((color) => colorPattern.test(color))) throw new Error("Every flower color must be a six-digit hex value");
-  settings.apps[current.id] = { ...current, name: String(form.get("name") || definition.metadata.name).trim(), enabled: form.get("enabled") === "on", domain, colors: colors as unknown as Palette };
-  for (const route of Object.values(settings.routes)) {
-    if (route.appId === current.id) { route.hostname = appHostname(domain, settings.baseDomain); route.enabled = settings.apps[current.id].enabled && Boolean(current.tunnelId); }
-  }
-  await persist(settings);
+  return settingsTurn(async () => {
+    if (definition.spec.setupReady === false && form.get("enabled") === "on") throw new Error("This app cannot be enabled until its configuration is available");
+    const settings = await getPlatformSettings();
+    const current = settings.apps[definition.metadata.id];
+    if (!current) throw new Error("Start setup before saving app configuration");
+    const domain = String(form.get("domain") || "").trim().toLowerCase();
+    if (!(labelPattern.test(domain) || domainPattern.test(domain))) throw new Error("Enter a short app name or full hostname");
+    const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
+    if (!colors.every((color) => colorPattern.test(color))) throw new Error("Every flower color must be a six-digit hex value");
+    settings.apps[current.id] = { ...current, name: String(form.get("name") || definition.metadata.name).trim(), enabled: form.get("enabled") === "on", domain, colors: colors as unknown as Palette };
+    for (const route of Object.values(settings.routes)) {
+      if (route.appId === current.id) { route.hostname = appHostname(domain, settings.baseDomain); route.enabled = settings.apps[current.id].enabled && Boolean(current.tunnelId); }
+    }
+    await persist(settings);
+  });
 }
 
 export async function saveAppSetup(definition: AppDefinition, form: FormData) {
-  if (definition.spec.setupReady === false && form.get("enabled") === "on") throw new Error("This app cannot be enabled until its configuration is available");
-  const settings = await getPlatformSettings();
-  const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Start setup before saving app configuration");
-  const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
-  if (!colors.every((color) => colorPattern.test(color))) throw new Error("Every flower color must be a six-digit hex value");
-  const tunnelValue = definition.spec.portalPath ? "none" : String(form.get("tunnelId") || "none");
-  const tunnelId = tunnelValue === "none" ? null : tunnelValue;
-  const tunnel = tunnelId ? settings.tunnels[tunnelId] : undefined;
-  if (tunnelId && !tunnel) throw new Error("Select an existing tunnel");
+  return settingsTurn(async () => {
+    if (definition.spec.setupReady === false && form.get("enabled") === "on") throw new Error("This app cannot be enabled until its configuration is available");
+    const settings = await getPlatformSettings();
+    const current = settings.apps[definition.metadata.id];
+    if (!current) throw new Error("Start setup before saving app configuration");
+    const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
+    if (!colors.every((color) => colorPattern.test(color))) throw new Error("Every flower color must be a six-digit hex value");
+    const tunnelValue = definition.spec.portalPath ? "none" : String(form.get("tunnelId") || "none");
+    const tunnelId = tunnelValue === "none" ? null : tunnelValue;
+    const tunnel = tunnelId ? settings.tunnels[tunnelId] : undefined;
+    if (tunnelId && !tunnel) throw new Error("Select an existing tunnel");
 
-  let domain = current.domain;
-  const zones = tunnel?.provider === "cloudflare" ? tunnelZones(tunnel) : [];
-  if (tunnel && zones.length) {
-    const zone = String(form.get(`zone.${tunnel.id}`) || "");
-    const subdomain = String(form.get(`subdomain.${tunnel.id}`) || "").trim().toLowerCase();
-    if (!zones.some((candidate) => candidate.name === zone)) throw new Error("Select a domain authorized for this Cloudflare tunnel");
-    if (subdomain !== "@" && !labelPattern.test(subdomain)) throw new Error("Subdomain must be one DNS label, or @ for the root domain");
-    domain = subdomain === "@" ? zone : `${subdomain}.${zone}`;
-  } else if (tunnel) {
-    domain = String(form.get(`domain.${tunnel?.id || "none"}`) || current.domain).trim().toLowerCase();
-    if (!(labelPattern.test(domain) || domainPattern.test(domain))) throw new Error("Enter a short app name or complete hostname");
-  } else {
-    domain = definition.metadata.shortName.toLowerCase();
-  }
+    let domain = current.domain;
+    const zones = tunnel?.provider === "cloudflare" ? tunnelZones(tunnel) : [];
+    if (tunnel && zones.length) {
+      const zone = String(form.get(`zone.${tunnel.id}`) || "");
+      const subdomain = String(form.get(`subdomain.${tunnel.id}`) || "").trim().toLowerCase();
+      if (!zones.some((candidate) => candidate.name === zone)) throw new Error("Select a domain authorized for this Cloudflare tunnel");
+      if (subdomain !== "@" && !labelPattern.test(subdomain)) throw new Error("Subdomain must be one DNS label, or @ for the root domain");
+      domain = subdomain === "@" ? zone : `${subdomain}.${zone}`;
+    } else if (tunnel) {
+      domain = String(form.get(`domain.${tunnel?.id || "none"}`) || current.domain).trim().toLowerCase();
+      if (!(labelPattern.test(domain) || domainPattern.test(domain))) throw new Error("Enter a short app name or complete hostname");
+    } else {
+      domain = definition.metadata.shortName.toLowerCase();
+    }
 
-  const enabled = form.get("enabled") === "on";
-  settings.apps[current.id] = {
-    ...current,
-    name: String(form.get("name") || definition.metadata.name).trim(),
-    enabled,
-    domain,
-    colors: colors as unknown as Palette,
-    tunnelId,
-    networkPolicy: { ...current.networkPolicy, internetAccess: form.get("internetAccess") === "on" },
-  };
-  const endpoint = definition.spec.services.flatMap((service) => service.endpoint ? [service.endpoint] : [])[0];
-  const routeId = `${current.id}-${endpoint?.id || "web"}`;
-  if (endpoint && tunnelId) settings.routes[routeId] = { id: routeId, appId: current.id, endpointId: endpoint.id, hostname: appHostname(domain, settings.baseDomain), path: "/*", tunnelId, enabled };
-  else if (settings.routes[routeId]) settings.routes[routeId].enabled = false;
-  await persist(settings);
+    const enabled = form.get("enabled") === "on";
+    settings.apps[current.id] = {
+      ...current,
+      name: String(form.get("name") || definition.metadata.name).trim(),
+      enabled,
+      domain,
+      colors: colors as unknown as Palette,
+      tunnelId,
+      networkPolicy: { ...current.networkPolicy, internetAccess: form.get("internetAccess") === "on" },
+    };
+    const endpoint = definition.spec.services.flatMap((service) => service.endpoint ? [service.endpoint] : [])[0];
+    const routeId = `${current.id}-${endpoint?.id || "web"}`;
+    if (endpoint && tunnelId) settings.routes[routeId] = { id: routeId, appId: current.id, endpointId: endpoint.id, hostname: appHostname(domain, settings.baseDomain), path: "/*", tunnelId, enabled };
+    else if (settings.routes[routeId]) settings.routes[routeId].enabled = false;
+    await persist(settings);
+  });
 }
 
 export async function saveAppEnvironment(definition: AppDefinition, form: FormData) {
-  const settings = await getPlatformSettings();
-  const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Start setup before saving app configuration");
-  // Each form posts one target, so saving app settings never disturbs the
-  // environment view's answers, and an unticked box still means "off".
-  const target = String(form.get("target") || "environment") === "settings" ? "settings" : "environment";
-  const environment = { ...current.environment };
-  for (const field of definition.spec.configuration) {
-    if ((field.target || "environment") !== target) continue;
-    if (field.kind === "toggle") {
-      const value = form.get(`env.${field.key}`) === null ? "off" : "on";
-      if (value === (field.default || "off")) delete environment[field.key];
-      else environment[field.key] = { value, secret: false };
-      continue;
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const current = settings.apps[definition.metadata.id];
+    if (!current) throw new Error("Start setup before saving app configuration");
+    // Each form posts one target, so saving app settings never disturbs the
+    // environment view's answers, and an unticked box still means "off".
+    const target = String(form.get("target") || "environment") === "settings" ? "settings" : "environment";
+    const environment = { ...current.environment };
+    for (const field of definition.spec.configuration) {
+      if ((field.target || "environment") !== target) continue;
+      if (field.kind === "toggle") {
+        const value = form.get(`env.${field.key}`) === null ? "off" : "on";
+        if (value === (field.default || "off")) delete environment[field.key];
+        else environment[field.key] = { value, secret: false };
+        continue;
+      }
+      const submitted = form.get(`env.${field.key}`);
+      if (submitted === null || field.kind === "secret" && submitted === "") continue;
+      const value = String(submitted);
+      if (field.kind === "select" && value && !field.options?.includes(value)) throw new Error(`Invalid selection for ${field.label}`);
+      if (value === "" || value === field.default) delete environment[field.key];
+      else environment[field.key] = { value, secret: field.kind === "secret" };
     }
-    const submitted = form.get(`env.${field.key}`);
-    if (submitted === null || field.kind === "secret" && submitted === "") continue;
-    const value = String(submitted);
-    if (field.kind === "select" && value && !field.options?.includes(value)) throw new Error(`Invalid selection for ${field.label}`);
-    if (value === "" || value === field.default) delete environment[field.key];
-    else environment[field.key] = { value, secret: field.kind === "secret" };
-  }
-  validateApiSettings(definition.spec.apiCollection || [], environment);
-  settings.apps[current.id] = { ...current, environment };
-  await persist(settings);
+    validateApiSettings(definition.spec.apiCollection || [], environment);
+    settings.apps[current.id] = { ...current, environment };
+    await persist(settings);
+  });
 }
 
 export async function saveAppNetwork(definition: AppDefinition, form: FormData) {
-  const settings = await getPlatformSettings();
-  const current = settings.apps[definition.metadata.id];
-  if (!current) throw new Error("Start setup before saving app configuration");
-  const tunnelValue = definition.spec.portalPath ? "none" : String(form.get("tunnelId") || "none");
-  const tunnelId = tunnelValue === "none" ? null : tunnelValue;
-  if (tunnelId && !settings.tunnels[tunnelId]) throw new Error("Select an existing tunnel");
-  let domain = current.domain;
-  const tunnel = tunnelId ? settings.tunnels[tunnelId] : undefined;
-  const zones = tunnel?.provider === "cloudflare" ? tunnelZones(tunnel) : [];
-  if (tunnel && zones.length) {
-    const zone = String(form.get(`zone.${tunnel.id}`) || "");
-    const subdomain = String(form.get(`subdomain.${tunnel.id}`) || "").trim().toLowerCase();
-    if (!zones.some((candidate) => candidate.name === zone)) throw new Error("Select a domain authorized for this Cloudflare tunnel");
-    if (subdomain !== "@" && !labelPattern.test(subdomain)) throw new Error("Subdomain must be one DNS label, or @ for the root domain");
-    domain = subdomain === "@" ? zone : `${subdomain}.${zone}`;
-  }
-  settings.apps[current.id] = { ...current, domain, tunnelId, networkPolicy: { ...current.networkPolicy, internetAccess: form.get("internetAccess") === "on" } };
-  const endpoint = definition.spec.services.flatMap((service) => service.endpoint ? [service.endpoint] : [])[0];
-  const routeId = `${current.id}-${endpoint?.id || "web"}`;
-  if (endpoint && tunnelId) settings.routes[routeId] = { id: routeId, appId: current.id, endpointId: endpoint.id, hostname: appHostname(domain, settings.baseDomain), path: "/*", tunnelId, enabled: current.enabled };
-  else if (settings.routes[routeId]) settings.routes[routeId].enabled = false;
-  await persist(settings);
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const current = settings.apps[definition.metadata.id];
+    if (!current) throw new Error("Start setup before saving app configuration");
+    const tunnelValue = definition.spec.portalPath ? "none" : String(form.get("tunnelId") || "none");
+    const tunnelId = tunnelValue === "none" ? null : tunnelValue;
+    if (tunnelId && !settings.tunnels[tunnelId]) throw new Error("Select an existing tunnel");
+    let domain = current.domain;
+    const tunnel = tunnelId ? settings.tunnels[tunnelId] : undefined;
+    const zones = tunnel?.provider === "cloudflare" ? tunnelZones(tunnel) : [];
+    if (tunnel && zones.length) {
+      const zone = String(form.get(`zone.${tunnel.id}`) || "");
+      const subdomain = String(form.get(`subdomain.${tunnel.id}`) || "").trim().toLowerCase();
+      if (!zones.some((candidate) => candidate.name === zone)) throw new Error("Select a domain authorized for this Cloudflare tunnel");
+      if (subdomain !== "@" && !labelPattern.test(subdomain)) throw new Error("Subdomain must be one DNS label, or @ for the root domain");
+      domain = subdomain === "@" ? zone : `${subdomain}.${zone}`;
+    }
+    settings.apps[current.id] = { ...current, domain, tunnelId, networkPolicy: { ...current.networkPolicy, internetAccess: form.get("internetAccess") === "on" } };
+    const endpoint = definition.spec.services.flatMap((service) => service.endpoint ? [service.endpoint] : [])[0];
+    const routeId = `${current.id}-${endpoint?.id || "web"}`;
+    if (endpoint && tunnelId) settings.routes[routeId] = { id: routeId, appId: current.id, endpointId: endpoint.id, hostname: appHostname(domain, settings.baseDomain), path: "/*", tunnelId, enabled: current.enabled };
+    else if (settings.routes[routeId]) settings.routes[routeId].enabled = false;
+    await persist(settings);
+  });
 }
 
 /**
@@ -344,61 +377,67 @@ export async function saveAppNetwork(definition: AppDefinition, form: FormData) 
  * authenticate, so it is ready the moment it exists.
  */
 export async function createDirectTunnel(name: string) {
-  const settings = await getPlatformSettings();
-  const label = name.trim() || "Direct";
-  let id = "direct";
-  for (let suffix = 2; settings.tunnels[id]; suffix += 1) id = `direct-${suffix}`;
-  settings.tunnels[id] = { id, name: label, provider: "direct", enabled: true, configuration: {} };
-  await persist(settings);
-  return id;
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const label = name.trim() || "Direct";
+    let id = "direct";
+    for (let suffix = 2; settings.tunnels[id]; suffix += 1) id = `direct-${suffix}`;
+    settings.tunnels[id] = { id, name: label, provider: "direct", enabled: true, configuration: {} };
+    await persist(settings);
+    return id;
+  });
 }
 
 export async function saveTunnel(form: FormData) {
-  const settings = await getPlatformSettings();
-  const id = String(form.get("id") || "").trim().toLowerCase();
-  const name = String(form.get("name") || "").trim();
-  const provider = String(form.get("provider") || "").trim().toLowerCase();
-  if (!idPattern.test(id)) throw new Error("Tunnel ID must be a lowercase slug");
-  if (!name || !provider) throw new Error("Tunnel name and provider are required");
-  if (!getTunnelProvider(provider)) throw new Error(`Tunnel provider ${provider} is not installed`);
-  const previous = settings.tunnels[id];
-  const configuration = { ...previous?.configuration };
-  for (const [key, secret] of [["TUNNEL_ID", false], ["CREDENTIALS_FILE", false], ["TUNNEL_TOKEN", true]] as const) {
-    const value = String(form.get(key) || "").trim();
-    if (!value && secret && configuration[key]) continue;
-    if (value) configuration[key] = { value, secret };
-    else delete configuration[key];
-  }
-  // A provider with no connector has nothing to authenticate: it publishes on
-  // the server's own address, so demanding tunnel credentials would make it
-  // impossible to save.
-  if (providerRunsConnector(provider) && !configuration.TUNNEL_TOKEN && !(configuration.TUNNEL_ID && configuration.CREDENTIALS_FILE)) {
-    throw new Error("Provide a tunnel token, or a tunnel ID and credentials file");
-  }
-  settings.tunnels[id] = { id, name, provider, enabled: form.get("enabled") === "on", configuration };
-  await persist(settings);
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const id = String(form.get("id") || "").trim().toLowerCase();
+    const name = String(form.get("name") || "").trim();
+    const provider = String(form.get("provider") || "").trim().toLowerCase();
+    if (!idPattern.test(id)) throw new Error("Tunnel ID must be a lowercase slug");
+    if (!name || !provider) throw new Error("Tunnel name and provider are required");
+    if (!getTunnelProvider(provider)) throw new Error(`Tunnel provider ${provider} is not installed`);
+    const previous = settings.tunnels[id];
+    const configuration = { ...previous?.configuration };
+    for (const [key, secret] of [["TUNNEL_ID", false], ["CREDENTIALS_FILE", false], ["TUNNEL_TOKEN", true]] as const) {
+      const value = String(form.get(key) || "").trim();
+      if (!value && secret && configuration[key]) continue;
+      if (value) configuration[key] = { value, secret };
+      else delete configuration[key];
+    }
+    // A provider with no connector has nothing to authenticate: it publishes on
+    // the server's own address, so demanding tunnel credentials would make it
+    // impossible to save.
+    if (providerRunsConnector(provider) && !configuration.TUNNEL_TOKEN && !(configuration.TUNNEL_ID && configuration.CREDENTIALS_FILE)) {
+      throw new Error("Provide a tunnel token, or a tunnel ID and credentials file");
+    }
+    settings.tunnels[id] = { id, name, provider, enabled: form.get("enabled") === "on", configuration };
+    await persist(settings);
+  });
 }
 
 export async function connectCloudflareTunnel(form: FormData) {
-  const settings = await getPlatformSettings();
-  const id = String(form.get("id") || "public").trim().toLowerCase();
-  const name = String(form.get("name") || "Public Cloudflare").trim();
-  if (!idPattern.test(id)) throw new Error("Tunnel ID must be a lowercase slug");
-  if (!name) throw new Error("Give this connection a name");
-  const parsed = parseCloudflareTunnelToken(String(form.get("tokenInput") || ""));
-  const previous = settings.tunnels[id];
-  const configuration: Record<string, EnvironmentOverride> = {
-    ...previous?.configuration,
-    TUNNEL_TOKEN: { value: parsed.token, secret: true },
-    AUTH_MODE: { value: "remote-token", secret: false },
-  };
-  delete configuration.ACCOUNT_ID;
-  delete configuration.TUNNEL_ID;
-  if (parsed.accountId) configuration.ACCOUNT_ID = { value: parsed.accountId, secret: false };
-  if (parsed.tunnelId) configuration.TUNNEL_ID = { value: parsed.tunnelId, secret: false };
-  delete configuration.CREDENTIALS_FILE;
-  settings.tunnels[id] = { id, name, provider: "cloudflare", enabled: true, configuration };
-  await persist(settings);
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const id = String(form.get("id") || "public").trim().toLowerCase();
+    const name = String(form.get("name") || "Public Cloudflare").trim();
+    if (!idPattern.test(id)) throw new Error("Tunnel ID must be a lowercase slug");
+    if (!name) throw new Error("Give this connection a name");
+    const parsed = parseCloudflareTunnelToken(String(form.get("tokenInput") || ""));
+    const previous = settings.tunnels[id];
+    const configuration: Record<string, EnvironmentOverride> = {
+      ...previous?.configuration,
+      TUNNEL_TOKEN: { value: parsed.token, secret: true },
+      AUTH_MODE: { value: "remote-token", secret: false },
+    };
+    delete configuration.ACCOUNT_ID;
+    delete configuration.TUNNEL_ID;
+    if (parsed.accountId) configuration.ACCOUNT_ID = { value: parsed.accountId, secret: false };
+    if (parsed.tunnelId) configuration.TUNNEL_ID = { value: parsed.tunnelId, secret: false };
+    delete configuration.CREDENTIALS_FILE;
+    settings.tunnels[id] = { id, name, provider: "cloudflare", enabled: true, configuration };
+    await persist(settings);
+  });
 }
 
 export async function provisionLocalCloudflareTunnel(input: {
@@ -432,68 +471,80 @@ export async function provisionLocalCloudflareTunnel(input: {
 }
 
 export async function renameTunnel(id: string, name: string) {
-  const settings = await getPlatformSettings();
-  renameTunnelSettings(settings, id, name);
-  await persist(settings);
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    renameTunnelSettings(settings, id, name);
+    await persist(settings);
+  });
 }
 
 export async function deleteTunnel(id: string, confirmed: boolean) {
-  if (!confirmed) throw new Error("Confirm that you understand apps will lose this public connection");
-  const settings = await getPlatformSettings();
-  deleteTunnelSettings(settings, id);
-  await persist(settings);
+  return settingsTurn(async () => {
+    if (!confirmed) throw new Error("Confirm that you understand apps will lose this public connection");
+    const settings = await getPlatformSettings();
+    deleteTunnelSettings(settings, id);
+    await persist(settings);
+  });
 }
 
 export async function disconnectTunnel(id: string) {
-  const settings = await getPlatformSettings();
-  const tunnel = settings.tunnels[id];
-  if (!tunnel) throw new Error("Tunnel does not exist");
-  settings.tunnels[id] = { ...tunnel, enabled: false, configuration: {} };
-  for (const route of Object.values(settings.routes)) if (route.tunnelId === id) route.enabled = false;
-  await persist(settings);
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const tunnel = settings.tunnels[id];
+    if (!tunnel) throw new Error("Tunnel does not exist");
+    settings.tunnels[id] = { ...tunnel, enabled: false, configuration: {} };
+    for (const route of Object.values(settings.routes)) if (route.tunnelId === id) route.enabled = false;
+    await persist(settings);
+  });
 }
 
 export async function saveRoute(form: FormData) {
-  const settings = await getPlatformSettings();
-  const id = String(form.get("id") || "").trim().toLowerCase();
-  const endpointReference = String(form.get("endpoint") || "").trim();
-  const [selectedAppId, selectedEndpointId] = endpointReference.includes(":") ? endpointReference.split(":", 2) : ["", ""];
-  const appId = selectedAppId || String(form.get("appId") || "").trim();
-  const endpointId = selectedEndpointId || String(form.get("endpointId") || "").trim();
-  const hostname = String(form.get("hostname") || "").trim().toLowerCase();
-  const path = String(form.get("path") || "/*").trim();
-  const tunnelId = String(form.get("tunnelId") || "").trim();
-  if (!idPattern.test(id)) throw new Error("Route ID must be a lowercase slug");
-  if (!settings.apps[appId]) throw new Error("Select an installed application");
-  if (!endpointId) throw new Error("Select an application endpoint");
-  if (!domainPattern.test(hostname) || hostname === "@") throw new Error("Enter a complete route hostname");
-  if (!path.startsWith("/")) throw new Error("Route path must start with /");
-  if (!settings.tunnels[tunnelId]) throw new Error("Select an existing tunnel");
-  settings.routes[id] = { id, appId, endpointId, hostname, path, tunnelId, enabled: form.get("enabled") === "on" };
-  await persist(settings);
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const id = String(form.get("id") || "").trim().toLowerCase();
+    const endpointReference = String(form.get("endpoint") || "").trim();
+    const [selectedAppId, selectedEndpointId] = endpointReference.includes(":") ? endpointReference.split(":", 2) : ["", ""];
+    const appId = selectedAppId || String(form.get("appId") || "").trim();
+    const endpointId = selectedEndpointId || String(form.get("endpointId") || "").trim();
+    const hostname = String(form.get("hostname") || "").trim().toLowerCase();
+    const path = String(form.get("path") || "/*").trim();
+    const tunnelId = String(form.get("tunnelId") || "").trim();
+    if (!idPattern.test(id)) throw new Error("Route ID must be a lowercase slug");
+    if (!settings.apps[appId]) throw new Error("Select an installed application");
+    if (!endpointId) throw new Error("Select an application endpoint");
+    if (!domainPattern.test(hostname) || hostname === "@") throw new Error("Enter a complete route hostname");
+    if (!path.startsWith("/")) throw new Error("Route path must start with /");
+    if (!settings.tunnels[tunnelId]) throw new Error("Select an existing tunnel");
+    settings.routes[id] = { id, appId, endpointId, hostname, path, tunnelId, enabled: form.get("enabled") === "on" };
+    await persist(settings);
+  });
 }
 
 export async function savePlatformBrand(form: FormData) {
-  const settings = await getPlatformSettings();
-  const baseDomain = String(form.get("baseDomain") || "").trim().toLowerCase();
-  if (!domainPattern.test(baseDomain) || baseDomain === "@") throw new Error("Enter a valid base domain");
-  const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
-  if (!colors.every((color) => colorPattern.test(color))) throw new Error("Every flower color must be a six-digit hex value");
-  settings.baseDomain = baseDomain;
-  settings.brand.colors = colors as unknown as Palette;
-  if (settings.apps["kimono-portal"]) settings.apps["kimono-portal"].colors = colors as unknown as Palette;
-  await persist(settings);
+  return settingsTurn(async () => {
+    const settings = await getPlatformSettings();
+    const baseDomain = String(form.get("baseDomain") || "").trim().toLowerCase();
+    if (!domainPattern.test(baseDomain) || baseDomain === "@") throw new Error("Enter a valid base domain");
+    const colors = [0, 1, 2].map((index) => String(form.get(`color${index}`) || "").toLowerCase());
+    if (!colors.every((color) => colorPattern.test(color))) throw new Error("Every flower color must be a six-digit hex value");
+    settings.baseDomain = baseDomain;
+    settings.brand.colors = colors as unknown as Palette;
+    if (settings.apps["kimono-portal"]) settings.apps["kimono-portal"].colors = colors as unknown as Palette;
+    await persist(settings);
+  });
 }
 
 /** Key management writes the same configuration that the app management form edits. */
 export async function saveToolApiCallerKey(definition: AppDefinition, apiId: string, key: string | null) {
-  const api = definition.spec.apiCollection?.find(item => item.id === apiId);
-  if (!api) throw new Error("Unknown API");
-  const settings = await getPlatformSettings();
-  const instance = settings.apps[definition.metadata.id];
-  if (!instance) throw new Error("Start setup first");
-  const environment = callerKeyConfiguration(api, instance.environment, key);
-  validateApiSettings(definition.spec.apiCollection || [], environment);
-  settings.apps[instance.id] = { ...instance, environment };
-  await persist(settings);
+  return settingsTurn(async () => {
+    const api = definition.spec.apiCollection?.find(item => item.id === apiId);
+    if (!api) throw new Error("Unknown API");
+    const settings = await getPlatformSettings();
+    const instance = settings.apps[definition.metadata.id];
+    if (!instance) throw new Error("Start setup first");
+    const environment = callerKeyConfiguration(api, instance.environment, key);
+    validateApiSettings(definition.spec.apiCollection || [], environment);
+    settings.apps[instance.id] = { ...instance, environment };
+    await persist(settings);
+  });
 }

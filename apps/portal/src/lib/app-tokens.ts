@@ -44,7 +44,13 @@ const refetchFloor = 30 * 1000;
 let keys: { at: number; byId: Map<string, KeyObject> } | null = null;
 let lastFetch = 0;
 
-async function fetchKeys(issuer: string): Promise<Map<string, KeyObject>> {
+/* Everyone who needs the keys while they're being fetched waits for that one fetch. */
+let fetchingKeys: Promise<Map<string, KeyObject>> | null = null;
+function fetchKeys(issuer: string): Promise<Map<string, KeyObject>> {
+  return fetchingKeys ??= readKeys(issuer).finally(() => { fetchingKeys = null; });
+}
+
+async function readKeys(issuer: string): Promise<Map<string, KeyObject>> {
   lastFetch = Date.now();
   const response = await fetch(`${issuer}jwks/`, { cache: "no-store", signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new Error(`The sign-in keys could not be read (${response.status}).`);

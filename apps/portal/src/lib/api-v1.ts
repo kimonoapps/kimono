@@ -42,7 +42,7 @@ async function appUser(authorization: string): Promise<ApiUser | null> {
   if (!bearer) return null;
   const token = await verifyAppToken(bearer[1]);
   if (!token) return null;
-  if (token.signedInAt < signedOutBefore(token.username)) return null;
+  if (token.signedInAt < await signedOutBefore(token.username)) return null;
   const standing = await readStanding(token.username);
   if (standing && !standing.active) return null;
   return { username: token.username, name: token.name, email: token.email, role: roleFromGroups(standing?.groups ?? token.groups), via: "app" };

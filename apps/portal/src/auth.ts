@@ -45,9 +45,9 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
         token.role = roleFromGroups(profile.groups);
       }
       /* Signed out everywhere after this session began: it is no longer honoured. */
-      if (typeof token.sessionId === "string" && isRevoked(token.sessionId)) return null;
+      if (typeof token.sessionId === "string" && await isRevoked(token.sessionId)) return null;
       const username = typeof token.username === "string" ? token.username : "";
-      if (username && (typeof token.signedInAt === "number" ? token.signedInAt : 0) < signedOutBefore(username)) return null;
+      if (username && (typeof token.signedInAt === "number" ? token.signedInAt : 0) < await signedOutBefore(username)) return null;
       /* The role and the account itself are re-read from the directory (cached
          for a minute): a deactivated account is signed out, and a role change
          lands without waiting for the cookie to expire. If the directory can't

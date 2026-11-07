@@ -13,7 +13,7 @@ import {
 } from "./directory";
 import { parsePasswordChange, parseProfileInput, type AccountProfile } from "@kimono/account";
 import { picturePathFor, removePicture, storePicture } from "./pictures";
-import { assertGuessesLeft, clearGuesses, recordWrongGuess } from "./attempts";
+import { clearGuesses, takeGuess } from "./attempts";
 import { signOutEverywhere } from "./session-epochs";
 
 /**
@@ -65,12 +65,11 @@ async function reach<T>(what: string, work: () => Promise<T>): Promise<T> {
  */
 async function confirmPassword(user: SessionUser, password: unknown) {
   if (typeof password !== "string" || !password) throw new Error("Enter your current password.");
-  assertGuessesLeft(user.username);
-  const correct = await reach("password check", () => verifyIdentityPassword(user.username, password));
-  if (!correct) {
-    recordWrongGuess(user.username);
-    throw new Error("Your current password isn't right.");
-  }
+  const untake = takeGuess(user.username);
+  let correct: boolean;
+  try { correct = await reach("password check", () => verifyIdentityPassword(user.username, password)); }
+  catch (error) { untake(); throw error; }
+  if (!correct) throw new Error("Your current password isn't right.");
   clearGuesses(user.username);
 }
 

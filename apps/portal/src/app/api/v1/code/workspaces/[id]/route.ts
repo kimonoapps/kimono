@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { archiveWorkspace, code, codeOpen, db, shareOf, workspaceAs, forgetAttachments, removeWorkspace, renameWorkspace, setWorkspaceProject, taskFolder, workspaceFor } from "@/lib/code";
+import { archiveWorkspace, code, codeOpen, db, shareOf, workspaceAs, forgetAttachments, removeWorkspace, renameWorkspace, setWorkspaceProject, stop, taskFolder, workspaceFor } from "@/lib/code";
 import { rehome, retitle } from "@/lib/code/drive";
 import { sandbox } from "@/lib/code/node";
 
@@ -54,6 +54,8 @@ export async function DELETE(request: Request, { params }: Context) {
   const { id } = await params;
   return code(user, async (config) => {
     const workspace = workspaceFor(db(), id, user.username);
+    /* A turn still working ends first, so it doesn't write to a chat that's gone. */
+    await stop(config, workspace).catch(() => {});
     if (config.nodeAddress && config.nodeKey) await sandbox.remove(config, workspace).catch(() => {});
     removeWorkspace(db(), id, user.username);
     await forgetAttachments(id);

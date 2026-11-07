@@ -1,6 +1,7 @@
 import "server-only";
 
-import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
+import { serialize, singleFlight, writeFileAtomic } from "./serial";
 import { join } from "node:path";
 import { stateDir } from "./state";
 
@@ -44,6 +45,11 @@ let checked: { at: number; ok: boolean; release: Release | null } | null = null;
 export async function latestRelease(): Promise<Release | null> {
   if (process.env.KIMONO_UPDATE_CHECK === "off") return null;
   if (checked && Date.now() - checked.at < (checked.ok ? checkEvery : retryAfterFailure)) return checked.release;
+  return askGitHub();
+}
+
+/* Everyone who asks while the answer is on its way waits for that one answer. */
+const askGitHub = singleFlight(async (): Promise<Release | null> => {
   try {
     const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "kimono-portal" },
@@ -60,7 +66,7 @@ export async function latestRelease(): Promise<Release | null> {
     checked = { at: Date.now(), ok: false, release: checked?.release ?? null };
   }
   return checked.release;
-}
+});
 
 /* Who has said "don't show again", and for which version. Kept per person, on
    the server, so it holds on every device they use. */
@@ -79,11 +85,11 @@ async function dismissals(): Promise<Record<string, string>> {
 export async function dismissUpdate(username: string, version: string) {
   const clean = plain(version);
   if (!clean) return;
-  const next = { ...await dismissals(), [username.toLowerCase()]: clean };
-  await mkdir(stateDir, { recursive: true, mode: 0o700 });
-  const temporary = `${dismissedPath}.new`;
-  await writeFile(temporary, `${JSON.stringify({ dismissed: next }, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, dismissedPath);
+  await serialize(dismissedPath, async () => {
+    const next = { ...await dismissals(), [username.toLowerCase()]: clean };
+    await mkdir(stateDir, { recursive: true, mode: 0o700 });
+    await writeFileAtomic(dismissedPath, `${JSON.stringify({ dismissed: next }, null, 2)}\n`, 0o600);
+  });
 }
 
 /** What the admin banner should say, or null when there's nothing to say. */

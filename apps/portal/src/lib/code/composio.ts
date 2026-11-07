@@ -28,6 +28,16 @@ export const instantPolicy = {};
 
 /* The session's settings are part of what it was made with: change them, and old sessions are made again. */
 const sessionVersion = "4";
+
+/* Work already under way for the same thing is shared, not started again. */
+const inFlight = new Map<string, Promise<unknown>>();
+function once<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const running = inFlight.get(key) as Promise<T> | undefined;
+  if (running) return running;
+  const started = work().finally(() => inFlight.delete(key));
+  inFlight.set(key, started);
+  return started;
+}
 const hashOf = (key: string) => createHash("sha256").update(`${sessionVersion}:${key}`).digest("hex").slice(0, 16);
 
 /** Who a person is to Composio: stable, and distinct between Kimono servers sharing one Composio project. */
@@ -64,8 +74,13 @@ async function create(key: string, username: string, origin: string): Promise<An
  * A person's tool session, or null when Composio isn't set up or can't be
  * reached (the agent then simply has no outside tools this turn).
  */
-export async function toolSession(db: DatabaseSync, key: string, username: string, origin: string, now = Date.now()): Promise<ToolSession | null> {
-  if (!key) return null;
+export function toolSession(db: DatabaseSync, key: string, username: string, origin: string, now = Date.now()): Promise<ToolSession | null> {
+  if (!key) return Promise.resolve(null);
+  /* Asked for at once (a turn and an attachment), one session is made, not two. */
+  return once(`session:${hashOf(key)}:${username}`, () => sessionOf(db, key, username, origin, now));
+}
+
+async function sessionOf(db: DatabaseSync, key: string, username: string, origin: string, now: number): Promise<ToolSession | null> {
   const keyHash = hashOf(key);
   const headers = { "x-api-key": key };
   try {
@@ -302,6 +317,12 @@ export async function instantSpent(key: string, username: string, origin: string
   if (!key) return null;
   const cached = spends.get(username);
   if (cached && cached.from === from && now - cached.at < fresh) return cached.spent;
+  /* The usage page and a turn asking together read the logs once. */
+  return once(`spent:${hashOf(key)}:${username}:${from}`, () => readSpent(key, username, origin, from, now));
+}
+
+async function readSpent(key: string, username: string, origin: string, from: number, now: number): Promise<number | null> {
+  const cached = spends.get(username);
   /* Millionths of a dollar, so adding up many small charges stays exact. */
   let micros = 0;
   const charges: InstantCharge[] = [];
@@ -376,6 +397,10 @@ let instantList: { slugs: Set<string>; at: number; key: string } | null = null;
 async function instantKitList(key: string, now: number): Promise<Set<string> | null> {
   const hash = hashOf(key);
   if (instantList && instantList.key === hash && now - instantList.at < day) return instantList.slugs;
+  return once(`kits:${hash}`, () => readKitList(key, hash, now));
+}
+
+async function readKitList(key: string, hash: string, now: number): Promise<Set<string> | null> {
   const slugs = new Set<string>();
   let cursor: string | null = null;
   for (let page = 0; page < 20; page++) {

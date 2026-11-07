@@ -23,8 +23,9 @@ export default async function ShellLayout({ children }: { children: ReactNode })
   const user = session?.user;
   if (!user?.username) return children;
   /* Recording who signs in is what lets an administrator grant Kimono VPN to a
-     real account instead of typing a username and hoping. */
-  await recordAccount(user);
+     real account instead of typing a username and hoping. It writes only when
+     something changed, and the page doesn't wait for it. */
+  void recordAccount(user).catch((error) => console.warn("Could not note this account:", error instanceof Error ? error.message : error));
   const [apps, picture, rooms] = await Promise.all([railApps(user.username), picturePathFor(user.username), appRooms()]);
   const displayName = user.name?.trim() || user.username;
   return <ShellFrame

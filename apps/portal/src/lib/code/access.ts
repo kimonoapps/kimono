@@ -1,5 +1,6 @@
 import "server-only";
 
+import { bounded } from "./bounded";
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { childrenOf, db as driveDb, DriveProblem, nodeFor, roleIn, spacesOf, trashNode, type DriveNode } from "../drive";
@@ -179,13 +180,15 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
     let actions: SyncAction[] = planSync(rowsIn(db, workspace.id, o.dir, only), here, filesUnder(node, owner));
     if (need === "read") actions = readOnly(actions);
     if (only !== undefined) actions = actions.filter((a) => a.kind !== "upload");
-    for (const action of actions) {
+    const opened = node;
+    /* A few files at a time; each touches only its own path. */
+    await bounded(actions, 6, async (action) => {
       try {
-        if (await apply(db, config, workspace, o, node, action)) news.push(`/files/${prefix}${action.path}`);
+        if (await apply(db, config, workspace, o, opened, action)) news.push(`/files/${prefix}${action.path}`);
       } catch (error) {
         console.warn(`Kimono AI couldn't sync ${o.dir}/${action.path}:`, error instanceof Error ? error.message : error);
       }
-    }
+    });
   }
   return news;
 }

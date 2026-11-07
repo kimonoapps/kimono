@@ -1,11 +1,12 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { chmod, copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile } from "node:fs/promises";
 import { scanAppDefinitions } from "./definitions";
 import { renderDeploymentPlan, type DeploymentPlan } from "./deployment";
 import { readMeshMembers, type MeshMember } from "./directory";
 import { renderSecretEnvironment, resolveSecrets, type SecretStore } from "./secrets";
+import { serialize, writeFileAtomic } from "./serial";
 import type { PlatformSettings } from "./settings";
 import { deploymentDir, planPath, planSecretsPath, tunnelCredentialsPath } from "./state";
 
@@ -53,11 +54,7 @@ async function publishTunnelCredentials(settings: PlatformSettings, warnings: st
   }
 }
 
-async function writeAtomic(path: string, contents: string, mode: number) {
-  const temporary = `${path}.new`;
-  await writeFile(temporary, contents, { mode });
-  await rename(temporary, path);
-}
+const writeAtomic = (path: string, contents: string, mode: number) => writeFileAtomic(path, contents, mode);
 
 export function planDigest(plan: DeploymentPlan) {
   return createHash("sha256").update(JSON.stringify(plan)).digest("hex").slice(0, 16);
@@ -77,7 +74,21 @@ async function previousMeshPolicy(): Promise<string | null> {
   }
 }
 
-export async function publishDesiredState(settings: PlatformSettings): Promise<DesiredState> {
+/*
+ * One publish at a time, and each from the settings as they are when its turn
+ * comes: a publish that began earlier can't finish last with what it read then,
+ * and two can't each mint a different value for the same new secret. The
+ * settings passed in are the caller's; the saved ones are what's published.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- callers still hand over what they read; the saved settings win
+export function publishDesiredState(_settings?: PlatformSettings): Promise<DesiredState> {
+  return serialize("desired-state", async () => {
+    const { getPlatformSettings } = await import("./settings");
+    return publish(await getPlatformSettings());
+  });
+}
+
+async function publish(settings: PlatformSettings): Promise<DesiredState> {
   const { definitions } = await scanAppDefinitions();
   /* Membership lives in the identity provider, so it is read at publish time.
      A provider that is briefly unreachable must not silently empty the mesh

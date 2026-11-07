@@ -1,7 +1,7 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
+import { serialize, writeFileAtomic } from "./serial";
 import { dirname, join } from "node:path";
 import { listAccounts, readStanding } from "./directory";
 import { stateDir } from "./state";
@@ -77,11 +77,13 @@ function requestsFrom(parsed: { requests?: Requests; requested?: Record<string, 
   return requests;
 }
 
+/* The file is read, changed and written whole: one change at a time, each from a fresh read. */
+const configTurn = <T>(work: () => Promise<T>) => serialize(configPath, work);
+
 async function writeConfig(config: Config) {
   await mkdir(dirname(configPath), { recursive: true, mode: 0o700 });
-  const temporary = `${configPath}.${randomUUID()}.new`;
-  await writeFile(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, configPath);
+  await writeFileAtomic(configPath, `${JSON.stringify(config, null, 2)}
+`, 0o600);
 }
 
 /** What the admin page shows: never the key itself. */
@@ -136,24 +138,28 @@ async function readKept(): Promise<{ invited: Invited; requests: Requests; apple
 }
 
 /** Notes that someone asked for one iPhone app, for an admin to answer; asking again after a decline asks anew. */
-export async function requestTestflight(username: string, bundleId: PhoneAppId = mainApp): Promise<AppRequest["state"]> {
+export function requestTestflight(username: string, bundleId: PhoneAppId = mainApp): Promise<AppRequest["state"]> {
+  return configTurn(async () => {
   const config = await readConfig();
   if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
   const key = username.toLowerCase();
   const existing = config.requests[key]?.[bundleId];
   if (existing && existing.state !== "declined") return existing.state;
   await writeConfig({ ...config, requests: { ...config.requests, [key]: { ...config.requests[key], [bundleId]: { at: Date.now(), state: "pending" } } } });
-  return "pending";
+  return "pending" as const;
+  });
 }
 
 /** An admin's answer to a request. Approving sends the invite (or adds them to the app's group) straight away. */
 export async function decideTestflight(username: string, bundleId: PhoneAppId, approve: boolean, by: string) {
+  await configTurn(async () => {
   const config = await readConfig();
   if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
   const key = username.toLowerCase();
   const existing = config.requests[key]?.[bundleId];
   const decided: AppRequest = { at: existing?.at ?? Date.now(), state: approve ? "approved" : "declined", decidedAt: Date.now(), by };
   await writeConfig({ ...config, requests: { ...config.requests, [key]: { ...config.requests[key], [bundleId]: decided } } });
+  });
   return approve ? syncTestflight() : null;
 }
 
@@ -166,6 +172,7 @@ export const looksLikeEmail = (text: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.tes
  * what the Portal sent to the old email and invites the new one.
  */
 export async function setAppleEmail(username: string, email: string | null) {
+  await configTurn(async () => {
   const config = await readConfig();
   if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
   const key = username.toLowerCase();
@@ -174,22 +181,25 @@ export async function setAppleEmail(username: string, email: string | null) {
   const appleEmails = { ...config.appleEmails };
   if (clean) appleEmails[key] = clean; else delete appleEmails[key];
   await writeConfig({ ...config, appleEmails });
+  });
   return syncTestflight();
 }
 
-export async function saveTestflightKey(input: { issuerId: string; keyId: string; privateKey: string; groupName: string }) {
-  await writeConfig({
+export function saveTestflightKey(input: { issuerId: string; keyId: string; privateKey: string; groupName: string }) {
+  return configTurn(async () => writeConfig({
     issuerId: input.issuerId, keyId: input.keyId, privateKey: input.privateKey, groupName: input.groupName || "Kimono",
     ...(await readKept()), resent: {}, lastSync: null, statuses: [],
-  });
+  }));
 }
 
 /** Forgets the key. Whom the Portal invited is kept, so a key given again can still tidy up after them. */
-export async function forgetTestflightKey() {
-  const existing = await readConfig();
-  if (!existing) return;
-  if (!Object.keys(existing.invited).length) { await rm(configPath, { force: true }); return; }
-  await writeFile(configPath, `${JSON.stringify({ invited: existing.invited }, null, 2)}\n`, { mode: 0o600 });
+export function forgetTestflightKey() {
+  return configTurn(async () => {
+    const existing = await readConfig();
+    if (!existing) return;
+    if (!Object.keys(existing.invited).length) { await rm(configPath, { force: true }); return; }
+    await writeFileAtomic(configPath, `${JSON.stringify({ invited: existing.invited }, null, 2)}\n`, 0o600);
+  });
 }
 
 /* ── App Store Connect ── */
@@ -383,8 +393,10 @@ export async function resendTestflight(who: string[] | "stuck"): Promise<{ ok: b
     return { ok: false, message: error instanceof Error ? error.message : "App Store Connect couldn't be reached.", results };
   }
   /* Keep what was sent before the sync reads the file again. */
-  const latest = await readConfig();
-  if (latest && latest.keyId === config.keyId) await writeConfig({ ...latest, invited: { ...latest.invited, ...config.invited }, resent: config.resent });
+  await configTurn(async () => {
+    const latest = await readConfig();
+    if (latest && latest.keyId === config.keyId) await writeConfig({ ...latest, invited: { ...latest.invited, ...config.invited }, resent: config.resent });
+  });
   await syncTestflight();
   const sent = results.filter((r) => r.outcome === "sent").length;
   const failed = results.filter((r) => r.outcome === "error").length;
@@ -396,7 +408,26 @@ export async function resendTestflight(who: string[] | "stuck"): Promise<{ ok: b
 }
 
 /** Brings TestFlight in step with Kimono's accounts now, for every Kimono phone app in App Store Connect. */
-export async function syncTestflight(): Promise<{ ok: boolean; message: string; statuses: TesterStatus[] }> {
+type Synced = { ok: boolean; message: string; statuses: TesterStatus[] };
+let syncing: Promise<Synced> | null = null;
+let again: Promise<Synced> | null = null;
+
+/*
+ * One sync at a time: two at once would send the same invites twice and each
+ * write back its own list of whom it invited. Asking during a sync runs one
+ * more after it (it may have been asked because something changed), and
+ * everyone asking meanwhile shares that one.
+ */
+export function syncTestflight(): Promise<Synced> {
+  if (!syncing) {
+    syncing = runSync().finally(() => { syncing = null; });
+    return syncing;
+  }
+  again ??= syncing.catch(() => {}).then(() => { again = null; return syncTestflight(); });
+  return again;
+}
+
+async function runSync(): Promise<Synced> {
   const config = await readConfig();
   if (!config) return { ok: false, message: "No App Store Connect key yet.", statuses: [] };
   const store = new AppStoreConnect(config);
@@ -499,22 +530,27 @@ export async function syncTestflight(): Promise<{ ok: boolean; message: string; 
   }
   const counts: Record<string, number> = {};
   for (const row of statuses) { const key = row.status.startsWith("error") ? "error" : row.status; counts[key] = (counts[key] ?? 0) + 1; }
-  /* Read again before writing: the key may have been changed meanwhile. */
-  const latest = await readConfig();
-  if (latest && latest.keyId === config.keyId) {
-    const apps = outcome.apps ?? latest.lastSync?.apps;
-    await writeConfig({ ...latest, invited: config.invited, lastSync: { at: Date.now(), ok: outcome.ok, message: outcome.message, counts, ...(apps ? { apps } : {}) }, statuses });
-  }
+  /* Read again before writing: the key, the requests or the emails may have changed meanwhile. */
+  await configTurn(async () => {
+    const latest = await readConfig();
+    if (latest && latest.keyId === config.keyId) {
+      const apps = outcome.apps ?? latest.lastSync?.apps;
+      await writeConfig({ ...latest, invited: config.invited, lastSync: { at: Date.now(), ok: outcome.ok, message: outcome.message, counts, ...(apps ? { apps } : {}) }, statuses });
+    }
+  });
   return { ok: outcome.ok, message: outcome.message, statuses };
 }
 
-let running: Promise<unknown> | null = null;
+let checking: Promise<void> | null = null;
 
 /** Syncs when it's been [every] (an hour unless said), at most one at a time. Never throws. */
-export async function syncTestflightIfDue(every = syncEvery): Promise<void> {
-  if (running) { await running; return; }
-  const config = await readConfig().catch(() => null);
-  if (!config || (config.lastSync && Date.now() - config.lastSync.at < every)) return;
-  running = syncTestflight().catch((error) => console.warn("TestFlight sync failed:", error instanceof Error ? error.message : error)).finally(() => { running = null; });
-  await running;
+export function syncTestflightIfDue(every = syncEvery): Promise<void> {
+  /* Taken before anything is awaited, so two callers can't both decide it's due. */
+  checking ??= (async () => {
+    if (syncing) { await syncing.catch(() => {}); return; }
+    const config = await readConfig().catch(() => null);
+    if (!config || (config.lastSync && Date.now() - config.lastSync.at < every)) return;
+    await syncTestflight().then(() => {}, (error) => console.warn("TestFlight sync failed:", error instanceof Error ? error.message : error));
+  })().finally(() => { checking = null; });
+  return checking;
 }

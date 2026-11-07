@@ -47,17 +47,40 @@ function goTo(base: string, to: Record<string, string | null>) {
 
 function useUploads() {
   const [uploads, setUploads] = useState<Upload[]>([]);
-  const [landed, setLanded] = useState(0);
+  /* Files that landed, by folder: the open folder looks again once a burst of them settles, not once per file. */
+  const [landed, setLanded] = useState<Record<string, number>>({});
+  const settling = useRef<{ folders: Set<string>; timer: number }>({ folders: new Set(), timer: 0 });
+  const land = useCallback((folderId: string) => {
+    const now = settling.current;
+    now.folders.add(folderId);
+    window.clearTimeout(now.timer);
+    now.timer = window.setTimeout(() => {
+      const folders = [...now.folders];
+      now.folders.clear();
+      setLanded((counts) => { const next = { ...counts }; for (const id of folders) next[id] = (next[id] ?? 0) + 1; return next; });
+    }, 600);
+  }, []);
+  /* A few at a time: a dropped folder of hundreds of files doesn't open hundreds of uploads at once. */
+  const waiting = useRef<(() => Promise<void>)[]>([]);
+  const running = useRef(0);
+  const pump = useCallback(function next() {
+    while (running.current < 3 && waiting.current.length) {
+      const work = waiting.current.shift()!;
+      running.current += 1;
+      void work().finally(() => { running.current -= 1; next(); });
+    }
+  }, []);
   const start = useCallback((files: File[], folderId: string, spaceName: string, via?: { link: string; name?: string }) => {
     const added = files.map((file): [File, Upload] => [file, { id: crypto.randomUUID(), name: file.name, size: file.size, sent: 0, folderId, spaceName, controller: new AbortController() }]);
     setUploads((list) => [...list, ...added.map(([, item]) => item)]);
     for (const [file, item] of added) {
       const update = (change: Partial<Upload>) => setUploads((list) => list.map((u) => u.id === item.id ? { ...u, ...change } : u));
-      upload(file, folderId, (sent) => update({ sent }), item.controller.signal, via)
-        .then((fileId) => { update({ sent: item.size, done: fileId }); setLanded((n) => n + 1); })
-        .catch((error) => { if (!item.controller.signal.aborted) update({ failed: problemText(error, "That file couldn't be uploaded.") }); });
+      waiting.current.push(() => item.controller.signal.aborted ? Promise.resolve() : upload(file, folderId, (sent) => update({ sent }), item.controller.signal, via)
+        .then((fileId) => { update({ sent: item.size, done: fileId }); land(folderId); })
+        .catch((error) => { if (!item.controller.signal.aborted) update({ failed: problemText(error, "That file couldn't be uploaded.") }); }));
     }
-  }, []);
+    pump();
+  }, [land, pump]);
   const going = uploads.some((u) => !u.done && !u.failed);
   /* Closing the tab mid-upload loses it; the browser asks first. */
   useEffect(() => {
@@ -283,7 +306,7 @@ async function entriesOf(directory: FileSystemDirectoryEntry): Promise<FileSyste
 }
 
 function SpaceView({ space, guest = null, folderId, openFile, people, landed, onGo, onSettings, onUpload, onToast }: {
-  space: Space; guest?: Guest | null; folderId: string; openFile: string | null; people: Record<string, Person>; landed: number;
+  space: Space; guest?: Guest | null; folderId: string; openFile: string | null; people: Record<string, Person>; landed: Record<string, number>;
   onGo: (folder: string, file?: string | null) => void; onSettings?: () => void;
   onUpload: (files: File[], folderId: string) => void; onToast: (toast: Toast) => void;
 }) {
@@ -329,10 +352,14 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
 
   const fetchFolder = useCallback((id: string) => token ? shared.folder(token, id) : drive.folder(id), [token]);
   const fileUrl = useCallback((node: DriveNode) => token ? shared.fileUrl(token, node.id) : contentUrl(node), [token]);
+  /* Only the folder open now is drawn: an action that ends after you moved on doesn't paint its old folder here. */
+  const openNow = useRef(folderId);
+  useEffect(() => { openNow.current = folderId; }, [folderId]);
   const load = useCallback(() => fetchFolder(folderId).then(
-    (loaded) => { setFolder(loaded); setProblem(null); },
-    (error) => { setProblem(problemText(error, "That folder couldn't be opened.")); },
+    (loaded) => { if (openNow.current !== folderId) return; setFolder(loaded); setProblem(null); },
+    (error) => { if (openNow.current === folderId) setProblem(problemText(error, "That folder couldn't be opened.")); },
   ), [fetchFolder, folderId]);
+  const landedHere = landed[folderId] ?? 0;
   useEffect(() => {
     let live = true;
     fetchFolder(folderId).then(
@@ -340,12 +367,14 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
       (error) => { if (live) setProblem(problemText(error, "That folder couldn't be opened.")); },
     );
     return () => { live = false; };
-  }, [fetchFolder, folderId, landed]);
+  }, [fetchFolder, folderId, landedHere]);
   useEffect(() => { if (token) return; void drive.space(space.id).then(setDetail).catch(() => {}); }, [space.id, token]);
   useEffect(() => {
     if (!query.trim() || token) return;
-    const timer = setTimeout(() => { void drive.search(query).then((items) => setFound(items.filter((n) => n.spaceId === space.id))).catch(() => setFound([])); }, 200);
-    return () => clearTimeout(timer);
+    /* An answer for what was typed before is dropped: "re" landing after "report" doesn't replace it. */
+    let live = true;
+    const timer = setTimeout(() => { void drive.search(query).then((items) => { if (live) setFound(items.filter((n) => n.spaceId === space.id)); }).catch(() => { if (live) setFound([]); }); }, 200);
+    return () => { live = false; clearTimeout(timer); };
   }, [query, space.id, token]);
 
   const act = useCallback(async (work: () => Promise<unknown>, done?: Toast) => {
@@ -835,7 +864,7 @@ function NameDialog({ title, action, initial = "", onClose, onSave }: { title: s
     <Seal type="button" tone="quiet" onClick={onClose}>Cancel</Seal>
     <Seal type="button" disabled={!name.trim() || busy} onClick={() => void save()}>{action}</Seal>
   </>}>
-    <label className="k-field"><span>Name</span><input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) void save(); }} /></label>
+    <label className="k-field"><span>Name</span><input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim() && !busy) void save(); }} /></label>
   </Dialog>;
 }
 
@@ -1026,6 +1055,8 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
   /* Days left are counted from when the list arrived. */
   const [now, setNow] = useState(0);
   const load = useCallback(() => drive.trashed().then((list) => { setNow(Date.now()); setItems(list); }).catch(() => setItems([])), []);
+  /* What's being put back: a second press waits for the first. */
+  const [restoring, setRestoring] = useState<Set<string>>(new Set());
   useEffect(() => {
     let live = true;
     drive.trashed().then((list) => { if (live) { setNow(Date.now()); setItems(list); } }, () => { if (live) setItems([]); });
@@ -1043,8 +1074,11 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
             <Kind node={node} plain />
             <div className="nm"><b>{node.name}</b><small>{space?.name ?? ""}{left !== null ? ` · ${left === 1 ? "1 day" : `${left} days`} left` : ""}</small></div>
             <span className="num c-size">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
-            {space && space.role !== "viewer" ? <Seal type="button" tone="quiet" compact onClick={async () => {
+            {space && space.role !== "viewer" ? <Seal type="button" tone="quiet" compact busy={restoring.has(node.id)} disabled={restoring.has(node.id)} onClick={async () => {
+              if (restoring.has(node.id)) return;
+              setRestoring((now) => new Set(now).add(node.id));
               try { await drive.restore(node.id); onToast({ text: `“${node.name}” is back.` }); await load(); } catch (error) { onToast({ text: problemText(error) }); }
+              finally { setRestoring((now) => { const next = new Set(now); next.delete(node.id); return next; }); }
             }}><Icon name="restore" />Put back</Seal> : <span />}
           </div>;
         })}

@@ -1,6 +1,9 @@
 import "server-only";
 
+import { createWriteStream } from "node:fs";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
 import { sendFile, typeOf } from "../drive/storage";
 import { stateDir } from "../state";
@@ -53,7 +56,9 @@ async function copyOut(config: CodeConfig, workspace: Workspace, token: string, 
   if (!file?.ok) return null;
   const folder = join(root, workspace.id, token);
   await mkdir(folder, { recursive: true, mode: 0o700 });
-  await writeFile(join(folder, `${name}.part`), new Uint8Array(await file.arrayBuffer()), { mode: 0o600 });
+  /* Streamed to disk: a linked file can be big, and needn't sit in memory on its way. */
+  if (!file.body) return null;
+  await pipeline(Readable.fromWeb(file.body as import("node:stream/web").ReadableStream<Uint8Array>), createWriteStream(join(folder, `${name}.part`), { mode: 0o600 }));
   await rename(join(folder, `${name}.part`), join(folder, name));
   await writeFile(join(folder, ".expires"), String(capped), { mode: 0o600 });
   return capped;

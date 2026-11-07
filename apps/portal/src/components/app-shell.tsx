@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { AppIdentity } from "@kimono/ui";
 import type { Palette } from "@/lib/settings";
 import { holdsMeshAccess } from "@/lib/directory";
@@ -26,11 +27,12 @@ type Props = {
 };
 
 /** The apps someone can open, in the shape the rail and the grid need. */
-export async function railApps(username: string): Promise<(RailApp & { mobileApp?: import("@/lib/apps").KimonoApp["mobileApp"] })[]> {
-  const [settings, catalog] = await Promise.all([getPlatformSettings(), scanAppDefinitions()]);
-  return launcherApps(appRegistry(settings, catalog.definitions), { mesh: await holdsMeshAccess(username) })
+/* The layout and the home page both ask during one render; they share the answer. */
+export const railApps = cache(async (username: string): Promise<(RailApp & { mobileApp?: import("@/lib/apps").KimonoApp["mobileApp"] })[]> => {
+  const [settings, catalog, mesh] = await Promise.all([getPlatformSettings(), scanAppDefinitions(), holdsMeshAccess(username)]);
+  return launcherApps(appRegistry(settings, catalog.definitions), { mesh })
     .map((app) => ({ id: app.id, name: app.shortName, description: app.description, href: app.href, external: app.external, accent: app.accent, glyph: app.glyph, iconUrl: app.iconUrl, mobileApp: app.mobileApp }));
-}
+});
 
 /**
  * A signed-in page's part of the frame. The rail and the frame around the page
