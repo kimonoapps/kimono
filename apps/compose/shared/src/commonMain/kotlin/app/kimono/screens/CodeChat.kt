@@ -456,6 +456,12 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
             LazyColumn(state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 if (items.isEmpty() && !w.running) item(key = "empty") { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                 items(items, key = { it.key }) { item ->
+                    /* What arrives once the chat is open fades and settles into place; a finished reply takes its draft's place without a fade. */
+                    Box(Modifier.animateItem(
+                        fadeInSpec = if (item is Item.Say) null else androidx.compose.animation.core.tween(380),
+                        placementSpec = androidx.compose.animation.core.spring(dampingRatio = .8f, stiffness = 380f, visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1)),
+                        fadeOutSpec = null,
+                    )) {
                     when (item) {
                         is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
                         is Item.Say -> Markdown(item.text)
@@ -483,9 +489,10 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                             else -> {}
                         }
                     }
+                    }
                 }
                 items(writing, key = { "writing-${drafts.artifacts[it]?.first ?: it}" }) { name -> ArtifactCard(code, platform, artifacts, name) }
-                item(key = "draft") { drafts.text?.let { Box(Modifier.alpha(.75f)) { Markdown(it) } } }
+                item(key = "draft") { drafts.text?.let { DraftWords(it) } }
                 item(key = "tail") {
                     when {
                         /* Not while the reply's own words are coming in: those show it's working. */
@@ -1819,8 +1826,19 @@ private fun mathConfig(style: TextStyle) = LatexConfig(
 
 /** A line of Markdown text, its maths sitting in the line. */
 @Composable
-private fun MdText(text: String, style: TextStyle, codeBg: Color, link: Color, modifier: Modifier = Modifier) {
-    val (annotated, maths) = remember(text, codeBg, link) { inline(text, codeBg, link) }
+private fun MdText(text: String, style: TextStyle, codeBg: Color, link: Color, modifier: Modifier = Modifier, fadeTail: Boolean = false) {
+    val (plainAnnotated, maths) = remember(text, codeBg, link) { inline(text, codeBg, link) }
+    /* the end of a reply being written: its last letters fade from full ink to faint, so new words fade in */
+    val annotated = if (!fadeTail) plainAnnotated else remember(plainAnnotated, style.color) {
+        val builder = androidx.compose.ui.text.AnnotatedString.Builder(plainAnnotated)
+        val n = minOf(28, plainAnnotated.length)
+        for (k in 0 until n) {
+            val at = plainAnnotated.length - 1 - k
+            /* the last letter at 15% ink, rising evenly to full ink [n] letters back */
+            builder.addStyle(androidx.compose.ui.text.SpanStyle(color = style.color.copy(alpha = style.color.alpha * (.15f + .85f * k / n))), at, at + 1)
+        }
+        builder.toAnnotatedString()
+    }
     if (maths.isEmpty()) { Text(annotated, style = style, modifier = modifier); return }
     val config = remember(style.fontSize, style.color) { mathConfig(style) }
     val measurer = rememberLatexMeasurer(config)
@@ -1855,8 +1873,38 @@ private fun displayMath(lines: List<String>, i: Int): Pair<String, Int>? {
     return body.joinToString("\n") to j + 1
 }
 
+/**
+ * A reply as it's written. Words reach the phone in bursts of any size; they're let out at a steady
+ * pace that quickens when many are waiting, a word at a time, and the newest few letters are drawn
+ * fading, so each word fades in as the end of the reply moves past it.
+ */
 @Composable
-private fun Markdown(source: String) {
+private fun DraftWords(text: String) {
+    val latest by androidx.compose.runtime.rememberUpdatedState(text)
+    var shown by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        var last = 0L
+        while (true) {
+            androidx.compose.runtime.withFrameMillis { now ->
+                val goal = latest.length
+                /* a shorter text is a new reply: start it from the top */
+                if (shown > goal) shown = 0
+                if (shown < goal && now - last >= 33) {
+                    last = now
+                    val behind = goal - shown
+                    var next = minOf(goal, shown + maxOf(4, (behind + 4) / 5))
+                    val space = latest.substring(next).indexOfFirst { it.isWhitespace() }
+                    next = if (space < 0) goal else minOf(goal, next + space)
+                    shown = next
+                }
+            }
+        }
+    }
+    Markdown(text.take(shown), fadeTail = true)
+}
+
+@Composable
+private fun Markdown(source: String, fadeTail: Boolean = false) {
     val lines = remember(source) { source.replace("\r\n", "\n").split('\n') }
     val style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface)
     val codeBg = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -1894,9 +1942,10 @@ private fun Markdown(source: String) {
                         while (i < lines.size && Regex("^\\s*([-*+]|\\d+[.)])\\s+").containsMatchIn(lines[i])) {
                             val depth = (lines[i].length - lines[i].trimStart().length) / 2
                             val item = lines[i].replace(Regex("^\\s*([-*+]|\\d+[.)])\\s+"), "")
+                            val endsIt = fadeTail && lines.drop(i + 1).all { it.isBlank() }
                             Row(Modifier.padding(start = (depth * 16).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(if (ordered) "${n}." else "•", style = style)
-                                MdText(item, style, codeBg, link)
+                                MdText(item, style, codeBg, link, fadeTail = endsIt)
                             }
                             n++; i++
                         }
@@ -1921,7 +1970,7 @@ private fun Markdown(source: String) {
                         val body = mutableListOf<String>()
                         while (i < lines.size && lines[i].isNotBlank() && !Regex("^(#{1,4}\\s|\\s*```|\\s*~~~|\\s*[-*+]\\s+|\\s*\\d+[.)]\\s+|\\s*>|\\s*\\||\\s*\\$\\$|\\s*\\\\\\[)").containsMatchIn(lines[i])) body += lines[i++]
                         if (body.isEmpty()) { body += lines[i++] }
-                        MdText(body.joinToString("\n"), style, codeBg, link)
+                        MdText(body.joinToString("\n"), style, codeBg, link, fadeTail = fadeTail && lines.drop(i).all { it.isBlank() })
                     }
                 }
             }
