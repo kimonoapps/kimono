@@ -13,7 +13,7 @@ import { typeOf } from "../drive/storage";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
-  abandonRunningTurns, appendEvent, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, extraOf, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor,
+  abandonRunningTurns, appendEvent, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, extraOf, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor, workspacesOf,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
@@ -26,13 +26,13 @@ import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./
 import { portalOrigin } from "../account";
 import { serveTempLink, tempLinkBase, tempLinkKey } from "./temp-links";
 export { efforts, type Effort } from "./node";
-import { retitle, shotToDrive, syncDrive } from "./drive";
+import { markChat, retitle, shotToDrive, syncDrive } from "./drive";
 import { historyNote, syncHistory } from "./history";
 import { gitAccountOf, ownProject } from "./forgejo";
 import { suggestTitle } from "./title";
 import { db as driveDb } from "../drive";
 import { notesConfig } from "../notes/config";
-import { notebooksOf } from "../notes/model";
+import { ensureNotebook } from "../notes/model";
 import { notesGuide } from "../notes/agent";
 
 export * from "./model";
@@ -72,9 +72,21 @@ export function db(): DatabaseSync {
   }
   /* A hot reload keeps the connection but brings new code: bring the schema along. */
   if (!migrated) { migrate(live.db); migrated = true; }
+  if (!chatsMarked) { chatsMarked = true; markOldChats(live.db); }
   return live.db;
 }
 let migrated = false;
+let chatsMarked = false;
+
+/* Chats made before Drive knew a chat's folder from any other get marked once, so Drive shows them as chats. */
+function markOldChats(database: DatabaseSync) {
+  try {
+    const owners = (database.prepare("SELECT DISTINCT owner FROM workspaces WHERE drive_folder IS NOT NULL").all() as { owner: string }[]).map((r) => r.owner);
+    for (const owner of owners) for (const workspace of workspacesOf(database, owner)) markChat(workspace);
+  } catch (error) {
+    console.warn("Kimono AI couldn't mark its chats in Drive:", error instanceof Error ? error.message : error);
+  }
+}
 
 /** Chats are for everyone; projects on Kimono Git, and publishing, are for administrators. */
 export const allowed = (user: ApiUser) => Boolean(user.username);
@@ -463,7 +475,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const history = await historySynced;
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
     const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
-    /* With Notes on, the person's own notebook exists before it is named, so the agent can write to it from the first chat. */
+    /* With Notes on, the person has a notebook before it is named, so the agent can write to it from the first chat. */
     const notes = byOwner ? await notesFor(workspace.owner) : "";
     const access = prompt.startsWith("/") ? "" : accessPrompt(db(), workspace);
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
@@ -838,7 +850,7 @@ export async function tempLink(request: Request, id: string, token: string, name
 async function notesFor(owner: string): Promise<string> {
   try {
     if (!notesConfig(await getPlatformSettings()).enabled) return "";
-    return notesGuide(notebooksOf(driveDb(), owner));
+    return notesGuide(ensureNotebook(driveDb(), owner));
   } catch (error) {
     console.warn("Kimono AI couldn't read the notebooks:", error instanceof Error ? error.message : error);
     return "";

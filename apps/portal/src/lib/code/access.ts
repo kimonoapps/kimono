@@ -3,6 +3,7 @@ import "server-only";
 import { bounded } from "./bounded";
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { notebookPlace, notebooksOf } from "../notes/model";
 import { childrenOf, db as driveDb, DriveProblem, nodeFor, roleIn, spacesOf, trashNode, type DriveNode } from "../drive";
 import {
   accessNote, coveringGrant, filesRoot, needOn, openedDir, readOnly, segment,
@@ -327,9 +328,8 @@ export async function answer(db: DatabaseSync, config: CodeConfig, workspace: Wo
 export function accessPrompt(db: DatabaseSync, workspace: Workspace): string {
   try {
     const owner = workspace.owner;
-    const all = spacesOf(driveDb(), owner);
-    const spaces = all.filter((s) => s.purpose !== "notes").map((s) => s.name);
-    const notebooks = all.filter((s) => s.purpose === "notes").map((s) => s.name);
+    const spaces = spacesOf(driveDb(), owner).map((s) => s.name);
+    const notebooks = notebooksOf(driveDb(), owner).map(notebookPlace);
     const grants = grantsOf(db, owner);
     const open = (db.prepare("SELECT node_id, dir FROM opened WHERE workspace_id = ?").all(workspace.id) as { node_id: string; dir: string }[])
       .map((o) => ({ dir: o.dir, need: needOn(grants, owner, workspace.id, chainOf(o.node_id)) }))

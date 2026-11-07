@@ -7,7 +7,7 @@ import { getPlatformSettings } from "../settings";
 import { blobPath, db, DriveProblem, endUpload, finishUpload, largestFile, newId, nodeFor, root, startReplace, startUpload, type DriveNode } from "../drive";
 import { removeBlob } from "../drive/storage";
 import { notesConfig } from "./config";
-import { excerptOf, libraryOf, maxNoteBytes, noteFrom, noteName, ownNotebook, placeFor, type NoteMeta } from "./model";
+import { defaultNotebook, excerptOf, libraryOf, maxNoteBytes, noteFrom, noteName, placeFor, type NoteMeta } from "./model";
 
 export * from "./model";
 
@@ -79,9 +79,9 @@ async function land(upload: ReturnType<typeof startUpload>, bytes: Buffer) {
   }
 }
 
-/** A new note in a notebook or section (the person's own notebook if none is named). */
+/** A new note in a notebook or section (their first notebook if none is named). */
 export async function createNote(username: string, input: { parent?: unknown; title?: unknown; text?: unknown }): Promise<NoteMeta> {
-  const parentId = typeof input.parent === "string" && input.parent ? input.parent : ownNotebook(db(), username).rootId;
+  const parentId = typeof input.parent === "string" && input.parent ? input.parent : defaultNotebook(db(), username).id;
   placeFor(db(), parentId, username);
   const bytes = bytesOf(input.text);
   const upload = startUpload(db(), parentId, username, { name: noteName(input.title), size: bytes.length, mime: "text/markdown" }, await largestFile());

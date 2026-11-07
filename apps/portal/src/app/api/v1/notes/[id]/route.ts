@@ -33,7 +33,7 @@ export async function PUT(request: Request, { params }: Context) {
   return notes(async () => apiJson(await saveNote(user.username, id, read.body as { text?: unknown; version?: unknown })));
 }
 
-/** Retitles and/or moves it: `{ title?, parent? }`, parent being a section or a notebook's top, in the same notebook. */
+/** Retitles and/or moves it: `{ title?, parent? }`, parent being a notebook or a section, in the same space. */
 export async function PATCH(request: Request, { params }: Context) {
   const refused = crossSite(request);
   if (refused) return refused;

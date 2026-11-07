@@ -35,13 +35,13 @@ import { randomBytes } from "node:crypto";
 
 export type Role = "owner" | "editor" | "viewer";
 export type LinkAccess = "view" | "add";
-export type SpacePurpose = "notes";
 export type Space = {
   id: string; name: string; crest: string; color: string; rootId: string; createdBy: string; createdAt: number; role: Role; members: number;
   link: string | null; linkAccess: LinkAccess | null;
-  /** Null for a space of files; "notes" for one Kimono Notes keeps. */
-  purpose: SpacePurpose | null;
 };
+/** What a folder is when it is more than a folder (see migration 7). */
+export type FolderPurpose = "notebook" | "chat" | "project";
+export const folderPurposes: readonly FolderPurpose[] = ["notebook", "chat", "project"];
 export type Member = { username: string; role: Role; addedAt: number };
 export type DriveNode = {
   id: string; spaceId: string; parentId: string | null; kind: "folder" | "file"; name: string;
@@ -53,6 +53,10 @@ export type DriveNode = {
   version: number;
   /** Goes up only when the file's bytes are replaced. */
   contentVersion: number;
+  /** A folder that is a notebook, chat or project; null for a plain folder or a file. */
+  purpose: FolderPurpose | null;
+  /** Which chat or project it is, for its app to open. */
+  ref: string | null;
 };
 
 /** A refusal a person can read. Routes turn it into a 4xx with this sentence. */
@@ -189,6 +193,24 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 7) {
+    /*
+     * What a folder is, when it is more than a folder: a notebook Kimono Notes
+     * keeps, or a Kimono AI chat or project, with [ref] naming which chat or
+     * project. Drive shows each as itself and opens it in its app. This
+     * replaces 6's notebooks-as-spaces: a notebook is a folder in any space,
+     * and one that was a space keeps being one, as its top folder.
+     */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE nodes ADD COLUMN purpose TEXT CHECK (purpose IN ('notebook', 'chat', 'project'));
+      ALTER TABLE nodes ADD COLUMN ref TEXT;
+      UPDATE nodes SET purpose = 'notebook' WHERE id IN (SELECT root_id FROM spaces WHERE purpose = 'notes');
+      UPDATE spaces SET purpose = NULL;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '7');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── the change log ── */
@@ -294,9 +316,10 @@ type NodeRow = {
   id: string; space_id: string; parent_id: string | null; kind: "folder" | "file"; name: string; size: number;
   mime: string | null; blob: string | null; created_by: string; created_at: number; updated_at: number;
   trashed_at: number | null; link: string | null; guest: string | null; version: number; content_version: number;
+  purpose: FolderPurpose | null; ref: string | null;
 };
 
-const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.trashed_at, n.guest, n.version, n.content_version,
+const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.trashed_at, n.guest, n.version, n.content_version, n.purpose, n.ref,
   (SELECT token FROM links l WHERE l.node_id = n.id AND l.revoked_at IS NULL ORDER BY l.created_at DESC LIMIT 1) AS link`;
 
 /* Links are for those who may make or turn them off: a viewer handed one could pass on what they were only meant to see. */
@@ -307,6 +330,7 @@ const toNode = (row: NodeRow, role: Role | null): DriveNode => ({
   id: row.id, spaceId: row.space_id, parentId: row.parent_id, kind: row.kind, name: row.name, size: row.size,
   mime: row.mime, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
   trashedAt: row.trashed_at, link: seesLinks(role) ? row.link : null, guest: row.guest, version: row.version, contentVersion: row.content_version,
+  purpose: row.purpose ?? null, ref: row.ref ?? null,
 });
 
 function nodeRow(db: DatabaseSync, id: string): (NodeRow & { blob: string | null }) | undefined {
@@ -349,13 +373,13 @@ export function nodeFor(db: DatabaseSync, id: string, username: string, need: Ro
 
 export function spacesOf(db: DatabaseSync, username: string): Space[] {
   const rows = db.prepare(`
-    SELECT s.id, s.name, s.crest, s.color, s.root_id, s.created_by, s.created_at, s.link, s.link_access, s.purpose, m.role,
+    SELECT s.id, s.name, s.crest, s.color, s.root_id, s.created_by, s.created_at, s.link, s.link_access, m.role,
       (SELECT count(*) FROM members x WHERE x.space_id = s.id) AS members
     FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
     ORDER BY lower(s.name)
-  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; color: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; purpose: SpacePurpose | null; role: Role; members: number }[];
+  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; color: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; role: Role; members: number }[];
   return rows.map((r) => ({ id: r.id, name: r.name, crest: r.crest, color: r.color, rootId: r.root_id, createdBy: r.created_by, createdAt: r.created_at, role: r.role, members: r.members,
-    link: seesLinks(r.role) ? r.link : null, linkAccess: seesLinks(r.role) ? r.link_access : null, purpose: r.purpose ?? null }));
+    link: seesLinks(r.role) ? r.link : null, linkAccess: seesLinks(r.role) ? r.link_access : null }));
 }
 
 export function spaceFor(db: DatabaseSync, spaceId: string, username: string): Space & { memberList: Member[] } {
@@ -423,7 +447,7 @@ export function recentFiles(db: DatabaseSync, username: string, limit = 50): Dri
 
 /* ── spaces and members ── */
 
-export function createSpace(db: DatabaseSync, username: string, input: { name: unknown; crest?: unknown; color?: unknown; members?: { username: string; role: Role }[]; purpose?: SpacePurpose }, now = Date.now()): Space {
+export function createSpace(db: DatabaseSync, username: string, input: { name: unknown; crest?: unknown; color?: unknown; members?: { username: string; role: Role }[] }, now = Date.now()): Space {
   const name = cleanName(input.name, "space name");
   const crest = typeof input.crest === "string" && (crests as readonly string[]).includes(input.crest) ? input.crest : "sakura";
   const color = typeof input.color === "string" && (crestColours as readonly string[]).includes(input.color) ? input.color : "plum";
@@ -431,7 +455,7 @@ export function createSpace(db: DatabaseSync, username: string, input: { name: u
   const id = newId(), rootId = newId();
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO spaces (id, name, crest, color, root_id, created_by, created_at, purpose) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, name, crest, color, rootId, owner, now, input.purpose ?? null);
+    db.prepare("INSERT INTO spaces (id, name, crest, color, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, name, crest, color, rootId, owner, now);
     db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, created_by, created_at, updated_at) VALUES (?, ?, NULL, 'folder', ?, ?, ?, ?)").run(rootId, id, name, owner, now, now);
     db.prepare("INSERT INTO members (space_id, username, role, added_at) VALUES (?, ?, 'owner', ?)").run(id, owner, now);
     for (const member of input.members ?? []) {
@@ -491,6 +515,20 @@ function freeName(db: DatabaseSync, parentId: string, wanted: string, except?: s
   if (!taken(wanted)) return wanted;
   for (let n = 2; n < 10_000; n += 1) if (!taken(numbered(wanted, n))) return numbered(wanted, n);
   throw new DriveProblem("There are too many things with that name here.", 409);
+}
+
+/**
+ * Marks a folder as a notebook, chat or project (or, with null, a plain
+ * folder again). Not a person's choice in Drive: the app it belongs to sets it.
+ */
+export function setPurpose(db: DatabaseSync, id: string, username: string, purpose: FolderPurpose | null, ref: string | null = null, now = Date.now()): DriveNode {
+  const node = nodeFor(db, id, username, "editor");
+  if (node.kind !== "folder") throw new DriveProblem("Only a folder can be that.");
+  if (purpose !== null && !folderPurposes.includes(purpose)) throw new DriveProblem("A folder is a notebook, a chat or a project.");
+  if (node.purpose === purpose && node.ref === ref) return node;
+  db.prepare("UPDATE nodes SET purpose = ?, ref = ? WHERE id = ?").run(purpose, ref, id);
+  touch(db, id, node.spaceId, now);
+  return toNode(nodeRow(db, id)!, "editor");
 }
 
 export function createFolder(db: DatabaseSync, parentId: string, username: string, rawName: unknown, now = Date.now()): DriveNode {
@@ -895,8 +933,7 @@ export function folderToSpace(db: DatabaseSync, folderId: string, username: stri
   const id = newId();
   db.exec("BEGIN");
   try {
-    /* A notebook shared out of Notes stays a notebook. */
-    db.prepare("INSERT INTO spaces (id, name, crest, root_id, created_by, created_at, purpose) VALUES (?, ?, ?, ?, ?, ?, (SELECT purpose FROM spaces WHERE id = ?))").run(id, folder.name, crest, folder.id, owner, now, folder.spaceId);
+    db.prepare("INSERT INTO spaces (id, name, crest, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, folder.name, crest, folder.id, owner, now);
     db.prepare(`
       WITH RECURSIVE tree(id) AS (SELECT ? UNION ALL SELECT n.id FROM nodes n JOIN tree t ON n.parent_id = t.id)
       UPDATE nodes SET space_id = ? WHERE id IN (SELECT id FROM tree)

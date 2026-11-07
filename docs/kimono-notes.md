@@ -7,17 +7,28 @@ for guests, a trip plan, a recipe. It is Kimono's own app now. Outline is gone.
 
 ## What it is underneath
 
-Notes has no store of its own. **A notebook is a Drive space whose purpose is
-`notes`.** Folders in it are **sections** and every `.md` file is a **note**.
-The note's title is its file name without `.md`. So the same notes show in Drive,
-in the Files app on iPhone and Android, and in anything that reads Markdown.
-Drive's rules decide who may read or change them.
+Notes has no store of its own. **A notebook is a Drive folder marked as a
+notebook**, in any space. Folders in it are **sections** and every `.md` file is
+a **note**. The note's title is its file name without `.md`. So the same notes
+show in Drive, in the Files app on iPhone and Android, in Kimono AI, and in
+anything that reads Markdown. Drive's rules decide who may read or change them.
 
-- Everyone gets their own notebook, **Notes**, made the first time they open
-  the app. Nobody has to set anything up.
-- **Sharing a section turns it into a notebook of its own.** Drive does this
-  with `folderToSpace`, and the new space keeps the `notes` purpose. The owner
-  picks people as editors or viewers. A shared notebook lists under your own.
+- **Drive shows a notebook as a notebook**, with its own mark and the word
+  "Notebook", and opening one goes to Notes (`/notes?notebook=<id>`). Its menu
+  still has **Show files**. Kimono AI's chats are marked the same way: each
+  shows as a chat and opens in Kimono AI, and its project shows as a project.
+  The mark is Drive's folder `purpose` (`notebook`, `chat`, `project`), with
+  `ref` naming the chat. The app the folder belongs to sets it; people never
+  do.
+- **A notebook is shared with whoever is in its space.** One in Family is
+  Family's. **Share on its own** moves a notebook into a new space of its own,
+  with just you and the people you pick. Drive does this with `folderToSpace`,
+  and it stays a notebook.
+- Someone with no notebook gets **Notes** the first time they open the app or
+  Kimono AI needs one. It goes in their own space: the oldest one they own with
+  nobody else in it, or a new **Personal** space if they have none. **New
+  notebook** asks which space it goes in, and defaults to that one.
+- A notebook never holds another: one moved inside another becomes a section.
 - Saving goes through Drive's upload bookkeeping, so the change log, the Files
   app and conflict handling all work as they do for any file. A save names the
   `version` it was edited from. If someone else saved first, theirs stays and
@@ -29,18 +40,24 @@ API: `/api/v1/notes` (code: `apps/portal/src/lib/notes`, `src/app/api/v1/notes`)
 | | |
 |---|---|
 | `GET /notes` | `{ notebooks, sections, notes }`; notes come newest first, each with an `excerpt` |
-| `POST /notes` | `{ parent?, title?, text? }` makes a note (your own notebook if no parent) |
+| `POST /notes` | `{ parent?, title?, text? }` makes a note (in your first notebook if no parent) |
 | `GET /notes/:id` | `{ note, text }` |
 | `PUT /notes/:id` | `{ text, version }` gives `{ note, conflict }` |
-| `PATCH /notes/:id` | `{ title?, parent? }` |
+| `PATCH /notes/:id` | `{ title?, parent? }`; parent is any notebook or section in the same space |
 | `DELETE /notes/:id` | moves it to the trash. `POST /notes/:id/restore` brings it back |
 | `POST /notes/sections` | `{ name, parent? }`. `PATCH` and `DELETE` work on `/notes/sections/:id` |
-| `POST /notes/sections/:id/share` | `{ members: [{ username, role }] }` makes a new notebook |
-| `GET`, `PUT /notes/notebooks/:id/members` | `{ username, role \| null }`. Anyone may leave |
+| `POST /notes/notebooks` | `{ name, space? }` makes a notebook (in your own space if none is given) |
+| `PATCH`, `DELETE /notes/notebooks/:id` | `{ name }` renames it; `DELETE` trashes it (a notebook shared on its own is left instead) |
+| `POST /notes/notebooks/:id/share` | `{ members: [{ username, role }] }` shares it on its own, as a new space |
+| `GET`, `PUT /notes/notebooks/:id/members` | who shares it (its space). `PUT { username, role \| null }` works once it is shared on its own. Anyone may leave |
+
+A notebook in the API is `{ id, name, space: { id, name, crest, color, members },
+role, isSpace }`. A note's and a section's `notebookId` is the notebook folder's id.
 
 **Kimono AI** knows your notebooks. Each message names them, and its system
 prompt says how notes work (`lib/notes/agent.ts`). It asks for a notebook with
-`kimono-access` like any other space, reads and writes the `.md` files in it,
+`kimono-access --space <space> --path <notebook>` like any folder, reads and
+writes the `.md` files in it,
 and keeps `kimono-remember` for what it should know about you. A note it
 changes shows up in Notes the next time it's opened.
 
@@ -102,8 +119,10 @@ Ink is for marks only. It never goes on controls, cards or text.
   - on the right, one word, only when it says something: "now", "2h", "Tue",
     or a `MorphLoader` while it saves;
   - in All notes, the notebook's small crest before the time.
-- A ··· menu shows on hover, and always on touch. It holds **Move**, **Share
-  section** (owners), and **Delete**.
+- A ··· menu shows on hover, and always on touch. A note's menu holds
+  **Move** and **Delete**. A notebook's menu (in the panel or drawer) holds
+  **Rename**, **Share on its own** (for owners of its space), **Leave** (once
+  it is shared on its own) and **Delete**.
 - The open note's row gets the lightest container and a faint shadow, as the
   current chat does.
 - New rows rise 12px into place. On the phone they use `animateItem` (a 380ms
@@ -156,9 +175,13 @@ phone, the `InkLoader` sits beside the label, as `Seal.kt` does.
   "Delete Recipes and its 4 notes?" with **Delete** and **Keep**.
 - **Leave** a shared notebook: hold to confirm (`HoldSeal`). Only an owner can
   bring you back, so it gets the stronger gesture.
-- **Share a section:** a sheet with the people picker Drive uses. Each person
+- **Share on its own:** a sheet with the people picker Drive uses. Each person
   is an editor or a viewer, set with a joint switch. The button is **Share**.
-  Afterwards the section moves under its own notebook, with a short spring.
+  Before that, the sheet says who already shares it: "Everyone in Family can
+  see this." Afterwards the notebook's portraits show its people, with a short
+  spring.
+- **New notebook:** a name, and a choice of space (your own first). The
+  button is **Make**.
 
 ### Words
 

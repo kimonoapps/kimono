@@ -687,3 +687,4 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 .dv-wash svg.i { position: relative; width: 52%; height: 52%; stroke-width: 1.8; filter: url(#k-ink-icon); }
 .dv-wash.folder { color: #6a4a22; }
 .dv-wash.is-project, .dv-wash.is-task { color: var(--dv-code, #3f6b6a); }
+.dv-wash.is-notebook { color: var(--dv-notes, #b56d78); }

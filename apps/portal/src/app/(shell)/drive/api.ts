@@ -22,6 +22,10 @@ export type DriveNode = {
   id: string; spaceId: string; parentId: string | null; kind: "folder" | "file"; name: string;
   size: number; mime: string | null; createdBy: string; updatedAt: number; trashedAt: number | null;
   link: string | null; guest?: string | null;
+  /** A folder that is a notebook (opens in Notes), a chat (opens in Kimono AI) or a project. */
+  purpose?: "notebook" | "chat" | "project" | null;
+  /** Which chat or project. */
+  ref?: string | null;
 };
 export type Folder = { folder: DriveNode; path: DriveNode[]; children: DriveNode[] };
 export type Person = { username: string; name: string; picture: string | null };

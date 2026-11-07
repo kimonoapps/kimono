@@ -7,7 +7,7 @@ import { dirname } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import {
   addFile, blobPath, childrenOf, moveNode, createFolder, createSpace, db as driveDb, driveOn, DriveProblem, finishUpload,
-  maxFileBytes, newId as driveId, nodeFor, renameNode, renameSpace, roleIn, root as driveRoot, startReplace, trashNode, typeOf,
+  maxFileBytes, newId as driveId, nodeFor, renameNode, renameSpace, roleIn, root as driveRoot, setPurpose, startReplace, trashNode, typeOf,
   type DriveNode,
 } from "../drive";
 import type { CodeConfig } from "./config";
@@ -69,6 +69,28 @@ function codeSpace(db: DatabaseSync, owner: string) {
   return { id: made.id, rootId: made.rootId };
 }
 
+/*
+ * Drive shows a chat's folder as the chat, and a project's as the project, and
+ * opens them in Kimono AI: the folders say so (Drive's purpose and ref).
+ * "Chats" stays a plain folder. Marking is best-effort and never stops a turn.
+ */
+function mark(folderId: string, owner: string, purpose: "chat" | "project", ref: string | null) {
+  try { setPurpose(driveDb(), folderId, owner, purpose, ref); } catch (error) { if (!(error instanceof DriveProblem)) throw error; }
+}
+const projectRef = (workspace: Workspace) => workspace.kind === "project" ? `repo:${workspace.repo.name}` : workspace.folder ? `project:${workspace.folder.id}` : null;
+
+/** The chat's folder and its project's, marked as such (for chats made before folders were). */
+export function markChat(workspace: Workspace) {
+  if (!workspace.drive) return;
+  mark(workspace.drive.folderId, workspace.owner, "chat", workspace.id);
+  const ref = projectRef(workspace);
+  if (!ref) return;
+  try {
+    const parent = nodeFor(driveDb(), workspace.drive.folderId, workspace.owner).parentId;
+    if (parent) mark(parent, workspace.owner, "project", ref);
+  } catch (error) { if (!(error instanceof DriveProblem)) throw error; }
+}
+
 /** Where a chat's folder belongs: its project's folder, "Chats" for one in none, or its repository's for work on one. */
 function homeOf(workspace: Workspace) {
   return workspace.kind === "project" ? workspace.repo.name : workspace.folder?.name ?? "Chats";
@@ -81,6 +103,7 @@ export async function rehome(db: DatabaseSync, workspace: Workspace) {
   if (space.id !== workspace.drive.spaceId) return;
   const home = folderIn(space.rootId, workspace.owner, homeOf(workspace));
   try { moveNode(driveDb(), workspace.drive.folderId, workspace.owner, home.id); } catch (error) { if (!(error instanceof DriveProblem)) throw error; }
+  markChat(workspace);
 }
 
 /** The chat's folder takes its new name, made unique among its neighbours as when it was made. */
@@ -110,7 +133,10 @@ export async function taskFolder(db: DatabaseSync, workspace: Workspace): Promis
   if (current && current.spaceId === space.id) {
     try {
       const folder = nodeFor(driveDb(), current.folderId, owner, "editor");
-      if (folder.kind === "folder") return current;
+      if (folder.kind === "folder") {
+        if (folder.purpose !== "chat") markChat({ ...workspace, drive: current });
+        return current;
+      }
     } catch (error) {
       if (!(error instanceof DriveProblem)) throw error;
     }
@@ -122,6 +148,7 @@ export async function taskFolder(db: DatabaseSync, workspace: Workspace): Promis
   for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${base} (${n})`;
   const folder = createFolder(driveDb(), project.id, owner, name);
   setDriveFolder(db, workspace.id, folder.id);
+  markChat({ ...workspace, drive: { spaceId: space.id, folderId: folder.id } });
   return { spaceId: space.id, folderId: folder.id };
 }
 

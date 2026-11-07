@@ -65,7 +65,7 @@ export function readOnly(actions: SyncAction[]): SyncAction[] {
 export function accessNote(spaces: string[], open: { dir: string; need: Need }[], notebooks: string[] = []) {
   const parts: string[] = [];
   parts.push(spaces.length ? `Drive spaces you can ask for: ${spaces.slice(0, 40).join(", ")}.` : "This person has no Drive spaces.");
-  if (notebooks.length) parts.push(`Their notebooks in Kimono Notes, asked for the same way: ${notebooks.slice(0, 40).join(", ")}.`);
+  if (notebooks.length) parts.push(`Their notebooks in Kimono Notes (space / notebook): ${notebooks.slice(0, 40).join(", ")}.`);
   if (open.length) parts.push(`Open to you now: ${open.slice(0, 40).map((o) => `/files/${o.dir.slice(filesRoot.length + 1)} (${o.need === "change" ? "read and change" : "read only"})`).join(", ")}.`);
   return parts.join(" ");
 }

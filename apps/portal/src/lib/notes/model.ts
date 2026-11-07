@@ -1,22 +1,25 @@
 /**
  * 帳 Kimono Notes — notebooks of Markdown, kept in Drive.
  *
- * Notes has no storage of its own. A notebook is a Drive space whose purpose
- * is "notes"; folders in it are sections, and every .md file is a note, its
- * title the file's name without ".md". So the same notes show in Drive, in
- * the Files app on the phone, and to anything that reads Markdown, and
- * Drive's rules decide who may read or change them (see ../drive/model.ts).
+ * Notes has no storage of its own. A notebook is a Drive folder marked as
+ * one (purpose "notebook"), in any space; folders in it are sections, and
+ * every .md file is a note, its title the file's name without ".md". So the
+ * same notes are in Drive (which shows a notebook as a notebook, not a
+ * folder), in the Files app on the phone, and in Kimono AI, and Drive's rules
+ * decide who may read or change them: a notebook is shared with whoever is in
+ * its space (see ../drive/model.ts).
  *
- * Everyone gets their own notebook, "Notes", made the first time they ask.
- * Sharing a section turns it into a notebook of its own (Drive's
- * folderToSpace), which keeps the purpose.
+ * Someone with no notebook gets one, "Notes", the first time they ask, in
+ * their own space: the oldest one they own and nobody else is in, or a new
+ * "Personal" space if they have none. A notebook never holds another.
  *
  * Pure logic over the Drive database, tested in scripts/test-notes.mjs.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { cleanName, createSpace, DriveProblem, nodeFor, spacesOf, type DriveNode, type Role, type Space } from "../drive/model";
+import { cleanName, createFolder, createSpace, DriveProblem, nodeFor, setPurpose, spacesOf, type DriveNode, type Role, type Space } from "../drive/model";
 
-export const ownNotebookName = "Notes";
+export const firstNotebookName = "Notes";
+export const personalSpaceName = "Personal";
 /** The largest note: Markdown this long is a book, not a note. */
 export const maxNoteBytes = 2 * 1024 * 1024;
 
@@ -29,7 +32,15 @@ export function noteName(rawTitle: unknown): string {
   return `${cleanName(title, "title")}.md`;
 }
 
-export type Notebook = Pick<Space, "id" | "name" | "crest" | "color" | "rootId" | "role" | "members" | "createdBy"> & { own: boolean };
+export type Notebook = {
+  /** The notebook's folder. Notes and sections name it as their notebookId. */
+  id: string; name: string; createdBy: string; createdAt: number; updatedAt: number;
+  /** The space it is in: whoever is in that space shares it. */
+  space: Pick<Space, "id" | "name" | "crest" | "color" | "members">;
+  role: Role;
+  /** Whether it is its space's top folder (made by sharing it on its own). */
+  isSpace: boolean;
+};
 export type Section = { id: string; notebookId: string; parentId: string; name: string; updatedAt: number };
 export type NoteMeta = {
   id: string; notebookId: string; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number;
@@ -37,26 +48,86 @@ export type NoteMeta = {
   version: number;
 };
 
-const asNotebook = (space: Space, username: string): Notebook => ({
-  id: space.id, name: space.name, crest: space.crest, color: space.color, rootId: space.rootId, role: space.role, members: space.members,
-  createdBy: space.createdBy, own: space.createdBy === username.toLowerCase(),
-});
+type Row = {
+  id: string; space_id: string; parent_id: string | null; kind: "folder" | "file"; name: string; purpose: string | null;
+  created_by: string; created_at: number; updated_at: number; content_version: number; blob: string | null; trashed_at: number | null;
+};
 
-/** The person's own notebook, made the first time it's asked for. */
-export function ownNotebook(db: DatabaseSync, username: string, now = Date.now()): Notebook {
-  const mine = spacesOf(db, username).filter((s) => s.purpose === "notes" && s.createdBy === username.toLowerCase() && s.role === "owner")
-    .sort((a, b) => a.createdAt - b.createdAt)[0];
-  return asNotebook(mine ?? createSpace(db, username, { name: ownNotebookName, crest: "kikyo", color: "plum", purpose: "notes" }, now), username);
-}
+/* Every live node in the person's spaces, as a walk down from each space's top folder. */
+const liveIn = `WITH RECURSIVE live(id) AS (
+    SELECT s.root_id FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
+    UNION ALL
+    SELECT c.id FROM nodes c JOIN live ON c.parent_id = live.id WHERE c.trashed_at IS NULL
+  )`;
+const columns = "n.id, n.space_id, n.parent_id, n.kind, n.name, n.purpose, n.created_by, n.created_at, n.updated_at, n.content_version, n.blob, n.trashed_at";
 
-/** Every notebook the person is in, their own first. */
+/** Every notebook the person can open, by name; ones they made first. */
 export function notebooksOf(db: DatabaseSync, username: string): Notebook[] {
-  ownNotebook(db, username);
-  return spacesOf(db, username).filter((s) => s.purpose === "notes").map((s) => asNotebook(s, username))
-    .sort((a, b) => Number(b.own) - Number(a.own) || a.name.localeCompare(b.name));
+  const who = username.toLowerCase();
+  const spaces = new Map(spacesOf(db, who).map((s) => [s.id, s]));
+  const rows = db.prepare(`${liveIn} SELECT ${columns} FROM nodes n JOIN live ON live.id = n.id WHERE n.kind = 'folder' AND n.purpose = 'notebook'`).all(who) as Row[];
+  const ids = new Set(rows.map((r) => r.id));
+  return rows
+    /* One inside another (moved there in Drive) is a section of the outer one. */
+    .filter((r) => !ancestors(db, r.parent_id).some((a) => ids.has(a)))
+    .flatMap((r) => {
+      const space = spaces.get(r.space_id);
+      if (!space) return [];
+      return [{
+        id: r.id, name: r.name, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
+        space: { id: space.id, name: space.name, crest: space.crest, color: space.color, members: space.members },
+        role: space.role, isSpace: space.rootId === r.id,
+      }];
+    })
+    .sort((a, b) => Number(b.createdBy === who) - Number(a.createdBy === who) || a.name.localeCompare(b.name));
 }
 
-type Row = { id: string; space_id: string; parent_id: string; kind: "folder" | "file"; name: string; created_by: string; created_at: number; updated_at: number; content_version: number; blob: string | null };
+function ancestors(db: DatabaseSync, from: string | null): string[] {
+  const out: string[] = [];
+  for (let at = from; at && out.length < 256;) {
+    out.push(at);
+    at = (db.prepare("SELECT parent_id FROM nodes WHERE id = ?").get(at) as { parent_id: string | null } | undefined)?.parent_id ?? null;
+  }
+  return out;
+}
+
+/** The notebook a node is in (itself, if it is one), or null. */
+function notebookAbove(db: DatabaseSync, id: string): string | null {
+  for (const at of ancestors(db, id).reverse()) {
+    const row = db.prepare("SELECT purpose FROM nodes WHERE id = ?").get(at) as { purpose: string | null } | undefined;
+    if (row?.purpose === "notebook") return at;
+  }
+  return null;
+}
+
+/** The person's own space for a first notebook: the oldest they own alone, else a new "Personal". */
+export function personalSpace(db: DatabaseSync, username: string, now = Date.now()): Space {
+  const who = username.toLowerCase();
+  const alone = spacesOf(db, who).filter((s) => s.role === "owner" && s.members === 1 && s.createdBy === who).sort((a, b) => a.createdAt - b.createdAt);
+  return alone[0] ?? createSpace(db, who, { name: personalSpaceName, crest: "sakura", color: "plum" }, now);
+}
+
+/** A new notebook, in the space named (by its id) or the person's own. */
+export function createNotebook(db: DatabaseSync, username: string, input: { name?: unknown; space?: unknown }, now = Date.now()): Notebook {
+  const name = typeof input.name === "string" && input.name.trim() ? input.name : firstNotebookName;
+  const space = typeof input.space === "string" && input.space ? spacesOf(db, username).find((s) => s.id === input.space) : personalSpace(db, username, now);
+  if (!space) throw new DriveProblem("That space doesn't exist, or you're not in it.", 404);
+  const folder = createFolder(db, space.rootId, username, cleanName(name, "notebook name"), now);
+  setPurpose(db, folder.id, username, "notebook", null, now);
+  return notebooksOf(db, username).find((n) => n.id === folder.id)!;
+}
+
+/** The person's notebooks, making their first if they have none. */
+export function ensureNotebook(db: DatabaseSync, username: string, now = Date.now()): Notebook[] {
+  const found = notebooksOf(db, username);
+  return found.length ? found : [createNotebook(db, username, {}, now)];
+}
+
+/** Where a new note goes when none is named: their first notebook they may write in. */
+export function defaultNotebook(db: DatabaseSync, username: string): Notebook {
+  const books = ensureNotebook(db, username);
+  return books.find((b) => b.role !== "viewer") ?? createNotebook(db, username, {});
+}
 
 /**
  * Everything in the person's notebooks: sections, and notes newest first,
@@ -64,38 +135,37 @@ type Row = { id: string; space_id: string; parent_id: string; kind: "folder" | "
  * Files that aren't Markdown are Drive's business and left out.
  */
 export function libraryOf(db: DatabaseSync, username: string): { notebooks: Notebook[]; sections: Section[]; notes: (NoteMeta & { blob: string | null })[] } {
-  const notebooks = notebooksOf(db, username);
-  const roots = notebooks.map((n) => n.rootId);
-  if (!roots.length) return { notebooks, sections: [], notes: [] };
+  const notebooks = ensureNotebook(db, username);
+  if (!notebooks.length) return { notebooks, sections: [], notes: [] };
   const rows = db.prepare(`
-    WITH RECURSIVE live(id) AS (
-      SELECT value FROM json_each(?)
+    WITH RECURSIVE under(id, book) AS (
+      SELECT value, value FROM json_each(?)
       UNION ALL
-      SELECT c.id FROM nodes c JOIN live ON c.parent_id = live.id WHERE c.trashed_at IS NULL
+      SELECT c.id, under.book FROM nodes c JOIN under ON c.parent_id = under.id WHERE c.trashed_at IS NULL
     )
-    SELECT n.id, n.space_id, n.parent_id, n.kind, n.name, n.created_by, n.created_at, n.updated_at, n.content_version, n.blob
-    FROM nodes n JOIN live ON live.id = n.id WHERE n.parent_id IS NOT NULL
-  `).all(JSON.stringify(roots)) as Row[];
+    SELECT ${columns}, under.book FROM nodes n JOIN under ON under.id = n.id WHERE n.id != under.book
+  `).all(JSON.stringify(notebooks.map((n) => n.id))) as (Row & { book: string })[];
   const sections: Section[] = [], notes: (NoteMeta & { blob: string | null })[] = [];
   for (const row of rows) {
-    if (row.kind === "folder") sections.push({ id: row.id, notebookId: row.space_id, parentId: row.parent_id, name: row.name, updatedAt: row.updated_at });
-    else if (isNoteName(row.name)) notes.push({ ...meta(row), blob: row.blob });
+    if (row.kind === "folder") sections.push({ id: row.id, notebookId: row.book, parentId: row.parent_id!, name: row.name, updatedAt: row.updated_at });
+    else if (isNoteName(row.name)) notes.push({ ...meta(row, row.book), blob: row.blob });
   }
   sections.sort((a, b) => a.name.localeCompare(b.name));
   notes.sort((a, b) => b.updatedAt - a.updatedAt);
   return { notebooks, sections, notes };
 }
 
-const meta = (row: Pick<Row, "id" | "space_id" | "parent_id" | "name" | "created_by" | "created_at" | "updated_at" | "content_version">): NoteMeta => ({
-  id: row.id, notebookId: row.space_id, parentId: row.parent_id, title: titleOf(row.name), createdBy: row.created_by,
+const meta = (row: Pick<Row, "id" | "parent_id" | "name" | "created_by" | "created_at" | "updated_at" | "content_version">, notebookId: string): NoteMeta => ({
+  id: row.id, notebookId, parentId: row.parent_id!, title: titleOf(row.name), createdBy: row.created_by,
   createdAt: row.created_at, updatedAt: row.updated_at, version: row.content_version,
 });
 
 /** A Drive node as a note, refused if it isn't one, or isn't in a notebook. */
 export function noteFrom(db: DatabaseSync, node: DriveNode & { blob: string | null }): NoteMeta & { blob: string | null } {
-  if (node.kind !== "file" || !isNoteName(node.name) || !inNotebook(db, node.spaceId)) throw new DriveProblem("That isn't a note.", 404);
+  const book = node.kind === "file" && isNoteName(node.name) && node.parentId ? notebookAbove(db, node.parentId) : null;
+  if (!book) throw new DriveProblem("That isn't a note.", 404);
   return {
-    ...meta({ id: node.id, space_id: node.spaceId, parent_id: node.parentId!, name: node.name, created_by: node.createdBy, created_at: node.createdAt, updated_at: node.updatedAt, content_version: node.contentVersion }),
+    ...meta({ id: node.id, parent_id: node.parentId, name: node.name, created_by: node.createdBy, created_at: node.createdAt, updated_at: node.updatedAt, content_version: node.contentVersion }, book),
     blob: node.blob,
   };
 }
@@ -105,16 +175,26 @@ export function noteFor(db: DatabaseSync, id: string, username: string, need: Ro
   return noteFrom(db, nodeFor(db, id, username, need));
 }
 
-/** A folder in a notebook (a notebook's top or a section) the person may write in. */
-export function placeFor(db: DatabaseSync, id: string, username: string): DriveNode {
+/** A notebook or a section in one, which the person may write in; with the notebook it is in. */
+export function placeFor(db: DatabaseSync, id: string, username: string): DriveNode & { notebookId: string } {
   const folder = nodeFor(db, id, username, "editor");
-  if (folder.kind !== "folder" || !inNotebook(db, folder.spaceId)) throw new DriveProblem("Notes go in a notebook.", 404);
-  return folder;
+  const book = folder.kind === "folder" ? notebookAbove(db, folder.id) : null;
+  if (!book) throw new DriveProblem("Notes go in a notebook.", 404);
+  const { blob, ...plain } = folder;
+  void blob;
+  return { ...plain, notebookId: book };
 }
 
-function inNotebook(db: DatabaseSync, spaceId: string): boolean {
-  return Boolean(db.prepare("SELECT 1 FROM spaces WHERE id = ? AND purpose = 'notes'").get(spaceId));
+/** A notebook the person may open, at [need] or above. */
+export function notebookFor(db: DatabaseSync, id: string, username: string, need: Role = "viewer"): Notebook {
+  nodeFor(db, id, username, need);
+  const book = notebooksOf(db, username).find((n) => n.id === id);
+  if (!book) throw new DriveProblem("That notebook doesn't exist, or you're not in it.", 404);
+  return book;
 }
+
+/** Where a notebook is, as Kimono AI asks for it: "Personal / Notes", or just its name when it is a space. */
+export const notebookPlace = (book: Pick<Notebook, "name" | "isSpace" | "space">) => book.isSpace ? book.name : `${book.space.name} / ${book.name}`;
 
 /** A note's text, cut to its first [chars] characters of prose: no markup, no title line. */
 export function excerptOf(text: string, chars = 160): string {

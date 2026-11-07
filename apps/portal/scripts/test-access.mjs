@@ -70,6 +70,6 @@ test('the schema has requests, grants and what each chat has open', () => {
 });
 
 test('notebooks are named apart from the spaces of files', () => {
-  assert.equal(accessNote(['Photos'], [], ['Notes', 'Kyoto trip']),
-    'Drive spaces you can ask for: Photos. Their notebooks in Kimono Notes, asked for the same way: Notes, Kyoto trip.');
+  assert.equal(accessNote(['Photos', 'Personal'], [], ['Personal / Notes']),
+    'Drive spaces you can ask for: Photos, Personal. Their notebooks in Kimono Notes (space / notebook): Personal / Notes.');
 });

@@ -5,6 +5,7 @@ import { rise, riseWhenReady, slide } from "@/components/motion";
 
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
+import { useCrossTo } from "@/components/crossing";
 import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
@@ -396,9 +397,13 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   const here = folder?.folder.id ?? folderId;
 
   /* ── going places ── */
+  const crossTo = useCrossTo();
   const openFolder = (id: string) => { setMenu(null); setQuery(""); onGo(id); };
   const openNode = (node: DriveNode) => {
     setMenu(null);
+    /* A notebook opens in Notes and a chat in Kimono AI; what's inside is still a folder's worth away, from the menu. */
+    const app = appHref(node);
+    if (app) return crossTo("kakejiku", app);
     if (node.kind === "folder") return openFolder(node.id);
     if (found) setQuery("");
     onGo(node.parentId ?? here, !found && opened?.id === node.id ? null : node.id);
@@ -513,9 +518,13 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
   const repos = new Set((space.code?.repos ?? []).map((name) => name.toLowerCase()));
   const top = folder?.path.length ?? 0;
   const inRepo = top === 1 && folder ? repos.has(folder.folder.name.toLowerCase()) : false;
-  const codeRole = (node: DriveNode) => !space.code || node.kind !== "folder" || found ? undefined
+  /* A folder says what it is (a notebook, chat or project); older code projects are still known by name. */
+  const codeRole = (node: DriveNode) => node.kind !== "folder" ? undefined
+    : node.purpose === "notebook" ? "notebook" as const : node.purpose === "chat" ? "task" as const : node.purpose === "project" ? "project" as const
+    : !space.code || found ? undefined
     : top === 0 ? repos.has(node.name.toLowerCase()) ? "project" as const : undefined : inRepo ? "task" as const : undefined;
-  const subtitle = (node: DriveNode) => node.kind === "folder" ? codeRole(node) === "project" ? "Project" : codeRole(node) === "task" ? "Chat" : "Folder"
+  const folderWords = { notebook: "Notebook", task: "Chat", project: "Project" } as const;
+  const subtitle = (node: DriveNode) => node.kind === "folder" ? (() => { const role = codeRole(node); return role ? folderWords[role] : "Folder"; })()
     : `${extension(node.name)}${!token && node.guest ? ` · added by ${node.guest}` : ""}`;
 
   return <section className="dv-sheet"
@@ -623,7 +632,8 @@ function SpaceView({ space, guest = null, folderId, openFile, people, landed, on
     </div>
 
     {menu && menuNode ? <FloatingMenu at={menu} label={`Actions for ${menuNode.name}`} onClose={closeMenu}>
-      <MenuItem icon="open" onPick={() => openNode(menuNode)}>Open</MenuItem>
+      <MenuItem icon="open" onPick={() => openNode(menuNode)}>{menuNode.purpose === "notebook" ? "Open in Notes" : menuNode.purpose === "chat" ? "Open chat" : "Open"}</MenuItem>
+      {appHref(menuNode) ? <MenuItem icon="folder" onPick={() => openFolder(menuNode.id)}>Show files</MenuItem> : null}
       {menuNode.kind === "file" ? <MenuItem icon="download" onPick={() => save([menuNode])}>Download</MenuItem> : null}
       {menuNode.kind === "file" && !guest && (menuNode.link || canEdit) ? <>
         <hr />
@@ -665,9 +675,10 @@ function Check({ on, ghost, label, onClick }: { on: boolean | "part"; ghost?: bo
  * thumbnail for images, the opening frame for video), else its extension.
  * [token] reads a link-opened space's files; [plain] keeps to the extension.
  */
-function Kind({ node, as, token, plain }: { node: DriveNode; as?: "project" | "task"; token?: string | null; plain?: boolean }) {
+function Kind({ node, as, token, plain }: { node: DriveNode; as?: "project" | "task" | "notebook"; token?: string | null; plain?: boolean }) {
   const kind = kindOf(node);
   const [failed, setFailed] = useState(false);
+  if (kind === "folder" && as === "notebook") return <Wash icon="notebook" seed={node.id} tint={NOTES_TINT} tone="is-notebook" />;
   if (kind === "folder" && as) return <Wash icon={as} seed={node.id} tint={CODE_TINT} tone={`is-${as}`} />;
   if (kind === "folder") return <Wash icon="folder" seed={node.id} tint={FOLDER_TINT} tone="folder" />;
   const ext = <span className="ext">{extension(node.name)}</span>;
@@ -692,6 +703,15 @@ function FolderSkeleton() {
 
 const FOLDER_TINT = "#c48a45";
 const CODE_TINT = "#3f6b6a";
+const NOTES_TINT = "#b56d78";
+
+/** Where a notebook or chat opens, in its own app; null for anything Drive opens itself. */
+function appHref(node: DriveNode): string | null {
+  if (node.kind !== "folder") return null;
+  if (node.purpose === "notebook") return `/notes?notebook=${encodeURIComponent(node.id)}`;
+  if (node.purpose === "chat" && node.ref) return `/code#w=${encodeURIComponent(node.ref)}`;
+  return null;
+}
 
 /** A folder-like mark: its line icon on a watercolour puddle, the puddle's shape seeded by what it marks. */
 function Wash({ icon, seed, tint, tone, size = "" }: { icon: IconName; seed: string; tint: string; tone: string; size?: string }) {

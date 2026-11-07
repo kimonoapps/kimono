@@ -16,10 +16,15 @@ export async function PATCH(request: Request, { params }: Context) {
   return notes(() => {
     const body = read.body as { name?: unknown; parent?: unknown };
     if (body.name === undefined && body.parent === undefined) throw new DriveProblem("Send a new name or where to move it.");
-    placeFor(db(), id, user.username);
-    if (body.parent !== undefined) { placeFor(db(), String(body.parent), user.username); moveNode(db(), id, user.username, String(body.parent)); }
-    const folder = body.name !== undefined ? renameNode(db(), id, user.username, body.name) : placeFor(db(), id, user.username);
-    return apiJson({ id: folder.id, notebookId: folder.spaceId, parentId: folder.parentId, name: folder.name, updatedAt: folder.updatedAt });
+    const section = placeFor(db(), id, user.username);
+    if (section.id === section.notebookId) throw new DriveProblem("That's a notebook, not a section.");
+    if (body.parent !== undefined) {
+      if (placeFor(db(), String(body.parent), user.username).notebookId !== section.notebookId) throw new DriveProblem("Sections move within their notebook.");
+      moveNode(db(), id, user.username, String(body.parent));
+    }
+    if (body.name !== undefined) renameNode(db(), id, user.username, body.name);
+    const folder = placeFor(db(), id, user.username);
+    return apiJson({ id: folder.id, notebookId: folder.notebookId, parentId: folder.parentId, name: folder.name, updatedAt: folder.updatedAt });
   });
 }
 
@@ -30,5 +35,10 @@ export async function DELETE(request: Request, { params }: Context) {
   const user = await apiUser();
   if (!user) return unauthorized();
   const { id } = await params;
-  return notes(() => { placeFor(db(), id, user.username); trashNode(db(), id, user.username); return apiJson({ trashed: true }); });
+  return notes(() => {
+    const section = placeFor(db(), id, user.username);
+    if (section.id === section.notebookId) throw new DriveProblem("That's a notebook, not a section.");
+    trashNode(db(), id, user.username);
+    return apiJson({ trashed: true });
+  });
 }
