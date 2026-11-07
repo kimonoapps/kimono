@@ -2,6 +2,8 @@ package node
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -23,6 +25,18 @@ const (
 	exposureNetwork = "kimono-web"
 	exposureTunnel  = "kimono-cloudflared"
 )
+
+// cloudflaredVersion is the one release of cloudflared a node installs and
+// runs, the same the reconciler's connectors use. The package is installed as
+// root, so it is checked against digests recorded here (from Cloudflare's
+// release notes, which GitHub's own asset digests agree with) rather than
+// trusting whatever the download returns. Bump all three together.
+const cloudflaredVersion = "2026.8.0"
+
+var cloudflaredPackageDigests = map[string]string{
+	"amd64": "81b5cd625beae2b64e025073402a69c0e8571aeda45a1f4726e33adab3e5824d",
+	"arm64": "d84438ebce2badd4662dd92099769ca07b7b4337ab29cbeef65e621e9ef2de33",
+}
 
 type Exposure struct {
 	Name     string `json:"name"`
@@ -242,16 +256,43 @@ func (m *Manager) ensureExposurePackages() error {
 	if m.Runner.Exists("cloudflared") {
 		return nil
 	}
-	arch := map[string]string{"amd64": "amd64", "arm64": "arm64"}[runtime.GOARCH]
-	if arch == "" {
+	arch := runtime.GOARCH
+	digest, supported := cloudflaredPackageDigests[arch]
+	if !supported {
 		return fmt.Errorf("cloudflared does not support %s", runtime.GOARCH)
 	}
-	path := filepath.Join(os.TempDir(), "kimono-cloudflared.deb")
-	if err := download("https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-"+arch+".deb", path); err != nil {
+	// A private directory of its own: a fixed name in a shared /tmp could be
+	// planted, or swapped between the download and dpkg, by any local user.
+	directory, err := os.MkdirTemp("", "kimono-cloudflared-")
+	if err != nil {
 		return err
 	}
-	defer os.Remove(path)
+	defer os.RemoveAll(directory)
+	path := filepath.Join(directory, "cloudflared.deb")
+	url := "https://github.com/cloudflare/cloudflared/releases/download/" + cloudflaredVersion + "/cloudflared-linux-" + arch + ".deb"
+	if err := download(url, path); err != nil {
+		return err
+	}
+	if err := verifyDigest(path, digest); err != nil {
+		return fmt.Errorf("cloudflared %s package: %w", cloudflaredVersion, err)
+	}
 	return m.Runner.Run("dpkg", "-i", path)
+}
+
+func verifyDigest(path, expected string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return err
+	}
+	if actual := hex.EncodeToString(hash.Sum(nil)); actual != expected {
+		return fmt.Errorf("checksum mismatch: got %s, expected %s", actual, expected)
+	}
+	return nil
 }
 
 func (m *Manager) ensureExposureNetwork() error {
@@ -292,7 +333,7 @@ func (m *Manager) restartExposureTunnel() error {
 			return err
 		}
 	}
-	return m.Runner.Run("docker", "run", "-d", "--name", exposureTunnel, "--restart", "unless-stopped", "--network", exposureNetwork, "--add-host", "host.docker.internal:host-gateway", "-v", m.exposureDir()+":/etc/cloudflared:ro", "cloudflare/cloudflared:latest", "tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run")
+	return m.Runner.Run("docker", "run", "-d", "--name", exposureTunnel, "--restart", "unless-stopped", "--network", exposureNetwork, "--add-host", "host.docker.internal:host-gateway", "-v", m.exposureDir()+":/etc/cloudflared:ro", "cloudflare/cloudflared:"+cloudflaredVersion, "tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run")
 }
 
 func (m *Manager) findExposureTunnel(name string) (string, error) {

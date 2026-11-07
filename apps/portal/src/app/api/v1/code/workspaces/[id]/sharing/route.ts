@@ -1,5 +1,6 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { linksOn, chatSharing, code, db, setChatLink, shareChat, workspaceAs } from "@/lib/code";
+import { syncHistory } from "@/lib/code/history";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -21,7 +22,12 @@ export async function PUT(request: Request, { params }: Context) {
   if ("response" in read) return read.response;
   const { id } = await params;
   const body = read.body as { username?: unknown; access?: unknown };
-  return code(user, (config) => apiJson(linksOn(config, shareChat(db(), workspaceAs(db(), id, user.username, "owner"), body.username, body.access ?? null))), false);
+  return code(user, async (config) => {
+    const workspace = workspaceAs(db(), id, user.username, "owner");
+    const sharing = shareChat(db(), workspace, body.username, body.access ?? null);
+    await forgetOtherChats(config, workspace);
+    return apiJson(linksOn(config, sharing));
+  }, false);
 }
 
 /** Turns the chat's link on (`{ link: "read" | "edit" }`: anyone reads; signed-in people may write) or off (`{ link: null }`). */
@@ -33,5 +39,14 @@ export async function PATCH(request: Request, { params }: Context) {
   const read = await readJson(request);
   if ("response" in read) return read.response;
   const { id } = await params;
-  return code(user, (config) => apiJson(linksOn(config, setChatLink(db(), workspaceAs(db(), id, user.username, "owner"), (read.body as { link?: unknown }).link ?? null))), false);
+  return code(user, async (config) => {
+    const workspace = workspaceAs(db(), id, user.username, "owner");
+    const sharing = setChatLink(db(), workspace, (read.body as { link?: unknown }).link ?? null);
+    await forgetOtherChats(config, workspace);
+    return apiJson(linksOn(config, sharing));
+  }, false);
 }
+
+/* Once others can see this chat, the owner's other chats come out of its sandbox at once, not at the next turn. */
+const forgetOtherChats = (config: Parameters<typeof syncHistory>[1], workspace: Parameters<typeof syncHistory>[2]) =>
+  syncHistory(db(), config, workspace).catch((error) => console.warn("Kimono AI couldn't clear earlier chats:", error instanceof Error ? error.message : error));

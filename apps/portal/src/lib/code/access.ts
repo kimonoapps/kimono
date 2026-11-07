@@ -255,7 +255,8 @@ const describe = (r: { space_name: string; path: string }) => r.path ? `${r.path
  * A request the agent wrote. Returns what to tell the agent when the next turn
  * should start by itself (already allowed), or null when the person decides.
  */
-export async function onRequest(db: DatabaseSync, config: CodeConfig, workspace: Workspace, turn: string | null, line: { id: string; space: string; path: string; need: Need; why: string }) {
+/** [byOwner] false: someone the chat is shared with asked, so nothing opens without the owner saying yes. */
+export async function onRequest(db: DatabaseSync, config: CodeConfig, workspace: Workspace, turn: string | null, line: { id: string; space: string; path: string; need: Need; why: string }, byOwner = true) {
   const owner = workspace.owner;
   const found = (() => { try { return resolve(owner, line.space, line.path); } catch { return null; } })();
   const id = `${workspace.id.slice(0, 8)}-${line.id}`.slice(0, 64);
@@ -264,14 +265,14 @@ export async function onRequest(db: DatabaseSync, config: CodeConfig, workspace:
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, workspace.id, turn, base.space, line.path, line.need, line.why, found?.spaceId ?? null, found?.node.id ?? null, found ? "pending" : "missing", Date.now());
   if (!found) return { event: { kind: "access" as const, ...base, state: "missing" as const }, carryOn: `There's nothing called "${describe({ space_name: line.space, path: line.path })}" in their Drive. Check the name with them.` };
   /* The person's own chats' files (their Code space) are every one of their chats' to use: no asking. */
-  const ownChats = found.spaceId === codeSpaceOf(db, owner);
+  const ownChats = byOwner && found.spaceId === codeSpaceOf(db, owner);
   if (ownChats && !grantsOf(db, owner).some((g) => g.workspaceId === null && g.nodeId === found.node.id)) {
     const root = spacesOf(driveDb(), owner).find((s) => s.id === found.spaceId)?.rootId;
     if (root) addGrant(db, owner, null, found.spaceId, root, "change");
   }
   const grant = coveringGrant(grantsOf(db, owner), owner, workspace.id, chainOf(found.node.id), line.need);
   const ceil = ceiling(found.spaceId, owner);
-  if (grant && ceil && (line.need === "read" || ceil === "change")) {
+  if (byOwner && grant && ceil && (line.need === "read" || ceil === "change")) {
     db.prepare("UPDATE access_requests SET state = 'auto', answered_at = ? WHERE id = ?").run(Date.now(), id);
     await open(db, config, workspace, found.spaceName, found.node);
     return { event: { kind: "access" as const, ...base, state: "auto" as const }, carryOn: `That was already allowed. The files are in ${where(found.spaceName, found.node)}.` };

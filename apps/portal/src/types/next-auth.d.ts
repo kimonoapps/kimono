@@ -7,6 +7,8 @@ declare module "next-auth" {
       id: string;
       username: string;
       role: KimonoRole;
+      /** This one session, so signing everyone else out can keep it. */
+      sessionId?: string;
     } & DefaultSession["user"];
   }
 }

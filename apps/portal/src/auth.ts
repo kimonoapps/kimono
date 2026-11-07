@@ -1,8 +1,8 @@
 import NextAuth from "next-auth";
 import Authentik from "next-auth/providers/authentik";
 import { randomUUID } from "node:crypto";
-import { isRevoked, signedOutBefore } from "@/lib/session-epochs";
-import { readStanding } from "@/lib/directory";
+import { honouredSince, isRevoked } from "@/lib/session-epochs";
+import { readIdentityProfile, readStanding } from "@/lib/directory";
 import { roleFromGroups } from "@/lib/roles";
 
 const authentikIssuer = process.env.AUTHENTIK_ISSUER?.replace(/\/*$/, "/");
@@ -28,14 +28,6 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
   },
   callbacks: {
     async jwt({ token, profile, trigger, session }) {
-      /* An account edit refreshes the name and email the session carries, so
-         the header changes at once rather than at the next sign-in. */
-      if (trigger === "update" && session?.user) {
-        if (typeof session.user.name === "string") token.name = session.user.name;
-        if (typeof session.user.email === "string") token.email = session.user.email;
-      }
-      /* The device that signed everyone else out keeps its own session. */
-      if (trigger === "update" && session?.renewSignIn) token.signedInAt = Date.now();
       if (profile) {
         token.signedInAt = Date.now();
         /* An ID for this one session, so signing out can refuse it by name. */
@@ -47,7 +39,18 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
       /* Signed out everywhere after this session began: it is no longer honoured. */
       if (typeof token.sessionId === "string" && await isRevoked(token.sessionId)) return null;
       const username = typeof token.username === "string" ? token.username : "";
-      if (username && (typeof token.signedInAt === "number" ? token.signedInAt : 0) < await signedOutBefore(username)) return null;
+      if (username && !await honouredSince(username, typeof token.signedInAt === "number" ? token.signedInAt : 0, typeof token.sessionId === "string" ? token.sessionId : undefined)) return null;
+      /* An account edit refreshes the name and email the session carries, so
+         the header changes at once rather than at the next sign-in. They are
+         read again from the directory: what the browser sends is never used,
+         since anyone holding the cookie can ask for an update. */
+      if (trigger === "update" && username) {
+        try {
+          const fresh = await readIdentityProfile(username);
+          token.name = fresh.name || token.name;
+          token.email = fresh.email || token.email;
+        } catch { /* the directory is down: keep what the session had */ }
+      }
       /* The role and the account itself are re-read from the directory (cached
          for a minute): a deactivated account is signed out, and a role change
          lands without waiting for the cookie to expire. If the directory can't
@@ -65,6 +68,7 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
         session.user.id = String(token.identityId ?? token.sub ?? "");
         session.user.username = String(token.username ?? "");
         session.user.role = String(token.role ?? "member") as typeof session.user.role;
+        session.user.sessionId = typeof token.sessionId === "string" ? token.sessionId : undefined;
       }
       return session;
     },
@@ -74,6 +78,3 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
   },
   trustHost: true,
 });
-
-/** After signing everyone else out, keeps the device that asked signed in. */
-export const keepThisDeviceSignedIn = () => updateSession({ renewSignIn: true } as unknown as Parameters<typeof updateSession>[0]);

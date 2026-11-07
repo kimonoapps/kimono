@@ -5,7 +5,16 @@ import { redirect } from "next/navigation";
 /** Where to go once signed in: a page on this Kimono (a share link someone opened), or home. */
 function backTo(asked: string | string[] | undefined) {
   const to = typeof asked === "string" ? asked : "";
-  return to.startsWith("/") && !to.startsWith("//") && !to.startsWith("/\\") ? to : "/";
+  /* Resolved against a stand-in origin: anything that lands elsewhere (//host,
+     /\host, a tab or newline browsers strip) is refused, not just the obvious forms. */
+  try {
+    const base = "https://kimono.invalid";
+    const url = new URL(to, base);
+    if (!to.startsWith("/") || url.origin !== base || /[\u0000-\u001f\\]/.test(to)) return "/";
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/";
+  }
 }
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ callbackUrl?: string | string[] }> }) {

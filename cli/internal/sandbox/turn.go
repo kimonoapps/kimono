@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"regexp"
 	"bufio"
 	"context"
 	"encoding/json"
@@ -32,6 +33,9 @@ type turnRequest struct {
 	// Links is where kimono-link's files can be fetched from the internet:
 	// Portal's public address for this workspace's temporary file links.
 	Links string `json:"links"`
+	// LinkKey signs kimono-link's tokens, so Portal can turn away a made-up
+	// link without waking this sandbox to look.
+	LinkKey string `json:"linkKey"`
 }
 
 const maxContext = 24 * 1024
@@ -136,7 +140,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()
@@ -335,6 +339,15 @@ func linksBase(raw string) string {
 		return ""
 	}
 	return strings.TrimRight(raw, "/")
+}
+
+var linkKeyPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func linkKey(raw string) string {
+	if !linkKeyPattern.MatchString(raw) {
+		return ""
+	}
+	return raw
 }
 
 func chatFlag(chat bool) string {

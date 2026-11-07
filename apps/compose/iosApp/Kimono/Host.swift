@@ -45,7 +45,7 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
             guard let value else { return }
             var add = q
             add[kSecValueData as String] = Data(value.utf8)
-            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
             if SecItemAdd(add as CFDictionary, nil) != errSecMissingEntitlement { return }
         }
     }

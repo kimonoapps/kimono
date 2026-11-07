@@ -16,7 +16,7 @@ import { signedOutBefore } from "./session-epochs";
  * session (the website) or the phone app's bearer token, never both: once an
  * Authorization header is sent, the cookie is not looked at.
  */
-export type ApiUser = { username: string; name?: string | null; email?: string | null; role: string; via: "browser" | "app" };
+export type ApiUser = { username: string; name?: string | null; email?: string | null; role: string; sessionId?: string; via: "browser" | "app" };
 
 export function apiError(status: number, error: string) {
   return Response.json({ error }, { status, headers: { "Cache-Control": "no-store" } });

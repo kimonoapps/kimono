@@ -17,6 +17,8 @@ const controlPlaneUser = "kimono-control-plane"
 type headscaleUser struct {
 	ID   uint64
 	Name string
+	// Provider is "oidc" for someone who signed in, empty for a user made here.
+	Provider string
 }
 
 // parseHeadscaleUsers reads `headscale users list -o json`. Headscale prints a
@@ -28,8 +30,9 @@ func parseHeadscaleUsers(output []byte) ([]headscaleUser, error) {
 		return nil, fmt.Errorf("no user list in Headscale's reply")
 	}
 	var raw []struct {
-		ID   json.Number `json:"id"`
-		Name string      `json:"name"`
+		ID       json.Number `json:"id"`
+		Name     string      `json:"name"`
+		Provider string      `json:"provider"`
 	}
 	if err := json.Unmarshal(output[start:], &raw); err != nil {
 		return nil, fmt.Errorf("read Headscale users: %w", err)
@@ -40,7 +43,7 @@ func parseHeadscaleUsers(output []byte) ([]headscaleUser, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Headscale reported user %q with identifier %q", item.Name, item.ID)
 		}
-		users = append(users, headscaleUser{ID: identifier, Name: item.Name})
+		users = append(users, headscaleUser{ID: identifier, Name: item.Name, Provider: item.Provider})
 	}
 	return users, nil
 }
@@ -63,7 +66,7 @@ func (m *Manager) ensureControlPlaneUser() (uint64, error) {
 		return 0, err
 	}
 	for _, user := range users {
-		if user.Name == controlPlaneUser {
+		if isControlPlane(user) {
 			return user.ID, nil
 		}
 	}
@@ -76,11 +79,17 @@ func (m *Manager) ensureControlPlaneUser() (uint64, error) {
 		return 0, err
 	}
 	for _, user := range users {
-		if user.Name == controlPlaneUser {
+		if isControlPlane(user) {
 			return user.ID, nil
 		}
 	}
 	return 0, fmt.Errorf("%s was created but Headscale did not list it", controlPlaneUser)
+}
+
+// isControlPlane is the user this CLI made, never someone who signed in with
+// the same name: enrollment keys minted under them would hand them the nodes.
+func isControlPlane(user headscaleUser) bool {
+	return user.Name == controlPlaneUser && user.Provider != "oidc"
 }
 
 // reportDuplicateMeshUsers warns about users sharing a name. The access policy

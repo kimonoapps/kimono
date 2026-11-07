@@ -1,4 +1,4 @@
-import { apiError, apiJson, apiUser, readJson, unauthorized } from "@/lib/api-v1";
+import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { portalOrigin } from "@/lib/account";
 import { code, db } from "@/lib/code";
 import { connectLink, ConnectionProblem, connections } from "@/lib/code/composio";
@@ -16,6 +16,8 @@ export async function GET() {
 
 /** A link to connect an app: { app } → { url }. */
 export async function POST(request: Request) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   const read = await readJson(request);

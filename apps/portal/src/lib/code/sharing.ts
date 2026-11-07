@@ -72,6 +72,17 @@ export function workspaceAs(db: DatabaseSync, id: string, username: string | nul
   return { ...workspaceFor(db, id, owner), access };
 }
 
+/**
+ * The sandbox's .kimono folder holds the owner's own things: digests of their
+ * other chats, Drive files they opened, links. People the chat is shared with
+ * see the work, never that folder.
+ */
+export function ownersOnly(workspace: SharedWorkspace, path: string) {
+  if (workspace.access === "owner") return;
+  const first = path.split("/").filter((part) => part && part !== ".")[0];
+  if (first === ".kimono") throw new CodeProblem("That file isn't here.", 404);
+}
+
 /** Chats shared with [username], each with what they may do in it. */
 export function sharedWithMe(db: DatabaseSync, username: string): SharedWorkspace[] {
   const access = new Map((db.prepare("SELECT workspace_id, access FROM chat_shares WHERE username = ?").all(username.toLowerCase()) as { workspace_id: string; access: Access }[]).map((r) => [r.workspace_id, r.access]));

@@ -1,4 +1,3 @@
-import { keepThisDeviceSignedIn } from "@/auth";
 import { endAllSessions, listSessions } from "@/lib/account";
 import { apiJson, apiUser, crossSite, failure, unauthorized } from "@/lib/api-v1";
 
@@ -20,7 +19,6 @@ export async function DELETE(request: Request) {
   if (!user) return unauthorized();
   try {
     const ended = await endAllSessions(user);
-    if (user.via === "browser") await keepThisDeviceSignedIn();
     return apiJson({ ended });
   } catch (error) {
     return failure(error, "Those sign-ins could not be ended.");

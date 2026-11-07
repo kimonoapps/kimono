@@ -8,12 +8,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	kimono "github.com/kimonoapps/kimono"
 	"github.com/kimonoapps/kimono/cli/internal/reconcile"
+	"github.com/kimonoapps/kimono/cli/internal/sandbox"
 	"github.com/kimonoapps/kimono/cli/internal/system"
 )
 
@@ -209,12 +212,13 @@ KIMONO_PORTAL_OIDC_CLIENT_ID=kimono-portal
 KIMONO_PORTAL_OIDC_CLIENT_SECRET=%s
 KIMONO_PORTAL_OIDC_REDIRECT_URI=https://%s/api/auth/callback/authentik
 KIMONO_PORTAL_SESSION_SECRET=%s
-KIMONO_PORTAL_TAG=latest
+KIMONO_PORTAL_TAG=%s
 
-KIMONO_RECONCILER_TAG=latest
+KIMONO_RECONCILER_TAG=%s
 
 KIMONO_BRAND_ASSET_PATH=%s
 `, *identityDomain, *domain, *meshDomain, *portalDomain, *magicDNS, *email, pgPass, authSecret, oidcSecret, *meshDomain, *identityDomain, portalOIDCSecret, *portalDomain, portalSessionSecret,
+		releaseImageTag(sandbox.Version), releaseImageTag(sandbox.Version),
 		filepath.Join(m.serverDir(), "assets"))
 	if err := os.WriteFile(m.envPath(), []byte(env), 0600); err != nil {
 		return err
@@ -236,7 +240,7 @@ KIMONO_BRAND_ASSET_PATH=%s
 	} else {
 		_, _ = fmt.Fprintln(m.Runner.Stdout, "WARNING: DNS verification skipped; HTTPS certificates may fail.")
 	}
-	if err := m.compose("up", "-d", "--remove-orphans"); err != nil {
+	if err := m.composeUp(); err != nil {
 		return err
 	}
 	return m.bootstrapBlueprints()
@@ -280,7 +284,7 @@ func (m *Manager) start(args []string) error {
 			return fmt.Errorf("DNS verification failed; fix DNS or use --skip-dns-check for an advanced setup: %w", err)
 		}
 	}
-	return m.compose("up", "-d", "--remove-orphans")
+	return m.composeUp()
 }
 
 func (m *Manager) doctor() error {
@@ -388,7 +392,7 @@ func (m *Manager) repair() error {
 		return err
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Repaired embedded appliance files and container-readable permissions.")
-	if err := m.compose("up", "-d", "--remove-orphans"); err != nil {
+	if err := m.composeUp(); err != nil {
 		return err
 	}
 	if err := m.reloadHeadscalePolicy(); err != nil {
@@ -469,6 +473,9 @@ func (m *Manager) update() error {
 	if err := m.ensureServerEnvironment(); err != nil {
 		return err
 	}
+	if err := m.pinReleaseImages(); err != nil {
+		return err
+	}
 	if _, err := os.Stat(m.cloudflareConfigPath()); err == nil {
 		if err := m.installCloudflareTimer(); err != nil {
 			return err
@@ -481,7 +488,7 @@ func (m *Manager) update() error {
 	if err := m.compose("pull", "--ignore-pull-failures"); err != nil {
 		return err
 	}
-	if err := m.compose("up", "-d", "--remove-orphans"); err != nil {
+	if err := m.composeUp(); err != nil {
 		return err
 	}
 	if err := m.reloadHeadscalePolicy(); err != nil {
@@ -558,6 +565,158 @@ func (m *Manager) compose(args ...string) error {
 	}
 	base := []string{"compose", "--env-file", m.envPath(), "-f", filepath.Join(m.serverDir(), "compose.yml")}
 	return m.Runner.Run("docker", append(base, args...)...)
+}
+
+// composeUp brings the appliance up, first moving an existing kimono-edge
+// onto the subnet compose.yml now gives it.
+func (m *Manager) composeUp() error {
+	reconnect, err := m.migrateEdgeNetwork()
+	if err != nil {
+		return err
+	}
+	upErr := m.compose("up", "-d", "--remove-orphans")
+	// Even after a failed start: an app left off the network is unreachable.
+	if err := reconnect(); err != nil {
+		if upErr != nil {
+			return errors.Join(upErr, err)
+		}
+		return err
+	}
+	return upErr
+}
+
+// edgeSubnet is the kimono-edge subnet in compose.yml. Caddy trusts forwarded
+// addresses from part of it, so a network left on another subnet would leave
+// every tunnelled visitor looking like the connector.
+const edgeSubnet = "10.89.0.0/24"
+
+// edgeMember is a container of another project (the reconciler's apps) that
+// was attached to kimono-edge, and the service name others reach it by.
+type edgeMember struct {
+	name, service string
+}
+
+// migrateEdgeNetwork prepares an appliance whose kimono-edge predates the fixed
+// subnet. Compose recreates a network whose definition changed, but refuses
+// while another project's containers are attached; those are detached here
+// and the returned function attaches them again, under their service names,
+// once Compose has made the new network.
+func (m *Manager) migrateEdgeNetwork() (func() error, error) {
+	none := func() error { return nil }
+	if m.Runner.DryRun {
+		return none, nil
+	}
+	output, err := m.Runner.OutputCombined("docker", "network", "inspect", "--format", "{{range .IPAM.Config}}{{.Subnet}} {{end}}", reconcile.EdgeNetwork)
+	if err != nil {
+		// Not created yet; Compose makes it on the right subnet.
+		return none, nil
+	}
+	if slices.Contains(strings.Fields(string(output)), edgeSubnet) {
+		return none, nil
+	}
+	// Stopped containers too: one left pointing at the removed network
+	// could not start again.
+	output, err = m.Runner.Output("docker", "ps", "--all", "--filter", "network="+reconcile.EdgeNetwork,
+		"--format", `{{.Names}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}`)
+	if err != nil {
+		return nil, fmt.Errorf("list containers on %s: %w", reconcile.EdgeNetwork, err)
+	}
+	var detached []edgeMember
+	reconnect := func() error {
+		var failures []error
+		for _, member := range detached {
+			args := []string{"network", "connect"}
+			if member.service != "" {
+				args = append(args, "--alias", member.service)
+			}
+			args = append(args, reconcile.EdgeNetwork, member.name)
+			if err := m.Runner.Run("docker", args...); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		if len(failures) > 0 {
+			return fmt.Errorf("reattach apps to %s; run `sudo kimono server apply` to restore them: %w", reconcile.EdgeNetwork, errors.Join(failures...))
+		}
+		return nil
+	}
+	// Not trimmed: a container outside Compose ends its line in empty labels.
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) != 3 || fields[0] == "" || fields[1] == "kimono-server" {
+			// The appliance's own containers are Compose's to recreate.
+			continue
+		}
+		if err := m.Runner.Run("docker", "network", "disconnect", reconcile.EdgeNetwork, fields[0]); err != nil {
+			return nil, errors.Join(fmt.Errorf("detach %s from %s: %w", fields[0], reconcile.EdgeNetwork, err), reconnect())
+		}
+		detached = append(detached, edgeMember{name: fields[0], service: fields[2]})
+	}
+	_, _ = fmt.Fprintf(m.Runner.Stdout, "Moving %s to %s.\n", reconcile.EdgeNetwork, edgeSubnet)
+	return reconnect, nil
+}
+
+// releasePattern matches the tags the release workflow builds from, which are
+// also the version it stamps into this binary and the tag of the Portal and
+// reconciler images it publishes beside it.
+var releasePattern = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`)
+
+// releaseImageTag pins the appliance's own images to the release this binary
+// came from, so an update runs the images it was tested with rather than
+// whatever "latest" points at when Compose pulls. A development build has no
+// published images of its own and keeps following latest.
+func releaseImageTag(version string) string {
+	if releasePattern.MatchString(version) {
+		return version
+	}
+	return "latest"
+}
+
+var releaseImageKeys = []string{"KIMONO_PORTAL_TAG", "KIMONO_RECONCILER_TAG"}
+
+// pinReleaseImages moves the image tags in server.env to this binary's
+// release. A tag that is neither latest nor a release was chosen by whoever
+// runs the server (a locally built image, say) and is left alone.
+func (m *Manager) pinReleaseImages() error {
+	tag := releaseImageTag(sandbox.Version)
+	if tag == "latest" {
+		return nil
+	}
+	contents, err := os.ReadFile(m.envPath())
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(contents), "\n")
+	seen := map[string]bool{}
+	changed := false
+	for index, line := range lines {
+		key, value, found := strings.Cut(line, "=")
+		if !found || !slices.Contains(releaseImageKeys, key) {
+			continue
+		}
+		seen[key] = true
+		value = strings.TrimSpace(value)
+		if value != "" && value != "latest" && !releasePattern.MatchString(value) {
+			continue
+		}
+		if value != tag {
+			lines[index] = key + "=" + tag
+			changed = true
+		}
+	}
+	updated := strings.Join(lines, "\n")
+	for _, key := range releaseImageKeys {
+		if !seen[key] {
+			if !strings.HasSuffix(updated, "\n") {
+				updated += "\n"
+			}
+			updated += key + "=" + tag + "\n"
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return os.WriteFile(m.envPath(), []byte(updated), 0600)
 }
 
 func (m *Manager) serverDir() string { return filepath.Join(m.Home, "server") }

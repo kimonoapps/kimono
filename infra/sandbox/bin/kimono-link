@@ -8,7 +8,7 @@ or N hours (up to 24), and only works for this file as it is now: run it
 again after you change the file. Up to 50 MB. For tools, not for the person:
 give them files with kimono-send.
 """
-import os, re, secrets, shutil, sys, time, urllib.parse
+import hashlib, hmac, os, re, secrets, shutil, sys, time, urllib.parse
 
 MAX_BYTES = 50 * 1024 * 1024
 LINKS = "/workspace/.kimono/links"
@@ -44,7 +44,11 @@ stem = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip(".-")[:80] or "file"
 ext = re.sub(r"[^A-Za-z0-9]+", "", ext)[:10].lower()
 name = f"{stem}.{ext}" if ext else stem
 
-token = secrets.token_hex(16)
+# Half random, half its signature: Kimono checks the signature before it looks
+# in here, so a guessed link never wakes the sandbox.
+nonce = secrets.token_hex(8)
+key = os.environ.get("KIMONO_LINK_KEY", "")
+token = nonce + (hmac.new(bytes.fromhex(key), nonce.encode(), hashlib.sha256).hexdigest()[:16] if key else secrets.token_hex(8))
 folder = f"{LINKS}/{token}"
 os.makedirs(folder, exist_ok=True)
 shutil.copyfile(path, f"{folder}/{name}")

@@ -163,6 +163,14 @@ func TestModelGatewaySwapsCapability(t *testing.T) {
 	request.Header.Set("X-Api-Key", "cap")
 	recorder := httptest.NewRecorder()
 	server.GatewayHandler().ServeHTTP(recorder, request)
+	if recorder.Code != 409 || path != "" {
+		t.Fatalf("between turns the model must refuse: %d %s", recorder.Code, path)
+	}
+	space.busy = true
+	request = httptest.NewRequest("POST", "/anthropic/v1/messages", strings.NewReader(`{}`))
+	request.Header.Set("X-Api-Key", "cap")
+	recorder = httptest.NewRecorder()
+	server.GatewayHandler().ServeHTTP(recorder, request)
 	if recorder.Code != 200 || path != "/v1/messages" || seen.Get("X-Api-Key") != "sk-ant-api03-real" {
 		t.Fatalf("%d %s %v", recorder.Code, path, seen)
 	}

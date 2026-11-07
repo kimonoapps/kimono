@@ -1,12 +1,14 @@
-import { apiError, apiJson, apiUser, failure, unauthorized } from "@/lib/api-v1";
+import { apiError, apiJson, apiUser, crossSite, failure, unauthorized } from "@/lib/api-v1";
 import { disconnectDevice, removeDevice } from "@/lib/mesh";
 import { vpnMember, vpnView } from "@/lib/vpn-view";
 
 /** POST {intent:"disconnect"|"remove"}: signs one of your devices out, or forgets it. Answers with the VPN as it now is. */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
-  const { intent } = await request.json().catch(() => ({})) as { intent?: string };
+  const { intent } = await (request.headers.get("content-type")?.startsWith("application/json") ? request.json() : Promise.reject(new Error("Send JSON."))).catch(() => ({})) as { intent?: string };
   if (intent !== "disconnect" && intent !== "remove") return apiError(400, "Say whether to sign it out or remove it.");
   try {
     const { member } = await vpnMember(user);

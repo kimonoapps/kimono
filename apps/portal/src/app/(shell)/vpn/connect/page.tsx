@@ -4,13 +4,20 @@ import { AppShell } from "@/components/app-shell";
 import { Panel, PanelEmpty, Panels, SectionHeading, Workspace } from "@/components/panel";
 import { createEnrolmentKey } from "@/lib/mesh";
 import { meshContext } from "../shared";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { vpnMember } from "@/lib/vpn-view";
+
+/* The key is handed over in a short-lived cookie for this page alone, never in
+   the address, where history and the proxy's logs would keep it. */
+const keyCookie = "kimono-vpn-key";
 
 export const metadata = { title: "Connect · Kimono VPN" };
 
-export default async function ConnectPage({ searchParams }: { searchParams: Promise<{ key?: string; error?: string }> }) {
+export default async function ConnectPage({ searchParams }: { searchParams: Promise<{ minted?: string; error?: string }> }) {
   const { session, settings, identity, member } = await meshContext();
   const query = await searchParams;
+  const key = query.minted ? (await cookies()).get(keyCookie)?.value : undefined;
   const mesh = settings.meshDomain || `mesh.${settings.baseDomain}`;
 
   /* Only a machine with no browser needs a key, and even then it is minted for
@@ -19,9 +26,12 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
     "use server";
     const current = await auth();
     if (!current?.user) redirect("/login");
+    const { member: allowed } = await vpnMember(current.user).catch(() => ({ member: undefined }));
+    if (!allowed) redirect(`/vpn/connect?error=${encodeURIComponent("You don't have Kimono VPN yet.")}`);
     const minted = await createEnrolmentKey(current.user);
     if ("error" in minted) redirect(`/vpn/connect?error=${encodeURIComponent(minted.error)}`);
-    redirect(`/vpn/connect?key=${encodeURIComponent(minted.key)}`);
+    (await cookies()).set(keyCookie, minted.key, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/vpn/connect", maxAge: 120 });
+    redirect("/vpn/connect?minted=1");
   }
 
   if (!member) {
@@ -80,16 +90,16 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
         <Panels>
           <Panel
             label="Key"
-            title={query.key ? "Your key is ready" : "Only if you need one"}
-            wants={Boolean(query.key)}
-            action={query.key ? undefined : <form action={mintKey}><Seal tone="quiet" type="submit">Create a key</Seal></form>}
+            title={key ? "Your key is ready" : "Only if you need one"}
+            wants={Boolean(key)}
+            action={key ? undefined : <form action={mintKey}><Seal tone="quiet" type="submit">Create a key</Seal></form>}
           >
-            {query.key
+            {key
               ? <>
                   <p>It works once and expires in thirty minutes. Run this on the machine you are adding:</p>
-                  <Command>{`tailscale up --login-server https://${mesh} --authkey ${query.key}`}</Command>
+                  <Command>{`tailscale up --login-server https://${mesh} --authkey ${key}`}</Command>
                   <p>The key on its own, if the machine wants it separately:</p>
-                  <Command>{query.key}</Command>
+                  <Command>{key}</Command>
                 </>
               : <p>Most devices never need this. A server without a browser does.</p>}
           </Panel>

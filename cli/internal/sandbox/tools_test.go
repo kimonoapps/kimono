@@ -26,7 +26,7 @@ func TestToolsGatewaySwapsTheCapability(t *testing.T) {
 	defer mcp.Close()
 
 	s, _ := New(Config{Key: "k", StateDir: t.TempDir()})
-	space := &workspace{id: "ws1", capability: "cap-123", tools: ToolsAuth{URL: mcp.URL + "/tool_router/trs_1/mcp?x=1", Headers: map[string]string{"x-api-key": "real-key"}}}
+	space := &workspace{id: "ws1", capability: "cap-123", busy: true, tools: ToolsAuth{URL: mcp.URL + "/tool_router/trs_1/mcp?x=1", Headers: map[string]string{"x-api-key": "real-key"}}}
 	s.spaces["ws1"], s.byCapability["cap-123"] = space, space
 	gateway := httptest.NewServer(s.GatewayHandler())
 	defer gateway.Close()

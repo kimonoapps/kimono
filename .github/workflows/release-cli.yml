@@ -5,16 +5,23 @@ on:
     tags:
       - "v*"
 
+# Read-only by default; each job that writes to the release asks for it.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    # The tag reaches scripts through the environment, never spliced into
+    # them, so a tag's name can't become shell.
+    env:
+      TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: Build static Linux binaries
@@ -25,35 +32,59 @@ jobs:
         run: go test ./...
       - name: Validate Headscale isolation policy
         run: docker run --rm -v "$PWD/infra/compose/server/headscale/policy.hujson:/policy.hujson:ro" docker.io/headscale/headscale:0.28.0 policy check --file /policy.hujson
-      - name: Publish GitHub release
+      # The CLI and installer refuse checksums this key didn't sign: the
+      # checksums alone come from the same place as the binaries, so they
+      # prove nothing against whoever could replace both. The secret is the
+      # Ed25519 private key as PEM; SHA256SUMS.sig is its raw signature,
+      # base64-encoded.
+      - name: Sign the checksums
         env:
-          GH_TOKEN: ${{ github.token }}
-        # Re-running a partly failed release must not die here on a release that
-        # already exists, or the later steps can never be retried.
+          SIGNING_KEY: ${{ secrets.KIMONO_RELEASE_SIGNING_KEY }}
         run: |
-          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
-            gh release upload "${{ github.ref_name }}" --clobber dist/kimono_linux_amd64 dist/kimono_linux_arm64 dist/SHA256SUMS
-          else
-            gh release create "${{ github.ref_name }}" --generate-notes dist/kimono_linux_amd64 dist/kimono_linux_arm64 dist/SHA256SUMS
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::error::No KIMONO_RELEASE_SIGNING_KEY in this repository's secrets; updates would refuse an unsigned release."
+            exit 1
           fi
+          KEY="$RUNNER_TEMP/release-signing.pem"
+          (umask 077 && printf '%s\n' "$SIGNING_KEY" > "$KEY")
+          openssl pkeyutl -sign -inkey "$KEY" -rawin -in dist/SHA256SUMS -out "$RUNNER_TEMP/SHA256SUMS.sig.bin"
+          rm -f "$KEY"
+          openssl base64 -A -in "$RUNNER_TEMP/SHA256SUMS.sig.bin" -out dist/SHA256SUMS.sig
+          # Checked against the key the installer (and CLI) embed, so a secret
+          # that doesn't match fails here rather than every install after.
+          sed -n "s/^release_public_key='//; /BEGIN PUBLIC KEY/,/END PUBLIC KEY/{s/'$//;p;}" scripts/install.sh > "$RUNNER_TEMP/release.pub"
+          openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/release.pub" -rawin -in dist/SHA256SUMS -sigfile "$RUNNER_TEMP/SHA256SUMS.sig.bin"
       # Images live under the kimonoapps organisation, which GITHUB_TOKEN cannot
       # write to — its scope is this repository's owner. Publishing there needs
       # a personal access token with write:packages, stored as GHCR_TOKEN.
-      - uses: docker/login-action@v3
+      # Pushed before the release exists: a server updating to this release
+      # pulls the images tagged with it, which must already be there.
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ secrets.GHCR_USERNAME || github.actor }}
           password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
       - name: Publish Kimono Portal image
         run: |
-          docker build -f Dockerfile.portal --build-arg KIMONO_VERSION=${{ github.ref_name }} -t ghcr.io/kimonoapps/kimono-portal:${{ github.ref_name }} -t ghcr.io/kimonoapps/kimono-portal:latest .
-          docker push ghcr.io/kimonoapps/kimono-portal:${{ github.ref_name }}
+          docker build -f Dockerfile.portal --build-arg KIMONO_VERSION="$TAG" -t "ghcr.io/kimonoapps/kimono-portal:$TAG" -t ghcr.io/kimonoapps/kimono-portal:latest .
+          docker push "ghcr.io/kimonoapps/kimono-portal:$TAG"
           docker push ghcr.io/kimonoapps/kimono-portal:latest
       - name: Publish Kimono reconciler image
         run: |
-          docker build -f Dockerfile.reconciler -t ghcr.io/kimonoapps/kimono-reconciler:${{ github.ref_name }} -t ghcr.io/kimonoapps/kimono-reconciler:latest .
-          docker push ghcr.io/kimonoapps/kimono-reconciler:${{ github.ref_name }}
+          docker build -f Dockerfile.reconciler -t "ghcr.io/kimonoapps/kimono-reconciler:$TAG" -t ghcr.io/kimonoapps/kimono-reconciler:latest .
+          docker push "ghcr.io/kimonoapps/kimono-reconciler:$TAG"
           docker push ghcr.io/kimonoapps/kimono-reconciler:latest
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Re-running a partly failed release must not die here on a release that
+        # already exists, or the later steps can never be retried.
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" --clobber dist/kimono_linux_amd64 dist/kimono_linux_arm64 dist/SHA256SUMS dist/SHA256SUMS.sig
+          else
+            gh release create "$TAG" --generate-notes dist/kimono_linux_amd64 dist/kimono_linux_arm64 dist/SHA256SUMS dist/SHA256SUMS.sig
+          fi
 
   # The Kimono app for Android, signed and attached to the release, numbered
   # from the tag so every release outranks the last (v0.7.3 → build 7003).
@@ -63,6 +94,9 @@ jobs:
   android:
     needs: release
     runs-on: ubuntu-latest
+    # Attaches the APK to the release.
+    permissions:
+      contents: write
     # One release's phone build at a time, in order: a tag pushed while the
     # last one is still building waits for it, so it can reuse that build
     # when the phone app hasn't changed. Never cancels one already running.
@@ -77,7 +111,7 @@ jobs:
         id: key
         run: |
           if [ -n "$KEYSTORE" ] && [ -n "$KEYSTORE_PASSWORD" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "No Android signing key in this repository's secrets; skipping the APK."; fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         if: steps.key.outputs.present == 'true'
         with:
           fetch-depth: 0
@@ -97,13 +131,13 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "$FILE" kimono-android.json
           echo "Unchanged since $PREV: offering its build again."
           echo "reused=true" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         with:
           distribution: temurin
           java-version: "21"
       # Gradle's downloads and build cache, kept between releases.
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
       - name: Build the signed APK
         if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
@@ -139,6 +173,9 @@ jobs:
   ios:
     needs: release
     runs-on: macos-latest
+    # Attaches kimono-ios.json to the release.
+    permissions:
+      contents: write
     # As with Android: waits for the last release's iPhone build, to reuse it.
     concurrency:
       group: release-ios
@@ -159,7 +196,7 @@ jobs:
         id: key
         run: |
           if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ] && [ -n "$ASC_KEY" ] && [ -n "$APPLE_TEAM_ID" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "No App Store Connect key in this repository's secrets; skipping the iPhone build."; fi
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         if: steps.key.outputs.present == 'true'
         with:
           fetch-depth: 0
@@ -177,16 +214,16 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber kimono-ios.json
           echo "Unchanged since $PREV: offering its build again."
           echo "reused=true" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         with:
           distribution: temurin
           java-version: "21"
       # Gradle's downloads and build cache, and the Kotlin/Native toolchain
       # (about a gigabyte), kept between releases.
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         if: steps.key.outputs.present == 'true' && steps.reuse.outputs.reused != 'true'
         with:
           path: ~/.konan

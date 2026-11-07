@@ -38,7 +38,7 @@ func TestMediaComesInOnlyFromToolLinks(t *testing.T) {
 
 	s, _ := New(Config{Key: "k", StateDir: t.TempDir()})
 	s.mediaClient = store.Client()
-	space := &workspace{id: "ws1", capability: "cap-1", tools: ToolsAuth{URL: mcp.URL + "/mcp"}}
+	space := &workspace{id: "ws1", capability: "cap-1", busy: true, tools: ToolsAuth{URL: mcp.URL + "/mcp"}}
 	s.spaces["ws1"], s.byCapability["cap-1"] = space, space
 	gateway := httptest.NewServer(s.GatewayHandler())
 	defer gateway.Close()

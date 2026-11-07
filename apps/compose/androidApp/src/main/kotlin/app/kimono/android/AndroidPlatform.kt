@@ -114,7 +114,7 @@ class AndroidPlatform(private val context: Context) : Platform {
     override fun installedVersion(packageId: String): String? =
         runCatching { context.packageManager.getPackageInfo(packageId, 0).versionName }.getOrNull()
 
-    override suspend fun installApp(url: String, packageId: String, progress: (Float) -> Unit): String? = SelfUpdate.install(context, url, null, progress, packageId)
+    override suspend fun installApp(url: String, packageId: String, sha256: String, progress: (Float) -> Unit): String? = SelfUpdate.install(context, url, sha256, progress, packageId)
 
     override fun isInstalled(packageId: String): Boolean? =
         runCatching { context.packageManager.getPackageInfo(packageId, 0); true }.getOrDefault(false)

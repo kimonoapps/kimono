@@ -1,7 +1,7 @@
 ---
 server_url: https://__MESH_DOMAIN__
 listen_addr: 0.0.0.0:8080
-metrics_listen_addr: 0.0.0.0:9090
+metrics_listen_addr: 127.0.0.1:9090
 grpc_listen_addr: 127.0.0.1:50443
 grpc_allow_insecure: false
 
@@ -77,10 +77,10 @@ dns:
 unix_socket: /var/run/headscale/headscale.sock
 unix_socket_permission: "0770"
 
+# Caddy alone forwards to Headscale, from the fixed address compose.yml gives
+# it; no other container may vouch for a client's address.
 trusted_proxies:
-  - 10.0.0.0/8
-  - 172.16.0.0/12
-  - 192.168.0.0/16
+  - 10.89.1.2/32
 
 oidc:
   only_start_if_oidc_is_available: true
@@ -90,6 +90,8 @@ oidc:
   use_expiry_from_token: false
   scope: [openid, profile, email]
   email_verified_required: true
+  # Only people given Kimono VPN may register a device.
+  allowed_groups: [kimono-vpn]
   pkce:
     enabled: true
     method: S256

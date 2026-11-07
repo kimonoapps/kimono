@@ -5,6 +5,7 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/p
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { join } from "node:path";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { sendFile, typeOf } from "../drive/storage";
 import { stateDir } from "../state";
 import type { CodeConfig } from "./config";
@@ -25,6 +26,18 @@ const tokenShape = /^[0-9a-f]{32}$/;
 const nameShape = /^[A-Za-z0-9][A-Za-z0-9._-]{0,90}$/;
 /** However long the helper was told, never more than a day (and a little for clocks). */
 const longest = 24 * 60 * 60 * 1000 + 5 * 60 * 1000;
+
+/** The key kimono-link signs this workspace's tokens with (hex). */
+export function tempLinkKey(workspaceId: string) {
+  return createHmac("sha256", process.env.AUTH_SECRET || "kimono-development").update(`kimono-temp-link:${workspaceId}`).digest("hex");
+}
+
+/** A token is 64 random bits and their signature: anything else is refused before the sandbox is asked. */
+function signed(workspaceId: string, token: string) {
+  const nonce = token.slice(0, 16);
+  const expected = createHmac("sha256", Buffer.from(tempLinkKey(workspaceId), "hex")).update(nonce).digest("hex").slice(0, 16);
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(token.slice(16)));
+}
 
 /** Where kimono-link's links for a workspace start. */
 export const tempLinkBase = (origin: string, workspaceId: string) => `${origin}/api/v1/code/temp/${workspaceId}`;
@@ -67,7 +80,7 @@ async function copyOut(config: CodeConfig, workspace: Workspace, token: string, 
 /** Serves one linked file, copying it out of the sandbox the first time; 404 for anything else. */
 export async function serveTempLink(request: Request, config: CodeConfig, workspace: Workspace, token: string, rawName: string, now = Date.now()): Promise<Response> {
   const name = decodeURIComponent(rawName);
-  if (!tokenShape.test(token) || !nameShape.test(name) || name.endsWith(".part")) return notFound();
+  if (!tokenShape.test(token) || !nameShape.test(name) || name.endsWith(".part") || !signed(workspace.id, token)) return notFound();
   void sweep(now).catch(() => {});
   const folder = join(root, workspace.id, token);
   let until = Number(await readFile(join(folder, ".expires"), "utf8").catch(() => "0"));

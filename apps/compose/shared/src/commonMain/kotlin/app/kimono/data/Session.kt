@@ -131,7 +131,7 @@ class Session(private val platform: Platform, private val http: HttpClient) {
             parameters.append("state", state)
         }.buildString()
 
-        val flow = SignInFlow(http, REDIRECT)
+        val flow = SignInFlow(http, REDIRECT, config.issuer)
         val next = try {
             flow.start(url)
             flow.answer(username.trim(), password, null)

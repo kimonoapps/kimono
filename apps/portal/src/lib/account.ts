@@ -27,7 +27,7 @@ import { signOutEverywhere } from "./session-epochs";
 
 export type { AccountProfile, AccountSession } from "@kimono/account";
 
-type SessionUser = { username: string; name?: string | null; email?: string | null; role: string };
+type SessionUser = { username: string; name?: string | null; email?: string | null; role: string; sessionId?: string };
 
 export function portalOrigin(): string {
   return (process.env.KIMONO_PORTAL_URL || process.env.AUTH_URL?.replace(/\/api\/auth\/?$/, "") || "http://localhost:3000").replace(/\/+$/, "");
@@ -118,7 +118,8 @@ export const listSessions = (user: SessionUser) => reach("session list", () => l
 export const endSession = (user: SessionUser, id: string) => reach("sign-out", () => endIdentitySession(user.username, id));
 /** Ends every sign-in, and refuses every Kimono session but the one asking. */
 export async function endAllSessions(user: SessionUser) {
-  await signOutEverywhere(user.username);
+  /* The website session asking stays in; a phone app's token has no session to keep. */
+  await signOutEverywhere(user.username, Date.now(), user.sessionId);
   return reach("sign-out", () => endAllIdentitySessions(user.username));
 }
 

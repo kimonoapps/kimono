@@ -1,4 +1,4 @@
-import { apiJson, apiUser, readJson, unauthorized } from "@/lib/api-v1";
+import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { code, db } from "@/lib/code";
 import { profileOf, remember, setInstructions } from "@/lib/code/memory";
 
@@ -11,6 +11,8 @@ export async function GET() {
 
 /** { instructions } replaces their instructions; { remember, title? } keeps a memory. Answers with both. */
 export async function POST(request: Request) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   const read = await readJson(request);

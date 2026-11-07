@@ -26,20 +26,36 @@ const record = (value: unknown) => value && typeof value === "object" ? value as
  * session that signed in before this moment is no longer honoured.
  */
 const epochPath = join(stateDir, "session-epochs.json");
-const epochsHeld: Held<Record<string, number>> = { value: null, loading: null };
-const epochs = () => load(epochsHeld, epochPath, (parsed) => record(parsed.epochs), (): Record<string, number> => ({}));
+type Epochs = { at: Record<string, number>; kept: Record<string, string> };
+const epochsHeld: Held<Epochs> = { value: null, loading: null };
+const epochs = () => load(epochsHeld, epochPath, (parsed) => ({ at: record(parsed.epochs), kept: kept(parsed.kept) }), (): Epochs => ({ at: {}, kept: {} }));
+const kept = (value: unknown) => value && typeof value === "object" ? value as Record<string, string> : {};
 
 /** Sessions for this person that signed in before this time are refused. */
 export async function signedOutBefore(username: string): Promise<number> {
-  const value = (await epochs())[username.toLowerCase()];
+  const value = (await epochs()).at[username.toLowerCase()];
   return typeof value === "number" ? value : 0;
 }
 
-export function signOutEverywhere(username: string, at = Date.now()) {
+/** Whether a session that began at [signedInAt] is still honoured: the one that signed everyone else out is. */
+export async function honouredSince(username: string, signedInAt: number, sessionId: string | undefined): Promise<boolean> {
+  const held = await epochs();
+  const key = username.toLowerCase();
+  const at = held.at[key];
+  if (typeof at !== "number" || signedInAt >= at) return true;
+  return Boolean(sessionId) && held.kept[key] === sessionId;
+}
+
+/** Refuses every session this person has; [keep] names the one that asked, which stays in. */
+export function signOutEverywhere(username: string, at = Date.now(), keep?: string) {
   return serialize(epochPath, async () => {
-    const next = { ...(await epochs()), [username.toLowerCase()]: at };
+    const key = username.toLowerCase();
+    const current = await epochs();
+    const next: Epochs = { at: { ...current.at, [key]: at }, kept: { ...current.kept } };
+    if (keep) next.kept[key] = keep;
+    else delete next.kept[key];
     await mkdir(stateDir, { recursive: true, mode: 0o700 });
-    await writeFileAtomic(epochPath, `${JSON.stringify({ epochs: next }, null, 2)}\n`, 0o600);
+    await writeFileAtomic(epochPath, `${JSON.stringify({ epochs: next.at, kept: next.kept }, null, 2)}\n`, 0o600);
     epochsHeld.value = next;
   });
 }

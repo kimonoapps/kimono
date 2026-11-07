@@ -152,9 +152,9 @@ data class LauncherApp(
 @Serializable
 data class PhoneApp(val name: String, val guide: String = "", val androidPackage: String? = null, val release: PhoneAppRelease? = null, val steps: List<PhoneAppStep> = emptyList())
 
-/** A phone app Kimono hands out itself (an APK, not a store): the version to be on, and where it is. */
+/** A phone app Kimono hands out itself (an APK, not a store): the version to be on, where it is, and the package's SHA-256. */
 @Serializable
-data class PhoneAppRelease(val url: String, val version: String)
+data class PhoneAppRelease(val url: String, val version: String, val sha256: String? = null)
 
 @Serializable
 data class PhoneAppStep(val title: String, val description: String, val kind: String, val href: String? = null, val label: String? = null)

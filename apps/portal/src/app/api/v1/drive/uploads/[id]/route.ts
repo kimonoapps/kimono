@@ -83,6 +83,8 @@ export async function PATCH(request: Request, { params }: Context) {
       if (writer.stopped || Number(request.headers.get("upload-offset")) !== start) {
         return new Response(null, { status: 409, headers: { ...tusHeaders, "Upload-Offset": String(start) } });
       }
+      /* Each piece starts the idle clock again, so one still arriving isn't taken for abandoned. */
+      recordReceived(db(), id, start);
       const handle = await open(partPath(root, id), "a", 0o600);
       let received = start, recorded = start, tooBig = false;
       const checkpoint = async () => {

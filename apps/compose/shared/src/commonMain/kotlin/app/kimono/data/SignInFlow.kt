@@ -40,7 +40,9 @@ sealed interface SignInNext {
  * the identity provider's flow API, ending at the same authorisation code the
  * page would hand back. People only ever see Kimono.
  */
-internal class SignInFlow(http: HttpClient, private val redirect: String) {
+internal class SignInFlow(http: HttpClient, private val redirect: String, issuer: String) {
+    /* The password only ever goes to the identity provider Kimono named, wherever the redirects lead. */
+    private val issuer = Url(issuer)
     private val json = Json { ignoreUnknownKeys = true }
     private val cookies = AcceptAllCookiesStorage()
     /* Its own jar, and redirects taken one at a time so the app's own address can be caught. */
@@ -73,6 +75,7 @@ internal class SignInFlow(http: HttpClient, private val redirect: String) {
                 val flow = Regex("/if/flow/([^/]+)/").find(Url(url).encodedPath)
                 if (flow != null) {
                     val page = Url(url)
+                    if (!page.host.equals(issuer.host, ignoreCase = true) || page.protocol != issuer.protocol) throw KimonoProblem("Signing in led somewhere other than Kimono.")
                     origin = "${page.protocol.name}://${page.hostWithPort}"
                     executor = "$origin/api/v3/flows/executor/${flow.groupValues[1]}/?query=${page.encodedQuery.encodeURLParameter()}"
                     challenge = read(client.get(executor!!))

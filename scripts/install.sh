@@ -5,6 +5,14 @@ repository="${KIMONO_REPOSITORY:-kimonoapps/kimono}"
 download_base="${KIMONO_DOWNLOAD_BASE:-https://github.com/${repository}/releases/latest/download}"
 install_path="${KIMONO_INSTALL_PATH:-/usr/local/bin/kimono}"
 
+# The key the release workflow signs SHA256SUMS with. A checksum alone only
+# proves the binary matches a file from the same place, so whoever could
+# replace one could replace both; the signature ties them to Kimono. The CLI
+# embeds the same key (cli/internal/update) for `kimono update`.
+release_public_key='-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAtex2ixTdx4TU47QW//j0FOcKXjeNXAEzo3hBhI5zaz0=
+-----END PUBLIC KEY-----'
+
 if [ "$(uname -s)" != "Linux" ]; then
   echo "Kimono currently supports Linux servers and nodes only." >&2
   exit 1
@@ -39,6 +47,26 @@ curl -fsSL --retry 3 --proto '=https' --tlsv1.2 \
 curl -fsSL --retry 3 --proto '=https' --tlsv1.2 \
   "${download_base}/SHA256SUMS" \
   -o "${temporary_directory}/SHA256SUMS"
+
+# Ed25519 through pkeyutl needs OpenSSL 3 (-rawin); an older or missing one
+# cannot check the signature, and installing unchecked is an explicit choice.
+if command -v openssl >/dev/null 2>&1 && openssl pkeyutl -help 2>&1 | grep -q -- '-rawin'; then
+  curl -fsSL --retry 3 --proto '=https' --tlsv1.2 \
+    "${download_base}/SHA256SUMS.sig" \
+    -o "${temporary_directory}/SHA256SUMS.sig"
+  printf '%s\n' "$release_public_key" > "${temporary_directory}/release.pub"
+  if ! openssl base64 -d -A -in "${temporary_directory}/SHA256SUMS.sig" -out "${temporary_directory}/SHA256SUMS.sig.bin" ||
+    ! openssl pkeyutl -verify -pubin -inkey "${temporary_directory}/release.pub" -rawin \
+      -in "${temporary_directory}/SHA256SUMS" -sigfile "${temporary_directory}/SHA256SUMS.sig.bin" >/dev/null 2>&1; then
+    echo "The release checksums are not signed by Kimono's release key." >&2
+    exit 1
+  fi
+elif [ "${KIMONO_INSTALL_INSECURE:-0}" = "1" ]; then
+  echo "WARNING: OpenSSL 3 is not available; installing without checking the release signature." >&2
+else
+  echo "OpenSSL 3 is required to check the release signature. Install it (apt-get install openssl), or set KIMONO_INSTALL_INSECURE=1 to install unchecked." >&2
+  exit 1
+fi
 
 expected=$(awk -v name="$asset" '$2 == name { print $1 }' "${temporary_directory}/SHA256SUMS")
 if [ -z "$expected" ]; then

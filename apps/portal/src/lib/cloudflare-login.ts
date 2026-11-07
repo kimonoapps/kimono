@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { getPlatformSettings, provisionLocalCloudflareTunnel } from "./settings";
 
 type LoginStatus = "waiting" | "creating" | "complete" | "error";
-type LoginSession = { id: string; localId: string; name: string; domain: string; home: string; status: LoginStatus; authUrl?: string; error?: string; tunnelId?: string; process?: ChildProcess };
+type LoginSession = { id: string; localId: string; name: string; domain: string; home: string; status: LoginStatus; startedAt?: number; authUrl?: string; error?: string; tunnelId?: string; process?: ChildProcess };
 
 const globalSessions = globalThis as typeof globalThis & { __kimonoCloudflareLogins?: Map<string, LoginSession> };
 const sessions = globalSessions.__kimonoCloudflareLogins ||= new Map<string, LoginSession>();
@@ -59,7 +59,7 @@ async function finishLogin(session: LoginSession, certPath: string) {
     session.status = "creating";
     const directory = join(session.home, ".cloudflared");
     const before = new Set((await readdir(directory)).filter((file) => file.endsWith(".json")));
-    await commandOutput(session.home, (path) => ["tunnel", "--origincert", path.cert, "create", session.name]);
+    await commandOutput(session.home, (path) => ["tunnel", "--origincert", path.cert, "create", "--", session.name]);
     const credentialsName = (await readdir(directory)).find((file) => file.endsWith(".json") && !before.has(file));
     if (!credentialsName) throw new Error("cloudflared created the tunnel without a credentials file");
     const credentialsFile = join(directory, credentialsName);
@@ -75,10 +75,22 @@ async function finishLogin(session: LoginSession, certPath: string) {
   }
 }
 
+/* A login nobody finishes within half an hour is let go, process and all. */
+const loginLifetime = 30 * 60 * 1000;
+function forgetStaleLogins(now = Date.now()) {
+  for (const [id, session] of sessions) {
+    if (now - (session.startedAt ?? now) < loginLifetime) continue;
+    if (session.process && session.process.exitCode === null) session.process.kill();
+    sessions.delete(id);
+  }
+}
+
 export async function startCloudflareLogin(input: { name: string; domain: string }) {
   const name = input.name.trim();
   const domain = input.domain.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
   if (!name) throw new Error("Give the tunnel a name");
+  if (name.startsWith("-") || name.length > 100) throw new Error("Give the tunnel a shorter name that doesn't start with a dash");
+  forgetStaleLogins();
   if (!domainPattern.test(domain)) throw new Error("Enter the Cloudflare domain you will authorize");
   const settings = await getPlatformSettings();
   const base = slug(name);
@@ -87,7 +99,7 @@ export async function startCloudflareLogin(input: { name: string; domain: string
   const id = randomUUID();
   const home = join(root, id);
   await mkdir(join(home, ".cloudflared"), { recursive: true, mode: 0o700 });
-  const session: LoginSession = { id, localId, name, domain, home, status: "waiting" };
+  const session: LoginSession = { id, localId, name, domain, home, status: "waiting", startedAt: Date.now() };
   sessions.set(id, session);
   const { child, certPath } = execute(home, () => ["tunnel", "login"]);
   session.process = child;

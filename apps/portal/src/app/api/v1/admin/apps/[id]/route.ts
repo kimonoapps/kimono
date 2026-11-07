@@ -1,4 +1,4 @@
-import { apiError, apiJson, apiUser, failure, unauthorized } from "@/lib/api-v1";
+import { apiError, apiJson, apiUser, crossSite, failure, unauthorized } from "@/lib/api-v1";
 import { changeApp, managedApp, startApp } from "@/lib/app-admin";
 
 /*
@@ -22,17 +22,21 @@ export async function GET(_: Request, { params }: Context) {
 }
 
 export async function POST(request: Request, { params }: Context) {
+  const elsewhere = crossSite(request);
+  if (elsewhere) return elsewhere;
   const refused = await admin(); if (refused) return refused;
   const { id } = await params;
-  const body = await request.json().catch(() => null) as { action?: string } | null;
+  const body = await (request.headers.get("content-type")?.startsWith("application/json") ? request.json() : Promise.reject(new Error("Send JSON."))).catch(() => null) as { action?: string } | null;
   if (body?.action !== "start") return apiError(400, "Say what to do.");
   try { await startApp(id); return apiJson(await managedApp(id)); } catch (error) { return failure(error, "Setup couldn't start."); }
 }
 
 export async function PATCH(request: Request, { params }: Context) {
+  const elsewhere = crossSite(request);
+  if (elsewhere) return elsewhere;
   const refused = await admin(); if (refused) return refused;
   const { id } = await params;
-  const body = await request.json().catch(() => null) as Parameters<typeof changeApp>[1] | null;
+  const body = await (request.headers.get("content-type")?.startsWith("application/json") ? request.json() : Promise.reject(new Error("Send JSON."))).catch(() => null) as Parameters<typeof changeApp>[1] | null;
   if (!body || !["setup", "settings", "environment", "backups"].includes(body.section)) return apiError(400, "Say which part to change.");
   try { await changeApp(id, body); return apiJson(await managedApp(id)); } catch (error) { return failure(error, "That couldn't be saved."); }
 }

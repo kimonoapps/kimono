@@ -1,11 +1,13 @@
-import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
+import { apiJson, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
 import { code, db, workspaceFor } from "@/lib/code";
 import { closeRevoked, revokeGrant } from "@/lib/code/access";
 
 type Context = { params: Promise<{ grantId: string }> };
 
 /** Takes back an always permission; chats lose those files at their next step. */
-export async function DELETE(_request: Request, { params }: Context) {
+export async function DELETE(request: Request, { params }: Context) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   const { grantId } = await params;

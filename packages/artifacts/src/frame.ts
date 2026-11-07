@@ -142,6 +142,9 @@ export function frameHeaders(origin: string): Record<string, string> {
       "form-action 'none'",
       "base-uri 'none'",
       "frame-ancestors 'self'",
+      /* The same sandbox the embedding iframe asks for, from the frame itself: an
+         embed that forgot the attribute still never runs agent-written HTML as Kimono. */
+      "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
     ].join("; "),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",

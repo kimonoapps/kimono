@@ -18,7 +18,10 @@ entries:
     identifiers:
       name: Kimono app
     attrs:
-      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      # Explicit consent: any app on the phone can claim kimono://, and with
+      # implicit consent one that started its own sign-in would be handed a
+      # code without the person seeing anything.
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-explicit-consent]]
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       client_type: public
       client_id: kimono-app

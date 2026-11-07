@@ -54,7 +54,9 @@ actor Drive {
         for grouped in [true, false] {
             var q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "app.kimono", kSecAttrAccount as String: key]
             if grouped, let group, !group.hasPrefix("$(") { q[kSecAttrAccessGroup as String] = group }
-            let status = SecItemUpdate(q as CFDictionary, [kSecValueData as String: Data(value.utf8)] as CFDictionary)
+            /* Moves items kept before ThisDeviceOnly over to it as they are rewritten. */
+            let change: [String: Any] = [kSecValueData as String: Data(value.utf8), kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+            let status = SecItemUpdate(q as CFDictionary, change as CFDictionary)
             if status != errSecMissingEntitlement { return }
         }
     }

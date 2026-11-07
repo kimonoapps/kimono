@@ -23,6 +23,7 @@
       "iosUrl": "/get-app?for=ios",
       "androidUrl": "https://github.com/kimonoapps/repatches/releases/download/immich%2Fv3.3.6-kimono.1/kimono-photos-3.3.6-kimono.1.apk",
       "androidPackage": "app.kimono.photos",
+      "androidSha256": "f4cc386ea7508575da5ca80d5e8c9224d4348daf2e33881f8944943b2545975d",
       "steps": [
         {
           "id": "download",

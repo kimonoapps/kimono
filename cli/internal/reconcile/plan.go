@@ -91,6 +91,9 @@ var (
 	namePattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 	imagePattern       = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]*(?::[a-zA-Z0-9._-]+)?(?:@sha256:[a-f0-9]{64})?$`)
 	environmentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	// The only host paths a plan may mount: the tunnel credentials the Portal
+	// writes into its own deployment directory.
+	hostMountPattern   = regexp.MustCompile(`^/var/lib/kimono-portal/deployment/tunnel-[A-Za-z0-9_-]{1,64}\.json$`)
 	hostnamePattern    = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$`)
 	userPattern        = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 	uuidPattern        = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
@@ -147,6 +150,11 @@ func (p Plan) Validate() error {
 				return fmt.Errorf("%s: depends on unknown service %q", name, dependency)
 			}
 		}
+		for _, option := range service.SecurityOpt {
+			if option != "no-new-privileges:true" {
+				return fmt.Errorf("%s: unsupported security option %q", name, option)
+			}
+		}
 		for _, mount := range service.Volumes {
 			if err := validateMount(name, mount, p.Compose.Volumes); err != nil {
 				return err
@@ -166,6 +174,9 @@ func (p Plan) Validate() error {
 	for file := range p.Files {
 		if err := validateFilePath(file); err != nil {
 			return err
+		}
+		if strings.HasPrefix(file, MeshPrefix) && file != MeshPrefix+"policy.hujson" {
+			return fmt.Errorf("the plan may only write the mesh access policy, not %q", file)
 		}
 	}
 	for _, bootstrap := range p.Bootstraps {
@@ -224,8 +235,14 @@ func validateMount(service, mount string, volumes map[string]struct{}) error {
 	if strings.Contains(source, "..") {
 		return fmt.Errorf("%s: volume source may not traverse directories in %q", service, mount)
 	}
-	if strings.HasPrefix(source, "/") || strings.HasPrefix(source, "./") {
+	if strings.HasPrefix(source, "./") {
 		return nil
+	}
+	if strings.HasPrefix(source, "/") {
+		if hostMountPattern.MatchString(source) && len(parts) == 3 && parts[2] == "ro" {
+			return nil
+		}
+		return fmt.Errorf("%s: may not mount host path %q", service, source)
 	}
 	if _, ok := volumes[source]; !ok {
 		return fmt.Errorf("%s: mounts undeclared volume %q", service, source)

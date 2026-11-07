@@ -82,7 +82,24 @@ func (m *Manager) login(args []string) error {
 		return err
 	}
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Re-enrolling this client with the Kimono private mesh.")
-	return m.Runner.RunSensitive("tailscale", "up", "--login-server", config.ServerURL, "--hostname", config.Machine, "--accept-dns=true", "--auth-key", key, "--force-reauth")
+	return m.tailscaleUp(key, "--login-server", config.ServerURL, "--hostname", config.Machine, "--accept-dns=true", "--force-reauth")
+}
+
+// tailscaleUp joins the mesh with the enrollment key in a file rather than on
+// tailscale's command line, where any local user could read it from the
+// process list for as long as the login takes. Tailscale reads a "file:" key
+// itself; the file lives in a private directory removed straight after.
+func (m *Manager) tailscaleUp(key string, args ...string) error {
+	directory, err := os.MkdirTemp("", "kimono-enrollment-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(directory)
+	path := filepath.Join(directory, "auth-key")
+	if err := os.WriteFile(path, []byte(key), 0600); err != nil {
+		return err
+	}
+	return m.Runner.RunSensitive("tailscale", append(append([]string{"up"}, args...), "--auth-key=file:"+path)...)
 }
 
 func (m *Manager) install(args []string) error {
@@ -129,7 +146,7 @@ func (m *Manager) install(args []string) error {
 	_, _ = fmt.Fprintln(m.Runner.Stdout)
 	_, _ = fmt.Fprintln(m.Runner.Stdout, "Joining this client to the Kimono private mesh.")
 	_, _ = fmt.Fprintln(m.Runner.Stdout)
-	if err := m.Runner.RunSensitive("tailscale", "up", "--login-server", *serverURL, "--hostname", *machine, "--accept-dns=true", "--auth-key", key); err != nil {
+	if err := m.tailscaleUp(key, "--login-server", *serverURL, "--hostname", *machine, "--accept-dns=true"); err != nil {
 		return err
 	}
 	config, err := m.loadOptional()

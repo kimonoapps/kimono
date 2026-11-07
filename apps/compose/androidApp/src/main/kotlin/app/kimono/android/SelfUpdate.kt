@@ -28,8 +28,9 @@ internal object SelfUpdate {
         return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
     }
 
-    /** Kimono itself, or (with [packageId]) another of Kimono's apps it hands out. */
+    /** Kimono itself, or (with [packageId]) another of Kimono's apps it hands out. Nothing installs without a hash to check it by. */
     suspend fun install(context: Context, url: String, sha256: String?, progress: (Float) -> Unit, packageId: String? = null): String? = withContext(Dispatchers.IO) {
+        if (sha256 == null || !Regex("[0-9a-fA-F]{64}").matches(sha256)) return@withContext "This update can't be checked, so Kimono won't install it."
         if (Build.VERSION.SDK_INT >= 26 && !context.packageManager.canRequestPackageInstalls()) {
             context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return@withContext "Allow Kimono to install apps, then tap again."
@@ -61,7 +62,7 @@ internal object SelfUpdate {
             return@withContext "Kimono isn't answering. Check your connection and try again."
         }
         val hex = digest.digest().joinToString("") { "%02x".format(it) }
-        if (sha256 != null && !hex.equals(sha256, ignoreCase = true)) {
+        if (!hex.equals(sha256, ignoreCase = true)) {
             file.delete()
             return@withContext "The update didn't arrive whole. Try again."
         }

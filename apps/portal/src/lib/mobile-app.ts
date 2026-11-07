@@ -21,6 +21,8 @@ export type MobileApp = {
    * link when there is one.
    */
   androidPackage?: string;
+  /** The SHA-256 (hex) of an `.apk` androidUrl. The Kimono phone app installs only a package that matches it. */
+  androidSha256?: string;
   steps: (MobileAppStep | string)[];
 };
 
@@ -34,14 +36,16 @@ export function androidPackageOf(app: MobileApp): string | null {
  * When Kimono hands out the Android app itself (a package link, not a store):
  * the package and its version, from the release's file name
  * (kimono-photos-3.1.0-kimono.1.apk). The Kimono phone app offers it as an
- * update to anyone on an older version.
+ * update to anyone on an older version. Only with the package's hash, which
+ * it checks the download against.
  */
-export function androidRelease(app: MobileApp): { url: string; version: string } | null {
+export function androidRelease(app: MobileApp): { url: string; version: string; sha256: string } | null {
   const url = app.androidUrl;
-  if (!url || !/\.apk(\?|$)/.test(url)) return null;
+  const sha256 = app.androidSha256?.toLowerCase();
+  if (!url || !/\.apk(\?|$)/.test(url) || !sha256) return null;
   const file = decodeURIComponent(url.split("?")[0].split("/").pop() ?? "");
   const version = /-(\d+\.\d+(?:\.\d+)?(?:[-+.][\w.]+)?)\.apk$/.exec(file)?.[1];
-  return version ? { url, version } : null;
+  return version ? { url, version, sha256 } : null;
 }
 
 export type MobileOS = "ios" | "android" | null;
@@ -85,6 +89,7 @@ export function validateMobileApp(value: unknown): asserts value is MobileApp {
   };
   if (!app || !text(app.name) || (app.guideUrl !== undefined && !https(app.guideUrl)) || !Array.isArray(app.steps) || !app.steps.length) throw new Error("spec.mobileApp requires a name and tutorial steps, and its guide URL must be HTTPS");
   if (app.androidPackage !== undefined && !/^[a-z][\w]*(\.[a-z][\w]*)+$/i.test(app.androidPackage)) throw new Error("spec.mobileApp.androidPackage must be an Android package name such as app.kimono.photos");
+  if (app.androidSha256 !== undefined && !(typeof app.androidSha256 === "string" && /^[0-9a-f]{64}$/i.test(app.androidSha256))) throw new Error("spec.mobileApp.androidSha256 must be the package's SHA-256 in hex");
   for (const link of [app.iosUrl, app.androidUrl]) {
     if (link !== undefined && !https(link) && !(typeof link === "string" && isPortalPath(link))) throw new Error("mobile app download links must be HTTPS URLs or Portal paths");
   }

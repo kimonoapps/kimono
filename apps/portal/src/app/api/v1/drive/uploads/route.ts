@@ -1,6 +1,6 @@
 import { apiError, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
-import { db, drive, DriveProblem, largestFile, publicLinksAllowed, promisedBytes, root, startGuestUpload, startReplace, startUpload, typeOf } from "@/lib/drive";
-import { freeBytes, reserveBytes } from "@/lib/drive/storage";
+import { db, drive, DriveProblem, largestFile, publicLinksAllowed, promisedBytes, root, staleUploads, startGuestUpload, startReplace, startUpload, typeOf } from "@/lib/drive";
+import { freeBytes, removePart, reserveBytes } from "@/lib/drive/storage";
 import { tusHeaders } from "@/lib/drive/tus";
 
 /**
@@ -9,8 +9,10 @@ import { tusHeaders } from "@/lib/drive/tus";
  * created here with its size and name; its bytes arrive in PATCHes to the
  * address this returns, and the file appears in the folder when the last byte
  * lands. Files can be up to 150 GB. Send chunks of 50 MB or less (some
- * proxies refuse bigger requests); an upload that receives nothing for seven
- * days is thrown away, so a big file can be resumed over several days.
+ * proxies refuse bigger requests). An upload that receives nothing in its
+ * first hour, or nothing for a day after that, is thrown away; a big file
+ * can still take days, as long as bytes keep arriving. What one person or one
+ * link may have on its way at once is limited too.
  *
  *   Upload-Length: <bytes>
  *   Upload-Metadata: filename <base64>, folder <base64>
@@ -37,6 +39,8 @@ export async function POST(request: Request) {
     if (user && !meta.folder && !meta.replaces) throw new DriveProblem("Say which folder the file goes in.");
     if (!user) await publicLinksAllowed();
     const limit = await largestFile();
+    /* Abandoned uploads give their room back before anyone is told the disk is full. */
+    for (const id of staleUploads(db())) void removePart(root, id);
     /* Room for this file and everything already on its way, with some left over. */
     if ((await freeBytes(root)) - promisedBytes(db()) - size < reserveBytes) throw new DriveProblem("Kimono's disk is too full for that file.", 507);
     const upload = user && meta.replaces

@@ -1,4 +1,4 @@
-import { apiError, apiJson, apiUser, unauthorized } from "@/lib/api-v1";
+import { apiError, apiJson, apiUser, crossSite, unauthorized } from "@/lib/api-v1";
 import { portalOrigin } from "@/lib/account";
 import { code, db } from "@/lib/code";
 import { ConnectionProblem, disconnect } from "@/lib/code/composio";
@@ -6,7 +6,9 @@ import { ConnectionProblem, disconnect } from "@/lib/code/composio";
 type Context = { params: Promise<{ account: string }> };
 
 /** Disconnects one of this person's apps. */
-export async function DELETE(_request: Request, { params }: Context) {
+export async function DELETE(request: Request, { params }: Context) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   const { account } = await params;

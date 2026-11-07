@@ -24,7 +24,7 @@ import { effortFor, modelFor, type ModelChoice } from "./models";
 export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
-import { serveTempLink, tempLinkBase } from "./temp-links";
+import { serveTempLink, tempLinkBase, tempLinkKey } from "./temp-links";
 export { efforts, type Effort } from "./node";
 import { retitle, shotToDrive, syncDrive } from "./drive";
 import { historyNote, syncHistory } from "./history";
@@ -290,13 +290,14 @@ function priceProCall(config: CodeConfig, workspace: Workspace, turn: string, id
   setTimeout(() => void look(3), 4_000);
 }
 
-export async function ensure(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }) {
+/** [owner] false: someone the chat is shared with is asking, and the owner's connected apps stay out of it. */
+export async function ensure(config: CodeConfig, workspace: Workspace, person: { name: string; email: string }, { owner = true } = {}) {
   /* A project still in Kimono AI's own Kimono Git account moves to its person's, once they have one. */
   workspace = await ownProject(db(), config, workspace, { username: workspace.owner });
   /* Their Kimono Git account, found by email (its username may not be theirs in Kimono), for the node to open pull requests as. */
   const [gitLogin, tools] = await Promise.all([
     workspace.kind === "project" ? gitAccountOf(config, { username: workspace.owner }, false).catch(() => null) : null,
-    toolSession(db(), config.composioKey, workspace.owner, portalOrigin()),
+    owner ? toolSession(db(), config.composioKey, workspace.owner, portalOrigin()) : null,
   ]);
   /* Their paid tools open or close with this month's allowance before the agent wakes. */
   if (tools) await holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error));
@@ -444,7 +445,10 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   const composioCalls = new Set<string>();
   const proCalls = new Map<string, { at: number; tools: string[] }>();
   try {
-    await ensure(config, workspace, who(user));
+    /* Someone the chat is shared with writes as themself: the owner's connected
+       apps, memories and standing Drive permissions are the owner's alone. */
+    const byOwner = user.username.toLowerCase() === workspace.owner;
+    await ensure(config, workspace, who(user), { owner: byOwner });
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* The person's other chats, for it to look back on (none in a chat shared with others), brought in alongside the files. */
     const historySynced = prompt.startsWith("/") ? Promise.resolve(false) : syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
@@ -462,7 +466,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [contextFor(db(), workspace.owner), history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id) }, controller.signal);
+    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: (byOwner ? [contextFor(db(), workspace.owner), history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []).filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id) }, controller.signal);
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
@@ -494,6 +498,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           record(workspace.id, turn, { kind: "preview", url: preview.url, port: preview.port, ...(app ? { app } : {}) });
           continue;
         }
+        if (line.type === "kimono.memory" && !byOwner) continue;
         if (line.type === "kimono.memory") {
           /* Only ever the person's own memories: an id that isn't theirs isn't found. */
           try {
@@ -513,7 +518,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         }
         if (line.type === "kimono.access" && typeof line.id === "string" && typeof line.space === "string" && typeof line.why === "string" && (line.need === "read" || line.need === "change")) {
           try {
-            const asked = await onRequest(db(), config, workspace, turn, { id: line.id, space: line.space, path: typeof line.path === "string" ? line.path : "", need: line.need, why: line.why });
+            const asked = await onRequest(db(), config, workspace, turn, { id: line.id, space: line.space, path: typeof line.path === "string" ? line.path : "", need: line.need, why: line.why }, byOwner);
             record(workspace.id, turn, asked.event);
             if (asked.carryOn) noteCarryOn(workspace.id, user, asked.carryOn);
           } catch (error) { console.warn("Kimono AI couldn't take an access request:", error instanceof Error ? error.message : error); }

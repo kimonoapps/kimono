@@ -1,7 +1,10 @@
 package update
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -25,6 +28,83 @@ func TestChecksumForIgnoresOtherAssets(t *testing.T) {
 	}
 }
 
+// testReleaseKey makes the tests' own release key the trusted one for the
+// rest of the test, and returns a signer in the workflow's format.
+func testReleaseKey(t *testing.T) func(string) string {
+	t.Helper()
+	public, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := trustedReleaseKey
+	trustedReleaseKey = public
+	t.Cleanup(func() { trustedReleaseKey = previous })
+	return func(sums string) string {
+		return base64.StdEncoding.EncodeToString(ed25519.Sign(private, []byte(sums)))
+	}
+}
+
+// The workflow signs with openssl; this signature was made that way over the
+// sums below with the key the CLI embeds, so the two formats can't drift.
+func TestReleaseKeyAcceptsTheWorkflowsSignature(t *testing.T) {
+	sums := []byte("abc  kimono_linux_amd64\n")
+	signature := []byte("GAJDrAXxGah7Lv186mmUVlDKzwHaLIjTDn3xK/kUw6hMiMeZlH1GVrRlvbni89HOxHbks6966Y2ixdQHDYYLDw==\n")
+	if !signedByRelease(sums, signature) {
+		t.Fatal("the embedded key rejected a signature made by the release key")
+	}
+	if signedByRelease([]byte("abd  kimono_linux_amd64\n"), signature) {
+		t.Fatal("a signature verified checksums it was not made over")
+	}
+}
+
+// Checksums anyone could have written must not be enough: whoever can replace
+// the binary can replace SHA256SUMS beside it.
+func TestReplaceBinaryRejectsUnsignedChecksums(t *testing.T) {
+	asset, err := assetName()
+	if err != nil {
+		t.Skipf("unsupported architecture %s", runtime.GOARCH)
+	}
+	testReleaseKey(t)
+	payload := []byte("replacement binary")
+	digest := sha256.Sum256(payload)
+	sums := fmt.Sprintf("%s  %s\n", hex.EncodeToString(digest[:]), asset)
+	_, otherKey, _ := ed25519.GenerateKey(rand.Reader)
+	for name, signature := range map[string]string{
+		"missing":        "",
+		"garbage":        "not a signature",
+		"someone else's": base64.StdEncoding.EncodeToString(ed25519.Sign(otherKey, []byte(sums))),
+	} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/SHA256SUMS":
+				fmt.Fprint(w, sums)
+			case "/SHA256SUMS.sig":
+				if signature == "" {
+					http.NotFound(w, r)
+					return
+				}
+				fmt.Fprint(w, signature)
+			default:
+				w.Write(payload)
+			}
+		}))
+		t.Setenv("KIMONO_DOWNLOAD_BASE", server.URL)
+		executable := filepath.Join(t.TempDir(), "kimono")
+		if err := os.WriteFile(executable, []byte("original binary"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		manager := &Manager{Runner: system.NewRunner(), Client: server.Client()}
+		if _, err := manager.replaceBinary(executable); err == nil {
+			t.Fatalf("%s signature: expected the update to be refused", name)
+		}
+		server.Close()
+		contents, err := os.ReadFile(executable)
+		if err != nil || string(contents) != "original binary" {
+			t.Fatalf("%s signature: the running binary was modified: %q (%v)", name, contents, err)
+		}
+	}
+}
+
 // A release whose checksum does not match must never be written over the
 // running binary, because the replacement is what every later command runs.
 func TestReplaceBinaryRejectsAMismatchedChecksum(t *testing.T) {
@@ -32,12 +112,17 @@ func TestReplaceBinaryRejectsAMismatchedChecksum(t *testing.T) {
 	if err != nil {
 		t.Skipf("unsupported architecture %s", runtime.GOARCH)
 	}
+	sign := testReleaseKey(t)
+	sums := fmt.Sprintf("%s  %s\n", "not-the-real-digest", asset)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/SHA256SUMS" {
-			fmt.Fprintf(w, "%s  %s\n", "not-the-real-digest", asset)
-			return
+		switch r.URL.Path {
+		case "/SHA256SUMS":
+			fmt.Fprint(w, sums)
+		case "/SHA256SUMS.sig":
+			fmt.Fprint(w, sign(sums))
+		default:
+			fmt.Fprint(w, "replacement binary")
 		}
-		fmt.Fprint(w, "replacement binary")
 	}))
 	defer server.Close()
 	t.Setenv("KIMONO_DOWNLOAD_BASE", server.URL)
@@ -61,14 +146,19 @@ func TestReplaceBinarySkipsAnIdenticalRelease(t *testing.T) {
 	if err != nil {
 		t.Skipf("unsupported architecture %s", runtime.GOARCH)
 	}
+	sign := testReleaseKey(t)
 	payload := []byte("current binary")
 	digest := sha256.Sum256(payload)
+	sums := fmt.Sprintf("%s  %s\n", hex.EncodeToString(digest[:]), asset)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/SHA256SUMS" {
-			fmt.Fprintf(w, "%s  %s\n", hex.EncodeToString(digest[:]), asset)
-			return
+		switch r.URL.Path {
+		case "/SHA256SUMS":
+			fmt.Fprint(w, sums)
+		case "/SHA256SUMS.sig":
+			fmt.Fprint(w, sign(sums))
+		default:
+			w.Write(payload)
 		}
-		w.Write(payload)
 	}))
 	defer server.Close()
 	t.Setenv("KIMONO_DOWNLOAD_BASE", server.URL)

@@ -106,6 +106,26 @@ entries:
       required: true
       order: 500
 
+  # Names starting kimono- belong to Kimono itself (the VPN's control plane
+  # among them, which the access policy trusts), so nobody can sign up as one.
+  # A password needs 8 characters at least.
+  - id: kimono-enrollment-check
+    model: authentik_policies_expression.expressionpolicy
+    state: present
+    identifiers:
+      name: kimono-enrollment-check
+    attrs:
+      expression: |
+        data = request.context.get("prompt_data", {})
+        username = str(data.get("username", "")).strip().lower()
+        if username.startswith("kimono-") or username == "akadmin":
+            ak_message("That username is taken. Choose another.")
+            return False
+        if len(str(data.get("password", ""))) < 8:
+            ak_message("Use at least 8 characters for your password.")
+            return False
+        return True
+
   - id: kimono-enrollment-details
     model: authentik_stages_prompt.promptstage
     state: present
@@ -118,7 +138,8 @@ entries:
         - !KeyOf kimono-enrollment-prompt-email
         - !KeyOf kimono-enrollment-prompt-password
         - !KeyOf kimono-enrollment-prompt-password-repeat
-      validation_policies: []
+      validation_policies:
+        - !KeyOf kimono-enrollment-check
 
   - id: kimono-enrollment-write
     model: authentik_stages_user_write.userwritestage

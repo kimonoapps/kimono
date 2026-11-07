@@ -32,6 +32,14 @@ func validPlan() Plan {
 	return plan
 }
 
+func TestValidateAcceptsTunnelCredentials(t *testing.T) {
+	plan := validPlan()
+	plan.Compose.Services["outline-web"] = withVolumes(plan.Compose.Services["outline-web"], "/var/lib/kimono-portal/deployment/tunnel-main.json:/etc/cloudflared/credentials.json:ro")
+	if err := plan.Validate(); err != nil {
+		t.Fatalf("expected tunnel credentials to be allowed: %v", err)
+	}
+}
+
 func TestValidateAcceptsRenderedPlan(t *testing.T) {
 	if err := validPlan().Validate(); err != nil {
 		t.Fatalf("expected the plan to validate: %v", err)
@@ -53,6 +61,21 @@ func TestValidateRejectsUnsafePlans(t *testing.T) {
 		"socket-shaped image": func(p *Plan) {
 			p.Compose.Services["outline-web"] = withImage(p.Compose.Services["outline-web"], "alpine; rm -rf /")
 		},
+		"host root mount": func(p *Plan) {
+			p.Compose.Services["outline-web"] = withVolumes(p.Compose.Services["outline-web"], "/:/host:rw")
+		},
+		"docker socket mount": func(p *Plan) {
+			p.Compose.Services["outline-web"] = withVolumes(p.Compose.Services["outline-web"], "/var/run/docker.sock:/s")
+		},
+		"writable tunnel credentials": func(p *Plan) {
+			p.Compose.Services["outline-web"] = withVolumes(p.Compose.Services["outline-web"], "/var/lib/kimono-portal/deployment/tunnel-a.json:/c.json")
+		},
+		"unconfined": func(p *Plan) {
+			s := p.Compose.Services["outline-web"]
+			s.SecurityOpt = []string{"seccomp:unconfined"}
+			p.Compose.Services["outline-web"] = s
+		},
+		"mesh template": func(p *Plan) { p.Files = map[string]string{"mesh/config.yaml.tmpl": "x"} },
 		"escaping file": func(p *Plan) { p.Files = map[string]string{"../../root/.ssh/authorized_keys": "key"} },
 		"absolute file": func(p *Plan) { p.Files = map[string]string{"/etc/passwd": "root"} },
 		"unknown provider": func(p *Plan) {

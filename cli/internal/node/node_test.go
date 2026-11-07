@@ -2,8 +2,10 @@ package node
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -133,5 +135,56 @@ func TestHostingNodeDoesNotRequireMeshEnrollment(t *testing.T) {
 	}
 	if strings.Contains(output, "tailscale") || strings.Contains(output, "Mesh:") {
 		t.Fatalf("standalone hosting node unexpectedly requires mesh: %q", output)
+	}
+}
+
+// The enrollment key reaches tailscale as a file, never as an argument any
+// local user could read from the process list, and the file is gone after.
+func TestTailscaleUpKeepsTheKeyOffTheCommandLine(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell script as tailscale")
+	}
+	bin := t.TempDir()
+	record := filepath.Join(t.TempDir(), "record")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" > " + record + "\nfor arg; do case $arg in --auth-key=file:*) cat \"${arg#--auth-key=file:}\" >> " + record + "; echo >> " + record + "; ls -ld \"$(dirname \"${arg#--auth-key=file:}\")\" >> " + record + ";; esac; done\n"
+	if err := os.WriteFile(filepath.Join(bin, "tailscale"), []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	key := "hskey-auth-0123456789abcdef"
+	manager := &Manager{Runner: &system.Runner{Stdout: io.Discard, Stderr: io.Discard}}
+	if err := manager.tailscaleUp(key, "--login-server", "https://mesh.example.com"); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(contents), "\n")
+	if len(lines) < 3 || strings.Contains(lines[0], key) || !strings.Contains(lines[0], "--auth-key=file:") {
+		t.Fatalf("tailscale was called as %q", lines[0])
+	}
+	if lines[1] != key {
+		t.Fatalf("the key file held %q", lines[1])
+	}
+	if !strings.HasPrefix(lines[2], "drwx------") {
+		t.Fatalf("the key's directory is not private: %s", lines[2])
+	}
+	path := strings.TrimPrefix(lines[0][strings.Index(lines[0], "--auth-key=file:"):], "--auth-key=file:")
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatalf("the key's directory was left behind: %v", err)
+	}
+}
+
+func TestVerifyDigestAcceptsOnlyThePinnedPackage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "package.deb")
+	if err := os.WriteFile(path, []byte("package"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyDigest(path, "bc4a71180870f7945155fbb02f4b0a2e3faa2a62d6d31b7039013055ed19869a"); err != nil {
+		t.Fatalf("the matching digest was refused: %v", err)
+	}
+	if err := verifyDigest(path, cloudflaredPackageDigests["amd64"]); err == nil {
+		t.Fatal("expected a digest that doesn't match to be refused")
 	}
 }

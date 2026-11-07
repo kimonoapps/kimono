@@ -3,7 +3,9 @@
 package update
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -20,6 +22,24 @@ import (
 )
 
 const defaultRepository = "kimonoapps/kimono"
+
+// releasePublicKey is the Ed25519 key the release workflow signs SHA256SUMS
+// with (base64 of the raw 32 bytes; scripts/install.sh holds the same key as
+// PEM). The checksums come from the same place as the binary, so they alone
+// prove nothing against whoever can replace both; the signature can only come
+// from Kimono's release.
+const releasePublicKey = "tex2ixTdx4TU47QW//j0FOcKXjeNXAEzo3hBhI5zaz0="
+
+// trustedReleaseKey is a variable so tests can sign releases of their own.
+var trustedReleaseKey = mustDecodePublicKey(releasePublicKey)
+
+func mustDecodePublicKey(encoded string) ed25519.PublicKey {
+	key, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(key) != ed25519.PublicKeySize {
+		panic("update: malformed release public key")
+	}
+	return ed25519.PublicKey(key)
+}
 
 // Manager performs a self-update followed by an appliance update.
 type Manager struct {
@@ -121,7 +141,8 @@ func applianceEnvironmentPath() string {
 }
 
 // replaceBinary downloads the published binary, verifies it against the
-// release checksums, and swaps it in atomically. It reports whether anything
+// release checksums and those against the release signature, and swaps it in
+// atomically. It reports whether anything
 // changed so an already-current install stays quiet.
 func (m *Manager) replaceBinary(executable string) (bool, error) {
 	asset, err := assetName()
@@ -137,6 +158,13 @@ func (m *Manager) replaceBinary(executable string) (bool, error) {
 	sums, err := m.fetch(base + "/SHA256SUMS")
 	if err != nil {
 		return false, fmt.Errorf("download release checksums: %w", err)
+	}
+	signature, err := m.fetch(base + "/SHA256SUMS.sig")
+	if err != nil {
+		return false, fmt.Errorf("download release signature: %w", err)
+	}
+	if !signedByRelease(sums, signature) {
+		return false, fmt.Errorf("the release checksums are not signed by Kimono's release key")
 	}
 	expected := checksumFor(string(sums), asset)
 	if expected == "" {
@@ -178,6 +206,16 @@ func (m *Manager) fetch(url string) ([]byte, error) {
 		return nil, fmt.Errorf("%s returned %s", url, response.Status)
 	}
 	return io.ReadAll(response.Body)
+}
+
+// signedByRelease checks the workflow's signature: the raw Ed25519 signature
+// of SHA256SUMS, base64-encoded.
+func signedByRelease(sums, encoded []byte) bool {
+	signature, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
+	if err != nil || len(signature) != ed25519.SignatureSize {
+		return false
+	}
+	return ed25519.Verify(trustedReleaseKey, sums, signature)
 }
 
 func checksumFor(sums string, asset string) string {

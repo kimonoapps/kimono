@@ -1,4 +1,4 @@
-import { apiJson, apiUser, readJson, unauthorized } from "@/lib/api-v1";
+import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { code, createProject, db, projectsOf } from "@/lib/code";
 
 /** This person's projects: folders they keep chats in. */
@@ -10,6 +10,8 @@ export async function GET() {
 
 /** A new project: { name }. */
 export async function POST(request: Request) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   const read = await readJson(request);

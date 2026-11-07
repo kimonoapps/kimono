@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
         }
         if (intent.action == Intent.ACTION_SEND) {
             @Suppress("DEPRECATION")
-            val uri = (intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri) ?: return
+            val uri = (intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri)?.takeIf { fromElsewhere(it) } ?: return
             val type = intent.type ?: contentResolver.getType(uri) ?: "application/octet-stream"
             var name = "Shared file"
             var size: Long? = null
@@ -102,5 +102,12 @@ class MainActivity : ComponentActivity() {
             }
             shared.value = SharedItem(name, type, size, uri) { platform.squarePicture(uri) }
         }
+    }
+
+    /* Only another app's content: never a file path, nor Kimono's own providers, which would hand out its own data. */
+    private fun fromElsewhere(uri: Uri): Boolean {
+        val authority = uri.authority ?: return false
+        if (uri.scheme != "content" || authority == packageName || authority.startsWith("$packageName.")) return false
+        return runCatching { packageManager.resolveContentProvider(authority, 0)?.packageName != packageName }.getOrDefault(false)
     }
 }

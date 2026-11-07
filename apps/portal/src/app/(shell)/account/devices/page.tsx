@@ -3,7 +3,7 @@ import { InkBlot, Seal } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
 import { LineIcon } from "@/components/line-icon";
 import { HoldSeal } from "@/components/hold-seal";
-import { auth, keepThisDeviceSignedIn } from "@/auth";
+import { auth } from "@/auth";
 import { endAllSessions, endSession, listSessions, type AccountSession } from "@/lib/account";
 import { describeSession as describe } from "@kimono/account";
 import { accountContext } from "../account-frame";
@@ -33,7 +33,7 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
     const current = await auth();
     if (!current?.user?.username) redirect("/login");
     let count = 0;
-    try { count = await endAllSessions(current.user); await keepThisDeviceSignedIn(); }
+    try { count = await endAllSessions(current.user); }
     catch (error) { redirect(`/account/devices?error=${encodeURIComponent(error instanceof Error ? error.message : "Those sign-ins could not be ended")}`); }
     redirect(`/account/devices?ended=${count}`);
   }

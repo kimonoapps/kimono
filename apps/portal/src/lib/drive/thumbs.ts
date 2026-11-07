@@ -13,20 +13,47 @@ const pictured = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "heic", "
 
 export const hasThumb = (name: string) => pictured.has(name.toLowerCase().split(".").pop() ?? "");
 
+/* What the bytes really are decides, not the name: an SVG or PDF called .png is never drawn. */
+const decodable = new Set(["jpeg", "png", "webp", "gif", "heif", "avif", "tiff"]);
+
 /* One sharp job per blob and width at a time, however many rows ask at once. */
 const making = new Map<string, Promise<Buffer | null>>();
+
+/* And only a couple of sharp jobs at all: a folder of huge pictures, or a stranger with a link, would otherwise take every core and a lot of memory. */
+const jobsAtOnce = 2;
+let running = 0;
+const waiting: (() => void)[] = [];
+
+async function inTurn<T>(work: () => Promise<T>): Promise<T> {
+  if (running < jobsAtOnce) running += 1;
+  else await new Promise<void>((resolve) => waiting.push(resolve));
+  try {
+    return await work();
+  } finally {
+    /* The place passes straight to the next in line, or is given up. */
+    const next = waiting.shift();
+    if (next) next();
+    else running -= 1;
+  }
+}
+
+async function draw(root: string, blob: string, width: number): Promise<Buffer | null> {
+  const { default: sharp } = await import("sharp");
+  const image = sharp(blobPath(root, blob), { failOn: "none", limitInputPixels: 50_000_000 });
+  const { format } = await image.metadata();
+  if (!format || !decodable.has(format)) return null;
+  return image
+    .rotate()
+    .resize({ width, height: width, fit: "inside", withoutEnlargement: true })
+    .webp({ quality: width > 512 ? 82 : 74 })
+    .toBuffer();
+}
 
 async function make(root: string, blob: string, width: number): Promise<Buffer | null> {
   const path = thumbPath(root, blob, width);
   const saved = await readFile(path).catch(() => null);
   if (saved) return saved;
-  const { default: sharp } = await import("sharp");
-  const picture = await sharp(blobPath(root, blob), { failOn: "none", limitInputPixels: 200_000_000 })
-    .rotate()
-    .resize({ width, height: width, fit: "inside", withoutEnlargement: true })
-    .webp({ quality: width > 512 ? 82 : 74 })
-    .toBuffer()
-    .catch(() => null);
+  const picture = await inTurn(() => draw(root, blob, width)).catch(() => null);
   if (!picture) return null;
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const part = `${path}.${process.pid}.part`;
@@ -48,7 +75,7 @@ export async function sendThumb(root: string, file: { blob: string; name: string
     "Content-Type": "image/webp",
     "X-Content-Type-Options": "nosniff",
     "Cross-Origin-Resource-Policy": file.shared ? "cross-origin" : "same-site",
-    /* The address carries the file's version, so it can be kept. */
-    "Cache-Control": `${file.shared ? "public" : "private"}, max-age=31536000, immutable`,
+    /* A member's address carries the file's version, so it can be kept. A link's must stop working when the link is turned off. */
+    "Cache-Control": file.shared ? "private, max-age=300" : "private, max-age=31536000, immutable",
   } });
 }

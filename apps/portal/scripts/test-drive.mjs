@@ -133,11 +133,100 @@ test('uploads belong to the person who started them and respect the size limit',
 test('a slow upload survives as long as bytes keep arriving', () => {
   const db = fresh();
   const space = drive.createSpace(db, 'akram', { name: 'S' });
-  const day = 86400000, start = 1_000_000;
+  const hour = 3600000, day = 24 * hour, start = 1_000_000;
   const upload = drive.startUpload(db, space.rootId, 'akram', { name: 'film.mkv', size: 150 * 1024 ** 3, mime: null }, 150 * 1024 ** 3, start);
-  drive.recordReceived(db, upload.id, 1024, start + 6 * day);
-  assert.deepEqual(drive.staleUploads(db, start + 10 * day), [], 'six days in, still receiving');
-  assert.deepEqual(drive.staleUploads(db, start + 14 * day), [upload.id], 'a week of silence ends it');
+  for (let d = 1; d <= 6; d += 1) drive.recordReceived(db, upload.id, d * 1024, start + d * day - hour);
+  assert.deepEqual(drive.staleUploads(db, start + 6 * day + 12 * hour), [], 'six days in, still receiving');
+  assert.deepEqual(drive.staleUploads(db, start + 7 * day), [upload.id], 'a day of silence ends it');
+});
+
+test('an upload that never starts lets its room go within the hour', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'S' });
+  const token = drive.setSpaceLink(db, space.id, 'akram', 'add');
+  const minute = 60000, start = 1_000_000;
+  const empty = drive.startGuestUpload(db, token, undefined, null, { name: 'nothing.bin', size: 10 * 1024 ** 3, mime: null }, 150 * 1024 ** 3, start);
+  const started = drive.startGuestUpload(db, token, undefined, null, { name: 'some.bin', size: 10, mime: null }, 150 * 1024 ** 3, start);
+  drive.recordReceived(db, started.id, 1, start + 10 * minute);
+  assert.deepEqual(drive.staleUploads(db, start + 30 * minute), []);
+  assert.deepEqual(drive.staleUploads(db, start + 61 * minute), [empty.id], 'nothing sent in an hour');
+  assert.equal(drive.promisedBytes(db), 9);
+});
+
+test('what one person or one link may have on its way, and what guests may leave, is capped', () => {
+  const db = fresh();
+  const GB = 1024 ** 3, max = 150 * GB;
+  const space = drive.createSpace(db, 'akram', { name: 'Drop' });
+  const token = drive.setSpaceLink(db, space.id, 'akram', 'add');
+  const guest = (size, name = 'f.bin') => drive.startGuestUpload(db, token, undefined, null, { name, size, mime: null }, max);
+  assert.throws(() => guest(drive.reservedPerLink + 1), (e) => e.status === 413);
+  guest(15 * GB);
+  assert.throws(() => guest(6 * GB), (e) => e.status === 429, 'the link has 20 GB on its way at most');
+  const small = guest(5 * GB);
+  drive.finishUpload(db, drive.uploadFor(db, small.id, null), 'b-small');
+  guest(5 * GB, 'room again.bin');
+
+  /* Finished files count towards what the link may leave in the space. */
+  const other = drive.createSpace(db, 'akram', { name: 'Full' });
+  const full = drive.setSpaceLink(db, other.id, 'akram', 'add');
+  for (let i = 0; i < 3; i += 1) {
+    const upload = drive.startGuestUpload(db, full, undefined, null, { name: `big${i}.bin`, size: 16 * GB, mime: null }, max);
+    drive.finishUpload(db, drive.uploadFor(db, upload.id, null), `b-big${i}`);
+  }
+  assert.throws(() => drive.startGuestUpload(db, full, undefined, null, { name: 'more.bin', size: 3 * GB, mime: null }, max), (e) => e.status === 507);
+
+  drive.startUpload(db, space.rootId, 'akram', { name: 'a.mkv', size: 150 * GB, mime: null }, max);
+  assert.throws(() => drive.startUpload(db, space.rootId, 'akram', { name: 'b.mkv', size: 60 * GB, mime: null }, max), (e) => e.status === 429);
+  drive.startUpload(db, space.rootId, 'akram', { name: 'c.mkv', size: 50 * GB, mime: null }, max);
+});
+
+test('an upload finishes only while whoever started it may still add', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'S', members: [{ username: 'mina', role: 'editor' }] });
+  const doc = drive.addFile(db, space.rootId, 'akram', file('plan.key', 'b-1'));
+  const edit = drive.startReplace(db, doc.id, 'mina', 1, { size: 20, mime: null }, 100);
+  const added = drive.startUpload(db, space.rootId, 'mina', { name: 'new.txt', size: 1, mime: null }, 100);
+  drive.setMember(db, space.id, 'akram', 'mina', 'viewer');
+  assert.throws(() => drive.finishUpload(db, drive.uploadFor(db, edit.id, 'mina'), 'b-2'), /only view/);
+  assert.throws(() => drive.finishUpload(db, drive.uploadFor(db, added.id, 'mina'), 'b-3'), /only view/);
+  assert.equal(drive.nodeFor(db, doc.id, 'akram').contentVersion, 1, 'the file was not overwritten');
+  drive.setMember(db, space.id, 'akram', 'mina', null);
+  assert.throws(() => drive.finishUpload(db, edit, 'b-2'), (e) => e.status === 404);
+
+  /* A guest's upload, once its link stops letting people add. */
+  const token = drive.setSpaceLink(db, space.id, 'akram', 'add');
+  const upload = drive.uploadFor(db, drive.startGuestUpload(db, token, undefined, null, { name: 'g.png', size: 1, mime: null }, 100).id, null);
+  drive.setSpaceLink(db, space.id, 'akram', 'view');
+  assert.throws(() => drive.finishUpload(db, upload, 'b-g'), /viewing only/);
+  assert.deepEqual(drive.childrenOf(db, space.rootId, 'akram').children.map((n) => n.name), ['plan.key']);
+});
+
+test('only editors and owners see links; viewers get none', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'S', members: [{ username: 'mina', role: 'editor' }, { username: 'ren', role: 'viewer' }] });
+  const folder = drive.createFolder(db, space.rootId, 'akram', 'F');
+  const photo = drive.addFile(db, folder.id, 'akram', file('photo.png'));
+  const token = drive.linkFile(db, photo.id, 'akram');
+  const spaceLink = drive.setSpaceLink(db, space.id, 'akram', 'add');
+  const linkOf = (who) => drive.spacesOf(db, who)[0];
+  assert.deepEqual([linkOf('akram').link, linkOf('akram').linkAccess], [spaceLink, 'add']);
+  assert.equal(drive.spaceFor(db, space.id, 'mina').link, spaceLink);
+  assert.deepEqual([linkOf('ren').link, linkOf('ren').linkAccess], [null, null]);
+  assert.equal(drive.spaceFor(db, space.id, 'ren').link, null);
+  assert.equal(drive.changesFor(db, 'ren', 0).spaces[0].link, null);
+
+  assert.equal(drive.nodeFor(db, photo.id, 'mina').link, token);
+  assert.equal(drive.nodeFor(db, photo.id, 'ren').link, null);
+  assert.equal(drive.childrenOf(db, folder.id, 'ren').children[0].link, null);
+  assert.equal(drive.childrenOf(db, folder.id, 'mina').children[0].link, token);
+  assert.equal(drive.searchNodes(db, 'ren', 'photo')[0].link, null);
+  assert.equal(drive.searchNodes(db, 'akram', 'photo')[0].link, token);
+  assert.equal(drive.recentFiles(db, 'ren')[0].link, null);
+  assert.equal(drive.changesFor(db, 'ren', 0).changed.find((n) => n.id === photo.id).link, null);
+  assert.equal(drive.changesFor(db, 'mina', 0).changed.find((n) => n.id === photo.id).link, token);
+  drive.trashNode(db, folder.id, 'akram');
+  assert.equal(drive.trashOf(db, 'ren')[0].link, null);
+  assert.equal(drive.trashOf(db, 'akram')[0].id, folder.id);
 });
 
 test('a space opened by its link: guests view, add only when allowed, and never see members', () => {

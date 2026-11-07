@@ -82,8 +82,14 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	space.mu.Lock()
-	real := space.model.Token
+	real, busy := space.model.Token, space.busy
 	space.mu.Unlock()
+	if !busy {
+		// The plan and its budget are spent by turns, which Portal counts. A
+		// process left running in the sandbox afterwards gets nothing.
+		writeError(w, 409, "The model answers only while a turn is running.")
+		return
+	}
 	if real == "" {
 		writeError(w, 401, "Kimono Code has no Claude credential yet.")
 		return
@@ -93,7 +99,6 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 502, "The model gateway is misconfigured.")
 		return
 	}
-	s.touch(space.id)
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(out *httputil.ProxyRequest) {
 			out.SetURL(upstream)
@@ -123,8 +128,13 @@ func (s *Server) serveTools(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	space.mu.Lock()
-	tools := space.tools
+	tools, busy := space.tools, space.busy
 	space.mu.Unlock()
+	if !busy {
+		// Pro Tools spend credits, which are checked as turns run: none between them.
+		writeError(w, 409, "Tools answer only while a turn is running.")
+		return
+	}
 	if tools.URL == "" {
 		writeError(w, 404, "No tools are connected for this person.")
 		return
@@ -134,7 +144,6 @@ func (s *Server) serveTools(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 502, "The tools address is misconfigured.")
 		return
 	}
-	s.touch(space.id)
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(out *httputil.ProxyRequest) {
 			out.SetURL(upstream)

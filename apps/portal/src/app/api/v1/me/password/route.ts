@@ -1,4 +1,3 @@
-import { keepThisDeviceSignedIn } from "@/auth";
 import { changePassword } from "@/lib/account";
 import { apiJson, apiUser, crossSite, failure, readJson, unauthorized } from "@/lib/api-v1";
 
@@ -12,8 +11,6 @@ export async function POST(request: Request) {
   if ("response" in read) return read.response;
   try {
     const result = await changePassword(user, read.body);
-    /* Everyone else was signed out; this device stays in. */
-    if (result.signedOutOthers && user.via === "browser") await keepThisDeviceSignedIn();
     return apiJson({ ended: result.ended });
   } catch (error) {
     return failure(error, "Your password could not be changed.");

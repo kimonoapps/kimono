@@ -85,14 +85,14 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
     var progress by remember { mutableStateOf<Float?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
     val store = if (platform.os == "ios") app.ios else app.android
-    /* Kimono hands this one out itself on Android: it downloads and installs it, rather than sending you to a page. */
-    val handOut = phone.release?.takeIf { platform.os == "android" && phone.androidPackage != null }
+    /* Kimono hands this one out itself on Android: it downloads and installs it, rather than sending you to a page. Only with a hash to check it by. */
+    val handOut = phone.release?.takeIf { platform.os == "android" && phone.androidPackage != null && it.sha256 != null }
 
     fun get() {
         if (handOut == null) { store?.let(platform::openUrl); return }
         progress = 0f; problem = null
         scope.launch {
-            problem = platform.installApp(handOut.url, phone.androidPackage!!) { progress = it }
+            problem = platform.installApp(handOut.url, phone.androidPackage!!, handOut.sha256!!) { progress = it }
             progress = null
         }
     }

@@ -1,9 +1,11 @@
-import { apiError, apiJson, apiUser, failure, unauthorized } from "@/lib/api-v1";
+import { apiError, apiJson, apiUser, crossSite, failure, unauthorized } from "@/lib/api-v1";
 import { createEnrolmentKey } from "@/lib/mesh";
 import { vpnMember } from "@/lib/vpn-view";
 
 /** POST: a one-time key for a machine with no browser, as /vpn/connect makes. */
-export async function POST() {
+export async function POST(request: Request) {
+  const refused = crossSite(request);
+  if (refused) return refused;
   const user = await apiUser();
   if (!user) return unauthorized();
   try {

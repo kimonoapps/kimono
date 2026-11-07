@@ -14,6 +14,8 @@ type Props = { params: Promise<{ token: string }> };
 async function opened(token: string) {
   const session = await auth();
   try {
+    /* With public links switched off, a link opens only for someone signed in, as the API's do. */
+    if (!session?.user && !codeConfig(await getPlatformSettings()).publicLinks) throw new CodeProblem("Sign in to open this artifact.", 401);
     return { artifact: artifactByLink(db(), token, session?.user?.username || null) };
   } catch (error) {
     if (error instanceof CodeProblem) return { problem: error.message, status: error.status, signedIn: Boolean(session?.user) };

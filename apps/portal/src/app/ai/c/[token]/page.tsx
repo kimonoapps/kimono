@@ -20,7 +20,9 @@ function chatFor(token: string) {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const chat = chatFor((await params).token);
-  return { title: chat?.title ?? "Link", robots: { index: false, follow: false }, referrer: "no-referrer" };
+  /* The title is the chat's own words: only for whoever the link would open for. */
+  const shown = chat && (Boolean((await auth())?.user) || codeConfig(await getPlatformSettings()).publicLinks);
+  return { title: shown ? chat.title : "Link", robots: { index: false, follow: false }, referrer: "no-referrer" };
 }
 
 /**

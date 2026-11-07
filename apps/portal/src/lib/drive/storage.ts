@@ -86,7 +86,8 @@ export async function sendFile(request: Request, path: string, file: { name: str
     "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     /* Shared links are fetched by Discord and the like; private files stay on Kimono. */
     "Cross-Origin-Resource-Policy": file.shared ? "cross-origin" : "same-site",
-    "Cache-Control": file.shared ? "public, max-age=300" : "private, no-cache",
+    /* Never kept by a proxy or CDN, and checked every time, so turning a link off ends it at once. */
+    "Cache-Control": "private, no-cache",
   });
   if (request.headers.get("if-none-match") === `"${file.etag}"`) return new Response(null, { status: 304, headers });
 

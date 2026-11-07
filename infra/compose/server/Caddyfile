@@ -1,12 +1,28 @@
 {
 	email {$ACME_EMAIL}
 	servers {
-		trusted_proxies static private_ranges
+		# Only the tunnel connectors on kimono-edge forward requests here, so only
+		# their addresses may speak for the client. The range is the network's
+		# container allocation (compose.yml), which leaves out its gateway: with
+		# Docker's userland proxy, a direct visitor arrives from the gateway and
+		# could otherwise claim any address in X-Forwarded-For.
+		trusted_proxies static 10.89.0.128/25
+	}
+}
+
+# Defaults only: an application that sends its own value for one of these
+# keeps it.
+(security_headers) {
+	header {
+		?Strict-Transport-Security "max-age=31536000"
+		?X-Content-Type-Options "nosniff"
+		?Referrer-Policy "strict-origin-when-cross-origin"
 	}
 }
 
 {$AUTHENTIK_DOMAIN} {
 	encode zstd gzip
+	import security_headers
 
 	handle /static/kimono/theme.css {
 		rewrite * /api/brand/theme.css
@@ -26,6 +42,7 @@
 
 {$KIMONO_PORTAL_DOMAIN} {
 	encode zstd gzip
+	import security_headers
 
 	# The appliance serves its own installer so a new device can join the mesh
 	# without depending on GitHub being reachable.
@@ -43,6 +60,8 @@
 	# On a first boot the Portal waits minutes for Authentik's migrations.
 	# Until it answers, show a page that reloads itself once it does.
 	handle_errors 502 503 504 {
+		# Error routes don't run the site's own directives.
+		import security_headers
 		root * /srv/kimono-brand
 		rewrite * /kimono-starting.html
 		header Cache-Control "no-store"
@@ -55,6 +74,8 @@
 }
 
 http://{$MESH_DOMAIN} {
+	import security_headers
+
 	handle /generate_204 {
 		respond 204
 	}
@@ -63,6 +84,8 @@ http://{$MESH_DOMAIN} {
 }
 
 {$MESH_DOMAIN} {
+	import security_headers
+
 	handle /generate_204 {
 		respond 204
 	}
