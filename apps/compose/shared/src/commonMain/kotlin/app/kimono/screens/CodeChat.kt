@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import app.kimono.ui.bottomChrome
 import kotlin.math.roundToInt
 import androidx.compose.foundation.combinedClickable
@@ -308,11 +314,11 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                     if (w?.drive != null && owns) IconButton(onClick = { open("folder/${w.drive.folderId}") }) { Icon(kimonoIcon("folder"), "Open in Drive") }
                     if (owns || w?.pullRequest != null) Box {
                         IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More") }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                            if (owns && w != null) DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = true })
-                            if (owns) DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; renaming = true })
-                            if (owns && w != null && !w.isProject && projects.isNotEmpty()) DropdownMenuItem(text = { Text(if (w.folder == null) "Put in a project" else "Move to another project") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; moving = true })
-                            if (w?.pullRequest != null) DropdownMenuItem(text = { Text("Pull request #${w.pullRequest.number}") }, leadingIcon = { Icon(kimonoIcon("pr"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; platform.openUrl(w.pullRequest.url) })
+                        InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            if (owns && w != null) InkMenuItem("Share", icon = "share", onClick = { menu = false; sharing = true })
+                            if (owns) InkMenuItem("Rename", icon = "edit", onClick = { menu = false; renaming = true })
+                            if (owns && w != null && !w.isProject && projects.isNotEmpty()) InkMenuItem(if (w.folder == null) "Put in a project" else "Move to another project", icon = "move", onClick = { menu = false; moving = true })
+                            if (w?.pullRequest != null) InkMenuItem("Pull request #${w.pullRequest.number}", icon = "pr", onClick = { menu = false; platform.openUrl(w.pullRequest.url) })
                         }
                     }
                 },
@@ -357,10 +363,12 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
         }
     }
     if (sharing && w != null) ChatShareSheet(code, platform, w) { sharing = false }
-    if (moving && w != null) AlertDialog(
-        onDismissRequest = { moving = false },
-        title = { Text("Project") },
-        text = {
+    if (moving && w != null) InkDialog(
+        title = "Project",
+        icon = "move",
+        onDismiss = { moving = false },
+        actions = { Seal("Close", compact = true, tone = SealTone.Quiet, onClick = { moving = false }) },
+    ) {
             Column {
                 (listOf<CodeProject?>(null) + projects).forEach { p ->
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
@@ -373,9 +381,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = { moving = false }) { Text("Close") } },
-    )
+    }
 }
 
 /* ── the timeline, as the reader sees it ── */
@@ -1001,19 +1007,20 @@ private fun DoneNote(e: CodeEvent.Done, rating: Int?, rate: (Int?, String?) -> U
     }
     confirming?.let { next ->
         var note by remember(next) { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { confirming = null },
-            icon = { Icon(kimonoIcon("person"), null) },
-            title = { Text(if (next == 1) "Good answer" else "Bad answer") },
-            text = {
+        InkDialog(
+            title = if (next == 1) "Good answer" else "Bad answer",
+            icon = if (next == 1) "thumb-up" else "thumb-down",
+            onDismiss = { confirming = null },
+            actions = {
+                Seal("Cancel", compact = true, tone = SealTone.Quiet, onClick = { confirming = null })
+                Seal("Send", compact = true, onClick = { rate(next, note.trim().ifBlank { null }); confirming = null })
+            },
+        ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Admins can see this answer and your feedback. Your name isn’t attached.")
+                    Text("Admins can see this answer and your feedback. Your name isn’t attached.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(note, { note = it.take(2000) }, placeholder = { Text(if (next == 1) "What was good? (optional)" else "What went wrong? (optional)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                 }
-            },
-            confirmButton = { TextButton(onClick = { rate(next, note.trim().ifBlank { null }); confirming = null }) { Text("Send") } },
-            dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
-        )
+        }
     }
 }
 
@@ -1314,7 +1321,7 @@ private fun MetersSheet(code: Code, w: CodeWorkspace, context: ContextUse?, usag
     val u = usage
     /* Always this person's own use: of their share, or (the owner, who has no share) of the whole plan. */
     val whose = if (u?.unlimited == true) "of the plan, used by you" else "of your share"
-    ModalBottomSheet(onDismissRequest = close, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+    InkSheet(onDismissRequest = close, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(if (settings != null) "Settings and usage" else "Context and usage", style = MaterialTheme.typography.titleLarge)
             if (settings != null) {
@@ -1365,7 +1372,7 @@ internal fun FromDriveSheet(drive: Drive, onDismiss: () -> Unit, onAdd: (List<Dr
     val here = trail.lastOrNull()
     val spaces by produceState<Result<List<DriveSpace>>?>(drive.knownSpaces()?.let { Result.success(it) }) { value = runCatching { drive.spaces() } }
     val folder by produceState<Result<DriveFolder>?>(null, here?.first) { value = null; if (here != null) value = runCatching { drive.folder(here.first) } }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large) {
+    InkSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (here != null) IconButton(onClick = { trail.removeAt(trail.lastIndex) }) { Icon(kimonoIcon("back"), "Back") }

@@ -2,6 +2,12 @@
 
 package app.kimono.screens
 
+import app.kimono.ui.InkDialog
+import app.kimono.ui.InkConfirm
+import app.kimono.ui.InkTitle
+import app.kimono.ui.InkSheet
+import app.kimono.ui.InkMenuItem
+import app.kimono.ui.InkMenu
 import app.kimono.ui.bottomChrome
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -270,22 +276,28 @@ private fun AiDrawerSheet(code: Code, admin: Boolean, current: String?, shown: B
         }
     }
     deleting?.let { w ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Delete this chat?") },
-            text = { Text("Its files stay in Drive.") },
-            confirmButton = { TextButton(onClick = { deleting = null; scope.launch { try { code.remove(w.id); load(); if (w.id == current) go("code") } catch (p: KimonoProblem) { problem = p.message } } }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
+        InkConfirm(
+            title = "Delete this chat?",
+            text = "Its files stay in Drive.",
+            action = "Delete",
+            icon = "trash",
+            danger = true,
+            keep = "Keep",
+            onConfirm = { deleting = null; scope.launch { try { code.remove(w.id); load(); if (w.id == current) go("code") } catch (p: KimonoProblem) { problem = p.message } } },
+            onDismiss = { deleting = null },
         )
     }
     reporting?.let { w -> ReportDialog(code, w) { reporting = null } }
     removing?.let { project ->
-        AlertDialog(
-            onDismissRequest = { removing = null },
-            title = { Text("Remove ${project.name}?") },
-            text = { Text("Its chats stay.") },
-            confirmButton = { TextButton(onClick = { removing = null; scope.launch { try { code.removeProject(project.id); load() } catch (p: KimonoProblem) { problem = p.message } } }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text("Keep") } },
+        InkConfirm(
+            title = "Remove ${project.name}?",
+            text = "Its chats stay.",
+            action = "Remove",
+            icon = "trash",
+            danger = true,
+            keep = "Keep",
+            onConfirm = { removing = null; scope.launch { try { code.removeProject(project.id); load() } catch (p: KimonoProblem) { problem = p.message } } },
+            onDismiss = { removing = null },
         )
     }
 }
@@ -343,10 +355,10 @@ private fun DrawerChat(w: CodeWorkspace, current: String?, time: Long, go: (Stri
                 else -> Text(whenText(w.updatedAt, time), fontFamily = mono, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        if (act != null) DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-            DropdownMenuItem(text = { Text("Archive") }, leadingIcon = { Icon(kimonoIcon("archive"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "archive") })
-            DropdownMenuItem(text = { Text("Report") }, leadingIcon = { Icon(kimonoIcon("flag"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; act(w, "report") })
-            DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; act(w, "delete") })
+        if (act != null) InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            InkMenuItem("Archive", icon = "archive", onClick = { menu = false; act(w, "archive") })
+            InkMenuItem("Report", icon = "flag", onClick = { menu = false; act(w, "report") })
+            InkMenuItem("Delete", icon = "trash", danger = true, onClick = { menu = false; act(w, "delete") })
         }
     }
 }
@@ -406,12 +418,15 @@ fun ArchivedScreen(code: Code, back: () -> Unit, open: (String) -> Unit) {
         }
     }
     deleting?.let { w ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Delete this chat?") },
-            text = { Text("Its files stay in Drive.") },
-            confirmButton = { TextButton(onClick = { deleting = null; scope.launch { try { code.remove(w.id); load() } catch (p: KimonoProblem) { problem = p.message } } }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Keep") } },
+        InkConfirm(
+            title = "Delete this chat?",
+            text = "Its files stay in Drive.",
+            action = "Delete",
+            icon = "trash",
+            danger = true,
+            keep = "Keep",
+            onConfirm = { deleting = null; scope.launch { try { code.remove(w.id); load() } catch (p: KimonoProblem) { problem = p.message } } },
+            onDismiss = { deleting = null },
         )
     }
 }
@@ -429,9 +444,9 @@ private fun ProjectHead(project: CodeProject, onNew: () -> Unit, onRename: suspe
         IconButton(onClick = onNew) { Icon(kimonoIcon("plus"), "New chat in ${project.name}") }
         Box {
             IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More") }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                DropdownMenuItem(text = { Text("Rename") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; editing = true })
-                DropdownMenuItem(text = { Text("Remove", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; onRemove() })
+            InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                InkMenuItem("Rename", icon = "edit", onClick = { menu = false; editing = true })
+                InkMenuItem("Remove", icon = "trash", danger = true, onClick = { menu = false; onRemove() })
             }
         }
     }
@@ -617,7 +632,7 @@ internal fun Picker(label: String, value: String, options: List<Option>, action:
                 Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(18.dp))
             }
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = MaterialTheme.shapes.large) {
+        InkMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { option ->
                 DropdownMenuItem(text = {
                     Column {
@@ -740,9 +755,9 @@ internal fun AttachMenu(onDevice: () -> Unit, onDrive: (() -> Unit)?, enabled: B
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { if (onDrive != null) open = true else onDevice() }, enabled = enabled) { Icon(kimonoIcon("clip"), "Attach files") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = MaterialTheme.shapes.large) {
-            DropdownMenuItem(text = { Text("From your phone") }, leadingIcon = { Icon(kimonoIcon("phone"), null, modifier = Modifier.size(18.dp)) }, onClick = { open = false; onDevice() })
-            if (onDrive != null) DropdownMenuItem(text = { Text("From Drive") }, leadingIcon = { Icon(kimonoIcon("folder"), null, modifier = Modifier.size(18.dp)) }, onClick = { open = false; onDrive() })
+        InkMenu(expanded = open, onDismissRequest = { open = false }) {
+            InkMenuItem("From your phone", icon = "phone", onClick = { open = false; onDevice() })
+            if (onDrive != null) InkMenuItem("From Drive", icon = "folder", onClick = { open = false; onDrive() })
         }
     }
 }
@@ -775,22 +790,23 @@ private fun ReportDialog(code: Code, w: CodeWorkspace, onDone: () -> Unit) {
     var sending by remember { mutableStateOf(false) }
     var sent by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
-    AlertDialog(
-        onDismissRequest = onDone,
-        icon = { Icon(kimonoIcon(if (sent) "check" else "person"), null) },
-        title = { Text(if (sent) "Reported" else "Report “${w.title}”", maxLines = 2, overflow = TextOverflow.Ellipsis) },
-        text = {
-            if (sent) Text("Thanks. It was sent without your name.")
-            else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Admins can see the whole chat. Your name isn’t attached.")
-                OutlinedTextField(reason, { reason = it.take(4000) }, placeholder = { Text("What went wrong? (optional)") }, minLines = 3, modifier = Modifier.fillMaxWidth())
-                problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+    InkDialog(
+        title = if (sent) "Reported" else "Report “${w.title}”",
+        icon = if (sent) "check" else "flag",
+        onDismiss = onDone,
+        actions = {
+            if (sent) Seal("Done", compact = true, onClick = onDone)
+            else {
+                Seal("Cancel", compact = true, tone = SealTone.Quiet, onClick = onDone)
+                Seal("Send report", compact = true, busy = sending, onClick = { sending = true; problem = null; scope.launch { try { code.report(w.id, reason.trim()); sent = true } catch (p: KimonoProblem) { problem = p.message } finally { sending = false } } })
             }
         },
-        confirmButton = {
-            if (sent) TextButton(onClick = onDone) { Text("Done") }
-            else TextButton(enabled = !sending, onClick = { sending = true; problem = null; scope.launch { try { code.report(w.id, reason.trim()); sent = true } catch (p: KimonoProblem) { problem = p.message } finally { sending = false } } }) { Text(if (sending) "Sending" else "Send report") }
-        },
-        dismissButton = { if (!sent) TextButton(onClick = onDone) { Text("Cancel") } },
-    )
+    ) {
+        if (sent) Text("Thanks. It was sent without your name.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Admins can see the whole chat. Your name isn’t attached.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(reason, { reason = it.take(4000) }, placeholder = { Text("What went wrong? (optional)") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
 }
