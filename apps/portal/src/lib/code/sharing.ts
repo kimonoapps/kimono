@@ -111,11 +111,11 @@ export function shareChat(db: DatabaseSync, workspace: Workspace, username: unkn
   return chatSharing(db, workspace.id);
 }
 
-/** Turns the chat's link on (anyone can read; "edit" lets signed-in people write too), or off (null). Turning it off and on makes a new link. */
+/** Turns the chat's link on (anyone can read; "edit" lets signed-in people write too), or off (null). Turning it off and on makes a new link, and so does letting it write: a link handed out to read never starts writing. */
 export function setChatLink(db: DatabaseSync, workspace: Workspace, access: unknown): ChatSharing {
   if (access === null) db.prepare("DELETE FROM chat_links WHERE workspace_id = ?").run(workspace.id);
   else if (access === "read" || access === "edit") {
-    db.prepare("INSERT INTO chat_links (workspace_id, token, access) VALUES (?, ?, ?) ON CONFLICT (workspace_id) DO UPDATE SET access = excluded.access").run(workspace.id, newId(16), access);
+    db.prepare("INSERT INTO chat_links (workspace_id, token, access) VALUES (?, ?, ?) ON CONFLICT (workspace_id) DO UPDATE SET access = excluded.access, token = CASE WHEN chat_links.access = 'read' AND excluded.access = 'edit' THEN excluded.token ELSE chat_links.token END").run(workspace.id, newId(16), access);
   } else throw new CodeProblem("Choose who the link is for.");
   return chatSharing(db, workspace.id);
 }

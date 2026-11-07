@@ -298,6 +298,10 @@ export function migrate(db: DatabaseSync) {
   if (!(db.prepare("PRAGMA table_info(turns)").all() as { name: string }[]).some((c) => c.name === "resume_at")) {
     db.exec("ALTER TABLE turns ADD COLUMN session TEXT; ALTER TABLE turns ADD COLUMN resume_at TEXT;");
   }
+  /* Whether the chat's owner sent the message a turn runs for (0: someone it's shared with), so that turn never acts as the owner. */
+  if (!(db.prepare("PRAGMA table_info(turns)").all() as { name: string }[]).some((c) => c.name === "by_owner")) {
+    db.exec("ALTER TABLE turns ADD COLUMN by_owner INTEGER");
+  }
   /* The feedback bank (lib/code/feedback.ts): thumbs on answers, and chats reported with no name. */
   db.exec(`
     CREATE TABLE IF NOT EXISTS ai_ratings (
@@ -629,6 +633,22 @@ export function startTurn(db: DatabaseSync, workspaceId: string, now = Date.now(
 
 export function endTurn(db: DatabaseSync, turnId: string, state: Exclude<TurnState, "running">, now = Date.now()) {
   db.prepare("UPDATE turns SET state = ?, ended_at = ? WHERE id = ? AND state = 'running'").run(state, now, turnId);
+}
+
+export function setTurnByOwner(db: DatabaseSync, turnId: string, byOwner: boolean) {
+  db.prepare("UPDATE turns SET by_owner = ? WHERE id = ?").run(byOwner ? 1 : 0, turnId);
+}
+
+/** Whether the owner sent each of the chat's latest turns, newest first. Turns from before this was kept count as the owner's. */
+export function turnsByOwner(db: DatabaseSync, workspaceId: string, limit: number): boolean[] {
+  const rows = db.prepare("SELECT by_owner FROM turns WHERE workspace_id = ? ORDER BY started_at DESC, rowid DESC LIMIT ?").all(workspaceId, limit) as { by_owner: number | null }[];
+  return rows.map((r) => r.by_owner !== 0);
+}
+
+/** Whether the owner sent the message [turnId] runs for; null when it isn't known. */
+export function turnByOwner(db: DatabaseSync, turnId: string): boolean | null {
+  const row = db.prepare("SELECT by_owner FROM turns WHERE id = ?").get(turnId) as { by_owner: number | null } | undefined;
+  return row?.by_owner == null ? null : row.by_owner === 1;
 }
 
 /** Where a turn left the agent's session: its id, and its last message (the agent's) to carry on from. */

@@ -59,6 +59,34 @@ test('a chat link lets anyone read, and only signed-in people write', () => {
   assert.notEqual(sharing.setChatLink(db, w, 'read').link.token, before);
 });
 
+test('a read link that starts letting people write is a new link', () => {
+  const db = fresh();
+  const w = chat(db);
+  const read = sharing.setChatLink(db, w, 'read').link.token;
+  const edit = sharing.setChatLink(db, w, 'edit').link.token;
+  assert.notEqual(edit, read);
+  assert.equal(sharing.accessOf(db, w.id, 'mina', read), null);
+  /* Back to read only: the same link, with less. */
+  assert.equal(sharing.setChatLink(db, w, 'read').link.token, edit);
+});
+
+test('each turn knows whether the owner sent it', () => {
+  const db = fresh();
+  const w = chat(db);
+  const first = model.startTurn(db, w.id, 1);
+  model.setTurnByOwner(db, first, true);
+  model.endTurn(db, first, 'done', 2);
+  const second = model.startTurn(db, w.id, 3);
+  model.setTurnByOwner(db, second, false);
+  assert.equal(model.turnByOwner(db, second), false);
+  assert.deepEqual(model.turnsByOwner(db, w.id, 2), [false, true]);
+  /* A turn from before this was kept counts as the owner's, but isn't known for steering. */
+  model.endTurn(db, second, 'done', 4);
+  const third = model.startTurn(db, w.id, 5);
+  assert.equal(model.turnByOwner(db, third), null);
+  assert.deepEqual(model.turnsByOwner(db, w.id, 2), [true, false]);
+});
+
 test('an artifact opens for its people, then for anyone once public', () => {
   const db = fresh();
   const w = chat(db);

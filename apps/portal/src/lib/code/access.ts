@@ -11,7 +11,7 @@ import {
 } from "./access-plan";
 import type { CodeConfig } from "./config";
 import { addToDrive, codeSpaceOf, driveBytes, replaceInDrive } from "./drive";
-import { CodeProblem, newId, type Workspace } from "./model";
+import { CodeProblem, newId, turnsByOwner, type Workspace } from "./model";
 import { sandbox } from "./node";
 import { planSync, type SyncAction } from "./sync";
 
@@ -145,18 +145,21 @@ const running = new Map<string, Promise<string[]>>();
  * for change, Drive → sandbox only for read; closes what is no longer allowed.
  * Returns the paths Drive changed, which the agent is told about.
  */
-export function syncOpened(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<string[]> {
+export function syncOpened(db: DatabaseSync, config: CodeConfig, workspace: Workspace, { readOnly = false }: { readOnly?: boolean } = {}): Promise<string[]> {
   const before = running.get(workspace.id) ?? Promise.resolve([]);
-  const next = before.catch(() => []).then(() => syncOnce(db, config, workspace));
+  const next = before.catch(() => []).then(() => syncOnce(db, config, workspace, readOnly));
   running.set(workspace.id, next);
   void next.finally(() => { if (running.get(workspace.id) === next) running.delete(workspace.id); }).catch(() => {});
   return next;
 }
 
-async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<string[]> {
+async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspace, readOnlyAsked: boolean): Promise<string[]> {
   const opened = db.prepare("SELECT workspace_id, node_id, space_id, dir FROM opened WHERE workspace_id = ?").all(workspace.id) as Opened[];
   if (!opened.length) return [];
   const owner = workspace.owner;
+  /* The files are the owner's, and only the owner's own turns change them in Drive: what a turn someone
+     else sent changed here is put back from Drive instead. */
+  const othersTurn = readOnlyAsked || turnsByOwner(db, workspace.id, 1)[0] === false;
   const grants = grantsOf(db, owner);
   const { files: tree } = await sandbox.granted(config, workspace);
   const news: string[] = [];
@@ -179,7 +182,9 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
     const prefix = `${o.dir.slice(filesRoot.length + 1)}/`;
     const here = tree.filter((f) => f.path.startsWith(prefix)).map((f) => ({ ...f, path: f.path.slice(prefix.length) })).filter((f) => only === undefined || f.path === only);
     let actions: SyncAction[] = planSync(rowsIn(db, workspace.id, o.dir, only), here, filesUnder(node, owner));
-    if (need === "read") actions = readOnly(actions);
+    /* New files from someone else's turn go too, or the owner's next turn would add them to Drive as the owner's. */
+    if (othersTurn) actions = actions.map((a): SyncAction => a.kind === "upload" ? { kind: "delete", path: a.path } : a);
+    if (need === "read" || othersTurn) actions = readOnly(actions);
     if (only !== undefined) actions = actions.filter((a) => a.kind !== "upload");
     const opened = node;
     /* A few files at a time; each touches only its own path. */

@@ -13,7 +13,7 @@ import { typeOf } from "../drive/storage";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
-  abandonRunningTurns, appendEvent, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, extraOf, setLastModel, runningTurn, setPreviewName, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor, workspacesOf,
+  abandonRunningTurns, appendEvent, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, extraOf, setLastModel, runningTurn, setPreviewName, setTurnByOwner, turnByOwner, turnsByOwner, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor, workspacesOf,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
@@ -387,7 +387,9 @@ export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, tex
     const asked = record(workspace.id, busy, { kind: "ask", by: user.username, text: prompt, attachments, queued: true });
     queue.set(workspace.id, [...(queue.get(workspace.id) ?? []), { user, prompt, attachments, effort, model, seq: asked.seq }]);
     /* Handed to the agent as it works: its hooks read it after the next step (cli/internal/sandbox SteerSettings). */
-    if (prompt && !attachments.length) void steer(config, workspace, user, asked.seq, prompt);
+    /* Only into a turn for the same side: someone the chat is shared with never steers the owner's turn, which has the owner's apps and files. */
+    const sameSide = turnByOwner(db(), busy) === (user.username.toLowerCase() === workspace.owner);
+    if (prompt && !attachments.length && sameSide) void steer(config, workspace, user, asked.seq, prompt);
     return asked;
   }
   const turn = startTurn(db(), workspace.id);
@@ -447,6 +449,10 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   /* How hard it thinks: on Auto the same every message; Sonnet and Haiku stop at medium. */
   effort = effortFor(model, { choice, effort });
   setLastModel(db(), workspace.id, model);
+  /* Someone the chat is shared with writes as themself: the owner's connected
+     apps, memories, earlier chats and Drive are the owner's alone. */
+  const byOwner = user.username.toLowerCase() === workspace.owner;
+  setTurnByOwner(db(), turn, byOwner);
   const controller = new AbortController();
   live.turns.set(turn, controller);
   record(workspace.id, turn, { kind: "started" });
@@ -461,23 +467,20 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   const composioCalls = new Set<string>();
   const proCalls = new Map<string, { at: number; tools: string[] }>();
   try {
-    /* Someone the chat is shared with writes as themself: the owner's connected
-       apps, memories and standing Drive permissions are the owner's alone. */
-    const byOwner = user.username.toLowerCase() === workspace.owner;
     await ensure(config, workspace, who(user), { owner: byOwner });
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* The person's other chats, for it to look back on (none in a chat shared with others), brought in alongside the files. */
-    const historySynced = prompt.startsWith("/") ? Promise.resolve(false) : syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
+    const historySynced = syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
     await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
     /* Files the person let it use follow Drive, and what is no longer allowed goes. */
-    const openedNews = await syncOpened(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
+    const openedNews = await syncOpened(db(), config, workspace, { readOnly: turnsByOwner(db(), workspace.id, 2)[1] === false }).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
     const history = await historySynced;
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
     const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
     /* With Notes on, the person has a notebook before it is named, so the agent can write to it from the first chat. */
     const notes = byOwner ? await notesFor(workspace.owner) : "";
-    const access = prompt.startsWith("/") ? "" : accessPrompt(db(), workspace);
+    const access = prompt.startsWith("/") || !byOwner ? "" : accessPrompt(db(), workspace);
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
     /* Someone the chat was shared with wrote this: it should know who it's answering. */
     const from = user.username.toLowerCase() !== workspace.owner ? `(This message is from ${who(user).name}, whom ${workspace.owner} shared this chat with.)\n\n` : "";
@@ -622,10 +625,17 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     void syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync to Drive:", error instanceof Error ? error.message : error));
     const wroteBack = syncOpened(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't write back opened files:", error instanceof Error ? error.message : error); return []; });
     /* Anything sent while it worked starts the next turn straight away, after any note it should carry on with. */
-    const waiting = live.queued?.get(workspace.id) ?? [];
+    const queued = live.queued?.get(workspace.id) ?? [];
     const carry = live.carryOn?.get(workspace.id);
     live.queued?.delete(workspace.id);
     live.carryOn?.delete(workspace.id);
+    /* One side per turn: the owner's messages (and a note to carry on with, which is the owner's) run together,
+       and anyone else's wait for a turn of their own, so their words never run with the owner's apps and files. */
+    const ownerSent = (m: { user: ApiUser }) => m.user.username.toLowerCase() === workspace.owner;
+    const side = carry ? true : queued.length ? ownerSent(queued[0]) : true;
+    const split = queued.findIndex((m) => ownerSent(m) !== side);
+    const waiting = split < 0 ? queued : queued.slice(0, split);
+    if (split >= 0) (live.queued ??= new Map()).set(workspace.id, queued.slice(split));
     if (waiting.length || carry) {
       /* The next turn is taken now, so nothing sent in the meantime starts one of its own and pushes these out;
          it runs once what this one changed is written back. */
