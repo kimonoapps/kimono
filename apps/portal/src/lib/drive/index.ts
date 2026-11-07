@@ -27,10 +27,14 @@ export function db(): DatabaseSync {
     const opened = new DatabaseSync(join(root, "drive.db"));
     migrate(opened);
     cache.kimonoDrive = opened;
+    migrated = true;
   }
+  /* A hot reload keeps the connection but brings new code: bring the schema along. */
+  if (!migrated) { migrate(cache.kimonoDrive); migrated = true; }
   sweep(cache.kimonoDrive);
   return cache.kimonoDrive;
 }
+let migrated = false;
 
 /* At most hourly, on use: empty trash older than 30 days, drop abandoned uploads, and forget old change-log entries. */
 function sweep(database: DatabaseSync) {
