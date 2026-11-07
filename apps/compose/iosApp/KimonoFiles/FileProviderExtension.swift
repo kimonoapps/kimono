@@ -16,7 +16,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     private func item(_ id: String) async throws -> Item {
         let node = try await Drive.shared.node(id)
-        return Item(node, role: await Drive.shared.role(node.spaceId))
+        return Item(node, role: await Drive.shared.role(of: node))
     }
 
     /// Runs async work for a callback-style call, reporting progress and letting the system cancel it.
@@ -30,7 +30,7 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     }
 
     func item(for identifier: NSFileProviderItemIdentifier, request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, Error?) -> Void) -> Progress {
-        if identifier == .rootContainer || identifier == .trashContainer || identifier == .workingSet {
+        if identifier == .rootContainer || identifier == .trashContainer || identifier == .workingSet || identifier == Item.shared {
             completionHandler(Item(root: identifier), nil)
             return Progress()
         }
@@ -46,13 +46,13 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
 
     func createItem(basedOn template: NSFileProviderItem, fields: NSFileProviderItemFields, contents url: URL?, options: NSFileProviderCreateItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (NSFileProviderItem?, NSFileProviderItemFields, Bool, Error?) -> Void) -> Progress {
         run(100, { item, error in completionHandler(item, [], false, error) }) { progress in
-            guard template.parentItemIdentifier != .rootContainer else {
+            guard template.parentItemIdentifier != .rootContainer, template.parentItemIdentifier != Item.shared else {
                 throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError, userInfo: [NSLocalizedDescriptionKey: "Make new spaces in the Kimono app."])
             }
             let parent = template.parentItemIdentifier.rawValue
             if template.contentType == .folder || template.contentType?.conforms(to: .folder) == true {
                 let created = try await Drive.shared.call(Drive.Node.self, "/api/v1/drive/nodes/\(parent)/folders", method: "POST", json: ["name": template.filename])
-                return Item(created, role: await Drive.shared.role(created.spaceId))
+                return Item(created, role: await Drive.shared.role(of: created))
             }
             guard let url else { throw NSFileProviderError(.noSuchItem) }
             let sent = try await Upload.send(url, metadata: ["filename": template.filename, "folder": parent], progress: progress)
@@ -73,7 +73,10 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
                 /* Moved to Recently Deleted: Drive's trash. */
                 let before = try await Drive.shared.node(id)
                 _ = try await Drive.shared.send(try await Drive.shared.request("/api/v1/drive/nodes/\(id)", method: "DELETE"))
-                return Item(before, role: await Drive.shared.role(before.spaceId), trashed: true)
+                return Item(before, role: await Drive.shared.role(of: before), trashed: true)
+            }
+            if changedFields.contains(.parentItemIdentifier), item.parentItemIdentifier == Item.shared {
+                throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError, userInfo: [NSLocalizedDescriptionKey: "Things are shared with you from the Kimono app."])
             }
             if changedFields.contains(.parentItemIdentifier), (try? await Drive.shared.node(id)) == nil {
                 /* Brought back out of Recently Deleted. */
@@ -90,9 +93,14 @@ final class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     }
 
     func deleteItem(identifier: NSFileProviderItemIdentifier, baseVersion version: NSFileProviderItemVersion, options: NSFileProviderDeleteItemOptions = [], request: NSFileProviderRequest, completionHandler: @escaping (Error?) -> Void) -> Progress {
-        /* Drive keeps deleted things in its trash for 30 days, so a delete here can be undone from the Kimono app. */
+        /* Drive keeps deleted things in its trash for 30 days, so a delete here can be undone from the Kimono app.
+           Something shared with you is left instead: it stays in its owner's space. */
         run(1, { (_: Bool?, error) in completionHandler(error) }) { _ in
-            do { _ = try await Drive.shared.send(try await Drive.shared.request("/api/v1/drive/nodes/\(identifier.rawValue)", method: "DELETE")) }
+            do {
+                if identifier == Item.shared { return true }
+                if try await Drive.shared.node(identifier.rawValue).isSharedWithYou { try await Drive.shared.leave(identifier.rawValue) }
+                else { _ = try await Drive.shared.send(try await Drive.shared.request("/api/v1/drive/nodes/\(identifier.rawValue)", method: "DELETE")) }
+            }
             catch let error as NSFileProviderError where error.code == .noSuchItem {}
             return true
         }

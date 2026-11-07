@@ -19,6 +19,12 @@ actor Drive {
         let updatedAt: Double
         let version: Int
         let contentVersion: Int
+        /// What this person may do with it; Drive says so for things shared from spaces they aren't in.
+        let role: String?
+        /// Shared with them on its own, from a space they aren't in: it stands in Shared with you.
+        let sharedWithYou: Bool?
+
+        var isSharedWithYou: Bool { sharedWithYou == true }
     }
     struct Space: Decodable, Sendable { let id: String; let rootId: String; let role: String }
     struct Folder: Decodable { let folder: Node; let children: [Node] }
@@ -28,6 +34,7 @@ actor Drive {
     struct Failure: Decodable { let error: String }
     struct SpaceList: Decodable { let spaces: [Space] }
     struct TrashList: Decodable { let items: [Node] }
+    struct Me: Decodable { let username: String }
 
     /// Roles by space, refreshed with every change check, deciding what the Files app offers.
     private(set) var roles: [String: String] = [:]
@@ -180,6 +187,17 @@ actor Drive {
 
     func trash() async throws -> [Node] { try await call(TrashList.self, "/api/v1/drive/trash").items }
 
+    /// Folders and files shared with this person from spaces they aren't in.
+    func sharedWithYou() async throws -> [Node] { try await call(TrashList.self, "/api/v1/drive/shared-with-you").items }
+
+    private var username: String?
+
+    /// Takes this person off something shared with them: it leaves their Drive, not anyone else's.
+    func leave(_ id: String) async throws {
+        if username == nil { username = try await call(Me.self, "/api/v1/me").username }
+        _ = try await call(AnyDecodable.self, "/api/v1/drive/nodes/\(id)/shares", method: "PUT", json: ["username": username!, "role": NSNull()])
+    }
+
     func latestCursor() async throws -> Int { try await call(Cursor.self, "/api/v1/drive/changes").cursor }
 
     func changes(since: Int) async throws -> Changes {
@@ -191,6 +209,12 @@ actor Drive {
     func role(_ spaceId: String) async -> String? {
         if roles[spaceId] == nil { _ = try? await spaces() }
         return roles[spaceId]
+    }
+
+    /// What the person may do with a node: as Drive says for it, else their role in its space.
+    func role(of node: Node) async -> String? {
+        if let role = node.role { return role }
+        return await role(node.spaceId)
     }
 
     /// Up to `length` bytes of a file from `offset`, for reading part of it without downloading it all.

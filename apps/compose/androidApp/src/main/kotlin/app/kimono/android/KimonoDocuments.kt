@@ -31,7 +31,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Kimono Drive in Android's Files app and in every app's open and save
- * pickers. Spaces are the top level; what a role can't do isn't offered.
+ * pickers. Spaces are the top level, beside Shared with you, which holds
+ * what others shared from their spaces; what a role can't do isn't offered.
  * Files are read in place, a few MB at a time, so a long video starts
  * playing at once; saves go up in the background as a new version, and a
  * clash with an edit made elsewhere keeps both.
@@ -41,6 +42,8 @@ class KimonoDocuments : DocumentsProvider() {
         private const val ROOT = "kimono"
         /** The top level: the person's spaces. */
         private const val SPACES = "spaces"
+        /** What others shared with you from spaces you aren't in. */
+        private const val SHARED = "shared-with-you"
         private val ROOT_COLUMNS = arrayOf(Root.COLUMN_ROOT_ID, Root.COLUMN_FLAGS, Root.COLUMN_ICON, Root.COLUMN_TITLE, Root.COLUMN_DOCUMENT_ID)
         private val DOCUMENT_COLUMNS = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_MIME_TYPE, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_LAST_MODIFIED, Document.COLUMN_FLAGS, Document.COLUMN_SIZE)
 
@@ -109,13 +112,8 @@ class KimonoDocuments : DocumentsProvider() {
 
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor {
         val cursor = MatrixCursor(projection ?: DOCUMENT_COLUMNS)
-        if (documentId == SPACES) {
-            cursor.newRow().apply {
-                add(Document.COLUMN_DOCUMENT_ID, SPACES)
-                add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR)
-                add(Document.COLUMN_DISPLAY_NAME, "Kimono")
-                add(Document.COLUMN_FLAGS, 0)
-            }
+        if (documentId == SPACES || documentId == SHARED) {
+            addPlace(cursor, documentId)
             return cursor
         }
         blocking { addRow(cursor, fresh(documentId)) }
@@ -131,6 +129,12 @@ class KimonoDocuments : DocumentsProvider() {
                     spaces[space.id] = space
                     addRow(cursor, DriveNode(id = space.rootId, spaceId = space.id, kind = "folder", name = space.name))
                 }
+                if (runCatching { drive.sharedWithYou() }.getOrDefault(emptyList()).isNotEmpty()) addPlace(cursor, SHARED)
+            } else if (parentDocumentId == SHARED) {
+                drive.sharedWithYou().forEach { node ->
+                    nodes[node.id] = node
+                    addRow(cursor, node)
+                }
             } else {
                 drive.folder(parentDocumentId).children.forEach { child ->
                     nodes[child.id] = child
@@ -141,16 +145,36 @@ class KimonoDocuments : DocumentsProvider() {
         return cursor
     }
 
+    /** The top of Kimono, or Shared with you: places, not things in Drive. */
+    private fun addPlace(cursor: MatrixCursor, id: String) {
+        cursor.newRow().apply {
+            add(Document.COLUMN_DOCUMENT_ID, id)
+            add(Document.COLUMN_MIME_TYPE, Document.MIME_TYPE_DIR)
+            add(Document.COLUMN_DISPLAY_NAME, if (id == SHARED) "Shared with you" else "Kimono")
+            add(Document.COLUMN_FLAGS, 0)
+        }
+    }
+
+    /** What you may do with it: as Drive says for it, else your role in its space. */
+    private suspend fun roleOf(node: DriveNode): String? = node.role ?: spaceOf(node.spaceId)?.role
+
+    /** Shared with you on its own: at the top, from a space you aren't in. */
+    private suspend fun isSharedRoot(node: DriveNode) = node.parentId == null && spaceOf(node.spaceId) == null
+
     private suspend fun addRow(cursor: MatrixCursor, node: DriveNode) {
         val space = spaceOf(node.spaceId)
-        val canEdit = space != null && space.role != "viewer"
+        val canEdit = roleOf(node).let { it != null && it != "viewer" }
         val isSpace = space?.rootId == node.id
+        val shared = isSharedRoot(node)
         var flags = 0
         if (canEdit) {
             flags = flags or if (node.isFolder) Document.FLAG_DIR_SUPPORTS_CREATE else Document.FLAG_SUPPORTS_WRITE
-            /* A space itself is made, renamed and removed in the app. */
-            if (!isSpace) flags = flags or Document.FLAG_SUPPORTS_DELETE or Document.FLAG_SUPPORTS_RENAME or Document.FLAG_SUPPORTS_MOVE
+            /* A space itself is made, renamed and removed in the app; something shared with you stays where its owner keeps it. */
+            if (shared) flags = flags or Document.FLAG_SUPPORTS_RENAME
+            else if (!isSpace) flags = flags or Document.FLAG_SUPPORTS_DELETE or Document.FLAG_SUPPORTS_RENAME or Document.FLAG_SUPPORTS_MOVE
         }
+        /* Deleting something shared with you leaves it; anyone may. */
+        if (shared) flags = flags or Document.FLAG_SUPPORTS_DELETE
         val mime = if (node.isFolder) Document.MIME_TYPE_DIR else mimeOf(node)
         if (Thumbnails.canMake(node, mime)) flags = flags or Document.FLAG_SUPPORTS_THUMBNAIL
         cursor.newRow().apply {
@@ -170,6 +194,13 @@ class KimonoDocuments : DocumentsProvider() {
     override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean {
         if (parentDocumentId == SPACES) return true
         return blocking {
+            if (parentDocumentId == SHARED) {
+                /* Under Shared with you when its way up ends at something shared with you. */
+                var top = nodeOf(documentId)
+                var steps = 0
+                while (top.parentId != null && steps++ < 64) top = runCatching { nodeOf(top.parentId!!) }.getOrNull() ?: break
+                return@blocking isSharedRoot(top)
+            }
             var current: String? = documentId
             var found = false
             var steps = 0
@@ -241,9 +272,10 @@ class KimonoDocuments : DocumentsProvider() {
      * background once it's closed, as a new version of the file.
      */
     private fun openForSaving(node: DriveNode, mode: String): ParcelFileDescriptor {
-        val space = blocking { spaceOf(node.spaceId) }
-        if (space == null || space.role == "viewer") throw FileNotFoundException("You can only view this space.")
-        val folder = node.parentId ?: throw FileNotFoundException("That file can't be changed.")
+        val role = blocking { roleOf(node) }
+        if (role == null || role == "viewer") throw FileNotFoundException("You can only view this.")
+        /* A file shared with you on its own is replaced in place; Shared with you is what looks again. */
+        val folder = node.parentId ?: SHARED
         val copy = File(savingDir(context!!), UUID.randomUUID().toString())
         /* "rw" and "wa" carry on from what's there; "w" and "wt" start empty. */
         if (('r' in mode || 'a' in mode) && 't' !in mode && node.size > 0) {
@@ -262,7 +294,7 @@ class KimonoDocuments : DocumentsProvider() {
     /* ── Changes ── */
 
     override fun createDocument(parentDocumentId: String, mimeType: String, displayName: String): String {
-        if (parentDocumentId == SPACES) throw FileNotFoundException("Make new spaces in the Kimono app.")
+        if (parentDocumentId == SPACES || parentDocumentId == SHARED) throw FileNotFoundException("Make new spaces in the Kimono app.")
         val id = blocking {
             if (mimeType == Document.MIME_TYPE_DIR) drive.createFolder(parentDocumentId, displayName).also { nodes[it.id] = it }.id
             else drive.upload(EmptyFile(nameWithExtension(displayName, mimeType)), parentDocumentId) {}
@@ -286,7 +318,7 @@ class KimonoDocuments : DocumentsProvider() {
     override fun renameDocument(documentId: String, displayName: String): String? {
         val parent = blocking {
             drive.rename(documentId, displayName)
-            fresh(documentId).parentId
+            fresh(documentId).let { it.parentId ?: if (isSharedRoot(it)) SHARED else null }
         }
         parent?.let { changed(context!!, it) }
         return null
@@ -294,9 +326,15 @@ class KimonoDocuments : DocumentsProvider() {
 
     override fun deleteDocument(documentId: String) {
         val parent = blocking {
-            val parent = nodeOf(documentId).parentId
-            drive.moveToTrash(documentId)
-            parent
+            val node = fresh(documentId)
+            if (isSharedRoot(node)) {
+                /* Something shared with you: you leave it, and it stays in its owner's space. */
+                drive.share(documentId, app.session.me().username, null)
+                SHARED
+            } else {
+                drive.moveToTrash(documentId)
+                node.parentId
+            }
         }
         nodes.remove(documentId)
         revokeDocumentPermission(documentId)
