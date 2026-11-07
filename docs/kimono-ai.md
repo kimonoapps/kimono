@@ -113,7 +113,7 @@ anything. Instant has to be switched on in the Composio project's settings.
   Instant tools (`ranAsPro` in `lib/code/media.ts`). Its app logo in the chat
   then wears a bolt filled with the app's accent on its top right, on web and
   phone, in the call's row and in its group's header.
-- **Each person's Pro Tools budget** (Admin → Kimono AI, default $10, 0 for none)
+- **Each person's Pro Tools budget** (Admin → Kimono AI, default $20, 0 for none)
   is a monthly allowance in US dollars. Portal sums the person's Instant charges
   this month (UTC) from Composio's execution logs, filtered by their Composio
   user, and keeps their session's `instant` policy to match: `PATCH`ed to
@@ -145,6 +145,11 @@ anything. Instant has to be switched on in the Composio project's settings.
   allowance); ElevenLabs only for a particular voice, accent or character,
   for Japanese, Mandarin and other languages `kimono-say` lacks, or when someone
   asks for it by name.
+- Real video defaults to Veo 3.1 Lite (`GEMINI_GENERATE_VIDEOS`, about 5
+  credits a second with sound); Higgsfield, Kling or Runway only when asked
+  for by name or for a look Veo can't give. Composio's Seedance 2.5 was about
+  46 credits a second. Other tools: 480p unless it's to post or asked sharper,
+  no longer than needed, the lighter model version when one does.
 - Files come back as links the sandbox can't follow. The node gateway notes
   every https link in a workspace's tool results as they pass, and its
   `/media` fetches one of those links (seen in the last three hours) for

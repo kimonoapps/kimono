@@ -40,7 +40,7 @@ export function codeConfig(settings: PlatformSettings) {
     /* Composio's Tool Router: one session per person, its MCP reached through the node's gateway. Optional. */
     composioKey: value("composio_api_key"),
     /* What each person may spend a month on paid tools (Composio's Instant), in US dollars; 0 is none (lib/code/media.ts). */
-    mediaBudget: money(value("media_budget"), 10, 10_000),
+    mediaBudget: money(value("media_budget"), 20, 10_000),
     gitAddress,
     gitApp,
     /* Each person's share of the Claude plan, as fractions; the owner isn't limited. */
