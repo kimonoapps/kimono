@@ -33,8 +33,10 @@ export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; queued?: boolean }
   | { kind: "started" }
   | { kind: "text"; text: string }
-  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string; pro?: boolean; tools?: string[]; /** A kimono-progress call: a start (label, about seconds), a wait, what the tool said (status, percent, seconds left), or done; at is when Kimono heard it. */ progress?: { label?: string; about?: number; wait?: number; done?: boolean; status?: string; percent?: number; left?: number; at: number } }
+  | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; app?: string; space?: string; pro?: boolean; tools?: string[]; /** A kimono-progress call: a start (label, about seconds), a wait, what the tool said (status, percent, seconds left), or done; at is when Kimono heard it. */ progress?: { label?: string; about?: number; wait?: number; done?: boolean; status?: string; percent?: number; left?: number; /** only kimono-progress steps: not shown under the card */ only?: boolean; at: number } }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
+  /** How a long job stands, as Kimono read it from the sandbox; id is the call that started its card. watched: the sandbox follows it after the turn too. */
+  | { kind: "progress"; id: string; state: "running" | "done" | "failed"; status?: string; percent?: number; left?: number; watched?: boolean }
   /** Messages sent while it worked that it has read, or that were dropped because it was stopped first. */
   | { kind: "steered"; seqs: number[] }
   | { kind: "dropped"; seqs: number[] }

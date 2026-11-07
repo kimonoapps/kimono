@@ -1,50 +1,99 @@
 #!/usr/bin/env python3
-"""kimono-progress "WHAT YOU'RE DOING" --about SECONDS [--run "COMMAND"]
+"""kimono-progress "WHAT YOU'RE DOING" [--run "COMMAND"] [--probe "COMMAND"]
+kimono-progress --status "WHAT IT SAYS" [--percent N] [--left SECONDS]
 kimono-progress --wait SECONDS
-kimono-progress --status "WHAT THE TOOL SAYS" [--percent N] [--left SECONDS]
 kimono-progress --done ["WHAT'S READY"]
 
-For work that takes a while (a video being generated, a long render), show the
-person one progress card instead of every check: start it with what you're
-doing and how long it takes (the tool's own estimate when it gives one), wait
-between checks with --wait (never sleep), and after every check report what the
-tool said with --status: its state ("In queue", "Rendering"), and its percent
-done or seconds left when it gives them. The card's bar follows those, not a
-guess. Finish with --done when it's ready. The steps in between fold away under
-the card. --wait waits at most 100 seconds at a time; call it again.
+Long work (a render, a video being generated) shows as one card in the chat
+with the job's real progress, never a guess from the clock. Kimono reads the
+card's state from this computer every couple of seconds, so it moves while you
+wait.
 
-Work that runs here (a render, an ffmpeg job): start it with --run "COMMAND".
-It runs in the background, its output goes to a log, and --wait comes back as
-soon as it finishes, saying how it ended and what it last printed (with its
-percent when it prints one). Report and wait in one go:
+Work that runs here: start it with --run "COMMAND". It runs in the background
+and the card follows what it prints. When you write the script yourself, make
+it say how far it is: a line "PROGRESS 35 Drawing the frames" (percent, then
+what it's doing), or "120/300". The card ends by itself when the command does,
+done or failed.
+
+Work you can measure some other way: --probe "COMMAND" is run every few seconds
+and the card shows what it prints, the same way (a percent, "120/300", or
+PROGRESS lines). For example --probe "echo $(ls frames | wc -l)/300".
+
+Work you can only check with a tool (a Pro Tool's video): after each check run
+--status with what it said and its percent or time left when it gives them.
+
+Between checks, --wait SECONDS (never sleep): it comes back as soon as a --run
+job ends, saying how it ended. Report and wait in one command:
   kimono-progress --status "Rendering" --percent 40; kimono-progress --wait 60
+--done ends the card when you finished it yourself.
 """
 import json, os, re, subprocess, sys, time
 
+STATE = os.environ.get("KIMONO_PROGRESS_FILE", "/workspace/.kimono/progress.json")
 JOBS = os.environ.get("KIMONO_PROGRESS_DIR", "/tmp/kimono-progress")
-JOB = os.path.join(JOBS, "job.json")
+PROBE_EVERY, LOG_EVERY, LONGEST = 3.0, 1.0, 3 * 3600
 
 
-def job():
+# ── the card's state, which Kimono reads ──
+
+def read_state():
     try:
-        with open(JOB) as f:
-            return json.load(f)
+        with open(STATE) as f:
+            state = json.load(f)
+        return state if isinstance(state, dict) else None
     except (OSError, ValueError):
         return None
 
 
-def ended(j):
-    """The job's exit code once it has finished, else None."""
-    try:
-        with open(j["exit"]) as f:
-            return int(f.read().strip() or "1")
-    except (OSError, ValueError):
-        return None
+def write_state(state):
+    state["updated"] = time.time()
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    tmp = f"{STATE}.{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(state, f)
+    os.replace(tmp, STATE)
 
 
-def last_lines(j, n=5):
+def update(job, **changes):
+    """Changes the card, if it's still this job's; returns whether it was."""
+    state = read_state()
+    if not state or state.get("job") != job:
+        return False
+    if state.get("state") != "running" and changes.get("state", "running") == "running":
+        return False
+    state.update({k: v for k, v in changes.items() if v is not None})
+    write_state(state)
+    return True
+
+
+# ── reading how far something is from what it prints ──
+
+PROGRESS = re.compile(r"^\s*PROGRESS\s+(\d+(?:\.\d+)?)\s*(?:%|/\s*(\d+))?\s*(.*)$")
+
+
+def reading(lines):
+    """(percent, status) from output lines, newest first: PROGRESS lines win, then "35%" or "120/300"."""
+    for line in reversed(lines):
+        m = PROGRESS.match(line)
+        if m:
+            done, total = float(m.group(1)), m.group(2)
+            percent = 100 * done / float(total) if total and float(total) > 0 else done
+            return (max(0.0, min(100.0, round(percent, 1))), m.group(3).strip()[:60] or None)
+    for line in reversed(lines):
+        found = re.findall(r"(\d+(?:\.\d+)?)\s*%", line)
+        if found and 0 <= float(found[-1]) <= 100:
+            return (float(found[-1]), None)
+        found = re.findall(r"(?<![\d.])(\d+)\s*/\s*(\d+)(?![\d.])", line)
+        if found:
+            done, total = map(int, found[-1])
+            if 0 < total and done <= total:
+                return (round(100 * done / total, 1), None)
+    return (None, None)
+
+
+def tail(path, n=8):
     try:
-        with open(j["log"], "rb") as f:
+        with open(path, "rb") as f:
             f.seek(0, 2)
             f.seek(max(0, f.tell() - 16384))
             text = f.read().decode("utf-8", "replace")
@@ -55,121 +104,197 @@ def last_lines(j, n=5):
     return [line for line in lines if line][-n:]
 
 
-def percent_of(lines):
-    """The newest percent in what it printed: "35%", "35.5 %" or "frame 120/300"."""
-    for line in reversed(lines):
-        found = re.findall(r"(\d+(?:\.\d+)?)\s*%", line)
-        if found and 0 <= float(found[-1]) <= 100:
-            return float(found[-1])
-        found = re.findall(r"\b(\d+)\s*/\s*(\d+)\b", line)
-        if found:
-            done, total = map(int, found[-1])
-            if 0 < total and done <= total:
-                return round(100 * done / total, 1)
-    return None
+# ── a --run job ──
+
+def job_file(job):
+    return os.path.join(JOBS, job + ".json")
 
 
-def run(command):
+def load_job(job):
+    try:
+        with open(job_file(job)) as f:
+            return json.load(f)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def ended(run):
+    try:
+        with open(run["exit"]) as f:
+            return int(f.read().strip() or "1")
+    except (OSError, ValueError):
+        return None
+
+
+def start_run(job, command):
     os.makedirs(JOBS, exist_ok=True)
-    stamp = str(int(time.time() * 1000))
-    j = {"command": command, "log": os.path.join(JOBS, stamp + ".log"), "exit": os.path.join(JOBS, stamp + ".exit"), "started": time.time()}
-    with open(j["log"], "wb") as log:
+    run = {"job": job, "command": command, "log": os.path.join(JOBS, job + ".log"), "exit": os.path.join(JOBS, job + ".exit"), "started": time.time()}
+    with open(run["log"], "wb") as log:
         # The command runs as its own shell, so an exit or a ; inside it can't skip writing how it ended.
-        process = subprocess.Popen(["sh", "-c", 'sh -c "$1"; echo $? > "$2"', "sh", command, j["exit"]],
+        process = subprocess.Popen(["sh", "-c", 'sh -c "$1"; echo $? > "$2"', "sh", command, run["exit"]],
                                    stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-    j["pid"] = process.pid
-    with open(JOB, "w") as f:
-        json.dump(j, f)
-    return j
+    run["pid"] = process.pid
+    with open(job_file(job), "w") as f:
+        json.dump(run, f)
+    return run
 
+
+# ── the watcher: keeps the card up to date in the background ──
+
+def watch(job, probe):
+    run = load_job(job)
+    began, last_probe, said = time.time(), 0.0, (None, None)
+    while time.time() - began < LONGEST:
+        state = read_state()
+        if not state or state.get("job") != job or state.get("state") != "running":
+            return
+        if run:
+            code = ended(run)
+            lines = tail(run["log"])
+            if code is not None:
+                if code == 0:
+                    update(job, state="done", percent=100.0, status="Finished")
+                else:
+                    update(job, state="failed", status=(lines[-1][:60] if lines else f"Stopped with exit {code}"))
+                return
+            now = reading(lines)
+            if now != said and now != (None, None):
+                said = now
+                update(job, percent=now[0], status=now[1])
+        if probe and time.time() - last_probe >= PROBE_EVERY:
+            last_probe = time.time()
+            try:
+                out = subprocess.run(["sh", "-c", probe], capture_output=True, timeout=20, text=True, errors="replace").stdout
+            except (subprocess.TimeoutExpired, OSError):
+                out = ""
+            now = reading([line.strip() for line in out.splitlines() if line.strip()])
+            if now != (None, None):
+                said = now
+                if now[0] is not None and now[0] >= 100 and not run:
+                    update(job, state="done", percent=100.0, status=now[1] or "Finished")
+                    return
+                update(job, percent=now[0], status=now[1])
+        time.sleep(LOG_EVERY)
+
+
+def spawn_watcher(job, probe):
+    args = [sys.executable, os.path.abspath(__file__), "--watch", job] + (["--probe", probe] if probe else [])
+    subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+# ── --wait ──
 
 def wait(seconds):
-    j = job()
-    if not j or j.get("reported"):
+    state = read_state()
+    run = load_job(state["job"]) if state and state.get("job") else None
+    if not run or run.get("reported"):
         # Nothing of ours is running (a Pro Tool's job, say): wait the time, and the tool says how it's doing.
         time.sleep(seconds)
         return f"Waited {seconds:g} s. Check its status with the tool, report it with --status, then --wait again or --done."
     deadline = time.time() + seconds
-    while time.time() < deadline and ended(j) is None:
+    while time.time() < deadline and ended(run) is None:
         time.sleep(min(1, max(0, deadline - time.time())))
-    return report(j, seconds)
-
-
-def report(j, seconds):
-    code, lines = ended(j), last_lines(j)
-    took = time.time() - j["started"]
+    code, lines = ended(run), tail(run["log"], 5)
+    took = time.time() - run["started"]
+    said = "\n".join("  " + line for line in lines) or "  (nothing printed)"
     if code is not None:
         # How it ended is told once; after that --wait is a plain wait again.
-        j["reported"] = True
-        with open(JOB, "w") as f:
-            json.dump(j, f)
-    said = "\n".join("  " + line for line in lines) or "  (nothing printed)"
-    if code == 0:
-        return f"It finished after {took:.0f} s. It last printed:\n{said}\nCheck what it made, then run kimono-progress --done."
-    if code is not None:
-        return f"It failed (exit {code}) after {took:.0f} s. It last printed:\n{said}\nThe whole log is {j['log']}."
-    percent = percent_of(lines)
-    nxt = f'kimono-progress --status "<what it is doing>"' + (f" --percent {percent:g}" if percent is not None else "") + "; kimono-progress --wait <seconds>"
-    return f"Still running after {took:.0f} s" + (f" ({percent:g}% by its output)" if percent is not None else "") + f". It last printed:\n{said}\nNext, in one command: {nxt}"
+        run["reported"] = True
+        with open(job_file(run["job"]), "w") as f:
+            json.dump(run, f)
+        if code == 0:
+            return f"It finished after {took:.0f} s, and the card shows it done. It last printed:\n{said}"
+        return f"It failed (exit {code}) after {took:.0f} s; the card shows it stopped. It last printed:\n{said}\nThe whole log is {run['log']}."
+    percent, _ = reading(lines)
+    return (f"Still running after {took:.0f} s" + (f" ({percent:g}%)" if percent is not None else "")
+            + f"; the card follows it by itself. It last printed:\n{said}\n--wait again.")
+
+
+# ── the commands ──
+
+def fail(message):
+    sys.exit("kimono-progress: " + message)
+
+
+def number(flag, text, low, high, words):
+    try:
+        value = float(text)
+    except ValueError:
+        fail(f"{flag} takes a number")
+    if not low <= value <= high:
+        fail(f"{flag} is {words}")
+    return value
 
 
 args = sys.argv[1:]
 if not args or args[0] in ("-h", "--help"):
     sys.exit(__doc__.strip())
 
-if args[0] == "--wait":
-    try:
-        seconds = float(args[1]) if len(args) > 1 else 30
-    except ValueError:
-        sys.exit("kimono-progress: --wait takes seconds, as in --wait 30")
-    seconds = max(1, min(seconds, 100))
-    print(wait(seconds))
+if args[0] == "--watch":
+    probe = args[3] if len(args) >= 4 and args[2] == "--probe" else None
+    watch(args[1], probe)
+elif args[0] == "--wait":
+    seconds = 30.0
+    if len(args) > 1:
+        try:
+            seconds = float(args[1])
+        except ValueError:
+            fail("--wait takes seconds, as in --wait 30")
+    print(wait(max(1, min(seconds, 100))))
 elif args[0] == "--status":
     rest = args[1:]
     if not rest or rest[0].startswith("-") or not rest[0].strip():
-        sys.exit('kimono-progress: say what the tool reports, as in kimono-progress --status "Rendering" --percent 40')
-    status, rest = rest[0], rest[1:]
-    told = []
+        fail('say what the tool reports, as in kimono-progress --status "Rendering" --percent 40')
+    status, rest, percent, left = rest[0].strip()[:60], rest[1:], None, None
     while rest:
-        if rest[0] in ("--percent", "--left") and len(rest) >= 2:
-            try:
-                value = float(rest[1])
-            except ValueError:
-                sys.exit(f"kimono-progress: {rest[0]} takes a number")
-            if rest[0] == "--percent" and not 0 <= value <= 100:
-                sys.exit("kimono-progress: --percent is between 0 and 100")
-            if rest[0] == "--left" and not 0 <= value <= 3600:
-                sys.exit("kimono-progress: --left is seconds, up to 3600")
-            told.append(f"{value:g}%" if rest[0] == "--percent" else f"about {value:g} s left")
-            rest = rest[2:]
+        if rest[0] == "--percent" and len(rest) >= 2:
+            percent = number("--percent", rest[1], 0, 100, "between 0 and 100")
+        elif rest[0] == "--left" and len(rest) >= 2:
+            left = number("--left", rest[1], 0, 3600, "seconds, up to 3600")
         else:
-            sys.exit(f"kimono-progress: --status takes --percent N and --left SECONDS, not {rest[0]}")
-    print(f"The card shows: {status}" + (f" ({', '.join(told)})" if told else "") + ". --wait, check again, or --done.")
+            fail(f"--status takes --percent N and --left SECONDS, not {rest[0]}")
+        rest = rest[2:]
+    state = read_state()
+    if not state or state.get("state") != "running":
+        fail('start the card first: kimono-progress "What you\'re doing"')
+    state.update({"status": status, "percent": percent, "left": left})
+    write_state(state)
+    print(f"The card shows: {status}" + (f" ({percent:g}%)" if percent is not None else "") + ". --wait, check again, or --done.")
 elif args[0] == "--done":
-    print("Done: the card shows it finished." + (f" ({' '.join(args[1:])})" if len(args) > 1 else ""))
+    state = read_state()
+    if state:
+        state.update({"state": "done", "percent": 100.0, "left": None, "status": " ".join(args[1:]).strip()[:60] or "Finished"})
+        write_state(state)
+    print("Done: the card shows it finished.")
 else:
-    what, rest = args[0], args[1:]
-    about = command = None
+    what, rest = args[0].strip(), args[1:]
+    command = probe = None
     while rest:
         if rest[0] == "--about" and len(rest) >= 2:
-            try:
-                about = float(rest[1])
-            except ValueError:
-                sys.exit("kimono-progress: --about takes seconds, as in --about 120")
-            rest = rest[2:]
+            number("--about", rest[1], 0, 86400, "seconds")  # accepted from older habits; the card doesn't guess from time
         elif rest[0] == "--run" and len(rest) >= 2:
-            command, rest = rest[1], rest[2:]
+            command = rest[1]
+        elif rest[0] == "--probe" and len(rest) >= 2:
+            probe = rest[1]
         else:
-            sys.exit(f"kimono-progress: a start takes --about SECONDS and --run \"COMMAND\", not {rest[0]}")
-    if not what.strip() or what.startswith("-"):
-        sys.exit('kimono-progress: say what you\'re doing first, as in kimono-progress "Making your video" --about 120')
-    if about is None or not 5 <= about <= 3600:
-        sys.exit("kimono-progress: give --about SECONDS, between 5 and 3600: about how long it takes")
+            fail(f'a start takes --run "COMMAND" and --probe "COMMAND", not {rest[0]}')
+        rest = rest[2:]
+    if not what or what.startswith("-"):
+        fail('say what you\'re doing first, as in kimono-progress "Making your video"')
     if command is not None and not command.strip():
-        sys.exit('kimono-progress: --run takes the command to run, as in --run "python3 render.py"')
-    if command is None:
-        print(f"Started: {what} (about {about:g} s). Use --wait between checks and --done when it's ready.")
+        fail('--run takes the command to run, as in --run "python3 render.py"')
+    if probe is not None and not probe.strip():
+        fail('--probe takes a command that prints how far it is, as in --probe "echo $(ls frames | wc -l)/300"')
+    job = f"{int(time.time() * 1000)}-{os.getpid()}"
+    write_state({"job": job, "label": what[:80], "state": "running", "status": None, "percent": None, "left": None,
+                 "watched": command is not None or probe is not None, "started": time.time()})
+    if command is not None:
+        run = start_run(job, command)
+    if command is not None or probe is not None:
+        spawn_watcher(job, probe)
+    if command is not None:
+        print(f"Started: {what}, running in the background (its output goes to {run['log']}). The card follows it by itself; --wait comes back as soon as it ends.")
+    elif probe is not None:
+        print(f"Started: {what}. The card follows your probe by itself; --wait between looks, --done if it doesn't reach 100.")
     else:
-        j = run(command)
-        print(f"Started: {what} (about {about:g} s), running in the background; its output goes to {j['log']}. "
-              "--wait comes back as soon as it finishes; report with --status in the same command.")
+        print(f"Started: {what}. After each check, --status with what the tool said; --wait between checks; --done when it's ready.")

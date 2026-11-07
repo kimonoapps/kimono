@@ -15,6 +15,11 @@ export type CodeEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; id: string; name: string; label: string; detail?: string; change?: string; /** A person's own app it used through Composio, by toolkit slug ("gmail"). */ app?: string; /** The Drive space it worked in, when it touched /files/<space>. */ space?: string; /** It ran on one of Composio's own accounts: a Pro Tool, charged to the person's allowance. */ pro?: boolean; /** The Composio tools it ran ("HIGGSFIELD_GENERATE_VIDEO"), to find what each cost. */ tools?: string[]; /** A kimono-progress call: the steps of a long piece of work show as one card with a bar. */ progress?: ToolProgress }
   | { kind: "tool-result"; id: string; ok: boolean; output: string }
+  /**
+   * How a long piece of work stands, as Kimono read it from the sandbox (ProgressCard) while it ran: [id] is
+   * the tool call that started its card. Recorded whenever it changes, so the card moves without the agent.
+   */
+  | { kind: "progress"; id: string; state: "running" | "done" | "failed"; status?: string; percent?: number; left?: number; /** The sandbox follows the job itself (--run, --probe): it goes on after the turn ends. */ watched?: boolean }
   /** Messages sent while it worked that it has now read (steering), by their seq. */
   | { kind: "steered"; seqs: number[] }
   /** Messages sent while it worked that were never read: it was stopped first. */
@@ -79,21 +84,43 @@ function toolChange(name: string, input: Record<string, unknown>): string | unde
  * What a kimono-progress call says (infra/sandbox/bin/kimono-progress): it began something long (what, about how
  * many seconds), it's waiting, or it's done; with when Kimono heard it, so the bar keeps time across reloads.
  */
-export type ToolProgress = { label?: string; about?: number; wait?: number; done?: boolean; /** What the tool last said ("In queue", "Rendering"), with its percent done or seconds left when it gave them. */ status?: string; percent?: number; left?: number; at: number };
+export type ToolProgress = { label?: string; about?: number; wait?: number; done?: boolean; /** What the tool last said ("In queue", "Rendering"), with its percent done or seconds left when it gave them. */ status?: string; percent?: number; left?: number; /** The command was only kimono-progress steps: bookkeeping, not shown as a step under the card. */ only?: boolean; at: number };
 
 /**
  * A command line may chain kimono-progress with other steps ("cd build; kimono-progress … --about 300;
  * python3 render.py", "kimono-progress --status … ; kimono-progress --wait 60"): every kimono-progress
  * step in it counts, later ones over earlier ones. A step that only mentions it ("echo kimono-progress") doesn't.
  */
+/**
+ * The card's state as kimono-progress keeps it in the sandbox (.kimono/progress.json), read by Kimono every
+ * couple of seconds while a card is up: which job, what it's doing, and how far it is by the job's own word.
+ */
+export type ProgressCard = { job: string; label: string; state: "running" | "done" | "failed"; status?: string; percent?: number; left?: number; watched?: boolean };
+
+export function progressCardOf(text: string): ProgressCard | undefined {
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { return undefined; }
+  if (!raw || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.job !== "string" || !o.job || typeof o.label !== "string") return undefined;
+  const state = o.state === "done" || o.state === "failed" ? o.state : o.state === "running" ? "running" : undefined;
+  if (!state) return undefined;
+  const num = (v: unknown, max: number) => typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.min(max, v) : undefined;
+  const percent = num(o.percent, 100), left = num(o.left, 3600);
+  const status = typeof o.status === "string" && o.status.trim() ? o.status.trim().slice(0, 60) : undefined;
+  return { job: o.job, label: o.label.slice(0, 80), state, ...(status ? { status } : {}), ...(percent !== undefined ? { percent } : {}), ...(left !== undefined ? { left } : {}), ...(o.watched === true ? { watched: true } : {}) };
+}
+
 export function progressOf(command: unknown, at = Date.now()): ToolProgress | undefined {
   if (typeof command !== "string") return undefined;
   let found: Omit<ToolProgress, "at"> | undefined;
+  let other = false;
   for (const step of shellSteps(command)) {
     const said = progressStep(step);
     if (said) found = { ...found, ...said };
+    else other = true;
   }
-  return found ? { ...found, at } : undefined;
+  return found ? { ...found, ...(other ? {} : { only: true }), at } : undefined;
 }
 
 /** The steps of a shell line, split at ; && || | & and newlines outside quotes. */
@@ -131,9 +158,11 @@ function progressStep(step: string): Omit<ToolProgress, "at"> | undefined {
   }
   const wait = /^--wait\s+(\d+(?:\.\d+)?)/.exec(rest);
   if (wait) return { wait: Math.min(100, Number(wait[1])) };
-  const what = quoted(rest), about = what && /^\s+--about\s+(\d+(?:\.\d+)?)/.exec(what.after);
-  if (what && about && what.text.trim()) return { label: what.text.trim().slice(0, 80), about: Math.min(3600, Math.max(5, Number(about[1]))) };
-  return undefined;
+  /* A start: what it's doing, then any of --about N, --run "…", --probe "…". */
+  const what = quoted(rest);
+  if (!what?.text.trim() || !/^(\s+--|\s*$)/.test(what.after)) return undefined;
+  const about = /(?:^|\s)--about\s+(\d+(?:\.\d+)?)/.exec(what.after);
+  return { label: what.text.trim().slice(0, 80), ...(about ? { about: Math.min(3600, Math.max(5, Number(about[1]))) } : {}) };
 }
 
 /** A shell-quoted word at the start of text: its words ("It said \\"hi\\"" reads It said "hi"), and what follows. */

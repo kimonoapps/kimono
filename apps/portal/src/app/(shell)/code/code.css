@@ -455,7 +455,7 @@ details.calls > summary::-webkit-details-marker, details.call > summary::-webkit
 .tools-used:hover { background: var(--k-container-highest); }
 .tools-used svg.i { width: 16px; height: 16px; }
 .tools-used .cd-faint { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.tools-used .chev, .call .chev { width: 7px; height: 7px; margin: -3px 2px 0 6px; flex: none; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform .3s var(--k-spring); }
+.tools-used .chev, .call .chev, .cd-progress-head .chev { width: 7px; height: 7px; margin: -3px 2px 0 6px; flex: none; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform .3s var(--k-spring); }
 details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .call-list { display: grid; gap: 3px; margin-top: 8px; }
 .call { background: var(--k-container-lowest); border-radius: 6px; }
@@ -1526,7 +1526,8 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* ── long work as one card: kimono-progress (ProgressGroup) ── */
 .cd-progress { max-width: 560px; }
-.cd-progress > summary.cd-progress-head { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container); cursor: pointer; list-style: none; }
+.cd-progress > .cd-progress-head { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container); list-style: none; }
+.cd-progress > summary.cd-progress-head { cursor: pointer; }
 .cd-progress > summary.cd-progress-head::-webkit-details-marker { display: none; }
 .cd-progress[open] > summary.cd-progress-head { border-radius: var(--k-r-l) var(--k-r-l) 6px 6px; }
 .cd-progress-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
@@ -1537,7 +1538,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-progress-label .cd-groupmarks { flex: none; }
 /* Kimono's own wavy ink bar (InkWave), in suō; grey once it stopped */
 .cd-progress-wave { display: block; width: 100%; color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
-.cd-progress[data-state="stopped"] .cd-progress-wave { color: var(--k-on-surface-variant); }
+.cd-progress[data-state="failed"] .cd-progress-text small { color: var(--k-error, var(--k-on-surface-variant)); }
 .cd-progress-text small { font: 500 12px/1.2 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
 .cd-progress > .call-list { margin-top: 4px; }
 

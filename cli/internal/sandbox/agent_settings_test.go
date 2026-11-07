@@ -147,11 +147,17 @@ func TestPromptDoesntSendItToReadTheGuide(t *testing.T) {
 	}
 }
 
-// Long work that runs here goes through --run, and a check is one command.
-func TestPromptTeachesProgressRun(t *testing.T) {
-	for _, want := range []string{`--run "<command>"`, "--wait comes back the moment it ends", `kimono-progress --status "Rendering" --percent 40; kimono-progress --wait 60`} {
+// Long work that runs here goes through --run, says how far it is in its own
+// output, and the card never guesses from the clock.
+func TestPromptTeachesRealProgress(t *testing.T) {
+	for _, want := range []string{`--run "<command>"`, "PROGRESS <percent> <what it's doing>", `--probe "<command>"`, "never a guess from the clock", `kimono-progress --status "Rendering" --percent 40; kimono-progress --wait 60`, "never sleep"} {
 		if !strings.Contains(SystemPrompt, want) {
 			t.Fatalf("the system prompt doesn't say %q", want)
+		}
+	}
+	for _, gone := range []string{"--about <seconds>", "a third of your estimate"} {
+		if strings.Contains(SystemPrompt, gone) {
+			t.Fatalf("the system prompt still asks for a time estimate: %q", gone)
 		}
 	}
 }

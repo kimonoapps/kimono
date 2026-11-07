@@ -293,19 +293,26 @@ which suits a sandbox with no web.
 - **No web, no Kimono.** The frame is a sandboxed iframe with scripts only, so
   it has no origin, no cookies and no API, and its policy loads nothing but the
   engine and reaches nothing at all. Data goes in the page.
-- **Long work as one card.** For something slow (a video being generated),
-  the agent runs `kimono-progress "<what>" --about <seconds>`, waits with
-  `kimono-progress --wait` (at most 100 s at a time, under the tool time
-  limit, where a long `sleep` fails) and ends with `--done`. Work that runs in
-  the sandbox (a render, an ffmpeg job) starts with `--run "<command>"`: it runs
-  in the background and `--wait` returns the moment it ends, with its exit and
-  last output (and a percent when it prints one), so a check is one command:
-  `kimono-progress --status "…" --percent N; kimono-progress --wait 60`.
-  Portal tags those calls wherever they sit in a chained command (`progress`
-  on the tool event, with when it heard them), and the chat
-  draws the group as one card: what it's doing, a bar filling toward the
-  estimate (then slowing, never full until done), the time so far; the steps
-  fold under it. Web and phone.
+- **Long work as one card.** For something slow (a render, a video being
+  generated), the agent runs `kimono-progress "<what>"`, and the card shows
+  the job's real progress, never a guess from the clock. kimono-progress keeps
+  the card's state in the sandbox at `.kimono/progress.json`: what it's doing,
+  running/done/failed, and the job's own status, percent and time left. Work
+  that runs in the sandbox starts with `--run "<command>"`: a watcher there
+  reads its output (`PROGRESS 35 Drawing frames` lines the agent writes into
+  its own scripts, or any `35%` or `120/300`) and ends the card with the
+  command, done or failed. `--probe "<command>"` is run every few seconds for
+  work measured some other way; a Pro Tool's job is reported by the agent with
+  `--status` after each check. `--wait` (at most 100 s, under the tool time
+  limit) comes back the moment a `--run` job ends.
+  Portal tags kimono-progress calls wherever they sit in a chained command
+  (`progress` on the tool event). From a start on, it reads the card's file
+  every 2 s (lib/code/progress-probe.ts) and records a `progress` event when
+  it changes, so the card moves without the agent; a job the sandbox watches
+  is followed after the turn ends too. The bar fills only with a real percent,
+  else it's the open wave; steps that were only kimono-progress aren't shown,
+  and any others fold under the card. Web and phone read it the same way
+  (lib/code/progress-card.ts, and its twin in CodeChat.kt).
 - **Any 3D model in a scene.** `model(build, move)` puts the agent's own
   three.js model on a scene's timeline: `build(T)` makes it once, `move()` sets
   it every frame from trackers, so narration, scrubbing and the controls work

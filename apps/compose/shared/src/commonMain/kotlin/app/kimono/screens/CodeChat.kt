@@ -386,7 +386,11 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
 
 /* ── the timeline, as the reader sees it ── */
 
-private class ToolCall(val event: CodeEvent.Tool) { var result by mutableStateOf<CodeEvent.ToolResult?>(null) }
+private class ToolCall(val event: CodeEvent.Tool) {
+    var result by mutableStateOf<CodeEvent.ToolResult?>(null)
+    /** For a card's start: how its job stands, as Kimono last read it from the sandbox. */
+    var probe by mutableStateOf<CodeEvent.Progress?>(null)
+}
 
 private sealed interface Item {
     val key: Long
@@ -417,6 +421,7 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
                 if (last is Item.Tools) last.calls += call else items += Item.Tools(stored.seq, mutableListOf(call))
             }
             is CodeEvent.ToolResult -> calls[e.id]?.result = e
+            is CodeEvent.Progress -> calls[e.id]?.probe = e
             is CodeEvent.Done -> items += Item.Done(stored.seq, e)
             is CodeEvent.Image -> if (last is Item.Shots) last.shots += e else items += Item.Shots(stored.seq, mutableListOf(e))
             is CodeEvent.Access -> items += Item.Access(stored.seq, e, answers[e.id])
@@ -873,58 +878,77 @@ private fun ToolGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, live: B
     }
 }
 
-private fun clockWords(ms: Long): String { val s = (ms / 1000).coerceAtLeast(0); return "${s / 60}:${(s % 60).toString().padStart(2, '0')}" }
-private fun aboutWords(seconds: Double) = if (seconds < 90) "about ${((seconds / 5).toInt() * 5).coerceAtLeast(5)} s" else "about ${(seconds / 60).toInt()} min"
+/** A card's time left, in words; only when the job or its tool said. */
+private fun leftWords(seconds: Double) = when {
+    seconds < 10 -> "almost done"
+    seconds < 90 -> "about ${(seconds / 5).roundToInt() * 5} s left"
+    else -> "about ${(seconds / 60).roundToInt()} min left"
+}
 
 /**
- * A long piece of work as one card: what it's doing, a bar filling toward the time the agent expected (slowing,
- * never quite full, if it runs over), how long so far; done when the agent says so. Its steps open under it.
+ * How a long job's card stands, as lib/code/progress-card.ts reads it on the web: the job's own word as Kimono
+ * read it from the sandbox, else what the agent last reported. No guess from the clock.
+ */
+private class Card(val label: String, val state: String, val stopped: Boolean, val status: String?, val percent: Double?, val left: Double?) {
+    fun words(failedSteps: Int): String {
+        val words = when {
+            state == "done" -> listOf("Done", status?.takeIf { it != "Finished" })
+            state == "failed" -> listOf("Didn't finish", status)
+            stopped -> listOf("Stopped", percent?.let { "at ${it.roundToInt()}%" })
+            else -> listOf(status, percent?.let { "${it.roundToInt()}%" }, left?.let { leftWords(it) })
+        } + (if (failedSteps > 0) "$failedSteps step${if (failedSteps == 1) "" else "s"} failed" else null)
+        return words.filterNotNull().joinToString(" · ").ifEmpty { "Working on it" }
+    }
+}
+
+private fun cardOf(calls: List<ToolCall>, live: Boolean): Card {
+    val startCall = calls.last { it.event.progress?.label != null }
+    val start = startCall.event.progress!!
+    val later = calls.mapNotNull { it.event.progress }.filter { it.at >= start.at }
+    val said = later.lastOrNull { it.status != null }
+    val probe = startCall.probe
+    val state = probe?.state ?: if (later.any { it.done }) "done" else "running"
+    val stopped = state == "running" && !live && probe?.watched != true
+    val left = if (state != "running") null else if (probe != null) probe.left else said?.left
+    return Card(start.label ?: "", state, stopped, probe?.status ?: said?.status, if (state == "done") 100.0 else probe?.percent ?: said?.percent, left)
+}
+
+/**
+ * A long piece of work as one card: what it's doing and how far it really is. The bar fills only with a percent
+ * the job itself gave; until then it's the open wave. Kimono reads the job's state from the sandbox while it runs,
+ * so the card moves by itself. The kimono-progress bookkeeping isn't shown; any other steps open under it.
  */
 @Composable
 private fun ProgressGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, live: Boolean, open: (String) -> Unit) {
-    val start = calls.last { it.event.progress?.label != null }.event.progress!!
-    val doneAt = calls.firstOrNull { it.event.progress?.done == true && it.event.progress.at >= start.at }?.event?.progress?.at
-    val finished = doneAt != null
-    val stopped = !finished && !live
-    var now by remember { mutableStateOf(app.kimono.screens.now()) }
-    LaunchedEffect(finished, stopped) { while (!finished && !stopped) { now = app.kimono.screens.now(); kotlinx.coroutines.delay(1000) } }
-    val took = (doneAt ?: now) - start.at
-    val about = ((start.about ?: 60.0) * 1000).toLong()
-    /* What the tool itself last said: its percent when it gave one; else its time left moves the expected end; else the estimate. */
-    val update = calls.lastOrNull { it.event.progress?.status != null && it.event.progress.at >= start.at }?.event?.progress
-    val total = update?.let { u -> u.left?.let { maxOf(1000L, u.at - start.at + (it * 1000).toLong()) } } ?: about
-    val timed = if (took < total) 0.9f * took / total else (0.9 + 0.08 * (1 - kotlin.math.exp(-(took - total).toDouble() / total))).toFloat()
-    val fill = if (finished) 1f else update?.percent?.let { minOf(0.98f, (it / 100).toFloat()) } ?: timed
-    val remaining = (total - took) / 1000.0
-    val estimate = when {
-        update?.percent != null -> "${update.percent!!.roundToInt()}%"
-        update?.left != null -> if (remaining > 5) "${aboutWords(remaining)} left" else "almost done"
-        else -> aboutWords(about / 1000.0)
-    }
+    val card = cardOf(calls, live)
+    val steps = calls.filter { it.event.progress?.only != true }
+    val failed = steps.count { it.result?.ok == false && it.event.label != "Ran" }
+    val done = card.state == "done"
+    val ended = done || card.state == "failed" || card.stopped
     val apps = calls.mapNotNull { it.event.app }.distinct().take(3)
     var shown by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth()) {
-        Surface(onClick = { shown = !shown }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Surface(onClick = { if (steps.isNotEmpty()) shown = !shown }, enabled = steps.isNotEmpty(), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.size(34.dp).clip(RoundedCornerShape(11.dp)).background(MaterialTheme.colorScheme.surfaceContainerLowest), contentAlignment = Alignment.Center) {
-                    if (finished) Icon(kimonoIcon("check"), "Done", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                    else if (!stopped) InkLoader(size = 18.dp)
+                    if (done) Icon(kimonoIcon("check"), "Done", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                    else if (!ended) InkLoader(size = 18.dp)
                     else Icon(kimonoIcon("gear"), null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(start.label ?: "", style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Text(card.label, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                         apps.forEach { app -> AppLogo(code, app, 16.dp, pro = calls.any { it.event.app == app && it.event.pro }) }
                     }
-                    /* Kimono's own wavy ink bar; grey once it stopped */
-                    app.kimono.ui.InkProgress({ fill }, Modifier.fillMaxWidth(), color = if (stopped) MaterialTheme.colorScheme.onSurfaceVariant else null)
-                    Text(if (finished) "Done · ${clockWords(took)}" else if (stopped) "Stopped after ${clockWords(took)}" else listOfNotNull(clockWords(took), update?.status, estimate).joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    /* Kimono's own wavy ink bar: filled by a real percent, else the open wave */
+                    if (!ended) app.kimono.ui.InkWaveBar(card.percent?.let { p -> { (p / 100).toFloat() } }, Modifier.fillMaxWidth().height(10.dp), null)
+                    Text(card.words(failed), style = MaterialTheme.typography.labelSmall, color = if (card.state == "failed") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(14.dp).rotate(if (shown) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (steps.isNotEmpty()) Icon(kimonoIcon("chevron"), null, modifier = Modifier.size(14.dp).rotate(if (shown) 90f else 0f), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (shown) Column(Modifier.padding(start = 6.dp, top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            calls.forEach { call -> ToolRow(code, marks, call, open) }
+            steps.forEach { call -> ToolRow(code, marks, call, open) }
         }
     }
 }

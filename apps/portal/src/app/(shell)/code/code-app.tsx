@@ -3,6 +3,7 @@
 import { createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, InkLoader, Seal } from "@kimono/ui";
+import { cardOf, cardWords } from "@/lib/code/progress-card";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
@@ -1937,7 +1938,7 @@ function AppReady({ workspace, url }: { workspace: Workspace; url: string }) {
 
 /* ── chat ── */
 
-type Tool = Extract<CodeEvent, { kind: "tool" }> & { result?: Extract<CodeEvent, { kind: "tool-result" }>; /** A Pro Tool's price, once Composio said. */ cost?: number };
+type Tool = Extract<CodeEvent, { kind: "tool" }> & { result?: Extract<CodeEvent, { kind: "tool-result" }>; /** A Pro Tool's price, once Composio said. */ cost?: number; /** For a card's start: how its job stands, as Kimono last read it from the sandbox. */ probe?: Extract<CodeEvent, { kind: "progress" }> };
 type Item =
   | { type: "ask"; seq: number; at: number; event: Extract<CodeEvent, { kind: "ask" }>; /** sent while it worked and never read: it was stopped first */ dropped?: boolean }
   | { type: "text"; seq: number; text: string }
@@ -1980,6 +1981,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       }
       case "tool-result": { const tool = tools.get(event.id); if (tool) tool.result = event; break; }
       case "tool-cost": { const tool = tools.get(event.id); if (tool) tool.cost = (tool.cost ?? 0) + event.usd; break; }
+      case "progress": { const tool = tools.get(event.id); if (tool) tool.probe = event; break; }
       case "done": items.push({ type: "done", seq, event }); break;
       case "published": items.push({ type: "published", seq, event }); break;
       case "image": if (last?.type === "shots") last.shots.push(event); else items.push({ type: "shots", seq, shots: [event] }); break;
@@ -2529,58 +2531,29 @@ function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
 }
 
 /**
- * How full a long job's bar is. The tool's own percent when it gave one; else its time left, which
- * moves the expected end; else the agent's estimate. Time-based, it reaches 90% at the expected end
- * and then creeps toward 98%: it never claims done before it is.
- */
-function progressFill({ took, about, begun, update }: { took: number; about: number; begun: number; update?: Tool["progress"] }): { fill: number; words: string } {
-  if (update?.percent != null) return { fill: Math.min(0.98, update.percent / 100), words: `${Math.round(update.percent)}%` };
-  const total = update?.left != null ? Math.max(1000, update.at - begun + update.left * 1000) : about;
-  const fill = took < total ? 0.9 * took / total : 0.9 + 0.08 * (1 - Math.exp(-(took - total) / total));
-  const remaining = (total - took) / 1000;
-  return { fill, words: update?.left != null ? (remaining > 5 ? `${aboutWords(remaining)} left` : "almost done") : aboutWords(about / 1000) };
-}
-
-const clockWords = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
-const aboutWords = (seconds: number) => seconds < 90 ? `about ${Math.round(seconds / 5) * 5 || 5} s` : `about ${Math.round(seconds / 60)} min`;
-
-/**
- * A long piece of work as one card: what it's doing, a bar that fills toward
- * the time the agent expected (and slows, never quite full, if it runs over),
- * how long so far; done when the agent says so. The checks it made on the way
- * are folded under it, to open.
+ * A long piece of work as one card: what it's doing and how far it really is. The bar fills only with a
+ * percent the job itself gave (its output, a probe, or the tool's status); until then it's the open wave.
+ * Kimono reads the job's state from the sandbox while it runs, so the card moves by itself. The
+ * kimono-progress bookkeeping isn't shown; any other steps fold under it.
  */
 function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
-  const start = [...tools].reverse().find((t) => t.progress?.label)!;
-  const begun = start.progress!.at, about = (start.progress!.about ?? 60) * 1000;
-  const doneAt = tools.find((t) => t.progress?.done && t.progress.at >= begun)?.progress?.at;
-  const finished = doneAt != null;
-  /* Ended without saying it was done: the turn stopped or moved on. */
-  const stopped = !finished && !live;
-  const failed = tools.filter((t) => t.result && !t.result.ok && t.label !== "Ran").length;
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (finished || stopped) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [finished, stopped]);
-  const took = (doneAt ?? now) - begun;
-  /* What the tool itself last said (kimono-progress --status): its state, and its percent or time left. */
-  const update = [...tools].reverse().find((t) => t.progress?.status && t.progress.at >= begun)?.progress;
-  const known = progressFill({ took, about, begun, update });
-  const fill = finished ? 1 : known.fill;
-  const label = start.progress!.label!;
-  return <details className="calls cd-progress" data-state={finished ? "done" : stopped ? "stopped" : "running"}>
-    <summary className="cd-progress-head">
-      <InkBlot className="cd-progress-mark" tint={finished ? inkTint.live : inkTint.suo} seed={tools[0]?.id ?? label}>{finished ? <Icon name="check" /> : stopped ? <GroupMarks tools={tools} /> : <InkLoader tone="plain" label={label} className="cd-morph" />}</InkBlot>
-      <span className="cd-progress-text">
-        <span className="cd-progress-label"><b>{label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}<ProPrice usd={priceOf(tools)} /></span>
-        <InkWave className="cd-progress-wave" label={label} value={fill} />
-        <small>{finished ? `Done · ${clockWords(took)}` : stopped ? `Stopped after ${clockWords(took)}` : [clockWords(took), update?.status, known.words].filter(Boolean).join(" · ")}{failed ? ` · ${failed} step${failed === 1 ? "" : "s"} failed` : ""}</small>
-      </span>
-      <span className="chev" aria-hidden="true" />
-    </summary>
-    <div className="call-list">{tools.map((tool) => <ToolRow key={tool.id} tool={tool} />)}</div>
+  const card = cardOf(tools, live);
+  const steps = tools.filter((t) => !t.progress?.only);
+  const failed = steps.filter((t) => t.result && !t.result.ok && t.label !== "Ran").length;
+  const done = card.state === "done", broke = card.state === "failed";
+  const head = <>
+    <InkBlot className="cd-progress-mark" tint={done ? inkTint.live : inkTint.suo} seed={tools[0]?.id ?? card.label}>{done ? <Icon name="check" /> : broke || card.stopped ? <GroupMarks tools={tools} /> : <InkLoader tone="plain" label={card.label} className="cd-morph" />}</InkBlot>
+    <span className="cd-progress-text">
+      <span className="cd-progress-label"><b>{card.label}</b>{tools.some((t) => t.app) ? <GroupMarks tools={tools} /> : null}<ProPrice usd={priceOf(tools)} /></span>
+      {done || broke || card.stopped ? null : <InkWave className="cd-progress-wave" label={card.label} value={card.percent != null ? card.percent / 100 : undefined} />}
+      <small>{cardWords(card, failed)}</small>
+    </span>
+  </>;
+  const state = done ? "done" : broke ? "failed" : card.stopped ? "stopped" : "running";
+  if (!steps.length) return <div className="calls cd-progress" data-state={state}><div className="cd-progress-head">{head}</div></div>;
+  return <details className="calls cd-progress" data-state={state}>
+    <summary className="cd-progress-head">{head}<span className="chev" aria-hidden="true" /></summary>
+    <div className="call-list">{steps.map((tool) => <ToolRow key={tool.id} tool={tool} />)}</div>
   </details>;
 }
 

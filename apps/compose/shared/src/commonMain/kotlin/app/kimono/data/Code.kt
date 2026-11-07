@@ -234,6 +234,8 @@ sealed interface CodeEvent {
     /** [pro]: it ran on one of Composio's own accounts, a Pro Tool. */
     data class Tool(val id: String, val name: String, val label: String, val detail: String?, val change: String?, val app: String?, val space: String?, val pro: Boolean = false, val progress: ToolProgress? = null) : CodeEvent
     data class ToolResult(val id: String, val ok: Boolean, val output: String) : CodeEvent
+    /** How a long job stands, as Kimono read it from the sandbox; [id] is the call that started its card. [watched]: the sandbox follows it after the turn too. */
+    data class Progress(val id: String, val state: String, val status: String?, val percent: Double?, val left: Double?, val watched: Boolean) : CodeEvent
     data class Done(val ok: Boolean, val cancelled: Boolean, val error: String?, val durationMs: Long?, val model: String?, val context: ContextUse?) : CodeEvent
     data class Compacted(val before: Long?) : CodeEvent
     data class Published(val url: String, val number: Int) : CodeEvent
@@ -331,7 +333,7 @@ private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
  * A kimono-progress call: it began something long ([label], about [about] seconds), it's waiting, the tool
  * reported its [status] (with [percent] done or [left] seconds when it gave them), or it's [done]; [at] is when Kimono heard it (ms).
  */
-data class ToolProgress(val label: String?, val about: Double?, val done: Boolean, val at: Long, val status: String? = null, val percent: Double? = null, val left: Double? = null)
+data class ToolProgress(val label: String?, val about: Double?, val done: Boolean, val at: Long, val status: String? = null, val percent: Double? = null, val left: Double? = null, val only: Boolean = false)
 
 private fun JsonObject.text(key: String) = this[key]?.jsonPrimitive?.takeIf { it.isString }?.content
 private fun JsonObject.flag(key: String) = (this[key] as? JsonPrimitive)?.booleanOrNull
@@ -343,8 +345,9 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "started" -> CodeEvent.Started
     "text" -> CodeEvent.Say(o.text("text") ?: "")
     "tool" -> CodeEvent.Tool(o.text("id") ?: "", o.text("name") ?: "", o.text("label") ?: "", o.text("detail"), o.text("change"), o.text("app"), o.text("space"), o.flag("pro") == true,
-        (o["progress"] as? JsonObject)?.let { p -> p.long("at")?.let { at -> ToolProgress(p.text("label"), (p["about"] as? JsonPrimitive)?.doubleOrNull, p.flag("done") == true, at, p.text("status"), (p["percent"] as? JsonPrimitive)?.doubleOrNull, (p["left"] as? JsonPrimitive)?.doubleOrNull) } })
+        (o["progress"] as? JsonObject)?.let { p -> p.long("at")?.let { at -> ToolProgress(p.text("label"), (p["about"] as? JsonPrimitive)?.doubleOrNull, p.flag("done") == true, at, p.text("status"), (p["percent"] as? JsonPrimitive)?.doubleOrNull, (p["left"] as? JsonPrimitive)?.doubleOrNull, p.flag("only") == true) } })
     "tool-result" -> CodeEvent.ToolResult(o.text("id") ?: "", o.flag("ok") ?: true, o.text("output") ?: "")
+    "progress" -> CodeEvent.Progress(o.text("id") ?: "", o.text("state") ?: "running", o.text("status"), (o["percent"] as? JsonPrimitive)?.doubleOrNull, (o["left"] as? JsonPrimitive)?.doubleOrNull, o.flag("watched") == true)
     "done" -> CodeEvent.Done(
         o.flag("ok") ?: false, o.flag("cancelled") ?: false, o.text("error"), o.long("durationMs"), o.text("model"),
         (o["context"] as? JsonObject)?.let { c -> c.long("used")?.let { ContextUse(it, c.long("window")) } },

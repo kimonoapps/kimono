@@ -17,6 +17,7 @@ import {
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
+import { ProgressProbe, progressFile } from "./progress-probe";
 import { instantCostOf, toolSession } from "./composio";
 import { guardMediaBudget, holdMediaBudget, lastAllowance, mediaNote, ranAsPro } from "./media";
 import { changeMemory, contextFor, forget, profileOf, remember } from "./memory";
@@ -53,6 +54,10 @@ type Live = {
   steering?: Map<string, Set<number>>;
   /** What to tell the agent when it should carry on by itself (an access answer), once the current turn ends. */
   carryOn?: Map<string, { user: ApiUser; notes: string[] }>;
+  /** The long job each workspace's card is following, read from its sandbox (ProgressProbe); one at a time. */
+  probes?: Map<string, ProgressProbe>;
+  /** The jobs each workspace's cards have followed, so an old card in the sandbox is never taken for a new one. */
+  claimed?: Map<string, Set<string>>;
 };
 /* One connection and one set of listeners for the process, kept across hot reloads in development. */
 const cache = globalThis as unknown as { kimonoCode?: Live; kimonoTyping?: Map<string, Map<string, number>> };
@@ -152,6 +157,24 @@ function broadcast(workspaceId: string, turnId: string | null, event: CodeEvent)
   for (const listener of live.listeners.get(workspaceId) ?? []) {
     try { listener(passing); } catch { /* a closed stream */ }
   }
+}
+
+/**
+ * Follows the card a kimono-progress start put up (tool call `id`): its state is read from the sandbox every
+ * couple of seconds and recorded as it changes, so the card moves with the job, not the agent's checks.
+ */
+function followProgress(config: CodeConfig, workspace: Workspace, turn: string, id: string, label: string) {
+  live.probes?.get(workspace.id)?.stop();
+  const claimed = (live.claimed ??= new Map()).get(workspace.id) ?? new Set<string>();
+  live.claimed.set(workspace.id, claimed);
+  const read = async () => {
+    const response = await sandbox.file(config, workspace, progressFile);
+    return response.ok ? await response.text() : undefined;
+  };
+  const probe = new ProgressProbe(read, (event) => { try { record(workspace.id, turn, event); } catch { probe.stop(); } }, claimed);
+  (live.probes ??= new Map()).set(workspace.id, probe);
+  probe.start(id, label);
+  return probe;
 }
 
 /** Keeps the artifact a finished Write, Edit or kimono-show left in the sandbox, and tells the page. */
@@ -466,6 +489,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   /* Calls to the person's own tools still waiting for their answer. */
   const composioCalls = new Set<string>();
   const proCalls = new Map<string, { at: number; tools: string[] }>();
+  /* The card this turn put up, if any: followed on after the turn only while the sandbox watches its job. */
+  let probe: ProgressProbe | undefined;
   try {
     await ensure(config, workspace, who(user), { owner: byOwner });
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
@@ -575,6 +600,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           /* An app it used that the person never connected ran on Composio's account: a Pro Tool, marked with its bolt. */
           if (event.kind === "tool" && event.app && event.label === "Used" && await ranAsPro(db(), config, workspace.owner, portalOrigin(), event.app).catch(() => false)) event.pro = true;
           record(workspace.id, turn, event);
+          /* A long job's card: follow it in the sandbox from now on. */
+          if (event.kind === "tool" && event.progress?.label) probe = followProgress(config, workspace, turn, event.id, event.progress.label);
           /* A tool of theirs answered: what it cost counts against the month's Pro Tools allowance at once. */
           if (event.kind === "tool" && event.name.startsWith("mcp__composio__")) composioCalls.add(event.id);
           if (event.kind === "tool-result" && composioCalls.delete(event.id)) guardMediaBudget(db(), config, workspace.owner, portalOrigin());
@@ -599,6 +626,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   } finally {
     drafts?.close();
     live.turns.delete(turn);
+    if (probe && live.probes?.get(workspace.id) === probe) await probe.turnEnded().catch(() => {});
     /* Deleted while it worked: nothing left to record to, or to carry on in. */
     if (!db().prepare("SELECT 1 FROM workspaces WHERE id = ?").get(workspace.id)) {
       live.queued?.delete(workspace.id);
