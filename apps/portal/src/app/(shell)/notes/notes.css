@@ -69,10 +69,6 @@
 .nt-face + .nt-face { margin-left: calc(var(--s) * -.3); }
 .nt-faces .k-ink-portrait { width: 100%; height: 100%; }
 
-/* the crest mark, turned by its seed */
-.ink-crest { width: var(--crest-size); height: var(--crest-size); display: inline-grid; place-items: center; flex: none; }
-.ink-crest > svg { width: 100%; height: 100%; rotate: var(--crest-turn); overflow: visible; }
-
 /* ··· and its menu */
 .nt-more { flex: none; display: inline-flex; }
 .nt-more > button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--k-r-full); background: var(--k-container-high); color: var(--k-on-surface-variant); cursor: pointer; }

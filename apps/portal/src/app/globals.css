@@ -960,3 +960,7 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 .k-scroller-bar.x:hover i, .k-scroller[data-dragging] > .k-scroller-bar.x i { height: 8px; }
 .k-scroller[data-dragging] { user-select: none; }
 @media (prefers-reduced-motion: reduce) { .k-scroller-bar, .k-scroller-bar i { transition: none; } }
+
+/* 紋 a crest washed in its colour (notebooks, spaces) */
+.ink-crest { width: var(--crest-size); height: var(--crest-size); display: inline-grid; place-items: center; flex: none; }
+.ink-crest > svg { width: 100%; height: 100%; rotate: var(--crest-turn); overflow: visible; }

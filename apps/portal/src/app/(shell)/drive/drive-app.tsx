@@ -6,6 +6,7 @@ import { rise, riseWhenReady, slide } from "@/components/motion";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCrossTo } from "@/components/crossing";
+import { InkCrest } from "@/components/ink-crest";
 import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, MorphLoader, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
 import {
@@ -251,10 +252,11 @@ export function GuestDrive({ token, space, mark }: { token: string; space: Share
 
 /* ── the sidebar ── */
 
-function Mark({ space, size = "" }: { space: Pick<Space, "mark" | "code">; size?: string }) {
+function Mark({ space, size = "" }: { space: Pick<Space, "id" | "crest" | "color" | "mark" | "code">; size?: string }) {
   if (space.code) return <span className={`dv-mark dv-code-mark ${size}`} aria-hidden="true">
     <AppBloom identity={{ id: "kimono-code", name: "AI", accent: space.code.accent, glyph: "code" }} size="mark" />
   </span>;
+  if (space.crest) return <span className={`dv-mark inked ${size}`} aria-hidden="true"><InkCrest crest={space.crest} color={space.color} seed={space.id} /></span>;
   return <span className={`dv-mark mon ${size}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: space.mark ?? "" }} />;
 }
 
@@ -949,7 +951,7 @@ function CrestPicker({ crest, color, onPick }: { crest: string; color: string; o
   return <div className="dv-crestpick">
     <div className="dv-colours" role="group" aria-label="Colour">{catalogue.colors.map((c) => <button key={c.id} type="button" aria-pressed={c.id === color} aria-label={c.name} title={c.name} style={{ backgroundColor: c.hex }} onClick={() => onPick(crest, c.id)} />)}</div>
     <div className="dv-crests" role="group" aria-label="Crest">{catalogue.crests.map((c) => <button key={c.id} type="button" aria-pressed={c.id === crest} aria-label={c.name} title={c.name} onClick={() => onPick(c.id, color)}>
-      <span className="dv-mark mon" dangerouslySetInnerHTML={{ __html: catalogue.marks[c.id]?.[color] ?? "" }} />{c.jp}
+      <span className="dv-mark inked" aria-hidden="true"><InkCrest crest={c.id} color={color} seed={c.id} /></span>{c.jp}
     </button>)}</div>
   </div>;
 }
