@@ -179,6 +179,37 @@ Notes uses the app colours from its definition (`#b56d78`, `#5f3441`,
 gets a colour of its own. At night: web `tokens.css:196-241`, phone
 `kimonoNight`.
 
+## MCP
+
+`https://notes.<domain>/mcp` is Streamable HTTP, stateless: each POST is
+JSON-RPC answered in JSON, with no session and no stream (GET and DELETE
+answer 405). Its tools are `list_notebooks`, `search_notes` (every word, in
+titles and text), `read_note`, `create_note`, `update_note` (with the
+version read; a conflict keeps both, as the app does), `move_note` and
+`delete_note` (to the trash). They act as the person who signed in, through
+Drive's rules (`lib/notes/mcp-protocol.ts`, `mcp-server.ts`).
+
+Sign-in is OAuth 2.1 as MCP clients expect (`lib/notes/mcp-oauth.ts`):
+
+- `/.well-known/oauth-protected-resource/mcp` and
+  `/.well-known/oauth-authorization-server` say where to sign in; the
+  issuer is the Notes address.
+- Clients register themselves at `/mcp/register` and are always public:
+  PKCE (S256) is what proves the redeemer is the one that asked.
+- The person allows the app at `/mcp/authorize` on the Portal, where they
+  are signed in. The page names the app and where it returns to.
+- `/mcp/token` gives an hour-long access token and a refresh token that is
+  used once and lapses after 30 days unused. A code or refresh token
+  presented twice ends the grant. Tokens are opaque, stored hashed in
+  `notes-mcp.db`, and only good for the address they were issued for.
+- Access ends with `/mcp/revoke`, signing out everywhere, or the account
+  being switched off.
+
+The appliance's proxy publishes the Notes address directly, as it does the
+Portal's: MCP and its sign-in go to the Portal, anything else to `/notes`
+there (`lib/notes/mcp-site.ts`, rendered by `deployment.ts`). Tests:
+`pnpm --filter @kimono/portal test:notes-mcp`.
+
 ## Not in the first version
 
 - Pictures and attachments inside notes.

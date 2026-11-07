@@ -7,6 +7,7 @@ import { renderMeshPolicy } from "./mesh-policy";
 import { secretName } from "./secret-name";
 import type { MeshMember } from "./directory";
 import { getTunnelProvider } from "./tunnel-providers";
+import { notesAppId, notesSite } from "./notes/mcp-site";
 
 type ComposeService = {
   image: string;
@@ -348,6 +349,13 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
   // administrator's choice and is often neither "kimono" nor a subdomain at all.
   const portal = settings.apps["kimono-portal"];
   const portalHostname = portal ? appHostname(portal.domain, settings.baseDomain) : "";
+
+  const notes = settings.apps[notesAppId];
+  const notesHostname = notes?.enabled ? appHostname(notes.domain, settings.baseDomain) : "";
+  if (notesHostname && portalHostname && notesHostname !== portalHostname) {
+    plan.files["generated/caddy-portal-notes.caddy"] = notesSite(notesHostname, portalHostname);
+    plan.providerActions.push({ provider: "direct", tunnelId: "portal", mode: "cname", tunnelUuid: "", originCertificate: "", cname: portalHostname, hostname: notesHostname, path: "/*", target: "http://portal:3000" });
+  }
 
   for (const tunnel of Object.values(settings.tunnels).filter((item) => item.enabled)) {
     const routes = Object.values(settings.routes).filter((route) => route.enabled && route.tunnelId === tunnel.id).flatMap((route) => {
