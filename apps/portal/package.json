@@ -28,6 +28,11 @@
     "test:git-owners": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-git-owners.mjs"
   },
   "dependencies": {
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@kimono/account": "workspace:*",
     "@kimono/app-sdk": "workspace:*",
     "@kimono/artifacts": "workspace:*",
