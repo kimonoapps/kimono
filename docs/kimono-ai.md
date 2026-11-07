@@ -230,9 +230,10 @@ as context joined to the system prompt; another person's never do.
 
 ## Feedback
 
-Each answer's Done line has a thumbs up and down; a thumbs down asks, once and
-optionally, what went wrong. A chat's menu has Report, which sends the whole chat
-with an optional reason. Both go to one bank in code.db (`lib/code/feedback.ts`):
+Each answer's Done line has a thumbs up and down. A thumb opens a dialog first:
+admins can see the answer and the feedback, without the person's name, with room
+to say why; nothing is saved until Send. A chat's menu has Report, which warns the
+same way and sends the whole chat with an optional reason. Both go to one bank in code.db (`lib/code/feedback.ts`):
 a rating keeps a copy of its answer (the ask, what it said, the tools it used and
 how they went, the model, how long it took), so the bank stands without the chat;
 a report keeps every turn and no name, chat or link back to it. A rating keeps

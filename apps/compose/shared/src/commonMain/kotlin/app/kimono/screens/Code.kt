@@ -743,11 +743,12 @@ private fun ReportDialog(code: Code, w: CodeWorkspace, onDone: () -> Unit) {
     var problem by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDone,
+        icon = { Icon(kimonoIcon(if (sent) "check" else "person"), null) },
         title = { Text(if (sent) "Reported" else "Report “${w.title}”", maxLines = 2, overflow = TextOverflow.Ellipsis) },
         text = {
             if (sent) Text("Thanks. It was sent without your name.")
             else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("The whole chat is sent, without your name.")
+                Text("Admins can see the whole chat. Your name isn’t attached.")
                 OutlinedTextField(reason, { reason = it.take(4000) }, placeholder = { Text("What went wrong? (optional)") }, minLines = 3, modifier = Modifier.fillMaxWidth())
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }

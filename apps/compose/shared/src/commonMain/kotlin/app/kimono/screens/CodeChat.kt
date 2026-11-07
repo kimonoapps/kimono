@@ -948,35 +948,45 @@ private fun DiffLines(lines: List<String>, modifier: Modifier = Modifier) {
 
 @Composable
 private fun DoneNote(e: CodeEvent.Done, rating: Int?, rate: (Int?, String?) -> Unit) {
-    var asking by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf("") }
-    val give = { next: Int -> val taken = rating == next; asking = !taken && next == -1; note = ""; rate(if (taken) null else next, null) }
+    /* A thumb asks first: admins will see the answer, without the person's name. Taking one back doesn't. */
+    var confirming by remember { mutableStateOf<Int?>(null) }
+    val give = { next: Int -> if (rating == next) rate(null, null) else confirming = next }
     val thumbs: @Composable () -> Unit = {
         Row {
             IconButton(onClick = { give(1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-up"), "Good answer", modifier = Modifier.size(18.dp), tint = if (rating == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
             IconButton(onClick = { give(-1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-down"), "Bad answer", modifier = Modifier.size(18.dp), tint = if (rating == -1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        when {
-            e.cancelled -> Note(null, "Stopped.")
-            !e.ok -> Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(kimonoIcon("close"), null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
-                    Text(e.error ?: "It stopped with an error.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
-                    thumbs()
-                }
-            }
-            /* Which Claude answered, and how long it took. Never what it cost. */
-            else -> Row(verticalAlignment = Alignment.CenterVertically) {
-                Note("check", listOfNotNull("Done", e.model?.let { modelNames[it] }, e.durationMs?.let { elapsedText(it) }).joinToString(" · "), Modifier.weight(1f))
+    when {
+        e.cancelled -> Note(null, "Stopped.")
+        !e.ok -> Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(kimonoIcon("close"), null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onErrorContainer)
+                Text(e.error ?: "It stopped with an error.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.weight(1f))
                 thumbs()
             }
         }
-        if (asking && rating == -1) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(note, { note = it.take(2000) }, placeholder = { Text("What went wrong?") }, singleLine = true, modifier = Modifier.weight(1f))
-            TextButton(onClick = { if (note.isNotBlank()) rate(-1, note.trim()); asking = false }) { Text(if (note.isBlank()) "Skip" else "Send") }
+        /* Which Claude answered, and how long it took. Never what it cost. */
+        else -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Note("check", listOfNotNull("Done", e.model?.let { modelNames[it] }, e.durationMs?.let { elapsedText(it) }).joinToString(" · "), Modifier.weight(1f))
+            thumbs()
         }
+    }
+    confirming?.let { next ->
+        var note by remember(next) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { confirming = null },
+            icon = { Icon(kimonoIcon("person"), null) },
+            title = { Text(if (next == 1) "Good answer" else "Bad answer") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Admins can see this answer and your feedback. Your name isn’t attached.")
+                    OutlinedTextField(note, { note = it.take(2000) }, placeholder = { Text(if (next == 1) "What was good? (optional)" else "What went wrong? (optional)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = { TextButton(onClick = { rate(next, note.trim().ifBlank { null }); confirming = null }) { Text("Send") } },
+            dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
+        )
     }
 }
 

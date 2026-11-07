@@ -2410,16 +2410,14 @@ function ToolRow({ tool }: { tool: Tool }) {
 
 function Done({ event, rating, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; rating: 1 | -1 | null; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
   const { me } = useContext(ViewerContext);
-  const [asking, setAsking] = useState(false);
-  const [note, setNote] = useState("");
-  const [sent, setSent] = useState(false);
+  /* A thumb asks first: admins will see the answer, without the person's name. Taking one back doesn't. */
+  const [confirming, setConfirming] = useState<1 | -1 | null>(null);
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
   /* Which Claude answered, and how long it took. Never what it cost. */
   const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null].filter(Boolean);
   const give = (next: 1 | -1) => {
-    const taken = rating === next;
-    setAsking(!taken && next === -1); setSent(false); setNote("");
-    void onRate(taken ? null : next).catch(() => { /* the thumb goes back on the next load */ });
+    if (rating === next) void onRate(null).catch(() => { /* the thumb comes back on the next load */ });
+    else setConfirming(next);
   };
   const thumbs = me ? <span className="cd-thumbs">
     <button type="button" className="cd-iconbutton" aria-label="Good answer" aria-pressed={rating === 1} title="Good answer" onClick={() => give(1)}><Icon name="thumb-up" /></button>
@@ -2429,12 +2427,34 @@ function Done({ event, rating, onRate }: { event: Extract<CodeEvent, { kind: "do
     {event.ok
       ? <p className="cd-note cd-done"><Icon name="check" /><span>Done</span>{facts.length ? <span className="cd-done-facts">{facts.join(" · ")}</span> : null}{thumbs}</p>
       : <p className="cd-note cd-done is-failed" role="alert"><Icon name="close" /><span>{event.error || "It stopped with an error."}</span>{thumbs}</p>}
-    {asking && rating === -1 ? <form className="cd-thumbs-why" onSubmit={(e) => { e.preventDefault(); if (!note.trim()) { setAsking(false); return; } void onRate(-1, note.trim()).then(() => { setSent(true); setAsking(false); }, () => {}); }}>
-      <input autoFocus value={note} maxLength={2000} placeholder="What went wrong?" aria-label="What went wrong?" onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setAsking(false); }} />
-      <Seal type="submit" compact tone="quiet">{note.trim() ? "Send" : "Skip"}</Seal>
-    </form> : null}
-    {sent ? <p className="cd-note cd-thumbs-thanks">Thanks.</p> : null}
+    {confirming ? <RateDialog rating={confirming} onRate={onRate} onClose={() => setConfirming(null)} /> : null}
   </>;
+}
+
+/** Before a thumb is saved: who sees it, and room to say why. */
+function RateDialog({ rating, onRate, onClose }: { rating: 1 | -1; onRate: (rating: 1 | -1, note?: string) => Promise<unknown>; onClose: () => void }) {
+  const box = useRef<HTMLDialogElement>(null);
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { box.current?.showModal(); }, []);
+  const send = () => {
+    setSending(true); setProblem(null);
+    onRate(rating, note.trim() || undefined).then(() => box.current?.close(), (error) => { setSending(false); setProblem(problemText(error)); });
+  };
+  return <dialog ref={box} className="cd-share cd-report" aria-labelledby="cd-rate-title" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+    <header><h2 id="cd-rate-title">{rating === 1 ? "Good answer" : "Bad answer"}</h2></header>
+    <div className="cd-share-body">
+      <p className="cd-rate-warn" role="note"><Icon name="people" /><span>Admins can see this answer and your feedback. Your name isn&rsquo;t attached.</span></p>
+      <textarea autoFocus value={note} maxLength={2000} rows={3} placeholder={rating === 1 ? "What was good? (optional)" : "What went wrong? (optional)"} aria-label={rating === 1 ? "What was good?" : "What went wrong?"} onChange={(e) => setNote(e.target.value)} />
+    </div>
+    <footer>
+      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+      <span className="cd-grow" />
+      <Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Cancel</Seal>
+      <Seal type="button" compact disabled={sending} onClick={send}>{sending ? "Sending" : "Send"}</Seal>
+    </footer>
+  </dialog>;
 }
 
 /** Reports a whole chat: it goes with no name on it. */
@@ -2452,7 +2472,7 @@ function ReportChat({ workspace, onClose }: { workspace: Workspace; onClose: () 
     <header><h2 id="cd-report-title">{state === "sent" ? "Reported" : `Report \u201c${workspace.title}\u201d`}</h2></header>
     <div className="cd-share-body">
       {state === "sent" ? <p className="cd-faint">Thanks. It was sent without your name.</p> : <>
-        <p className="cd-faint">The whole chat is sent, without your name.</p>
+        <p className="cd-rate-warn" role="note"><Icon name="people" /><span>Admins can see the whole chat. Your name isn&rsquo;t attached.</span></p>
         <textarea value={reason} maxLength={4000} rows={4} placeholder="What went wrong? (optional)" aria-label="What went wrong?" onChange={(e) => setReason(e.target.value)} />
       </>}
     </div>

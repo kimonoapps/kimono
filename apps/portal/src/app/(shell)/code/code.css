@@ -1289,10 +1289,8 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-thumbs .cd-iconbutton:hover:not(:disabled) { opacity: 1; }
 .cd-thumbs .cd-iconbutton[aria-pressed="true"] { opacity: 1; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
 .cd-thumbs .i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.cd-thumbs-why { display: flex; gap: 8px; align-items: center; margin: -4px 0 4px; }
-.cd-thumbs-why input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--k-outline-variant); border-radius: var(--k-r-s); background: var(--k-surface); color: var(--k-on-surface); font: 400 15px/1.4 var(--k-sans); }
-.cd-thumbs-why input:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
-.cd-thumbs-thanks { margin-top: -4px; }
+.cd-rate-warn { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px 14px; border-radius: var(--k-r-m); background: var(--k-secondary-container); color: var(--k-on-secondary-container); font: 500 14px/1.45 var(--k-sans); }
+.cd-rate-warn svg.i { margin-top: 1px; }
 .cd-report textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--k-outline-variant); border-radius: var(--k-r-s); background: var(--k-surface); color: var(--k-on-surface); font: 400 15px/1.45 var(--k-sans); resize: vertical; }
 .cd-report textarea:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
 
