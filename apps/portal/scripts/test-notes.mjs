@@ -72,3 +72,12 @@ test('an excerpt is the prose, without the title line or markup', () => {
   assert.equal(notes.excerptOf('# Groceries\n\n- [ ] **Milk**\n- [x] [Eggs](https://x)\n\n```js\ncode\n```\nDone'), 'Milk Eggs Done');
   assert.equal(notes.excerptOf('a'.repeat(200), 10), `${'a'.repeat(10)}…`);
 });
+
+test('Kimono AI is told which notebooks are theirs and how to write notes', async () => {
+  const { notesGuide } = await import('../src/lib/notes/agent.ts');
+  assert.equal(notesGuide([]), '');
+  const guide = notesGuide([{ name: 'Notes', own: true }, { name: 'Kyoto trip', own: false }]);
+  assert.match(guide, /their own is "Notes"; shared with them: "Kyoto trip"/);
+  assert.match(guide, /- \[ \] /);
+  assert.match(guide, /kimono-remember is only for what you should know about them/);
+});

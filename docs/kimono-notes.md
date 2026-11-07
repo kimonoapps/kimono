@@ -38,6 +38,12 @@ API: `/api/v1/notes` (code: `apps/portal/src/lib/notes`, `src/app/api/v1/notes`)
 | `POST /notes/sections/:id/share` | `{ members: [{ username, role }] }` makes a new notebook |
 | `GET`, `PUT /notes/notebooks/:id/members` | `{ username, role \| null }`. Anyone may leave |
 
+**Kimono AI** knows your notebooks. Each message names them, and its system
+prompt says how notes work (`lib/notes/agent.ts`). It asks for a notebook with
+`kimono-access` like any other space, reads and writes the `.md` files in it,
+and keeps `kimono-remember` for what it should know about you. A note it
+changes shows up in Notes the next time it's opened.
+
 **MCP.** Outline served an MCP server at `https://notes.<domain>/mcp`. Kimono
 Notes serves one at that same address, so a client already set up keeps
 working once it signs in again.

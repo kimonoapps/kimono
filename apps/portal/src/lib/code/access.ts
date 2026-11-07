@@ -327,14 +327,16 @@ export async function answer(db: DatabaseSync, config: CodeConfig, workspace: Wo
 export function accessPrompt(db: DatabaseSync, workspace: Workspace): string {
   try {
     const owner = workspace.owner;
-    const spaces = spacesOf(driveDb(), owner).map((s) => s.name);
+    const all = spacesOf(driveDb(), owner);
+    const spaces = all.filter((s) => s.purpose !== "notes").map((s) => s.name);
+    const notebooks = all.filter((s) => s.purpose === "notes").map((s) => s.name);
     const grants = grantsOf(db, owner);
     const open = (db.prepare("SELECT node_id, dir FROM opened WHERE workspace_id = ?").all(workspace.id) as { node_id: string; dir: string }[])
       .map((o) => ({ dir: o.dir, need: needOn(grants, owner, workspace.id, chainOf(o.node_id)) }))
       .filter((o): o is { dir: string; need: Need } => o.need !== null);
     const code = codeSpaceOf(db, owner);
     const codeName = spacesOf(driveDb(), owner).find((s) => s.id === code)?.name;
-    const note = accessNote(spaces, open);
+    const note = accessNote(spaces, open, notebooks);
     return codeName ? `${note} Every one of their chats keeps its files in the "${codeName}" space (a folder per project, then one per chat); ask for any of it with kimono-access and it opens without asking them.` : note;
   } catch {
     return "";

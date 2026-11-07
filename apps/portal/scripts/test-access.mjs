@@ -68,3 +68,8 @@ test('the schema has requests, grants and what each chat has open', () => {
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table), table);
   }
 });
+
+test('notebooks are named apart from the spaces of files', () => {
+  assert.equal(accessNote(['Photos'], [], ['Notes', 'Kyoto trip']),
+    'Drive spaces you can ask for: Photos. Their notebooks in Kimono Notes, asked for the same way: Notes, Kyoto trip.');
+});
