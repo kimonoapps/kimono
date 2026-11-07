@@ -56,6 +56,7 @@ import app.kimono.ui.InkBlot
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import app.kimono.ui.FileTypeMark
 import app.kimono.ui.fileMarkUri
@@ -69,21 +70,23 @@ import kotlinx.coroutines.launch
 import kotlin.time.Clock
 
 /*
- * 家 Home: what's happening in your house now. Not the apps (the flower in
- * the middle of the bar has those) but a glance at them: an update that's
- * ready, Code's tasks that are working or waiting, what's new in Drive, and
- * which of your devices are connected. A card shows only when it has
- * something to say; when nothing does, Home says so.
+ * 家 Home: what's happening in your house now, then every app. A few numbers,
+ * an update that's ready, Kimono AI's chats, what's new in Drive and which
+ * of your devices are connected (a card shows only when it has something to
+ * say), then all the apps by what they're for. The pin on an app puts it in
+ * My apps, the few under the flower, the same as the website's rail.
  */
 @Composable
 fun HomeScreen(
     me: AccountProfile?, platform: Platform, update: AppUpdate?, onLater: () -> Unit,
     drive: Drive, code: Code, vpn: Vpn, admin: Boolean,
-    here: (LauncherApp) -> PhoneAppHere, go: (String) -> Unit,
+    here: (LauncherApp) -> PhoneAppHere, open: (LauncherApp) -> Unit, go: (String) -> Unit,
 ) {
     val first = me?.name?.split(" ")?.firstOrNull()?.takeIf { it.isNotBlank() } ?: me?.username ?: "home"
     val apps by drive.launcher.collectAsState()
     val driveOn by drive.driveOn.collectAsState()
+    val mine by drive.myApps.collectAsState()
+    val groups by drive.appGroups.collectAsState()
     var recent by remember { mutableStateOf<List<DriveNode>?>(null) }
     var tasks by remember { mutableStateOf(code.knownWorkspaces()) }
     var devices by remember { mutableStateOf(vpn.known()) }
@@ -106,6 +109,25 @@ fun HomeScreen(
     val shownTasks = (waiting.ifEmpty { tasks.orEmpty().sortedByDescending { it.updatedAt } }).take(3)
     val newFiles = recent.orEmpty().filter { !it.isFolder }.take(4)
     val mesh = devices?.takeIf { it.member && it.available && it.devices.isNotEmpty() }
+    val stats = buildList {
+        val all = tasks.orEmpty()
+        val working = all.count { it.running }
+        if (codeApp != null && all.isNotEmpty()) add(if (working > 0) Triple("$working", "working", "code") else Triple("${all.size}", if (all.size == 1) "chat" else "chats", "code"))
+        val spaces = drive.knownSpaces()
+        if (driveOn != false && spaces != null) add(Triple("${spaces.size}", if (spaces.size == 1) "space" else "spaces", "drive"))
+        if (mesh != null) add(Triple("${mesh.devices.count { it.online }}/${mesh.devices.size}", "online", "vpn"))
+    }
+    /* Every app under what it's for; a Kimono from before the groups lists them all as one. */
+    val sections = apps.orEmpty().let { all ->
+        val byId = all.associateBy { it.id }
+        val placed = groups.flatMap { it.apps }.toSet()
+        val listed = groups.map { it.label to it.apps.mapNotNull { id -> byId[id] } } + listOf("More" to all.filter { it.id !in placed })
+        listed.filter { it.second.isNotEmpty() }.let { if (groups.isEmpty()) listOf("Apps" to all).filter { it.second.isNotEmpty() } else it }
+    }
+    fun pin(app: LauncherApp) {
+        val now = mine ?: return
+        scope.launch { runCatching { drive.setMyApps(if (app.id in now) now - app.id else now + app.id) } }
+    }
 
     KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -121,6 +143,18 @@ fun HomeScreen(
                             append("Welcome home, ")
                             withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) { append("$first.") }
                         }, style = MaterialTheme.typography.displaySmall, modifier = Modifier.padding(top = 6.dp))
+                    }
+                }
+            }
+            if (stats.isNotEmpty()) item {
+                Row(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    stats.forEach { (value, label, to) ->
+                        Column(
+                            Modifier.weight(1f).clip(MaterialTheme.shapes.large).background(MaterialTheme.colorScheme.surfaceContainerLow).clickable { go(to) }.padding(horizontal = 14.dp, vertical = 12.dp),
+                        ) {
+                            Text(value, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
                     }
                 }
             }
@@ -173,11 +207,28 @@ fun HomeScreen(
                     }
                 }
             }
-            if (update == null && updates.isEmpty() && shownTasks.isEmpty() && newFiles.isEmpty() && mesh == null && apps != null) item {
-                Column(Modifier.fillMaxWidth().padding(vertical = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    InkBlot("home-quiet", size = 72.dp) { KimonoBranch(32.dp) }
-                    Text("All quiet at home.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
-                    Text("Your apps are under the flower.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            sections.forEach { (label, list) ->
+                item(key = "group:$label") {
+                    Text(label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 22.dp, top = 14.dp, bottom = 2.dp))
+                }
+                list.chunked(2).forEachIndexed { row, pair ->
+                    item(key = "group:$label:$row") {
+                        Row(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            pair.forEach { app ->
+                                Box(Modifier.weight(1f)) {
+                                    AppTile(app, here(app)) { open(app) }
+                                    if (mine != null) {
+                                        val pinned = app.id in mine.orEmpty()
+                                        androidx.compose.material3.IconButton(onClick = { pin(app) }, modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
+                                            Icon(kimonoIcon("pin"), if (pinned) "Remove ${app.name} from My apps" else "Add ${app.name} to My apps",
+                                                tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                }
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
                 }
             }
         }

@@ -52,7 +52,7 @@ function useHereRoom(rooms: RailRoom[] | undefined) {
 }
 
 /*
- * The rail (ADR 0006): Home, then the apps you pinned in your order (every
+ * The rail (ADR 0006): Home, then My apps in your order (every
  * app comes up with ⌘K / Ctrl+K);
  * the app you're in opens its own rooms beneath it, in place. You and Admin
  * sit at the foot. On a phone it becomes the bottom bar.
@@ -67,7 +67,7 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   you: ReactNode;
   defaultPins: string[];
 }) {
-  const [pins, setPins] = usePins(defaultPins);
+  const [pins, savePins] = usePins(defaultPins);
   const [sheet, setSheet] = useState(false);
   const hereRoom = useHereRoom(rooms);
   /* ⌘K / Ctrl+K brings up every app, from anywhere; again, or Escape, puts it away. */
@@ -83,6 +83,8 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
   const [dropBefore, setDropBefore] = useState<string | null | "end">(null);
   const byId = new Map(apps.map((app) => [app.id, app]));
   const pinned = pins.filter((id) => byId.has(id));
+  /* Apps in My apps that this person can't open right now keep their place at the end. */
+  const setPins = (next: string[]) => savePins([...next, ...pins.filter((id) => !byId.has(id))]);
   const shown = current && !pinned.includes(current) ? [...pinned, current] : pinned;
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
@@ -141,14 +143,14 @@ export function Rail({ apps, current, rooms, active, admin, you, defaultPins }: 
         {at > 0 ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => move(-1)}><LineIcon name="up" />Move up</button> : null}
         {at >= 0 && at < pinned.length - 1 ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => move(1)}><LineIcon name="down" />Move down</button> : null}
         {at >= 0
-          ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => setPins(pinned.filter((pin) => pin !== menu.id))}><LineIcon name="unpin" />Unpin</button>
-          : <button type="button" role="menuitem" tabIndex={-1} onClick={() => setPins([...pinned, menu.id])}><LineIcon name="pin" />Pin</button>}
+          ? <button type="button" role="menuitem" tabIndex={-1} onClick={() => setPins(pinned.filter((pin) => pin !== menu.id))}><LineIcon name="unpin" />Remove from My apps</button>
+          : <button type="button" role="menuitem" tabIndex={-1} onClick={() => setPins([...pinned, menu.id])}><LineIcon name="pin" />Add to My apps</button>}
       </PinMenu>;
     })() : null}
     {sheet ? <div className="rail-scrim" role="presentation" onClick={(event) => { if (event.target === event.currentTarget) setSheet(false); }} onKeyDown={(event) => { if (event.key === "Escape") setSheet(false); }}>
       <div className="rail-sheet" role="dialog" aria-modal="true" aria-label="Your apps">
         <div className="rail-sheet-head"><h2>Your apps</h2><button className="rail-sheet-close" type="button" onClick={() => setSheet(false)} aria-label="Close">×</button></div>
-        <AppTiles apps={apps} compact onOpen={() => setSheet(false)} />
+        <AppTiles apps={apps} mine={pins} compact onOpen={() => setSheet(false)} />
       </div>
     </div> : null}
   </nav>;

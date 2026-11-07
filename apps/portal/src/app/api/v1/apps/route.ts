@@ -7,6 +7,8 @@ import { driveConfig, driveIdentity } from "@/lib/drive/config";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { holdsMeshAccess } from "@/lib/directory";
 import { getPlatformSettings } from "@/lib/settings";
+import { categorize } from "@/lib/app-categories";
+import { myApps } from "@/lib/my-apps";
 
 /* Built into the Kimono apps themselves, or not wanted on a phone. */
 const notListed = new Set(["kimono-tools", "kimono-drive"]);
@@ -74,6 +76,9 @@ export async function GET() {
   return apiJson({
     apps,
     launcher,
+    /* My apps, as on the website's rail (the phone skips any it can't open, and keeps them when it saves), and Home's groups. */
+    myApps: await myApps(user.username),
+    categories: categorize(opened).map((group) => ({ id: group.id, label: group.label, apps: group.apps.map((app) => app.id) })),
     driveOn,
     drive: drive ? { ...drive, bloom: bloomSvg(drive, { glyph: drive.glyph, standalone: true, unique: drive.id }) } : null,
   });

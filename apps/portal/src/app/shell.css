@@ -255,3 +255,45 @@ html, body, .app-frame { overflow-x: clip; }
 .login-progress { display: flex; align-items: flex-start; gap: 10px; max-width: 520px; }
 .login-shape { width: 20px; height: 20px; flex: none; color: var(--k-suo); margin-top: 1px; }
 .login-progress p { margin: 0; }
+
+/* ── Home as a dashboard: My apps, the house at a glance, then every app by what it's for ── */
+.home-section { margin-bottom: 26px; }
+.home-section-title { margin: 0 0 12px 6px; font: 600 15px/1.3 var(--k-sans); letter-spacing: .02em; color: var(--k-on-surface-variant); }
+.home-section .app-tiles { margin-bottom: 0; }
+.home-empty { margin: 0 6px; color: var(--k-on-surface-variant); }
+.app-tile.is-dragging { opacity: .45; }
+.app-tile.drop-before::before { content: ""; position: absolute; left: -8px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--k-suo); }
+
+.home-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.home-stat { display: grid; gap: 2px; padding: 16px 18px; border-radius: var(--k-r-l); background: var(--k-container-low); color: inherit; text-decoration: none; transition: background-color var(--k-t-state) var(--k-ease-settle), border-radius var(--k-t-seat) var(--k-spring); }
+.home-stat:hover { background: var(--k-container); border-radius: 28px; }
+.home-stat b { font: 600 32px/1.1 var(--k-display); color: var(--k-plum); font-variant-numeric: tabular-nums; }
+.home-stat span { font-size: 13.5px; color: var(--k-on-surface-variant); }
+
+.home-glances { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 30px; align-items: start; }
+.home-glance { border-radius: var(--k-r-xl); background: var(--k-container); padding: 6px 6px 8px; }
+.home-glance-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px; border-radius: 22px; color: inherit; text-decoration: none; }
+.home-glance-head .k-app-bloom { width: 30px; height: 30px; flex: none; }
+.home-glance-head h2 { margin: 0; flex: 1; font: 600 21px/1.2 var(--k-display); color: var(--k-plum); }
+.home-glance-note { font: 600 13px/1 var(--k-sans); color: var(--k-suo); }
+.home-glance-head:hover h2 { color: var(--k-suo); }
+.home-glance-lines { display: grid; }
+.home-line { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px; border-radius: 18px; color: inherit; text-decoration: none; transition: background-color var(--k-t-state) var(--k-ease-settle); }
+.home-line:hover { background: var(--k-container-high); }
+.home-line:focus-visible, .home-stat:focus-visible, .home-glance-head:focus-visible { outline: 3px solid var(--k-accent); outline-offset: 2px; }
+.home-line-mark { width: 36px; height: 36px; flex: none; display: grid; place-items: center; }
+.home-line-mark .k-ink-blot { width: 36px; height: 36px; }
+.home-line-text { display: grid; min-width: 0; }
+.home-line-text b { font: 500 15px/1.35 var(--k-sans); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-line-text small { font-size: 12.5px; line-height: 1.4; color: var(--k-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-ext { font: 700 9px/1 var(--k-sans); letter-spacing: .04em; color: var(--k-plum); }
+.home-plus { font: 500 20px/1 var(--k-sans); color: var(--k-suo); }
+.home-dot { width: 10px; height: 10px; border-radius: 50%; background: #b9a8a2; }
+.home-dot.is-live { background: var(--k-moss); box-shadow: 0 0 0 4px color-mix(in srgb, var(--k-moss) 18%, transparent); }
+@media (max-width: 720px) {
+  .home-stats { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
+  .home-stat { padding: 12px 14px; }
+  .home-stat b { font-size: 26px; }
+  .home-stat span { font-size: 12.5px; }
+  .home-glances { grid-template-columns: minmax(0, 1fr); }
+}

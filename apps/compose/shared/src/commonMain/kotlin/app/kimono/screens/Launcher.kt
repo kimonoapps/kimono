@@ -54,7 +54,6 @@ import androidx.compose.ui.zIndex
 import app.kimono.data.Drive
 import app.kimono.data.KimonoProblem
 import app.kimono.data.LauncherApp
-import app.kimono.data.Platform
 import app.kimono.theme.Kata
 import app.kimono.ui.InkBloom
 import app.kimono.ui.InkLoader
@@ -64,57 +63,28 @@ import app.kimono.ui.KimonoBranch
 import app.kimono.ui.Problem
 import app.kimono.ui.kimonoIcon
 import coil3.compose.AsyncImage
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
+
+/** [apps] as My apps lists them, in its order; before the server has said (an older Kimono), every app. */
+internal fun myAppsOf(apps: List<LauncherApp>, mine: List<String>?): List<LauncherApp> =
+    mine?.mapNotNull { id -> apps.firstOrNull { it.id == id } } ?: apps
 
 /**
- * The order of your apps, as you dragged them, kept on this phone. Until
- * you move one: the apps inside Kimono, then those with a phone app of
- * their own, then those that are a website only.
- */
-class AppOrder(private val platform: Platform, private val server: String?) {
-    private val key get() = "app-order:${server ?: ""}"
-    private val list = ListSerializer(String.serializer())
-    val saved = MutableStateFlow<List<String>?>(null)
-
-    suspend fun load() { saved.value = platform.readKept(key)?.let { runCatching { Json.decodeFromString(list, it) }.getOrNull() } }
-
-    suspend fun set(ids: List<String>) {
-        saved.value = ids
-        platform.keep(key, Json.encodeToString(list, ids))
-    }
-
-    companion object {
-        private fun kind(app: LauncherApp) = when { app.own -> 0; app.phoneApp != null -> 1; else -> 2 }
-
-        /** [apps] in [saved] order; any not placed yet keep the default order, after them. */
-        fun arrange(apps: List<LauncherApp>, saved: List<String>?): List<LauncherApp> {
-            val byDefault = apps.withIndex().sortedWith(compareBy({ kind(it.value) }, { it.index })).map { it.value }
-            if (saved == null) return byDefault
-            val placed = saved.mapNotNull { id -> apps.firstOrNull { it.id == id } }
-            return placed + byDefault.filter { app -> placed.none { it.id == app.id } }
-        }
-    }
-}
-
-/**
- * 庫 Every app you can open, as the website's rail lists them: its bloom,
- * its name and what it's for. Hold one and drag it to move it. With [home],
- * Kimono itself comes first, always, to go back to Home from any app.
+ * 庫 My apps, as the website's rail lists them: its bloom, its name and what
+ * it's for. Hold one and drag it to move it; the order is saved for the
+ * website too. Every app is on Home. With [home], Kimono itself comes first,
+ * always, to go back to Home from any app.
  */
 @Composable
 fun LauncherScreen(
-    drive: Drive, order: AppOrder, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) },
+    drive: Drive, here: (LauncherApp) -> PhoneAppHere = { PhoneAppHere(null, null, null) },
     /* What sits above the apps, scrolling with them. */
     header: @Composable () -> Unit = { KimonoTopBar("Apps") },
     home: (() -> Unit)? = null,
     open: (LauncherApp) -> Unit,
 ) {
     val apps by drive.launcher.collectAsState()
-    val saved by order.saved.collectAsState()
+    val mine by drive.myApps.collectAsState()
     var problem by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -127,7 +97,7 @@ fun LauncherScreen(
     var moving by remember { mutableStateOf<List<LauncherApp>?>(null) }
     var held by remember { mutableStateOf<String?>(null) }
     var drift by remember { mutableStateOf(Offset.Zero) }
-    val shown = moving ?: apps?.let { AppOrder.arrange(it, saved) }
+    val shown = moving ?: apps?.let { myAppsOf(it, mine) }
 
     KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
         LazyVerticalGrid(
@@ -153,7 +123,7 @@ fun LauncherScreen(
                     if (letGo != null) return@awaitEachGesture
                     val hit = tileAt(down.position) ?: return@awaitEachGesture
                     val id = (hit.key as String).removePrefix("app:")
-                    moving = AppOrder.arrange(drive.launcher.value.orEmpty(), order.saved.value)
+                    moving = myAppsOf(drive.launcher.value.orEmpty(), drive.myApps.value)
                     held = id
                     drift = Offset.Zero
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -175,7 +145,12 @@ fun LauncherScreen(
                         drift -= Offset((over.offset.x - mine.offset.x).toFloat(), (over.offset.y - mine.offset.y).toFloat())
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
-                    moving?.let { done -> scope.launch { order.set(done.map { it.id }) } }
+                    moving?.let { done ->
+                        val all = drive.launcher.value.orEmpty().map { it.id }.toSet()
+                        /* Apps this phone can't open right now keep their place at the end. */
+                        val kept = drive.myApps.value.orEmpty().filter { it !in all }
+                        scope.launch { runCatching { drive.setMyApps(done.map { it.id } + kept) } }
+                    }
                     moving = null; held = null; drift = Offset.Zero
                 }
             },
@@ -189,6 +164,9 @@ fun LauncherScreen(
                 shown == null -> item(span = { GridItemSpan(2) }) { Problem(problem) }
                 else -> {
                 if (home != null) item(key = "home") { HomeTile(onClick = home) }
+                if (shown.isEmpty()) item(span = { GridItemSpan(2) }) {
+                    Text("Pin apps on Home to keep them here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp))
+                }
                 items(shown, key = { "app:" + it.id }) { app ->
                     val tileShape = MaterialTheme.shapes.extraLarge
                     val lifted = held == app.id
@@ -222,7 +200,7 @@ private fun HomeTile(onClick: () -> Unit) {
 
 /** One app: its bloom, its name, one line; and whether it's on this phone, needs updating, or opens in the browser. */
 @Composable
-private fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Column(
         modifier.fillMaxWidth().clip(MaterialTheme.shapes.extraLarge).background(MaterialTheme.colorScheme.surfaceContainer).clickable(onClick = onClick).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -249,10 +227,10 @@ private fun AppTile(app: LauncherApp, here: PhoneAppHere, modifier: Modifier = M
     }
 }
 
-/** Every app, risen from the flower in the middle of the bar: pick one to go there. */
+/** My apps, risen from the flower in the middle of the bar: pick one to go there. */
 @Composable
-fun AppsSheet(drive: Drive, order: AppOrder, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, home: () -> Unit, open: (LauncherApp) -> Unit) {
+fun AppsSheet(drive: Drive, here: (LauncherApp) -> PhoneAppHere, onDismiss: () -> Unit, home: () -> Unit, open: (LauncherApp) -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = MaterialTheme.colorScheme.surface) {
-        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, order, here, home = home, open = open) }
+        Box(Modifier.fillMaxWidth().fillMaxHeight(.9f)) { LauncherScreen(drive, here, header = { KimonoTopBar("My apps") }, home = home, open = open) }
     }
 }

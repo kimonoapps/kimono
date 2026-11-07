@@ -6,7 +6,7 @@ import { Portrait } from "@/components/portrait";
 import type { RailRoom } from "@/components/rail";
 import { ShellFrame } from "@/components/shell-frame";
 import { getAppDefinition } from "@/lib/definitions";
-import { defaultPins } from "@/lib/default-pins";
+import { myApps } from "@/lib/my-apps";
 import { recordAccount } from "@/lib/directory";
 import { picturePathFor } from "@/lib/pictures";
 import { getPlatformSettings } from "@/lib/settings";
@@ -26,13 +26,13 @@ export default async function ShellLayout({ children }: { children: ReactNode })
      real account instead of typing a username and hoping. It writes only when
      something changed, and the page doesn't wait for it. */
   void recordAccount(user).catch((error) => console.warn("Could not note this account:", error instanceof Error ? error.message : error));
-  const [apps, picture, rooms] = await Promise.all([railApps(user.username), picturePathFor(user.username), appRooms()]);
+  const [apps, picture, rooms, mine] = await Promise.all([railApps(user.username), picturePathFor(user.username), appRooms(), myApps(user.username)]);
   const displayName = user.name?.trim() || user.username;
   return <ShellFrame
     apps={apps}
     rooms={rooms}
     admin={user.role === "owner" || user.role === "admin"}
-    defaultPins={defaultPins(apps)}
+    defaultPins={mine}
     you={<InkPortraitFrame seed={user.username} weight={6}><Portrait name={displayName} username={user.username} picture={picture ?? user.image ?? null} size={26} /></InkPortraitFrame>}
   >{children}</ShellFrame>;
 }

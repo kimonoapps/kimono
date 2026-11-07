@@ -134,8 +134,6 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
     val testflight = remember(session) { app.kimono.data.Testflight(session) }
-    val order = remember(session) { app.kimono.screens.AppOrder(platform, session.answers.server) }
-    LaunchedEffect(order) { order.load() }
     /*
      * Where you were: every screen on the way there is kept as you move, and the app
      * opens on them again, so Back still leads where it did. A notification's screen wins.
@@ -186,7 +184,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             if (roomApp != null) RoomBar(roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me, go = ::goTab, startTask = {}, openApps = { appsOpen = true })
         },
     ) { padding ->
-        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, order, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }, home = { appsOpen = false; goTab("home") }) { appsOpen = false; openApp(it) }
+        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }, home = { appsOpen = false; goTab("home") }) { appsOpen = false; openApp(it) }
         /*
          * Material's own motion between screens. Tabs fade through: the old one
          * fades quickly, the new one settles in from just smaller. A screen
@@ -207,7 +205,7 @@ private fun SignedIn(session: Session, platform: Platform, me: AccountProfile?, 
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
-            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, model.drive, code, vpn, admin, here = { app.kimono.screens.phoneAppHere(it, platform) }) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
+            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, model.drive, code, vpn, admin, here = { app.kimono.screens.phoneAppHere(it, platform) }, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
             /* Code's screens wear Code's colour, as its pages do on the website. */
             composable("code") {
                 val codeApp = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }

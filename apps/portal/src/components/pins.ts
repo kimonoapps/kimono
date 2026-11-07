@@ -1,48 +1,46 @@
 "use client";
 
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 /*
- * Apps a person pins to the rail, in their order. Kept in this browser for
- * now; the rail and Home's grid share it, so pinning in one shows in the other.
+ * My apps: the apps a person keeps close, in their order. The list is kept on
+ * the server (/api/v1/me/apps) so the rail here and the flower on the phone
+ * agree. The page arrives with it; a change shows at once everywhere on the
+ * page and is saved behind it. Other tabs hear of it through storage.
  */
-const KEY = "kimono-pins";
-const EVENT = "kimono-pins";
+const ECHO = "kimono-my-apps";
 
-function read(fallback: string[]): string[] {
-  try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === "string") : fallback;
-  } catch {
-    return fallback;
-  }
+let current: string[] | null = null;
+const listeners = new Set<() => void>();
+const tell = () => listeners.forEach((listener) => listener());
+
+function subscribe(onChange: () => void) {
+  listeners.add(onChange);
+  const fromOtherTab = (event: StorageEvent) => {
+    if (event.key !== ECHO || !event.newValue) return;
+    try { current = JSON.parse(event.newValue).apps; tell(); } catch { /* not ours */ }
+  };
+  window.addEventListener("storage", fromOtherTab);
+  return () => { listeners.delete(onChange); window.removeEventListener("storage", fromOtherTab); };
 }
 
-let cache: { raw: string | null; value: string[] } | null = null;
-function snapshot(fallback: string[]) {
-  let raw: string | null = null;
-  try { raw = localStorage.getItem(KEY); } catch { /* storage refused: pins live for this page only */ }
-  if (!cache || cache.raw !== raw) cache = { raw, value: read(fallback) };
-  return cache.value;
+/* Only ever in the browser (the server reads its own snapshot): there, this module is shared by everyone signed in. */
+function seeded(fromServer: string[]) {
+  if (current === null) current = fromServer;
+  return current;
 }
 
-export function usePins(defaults: string[]) {
-  const key = defaults.join(",");
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- the list is compared by content
-  const fallback = useMemo(() => defaults, [key]);
-  const pins = useSyncExternalStore(
-    (onChange) => {
-      window.addEventListener(EVENT, onChange);
-      window.addEventListener("storage", onChange);
-      return () => { window.removeEventListener(EVENT, onChange); window.removeEventListener("storage", onChange); };
-    },
-    () => snapshot(fallback),
-    () => fallback,
-  );
-  const setPins = useCallback((next: string[]) => {
-    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* storage refused */ }
-    window.dispatchEvent(new Event(EVENT));
-  }, []);
+let saving: Promise<unknown> = Promise.resolve();
+function save(next: string[]) {
+  current = next;
+  tell();
+  try { localStorage.setItem(ECHO, JSON.stringify({ apps: next, at: Date.now() })); } catch { /* storage refused: other tabs catch up on their next page */ }
+  saving = saving.catch(() => {}).then(() => fetch("/api/v1/me/apps", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ apps: next }) }));
+}
+
+/** My apps, starting from what the server sent with the page. */
+export function usePins(fromServer: string[]) {
+  const pins = useSyncExternalStore(subscribe, () => seeded(fromServer), () => fromServer);
+  const setPins = useCallback((next: string[]) => save(next), []);
   return [pins, setPins] as const;
 }
-

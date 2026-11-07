@@ -128,7 +128,17 @@ private data class DriveLook(val id: String = "kimono-drive", val accent: String
 data class BloomLook(val id: String, val accent: String, val glyph: String?)
 
 @Serializable
-private data class AppList(val apps: List<KimonoAppLink>, val launcher: List<LauncherApp>? = null, val drive: DriveLook? = null, val driveOn: Boolean = true)
+private data class AppList(
+    val apps: List<KimonoAppLink>, val launcher: List<LauncherApp>? = null, val drive: DriveLook? = null, val driveOn: Boolean = true,
+    val myApps: List<String>? = null, val categories: List<AppGroup> = emptyList(),
+)
+
+/** One of Home's groups of apps (Productivity, For you…), by id, in order. */
+@Serializable
+data class AppGroup(val id: String, val label: String, val apps: List<String>)
+
+@Serializable
+private data class MyAppList(val apps: List<String>)
 
 /** An app this person can open, as the website's rail and Apps grid list it. [own] apps live inside Kimono. */
 @Serializable
@@ -335,7 +345,27 @@ class Drive(private val session: Session) {
     /** Every app this person can open, for the Apps tab; null until the Portal has answered once. */
     val launcher = kotlinx.coroutines.flow.MutableStateFlow<List<LauncherApp>?>(null)
 
+    /**
+     * My apps: the few under the flower, in order, the same list as the
+     * website's rail. Kept on the server; null until it has answered.
+     */
+    val myApps = kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
+    /** Home's groups of every app. */
+    val appGroups = kotlinx.coroutines.flow.MutableStateFlow<List<AppGroup>>(emptyList())
+
+    /** Changes My apps: shown at once, saved behind it; if saving fails, the server's list comes back. */
+    suspend fun setMyApps(ids: List<String>) {
+        val before = myApps.value
+        myApps.value = ids
+        try {
+            session.call(MY_APPS, HttpMethod.Put) { contentType(ContentType.Application.Json); setBody(json.encodeToString(MyAppList.serializer(), MyAppList(ids))) }
+            answers.drop(APPS)
+        } catch (problem: KimonoProblem) { myApps.value = before; throw problem }
+    }
+
     private fun heard(list: AppList) {
+        list.myApps?.let { myApps.value = it }
+        appGroups.value = list.categories
         list.drive?.let { look -> look.accent?.let { driveBloom.value = BloomLook(look.id, it, look.glyph ?: "file") } }
         driveOn.value = list.driveOn
         launcher.value = list.launcher ?: olderLauncher(list)
@@ -487,6 +517,7 @@ class Drive(private val session: Session) {
         private const val TRASH = "/api/v1/drive/trash"
         private const val PEOPLE = "/api/v1/drive/people"
         private const val APPS = "/api/v1/apps"
+        private const val MY_APPS = "/api/v1/me/apps"
         private const val CRESTS = "/api/v1/drive/crests"
 
         /** 8 MB: small enough for any proxy and a phone's memory, big enough to move quickly. */
