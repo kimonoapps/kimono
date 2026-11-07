@@ -6,6 +6,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -215,12 +219,12 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
             NotesMark(accent, 32.dp)
             Text("Notes", style = MaterialTheme.typography.titleLarge)
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp)) {
-            item(key = "search") { NotesRow(selected = false, onClick = search, lead = { Icon(kimonoIcon("search"), null, modifier = Modifier.size(20.dp)) }) { Text("Search notes", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f)) } }
+        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 6.dp, end = 6.dp, bottom = 16.dp)) {
+            item(key = "search") { Box(Modifier.padding(bottom = 4.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)) { NotesRow(selected = false, onClick = search, lead = { Icon(kimonoIcon("search"), null, modifier = Modifier.size(16.dp)) }) { Text("Search notes", style = placeText().copy(fontWeight = FontWeight.Normal), modifier = Modifier.weight(1f)) } } }
             item(key = "rule") { InkRule(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             item(key = "all") {
-                NotesRow(selected = place == NotePlace.All, onClick = { go(NotePlace.All) }, lead = { Icon(kimonoIcon("notes"), null, modifier = Modifier.size(20.dp)) }) {
-                    Text("All notes", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                NotesRow(selected = place == NotePlace.All, onClick = { go(NotePlace.All) }, lead = { Icon(kimonoIcon("notes"), null, modifier = Modifier.size(16.dp)) }) {
+                    Text("All notes", style = placeText(), modifier = Modifier.weight(1f))
                 }
             }
             if (problem != null) item(key = "problem") { Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { Problem(problem) } }
@@ -238,16 +242,16 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
                             selected = place == NotePlace.InNotebook(notebook.id), onClick = { go(NotePlace.InNotebook(notebook.id)) },
                             onLongClick = { menu = true },
                             lead = {
-                                if (notebook.sharedWithYou) model.people[notebook.createdBy.lowercase()].let { person -> Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { Portrait(person?.picture, person?.name, notebook.createdBy, 20.dp) } }
-                                else NotebookMark(notebook.id, 30.dp)
+                                if (notebook.sharedWithYou) model.people[notebook.createdBy.lowercase()].let { person -> Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { Portrait(person?.picture, person?.name, notebook.createdBy, 20.dp) } }
+                                else NotebookMark(notebook.id, 20.dp)
                             },
                         ) {
                             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                                Text(notebook.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                Text(notebook.name, style = placeText(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                                 if (shared) MemberFaces(model, notebook, me)
                             }
-                            if (notebook.canWrite) IconButton(onClick = { model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("plus"), "New note in ${notebook.name}", modifier = Modifier.size(18.dp)) }
-                            IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("more"), "More for ${notebook.name}", modifier = Modifier.size(18.dp)) }
+                            if (notebook.canWrite) IconButton(onClick = { model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) }, modifier = Modifier.size(26.dp)) { Icon(kimonoIcon("plus"), "New note in ${notebook.name}", modifier = Modifier.size(16.dp)) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(26.dp)) { Icon(kimonoIcon("more"), "More for ${notebook.name}", modifier = Modifier.size(16.dp)) }
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
                             if (notebook.canWrite) DropdownMenuItem(text = { Text("New note") }, leadingIcon = { Icon(kimonoIcon("edit"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; model.go(NotePlace.InNotebook(notebook.id)); openNote(model.startNew(NotePlace.InNotebook(notebook.id))) })
@@ -288,21 +292,21 @@ private fun NotesDrawerSheet(model: NotesModel, accent: String, me: String?, pla
             val books = library?.notebooks.orEmpty()
             books.filter { !it.sharedWithYou }.forEach(::book)
             if (library != null) item(key = "new-notebook") {
-                NotesRow(selected = false, onClick = { making = true }, lead = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(20.dp)) }) {
-                    Text("New notebook", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                NotesRow(selected = false, onClick = { making = true }, lead = { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(16.dp)) }) {
+                    Text("New notebook", style = placeText(), modifier = Modifier.weight(1f))
                 }
             }
             /* Below your own: what others shared with you, notebooks then single notes, each with whoever's it is. */
             val theirs = books.filter { it.sharedWithYou }
             val loose = library?.notes.orEmpty().filter { it.notebookId == null }
             if (theirs.isNotEmpty() || loose.isNotEmpty()) item(key = "shared-label") {
-                Text("Shared with you", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 6.dp))
+                Text("Shared with you", fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = .46.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 10.dp, top = 12.dp, bottom = 2.dp))
             }
             theirs.forEach(::book)
             items(loose, key = { "shared-note-${it.id}" }) { note ->
                 val person = model.people[note.createdBy.lowercase()]
-                NotesRow(selected = false, onClick = { openNote(note.id) }, lead = { Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { Portrait(person?.picture, person?.name, note.createdBy, 20.dp) } }) {
-                    Text(note.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                NotesRow(selected = false, onClick = { openNote(note.id) }, lead = { Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { Portrait(person?.picture, person?.name, note.createdBy, 20.dp) } }) {
+                    Text(note.title, style = placeText(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 }
             }
             if (library == null && model.problem == null) item(key = "loading") { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader(size = 28.dp) } }
@@ -369,11 +373,11 @@ private fun SectionRow(
         return
     }
     Box {
-        NotesRow(selected = selected, onClick = open, onLongClick = if (notebook.canWrite) ({ menu = true }) else null, indent = 16.dp + 24.dp * depth) {
-            Text(section.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        NotesRow(selected = selected, onClick = open, onLongClick = if (notebook.canWrite) ({ menu = true }) else null, indent = 38.dp + 14.dp * (depth - 1)) {
+            Text(section.name, style = placeText().copy(fontWeight = FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (notebook.canWrite) {
-                IconButton(onClick = newNote, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("plus"), "New note in ${section.name}", modifier = Modifier.size(18.dp)) }
-                IconButton(onClick = { menu = true }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("more"), "More for ${section.name}", modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = newNote, modifier = Modifier.size(26.dp)) { Icon(kimonoIcon("plus"), "New note in ${section.name}", modifier = Modifier.size(16.dp)) }
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(26.dp)) { Icon(kimonoIcon("more"), "More for ${section.name}", modifier = Modifier.size(16.dp)) }
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
@@ -385,16 +389,16 @@ private fun SectionRow(
     }
 }
 
-/** One row of the drawer: a 48dp pill, filled when it's where you are. */
+/** One row of the drawer, the mockup's place: 32 high, 8 round, filled when it's where you are. */
 @Composable
-private fun NotesRow(selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, indent: androidx.compose.ui.unit.Dp = 16.dp, lead: (@Composable () -> Unit)? = null, body: @Composable RowScope.() -> Unit) {
+private fun NotesRow(selected: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, indent: androidx.compose.ui.unit.Dp = 10.dp, lead: (@Composable () -> Unit)? = null, body: @Composable RowScope.() -> Unit) {
     val colour = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-    CompositionLocalProvider(LocalContentColor provides if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface) {
+    CompositionLocalProvider(LocalContentColor provides if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(CircleShape).background(colour)
+            Modifier.padding(vertical = .5.dp).fillMaxWidth().heightIn(min = 32.dp).clip(RoundedCornerShape(8.dp)).background(colour)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(start = indent, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(start = indent, end = 3.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             lead?.invoke()
             body()
@@ -443,31 +447,46 @@ private fun NotesList(model: NotesModel, platform: app.kimono.data.Platform, acc
     val notebook = (place as? NotePlace.InNotebook)?.let { model.notebook(it.id) }
     val section = (place as? NotePlace.InSection)?.let { model.section(it.id) }
     val reduce = model.platform.reduceMotion
+    LaunchedEffect(notebook?.id) { notebook?.let { model.loadMembers(it.id) } }
     val focus = remember { FocusRequester() }
     LaunchedEffect(searching) { if (searching) runCatching { focus.requestFocus() } else query = "" }
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         topBar = {
-            TopAppBar(
-                title = {
-                    if (searching) BasicTextField(
-                        query, { query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
-                        modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                        decorationBox = { field -> Box { if (query.isEmpty()) Text("Search notes", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant); field() } },
-                    ) else Text(when (place) { NotePlace.All -> "All notes"; is NotePlace.InSection -> section?.name.orEmpty(); is NotePlace.InNotebook -> "" }, style = MaterialTheme.typography.titleLarge.copy(fontSize = 18.sp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                },
-                navigationIcon = { IconButton(onClick = menu) { Icon(kimonoIcon("menu"), "Notebooks") } },
-                actions = {
-                    if (searching) IconButton(onClick = endSearch) { Icon(kimonoIcon("close"), "Stop searching") }
-                    else {
-                        /* A note in the place you're looking at. */
-                        if (model.library != null && model.canWrite(place)) IconButton(onClick = { open(model.startNew(place)) }) { Icon(kimonoIcon("plus"), "New note") }
-                        IconButton(onClick = back) { Icon(kimonoIcon("home"), "Home") }
+            /* The mockup's list head, 44 high: where you are, small above its name in Mincho, then people and the + block. */
+            val lowest = MaterialTheme.colorScheme.surfaceContainerLow
+            Row(
+                Modifier.fillMaxWidth().background(lowest).statusBarsPadding().padding(start = 6.dp, end = 8.dp).height(44.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ListHeadButton("menu", "Notebooks", onClick = menu)
+                if (searching) BasicTextField(
+                    query, { query = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                    modifier = Modifier.weight(1f).focusRequester(focus),
+                    decorationBox = { field -> Box { if (query.isEmpty()) Text("Search notes", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant); field() } },
+                ) else Column(Modifier.weight(1f).padding(start = 2.dp)) {
+                    val small = when (place) {
+                        NotePlace.All -> null
+                        is NotePlace.InNotebook -> if (notebook?.sharedWithYou == true) "Shared with you" else "Notes"
+                        is NotePlace.InSection -> section?.let { model.notebook(it.notebookId)?.name } ?: "Notes"
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
-            )
+                    if (small != null) Text(small, fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(bottom = 3.dp))
+                    Text(
+                        when (place) { NotePlace.All -> "All notes"; is NotePlace.InSection -> section?.name.orEmpty(); is NotePlace.InNotebook -> notebook?.name.orEmpty() },
+                        fontFamily = MaterialTheme.typography.headlineMedium.fontFamily, fontSize = 18.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold,
+                        color = plumColor(), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (searching) ListHeadButton("close", "Stop searching", onClick = endSearch)
+                else {
+                    /* Who has it: share it, or leave one shared with you. */
+                    if (notebook != null) ListHeadButton("people", if (notebook.sharedWithYou) "Leave" else "Share") { if (notebook.sharedWithYou) leaving = notebook else sharing = notebook.id to true }
+                    /* A note in the place you're looking at. */
+                    if (model.library != null && model.canWrite(place)) PlusBlock("New note") { open(model.startNew(place)) }
+                    ListHeadButton("home", "Home", onClick = back)
+                }
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
@@ -485,8 +504,7 @@ private fun NotesList(model: NotesModel, platform: app.kimono.data.Platform, acc
                 }
                 library == null && model.problem != null -> NotesQuiet("problem", DIDNT_WORK) { Seal("Try again", compact = true, tone = SealTone.Quiet, onClick = { scope.launch { model.load() } }) }
                 library == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
-                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 120.dp)) {
-                    if (notebook != null && !searching) item(key = "head-${notebook.id}") { NotebookHead(model, notebook, me, share = { sharing = notebook.id to true }) { leaving = notebook } }
+                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 0.dp, bottom = 120.dp)) {
                     if (shown.isEmpty()) item(key = "quiet-${place.key}-$searching") {
                         NotesQuiet(if (searching) "search" else place.key, when { searching && query.isNotBlank() -> "No notes match."; place is NotePlace.InSection -> "Nothing here yet."; else -> "Your notes will be here." }) {
                             if (!searching && model.canWrite(place)) TextButton(onClick = { open(model.startNew(place)) }) {
@@ -542,21 +560,6 @@ private fun NewNoteSeal(busy: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** A notebook's page head: its crest, large, its name, and who it's shared with. */
-@Composable
-private fun NotebookHead(model: NotesModel, notebook: Notebook, me: String?, share: () -> Unit, leave: () -> Unit) {
-    LaunchedEffect(notebook.id) { model.loadMembers(notebook.id); if (model.people.isEmpty()) model.loadPeople() }
-    Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        NotebookMark(notebook.id, 64.dp)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(notebook.name, style = MaterialTheme.typography.headlineMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            MemberFaces(model, notebook, me)
-        }
-        if (notebook.sharedWithYou) Seal("Leave", compact = true, tone = SealTone.Quiet, onClick = leave)
-        else Seal("Share", compact = true, tone = SealTone.Quiet, onClick = share)
-    }
-}
-
 /** A note in the list: its title, a line of it, and when, only when it says something. */
 @Composable
 private fun NoteRow(
@@ -567,24 +570,24 @@ private fun NoteRow(
     val alone = note.notebookId == null
     var menu by remember { mutableStateOf(false) }
     val draft = if (model.hasDraft(note.id)) model.draft(note.id) else null
-    val shape = RoundedCornerShape(20.dp)
+    /* The mockup's row: 52 high at least, 7 by 10 inside, 8 round; the one you came from lifted on the lowest container. */
+    val shape = RoundedCornerShape(8.dp)
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 2.dp)
-            .then(if (lifted) Modifier.shadow(1.dp, shape, ambientColor = Color.Black.copy(alpha = .2f), spotColor = Color.Black.copy(alpha = .2f)) else Modifier)
+        Modifier.fillMaxWidth()
+            .then(if (lifted) Modifier.shadow(1.dp, shape, ambientColor = Color(0x144E2B37), spotColor = Color(0x144E2B37)) else Modifier)
             .clip(shape).background(if (lifted) MaterialTheme.colorScheme.surfaceContainerLowest else Color.Transparent)
-            .combinedClickable(onClick = open, onLongClick = { menu = true })
-            .heightIn(min = 56.dp).padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .combinedClickable(onClick = open, onLongClick = { menu = true }, onLongClickLabel = "More")
+            .heightIn(min = 52.dp).padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(note.title, fontSize = 14.sp, lineHeight = 19.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (note.excerpt.isNotBlank()) Text(note.excerpt, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp, lineHeight = 17.sp), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(note.title, fontSize = 14.sp, lineHeight = 18.2.sp, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (note.excerpt.isNotBlank()) Text(note.excerpt, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp, lineHeight = 16.9.sp, fontWeight = FontWeight.Normal), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (crest != null) NotebookMark(crest.id, 22.dp)
-        if (draft?.state == SaveState.Saving) InkLoader(size = 14.dp)
-        else Text(noteWhen(note.updatedAt.toLong(), now, model.notes.localOffset(now)), fontFamily = mono, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (crest != null) Box(Modifier.padding(top = 1.dp)) { NotebookMark(crest.id, 20.dp) }
+        if (draft?.state == SaveState.Saving) Box(Modifier.padding(top = 3.dp)) { InkLoader(size = 14.dp) }
+        else Text(noteWhen(note.updatedAt.toLong(), now, model.notes.localOffset(now)), fontSize = 11.5.sp, lineHeight = 11.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 3.dp))
         Box {
-            IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More", modifier = Modifier.size(20.dp)) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
                 DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; share() })
                 if (alone) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leave() })
@@ -703,3 +706,30 @@ internal fun LeaveSheet(model: NotesModel, name: String, id: String, notebook: B
         }
     }
 }
+
+/** Kata's plum, for Mincho display words, by light or dark. */
+@Composable
+internal fun plumColor(): Color = if (MaterialTheme.colorScheme.surface.luminance() < .5f) Color(0xFFF2E1CA) else Color(0xFF4E2B37)
+
+/** A 32dp icon button in the list head. */
+@Composable
+private fun ListHeadButton(icon: String, name: String, onClick: () -> Unit) = Box(
+    Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = name, onClick = onClick).semantics { contentDescription = name },
+    contentAlignment = Alignment.Center,
+) { Icon(kimonoIcon(icon), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+
+/** The + block: 32dp, container-high on a container-highest base. */
+@Composable
+private fun PlusBlock(name: String, onClick: () -> Unit) {
+    val base = MaterialTheme.colorScheme.surfaceContainerHighest
+    Box(
+        Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .drawBehind { drawRect(base, androidx.compose.ui.geometry.Offset(0f, size.height - 2.dp.toPx()), androidx.compose.ui.geometry.Size(size.width, 2.dp.toPx())) }
+            .clickable(onClickLabel = name, onClick = onClick).semantics { contentDescription = name },
+        contentAlignment = Alignment.Center,
+    ) { Icon(kimonoIcon("plus"), null, tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(18.dp)) }
+}
+
+/** A drawer place's words: 600 13.5. */
+@Composable
+private fun placeText() = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold)

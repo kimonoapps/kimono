@@ -45,7 +45,7 @@ data class NoteBullet(val at: Int, val depth: Int)
 data class NoteLink(val start: Int, val end: Int, val url: String)
 
 class NoteLook(
-    val text: Color, val mark: Color, val accent: Color, val quiet: Color, val code: Color, val codeBack: Color, val headline: FontFamily?,
+    val text: Color, val mark: Color, val faint: Color, val link: Color, val accent: Color, val quiet: Color, val code: Color, val codeBack: Color, val headline: FontFamily?,
 )
 
 /**
@@ -55,6 +55,8 @@ class NoteLook(
 class NoteSpans(
     val styles: List<Triple<SpanStyle, Int, Int>>, val checks: List<NoteCheck>, val links: List<NoteLink>,
     val bullets: List<NoteBullet>, val quotes: List<IntRange>, val formats: Set<String>,
+    /** Inline code, drawn as a chip behind its words. */
+    val chips: List<IntRange> = emptyList(),
 )
 
 private val heading = Regex("^(#{1,6})[ \\t]+")
@@ -79,9 +81,10 @@ fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): Not
     val links = mutableListOf<NoteLink>()
     val bullets = mutableListOf<NoteBullet>()
     val quotes = mutableListOf<IntRange>()
+    val chips = mutableListOf<IntRange>()
     val formats = mutableSetOf<String>()
     val faded = SpanStyle(color = look.mark)
-    val mono = SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = look.code)
+    val mono = SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 14.08.sp, color = look.code)
     fun add(style: SpanStyle, start: Int, end: Int) { if (end > start) styles += Triple(style, start, end) }
     val all = text.toString()
     val at = caret?.let { minOf(it.start, it.end) }
@@ -118,13 +121,15 @@ fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): Not
                 heading.find(line)?.let { m ->
                     val level = m.groupValues[1].length
                     add(if (here) faded else gone, start, start + m.range.last + 1)
-                    val size = when (level) { 1 -> 24.sp; 2 -> 20.sp; 3 -> 18.sp; else -> 17.sp }
-                    add(SpanStyle(fontSize = size, fontWeight = FontWeight.Bold, fontFamily = if (level <= 2) look.headline else null), start + m.range.last + 1, end)
+                    /* The mockup's heading: 1.3em Mincho 600; smaller levels step down from it. */
+                    val size = when (level) { 1 -> 20.8.sp; 2 -> 18.sp; else -> 16.sp }
+                    add(SpanStyle(fontSize = size, fontWeight = FontWeight.SemiBold, fontFamily = look.headline), start + m.range.last + 1, end)
                     body = m.range.last + 1
                     if (here) formats += "h$level"
                 }
                 if (body == 0) quote.find(line)?.let { m ->
                     /* Off the line the marker keeps its room, as the quote's indent, and a bar is drawn beside it. */
+                    /* Off the line the marker keeps its room, about 14 in, and a bar is drawn beside it. */
                     add(if (here) faded else SpanStyle(color = Color.Transparent), start, start + m.range.last + 1)
                     add(SpanStyle(fontStyle = FontStyle.Italic, color = look.quiet), start + m.range.last + 1, end)
                     quotes += start..end
@@ -141,9 +146,9 @@ fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): Not
                             add(gone, start + marker.first, start + box.range.first)
                             val bracket = start + box.range.first
                             val checked = line[box.range.first + 1] != ' '
-                            /* Monospaced, so "[ ]" and "[x]" are the same width and the ring stays put. */
-                            add(SpanStyle(color = Color.Transparent, fontFamily = FontFamily.Monospace), bracket, bracket + 3)
-                            if (checked) add(SpanStyle(color = look.mark), bracket + 3, end)
+                            /* Monospaced, so "[ ]" and "[x]" are the same width and the ring stays put: 1.2em wide, the ring's room. */
+                            add(SpanStyle(color = Color.Transparent, fontFamily = FontFamily.Monospace, fontSize = 10.67.sp, letterSpacing = 0.sp), bracket, bracket + 3)
+                            if (checked) add(SpanStyle(color = look.faint), bracket + 3, end)
                             checks += NoteCheck(lineNo, bracket, checked)
                             if (here) formats += "check"
                         }
@@ -152,25 +157,25 @@ fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): Not
                             if (here) formats += "number"
                         }
                         else -> {
-                            /* The dash keeps its room, invisible; its dot is drawn over it. */
-                            add(SpanStyle(color = Color.Transparent), start + marker.first, start + marker.last + 1)
+                            /* The dash keeps its room, invisible and widened to 1.1em with its space; its dot is drawn over it. */
+                            add(SpanStyle(color = Color.Transparent, letterSpacing = 5.sp), start + marker.first, start + marker.last + 1)
                             bullets += NoteBullet(start + marker.first, depth)
                             if (here) formats += "bullet"
                         }
                     }
                     body = m.range.last + 1
                 }
-                inline(line, start, body, look, faded, mono, links, at, formats, ::add)
+                inline(line, start, body, look, faded, mono, links, chips, at, formats, ::add)
             }
         }
         start = end + 1
         lineNo++
     }
-    return NoteSpans(styles, checks, links, bullets, quotes, formats)
+    return NoteSpans(styles, checks, links, bullets, quotes, formats, chips)
 }
 
 private fun inline(
-    line: String, offset: Int, from: Int, look: NoteLook, faded: SpanStyle, mono: SpanStyle, links: MutableList<NoteLink>,
+    line: String, offset: Int, from: Int, look: NoteLook, faded: SpanStyle, mono: SpanStyle, links: MutableList<NoteLink>, chips: MutableList<IntRange>,
     at: Int?, formats: MutableSet<String>, add: (SpanStyle, Int, Int) -> Unit,
 ) {
     val taken = BooleanArray(line.length)
@@ -184,14 +189,14 @@ private fun inline(
             val mark = if (touched) faded else gone
             if (touched) formats += kind
             when (kind) {
-                "code" -> { add(mono, s, e); add(SpanStyle(background = look.codeBack), s + 1, e - 1); add(mark, s, s + 1); add(mark, e - 1, e) }
+                "code" -> { add(mono, s, e); chips += (s + 1) until (e - 1); add(mark, s, s + 1); add(mark, e - 1, e) }
                 "link" -> {
                     val words = m.groups[1]!!.range
                     val picture = m.value.startsWith("!")
                     add(if (picture) faded else mark, s, offset + words.first)
                     add(if (picture) faded else mark, offset + words.last + 1, e)
                     if (!picture) {
-                        add(SpanStyle(color = look.accent, textDecoration = TextDecoration.Underline), offset + words.first, offset + words.last + 1)
+                        add(SpanStyle(color = look.link, textDecoration = TextDecoration.Underline), offset + words.first, offset + words.last + 1)
                         links += NoteLink(s, e, m.groupValues[2])
                     } else add(SpanStyle(color = look.quiet, fontStyle = FontStyle.Italic), offset + words.first, offset + words.last + 1)
                 }

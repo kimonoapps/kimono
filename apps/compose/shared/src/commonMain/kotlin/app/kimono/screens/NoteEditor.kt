@@ -46,8 +46,6 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +64,15 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -178,43 +185,56 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: Str
     /* Shared with you on its own: yours to leave, not to move or delete. */
     val alone = meta != null && meta.notebookId == null
 
+    val section = model.library?.sections?.firstOrNull { it.id == meta?.parentId }
+    val page = MaterialTheme.colorScheme.surfaceContainerLowest
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = page,
         topBar = {
-            TopAppBar(
-                title = {},
-                navigationIcon = { IconButton(onClick = { focusManager.clearFocus(); back() }) { Icon(kimonoIcon("back"), "Back") } },
-                actions = {
-                    SaveWord(model, draft)
-                    if (meta != null) Box {
-                        IconButton(onClick = { menu = true }) { Icon(kimonoIcon("more"), "More") }
-                        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
-                            DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = true })
-                            if (canWrite && !alone) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; moving = true })
-                            DropdownMenuItem(text = { Text("Send") }, leadingIcon = { Icon(kimonoIcon("out"), null, modifier = Modifier.size(18.dp)) }, onClick = {
-                                menu = false
-                                platform.share(listOf(draft.title.text.toString().trim(), draft.body.text.toString()).filter { it.isNotBlank() }.joinToString("\n\n"))
-                            })
-                            if (alone) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leaving = true })
-                            if (canWrite && !alone) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
-                                menu = false
-                                draft.discard()
-                                model.delete(meta)
-                                back()
-                            })
+            /* The mockup's note head: back, then where the note lives, its save word and ··· at the end. */
+            Row(
+                Modifier.fillMaxWidth().background(page).statusBarsPadding().padding(top = 4.dp).padding(horizontal = 6.dp).height(40.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                HeadButton("back", "Back") { focusManager.clearFocus(); back() }
+                val crumb = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (notebook != null) NotebookMark(notebook.id, 14.dp)
+                Text(
+                    buildAnnotatedString {
+                        append(notebook?.name ?: if (alone) "Shared with you" else "Notes")
+                        if (section != null) {
+                            withStyle(SpanStyle(color = faintColor())) { append(" / ") }
+                            append(section.name)
                         }
+                    },
+                    style = crumb, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                )
+                SaveWord(model, draft)
+                if (meta != null) Box {
+                    HeadButton("more", "More") { menu = true }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, shape = MaterialTheme.shapes.large) {
+                        DropdownMenuItem(text = { Text("Share") }, leadingIcon = { Icon(kimonoIcon("share"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; sharing = true })
+                        if (canWrite && !alone) DropdownMenuItem(text = { Text("Move") }, leadingIcon = { Icon(kimonoIcon("move"), null, modifier = Modifier.size(18.dp)) }, onClick = { menu = false; moving = true })
+                        DropdownMenuItem(text = { Text("Send") }, leadingIcon = { Icon(kimonoIcon("out"), null, modifier = Modifier.size(18.dp)) }, onClick = {
+                            menu = false
+                            platform.share(listOf(draft.title.text.toString().trim(), draft.body.text.toString()).filter { it.isNotBlank() }.joinToString("\n\n"))
+                        })
+                        if (alone) DropdownMenuItem(text = { Text("Leave", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("door"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = { menu = false; leaving = true })
+                        if (canWrite && !alone) DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error) }, leadingIcon = { Icon(kimonoIcon("trash"), null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }, onClick = {
+                            menu = false
+                            draft.discard()
+                            model.delete(meta)
+                            back()
+                        })
                     }
-                    Spacer(Modifier.size(4.dp))
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surface),
-            )
+                }
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.padding(padding).consumeWindowInsets(padding).fillMaxSize().imePadding()) {
             val scroll = rememberScrollState()
             Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 24.dp).padding(top = 4.dp),
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 16.dp),
             ) {
                 NoteTitle(draft, canWrite, titleFocus, onFocus = { focused ->
                     if (titleFocused && !focused) scope.launch { draft.rename() }
@@ -223,7 +243,6 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: Str
                     /* After the edit that asked for it, so the keyboard follows the focus to the body. */
                     scope.launch { kotlinx.coroutines.delay(50); runCatching { bodyFocus.requestFocus() } }
                 }
-                Spacer(Modifier.size(14.dp))
                 NoteBody(model, platform, draft, canWrite, scroll, bodyFocus, onFormats = { formats = it }) { focused ->
                     if (bodyFocused && !focused) scope.launch { draft.save() }
                     bodyFocused = focused
@@ -266,8 +285,9 @@ private fun NoteTitle(draft: NoteDraft, canWrite: Boolean, focus: FocusRequester
     var focused by remember { mutableStateOf(false) }
     val spread by animateFloatAsState(if (focused) 1f else 0f, spring(dampingRatio = .9f, stiffness = 220f))
     val ink = MaterialTheme.colorScheme.primary
-    val style = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurface)
-    Box(Modifier.fillMaxWidth()) {
+    /* 24px Mincho 600 at 1.25, 8 above, 10 below its 6 of padding. */
+    val style = MaterialTheme.typography.headlineMedium.copy(color = MaterialTheme.colorScheme.onSurface, fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.SemiBold)
+    Box(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp)) {
         if (draft.title.text.isEmpty()) Text("Untitled", style = style.copy(color = MaterialTheme.colorScheme.outline))
         BasicTextField(
             draft.title, readOnly = !canWrite, textStyle = style, cursorBrush = SolidColor(ink),
@@ -311,8 +331,10 @@ private fun NoteBody(
 ) {
     val scheme = MaterialTheme.colorScheme
     val headline = MaterialTheme.typography.headlineMedium.fontFamily
-    val look = remember(scheme, headline) {
-        NoteLook(text = scheme.onSurface, mark = scheme.outline, accent = scheme.primary, quiet = scheme.onSurfaceVariant, code = scheme.onSurface, codeBack = scheme.surfaceContainerHigh, headline = headline)
+    val faint = faintColor()
+    val accent = appAccent()
+    val look = remember(scheme, headline, faint, accent) {
+        NoteLook(text = scheme.onSurface, mark = faint, faint = faint, link = accent, accent = accent, quiet = scheme.onSurfaceVariant, code = scheme.onSurface, codeBack = scheme.surfaceContainerHigh, headline = headline)
     }
     var focused by remember { mutableStateOf(false) }
     /* The markup at the caret shows, so the styling follows the caret as well as the text. */
@@ -322,10 +344,28 @@ private fun NoteBody(
     val caret = if (focused) draft.body.selection else null
     val spans = remember(draft.body.text, caret, look) { noteSpans(draft.body.text, look, caret) }
     SideEffect { onFormats(spans.formats) }
-    val dot = scheme.onSurfaceVariant
-    val bar = scheme.outlineVariant
+    val dot = accent
+    val bar = accent.copy(alpha = .55f)
+    val chip = scheme.surfaceContainerHigh
     Box(
         Modifier.fillMaxWidth().drawWithContent {
+            /* Inline code's chip, behind its words: 4 either side, 1 above and below, 5 round. */
+            layout?.let { result ->
+                val length = result.layoutInput.text.length
+                spans.chips.forEach { range ->
+                    if (range.isEmpty() || range.last >= length) return@forEach
+                    for (line in result.getLineForOffset(range.first)..result.getLineForOffset(range.last)) {
+                        val from = maxOf(range.first, result.getLineStart(line))
+                        val to = minOf(range.last, result.getLineEnd(line, visibleEnd = true) - 1)
+                        if (to < from) continue
+                        val a = result.getBoundingBox(from)
+                        val b = result.getBoundingBox(to)
+                        val mid = (a.top + a.bottom) / 2
+                        val half = 9.5.dp.toPx()
+                        drawRoundRect(chip, Offset(a.left - 4.dp.toPx(), mid - half), Size(b.right - a.left + 8.dp.toPx(), half * 2), CornerRadius(5.dp.toPx()))
+                    }
+                }
+            }
             drawContent()
             val result = layout ?: return@drawWithContent
             val length = result.layoutInput.text.length
@@ -333,22 +373,24 @@ private fun NoteBody(
             spans.bullets.forEach { bullet ->
                 if (bullet.at >= length) return@forEach
                 val box = result.getBoundingBox(bullet.at)
-                val r = 3.dp.toPx()
-                val c = Offset(box.left + box.width / 2, box.top + box.height / 2 + 1.dp.toPx())
-                if (bullet.depth % 2 == 0) drawCircle(dot, r, c) else drawCircle(dot, r, c, style = Stroke(1.4.dp.toPx()))
+                /* A .36em dot; an open ring with a 1.5 stroke at odd depths. */
+                val r = 2.88.dp.toPx()
+                val line = result.getLineForOffset(bullet.at)
+                val c = Offset(box.left + 7.dp.toPx(), (result.getLineTop(line) + result.getLineBottom(line)) / 2 + .5.dp.toPx())
+                if (bullet.depth % 2 == 0) drawCircle(dot, r, c) else drawCircle(dot, r - .75.dp.toPx(), c, style = Stroke(1.5.dp.toPx()))
             }
             /* A quote's bar, down its lines. */
             spans.quotes.forEach { lines ->
                 if (lines.first >= length) return@forEach
-                val top = result.getBoundingBox(lines.first).top
-                val bottom = result.getBoundingBox((lines.last - 1).coerceIn(lines.first, length - 1)).bottom
-                drawRect(bar, Offset(0f, top + 3.dp.toPx()), Size(3.dp.toPx(), bottom - top - 6.dp.toPx()))
+                val top = result.getLineTop(result.getLineForOffset(lines.first))
+                val bottom = result.getLineBottom(result.getLineForOffset((lines.last - 1).coerceIn(lines.first, length - 1)))
+                drawRect(bar, Offset(0f, top), Size(3.dp.toPx(), bottom - top))
             }
         },
     ) {
         BasicTextField(
             draft.body, readOnly = !canWrite,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface, fontSize = 16.sp, lineHeight = 25.sp),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface, fontSize = 16.sp, lineHeight = 26.4.sp, fontWeight = FontWeight.Normal),
             cursorBrush = SolidColor(scheme.primary),
             inputTransformation = noteInput, outputTransformation = output,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -380,12 +422,14 @@ private fun NoteBody(
             spans.checks.forEach { check ->
                 if (check.at + 2 >= result.layoutInput.text.length) return@forEach
                 val box: Rect = result.getBoundingBox(check.at).let { first -> first.copy(right = result.getBoundingBox(check.at + 2).right) }
-                val side = with(density) { maxOf(box.height * .78f, 18.dp.toPx()) }
-                val x = box.left + (box.width - side) / 2
-                val y = box.top + (box.height - side) / 2 + with(density) { 2.dp.toPx() }
+                /* 1.2em, at the line's start, centred on the line. */
+                val side = with(density) { 19.2.dp.toPx() }
+                val line = result.getLineForOffset(check.at)
+                val x = box.left
+                val y = (result.getLineTop(line) + result.getLineBottom(line) - side) / 2
                 with(density) {
                     InkCheck(
-                        checked = check.checked, ring = scheme.outline, ink = scheme.primary, seed = "check-${check.line}",
+                        checked = check.checked, ring = (if (check.checked) faint else scheme.onSurface).copy(alpha = .7f), ink = accent, seed = "check-${check.line}",
                         modifier = Modifier.offset { IntOffset(x.toInt(), y.toInt()) }.size(side.toDp())
                             .semantics { contentDescription = if (check.checked) "Ticked" else "Not ticked" }
                             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = canWrite) {
@@ -444,14 +488,13 @@ private fun FormatBar(draft: NoteDraft, formats: Set<String>, done: () -> Unit) 
             color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(18.dp), shadowElevation = 8.dp,
         ) {
             Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 5.dp),
+                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 FormatButton("bold", "Bold", "bold" in formats) { body.toggleBold() }
                 FormatButton("italic", "Italic", "italic" in formats) { body.toggleItalic() }
                 Gap()
                 FormatButton("heading", if (level == null) "Heading" else "Heading $level", level != null, label = level?.let { "H$it" }) { body.cycleHeading() }
-                Gap()
                 FormatButton("list", "Bullets", "bullet" in formats) { body.toggleList() }
                 FormatButton("checklist", "Checklist", "check" in formats) { body.toggleChecklist() }
                 Gap()
@@ -465,14 +508,14 @@ private fun FormatBar(draft: NoteDraft, formats: Set<String>, done: () -> Unit) 
 }
 
 @Composable
-private fun Gap() = Box(Modifier.padding(horizontal = 3.dp).size(width = 1.dp, height = 20.dp).background(MaterialTheme.colorScheme.outlineVariant))
+private fun Gap() = Spacer(Modifier.width(6.dp)) /* 8 between groups, with the row's 2 */
 
 @Composable
 private fun FormatButton(icon: String, name: String, on: Boolean, label: String? = null, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    val base = scheme.onPrimaryContainer.copy(alpha = .2f)
+    val base = scheme.onPrimaryContainer.copy(alpha = .22f)
     Box(
-        Modifier.size(width = 36.dp, height = 38.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.size(width = 32.dp, height = 30.dp).clip(RoundedCornerShape(6.dp))
             .then(if (on) Modifier.background(scheme.primaryContainer).drawBehind {
                 /* A 2dp pressed base, so it reads as a seal block. */
                 drawRect(base, Offset(0f, size.height - 2.dp.toPx()), Size(size.width, 2.dp.toPx()))
@@ -483,6 +526,21 @@ private fun FormatButton(icon: String, name: String, on: Boolean, label: String?
     ) {
         val tint = if (on) scheme.onPrimaryContainer else scheme.onSurfaceVariant
         if (label != null) Text(label, style = MaterialTheme.typography.titleSmall, color = tint)
-        else Icon(kimonoIcon(icon), null, tint = tint, modifier = Modifier.size(20.dp))
+        else Icon(kimonoIcon(icon), null, tint = tint, modifier = Modifier.size(17.dp))
     }
 }
+
+/** Kata's faint ink, by light or dark. */
+@Composable
+internal fun faintColor(): Color = if (MaterialTheme.colorScheme.surface.luminance() < .5f) Color(0xFFB9A69F) else Color(0xFF6B605A)
+
+/** The app's accent, suo, by light or dark. */
+@Composable
+internal fun appAccent(): Color = if (MaterialTheme.colorScheme.surface.luminance() < .5f) Color(0xFFD06A82) else Color(0xFFA84D63)
+
+/** A 32dp icon button in the note head. */
+@Composable
+private fun HeadButton(icon: String, name: String, onClick: () -> Unit) = Box(
+    Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = name, onClick = onClick).semantics { contentDescription = name },
+    contentAlignment = Alignment.Center,
+) { Icon(kimonoIcon(icon), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
