@@ -98,7 +98,7 @@
   --k-app-ink: 100%;
   /* Coloured text (suō, an app's accent): itself on paper; by night it turns the cream of the paper instead. */
   --k-tint: 100%;
-  --k-night-ink: #fbf3ee;
+  --k-night-ink: #f2e1ca;
   /* text on an accent fill (a seal, a chip): stays near-white by night too */
   --k-on-accent: #fffdf8;
 
@@ -198,7 +198,7 @@
   --k-ink: #efe0da;
   --k-ink-soft: #d8c2bd;
   --k-faint: #b9a69f;
-  --k-plum: #fbf3ee;
+  --k-plum: #f2e1ca;
   --k-suo: #d06a82;
   --k-suo-deep: #f2a7b8;
   --k-suo-pad: #5f2535;
@@ -245,7 +245,7 @@
     --k-ink: #efe0da;
     --k-ink-soft: #d8c2bd;
     --k-faint: #b9a69f;
-    --k-plum: #fbf3ee;
+    --k-plum: #f2e1ca;
     --k-suo: #d06a82;
     --k-suo-deep: #f2a7b8;
     --k-suo-pad: #5f2535;

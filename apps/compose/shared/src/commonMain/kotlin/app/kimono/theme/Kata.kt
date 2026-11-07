@@ -81,7 +81,7 @@ private val kimonoColors = lightColorScheme(
  */
 private val kimonoNight = darkColorScheme(
     /* coloured text by night is the cream of the day's paper, not pink */
-    primary = Color(0xFFFBF3EE),
+    primary = Color(0xFFF2E1CA),
     onPrimary = Color(0xFF3A2128),
     primaryContainer = Kata.suoDeep,
     onPrimaryContainer = Color(0xFFFFD9DF),
@@ -129,7 +129,7 @@ object Appearance {
 val LocalNight = staticCompositionLocalOf { false }
 
 /** Plum ink: deep on paper, pale by night. For marks drawn straight on a surface. */
-val plumInk: Color @Composable get() = if (LocalNight.current) Color(0xFFFBF3EE) else Kata.plum
+val plumInk: Color @Composable get() = if (LocalNight.current) Color(0xFFF2E1CA) else Kata.plum
 
 @Composable
 private fun kataTypography(): Typography {

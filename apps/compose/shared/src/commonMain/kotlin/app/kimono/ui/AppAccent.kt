@@ -31,7 +31,7 @@ fun AppAccentTheme(accent: String?, content: @Composable () -> Unit) {
     val scheme = remember(accent, base, night) {
         /* By night coloured text is cream, as everywhere; the accent lives in the containers. */
         if (night) base.copy(
-            primary = Color(0xFFFBF3EE),
+            primary = Color(0xFFF2E1CA),
             onPrimary = mix(ramp.deep, Color.Black, .45f),
             primaryContainer = mix(ramp.deep, Color.Black, .25f),
             onPrimaryContainer = mix(ramp.tint, Color.White, .6f),
