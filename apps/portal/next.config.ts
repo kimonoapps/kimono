@@ -11,6 +11,18 @@ const nextConfig: NextConfig = {
     "../../node_modules/.pnpm/three@*/node_modules/three/build/three.module.min.js",
     "../../node_modules/.pnpm/katex@*/node_modules/katex/dist/**",
   ] },
+  /* What's in public/ is served with max-age=0, so every visit asked again for each font and icon.
+     These names have no hash: fonts are kept a month, the rest a day, and both refresh in the background. */
+  async headers() {
+    const keep = (path: string, seconds: number) => ({ source: path, headers: [{ key: "Cache-Control", value: `public, max-age=${seconds}, stale-while-revalidate=${seconds * 7}` }] });
+    return [
+      keep("/fonts/:file*", 2_592_000),
+      keep("/file-icons/:file*", 86_400),
+      keep("/brand/:file*", 86_400),
+      keep("/providers/:file*", 86_400),
+      keep("/art/:file*", 86_400),
+    ];
+  },
   /* Pages move between each other with the browser's view transitions (components/page-transition.tsx). */
   experimental: {
     viewTransition: true,
