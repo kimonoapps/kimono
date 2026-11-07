@@ -514,19 +514,27 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     if (held.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(held.toList()) { h -> FileChip(h.name, h.failed ?: readableSize(h.size), failed = h.failed != null) { held.remove(h) } }
                     }
-                    BasicTextField(
-                        prompt, { prompt = it },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp).focusRequester(field).padding(4.dp),
-                        decorationBox = { inner -> Box { if (prompt.isEmpty()) Text(if (onProject) "Describe what you want, in your own words." else "Ask anything, or tell it what to do with your files.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant); inner() } },
-                    )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
+                    /* attach, the words, Send: one line, as in the chat; the buttons keep to the last line as the words grow */
+                    Row(verticalAlignment = Alignment.Bottom) {
                         AttachMenu(onDevice = {
                             scope.launch {
                                 platform.pickFiles().take(10 - held.size).forEach { f -> held += Held(f.name, f.size, file = f, failed = if (f.size > Code.MAX_ATTACHMENT) "Over 20 MB" else null) }
                             }
                         }, onDrive = if (marks.driveApp != null || marks.spaces.isNotEmpty()) ({ choosing = true }) else null)
+                        BasicTextField(
+                            prompt, { prompt = it },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                            maxLines = 10,
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp).focusRequester(field).padding(horizontal = 4.dp, vertical = 11.dp),
+                            decorationBox = { inner -> Box { if (prompt.isEmpty()) Text(if (onProject) "Describe what you want" else "Ask anything", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
+                        )
+                        app.kimono.screens.SendStop(stop = false, enabled = ready, busy = sending, onSend = { send() })
+                    }
+                }
+            }
+            /* What kind of chat, and how it answers: under the box. */
+            FlowRow(Modifier.fillMaxWidth().padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                         if (admin) Surface(onClick = { onProject = !onProject }, shape = androidx.compose.foundation.shape.CircleShape, color = if (onProject) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
                             Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(kimonoIcon(if (onProject) "check" else "code"), null, modifier = Modifier.size(16.dp))
@@ -536,13 +544,8 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                         if (marks.spaces.isNotEmpty()) AccessChip(code)
                         ModelChip(code)
                         EffortChip(code)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) { Problem(problem) }
-                        Seal("Send", compact = true, busy = sending, enabled = ready, onClick = { send() })
-                    }
-                }
             }
+            Problem(problem)
             HomeUsage(code)
             if (!onProject) SuggestedApps(code, open)
         }

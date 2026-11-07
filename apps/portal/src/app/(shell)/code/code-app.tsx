@@ -2861,7 +2861,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
       <textarea ref={field} value={text} rows={1} aria-label="Message"
-        placeholder={blocked ? blocked : running ? "Steer it: this is read as soon as the current step ends" : "Ask for a change, or reply"}
+        placeholder={blocked ? blocked : "Ask for a change, or reply"}
         disabled={Boolean(blocked)}
         onChange={(event) => { setText(event.target.value); sayTyping(event.target.value); }}
         onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}

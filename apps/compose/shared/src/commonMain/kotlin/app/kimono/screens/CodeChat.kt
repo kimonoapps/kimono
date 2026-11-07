@@ -94,6 +94,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
@@ -469,7 +470,8 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                             is CodeEvent.Preview -> if (w.running && w.preview?.url == e.url && item.key == lastPreview) PreviewCard(code, platform, w, e.url, ready = false)
                                 else Note("link", "The app ran at ${e.host}")
                             CodeEvent.PreviewStopped -> Note("link", "The app’s link was taken down.")
-                            is CodeEvent.Slept -> Note("restart", "Put to sleep to make room for “${e.forTitle}”. It wakes when you open it.")
+                            /* only a project's chat says it was put to sleep; a plain chat just wakes */
+                            is CodeEvent.Slept -> if (w.isProject) Note("restart", "Put to sleep to make room for “${e.forTitle}”. It wakes when you open it.")
                             is CodeEvent.Disk -> Note("close", if (e.full) "Stopped: this chat's files took ${gigabytes(e.used)}, past its ${gigabytes(e.quota)}. Its app was stopped too. Ask it to free some space."
                                 else "This chat's files take ${gigabytes(e.used)} of its ${gigabytes(e.quota)}. It was asked to free some space first.", failed = true)
                             is CodeEvent.Compacted -> Note("diff", "Compacted the conversation${e.before?.let { " · it held ${kTokens(it)} tokens" } ?: ""}")
@@ -1105,6 +1107,32 @@ private class Pending(val name: String, val size: Long) {
     var failed by mutableStateOf<String?>(null)
 }
 
+/**
+ * Send and Stop are one square seal: while the agent works and nothing is written it stops it; a word
+ * typed turns it back into Send. The arrow lifts away as the square turns in, the seal's ink changing with it.
+ */
+@Composable
+internal fun SendStop(stop: Boolean, enabled: Boolean, busy: Boolean = false, onSend: () -> Unit, onStop: () -> Unit = {}) {
+    val turn by androidx.compose.animation.core.animateFloatAsState(if (stop) 1f else 0f, androidx.compose.animation.core.spring(dampingRatio = 0.62f, stiffness = 380f), label = "send-stop")
+    val scheme = MaterialTheme.colorScheme
+    val face by androidx.compose.animation.animateColorAsState(when { stop -> scheme.errorContainer; enabled -> scheme.primary; else -> scheme.surfaceContainerHighest }, label = "send-stop-face")
+    val ink by androidx.compose.animation.animateColorAsState(when { stop -> scheme.onErrorContainer; enabled -> scheme.onPrimary; else -> scheme.onSurfaceVariant }, label = "send-stop-ink")
+    Surface(onClick = { if (stop) onStop() else onSend() }, enabled = enabled && !busy, shape = RoundedCornerShape(14.dp), color = face, modifier = Modifier.size(44.dp).semantics { contentDescription = if (stop) "Stop" else "Send" }) {
+        Box(contentAlignment = Alignment.Center) {
+            if (busy) InkLoader(size = 22.dp)
+            else {
+                val lift = turn.coerceIn(0f, 1f)
+                Icon(kimonoIcon("send"), null, tint = ink, modifier = Modifier.size(22.dp).graphicsLayer {
+                    alpha = 1f - lift; translationY = -14.dp.toPx() * lift; scaleX = 1f - .3f * lift; scaleY = 1f - .3f * lift
+                })
+                Box(Modifier.size(14.dp).graphicsLayer {
+                    alpha = lift; rotationZ = -90f * (1f - turn); scaleX = .3f + .7f * turn; scaleY = .3f + .7f * turn
+                }.background(ink, RoundedCornerShape(3.dp)))
+            }
+        }
+    }
+}
+
 @Composable
 private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMarks, w: CodeWorkspace, context: ContextUse?) {
     var choosing by remember { mutableStateOf(false) }
@@ -1151,16 +1179,8 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                 if (pending.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
                     items(pending.toList()) { p -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null) { pending.remove(p) } }
                 }
-                BasicTextField(
-                    value = text, onValueChange = { text = it; code.keep("draft:${w.id}", it) },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
-                    maxLines = 8,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 28.dp).padding(horizontal = 8.dp, vertical = 6.dp),
-                    decorationBox = { inner -> Box { if (text.isEmpty()) Text(if (w.running) "Steer it: read as soon as this step ends" else "Ask for a change, or reply", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                /* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */
+                Row(verticalAlignment = Alignment.Bottom) {
                     AttachMenu(onDevice = {
                         scope.launch {
                             val picked = platform.pickFiles().take(10 - pending.size)
@@ -1171,17 +1191,22 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                             }
                         }
                     }, onDrive = if (w.drive != null && w.isOwner) ({ choosing = true }) else null)
-                    Spacer(Modifier.weight(1f))
-                    /* Files, model and thinking, and every meter whatever its level, behind … */
-                    IconButton(onClick = { more = true }) { Icon(kimonoIcon("more"), "Settings and usage") }
+                    BasicTextField(
+                        value = text, onValueChange = { text = it; code.keep("draft:${w.id}", it) },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                        maxLines = 8,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                        modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 11.dp),
+                        decorationBox = { inner -> Box { if (text.isEmpty()) Text("Ask for a change, or reply", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
+                    )
                     /* The fullest meter past half as a ring beside Send; open it for the numbers and to compact. Nothing past half, no ring. */
                     if (shown.any) IconButton(onClick = { meters = true }) { Ring(shown.most, 22.dp) }
-                    if (w.running) IconButton(onClick = { scope.launch { try { code.stop(w.id) } catch (p: KimonoProblem) { problem = p.message } } }) { Icon(kimonoIcon("stop"), "Stop") }
-                    Surface(onClick = { send() }, enabled = canSend, shape = CircleShape, color = if (canSend) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.size(44.dp)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (sending) InkLoader(size = 22.dp) else Icon(kimonoIcon("send"), "Send", tint = if (canSend) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                        }
-                    }
+                    /* Files, model and thinking, and every meter whatever its level, behind … */
+                    IconButton(onClick = { more = true }) { Icon(kimonoIcon("more"), "Settings and usage") }
+                    /* One seal: Stop while it works and nothing is written, Send otherwise. */
+                    val stopping = w.running && text.isBlank() && pending.isEmpty()
+                    SendStop(stop = stopping, enabled = stopping || canSend, busy = sending, onSend = { send() }, onStop = { scope.launch { try { code.stop(w.id) } catch (p: KimonoProblem) { problem = p.message } } })
                 }
                 if (problem != null) Box(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) { Problem(problem) }
             }
