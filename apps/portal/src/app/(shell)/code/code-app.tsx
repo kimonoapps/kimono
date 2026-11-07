@@ -534,9 +534,10 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
       {problem ? <p className="cd-quiet cd-side-note">{problem} <button type="button" className="cd-textbutton" onClick={() => void load()}>Retry</button></p> : null}
       {workspaces === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       {searching ? <SearchResults words={find} chats={[...listed, ...shared.chats]} current={current} now={now} /> : <>
-      <SideGroup gkey="recent" title={<span className="cd-folder-title">Recent</span>} icon="clock" chats={chatsOf(listed).filter((w) => !w.folder)} current={current} now={now} cap={10}
+      <SideGroup gkey="recent" title={<span className="cd-folder-title">Recent</span>} icon="clock" chats={chatsOf(listed).filter((w) => !w.folder)} current={current} now={now} cap={5}
         collapsed={folds.has("recent")} onToggle={() => toggleFold("recent")} onDropChat={(id) => fileChat(id, null)}
         actions={<button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1" })} aria-label="New chat" title="New chat"><Icon name="plus" /></button>} />
+      <SharedWithYou chats={chatsOf(shared.chats).concat(shared.chats.filter((w) => w.kind !== "chat"))} artifacts={shared.artifacts} current={current} now={now} />
       <div className="cd-side-label cd-folders-head"><span>Projects</span><button type="button" className="cd-roundbutton cd-project-new is-shown" onClick={() => setNaming({ id: null, name: "" })} aria-label="New project" title="New project"><Icon name="plus" /></button></div>
       {naming && !naming.id ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); void saveProject(); }}>
         <input autoFocus value={naming.name} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={(event) => setNaming({ id: null, name: event.target.value })} onBlur={() => void saveProject()} onKeyDown={(event) => { if (event.key === "Escape") setNaming(null); }} />
@@ -551,7 +552,6 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
             collapsed={folds.has(group.key)} onToggle={() => toggleFold(group.key)} onDropGroup={(from) => reorder(from, group.key)}
             actions={admin ? <button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1", repo: group.repo.key })} aria-label={`New chat in ${group.repo.name}`} title={`New chat in ${group.repo.name}`}><Icon name="plus" /></button> : null} />)}
       {!groups.length && !naming ? <p className="cd-quiet cd-side-note">Keep chats together in a project.</p> : null}
-      <SharedWithYou chats={chatsOf(shared.chats).concat(shared.chats.filter((w) => w.kind !== "chat"))} artifacts={shared.artifacts} current={current} now={now} />
       {workspaces && !listed.length ? <p className="cd-quiet cd-side-note">Your chats will be here.</p> : null}
       </>}
     </aside>
@@ -1146,7 +1146,7 @@ function SideGroup({ gkey, icon, title, actions, chats, current, now, collapsed,
     </div>}
     {collapsed ? null : chats.length ? <>
       <WorkspaceList list={shown} current={current} now={now} />
-      {cap && chats.length > cap ? <button type="button" className="cd-textbutton cd-folder-more" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show ${chats.length - cap} more`}</button> : null}
+      {cap && chats.length > cap ? <button type="button" className="cd-textbutton cd-folder-more" onClick={() => setAll(!all)}>{all ? "Fewer" : `··· ${chats.length - cap} more`}</button> : null}
     </> : empty ?? null}
   </div>;
 }
@@ -1311,8 +1311,12 @@ function RowMenu({ label, items, className }: { label: string; items: MenuItem[]
 }
 
 /** Chats and artifacts others shared with this person: each with whose it is. An artifact opens on its own page. */
-function SharedWithYou({ chats, artifacts, current, now }: { chats: Workspace[]; artifacts: SharedArtifact[]; current: string | null; now: number }) {
-  if (!chats.length && !artifacts.length) return null;
+function SharedWithYou({ chats: allChats, artifacts: allArtifacts, current, now }: { chats: Workspace[]; artifacts: SharedArtifact[]; current: string | null; now: number }) {
+  const [all, setAll] = useState(false);
+  if (!allChats.length && !allArtifacts.length) return null;
+  /* Like Recent, the newest few; the rest a tap away. */
+  const cap = 5, total = allChats.length + allArtifacts.length;
+  const chats = all ? allChats : allChats.slice(0, cap), artifacts = all ? allArtifacts : allArtifacts.slice(0, Math.max(0, cap - chats.length));
   return <div className="cd-project cd-shared">
     <div className="cd-side-label cd-folders-head"><span>Shared with you</span></div>
     <nav className="cd-list">
@@ -1325,6 +1329,7 @@ function SharedWithYou({ chats, artifacts, current, now }: { chats: Workspace[];
         <small><SharedBy username={a.owner} /><span className="cd-when">{when(a.updatedAt, now)}</span></small>
       </button>)}
     </nav>
+    {total > cap ? <button type="button" className="cd-textbutton cd-folder-more" onClick={() => setAll(!all)}>{all ? "Fewer" : `··· ${total - cap} more`}</button> : null}
   </div>;
 }
 

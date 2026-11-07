@@ -20,11 +20,14 @@ import { JointSwitch } from "@/components/joint-switch";
 import { SaveBar } from "@/components/save-bar";
 import { accentOf, appRegistry } from "@/lib/apps";
 import { notFound, redirect } from "next/navigation";
+import { db, grantUsage, takeBackGrant } from "@/lib/code";
+import { AiUsage } from "./ai-usage";
 
-type View = "setup" | "settings" | "environment" | "backups";
+type View = "setup" | "settings" | "people" | "environment" | "backups";
 const views: Array<{ id: View; label: string }> = [
   { id: "setup", label: "Setup" },
   { id: "settings", label: "Settings" },
+  { id: "people", label: "People" },
   { id: "environment", label: "Advanced" },
   { id: "backups", label: "Backups" },
 ];
@@ -32,6 +35,7 @@ const views: Array<{ id: View; label: string }> = [
 async function requireAdmin() {
   const session = await auth();
   if (!session?.user || (session.user.role !== "owner" && session.user.role !== "admin")) redirect("/");
+  return session.user;
 }
 
 function EnvironmentInput({ field, value, configured, label }: { field: ConfigurationField; value: string; configured: boolean; label?: string }) {
@@ -70,13 +74,14 @@ export default async function AppManagementPage({
   const backup = appBackupSelection(backupConfig, backupCatalog(settings, [definition]), id);
   // An app that keeps its own settings document earns a Settings view; the
   // Advanced view stays what it has always been, this stack's variables.
-  const availableViews = views.filter((item) => (item.id !== "settings" || definition.spec.configuration.some((field) => field.target === "settings")) && (item.id !== "backups" || id !== "kimono-portal"));
+  const availableViews = views.filter((item) => (item.id !== "settings" || definition.spec.configuration.some((field) => field.target === "settings")) && (item.id !== "backups" || id !== "kimono-portal") && (item.id !== "people" || id === "kimono-code"));
   const selectedView = availableViews.some((item) => item.id === query.view) ? query.view as View : "setup";
   const viewHref = (view: View) => `/admin/apps/${id}?view=${view}`;
   const setupHref = `/admin/apps/${id}?view=setup`;
   const environmentHref = `/admin/apps/${id}?view=environment`;
   const settingsHref = `/admin/apps/${id}?view=settings`;
   const backupsHref = `/admin/apps/${id}?view=backups`;
+  const peopleHref = `/admin/apps/${id}?view=people`;
 
   async function startSetup() {
     "use server";
@@ -125,6 +130,23 @@ export default async function AppManagementPage({
     }
     catch (error) { redirect(`${settingsHref}&error=${encodeURIComponent(error instanceof Error ? error.message : "Settings could not be saved")}`); }
     redirect(`${settingsHref}&saved=1`);
+  }
+
+  /* More of Kimono AI for someone, on top of their share, until this week or these 5 hours end. */
+  async function giveUsage(form: FormData) {
+    "use server";
+    const admin = await requireAdmin();
+    const username = String(form.get("username") || ""), window = form.get("window") === "five_hour" ? "five_hour" : "week";
+    try { grantUsage(db(), username, window, Number(form.get("extra")) / 100, admin.username || "admin"); }
+    catch (error) { redirect(`${peopleHref}&error=${encodeURIComponent(error instanceof Error ? error.message : "That couldn't be given")}`); }
+    redirect(`${peopleHref}&saved=1`);
+  }
+
+  async function takeBackUsage(form: FormData) {
+    "use server";
+    await requireAdmin();
+    takeBackGrant(db(), Number(form.get("grant")));
+    redirect(`${peopleHref}&saved=1`);
   }
 
   async function saveBackups(form: FormData) {
@@ -252,6 +274,8 @@ export default async function AppManagementPage({
           </form>
           <SaveBar formId={`app-${selectedView}`} label={selectedView === "settings" ? "Save settings" : "Save environment"} />
         </> : null}
+
+        {instance && selectedView === "people" ? <AiUsage give={giveUsage} takeBack={takeBackUsage} me={{ username: session.user.username ?? "", role: session.user.role }} /> : null}
 
         {instance && selectedView === "backups" ? (!backupConfig ? (
           <div className="card app-start"><span className="row-lead"><InkBlot tint="#5c7150" seed="no-storage"><LineIcon name="archive" /></InkBlot><span><h3>No storage yet</h3><p className="lead">Connect storage, then choose what to keep from {instance.name}.</p></span></span><Crossing kind="kakejiku" className="k-seal" href="/admin/backups">Set up backups</Crossing></div>

@@ -308,6 +308,14 @@ export function migrate(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS ai_ratings_by_time ON ai_ratings (at);
     CREATE TABLE IF NOT EXISTS ai_reports (id TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', chat TEXT NOT NULL, at INTEGER NOT NULL);
   `);
+  /* More of the plan an administrator gave someone, on top of their share, until the window it was given in ends. */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS usage_grants (
+      id INTEGER PRIMARY KEY, username TEXT NOT NULL, window TEXT NOT NULL CHECK (window IN ('five_hour', 'week')),
+      extra REAL NOT NULL, until INTEGER NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS usage_grants_by_person ON usage_grants (username, until);
+  `);
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
@@ -354,6 +362,37 @@ export function usageOf(db: DatabaseSync, username: string, now = Date.now()): P
     plan: { fiveHour: current(plan?.five_hour, plan?.five_hour_reset), week: current(plan?.week, plan?.week_reset) },
     fiveHourLimited: Boolean(plan?.five_hour_reset),
   };
+}
+
+export type UsageWindow = "five_hour" | "week";
+export type UsageGrant = { id: number; username: string; window: UsageWindow; extra: number; until: number; by: string; at: number };
+
+/** Gives someone [extra] of the plan (a fraction) on top of their share, until the current window ends. */
+export function grantUsage(db: DatabaseSync, username: string, window: UsageWindow, extra: number, by: string, now = Date.now()) {
+  if (!(extra > 0 && extra <= 10)) throw new Error("That isn't an amount to give.");
+  const used = usageOf(db, username, now);
+  /* A window not seen yet starts with the next message: the grant lasts as long as such a window would. */
+  const until = (window === "week" ? used.week.resetsAt : used.fiveHour.resetsAt) ?? now + (window === "week" ? 7 * 24 : 5) * 3_600_000;
+  db.prepare("INSERT INTO usage_grants (username, window, extra, until, by, at) VALUES (?, ?, ?, ?, ?, ?)").run(username.toLowerCase(), window, extra, until, by, now);
+}
+
+/** The grants still running, for one person or everyone. */
+export function usageGrants(db: DatabaseSync, username?: string, now = Date.now()): UsageGrant[] {
+  const rows = username
+    ? db.prepare("SELECT * FROM usage_grants WHERE username = ? AND until > ? ORDER BY at").all(username.toLowerCase(), now)
+    : db.prepare("SELECT * FROM usage_grants WHERE until > ? ORDER BY at").all(now);
+  return rows as UsageGrant[];
+}
+
+export function takeBackGrant(db: DatabaseSync, id: number) {
+  db.prepare("DELETE FROM usage_grants WHERE id = ?").run(id);
+}
+
+/** What someone was given on top of their share, in each window, as fractions of the plan. */
+export function extraOf(db: DatabaseSync, username: string, now = Date.now()) {
+  const grants = usageGrants(db, username, now);
+  const sum = (window: UsageWindow) => grants.filter((g) => g.window === window).reduce((total, g) => total + g.extra, 0);
+  return { fiveHour: sum("five_hour"), week: sum("week") };
 }
 
 type WorkspaceRow = {

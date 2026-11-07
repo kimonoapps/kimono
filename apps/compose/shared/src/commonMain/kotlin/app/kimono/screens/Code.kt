@@ -129,6 +129,8 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
     var refreshing by remember { mutableStateOf(false) }
     /* Naming a project: a new one (id null) or one being renamed. */
     var naming by remember { mutableStateOf<CodeProject?>(null) }
+    var moreChats by remember { mutableStateOf(false) }
+    var moreShared by remember { mutableStateOf(false) }
     var makingProject by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<CodeProject?>(null) }
     var deleting by remember { mutableStateOf<CodeWorkspace?>(null) }
@@ -176,10 +178,44 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
                         }
                     }
                 }
-                val loose = chatsOf(all).filter { it.folder == null }
+                val allLoose = chatsOf(all).filter { it.folder == null }
+                /* The newest few; the rest a tap away. */
+                val loose = if (moreChats) allLoose else allLoose.take(5)
                 if (loose.isNotEmpty()) {
                     item(key = "chats-label") { Label("Chats") }
                     chatRows("loose", loose, time, open, act)
+                    if (allLoose.size > 5) item(key = "chats-more") { TextButton(onClick = { moreChats = !moreChats }) { Text(if (moreChats) "Fewer" else "··· ${allLoose.size - 5} more") } }
+                }
+                /* What others shared: their chats to read or write in, and their artifacts. */
+                val allTheirs = shared?.shared.orEmpty().sortedByDescending { it.updatedAt }
+                val allPages = shared?.sharedArtifacts.orEmpty()
+                val sharedTotal = allTheirs.size + allPages.size
+                val theirs = if (moreShared) allTheirs else allTheirs.take(5)
+                val pages = if (moreShared) allPages else allPages.take(maxOf(0, 5 - theirs.size))
+                if (theirs.isNotEmpty() || pages.isNotEmpty()) {
+                    item(key = "shared-label") { Label("Shared with you") }
+                    val count = theirs.size + pages.size
+                    itemsIndexed(theirs, key = { _, w -> "shared-${w.id}" }) { index, w ->
+                        val person = people[w.owner.lowercase()]
+                        SegmentedListItem(
+                            onClick = { open("code/${w.id}") },
+                            shapes = ListItemDefaults.segmentedShapes(index, count), colors = segmentColors(),
+                            leadingContent = { Portrait(person?.picture, person?.name, w.owner, 32.dp) },
+                            supportingContent = { Text(people.nameOf(w.owner), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            trailingContent = { StatusWord(w, time) },
+                        ) { Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                    }
+                    itemsIndexed(pages, key = { _, a -> "shared-artifact-${a.token}" }) { index, a ->
+                        SegmentedListItem(
+                            onClick = { open("ai/a/${a.token}") },
+                            shapes = ListItemDefaults.segmentedShapes(theirs.size + index, count), colors = segmentColors(),
+                            leadingContent = { BlotIcon("spark", "artifact-${a.token}", 32.dp) },
+                            supportingContent = { Text(people.nameOf(a.owner), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            trailingContent = { Text(whenText(a.updatedAt, time), fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        ) { Text(a.title.ifBlank { a.name }, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                    }
+                    if (sharedTotal > 5) item(key = "shared-more") { TextButton(onClick = { moreShared = !moreShared }) { Text(if (moreShared) "Fewer" else "··· ${sharedTotal - 5} more") } }
+                    item(key = "shared-gap") { Spacer(Modifier.size(10.dp)) }
                 }
                 item(key = "projects-label") {
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -209,33 +245,6 @@ fun CodeScreen(code: Code, app: app.kimono.data.KimonoAppLink?, admin: Boolean, 
                         }
                     }
                     chatRows(key, tasks, time, open, act)
-                }
-                /* What others shared: their chats to read or write in, and their artifacts. */
-                val theirs = shared?.shared.orEmpty().sortedByDescending { it.updatedAt }
-                val pages = shared?.sharedArtifacts.orEmpty()
-                if (theirs.isNotEmpty() || pages.isNotEmpty()) {
-                    item(key = "shared-label") { Box(Modifier.padding(top = 14.dp)) { Label("Shared with you") } }
-                    val count = theirs.size + pages.size
-                    itemsIndexed(theirs, key = { _, w -> "shared-${w.id}" }) { index, w ->
-                        val person = people[w.owner.lowercase()]
-                        SegmentedListItem(
-                            onClick = { open("code/${w.id}") },
-                            shapes = ListItemDefaults.segmentedShapes(index, count), colors = segmentColors(),
-                            leadingContent = { Portrait(person?.picture, person?.name, w.owner, 32.dp) },
-                            supportingContent = { Text(people.nameOf(w.owner), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingContent = { StatusWord(w, time) },
-                        ) { Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                    }
-                    itemsIndexed(pages, key = { _, a -> "shared-artifact-${a.token}" }) { index, a ->
-                        SegmentedListItem(
-                            onClick = { open("ai/a/${a.token}") },
-                            shapes = ListItemDefaults.segmentedShapes(theirs.size + index, count), colors = segmentColors(),
-                            leadingContent = { BlotIcon("spark", "artifact-${a.token}", 32.dp) },
-                            supportingContent = { Text(people.nameOf(a.owner), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingContent = { Text(whenText(a.updatedAt, time), fontFamily = mono, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        ) { Text(a.title.ifBlank { a.name }, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                    }
-                    item(key = "shared-gap") { Spacer(Modifier.size(10.dp)) }
                 }
                 if (all.isEmpty() && theirs.isEmpty() && pages.isEmpty() && problem == null) item(key = "quiet") { Quiet("Your chats will be here.") }
                 if (archived > 0) item(key = "archived") {
