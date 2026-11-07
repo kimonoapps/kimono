@@ -1,6 +1,9 @@
 package app.kimono.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,12 +35,14 @@ fun InkMenu(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         offset = offset,
-        shape = RoundedCornerShape(20.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(16.dp),
+        /* A clear step above the page: white paper by day, the highest tone by night, lifted on a soft shadow and a hairline. */
+        containerColor = if (app.kimono.theme.LocalNight.current) MaterialTheme.colorScheme.surfaceContainerHighest else MaterialTheme.colorScheme.surfaceContainerLowest,
         tonalElevation = 0.dp,
-        shadowElevation = 10.dp,
+        shadowElevation = 16.dp,
+        border = BorderStroke(1.dp, if (app.kimono.theme.LocalNight.current) MaterialTheme.colorScheme.outline.copy(alpha = .4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f)),
     ) {
-        Column(content = content)
+        Column(Modifier.padding(vertical = 4.dp), content = content)
     }
 }
 
@@ -49,10 +54,11 @@ fun InkMenuItem(label: String, onClick: () -> Unit, icon: String? = null, danger
         text = { Text(label, style = MaterialTheme.typography.bodyLarge, color = colour) },
         onClick = onClick,
         enabled = enabled,
+        contentPadding = PaddingValues(horizontal = 16.dp),
         leadingIcon = icon?.let {
             {
-                InkBlot("menu:$label", tint = if (danger) MaterialTheme.colorScheme.error else Kata.suo, size = 30.dp) {
-                    Icon(inkIcon(it), null, tint = if (danger) Kata.suoPad else Kata.plum, modifier = Modifier.size(16.dp))
+                InkBlot("menu:$label", tint = if (danger) MaterialTheme.colorScheme.error else Kata.suo, size = 28.dp) {
+                    Icon(inkIcon(it), null, tint = if (danger) Kata.suoPad else Kata.plum, modifier = Modifier.size(15.dp))
                 }
             }
         },
