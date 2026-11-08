@@ -18,6 +18,10 @@ frontend-design   anthropics/skills                2c5958ecac7cee2b583967a2c4981
 discernment-nudge anthropics/skills                2c5958ecac7cee2b583967a2c4981d0f4a75c579 skills/discernment-nudge  skills/discernment-nudge/LICENSE.txt
 humanizer         blader/humanizer                 0ef9fe5bc3572734fd3ae6c448fe00a30cd5dcf0 SKILL.md                  LICENSE
 socratic-method   malkreide/socratic-method-skill  7bf0d1d73d9e9b854c13b745fc87f4b0b66bb232 SKILL.md                  LICENSE
+teach             mattpocock/skills                4ae2317ddb22b046e26455e4f9c9b3aaaf62212d skills/productivity/teach      LICENSE
+wait-what         mattpocock/skills                4ae2317ddb22b046e26455e4f9c9b3aaaf62212d skills/productivity/wait-what  LICENSE
+grilling          mattpocock/skills                4ae2317ddb22b046e26455e4f9c9b3aaaf62212d skills/productivity/grilling   LICENSE
+feynman           neurofoo/agent-skills            0e7ac2aa4d094352a082ebeedf1dbb4c52b77782 feynman                        LICENSE.txt
 '
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
