@@ -55,8 +55,8 @@ class RoomApp(val id: String, val name: String, val accent: String?, val glyph: 
 /* Kimono's own pages: Home (what's happening), the flower (every app), You. */
 private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home")))
 private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder")), listOf(Room("trash", "Trash", "trash")))
-/* Kimono AI's bar: Chats slides its drawer out, then its pages; the bloom leads to every other app. */
-private val code = RoomApp(app.kimono.data.Code.APP_ID, "Kimono AI", "#2c7783", "code", listOf(Room("ai/chats", "Chats", "chat", action = true), Room("ai/connections", "Connections", "link")), listOf(Room("ai/memory", "Memory", "spark")))
+/* Kimono AI's bar: Chats slides its drawer out, its pages sit right of the bloom, which leads to every other app. */
+private val code = RoomApp(app.kimono.data.Code.APP_ID, "Kimono AI", "#2c7783", "code", listOf(Room("ai/chats", "Chats", "chat", action = true)), listOf(Room("ai/connections", "Connections", "link"), Room("ai/memory", "Memory", "spark")))
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
 
 /* Notes, as its mockup has it: Home (all notes), the bloom, Search. */
