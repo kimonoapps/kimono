@@ -1976,7 +1976,7 @@ type Item =
   | { type: "ask"; seq: number; at: number; event: Extract<CodeEvent, { kind: "ask" }>; /** sent while it worked and never read: it was stopped first */ dropped?: boolean }
   | { type: "text"; seq: number; text: string }
   | { type: "tools"; seq: number; tools: Tool[]; open: boolean }
-  | { type: "done"; seq: number; event: Extract<CodeEvent, { kind: "done" }> }
+  | { type: "done"; seq: number; at: number; event: Extract<CodeEvent, { kind: "done" }>; /** what it said this turn, to copy */ answer: string }
   | { type: "published"; seq: number; event: Extract<CodeEvent, { kind: "published" }> }
   | { type: "shots"; seq: number; shots: { name: string; caption?: string }[] }
   | { type: "preview"; seq: number; event: Extract<CodeEvent, { kind: "preview" }> }
@@ -1995,17 +1995,18 @@ function itemsOf(events: StoredEvent[]): Item[] {
   const items: Item[] = [];
   const tools = new Map<string, Tool>();
   const answers = new Map<string, Extract<CodeEvent, { kind: "access-answer" }>>();
+  let said: string[] = [];
   for (const { event } of events) if (event.kind === "access-answer") answers.set(event.id, event);
   for (const { seq, at, event } of events) {
     const last = items.at(-1);
     switch (event.kind) {
-      case "ask": items.push({ type: "ask", seq, at, event }); break;
+      case "ask": items.push({ type: "ask", seq, at, event }); said = []; break;
       /* sent while it worked: read now, so no longer waiting; or never read, because it was stopped */
       case "steered": case "dropped": for (const item of items) if (item.type === "ask" && event.seqs.includes(item.seq)) {
         if (event.kind === "steered") item.event = { ...item.event, queued: false };
         else item.dropped = true;
       } break;
-      case "text": items.push({ type: "text", seq, text: event.text }); break;
+      case "text": items.push({ type: "text", seq, text: event.text }); said.push(event.text); break;
       case "tool": {
         const tool: Tool = { ...event };
         tools.set(event.id, tool);
@@ -2015,7 +2016,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "tool-result": { const tool = tools.get(event.id); if (tool) tool.result = event; break; }
       case "tool-cost": { const tool = tools.get(event.id); if (tool) tool.cost = (tool.cost ?? 0) + event.usd; break; }
       case "progress": { const tool = tools.get(event.id); if (tool) tool.probe = event; break; }
-      case "done": items.push({ type: "done", seq, event }); break;
+      case "done": items.push({ type: "done", seq, at, event, answer: said.join("\n\n") }); said = []; break;
       case "published": items.push({ type: "published", seq, event }); break;
       case "image": if (last?.type === "shots") last.shots.push(event); else items.push({ type: "shots", seq, shots: [event] }); break;
       case "preview": items.push({ type: "preview", seq, event }); break;
@@ -2118,7 +2119,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
               ? <RevealWords key={item.seq} id={`${workspace.id}:${item.seq}`} text={item.text} className="cd-say" />
               : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
-            case "done": return <Done key={item.seq} event={item.event} rating={ratings[item.seq] ?? null} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
+            case "done": return <Done key={item.seq} at={item.at} answer={item.answer} event={item.event} rating={ratings[item.seq] ?? null} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
             case "sent": return <div key={item.seq} className="cd-sent">
               {item.files.some(isMedia) ? <MediaGrid workspace={workspace} files={item.files.filter(isMedia)} /> : null}
@@ -2563,7 +2564,11 @@ function Ask({ workspace, item, running }: { workspace: Workspace; item: Extract
       {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
     </div>
     {item.dropped ? <p className="cd-ask-note">Not sent: it was stopped first</p> : null}
-    {editable ? <div className="cd-ask-acts"><button type="button" className="cd-roundbutton" aria-label="Edit" title="Edit" onClick={() => { setEditing(text); setProblem(null); }}><Icon name="rename" /></button></div> : null}
+    <div className="cd-ask-acts">
+      <span className="cd-ask-time">{saidAt(item.at)}</span>
+      {text ? <CopyButton text={text} label="Copy message" /> : null}
+      {editable ? <button type="button" className="cd-iconbutton" aria-label="Edit" title="Edit" onClick={() => { setEditing(text); setProblem(null); }}><Icon name="rename" /></button> : null}
+    </div>
   </>;
 }
 
@@ -2799,26 +2804,45 @@ function askingFor(items: Item[], ratings: Record<number, 1 | -1>): number | nul
   return null;
 }
 
-function Done({ event, rating, asking, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; rating: 1 | -1 | null; asking: boolean; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
+/** When something was said: the time today, the day and time this week, the date before that. */
+function saidAt(at: number) {
+  const when = new Date(at), now = new Date();
+  const time = when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (when.toDateString() === now.toDateString()) return time;
+  if (now.getTime() - at < 6 * 86_400_000) return `${when.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+  return `${when.toLocaleDateString(undefined, { day: "numeric", month: "short", year: when.getFullYear() === now.getFullYear() ? undefined : "numeric" })}, ${time}`;
+}
+
+/** Copies words, and says so for a moment in place of its icon. */
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return <button type="button" className="cd-iconbutton" aria-label={copied ? "Copied" : label} title={copied ? "Copied" : label}
+    onClick={() => { void navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}>
+    <Icon name={copied ? "check" : "copy"} />
+  </button>;
+}
+
+function Done({ event, at, answer, rating, asking, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; at: number; answer: string; rating: 1 | -1 | null; asking: boolean; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
   const { me } = useContext(ViewerContext);
   /* A thumb holds as soon as it's given; then there's room to say why, and who sees it. */
   const [confirming, setConfirming] = useState<1 | -1 | null>(null);
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
   /* Which Claude answered, and how long it took. Never what it cost. */
-  const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null].filter(Boolean);
+  const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null, saidAt(at)].filter(Boolean);
   const give = (next: 1 | -1) => {
     if (rating === next) void onRate(null).catch(() => { /* the thumb comes back as the server has it */ });
     else { void onRate(next).catch(() => { /* Send in the dialog tries again */ }); setConfirming(next); }
   };
-  const thumbs = me ? <span className={cx("cd-thumbs", asking && "is-asking")}>
+  /* Shown on hover, with the facts; a thumb asked for or given stays. */
+  const thumbs = me ? <span className={cx("cd-thumbs", asking && "is-asking", rating !== null && "is-given")}>
     {asking ? <span className="cd-thumbs-ask">How was this?</span> : null}
     <button type="button" className="cd-iconbutton" aria-label="Good answer" aria-pressed={rating === 1} title="Good answer" onClick={() => give(1)}><Icon name="thumb-up" /></button>
     <button type="button" className="cd-iconbutton" aria-label="Bad answer" aria-pressed={rating === -1} title="Bad answer" onClick={() => give(-1)}><Icon name="thumb-down" /></button>
   </span> : null;
   return <>
     {event.ok
-      ? <p className="cd-note cd-done"><Icon name="check" /><span>Done</span>{facts.length ? <span className="cd-done-facts">{facts.join(" · ")}</span> : null}{thumbs}</p>
-      : <p className="cd-note cd-done is-failed" role="alert"><Icon name="close" /><span>{event.error || "It stopped with an error."}</span>{thumbs}</p>}
+      ? <div className="cd-note cd-done"><Icon name="check" /><span>Done</span><span className="cd-done-facts">{facts.join(" · ")}</span><span className="cd-done-acts">{answer.trim() ? <CopyButton text={answer.trim()} label="Copy answer" /> : null}{thumbs}</span></div>
+      : <div className="cd-note cd-done is-failed" role="alert"><Icon name="close" /><span>{event.error || "It stopped with an error."}</span><span className="cd-done-facts">{saidAt(at)}</span><span className="cd-done-acts">{thumbs}</span></div>}
     {confirming ? <RateDialog rating={confirming} onRate={onRate} onClose={() => setConfirming(null)} /> : null}
   </>;
 }

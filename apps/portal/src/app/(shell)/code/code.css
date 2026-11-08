@@ -1306,7 +1306,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-done .i { flex: none; }
 .cd-done-facts { font: 500 13px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
 /* Thumbs on an answer: quiet until hovered or given; the one given keeps its ink. */
-.cd-thumbs { display: inline-flex; gap: 2px; margin-left: auto; }
+.cd-thumbs { display: inline-flex; gap: 2px; }
 .cd-thumbs .cd-iconbutton { width: 32px; height: 32px; color: var(--k-on-surface-variant); opacity: .7; }
 .cd-thumbs .cd-iconbutton:hover:not(:disabled) { opacity: 1; }
 .cd-thumbs .cd-iconbutton[aria-pressed="true"] { opacity: 1; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
@@ -1769,3 +1769,21 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-quote > button:hover { background: color-mix(in oklch, var(--k-on-surface) 8%, transparent); }
 .cd-quote > button svg { width: 15px; height: 15px; }
 .cd-ask-quote { margin: 0 0 6px; padding: 2px 0 2px 10px; border-left: 3px solid color-mix(in oklch, currentColor 45%, transparent); opacity: .78; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-size: .93em; }
+
+/* An answer's footer: Done always; its facts (model, time taken, when), Copy and the thumbs show when the answer or the footer is hovered.
+   A thumb it's asking for, or one given, stays. On a touch screen there's no hover: all of it shows. */
+.cd-done-acts { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+.cd-done-acts > .cd-iconbutton { width: 32px; height: 32px; color: var(--k-on-surface-variant); }
+.cd-done-acts > .cd-iconbutton svg.i { width: 17px; height: 17px; }
+@media (hover: hover) {
+  .cd-done-facts, .cd-done-acts > .cd-iconbutton, .cd-thumbs:not(.is-asking) .cd-iconbutton:not([aria-pressed="true"]) { opacity: 0; transition: opacity var(--k-t-state) var(--k-ease-out); }
+  .cd-done:hover :is(.cd-done-facts, .cd-iconbutton), .cd-done:focus-within :is(.cd-done-facts, .cd-iconbutton),
+  .cd-timeline > .cd-say:hover + .cd-done :is(.cd-done-facts, .cd-iconbutton),
+  .cd-timeline > .cd-say:hover + * + .cd-done :is(.cd-done-facts, .cd-iconbutton) { opacity: 1; }
+  .cd-thumbs:not(.is-asking) .cd-iconbutton:hover { opacity: 1; }
+}
+/* Your message's: when it was sent, Copy, Edit. */
+.cd-ask-acts { align-items: center; }
+.cd-ask-acts .cd-iconbutton { width: 32px; height: 32px; color: var(--k-on-surface-variant); }
+.cd-ask-acts .cd-iconbutton svg.i { width: 16px; height: 16px; }
+.cd-ask-time { margin-right: 6px; font: 500 12.5px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
