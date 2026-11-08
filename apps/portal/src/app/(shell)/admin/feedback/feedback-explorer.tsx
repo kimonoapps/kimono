@@ -12,7 +12,7 @@ const took = (ms?: number) => !ms ? null : ms < 60_000 ? `${Math.round(ms / 1000
 const firstLine = (text: string) => text.trim().split("\n").find((l) => l.trim())?.trim() ?? "";
 
 function haystack(entry: BankEntry) {
-  const answers = entry.type === "rating" ? [entry.answer] : entry.chat;
+  const answers = entry.type === "rating" ? [...entry.before, entry.answer] : entry.chat;
   const words = answers.flatMap((a) => [a.asked, a.model ?? "", a.error ?? "", ...a.steps.map((s) => s.said ?? s.tool ?? s.artifact ?? "")]);
   return [...words, entry.type === "rating" ? entry.note : entry.reason].join("\n").toLowerCase();
 }
@@ -84,7 +84,7 @@ function Entry({ entry, open, onToggle }: { entry: BankEntry; open: boolean; onT
       </span>
     </button>
     {open ? <div className="fb-body">
-      {rating ? <Turn answer={entry.answer} /> : entry.chat.map((answer, n) => <Turn key={n} answer={answer} label={`Turn ${n + 1}`} />)}
+      {rating ? [...entry.before.map((answer, n) => <Turn key={n} answer={answer} label={`Turn ${n + 1}`} />), <Turn key="rated" answer={entry.answer} label={entry.before.length ? `Turn ${entry.before.length + 1} · rated` : undefined} />] : entry.chat.map((answer, n) => <Turn key={n} answer={answer} label={`Turn ${n + 1}`} />)}
     </div> : null}
   </div>;
 }

@@ -318,3 +318,21 @@ test('only a message can be changed, and not one sent while it was working', () 
   assert.throws(() => model.rewindTo(db, w.id, text), /isn't here/);
   assert.throws(() => model.rewindTo(db, w.id, queued), /while it was working/);
 });
+
+test('a thumbs up keeps the chat up to the rated answer, not after it', async () => {
+  const { rate, bank } = await import('../src/lib/code/feedback.ts');
+  const db = fresh();
+  const w = start(db);
+  const turn = (ask, said) => {
+    model.appendEvent(db, w.id, null, { kind: 'ask', text: ask, attachments: [] });
+    model.appendEvent(db, w.id, null, { kind: 'text', text: said });
+    return model.appendEvent(db, w.id, null, { kind: 'done', ok: true });
+  };
+  turn('first ask', 'first answer');
+  const rated = turn('second ask', 'second answer');
+  turn('third ask', 'third answer');
+  rate(db, w.id, rated.seq, 'akram', 1);
+  const [entry] = bank(db);
+  assert.equal(entry.answer.asked, 'second ask');
+  assert.deepEqual(entry.before.map((a) => a.asked), ['first ask']);
+});

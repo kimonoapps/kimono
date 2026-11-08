@@ -6,8 +6,9 @@ import { eventsAfter } from "./model";
 /*
  * What people think of Kimono AI's answers, kept as a bank to read back later
  * (an admin exports it, an AI looks for patterns). A thumbs up or down rates
- * one answer: the turn's ask, what it said, the tools it used and the model,
- * kept as they were then, so the bank stands without the chat. A person's
+ * one answer and keeps the chat up to it: every earlier turn, then the rated
+ * one (its ask, what it said, the tools it used and the model), as they were
+ * then, so the bank stands without the chat. A person's
  * name stays with their rating only so they can change it; the export leaves
  * names out. A report sends a whole chat with no name and no link to it.
  */
@@ -19,13 +20,26 @@ const clip = (text: string, max: number) => text.length <= max ? text : `${text.
 export type Step = { said?: string; tool?: string; detail?: string; ok?: boolean; sent?: string[]; artifact?: string };
 export type Answer = { asked: string; attachments: string[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
 
-/** One turn as the bank keeps it: from the ask before [doneSeq] to that done. */
-function answerAt(db: DatabaseSync, workspaceId: string, doneSeq: number): Answer | null {
+/** The chat up to the answer that ended at [doneSeq]: that answer, and every turn before it. */
+function answerAt(db: DatabaseSync, workspaceId: string, doneSeq: number): { answer: Answer; before: Answer[] } | null {
   const events = eventsAfter(db, workspaceId, 0, 100_000).filter((e) => e.seq <= doneSeq);
   const done = events.at(-1);
   if (!done || done.seq !== doneSeq || done.event.kind !== "done") return null;
-  const start = events.findLastIndex((e) => e.event.kind === "ask" && !e.event.queued);
-  return turnOf(events.slice(Math.max(start, 0)).map((e) => e.event));
+  const turns = turnsOf(events.map((e) => e.event));
+  const answer = turns.pop();
+  return answer ? { answer, before: turns } : null;
+}
+
+/** A run of events as turns, each from an ask to the next ask after a done. */
+function turnsOf(events: CodeEvent[]): Answer[] {
+  const turns: Answer[] = [];
+  let current: CodeEvent[] = [];
+  for (const event of events) {
+    if (event.kind === "ask" && !event.queued && current.some((e) => e.kind === "done")) { turns.push(turnOf(current)); current = []; }
+    current.push(event);
+  }
+  if (current.length) turns.push(turnOf(current));
+  return turns;
 }
 
 function turnOf(events: CodeEvent[]): Answer {
@@ -45,17 +59,21 @@ function turnOf(events: CodeEvent[]): Answer {
   return answer;
 }
 
+type StoredAnswer = Answer & { before?: Answer[] };
+
 /** Rates the answer that ended at [seq], or takes the rating back (rating null). */
 export function rate(db: DatabaseSync, workspaceId: string, seq: number, username: string, rating: Rating | null, note = "", now = Date.now()) {
   if (rating === null) {
     db.prepare("DELETE FROM ai_ratings WHERE workspace_id = ? AND seq = ? AND username = ?").run(workspaceId, seq, username);
     return;
   }
-  const answer = answerAt(db, workspaceId, seq);
-  if (!answer) throw new Error("no answer there");
+  const rated = answerAt(db, workspaceId, seq);
+  if (!rated) throw new Error("no answer there");
+  /* The rated answer with the chat before it alongside; ratings kept before this hold the answer alone. */
+  const kept: StoredAnswer = { ...rated.answer, before: rated.before };
   db.prepare(`INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (workspace_id, seq, username) DO UPDATE SET rating = excluded.rating, note = excluded.note, at = excluded.at`)
-    .run(workspaceId, seq, username, rating, clip(note.trim(), 2000), JSON.stringify(answer), now);
+    ON CONFLICT (workspace_id, seq, username) DO UPDATE SET rating = excluded.rating, note = excluded.note, answer = excluded.answer, at = excluded.at`)
+    .run(workspaceId, seq, username, rating, clip(note.trim(), 2000), JSON.stringify(kept), now);
 }
 
 /** [username]'s ratings in a chat, by the seq of the answer each rates. */
@@ -66,25 +84,21 @@ export function ratingsOf(db: DatabaseSync, workspaceId: string, username: strin
 
 /** Sends a whole chat to the bank with no name and nothing that leads back to it. */
 export function report(db: DatabaseSync, workspaceId: string, reason: string, now = Date.now()) {
-  const events = eventsAfter(db, workspaceId, 0, 100_000).map((e) => e.event);
-  const turns: Answer[] = [];
-  let current: CodeEvent[] = [];
-  for (const event of events) {
-    if (event.kind === "ask" && !event.queued && current.some((e) => e.kind === "done")) { turns.push(turnOf(current)); current = []; }
-    current.push(event);
-  }
-  if (current.length) turns.push(turnOf(current));
+  const turns = turnsOf(eventsAfter(db, workspaceId, 0, 100_000).map((e) => e.event));
   db.prepare("INSERT INTO ai_reports (id, reason, chat, at) VALUES (?, ?, ?, ?)").run(randomUUID(), clip(reason.trim(), 4000), JSON.stringify(turns), now);
 }
 
 export type BankEntry =
-  | { type: "rating"; at: number; rating: Rating; note: string; answer: Answer }
+  | { type: "rating"; at: number; rating: Rating; note: string; answer: Answer; before: Answer[] }
   | { type: "report"; at: number; reason: string; chat: Answer[] };
 
 /** Everything in the bank since [since], oldest first, without anyone's name. */
 export function bank(db: DatabaseSync, since = 0): BankEntry[] {
   const ratings = (db.prepare("SELECT rating, note, answer, at FROM ai_ratings WHERE at >= ?").all(since) as { rating: Rating; note: string; answer: string; at: number }[])
-    .map((r): BankEntry => ({ type: "rating", at: r.at, rating: r.rating, note: r.note, answer: JSON.parse(r.answer) as Answer }));
+    .map((r): BankEntry => {
+      const { before = [], ...answer } = JSON.parse(r.answer) as StoredAnswer;
+      return { type: "rating", at: r.at, rating: r.rating, note: r.note, answer, before };
+    });
   const reports = (db.prepare("SELECT reason, chat, at FROM ai_reports WHERE at >= ?").all(since) as { reason: string; chat: string; at: number }[])
     .map((r): BankEntry => ({ type: "report", at: r.at, reason: r.reason, chat: JSON.parse(r.chat) as Answer[] }));
   return [...ratings, ...reports].sort((a, b) => a.at - b.at);
