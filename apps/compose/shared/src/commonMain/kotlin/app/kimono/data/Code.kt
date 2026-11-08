@@ -119,7 +119,7 @@ data class SkillCommand(val name: String, val hint: String? = null, val does: St
 
 /** A skill from Personalization, and whether it's on for this person. */
 @Serializable
-data class SkillChoice(val id: String, val name: String, val description: String = "", val enabled: Boolean = false, val command: SkillCommand? = null)
+data class SkillChoice(val id: String, val name: String, val description: String = "", val enabled: Boolean = false, val command: SkillCommand? = null, val icon: String = "spark", val author: String = "", val source: String = "")
 
 @Serializable
 private data class SkillList(val skills: List<SkillChoice> = emptyList())
@@ -629,6 +629,9 @@ class Code(private val session: Session, private val platform: Platform? = null)
 
     suspend fun memory(): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory"))
     suspend fun skills(): List<SkillChoice> = json.decodeFromString<SkillList>(session.call("/api/v1/code/skills")).skills
+    /** Turns a skill on or off for every chat; answers with the whole list. */
+    suspend fun setSkill(id: String, enabled: Boolean): List<SkillChoice> =
+        json.decodeFromString<SkillList>(session.call("/api/v1/code/skills", HttpMethod.Post, jsonBody(JsonObject.of("id" to id, "enabled" to enabled)))).skills
     suspend fun saveInstructions(instructions: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory", HttpMethod.Post, jsonBody(JsonObject.of("instructions" to instructions))))
     suspend fun remember(text: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory", HttpMethod.Post, jsonBody(JsonObject.of("remember" to text))))
     suspend fun forget(id: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory/${id.encodeURLParameter()}", HttpMethod.Delete))

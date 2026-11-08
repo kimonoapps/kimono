@@ -262,8 +262,14 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Memory?>(null) }
+    var skills by remember { mutableStateOf<List<app.kimono.data.SkillChoice>?>(null) }
     val time = ticking(false)
     LaunchedEffect(Unit) { try { profile = code.memory() } catch (p: KimonoProblem) { problem = p.message } }
+    LaunchedEffect(Unit) { skills = runCatching { code.skills() }.getOrNull() }
+    fun flip(id: String, on: Boolean) {
+        skills = skills?.map { if (it.id == id) it.copy(enabled = on) else it }
+        scope.launch { try { skills = code.setSkill(id, on) } catch (e: KimonoProblem) { problem = e.message; skills = runCatching { code.skills() }.getOrNull() ?: skills } }
+    }
     LaunchedEffect(saved) { if (saved) { delay(1600); saved = false } }
     val instructions = draft ?: profile?.instructions ?: ""
     val changed = draft != null && draft != profile?.instructions
@@ -319,6 +325,24 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
                             }) { Icon(kimonoIcon("trash"), "Forget this") }
                         },
                     ) { Text(m.text, style = MaterialTheme.typography.bodyLarge) }
+                }
+            }
+            /* The skills catalog, as on the web: each one on or off for every chat. */
+            val list = skills
+            if (!list.isNullOrEmpty()) {
+                item { Box(Modifier.padding(top = 16.dp)) { Heading("Skills") } }
+                itemsIndexed(list, key = { _, s -> "skill:${s.id}" }) { index, s ->
+                    SegmentedListItem(
+                        onClick = { flip(s.id, !s.enabled) },
+                        shapes = ListItemDefaults.segmentedShapes(index, list.size), colors = segmentColors(),
+                        leadingContent = {
+                            app.kimono.ui.InkBlot("skill-${s.id}", size = 36.dp, tint = if (s.enabled) app.kimono.ui.LocalInkTint.current ?: Kata.suo else MaterialTheme.colorScheme.outlineVariant) {
+                                Icon(kimonoIcon(s.icon.takeIf { it in setOf("spark", "chat", "notes", "code", "image", "file", "checklist") } ?: "spark"), null, modifier = Modifier.size(18.dp), tint = Kata.ink)
+                            }
+                        },
+                        supportingContent = { Text(if (s.author.isNotBlank()) "${s.description} · ${s.author}" else s.description) },
+                        trailingContent = { androidx.compose.material3.Switch(s.enabled, { on -> flip(s.id, on) }) },
+                    ) { Text(s.name, style = MaterialTheme.typography.bodyLarge) }
                 }
             }
         }
