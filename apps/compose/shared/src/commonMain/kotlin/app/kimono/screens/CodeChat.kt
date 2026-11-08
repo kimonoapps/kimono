@@ -179,6 +179,7 @@ import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
@@ -505,7 +506,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
         Box(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
             val reach = 72.dp.toPx()
-            androidx.compose.foundation.gestures.detectHorizontalDragGestures(
+            detectHorizontalDragGestures(
                 onDragEnd = { scope.launch { reveal.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = .8f)) } },
                 onDragCancel = { scope.launch { reveal.animateTo(0f) } },
             ) { change, dx -> if (dx < 0 || reveal.value > 0f) { change.consume(); scope.launch { reveal.snapTo((reveal.value - dx / reach).coerceIn(0f, 1f)) } } }
