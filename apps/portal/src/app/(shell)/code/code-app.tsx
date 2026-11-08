@@ -2847,7 +2847,7 @@ function Done({ event, at, answer, rating, asking, onRate }: { event: Extract<Co
   </span> : null;
   return <>
     {event.ok
-      ? <div className="cd-note cd-done"><Icon name="check" /><span>Done</span><span className="cd-done-facts">{facts.join(" · ")}</span><span className="cd-done-acts">{answer.trim() ? <CopyButton text={answer.trim()} label="Copy answer" /> : null}{thumbs}</span></div>
+      ? <div className="cd-note cd-done"><span className="cd-done-facts">{facts.join(" · ")}</span><span className="cd-done-acts">{answer.trim() ? <CopyButton text={answer.trim()} label="Copy answer" /> : null}{thumbs}</span></div>
       : <div className="cd-note cd-done is-failed" role="alert"><Icon name="close" /><span>{event.error || "It stopped with an error."}</span><span className="cd-done-facts">{saidAt(at)}</span><span className="cd-done-acts">{thumbs}</span></div>}
     {confirming ? <RateDialog rating={confirming} onRate={onRate} onClose={() => setConfirming(null)} /> : null}
   </>;

@@ -1216,7 +1216,7 @@ private fun DoneNote(e: CodeEvent.Done, answer: String, rating: Int?, asking: Bo
         }
         /* Which Claude answered, and how long it took. Never what it cost. */
         else -> Row(verticalAlignment = Alignment.CenterVertically) {
-            Note("check", listOfNotNull("Done", e.model?.let { modelNames[it] }, e.durationMs?.let { elapsedText(it) }).joinToString(" · "), Modifier.weight(1f))
+            Note(null, listOfNotNull(e.model?.let { modelNames[it] }, e.durationMs?.let { elapsedText(it) }).joinToString(" · "), Modifier.weight(1f))
             thumbs()
         }
     }
