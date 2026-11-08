@@ -1550,7 +1550,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
         {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
       </div>
       <div className="cd-hello-tools">
-        {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Code</button> : null}
+        {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Build a website</button> : null}
         {folder && !onProject ? <span className="cd-chip is-on cd-in-chip"><Icon name="folder" />{folder.name}<button type="button" aria-label={`Not in ${folder.name}`} title="Not in a project" onClick={() => goTo({ new: "1" })}><Icon name="close" /></button></span> : null}
         <span className="cd-grow" />
         <span className="cd-tuning">{hasDrive ? <AccessPicker /> : null}<ModelPicker /><EffortPicker /></span>

@@ -578,7 +578,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                         if (admin) Surface(onClick = { onProject = !onProject }, shape = androidx.compose.foundation.shape.CircleShape, color = if (onProject) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
                             Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(kimonoIcon(if (onProject) "check" else "code"), null, modifier = Modifier.size(16.dp))
-                                Text("Code", style = MaterialTheme.typography.labelLarge)
+                                Text("Build a website", style = MaterialTheme.typography.labelLarge)
                             }
                         }
                         if (marks.spaces.isNotEmpty()) AccessChip(code)
