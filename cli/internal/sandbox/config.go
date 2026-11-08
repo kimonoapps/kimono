@@ -23,10 +23,17 @@ const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.9.2"
 //
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
-// DefaultAgent asks for summaries of the agent's thinking (--thinking-display;
+// DefaultAgent first links the skills the person turned on into
+// ~/.claude/skills (and takes away links to ones they turned off; folders it
+// didn't link are left alone), and adds the words of each always-on skill to
+// the system prompt. It asks for summaries of the agent's thinking (--thinking-display;
 // headless Claude Code leaves them out otherwise): Kimono keeps them with
 // feedback and never shows them in the chat.
-const DefaultAgent = `if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" ${KIMONO_SETTINGS:+--settings "$KIMONO_SETTINGS"} --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --thinking-display summarized --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
+const DefaultAgent = `skills="$HOME/.claude/skills"; mkdir -p "$skills"; for d in "$skills"/*; do [ -L "$d" ] || continue; case " $KIMONO_SKILLS " in *" ${d##*/} "*) ;; *) rm -f "$d";; esac; done; for s in $KIMONO_SKILLS; do [ -d "/opt/kimono/skills/$s" ] && ln -sfn "/opt/kimono/skills/$s" "$skills/$s"; done; for s in $KIMONO_ALWAYS; do f="/opt/kimono/skills/$s/SKILL.md"; [ -f "$f" ] && KIMONO_SYSTEM="$KIMONO_SYSTEM
+
+A skill the person turned on, to follow in every reply ($s):
+
+$(awk 'NR==1 && /^---[[:space:]]*$/ {f=1; next} f && /^---[[:space:]]*$/ {f=0; next} !f' "$f")"; done; if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" ${KIMONO_SETTINGS:+--settings "$KIMONO_SETTINGS"} --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --thinking-display summarized --dangerously-skip-permissions --disallowedTools WebFetch,WebSearch ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} --append-system-prompt "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
 
 // Model is the Claude a turn runs on when Portal names none: the strongest, for building things.
 const Model = "claude-opus-5-5"

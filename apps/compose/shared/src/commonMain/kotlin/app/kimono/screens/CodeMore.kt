@@ -272,7 +272,7 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
         problem = null
         scope.launch { try { profile = code.remember(adding.trim()); adding = "" } catch (p: KimonoProblem) { problem = p.message } }
     }
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Memory", onBack = back, mark = { AiMark(code, 32.dp) }) }) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Personalization", onBack = back, mark = { AiMark(code, 32.dp) }) }) { padding ->
         LazyColumn(Modifier.padding(padding).fillMaxSize().imePadding(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
             if (problem != null) item { Problem(problem) }
             val p = profile

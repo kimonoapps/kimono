@@ -7,6 +7,7 @@
  * here before anyone sees them, so a page that reconnects replays exactly what
  * happened from the sequence number it last saw.
  */
+import { migrateSkills } from "./skills";
 import { randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { CodeEvent } from "./events";
@@ -322,6 +323,8 @@ export function migrate(db: DatabaseSync) {
       PRIMARY KEY (workspace_id, id)
     );
   `);
+  /* Which skills each person turned on (lib/code/skills.ts). */
+  migrateSkills(db);
   /* Which Kimono a thumb or report was given on (its release tag, or "dev"), and which sandbox node and image. */
   for (const table of ["ai_ratings", "ai_reports"]) {
     const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);

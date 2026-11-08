@@ -287,7 +287,7 @@ function artifactCall(id: string, name: string, input: Record<string, unknown>):
  * and Composio's finding, describing and connecting (a connection shows as its
  * own Connect card instead). What it then does with an app still shows.
  */
-const hidden = new Set(["ToolSearch", "COMPOSIO_SEARCH_TOOLS", "COMPOSIO_GET_TOOL_SCHEMAS", "COMPOSIO_MANAGE_CONNECTIONS", "COMPOSIO_WAIT_FOR_CONNECTIONS"]);
+const hidden = new Set(["ToolSearch", "Skill", "COMPOSIO_SEARCH_TOOLS", "COMPOSIO_GET_TOOL_SCHEMAS", "COMPOSIO_MANAGE_CONNECTIONS", "COMPOSIO_WAIT_FOR_CONNECTIONS"]);
 export function hiddenTool(name: string) { return hidden.has(name.replace(/^mcp__composio__/, "")); }
 
 /** Composio's connect links in a tool's result: { app, url } for each app it started connecting. Only Composio's own https links. */

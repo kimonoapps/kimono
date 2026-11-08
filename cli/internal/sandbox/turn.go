@@ -36,6 +36,12 @@ type turnRequest struct {
 	// LinkKey signs kimono-link's tokens, so Portal can turn away a made-up
 	// link without waking this sandbox to look.
 	LinkKey string `json:"linkKey"`
+	// Skills are the ones the person turned on, by their folder under
+	// /opt/kimono/skills: linked into ~/.claude/skills for the agent to load
+	// when one fits. Always are skills that shape every reply: their words
+	// join the system prompt instead.
+	Skills []string `json:"skills"`
+	Always []string `json:"always"`
 }
 
 const maxContext = 24 * 1024
@@ -76,6 +82,11 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}
 	if request.Session != "" && !namePattern.MatchString(request.Session) {
 		return problem(400, "That session isn't one Kimono can resume.")
+	}
+	for _, skill := range append(append([]string{}, request.Skills...), request.Always...) {
+		if !skillPattern.MatchString(skill) {
+			return problem(400, "That isn't a skill Kimono has.")
+		}
 	}
 	prompt, err := withAttachments(request.Prompt, request.Attachments)
 	if err != nil {
@@ -145,7 +156,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings, "KIMONO_SKILLS=" + strings.Join(request.Skills, " "), "KIMONO_ALWAYS=" + strings.Join(request.Always, " ")}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()
@@ -367,3 +378,6 @@ func (s *Server) hasSession(ctx context.Context, w *workspace, session string) b
 	_, err := s.exec(ctx, w, nil, nil, "sh", "-c", `ls "$HOME"/.claude/projects/*/"$1".jsonl >/dev/null 2>&1`, "has-session", session)
 	return err == nil
 }
+
+// skillPattern is a skill's folder name under /opt/kimono/skills.
+var skillPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)

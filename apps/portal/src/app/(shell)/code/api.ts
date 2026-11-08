@@ -66,6 +66,7 @@ export type CodeEvent =
   | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };
+export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; enabled: boolean };
 export type Profile = { instructions: string; memories: { id: string; title?: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
@@ -189,6 +190,8 @@ export const code = {
   moveChat: (id: string, folder: string | null) => call<Workspace>(ws(id), json("PATCH", { folder })),
   /** What Kimono AI keeps about this person: their instructions, and its memories. */
   memory: () => call<Profile>("/memory"),
+  skills: () => call<{ skills: SkillChoice[] }>("/skills").then((r) => r.skills),
+  setSkill: (id: string, enabled: boolean) => call<{ skills: SkillChoice[] }>("/skills", json("POST", { id, enabled })).then((r) => r.skills),
   saveInstructions: (instructions: string) => call<Profile>("/memory", json("POST", { instructions })),
   remember: (text: string, title?: string) => call<Profile>("/memory", json("POST", { remember: text, ...(title !== undefined ? { title } : {}) })),
   forget: (id: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),

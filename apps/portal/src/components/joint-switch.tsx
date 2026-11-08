@@ -11,13 +11,15 @@ import { useRef, useState } from "react";
  * Flipping it on seats the joint: the block winds back, drives home, and a
  * small suō burst shows where it lands. Flipping it off draws it back out.
  */
-export function JointSwitch({ name, defaultChecked, label, form, disabled, submit }: {
+export function JointSwitch({ name, defaultChecked, label, form, disabled, submit, onChange }: {
   name: string;
   defaultChecked: boolean;
   label: string;
   form?: string;
   disabled?: boolean;
   submit?: boolean;
+  /** Told the new value as it flips, for a switch that saves itself rather than through a form. */
+  onChange?: (on: boolean) => void;
 }) {
   const [on, setOn] = useState(defaultChecked);
   const [phase, setPhase] = useState<"" | "seating" | "parting">("");
@@ -29,6 +31,7 @@ export function JointSwitch({ name, defaultChecked, label, form, disabled, submi
       onClick={(event) => {
         const next = !on;
         setOn(next);
+        onChange?.(next);
         setPhase(next ? "seating" : "parting");
         clearTimeout(timer.current);
         timer.current = setTimeout(() => setPhase(""), next ? 560 : 360);

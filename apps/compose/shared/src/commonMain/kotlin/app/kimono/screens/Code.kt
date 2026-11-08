@@ -203,7 +203,7 @@ private fun AiDrawerSheet(code: Code, admin: Boolean, current: String?, shown: B
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp)) {
             item(key = "new") { DrawerPlace("plus", "New chat", selected = current == null, strong = true) { go("code") } }
             item(key = "connections") { DrawerPlace("link", "Connections") { go("ai/connections") } }
-            item(key = "memory") { DrawerPlace("spark", "Memory") { go("ai/memory") } }
+            item(key = "memory") { DrawerPlace("spark", "Personalization") { go("ai/memory") } }
             if (archived > 0) item(key = "archived") { DrawerPlace("archive", "Archived", count = archived) { go("ai/archived") } }
             if (problem != null) item(key = "problem") { Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f)) { Problem(problem) }; TextButton(onClick = { scope.launch { load() } }) { Text("Retry") } } }
             if (list == null && problem == null) item(key = "loading") { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader(size = 28.dp) } }

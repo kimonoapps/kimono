@@ -11,6 +11,7 @@ import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
 import { backfillRatings, kimonoVersion, type Versions } from "./feedback";
+import { skillsForTurn } from "./skills";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
@@ -515,7 +516,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: (byOwner ? [contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []).filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id) };
+    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: (byOwner ? [contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []).filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
     const response = await sandbox.turn(config, workspace, input, controller.signal).catch(async (error) => {
       /* The sandbox lost the chat's session (its container was made again): a new
          one is told the conversation so far, so it never starts from nothing. */

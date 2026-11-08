@@ -107,6 +107,16 @@ ENV PATH=/opt/kimono/python/bin:/home/agent/go/bin:/usr/local/go/bin:$PATH \
     NODE_PATH=/usr/local/lib/node_modules \
     DISABLE_AUTOUPDATER=1
 
+# Skills a person can turn on for Kimono AI (infra/sandbox/vendor-skills.sh
+# copies them, with their licences, from the commits it pins). A turn links
+# the ones they chose into ~/.claude/skills. Anthropic's document skills
+# expect docx, pptxgenjs and markitdown to be here already.
+COPY skills /opt/kimono/skills
+RUN chmod -R a+rX /opt/kimono/skills \
+ && npm install -g --no-fund --no-audit docx@9.15.3 pptxgenjs@4.0.1 \
+ && npm cache clean --force \
+ && uv pip install --python /opt/kimono/python "markitdown[docx,pptx,xlsx]==0.1.9"
+
 RUN useradd --create-home --uid 1000 --shell /bin/bash agent \
  && mkdir -p /workspace/artifacts /attachments /outbox/shots /outbox/access /outbox/memories \
  && ln -s /workspace/.kimono/files /files \
