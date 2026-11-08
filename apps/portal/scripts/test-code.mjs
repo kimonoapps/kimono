@@ -336,3 +336,24 @@ test('a thumbs up keeps the chat up to the rated answer, not after it', async ()
   assert.equal(entry.answer.asked, 'second ask');
   assert.deepEqual(entry.before.map((a) => a.asked), ['first ask']);
 });
+
+test('ratings kept before the chat came along get the turns before them, once', async () => {
+  const { backfillRatings, bank } = await import('../src/lib/code/feedback.ts');
+  const db = fresh();
+  const w = start(db);
+  const turn = (ask) => {
+    model.appendEvent(db, w.id, null, { kind: 'ask', text: ask, attachments: [] });
+    return model.appendEvent(db, w.id, null, { kind: 'done', ok: true });
+  };
+  turn('first ask');
+  const rated = turn('second ask');
+  const old = { asked: 'second ask', attachments: [], steps: [], ok: true };
+  db.prepare('INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(w.id, rated.seq, 'akram', -1, '', JSON.stringify(old), 1);
+  db.prepare('INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(w.id, 999, 'akram', 1, '', JSON.stringify({ ...old, asked: 'gone' }), 2);
+  assert.equal(backfillRatings(db), 1);
+  assert.equal(backfillRatings(db), 0);
+  const [filled, gone] = bank(db);
+  assert.deepEqual(filled.before.map((a) => a.asked), ['first ask']);
+  assert.equal(filled.answer.asked, 'second ask');
+  assert.deepEqual(gone.before, []);
+});

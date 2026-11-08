@@ -76,6 +76,32 @@ export function rate(db: DatabaseSync, workspaceId: string, seq: number, usernam
     .run(workspaceId, seq, username, rating, clip(note.trim(), 2000), JSON.stringify(kept), now);
 }
 
+/**
+ * Ratings kept before a thumb carried the chat up to its answer get the turns
+ * before it, read from the chat as it is now. The rated answer stays as it
+ * was kept. A rating whose answer the chat no longer has (a message before it
+ * was changed) is marked with no earlier turns, so it isn't tried again.
+ * Returns how many ratings it filled in.
+ */
+export function backfillRatings(db: DatabaseSync): number {
+  const rows = db.prepare("SELECT workspace_id, seq, username, answer FROM ai_ratings WHERE json_extract(answer, '$.before') IS NULL")
+    .all() as { workspace_id: string; seq: number; username: string; answer: string }[];
+  if (!rows.length) return 0;
+  const save = db.prepare("UPDATE ai_ratings SET answer = ? WHERE workspace_id = ? AND seq = ? AND username = ?");
+  let filled = 0;
+  db.exec("BEGIN");
+  try {
+    for (const row of rows) {
+      const before = answerAt(db, row.workspace_id, row.seq)?.before ?? [];
+      if (before.length) filled++;
+      const kept: StoredAnswer = { ...(JSON.parse(row.answer) as Answer), before };
+      save.run(JSON.stringify(kept), row.workspace_id, row.seq, row.username);
+    }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return filled;
+}
+
 /** [username]'s ratings in a chat, by the seq of the answer each rates. */
 export function ratingsOf(db: DatabaseSync, workspaceId: string, username: string): Record<number, Rating> {
   const rows = db.prepare("SELECT seq, rating FROM ai_ratings WHERE workspace_id = ? AND username = ?").all(workspaceId, username) as { seq: number; rating: Rating }[];

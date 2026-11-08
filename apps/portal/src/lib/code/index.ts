@@ -10,6 +10,7 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
+import { backfillRatings } from "./feedback";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
@@ -78,9 +79,11 @@ export function db(): DatabaseSync {
   /* A hot reload keeps the connection but brings new code: bring the schema along. */
   if (!migrated) { migrate(live.db); migrated = true; }
   if (!chatsMarked) { chatsMarked = true; markOldChats(live.db); }
+  if (!ratingsFilled) { ratingsFilled = true; backfillRatings(live.db); }
   return live.db;
 }
 let migrated = false;
+let ratingsFilled = false;
 let chatsMarked = false;
 
 /* Chats made before Drive knew a chat's folder from any other get marked once, so Drive shows them as chats. */
