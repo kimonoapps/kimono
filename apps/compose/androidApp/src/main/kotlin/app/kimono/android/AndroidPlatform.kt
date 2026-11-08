@@ -111,6 +111,24 @@ class AndroidPlatform(private val context: Context) : Platform {
         runCatching { (context.applicationContext as KimonoApplication).thumbnails.make(node, mime, pixels)?.absolutePath }.getOrNull()
     }
 
+    override suspend fun videoFrame(path: String, pixels: Int): app.kimono.data.VideoFrame? = withContext(Dispatchers.IO) {
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(path)
+            val seconds = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.let { it / 1000.0 }
+            /* Half a second in: the very first frame is often black. */
+            val frame = (if (android.os.Build.VERSION.SDK_INT >= 27) retriever.getScaledFrameAtTime(500_000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC, pixels, pixels)
+                else retriever.getFrameAtTime(500_000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)) ?: return@withContext null
+            val out = java.io.ByteArrayOutputStream()
+            frame.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, out)
+            app.kimono.data.VideoFrame(out.toByteArray(), seconds)
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { retriever.release() }
+        }
+    }
+
     override fun installedVersion(packageId: String): String? =
         runCatching { context.packageManager.getPackageInfo(packageId, 0).versionName }.getOrNull()
 

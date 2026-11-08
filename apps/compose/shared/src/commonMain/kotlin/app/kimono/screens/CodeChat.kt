@@ -10,6 +10,7 @@ import app.kimono.ui.InkMenuItem
 import app.kimono.ui.InkMenu
 import app.kimono.ui.bottomChrome
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -145,6 +146,7 @@ import app.kimono.data.DriveSpace
 import app.kimono.data.KimonoProblem
 import app.kimono.data.ShownMeters
 import app.kimono.data.Platform
+import app.kimono.data.PickedFile
 import app.kimono.data.SandboxStatus
 import app.kimono.data.StoredCodeEvent
 import app.kimono.data.Usage
@@ -515,7 +517,10 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                             is CodeEvent.Remembered -> Note("chat", "${when (e.how) { "forgot" -> "Forgot"; "changed" -> "Now remembers"; else -> "Remembered" }}: ${e.text}", trailing = { TextLink("Personalization") { open("ai/memory") } })
                             is CodeEvent.Published -> Note("pr", "Opened pull request #${e.number}", trailing = { TextLink("Open") { platform.openUrl(e.url) } })
                             is CodeEvent.Connect -> ConnectCard(code, platform, e.app, e.url, waitingFor = if (w.isOwner) null else people.nameOf(w.owner))
-                            is CodeEvent.Sent -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { e.files.forEach { SentFile(code, platform, w, it) } }
+                            is CodeEvent.Sent -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                e.files.filter { it.isMedia }.takeIf { it.isNotEmpty() }?.let { AttachedMedia(code, platform, w, it) }
+                                e.files.filterNot { it.isMedia }.forEach { SentFile(code, platform, w, it) }
+                            }
                             is CodeEvent.Artifact -> if (e.action == "edited") ArtifactChanged(artifacts, code, e.name) else ArtifactCard(code, platform, artifacts, e.name)
                             else -> {}
                         }
@@ -731,11 +736,11 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (ask.text.isNotBlank()) Text(ask.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
-            if (ask.attachments.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ask.attachments.forEach { a ->
-                    if (a.isPicture) AttachedPicture(code, w, a, Modifier.clickable { opened = a })
-                    else Box(Modifier.clip(RoundedCornerShape(14.dp)).clickable { opened = a }) { FileChip(a.name, readableSize(a.size)) }
-                }
+            val media = ask.attachments.filter { it.isMedia }
+            val others = ask.attachments.filterNot { it.isMedia }
+            if (media.isNotEmpty()) AttachedMedia(code, platform, w, media)
+            if (others.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                others.forEach { a -> Box(Modifier.clip(RoundedCornerShape(14.dp)).clickable { opened = a }) { FileChip(a.name, readableSize(a.size)) } }
             }
         }
         if (ask.dropped) Text("Not sent: it was stopped first", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, end = 6.dp))
@@ -749,6 +754,107 @@ private fun AttachedPicture(code: Code, w: CodeWorkspace, a: CodeAttachment, mod
     val bytes by produceState<ByteArray?>(null, a.path) { value = runCatching { code.attachment(w.id, a) }.getOrNull() }
     Box(Modifier.size(width = 120.dp, height = 90.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHighest).then(modifier)) {
         if (bytes != null) AsyncImage(model = bytes, contentDescription = a.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+    }
+}
+
+/* ── photos and videos, as squares ── */
+
+private val videoExtensions = setOf("mp4", "m4v", "mov", "webm")
+private val pictureExtensions = setOf("png", "jpg", "jpeg", "gif", "webp")
+
+internal fun isVideoFile(name: String, type: String?) = type?.startsWith("video/") == true || name.substringAfterLast('.', "").lowercase() in videoExtensions
+internal fun isPictureFile(name: String, type: String?) = type in setOf("image/png", "image/jpeg", "image/gif", "image/webp") ||
+    ((type.isNullOrEmpty() || type == "application/octet-stream") && name.substringAfterLast('.', "").lowercase() in pictureExtensions)
+internal val CodeAttachment.isVideo get() = isVideoFile(name, type)
+/** A photo or a video: what shows as a square in the chat. */
+internal val CodeAttachment.isMedia get() = isPicture || isVideo
+
+/** A picked file's bytes, for showing it before it's sent; null past 20 MB. */
+internal suspend fun readAll(file: PickedFile): ByteArray? {
+    if (file.size > Code.MAX_ATTACHMENT) return null
+    val bytes = ByteArray(file.size.toInt())
+    var at = 0
+    while (at < bytes.size) {
+        val piece = file.read(at.toLong(), minOf(1024 * 1024, bytes.size - at))
+        if (piece.isEmpty()) break
+        piece.copyInto(bytes, at)
+        at += piece.size
+    }
+    return bytes.copyOf(at)
+}
+
+/** How long a video runs: "0:07", "12:40", "1:02:09". */
+private fun runningTime(seconds: Double): String {
+    val s = seconds.roundToLong()
+    val h = s / 3600; val m = (s % 3600) / 60; val r = (s % 60).toString().padStart(2, '0')
+    return if (h > 0) "$h:${m.toString().padStart(2, '0')}:$r" else "$m:$r"
+}
+
+private class MediaFace(val picture: ByteArray?, val seconds: Double?)
+
+/**
+ * A photo or video as a square: the photo cropped to fill it; a video's frame with a play
+ * mark and how long it runs. [load] gives the file's bytes, once per [key].
+ */
+@Composable
+internal fun MediaSquare(platform: Platform, key: String, name: String, video: Boolean, modifier: Modifier = Modifier, small: Boolean = false, onClick: (() -> Unit)? = null, load: suspend () -> ByteArray?) {
+    val face by produceState<MediaFace?>(null, key) {
+        value = runCatching {
+            val bytes = load() ?: return@runCatching null
+            if (!video) MediaFace(bytes, null)
+            else platform.videoFrame(cacheFile(platform, "frames", "${key.hashCode().toUInt()}-$name", bytes), 480)?.let { MediaFace(it.picture, it.seconds) }
+        }.getOrNull() ?: MediaFace(null, null)
+    }
+    val shape = RoundedCornerShape(12.dp)
+    Box(modifier.aspectRatio(1f).clip(shape).background(if (video) Kata.ink else MaterialTheme.colorScheme.surfaceContainerHighest)
+        .then(if (onClick != null) Modifier.clickable(onClickLabel = "Open $name", onClick = onClick) else Modifier), contentAlignment = Alignment.Center) {
+        val picture = face?.picture
+        when {
+            picture != null -> AsyncImage(model = picture, contentDescription = name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            face == null -> InkLoader(size = 18.dp)
+            !video -> app.kimono.ui.FileTypeMark(name, Modifier.size(28.dp)) { Icon(kimonoIcon("file"), null) }
+        }
+        if (video) {
+            /* A round ink seal with the play stroke, flat. */
+            Box(Modifier.size(if (small) 28.dp else 40.dp).background(Kata.ink.copy(alpha = .62f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(kimonoIcon("play"), "Video", tint = Color.White, modifier = Modifier.size(if (small) 14.dp else 20.dp))
+            }
+            face?.seconds?.let { length ->
+                Text(runningTime(length), fontFamily = mono, fontSize = if (small) 10.sp else 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(if (small) 4.dp else 6.dp).background(Kata.ink.copy(alpha = .62f), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 2.dp))
+            }
+        }
+    }
+}
+
+/** Photos and videos in a message, as a grid of squares, up to three across; each opens as before. */
+@Composable
+private fun AttachedMedia(code: Code, platform: Platform, w: CodeWorkspace, files: List<CodeAttachment>) {
+    var opened by remember { mutableStateOf<CodeAttachment?>(null) }
+    val cols = minOf(files.size, 3)
+    val edge = when (cols) { 1 -> 200.dp; 2 -> 124.dp; else -> 92.dp }
+    Column(Modifier.width(edge * cols + 4.dp * (cols - 1)), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        files.chunked(cols).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                row.forEach { a -> MediaSquare(platform, "${w.id}:${a.path}", a.name, a.isVideo, Modifier.weight(1f), onClick = { opened = a }) { code.attachment(w.id, a) } }
+                repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+    opened?.let { a -> OpenAttachment(code, platform, w, a) { opened = null } }
+}
+
+/** A photo or video waiting in the message box: its square, ink while it uploads, and a way to take it out. */
+@Composable
+internal fun PendingMedia(platform: Platform, key: String, name: String, video: Boolean, busy: Boolean, onRemove: () -> Unit, load: suspend () -> ByteArray?) {
+    Box(Modifier.size(72.dp)) {
+        MediaSquare(platform, key, name, video, Modifier.fillMaxSize(), small = true, load = load)
+        if (busy) Box(Modifier.matchParentSize().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .55f)), contentAlignment = Alignment.Center) { InkLoader(size = 18.dp) }
+        Box(Modifier.align(Alignment.TopEnd).padding(2.dp).size(28.dp).clip(CircleShape).clickable(onClickLabel = "Remove $name", onClick = onRemove), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(22.dp).background(Kata.ink.copy(alpha = .62f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(kimonoIcon("close"), "Remove $name", tint = Color.White, modifier = Modifier.size(12.dp))
+            }
+        }
     }
 }
 
@@ -1188,7 +1294,8 @@ private fun ConnectCard(code: Code, platform: Platform, app: String, url: String
 /* ── the composer: what to say next, and what to show it ── */
 
 /** A file on its way into the sandbox: picked from the phone, or already copied from Drive. */
-private class Pending(val name: String, val size: Long) {
+private class Pending(val name: String, val size: Long, val type: String? = null, val file: PickedFile? = null) {
+    val key = "pending:${kotlin.random.Random.nextLong()}"
     var attachment by mutableStateOf<CodeAttachment?>(null)
     var failed by mutableStateOf<String?>(null)
 }
@@ -1296,7 +1403,17 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                     )
                 }
                 if (pending.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
-                    items(pending.toList()) { p -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null) { pending.remove(p) } }
+                    items(pending.toList()) { p ->
+                        val file = p.file
+                        val done = p.attachment
+                        when {
+                            p.failed == null && file != null && (isPictureFile(p.name, p.type) || isVideoFile(p.name, p.type)) ->
+                                PendingMedia(platform, p.key, p.name, isVideoFile(p.name, p.type), busy = done == null, onRemove = { pending.remove(p) }) { readAll(file) }
+                            p.failed == null && done != null && done.isMedia ->
+                                PendingMedia(platform, "${w.id}:${done.path}", p.name, done.isVideo, busy = false, onRemove = { pending.remove(p) }) { code.attachment(w.id, done) }
+                            else -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null) { pending.remove(p) }
+                        }
+                    }
                 }
                 SlashCommands(code, text) { val kept = it; text = kept; code.keep("draft:${w.id}", kept) }
                 /* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */
@@ -1305,7 +1422,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         scope.launch {
                             val picked = platform.pickFiles().take(10 - pending.size)
                             for (file in picked) {
-                                val item = Pending(file.name, file.size)
+                                val item = Pending(file.name, file.size, file.mimeType, file)
                                 pending += item
                                 launch { try { item.attachment = code.attach(w.id, file) } catch (p: KimonoProblem) { item.failed = p.message ?: "Didn't attach" } }
                             }

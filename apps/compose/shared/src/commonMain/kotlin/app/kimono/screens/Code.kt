@@ -465,7 +465,9 @@ internal fun Quiet(text: String) {
 /* ── a new chat ── */
 
 /** A file chosen for a chat that doesn't exist yet: from the phone, or a Drive file by its id. */
-private class Held(val name: String, val size: Long, val file: PickedFile? = null, val node: String? = null, val failed: String? = null)
+private class Held(val name: String, val size: Long, val file: PickedFile? = null, val node: String? = null, val failed: String? = null) {
+    val key = "held:${kotlin.random.Random.nextLong()}"
+}
 
 /**
  * What can I do for you? A chat is just what you ask, with files if you like.
@@ -589,7 +591,12 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
             Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (held.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(held.toList()) { h -> FileChip(h.name, h.failed ?: readableSize(h.size), failed = h.failed != null) { held.remove(h) } }
+                        items(held.toList()) { h ->
+                            val file = h.file
+                            if (file != null && h.failed == null && (isPictureFile(h.name, file.mimeType) || isVideoFile(h.name, file.mimeType)))
+                                PendingMedia(platform, h.key, h.name, isVideoFile(h.name, file.mimeType), busy = false, onRemove = { held.remove(h) }) { readAll(file) }
+                            else FileChip(h.name, h.failed ?: readableSize(h.size), failed = h.failed != null) { held.remove(h) }
+                        }
                     }
                     /* attach, the words, Send: one line, as in the chat; the buttons keep to the last line as the words grow */
                     SlashCommands(code, prompt) { prompt = it }

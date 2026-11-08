@@ -1419,6 +1419,11 @@ function useUnsentText(key: string): [string, (text: string) => void] {
   return [shown, change];
 }
 
+/** A photo or video picked on this device, shown from the device before it's sent. */
+const localPreview = (file: File) => {
+  const video = isVideo({ name: file.name, type: file.type });
+  return { preview: isPicture(file.type) || video ? URL.createObjectURL(file) : null, video };
+};
 const forget = (previews: (string | null)[]) => { for (const url of previews) if (url?.startsWith("blob:")) URL.revokeObjectURL(url); };
 const noHeld: Held[] = [];
 const noPending: Pending[] = [];
@@ -1426,7 +1431,7 @@ const noPending: Pending[] = [];
 /* ── a new task: which repository, which branch, and what to do ── */
 
 /** A file chosen for a chat that doesn't exist yet: from this device, or a Drive file by its id. */
-type Held = { id: string; name: string; size: number; preview: string | null; file?: File; node?: string; failed?: string };
+type Held = { id: string; name: string; size: number; preview: string | null; video?: boolean; file?: File; node?: string; failed?: string };
 
 function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: string | null; admin: boolean; folder: Project | null; repoAsked: string | null; onStarted: (w: Workspace) => Promise<void> }) {
   /* A new chat is just what you ask. Administrators can instead work on a project (a Kimono Git repository).
@@ -1451,7 +1456,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   const hasDrive = marks.spaces.size > 0;
   /* Drive is known from the start; its spaces arrive later, and an early click shouldn't skip the menu. */
   const drivePresent = marks.drive !== null;
-  const hold = (picked: File[]) => setFiles((list) => [...list, ...picked.map((file): Held => ({ id: crypto.randomUUID(), name: file.name, size: file.size, file, preview: isPicture(file.type) ? URL.createObjectURL(file) : null, failed: file.size > 20 * 1024 * 1024 ? "Over 20 MB" : undefined }))].slice(0, 10));
+  const hold = (picked: File[]) => setFiles((list) => [...list, ...picked.map((file): Held => ({ id: crypto.randomUUID(), name: file.name, size: file.size, file, ...localPreview(file), failed: file.size > 20 * 1024 * 1024 ? "Over 20 MB" : undefined }))].slice(0, 10));
   useFileDrop(blocked ? null : { label: "Drop to attach", onDrop: (data) => hold(filesIn(data)) });
   const project = (on: boolean) => { setOnProject(on); try { localStorage.setItem("kimono-ai-project", on ? "1" : "0"); } catch { /* not remembered */ } };
 
@@ -1555,9 +1560,10 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
           options={branches.map((b) => ({ value: b, label: b, detail: b === chosen?.defaultBranch ? "The main version" : undefined }))} />
       </div> : null}
       <div className="cd-hello-box">
-        {files.length ? <div className="cd-pending">{files.map((f) => <span key={f.id} className={cx("cd-filechip", f.failed && "is-failed")}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {f.preview ? <img src={f.preview} alt="" /> : <FileThumb name={f.name} size={30} />}
+        {files.length ? <div className="cd-pending">{files.map((f) => f.preview
+          ? <PendingMedia key={f.id} name={f.name} url={f.preview} video={f.video} failed={f.failed} onRemove={() => { forget([f.preview]); setFiles((list) => list.filter((x) => x.id !== f.id)); }} />
+          : <span key={f.id} className={cx("cd-filechip", f.failed && "is-failed")}>
+          <FileThumb name={f.name} size={30} />
           <span>{f.name}</span>
           <small>{f.failed ?? readableSize(f.size)}</small>
           <button type="button" aria-label={`Remove ${f.name}`} onClick={() => { forget([f.preview]); setFiles((list) => list.filter((x) => x.id !== f.id)); }}><Icon name="close" /></button>
@@ -2113,7 +2119,10 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
             case "done": return <Done key={item.seq} event={item.event} rating={ratings[item.seq] ?? null} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
-            case "sent": return <div key={item.seq} className="cd-sent">{item.files.map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}</div>;
+            case "sent": return <div key={item.seq} className="cd-sent">
+              {item.files.some(isMedia) ? <MediaGrid workspace={workspace} files={item.files.filter(isMedia)} /> : null}
+              {item.files.filter((f) => !isMedia(f)).map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}
+            </div>;
             case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
             case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
             /* Only a project says it was put to sleep; a plain chat just wakes when opened. */
@@ -2537,17 +2546,68 @@ function SentFile({ workspace, file }: { workspace: Workspace; file: Attachment 
   </figure>;
 }
 
-/** Files someone attached, as chips (pictures as thumbnails). Each opens in place, to download. */
+/** Files someone attached: photos and videos as squares, anything else as a chip. Each opens in place, to download. */
 function FileChips({ workspace, files }: { workspace: Workspace; files: Attachment[] }) {
   const [opened, setOpened] = useState<Attachment | null>(null);
+  const others = files.filter((a) => !isMedia(a));
   return <>
-    <div className="cd-attached">{files.map((a) => isPicture(a.type)
-      // eslint-disable-next-line @next/next/no-img-element
-      ? <button type="button" key={a.path} className="cd-thumb" aria-label={a.name} onClick={() => setOpened(a)}><img src={code.attachmentUrl(workspace.id, a)} alt={a.name} /></button>
-      : <button type="button" key={a.path} className="cd-filechip" onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span><small>{readableSize(a.size)}</small></button>)}</div>
+    {files.some(isMedia) ? <MediaGrid workspace={workspace} files={files.filter(isMedia)} /> : null}
+    {others.length ? <div className="cd-attached">{others.map((a) => <button type="button" key={a.path} className="cd-filechip" onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span><small>{readableSize(a.size)}</small></button>)}</div> : null}
     {opened ? <FileOverlay name={opened.name} mime={opened.type} url={code.attachmentUrl(workspace.id, opened)} onClose={() => setOpened(null)}
       actions={<Seal type="button" tone="quiet" compact onClick={() => saveAs(code.attachmentUrl(workspace.id, opened), opened.name)}><Icon name="download" />Download</Seal>} /> : null}
   </>;
+}
+
+const isVideo = (a: { name: string; type: string }) => previewKind(a.name, a.type) === "video";
+/** A photo or a video: what shows as a square in the chat. */
+const isMedia = (a: { name: string; type: string }) => isPicture(a.type) || isVideo(a);
+
+/** How long a video runs: "0:07", "12:40", "1:02:09". */
+function runningTime(seconds: number) {
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = String(s % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${r}` : `${m}:${r}`;
+}
+
+/** A photo cropped to fill a square, or a video's frame with a play mark and how long it runs. */
+function MediaFace({ name, url, video }: { name: string; url: string; video?: boolean }) {
+  const [length, setLength] = useState<number | null>(null);
+  const [failed, setFailed] = useState(false);
+  if (failed) return <FileThumb name={name} className="cd-media-broken" />;
+  return <>
+    {video
+      ? <video src={`${url}#t=0.5`} preload="metadata" muted playsInline tabIndex={-1} aria-hidden="true"
+        onLoadedMetadata={(event) => { const d = event.currentTarget.duration; if (Number.isFinite(d) && d > 0) setLength(d); }} onError={() => setFailed(true)} />
+      // eslint-disable-next-line @next/next/no-img-element -- the photo itself, cropped by CSS
+      : <img src={url} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />}
+    {video ? <span className="cd-media-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" /></svg></span> : null}
+    {video && length ? <span className="cd-media-length">{runningTime(length)}</span> : null}
+  </>;
+}
+
+/** Photos and videos in a message, as a grid of squares; each opens over the window. */
+function MediaGrid({ workspace, files }: { workspace: Workspace; files: Attachment[] }) {
+  const [opened, setOpened] = useState<Attachment | null>(null);
+  const url = (a: Attachment) => code.attachmentUrl(workspace.id, a);
+  return <>
+    <div className={cx("cd-media", files.length === 1 && "is-one")} style={{ "--cd-media-cols": Math.min(files.length, 3) } as React.CSSProperties}>
+      {files.map((a) => <button type="button" key={a.path} className="cd-media-tile" aria-label={`Open ${a.name}`} title={a.name} onClick={() => setOpened(a)}>
+        <MediaFace name={a.name} url={url(a)} video={isVideo(a)} />
+      </button>)}
+    </div>
+    {opened ? <FileOverlay name={opened.name} mime={opened.type} url={url(opened)} onClose={() => setOpened(null)}
+      actions={<Seal type="button" tone="quiet" compact onClick={() => saveAs(url(opened), opened.name)}><Icon name="download" />Download</Seal>} /> : null}
+  </>;
+}
+
+/** A photo or video waiting in the message box: its square, a mark while it uploads, and a way to take it out. */
+function PendingMedia({ name, url, video, sending, failed, onRemove }: { name: string; url: string; video?: boolean; sending?: boolean; failed?: string; onRemove: () => void }) {
+  return <span className={cx("cd-media-tile", "is-pending", sending && "is-sending", failed && "is-failed")} title={failed ? `${name}: ${failed}` : name}>
+    <MediaFace name={name} url={url} video={video} />
+    {sending ? <span className="cd-media-state"><InkLoader tone="plain" label="Attaching" className="cd-morph" /></span> : null}
+    {failed ? <span className="cd-media-state is-failed">{failed}</span> : null}
+    <button type="button" className="cd-media-remove" aria-label={`Remove ${name}`} onClick={onRemove}><Icon name="close" /></button>
+  </span>;
 }
 
 /** Tool calls as one pill — "Used 5 tools" — open while the agent is still in them, unless you closed it. Each call opens to show what it did. */
@@ -2904,7 +2964,7 @@ function OneFilePicker({ root, onPick }: { root: string; onPick: (file: string) 
 
 /* ── the composer: what to say next, and what to show it ── */
 
-type Pending = { id: string; name: string; size: number; preview: string | null; attachment?: Attachment; failed?: string };
+type Pending = { id: string; name: string; size: number; preview: string | null; video?: boolean; attachment?: Attachment; failed?: string };
 
 function Composer({ workspace, running, blocked, context }: { workspace: Workspace; running: boolean; blocked: string | null; context: { used: number; window?: number } | null }) {
   const owns = useOwns();
@@ -2941,7 +3001,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   }, [text]);
 
   const add = useCallback((files: File[]) => {
-    const fresh = files.slice(0, 10).map((file) => ({ file, item: { id: crypto.randomUUID(), name: file.name, size: file.size, preview: isPicture(file.type) ? URL.createObjectURL(file) : null } as Pending }));
+    const fresh = files.slice(0, 10).map((file) => ({ file, item: { id: crypto.randomUUID(), name: file.name, size: file.size, ...localPreview(file) } as Pending }));
     setPending((list) => [...list, ...fresh.map((f) => f.item)].slice(0, 10));
     for (const { file, item } of fresh) {
       if (file.size > 20 * 1024 * 1024) { setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: "Over 20 MB" } : p)); continue; }
@@ -2979,9 +3039,10 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   useFileDrop(blocked ? null : { label: "Drop to attach", onDrop: (data) => add(filesIn(data)) });
 
   return <div className="cd-composer">
-    {pending.length ? <div className="cd-pending">{pending.map((p) => <span key={p.id} className={cx("cd-filechip", !p.attachment && !p.failed && "is-sending", p.failed && "is-failed")}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      {p.preview ? <img src={p.preview} alt="" /> : <FileThumb name={p.name} size={30} />}
+    {pending.length ? <div className="cd-pending">{pending.map((p) => p.preview
+      ? <PendingMedia key={p.id} name={p.name} url={p.preview} video={p.video} sending={!p.attachment && !p.failed} failed={p.failed} onRemove={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }} />
+      : <span key={p.id} className={cx("cd-filechip", !p.attachment && !p.failed && "is-sending", p.failed && "is-failed")}>
+      <FileThumb name={p.name} size={30} />
       <span>{p.name}</span>
       <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <InkLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }}><Icon name="close" /></button>
@@ -3018,7 +3079,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
           const at = shown.findIndex((s) => s.id === p.id);
           if (at < 0) return p;
           const attachment = attached[at];
-          return { ...p, attachment, preview: attachment && isPicture(attachment.type) ? code.attachmentUrl(workspace.id, attachment) : null };
+          return { ...p, attachment, preview: attachment && isMedia(attachment) ? code.attachmentUrl(workspace.id, attachment) : null, video: Boolean(attachment && isVideo(attachment)) };
         }));
       } catch (error) {
         setPending((list) => list.map((p) => shown.some((s) => s.id === p.id) ? { ...p, failed: problemText(error, "Didn't attach") } : p));

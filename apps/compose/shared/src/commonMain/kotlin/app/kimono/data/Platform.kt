@@ -58,6 +58,8 @@ interface Platform {
     fun driveAvailable(on: Boolean) {}
     /** A small picture of a photo, video or PDF, at least [pixels] across, as a local file; null if there can't be one. */
     suspend fun thumbnail(node: DriveNode, pixels: Int): String? = null
+    /** A frame of the video at [path] (a local file), at least [pixels] across, and how long it runs; null if the phone can't draw one. */
+    suspend fun videoFrame(path: String, pixels: Int): VideoFrame? = null
     /**
      * A web page drawn by the phone's own web view: an artifact's frame, or the app a chat runs.
      * Links leave for the browser unless [keepLinks]. A page can talk back through
@@ -67,6 +69,9 @@ interface Platform {
     @androidx.compose.runtime.Composable
     fun WebFrame(url: String, modifier: androidx.compose.ui.Modifier, control: WebFrameControl?, keepLinks: Boolean, onMessage: (String) -> Unit, onLoaded: () -> Unit) {}
 }
+
+/** A video's poster: one frame as an encoded picture, and its length in seconds when known. */
+class VideoFrame(val picture: ByteArray, val seconds: Double?)
 
 /** Runs script in a [Platform.WebFrame] once it's on screen. */
 class WebFrameControl {

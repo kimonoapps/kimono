@@ -63,7 +63,12 @@ interface IosHost {
     fun observeUploads(callback: (List<IosUploadStatus>) -> Unit)
     /** A thumbnail's local path, from the thumbnails the Files app shares; null when there can't be one. */
     fun thumbnail(id: String, contentVersion: Long, name: String, mime: String?, size: Long, pixels: Long, done: (String?) -> Unit)
+    /** A frame of the local video at [path], saved as a JPEG, and how long the video runs; null when AVFoundation can't. */
+    fun videoFrame(path: String, pixels: Long, done: (IosVideoFrame?) -> Unit)
 }
+
+/** A video's poster, as the Swift side makes it: where the JPEG is, and the length in seconds (0 when unknown). */
+class IosVideoFrame(val path: String, val seconds: Double)
 
 /** An upload's state, as the Swift uploader reports it. */
 class IosUploadStatus(val id: String, val name: String, val size: Long, val sent: Long, val folderId: String, val waiting: Boolean, val failed: String?, val done: Boolean)
@@ -122,6 +127,11 @@ private class IosPlatform(private val host: IosHost) : Platform {
         IosWebFrame(url, modifier, control, keepLinks, ::openUrl, onMessage, onLoaded)
     override suspend fun thumbnail(node: DriveNode, pixels: Int): String? = suspendCancellableCoroutine { waiting ->
         host.thumbnail(node.id, node.contentVersion.toLong(), node.name, node.mime, node.size, pixels.toLong()) { waiting.resume(it) }
+    }
+    override suspend fun videoFrame(path: String, pixels: Int): app.kimono.data.VideoFrame? {
+        val made = suspendCancellableCoroutine<IosVideoFrame?> { waiting -> host.videoFrame(path, pixels.toLong()) { waiting.resume(it) } } ?: return null
+        val picture = host.readFile(made.path, 0, 8 * 1024 * 1024).toByteArray()
+        return if (picture.isEmpty()) null else app.kimono.data.VideoFrame(picture, made.seconds.takeIf { it > 0 })
     }
 }
 

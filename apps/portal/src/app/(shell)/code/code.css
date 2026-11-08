@@ -111,8 +111,27 @@ button.cd-sentfile-face:focus-visible { outline: 2px solid var(--k-primary); out
 .cd-sentfile-name b { font: 600 14.5px/1.3 var(--k-sans); color: var(--k-on-surface); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-sentfile-name small { font-size: 12.5px; color: var(--k-on-surface-variant); }
 .cd-sentfile > .seal, .cd-sentfile > button:last-of-type { flex: none; }
-.cd-thumb { display: block; width: 120px; height: 90px; border: 1px solid var(--k-hair); border-radius: var(--k-r-s); overflow: hidden; background: var(--k-lift); }
-.cd-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Photos and videos: squares, cropped to fill; several sit as a grid, up to three across. */
+.cd-media { --cd-media-cols: 1; display: grid; grid-template-columns: repeat(var(--cd-media-cols), minmax(0, 1fr)); gap: 4px; width: calc(var(--cd-media-cols) * 132px + (var(--cd-media-cols) - 1) * 4px); max-width: 100%; }
+.cd-media.is-one { width: 220px; }
+.cd-media-tile { position: relative; display: block; aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: var(--k-r-s); overflow: hidden; background: var(--k-container-high); color: inherit; cursor: pointer; }
+.cd-media-tile > img, .cd-media-tile > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.cd-media-tile > .cd-media-broken { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; }
+button.cd-media-tile:hover::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--k-on-surface) 8%, transparent); }
+button.cd-media-tile:focus-visible { outline: 2px solid var(--k-primary); outline-offset: 2px; }
+/* A video's mark: a round ink seal with the play stroke, flat. */
+.cd-media-play { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; transform: translate(-50%, -50%); display: grid; place-items: center; border-radius: 50%; background: rgba(20, 16, 14, .62); color: #fff; }
+.cd-media-play svg { width: 20px; height: 20px; margin-left: 2px; fill: currentColor; }
+.cd-media-length { position: absolute; left: 6px; bottom: 6px; padding: 3px 5px; border-radius: 4px; background: rgba(20, 16, 14, .62); color: #fff; font: 600 11px/1 var(--k-mono); letter-spacing: .02em; }
+/* Waiting in the message box: smaller squares, with a way to take each out. */
+.cd-media-tile.is-pending { width: 72px; flex: none; cursor: default; }
+.cd-media-tile.is-pending .cd-media-play { width: 28px; height: 28px; }
+.cd-media-tile.is-pending .cd-media-play svg { width: 14px; height: 14px; }
+.cd-media-tile.is-pending .cd-media-length { left: 4px; bottom: 4px; font-size: 10px; padding: 2px 4px; }
+.cd-media-remove { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: rgba(20, 16, 14, .62); color: #fff; cursor: pointer; }
+.cd-media-remove svg.i { width: 12px; height: 12px; }
+.cd-media-state { position: absolute; inset: 0; display: grid; place-items: center; padding: 4px; background: color-mix(in srgb, var(--k-surface) 55%, transparent); text-align: center; font: 600 10.5px/1.2 var(--k-sans); }
+.cd-media-state.is-failed { background: color-mix(in srgb, var(--k-surface) 78%, transparent); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-filechip { display: inline-flex; align-items: center; gap: 8px; max-width: 280px; min-height: 40px; padding: 4px 6px 4px 8px; border: 1px solid var(--k-hair); border-radius: var(--k-r-s); background: var(--k-lift); color: var(--k-ink); font-size: 13px; font-weight: 600; text-decoration: none; }
 .cd-filechip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-filechip small { flex: none; font: 500 11px/1 var(--k-mono); color: var(--k-faint); }
@@ -253,7 +272,6 @@ li[data-state="failed"] .cd-toolmark { color: color-mix(in srgb, var(--k-suo-dee
 .cd-list button[aria-current]::before { content: ""; position: absolute; top: 10px; bottom: 10px; left: 0; width: 3px; border-radius: var(--k-r-s); background: var(--k-app-accent); }
 .cd-list button[aria-current] b { color: var(--k-plum); }
 .cd-pr { border: 0; background: none; cursor: pointer; }
-.cd-thumb { padding: 0; cursor: pointer; }
 button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weight: 600; }
 .cd-link { display: inline; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--k-ink); text-decoration: underline; text-decoration-color: var(--k-hair-deep); text-underline-offset: 3px; cursor: pointer; }
 

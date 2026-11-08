@@ -1,4 +1,5 @@
 import AuthenticationServices
+import AVFoundation
 import CryptoKit
 import FileProvider
 import PhotosUI
@@ -124,6 +125,27 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         Task {
             let made = try? await Thumbnails.shared.make(id: id, contentVersion: Int(contentVersion), name: name, mime: mime, size: size, pixels: Int(pixels))
             await MainActor.run { done(made?.path) }
+        }
+    }
+
+    func videoFrame(path: String, pixels: Int64, done: @escaping (IosVideoFrame?) -> Void) {
+        Task {
+            let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: Int(pixels), height: Int(pixels))
+            generator.requestedTimeToleranceAfter = CMTime(seconds: 1, preferredTimescale: 600)
+            /* Half a second in: the very first frame is often black. */
+            let image = try? await generator.image(at: CMTime(seconds: 0.5, preferredTimescale: 600)).image
+            let length = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
+            var made: IosVideoFrame?
+            if let image, let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.82) {
+                let out = URL(fileURLWithPath: path).deletingPathExtension().appendingPathExtension("frame.jpg")
+                if (try? jpeg.write(to: out, options: .atomic)) != nil {
+                    made = IosVideoFrame(path: out.path, seconds: length.isFinite ? length : 0)
+                }
+            }
+            await MainActor.run { done(made) }
         }
     }
 
