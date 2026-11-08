@@ -235,6 +235,10 @@ async function runScenario(scenario, run) {
   catch (error) { grade = { error: String(error) }; }
   const result = { scenario: scenario.id, title: scenario.title, run, chats: sessions.map((s) => ({ id: s.chat, turns: s.turns, visuals: s.visuals.map((v) => `${v.turn} ${v.name}`) })), remembered: [...new Set(sessions.flatMap((s) => s.remembered))], grade };
   writeFileSync(join(dir, "grade.json"), JSON.stringify(result, null, 2));
+  /* What this student taught it goes, so the next scenario starts as this one did. Run one at a time for that to hold. */
+  if (args["keep-memories"] !== "true") {
+    for (const m of (await api("/memory")).memories) if (!before.has(m.id)) await api(`/memory/${m.id}`, { method: "DELETE" }).catch(() => {});
+  }
   return result;
 }
 
