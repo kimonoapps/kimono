@@ -634,18 +634,24 @@ function MemoryView({ now, page }: { now: number; page: string | null }) {
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
       <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
       <h1>For you</h1>
-      <span className="cd-grow" />
-      <Seal type="button" compact onClick={() => goTo({ memory: "1", page: "new" })}><Icon name="plus" />New page</Seal>
     </header>
     <div className="cd-conn-body">
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
       {profile === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
-      {profile ? <ul className="cd-pages">
-        <li><button type="button" className="cd-page-card is-instructions" onClick={() => goTo({ memory: "1", page: "instructions" })}>
+      {/* Three parts, each named: how it should work for you, what it remembers, and the skills it can use. */}
+      {profile ? <section className="cd-skills cd-for" aria-labelledby="cd-instructions-title">
+        <h2 id="cd-instructions-title">Instructions</h2>
+        <ul className="cd-pages"><li><button type="button" className="cd-page-card is-instructions" onClick={() => goTo({ memory: "1", page: "instructions" })}>
           <InkBlot className="cd-page-mark" tint={inkTint.suo} seed="instructions"><Icon name="spark" /></InkBlot>
-          <span className="cd-page-words"><b>Instructions</b><small>{profile.instructions ? pageWords(profile.instructions) : "How it should work for you, every chat"}</small></span>
-        </button></li>
-        {profile.memories.map((m) => <li key={m.id} className="cd-page-row">
+          <span className="cd-page-words"><b>{profile.instructions ? pageWords(profile.instructions, 14) : "Add instructions"}</b><small>{profile.instructions ? "Followed in every chat" : "How it should work for you, in every chat"}</small></span>
+        </button></li></ul>
+      </section> : null}
+      {profile ? <section className="cd-skills cd-for" aria-labelledby="cd-memories-title">
+        <div className="cd-for-head">
+          <h2 id="cd-memories-title">Memories</h2>
+          <button type="button" className="cd-quietbutton" onClick={() => goTo({ memory: "1", page: "new" })}><Icon name="plus" />Add</button>
+        </div>
+        {profile.memories.length ? <ul className="cd-pages">{profile.memories.map((m) => <li key={m.id} className="cd-page-row">
           <button type="button" className="cd-page-card" onClick={() => goTo({ memory: "1", page: m.id })}>
             <InkBlot className="cd-page-mark" tint={m.source === "ai" ? inkTint.quiet : inkTint.live} seed={m.id}><Icon name={m.source === "ai" ? "chat" : "file"} /></InkBlot>
             <span className="cd-page-words">
@@ -654,9 +660,9 @@ function MemoryView({ now, page }: { now: number; page: string | null }) {
             </span>
           </button>
           <button type="button" className="cd-roundbutton cd-page-drop" aria-label={`Forget ${m.title ?? "this"}`} title="Forget this" onClick={() => drop(m.id)}><Icon name="trash" /></button>
-        </li>)}
-      </ul> : null}
-      {profile && !profile.memories.length ? <p className="cd-conn-empty">Nothing kept yet. Write a page, or ask it to remember something in a chat.</p> : null}
+        </li>)}</ul>
+          : <p className="cd-for-empty">Nothing yet. Tell it to remember something in a chat, or add it here.</p>}
+      </section> : null}
       <SkillsList />
     </div>
   </section>;
