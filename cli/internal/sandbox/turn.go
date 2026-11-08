@@ -88,6 +88,11 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if _, err := s.running(r.Context(), id); err != nil {
 		return err
 	}
+	// A session that isn't here any more would start the agent with nothing
+	// of the chat: say so, and the Portal tells a new one what was said.
+	if request.Session != "" && !s.hasSession(r.Context(), space, request.Session) {
+		return problem(410, "This chat's session isn't in its sandbox any more.")
+	}
 
 	space.mu.Lock()
 	if space.busy {
@@ -355,4 +360,10 @@ func chatFlag(chat bool) string {
 		return "1"
 	}
 	return ""
+}
+
+// hasSession is whether the agent's session [session] is in the sandbox to resume.
+func (s *Server) hasSession(ctx context.Context, w *workspace, session string) bool {
+	_, err := s.exec(ctx, w, nil, nil, "sh", "-c", `ls "$HOME"/.claude/projects/*/"$1".jsonl >/dev/null 2>&1`, "has-session", session)
+	return err == nil
 }

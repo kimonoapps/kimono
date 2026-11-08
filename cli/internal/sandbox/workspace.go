@@ -325,7 +325,19 @@ const offlineProbe = "1.1.1.1/443"
 // chatScript readies a chat's sandbox, which has no repository: a local git
 // one all the same, so its files are listed the way a project's are, with the
 // person's own files (.kimono) kept out.
-const chatScript = `set -e
+// keepSessionsScript keeps the agent's sessions on the sandbox's volume:
+// ~/.claude is in the container, which is made again whenever it was removed,
+// and a session lost with it is a chat that forgets everything said in it.
+// What is there already moves across first, so a chat open now keeps its own.
+const keepSessionsScript = `keep=/workspace/.kimono/claude
+mkdir -p "$keep"
+if [ ! -L "$HOME/.claude" ]; then
+  if [ -d "$HOME/.claude" ]; then cp -a "$HOME/.claude/." "$keep/" && rm -rf "$HOME/.claude"; fi
+  [ -e "$HOME/.claude" ] || ln -s "$keep" "$HOME/.claude"
+fi
+`
+
+const chatScript = keepSessionsScript + `set -e
 cd /workspace
 [ -d .git ] || git init --quiet
 grep -qxF '/.kimono/' .git/info/exclude 2>/dev/null || echo '/.kimono/' >> .git/info/exclude`
@@ -335,7 +347,7 @@ grep -qxF '/.kimono/' .git/info/exclude 2>/dev/null || echo '/.kimono/' >> .git/
 // never reset under it. It fetches into /workspace rather than cloning, since
 // Kimono's own files (.kimono) may be there already; a chat's local repository
 // (one moved into a project) takes the project's remote the same way.
-const checkoutScript = `set -e
+const checkoutScript = keepSessionsScript + `set -e
 url=$1 base=$2 branch=$3
 cd /workspace
 [ -d .git ] || git init --quiet

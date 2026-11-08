@@ -515,7 +515,16 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const response = await sandbox.turn(config, workspace, { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: (byOwner ? [contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []).filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id) }, controller.signal);
+    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: (byOwner ? [contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []).filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id) };
+    const response = await sandbox.turn(config, workspace, input, controller.signal).catch(async (error) => {
+      /* The sandbox lost the chat's session (its container was made again): a new
+         one is told the conversation so far, so it never starts from nothing. */
+      if (!(error instanceof CodeProblem && error.status === 410)) throw error;
+      setSession(db(), workspace.id, null);
+      const said = transcriptOf(eventsAfter(db(), workspace.id, 0, 100_000).filter((e) => e.turn !== turn));
+      const carried = said ? `(Your earlier messages in this chat were lost, but the conversation so far was kept. What was said before this message:)\n\n${said}\n\n(Their new message:)\n\n` : "";
+      return sandbox.turn(config, workspace, { ...input, prompt: `${access ? `${access}\n\n` : ""}${news}${carried}${from}${prompt}`, session: null, resumeAt: null }, controller.signal);
+    });
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
