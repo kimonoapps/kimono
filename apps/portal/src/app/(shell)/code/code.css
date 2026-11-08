@@ -1662,6 +1662,14 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-entry { display: flex; align-items: flex-end; gap: 6px; }
 .cd .cd-entry textarea { flex: 1; min-width: 0; min-height: 0; height: 40px; max-height: 33vh; padding: 9px 4px; margin: 0; border: 0; outline: 0; resize: none; background: transparent; font: 400 15.5px/22px var(--k-sans); color: var(--k-ink); }
 .cd .cd-hello-box .cd-entry textarea { font-size: 16.5px; }
+/* A command at the start of the box: the words are drawn by the layer under the
+   see-through box, the same size and place, with the command picked out. */
+.cd .cd-entry .cd-typed { position: relative; flex: 1; min-width: 0; display: flex; }
+.cd .cd-entry .cd-typed > textarea { flex: 1; }
+.cd .cd-entry .cd-typed-under { position: absolute; inset: 0; overflow: hidden; pointer-events: none; padding: 9px 4px; margin: 0; font: 400 15.5px/22px var(--k-sans); color: var(--k-ink); white-space: pre-wrap; overflow-wrap: break-word; }
+.cd .cd-hello-box .cd-entry .cd-typed-under { font-size: 16.5px; }
+.cd .cd-entry .cd-typed.is-marked > textarea { color: transparent; caret-color: var(--k-ink); }
+.cd .cd-entry .cd-typed-under mark { color: var(--k-app-accent); background: color-mix(in oklch, var(--k-app-accent) 14%, transparent); border-radius: 3px; box-shadow: 0 0 0 2px color-mix(in oklch, var(--k-app-accent) 14%, transparent); text-shadow: .3px 0 currentColor, -.3px 0 currentColor; }
 .cd-entry > .cd-attach, .cd-entry > div:first-of-type { flex: none; }
 .cd-entry-end { flex: none; display: flex; align-items: center; gap: 2px; min-height: 40px; }
 .cd .cd-entry .cd-sendstop { margin-left: 4px; }

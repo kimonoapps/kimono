@@ -182,6 +182,11 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 
 /*
  * 工 One Kimono AI chat on the phone: the conversation, streamed while it is
@@ -1445,11 +1450,10 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         onDrive = if (w.drive != null && w.isOwner) ({ choosing = true }) else null,
                         onPhotos = if (platform.photoPicker) ({ attach { platform.pickMedia() } }) else null,
                     )
-                    BasicTextField(
+                    MessageField(
+                        code,
                         /* the longest message it takes (the server refuses more) */
                         value = text, onValueChange = { val kept = it.take(32_000); text = kept; code.keep("draft:${w.id}", kept) },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
                         maxLines = 8,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                         modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 11.dp),
@@ -2260,9 +2264,7 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
 @Composable
 internal fun SlashCommands(code: Code, text: String, pick: (String) -> Unit) {
     val typed = Regex("^/([a-z-]*)$").find(text)?.groupValues?.get(1) ?: return
-    var commands by remember { mutableStateOf<List<SkillCommand>?>(null) }
-    LaunchedEffect(Unit) { commands = runCatching { code.skills().filter { it.enabled }.mapNotNull { it.command } }.getOrDefault(emptyList()) }
-    val shown = commands.orEmpty().filter { it.name.startsWith(typed) }
+    val shown = commandsOf(code, text).filter { it.name.startsWith(typed) }
     if (shown.isEmpty()) return
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
         Column(Modifier.padding(4.dp)) {
@@ -2274,4 +2276,53 @@ internal fun SlashCommands(code: Code, text: String, pick: (String) -> Unit) {
             }
         }
     }
+}
+
+/** The commands of the skills that are on, fetched once the box starts with "/" (and kept for the screen). */
+@Composable
+private fun commandsOf(code: Code, text: String): List<SkillCommand> {
+    var commands by remember { mutableStateOf<List<SkillCommand>?>(null) }
+    val wanted = text.startsWith("/")
+    LaunchedEffect(wanted) { if (wanted && commands == null) commands = runCatching { code.skills().filter { it.enabled }.mapNotNull { it.command } }.getOrDefault(emptyList()) }
+    return commands.orEmpty()
+}
+
+/**
+ * The message box. Words come in and go out as a String, as before; when they're
+ * set from outside (a command picked, a draft restored) the cursor goes to their
+ * end, and a command they start with is picked out in the accent, in bold.
+ */
+@Composable
+internal fun MessageField(
+    code: Code, value: String, onValueChange: (String) -> Unit, maxLines: Int, modifier: Modifier,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    decorationBox: @Composable (inner: @Composable () -> Unit) -> Unit,
+) {
+    var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
+    val current = if (field.text == value) field else TextFieldValue(value, TextRange(value.length)).also { field = it }
+    val names = commandsOf(code, value).map { it.name }
+    val accent = MaterialTheme.colorScheme.primary
+    val mark = remember(names, accent) { CommandMark(names.toSet(), accent) }
+    BasicTextField(
+        value = current, onValueChange = { field = it; if (it.text != value) onValueChange(it.text) },
+        textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(accent),
+        maxLines = maxLines, keyboardOptions = keyboardOptions, visualTransformation = mark,
+        modifier = modifier, decorationBox = decorationBox,
+    )
+}
+
+/** Draws a leading "/command" that is one of [names] in the accent, bold, on a light wash of it. Letters only change look, so the cursor's places stay the same. */
+private class CommandMark(val names: Set<String>, val accent: androidx.compose.ui.graphics.Color) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val name = Regex("^/([a-z0-9-]+)(?=\\s|$)").find(text.text)?.groupValues?.get(1)
+        if (name == null || name !in names) return TransformedText(text, OffsetMapping.Identity)
+        val marked = buildAnnotatedString {
+            append(text)
+            addStyle(SpanStyle(color = accent, fontWeight = FontWeight.Bold, background = accent.copy(alpha = .14f)), 0, name.length + 1)
+        }
+        return TransformedText(marked, OffsetMapping.Identity)
+    }
+    override fun equals(other: Any?) = other is CommandMark && other.names == names && other.accent == accent
+    override fun hashCode() = names.hashCode() * 31 + accent.hashCode()
 }

@@ -612,10 +612,8 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                             onDrive = if (marks.driveApp != null || marks.spaces.isNotEmpty()) ({ choosing = true }) else null,
                             onPhotos = if (platform.photoPicker) ({ hold { platform.pickMedia() } }) else null,
                         )
-                        BasicTextField(
-                            prompt, { prompt = it.take(32_000) },
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                        MessageField(
+                            code, prompt, { prompt = it.take(32_000) },
                             maxLines = 10,
                             modifier = Modifier.weight(1f).heightIn(min = 44.dp).focusRequester(field).padding(horizontal = 4.dp, vertical = 11.dp),
                             decorationBox = { inner -> Box { if (prompt.isEmpty()) Text(if (onProject) "Describe what you want" else "Ask anything", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
