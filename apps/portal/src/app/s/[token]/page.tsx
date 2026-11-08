@@ -43,7 +43,7 @@ export default async function SharedSpacePage({ params }: Props) {
   const app = await driveIdentity(settings);
   const ramp = accentRamp(app.accent);
   const palette = {
-    "--k-app-accent": ramp.deep,
+    "--k-app-base": ramp.deep,
     "--k-app-tint": ramp.tint,
   } as CSSProperties;
   /* No rail here: someone opening a link isn't in the house. Drive's name sits

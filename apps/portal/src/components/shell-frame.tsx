@@ -44,7 +44,7 @@ function appAt(apps: RailApp[], pathname: string) {
 function palette(accent: string): CSSProperties {
   const ramp = accentRamp(accent);
   return {
-    "--k-app-accent": ramp.deep,
+    "--k-app-base": ramp.deep,
     "--k-app-tint": ramp.tint,
   } as CSSProperties;
 }

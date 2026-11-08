@@ -10,7 +10,7 @@ import "../../(shell)/code/code.css";
 export function LinkFrame({ app, actions, children }: { app: AppIdentity; actions?: ReactNode; children: ReactNode }) {
   const ramp = accentRamp(app.accent);
   const palette = {
-    "--k-app-accent": ramp.deep,
+    "--k-app-base": ramp.deep,
     "--k-app-tint": ramp.tint,
   } as CSSProperties;
   return <div className="app-frame in-app ai-share" style={palette}>

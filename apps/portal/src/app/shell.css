@@ -186,6 +186,7 @@
    VPN, every tint, link, selection and seal comes from that app's own colour,
    so nothing on the page is pink beside teal. Danger stays suō-deep. */
 .app-frame.in-app {
+  --k-app-accent: var(--k-app-base);
   --k-suo: color-mix(in srgb, var(--k-app-accent) 88%, var(--k-ink));
   --k-primary-container: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest));
   --k-on-primary-container: color-mix(in srgb, var(--k-app-accent) 62%, var(--k-ink));
@@ -205,8 +206,13 @@
 /* By night the app's deep colour is too dark to mix from: every role is
    rebuilt from its hue at light tones, so even Drive's indigo reads on the
    dark; seals go pale with dark ink on them, as Material does by night. */
+/* The app's colour itself is lifted too, so every rule that mixes from it
+   (a tone, a wash, a marker) starts from a colour that reads on the dark. */
 :root[data-theme="dark"] .app-frame.in-app {
-  --k-suo: oklch(from var(--k-app-accent) .76 .12 h);
+  --k-app-accent: oklch(from var(--k-app-base) .72 .11 h);
+  --k-app-tone: oklch(from var(--k-app-base) .38 .06 h);
+  --k-app-tone-deep: oklch(from var(--k-app-base) .44 .07 h);
+  --k-suo: oklch(from var(--k-app-base) .76 .12 h);
   --k-on-accent: oklch(from var(--k-app-accent) .2 .04 h);
   --k-accent: var(--k-suo);
   --k-accent-deep: oklch(from var(--k-app-accent) .68 .12 h);
@@ -220,7 +226,10 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .app-frame.in-app {
-    --k-suo: oklch(from var(--k-app-accent) .76 .12 h);
+    --k-app-accent: oklch(from var(--k-app-base) .72 .11 h);
+    --k-app-tone: oklch(from var(--k-app-base) .38 .06 h);
+    --k-app-tone-deep: oklch(from var(--k-app-base) .44 .07 h);
+    --k-suo: oklch(from var(--k-app-base) .76 .12 h);
   --k-on-accent: oklch(from var(--k-app-accent) .2 .04 h);
     --k-accent: var(--k-suo);
     --k-accent-deep: oklch(from var(--k-app-accent) .68 .12 h);
