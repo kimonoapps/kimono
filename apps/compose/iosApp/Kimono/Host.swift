@@ -98,16 +98,9 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         }
     }
 
-    private var pickedFiles: (([IosPickedFile]) -> Void)?
-
+    /// The attach menu: Photo Library, Take Photo or Video, Choose Files.
     func pickFiles(done: @escaping ([IosPickedFile]) -> Void) {
-        DispatchQueue.main.async {
-            let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: true)
-            picker.allowsMultipleSelection = true
-            picker.delegate = self
-            self.pickedFiles = done
-            Host.top()?.present(picker, animated: true)
-        }
+        DispatchQueue.main.async { Attach.shared.present(done) }
     }
 
     func readFile(path: String, offset: Int64, max: Int32) -> Data {
@@ -266,20 +259,4 @@ extension Host: PHPickerViewControllerDelegate {
 extension Host: QLPreviewControllerDataSource {
     func numberOfPreviewItems(in controller: QLPreviewController) -> Int { previewing == nil ? 0 : 1 }
     func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { previewing! as NSURL }
-}
-
-extension Host: UIDocumentPickerDelegate {
-    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        let files = urls.map { url -> IosPickedFile in
-            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
-            return IosPickedFile(name: url.lastPathComponent, path: url.path, size: Int64(values?.fileSize ?? 0), mimeType: values?.contentType?.preferredMIMEType)
-        }
-        pickedFiles?(files)
-        pickedFiles = nil
-    }
-
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        pickedFiles?([])
-        pickedFiles = nil
-    }
 }

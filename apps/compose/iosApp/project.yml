@@ -52,7 +52,9 @@ targets:
         CADisableMinimumFrameDurationOnPhone: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
-        NSPhotoLibraryUsageDescription: Pick a photo for your portrait.
+        NSPhotoLibraryUsageDescription: Pick photos to attach, or one for your portrait.
+        NSCameraUsageDescription: Take a photo or video to attach.
+        NSMicrophoneUsageDescription: Record sound with a video you attach.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     preBuildScripts:
