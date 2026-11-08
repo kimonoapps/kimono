@@ -203,31 +203,33 @@
 }
 
 /* By night the app's deep colour is too dark to mix from: every role is
-   rebuilt from its hue at the tones the house suō uses after dark, so Drive's
-   indigo sits on the dark exactly as suō does, never muddied with cream. */
+   rebuilt from its hue at light tones, so even Drive's indigo reads on the
+   dark; seals go pale with dark ink on them, as Material does by night. */
 :root[data-theme="dark"] .app-frame.in-app {
-  --k-suo: oklch(from var(--k-app-accent) .66 .13 h);
+  --k-suo: oklch(from var(--k-app-accent) .76 .12 h);
+  --k-on-accent: oklch(from var(--k-app-accent) .2 .04 h);
   --k-accent: var(--k-suo);
-  --k-accent-deep: oklch(from var(--k-app-accent) .58 .12 h);
-  --k-accent-pale: oklch(from var(--k-app-accent) .36 .06 h);
-  --k-primary-container: oklch(from var(--k-app-accent) .43 .1 h);
-  --k-on-primary-container: oklch(from var(--k-app-accent) .92 .04 h);
-  --k-secondary-container: oklch(from var(--k-app-accent) .4 .04 h);
-  --k-on-secondary-container: oklch(from var(--k-app-accent) .92 .04 h);
-  --k-app-text: oklch(from var(--k-app-accent) .82 .09 h);
+  --k-accent-deep: oklch(from var(--k-app-accent) .68 .12 h);
+  --k-accent-pale: oklch(from var(--k-app-accent) .44 .07 h);
+  --k-primary-container: oklch(from var(--k-app-accent) .54 .1 h);
+  --k-on-primary-container: oklch(from var(--k-app-accent) .96 .03 h);
+  --k-secondary-container: oklch(from var(--k-app-accent) .48 .05 h);
+  --k-on-secondary-container: oklch(from var(--k-app-accent) .96 .03 h);
+  --k-app-text: oklch(from var(--k-app-accent) .86 .08 h);
   --k-app-mark: var(--k-suo);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .app-frame.in-app {
-    --k-suo: oklch(from var(--k-app-accent) .66 .13 h);
+    --k-suo: oklch(from var(--k-app-accent) .76 .12 h);
+  --k-on-accent: oklch(from var(--k-app-accent) .2 .04 h);
     --k-accent: var(--k-suo);
-    --k-accent-deep: oklch(from var(--k-app-accent) .58 .12 h);
-    --k-accent-pale: oklch(from var(--k-app-accent) .36 .06 h);
-    --k-primary-container: oklch(from var(--k-app-accent) .43 .1 h);
-    --k-on-primary-container: oklch(from var(--k-app-accent) .92 .04 h);
-    --k-secondary-container: oklch(from var(--k-app-accent) .4 .04 h);
-    --k-on-secondary-container: oklch(from var(--k-app-accent) .92 .04 h);
-    --k-app-text: oklch(from var(--k-app-accent) .82 .09 h);
+    --k-accent-deep: oklch(from var(--k-app-accent) .68 .12 h);
+    --k-accent-pale: oklch(from var(--k-app-accent) .44 .07 h);
+    --k-primary-container: oklch(from var(--k-app-accent) .54 .1 h);
+    --k-on-primary-container: oklch(from var(--k-app-accent) .96 .03 h);
+    --k-secondary-container: oklch(from var(--k-app-accent) .48 .05 h);
+    --k-on-secondary-container: oklch(from var(--k-app-accent) .96 .03 h);
+    --k-app-text: oklch(from var(--k-app-accent) .86 .08 h);
     --k-app-mark: var(--k-suo);
   }
 }
