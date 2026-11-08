@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Answer, BankEntry } from "@/lib/code/feedback";
+import { LineIcon } from "@/components/line-icon";
 import { Icon } from "../../code/icons";
 import { Markdown } from "../../code/markdown";
 
@@ -9,6 +10,15 @@ type Filter = "all" | "down" | "up" | "report" | "noted";
 
 const when = (at: number) => new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const took = (ms?: number) => !ms ? null : ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
+/** One entry as its own JSON file, in the shape the JSONL export gives each line. */
+function download(entry: BankEntry) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(entry, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `kimono-ai-${entry.type}-${new Date(entry.at).toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 const firstLine = (text: string) => text.trim().split("\n").find((l) => l.trim())?.trim() ?? "";
 
 function haystack(entry: BankEntry) {
@@ -84,6 +94,7 @@ function Entry({ entry, open, onToggle }: { entry: BankEntry; open: boolean; onT
       </span>
     </button>
     {open ? <div className="fb-body">
+      <button type="button" className="k-seal k-tone-quiet fb-download" onClick={() => download(entry)}><LineIcon name="download" />Download</button>
       {rating ? [...entry.before.map((answer, n) => <Turn key={n} answer={answer} label={`Turn ${n + 1}`} />), <Turn key="rated" answer={entry.answer} label={entry.before.length ? `Turn ${entry.before.length + 1} · rated` : undefined} />] : entry.chat.map((answer, n) => <Turn key={n} answer={answer} label={`Turn ${n + 1}`} />)}
     </div> : null}
   </div>;

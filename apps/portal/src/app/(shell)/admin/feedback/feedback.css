@@ -1,7 +1,8 @@
 /* The feedback bank, read: tallies, filters, and each entry opening to the answer as it was. */
 .fb-page .topbar { align-items: center; }
 .fb-export { margin-left: auto; gap: 6px; }
-.fb-export .line-icon { width: 16px; height: 16px; }
+.fb-export .line-icon, .fb-download .line-icon { width: 16px; height: 16px; }
+.fb-download { justify-self: start; gap: 6px; }
 .fb { display: grid; gap: 18px; }
 .fb-stats .status-card { cursor: default; }
 .fb-stats .status-card:hover { border-radius: var(--r-xl); }
