@@ -593,9 +593,10 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     if (held.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(held.toList()) { h ->
                             val file = h.file
+                            val open: (() -> Unit)? = if (file != null && h.failed == null) ({ scope.launch { previewPending(platform, h.name, file.mimeType) { readAll(file) } } }) else null
                             if (file != null && h.failed == null && (isPictureFile(h.name, file.mimeType) || isVideoFile(h.name, file.mimeType)))
-                                PendingMedia(platform, h.key, h.name, isVideoFile(h.name, file.mimeType), busy = false, onRemove = { held.remove(h) }) { readAll(file) }
-                            else FileChip(h.name, h.failed ?: readableSize(h.size), failed = h.failed != null) { held.remove(h) }
+                                PendingMedia(platform, h.key, h.name, isVideoFile(h.name, file.mimeType), busy = false, onRemove = { held.remove(h) }, onOpen = open) { readAll(file) }
+                            else FileChip(h.name, h.failed ?: readableSize(h.size), failed = h.failed != null, onOpen = open) { held.remove(h) }
                         }
                     }
                     /* attach, the words, Send: one line, as in the chat; the buttons keep to the last line as the words grow */
@@ -783,8 +784,11 @@ internal fun AttachMenu(onDevice: () -> Unit, onDrive: (() -> Unit)?, enabled: B
 }
 
 @Composable
-internal fun FileChip(name: String, detail: String, failed: Boolean = false, busy: Boolean = false, onRemove: (() -> Unit)? = null) {
-    Surface(shape = RoundedCornerShape(14.dp), color = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
+internal fun FileChip(name: String, detail: String, failed: Boolean = false, busy: Boolean = false, onOpen: (() -> Unit)? = null, onRemove: (() -> Unit)? = null) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        modifier = if (onOpen != null) Modifier.clip(RoundedCornerShape(14.dp)).clickable(onClickLabel = "Open $name", onClick = onOpen) else Modifier,
+        color = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHighest) {
         Row(Modifier.heightIn(min = 40.dp).padding(start = 10.dp, end = if (onRemove == null) 12.dp else 0.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             app.kimono.ui.FileTypeMark(name, Modifier.size(20.dp)) { Icon(kimonoIcon("file"), null, modifier = Modifier.size(16.dp)) }
             Text(name, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp))

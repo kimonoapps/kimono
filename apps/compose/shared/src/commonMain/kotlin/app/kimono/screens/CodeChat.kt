@@ -846,9 +846,9 @@ private fun AttachedMedia(code: Code, platform: Platform, w: CodeWorkspace, file
 
 /** A photo or video waiting in the message box: its square, ink while it uploads, and a way to take it out. */
 @Composable
-internal fun PendingMedia(platform: Platform, key: String, name: String, video: Boolean, busy: Boolean, onRemove: () -> Unit, load: suspend () -> ByteArray?) {
+internal fun PendingMedia(platform: Platform, key: String, name: String, video: Boolean, busy: Boolean, onRemove: () -> Unit, onOpen: (() -> Unit)? = null, load: suspend () -> ByteArray?) {
     Box(Modifier.size(72.dp)) {
-        MediaSquare(platform, key, name, video, Modifier.fillMaxSize(), small = true, load = load)
+        MediaSquare(platform, key, name, video, Modifier.fillMaxSize(), small = true, onClick = onOpen, load = load)
         if (busy) Box(Modifier.matchParentSize().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface.copy(alpha = .55f)), contentAlignment = Alignment.Center) { InkLoader(size = 18.dp) }
         Box(Modifier.align(Alignment.TopEnd).padding(2.dp).size(28.dp).clip(CircleShape).clickable(onClickLabel = "Remove $name", onClick = onRemove), contentAlignment = Alignment.Center) {
             Box(Modifier.size(22.dp).background(Kata.ink.copy(alpha = .62f), CircleShape), contentAlignment = Alignment.Center) {
@@ -856,6 +856,12 @@ internal fun PendingMedia(platform: Platform, key: String, name: String, video: 
             }
         }
     }
+}
+
+/** Shows a file waiting in the message box in the phone's own viewer (Quick Look, or the app that opens it). */
+internal suspend fun previewPending(platform: Platform, name: String, mimeType: String?, load: suspend () -> ByteArray?) {
+    val bytes = runCatching { load() }.getOrNull() ?: return
+    runCatching { platform.openFile(cacheFile(platform, "pending", name, bytes), mimeType) }
 }
 
 /** Saves [bytes] where the phone's own viewer can open them, and returns the path. */
@@ -1406,12 +1412,18 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                     items(pending.toList()) { p ->
                         val file = p.file
                         val done = p.attachment
+                        val open: (() -> Unit)? = when {
+                            p.failed != null -> null
+                            file != null -> ({ scope.launch { previewPending(platform, p.name, p.type) { readAll(file) } } })
+                            done != null -> ({ scope.launch { previewPending(platform, p.name, done.type) { code.attachment(w.id, done) } } })
+                            else -> null
+                        }
                         when {
                             p.failed == null && file != null && (isPictureFile(p.name, p.type) || isVideoFile(p.name, p.type)) ->
-                                PendingMedia(platform, p.key, p.name, isVideoFile(p.name, p.type), busy = done == null, onRemove = { pending.remove(p) }) { readAll(file) }
+                                PendingMedia(platform, p.key, p.name, isVideoFile(p.name, p.type), busy = done == null, onRemove = { pending.remove(p) }, onOpen = open) { readAll(file) }
                             p.failed == null && done != null && done.isMedia ->
-                                PendingMedia(platform, "${w.id}:${done.path}", p.name, done.isVideo, busy = false, onRemove = { pending.remove(p) }) { code.attachment(w.id, done) }
-                            else -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null) { pending.remove(p) }
+                                PendingMedia(platform, "${w.id}:${done.path}", p.name, done.isVideo, busy = false, onRemove = { pending.remove(p) }, onOpen = open) { code.attachment(w.id, done) }
+                            else -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null, onOpen = open) { pending.remove(p) }
                         }
                     }
                 }
