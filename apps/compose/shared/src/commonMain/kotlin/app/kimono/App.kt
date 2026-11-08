@@ -10,6 +10,8 @@ import app.kimono.ui.InkMenuItem
 import app.kimono.ui.InkMenu
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -211,7 +213,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
                 roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me,
                 /* Notes' Home is all its notes. */
                 go = { to -> if (to == "notes") notes.go(app.kimono.screens.NotePlace.All); goTab(to) },
-                startTask = { if (roomApp.id == app.kimono.data.Notes.APP_ID) notes.askSearch() }, openApps = { appsOpen = true },
+                startTask = { when (roomApp.id) { app.kimono.data.Notes.APP_ID -> notes.askSearch(); app.kimono.data.Code.APP_ID -> AiDrawerAsk.open.tryEmit(Unit) } }, openApps = { appsOpen = true },
             )
         },
     ) { padding ->
@@ -230,7 +232,9 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
         val leave = fadeOut(tween(100, easing = FastOutLinearInEasing))
         val throughIn = arrive + scaleIn(tween(300, delayMillis = 100, easing = settle), initialScale = .94f)
         NavHost(
-            nav, startDestination = "home", modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp),
+            nav, startDestination = "home",
+            /* The bar takes the bottom inset, so a composer under it doesn't stand a whole hem higher. */
+            modifier = Modifier.padding(bottom = if (tab) padding.calculateBottomPadding() else 0.dp).then(if (tab) Modifier.consumeWindowInsets(PaddingValues(bottom = padding.calculateBottomPadding())) else Modifier),
             enterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { it / 8 } + arrive },
             exitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { -it / 8 } + leave },
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
