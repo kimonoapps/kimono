@@ -141,7 +141,7 @@ private fun reposOf(list: List<CodeWorkspace>) = list.filter { it.isProject }.gr
 fun AiDrawer(code: Code, admin: Boolean, current: String?, open: (String) -> Unit, content: @Composable (menu: () -> Unit) -> Unit) {
     val drawer = androidx.compose.material3.rememberDrawerState(androidx.compose.material3.DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    LaunchedEffect(drawer) { app.kimono.AiDrawerAsk.open.collect { drawer.open() } }
+    LaunchedEffect(drawer) { app.kimono.AiDrawerAsk.open.collect { if (it) { app.kimono.AiDrawerAsk.open.value = false; drawer.open() } } }
     androidx.compose.material3.ModalNavigationDrawer(
         drawerState = drawer,
         drawerContent = {

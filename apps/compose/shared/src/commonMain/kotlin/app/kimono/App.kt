@@ -213,7 +213,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
                 roomApp, route, launcherApp = model.drive.launcher.collectAsState().value?.firstOrNull { it.id == roomApp.id }, me = me,
                 /* Notes' Home is all its notes. */
                 go = { to -> if (to == "notes") notes.go(app.kimono.screens.NotePlace.All); goTab(to) },
-                startTask = { when (roomApp.id) { app.kimono.data.Notes.APP_ID -> notes.askSearch(); app.kimono.data.Code.APP_ID -> AiDrawerAsk.open.tryEmit(Unit) } }, openApps = { appsOpen = true },
+                startTask = { when (roomApp.id) { app.kimono.data.Notes.APP_ID -> notes.askSearch(); app.kimono.data.Code.APP_ID -> { AiDrawerAsk.open.value = true; if (route == "ai/connections" || route == "ai/memory") goTab("code") } } }, openApps = { appsOpen = true },
             )
         },
     ) { padding ->

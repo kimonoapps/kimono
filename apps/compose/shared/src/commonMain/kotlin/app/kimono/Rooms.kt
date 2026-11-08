@@ -42,8 +42,8 @@ import app.kimono.ui.kimonoIcon
 /** A screen to open from outside the app (an update notification, say), taken up once signed in. */
 object Opening { val route = kotlinx.coroutines.flow.MutableStateFlow<String?>(null) }
 
-/** The bar's Chats asks the open Kimono AI screen to slide its drawer out. */
-object AiDrawerAsk { val open = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
+/** The bar's Chats asks Kimono AI's chat screen to slide its drawer out; the ask waits for one to open. */
+object AiDrawerAsk { val open = kotlinx.coroutines.flow.MutableStateFlow(false) }
 
 /** One place in the bar: a room to go to, or something to do. */
 class Room(val route: String, val label: String, val icon: String, val action: Boolean = false)
@@ -55,8 +55,8 @@ class RoomApp(val id: String, val name: String, val accent: String?, val glyph: 
 /* Kimono's own pages: Home (what's happening), the flower (every app), You. */
 private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home")))
 private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder")), listOf(Room("trash", "Trash", "trash")))
-/* Kimono AI's bar: Chats slides its drawer out, New chat starts one; the bloom leads to every other app. */
-private val code = RoomApp(app.kimono.data.Code.APP_ID, "Kimono AI", "#2c7783", "code", listOf(Room("ai/chats", "Chats", "chat", action = true)), listOf(Room("code", "New chat", "plus")))
+/* Kimono AI's bar: Chats slides its drawer out, then its pages; the bloom leads to every other app. */
+private val code = RoomApp(app.kimono.data.Code.APP_ID, "Kimono AI", "#2c7783", "code", listOf(Room("ai/chats", "Chats", "chat", action = true), Room("ai/connections", "Connections", "link")), listOf(Room("ai/memory", "Memory", "spark")))
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
 
 /* Notes, as its mockup has it: Home (all notes), the bloom, Search. */
@@ -66,7 +66,7 @@ private val notes = RoomApp(app.kimono.data.Notes.APP_ID, "Notes", "#b56d78", "n
 fun appOfRoom(route: String?): RoomApp? = when (route) {
     "home", "you" -> kimono
     "drive", "trash" -> drive
-    "code", "ai/new", "ai/new/{in}", "code/{id}" -> code
+    "code", "ai/new", "ai/new/{in}", "code/{id}", "ai/connections", "ai/memory" -> code
     "vpn", "vpn/people", "vpn/connect" -> vpn
     "notes", "notes/{notebook}" -> notes
     else -> null
