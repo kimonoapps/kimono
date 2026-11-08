@@ -113,6 +113,17 @@ data class CodeAttachment(val name: String, val path: String, val size: Long, va
 @Serializable
 data class Memory(val id: String, val text: String, val source: String = "person", val createdAt: Long = 0)
 
+/** A skill's slash command: what to type, what goes after it, and what it does. */
+@Serializable
+data class SkillCommand(val name: String, val hint: String? = null, val does: String = "")
+
+/** A skill from Personalization, and whether it's on for this person. */
+@Serializable
+data class SkillChoice(val id: String, val name: String, val description: String = "", val enabled: Boolean = false, val command: SkillCommand? = null)
+
+@Serializable
+private data class SkillList(val skills: List<SkillChoice> = emptyList())
+
 /** What Kimono AI keeps about a person: their instructions, and its memories. */
 @Serializable
 data class CodeProfile(val instructions: String = "", val memories: List<Memory> = emptyList())
@@ -617,6 +628,7 @@ class Code(private val session: Session, private val platform: Platform? = null)
     /* ── memory ── */
 
     suspend fun memory(): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory"))
+    suspend fun skills(): List<SkillChoice> = json.decodeFromString<SkillList>(session.call("/api/v1/code/skills")).skills
     suspend fun saveInstructions(instructions: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory", HttpMethod.Post, jsonBody(JsonObject.of("instructions" to instructions))))
     suspend fun remember(text: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory", HttpMethod.Post, jsonBody(JsonObject.of("remember" to text))))
     suspend fun forget(id: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory/${id.encodeURLParameter()}", HttpMethod.Delete))

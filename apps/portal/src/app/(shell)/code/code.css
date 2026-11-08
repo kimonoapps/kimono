@@ -365,6 +365,14 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
 .cd-attach-menu button { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px 0 12px; border: 0; border-radius: 12px; background: none; font: 500 14px/20px var(--k-sans); color: var(--k-on-surface); text-align: left; white-space: nowrap; cursor: pointer; transition: background-color var(--k-t-state) var(--k-ease-settle), border-radius var(--k-t-seat) var(--k-spring); }
 .cd-attach-menu button:hover, .cd-attach-menu button:focus-visible { outline: none; border-radius: 22px; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
 .cd-attach-menu svg.i { flex: none; width: 20px; height: 20px; color: inherit; }
+/* The / menu: a command and what it does, above the box. */
+.cd-entry { position: relative; }
+.cd-slash-menu { left: 8px; min-width: 300px; max-width: min(440px, calc(100% - 16px)); }
+.cd-slash-menu button { height: auto; display: grid; gap: 1px; padding: 9px 14px; white-space: normal; }
+.cd-slash-menu b { font: 600 14px/1.35 var(--k-mono); }
+.cd-slash-menu b i { font-style: normal; font-weight: 400; color: var(--k-on-surface-variant); }
+.cd-slash-menu small { font-size: 12.5px; line-height: 1.35; color: var(--k-on-surface-variant); }
+.cd-slash-menu button.is-on { border-radius: 22px; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
 @keyframes cd-menu-in { from { opacity: 0; transform: scale(.9) translateY(4px); } }
 
 /* Drive picker: an M3 Expressive basic dialog. Tonal container, 28px corners, a connected

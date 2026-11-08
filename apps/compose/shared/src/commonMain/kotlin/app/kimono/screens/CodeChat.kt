@@ -128,6 +128,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.kimono.data.SkillCommand
 import app.kimono.data.AppStatus
 import app.kimono.data.Code
 import app.kimono.data.CodeAttachment
@@ -1297,6 +1298,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                 if (pending.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 4.dp)) {
                     items(pending.toList()) { p -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null) { pending.remove(p) } }
                 }
+                SlashCommands(code, text) { val kept = it; text = kept; code.keep("draft:${w.id}", kept) }
                 /* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */
                 Row(verticalAlignment = Alignment.Bottom) {
                     AttachMenu(onDevice = {
@@ -2109,6 +2111,31 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
                         if (body.isEmpty()) { body += lines[i++] }
                         MdText(body.joinToString("\n"), style, codeBg, link, fadeTail = fadeTail && lines.drop(i).all { it.isBlank() })
                     }
+                }
+            }
+        }
+    }
+}
+
+
+/**
+ * The / menu: while the box holds "/" and the start of a command, the
+ * commands of the skills the person turned on (Personalization), to tap into
+ * the box. Loaded once, the first time a "/" is typed.
+ */
+@Composable
+internal fun SlashCommands(code: Code, text: String, pick: (String) -> Unit) {
+    val typed = Regex("^/([a-z-]*)$").find(text)?.groupValues?.get(1) ?: return
+    var commands by remember { mutableStateOf<List<SkillCommand>?>(null) }
+    LaunchedEffect(Unit) { commands = runCatching { code.skills().filter { it.enabled }.mapNotNull { it.command } }.getOrDefault(emptyList()) }
+    val shown = commands.orEmpty().filter { it.name.startsWith(typed) }
+    if (shown.isEmpty()) return
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp)) {
+        Column(Modifier.padding(4.dp)) {
+            shown.forEach { c ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { pick("/${c.name} ") }.padding(horizontal = 14.dp, vertical = 9.dp)) {
+                    Text(buildString { append("/"); append(c.name); c.hint?.let { append(" "); append(it) } }, style = MaterialTheme.typography.labelLarge)
+                    if (c.does.isNotEmpty()) Text(c.does, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

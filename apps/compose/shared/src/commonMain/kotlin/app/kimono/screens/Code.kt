@@ -592,6 +592,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                         items(held.toList()) { h -> FileChip(h.name, h.failed ?: readableSize(h.size), failed = h.failed != null) { held.remove(h) } }
                     }
                     /* attach, the words, Send: one line, as in the chat; the buttons keep to the last line as the words grow */
+                    SlashCommands(code, prompt) { prompt = it }
                     Row(verticalAlignment = Alignment.Bottom) {
                         AttachMenu(onDevice = {
                             scope.launch {

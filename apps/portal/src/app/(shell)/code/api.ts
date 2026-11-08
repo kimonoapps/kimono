@@ -66,7 +66,7 @@ export type CodeEvent =
   | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };
-export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; enabled: boolean };
+export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; command?: { name: string; hint?: string; does: string }; enabled: boolean };
 export type Profile = { instructions: string; memories: { id: string; title?: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };

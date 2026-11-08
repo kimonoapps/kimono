@@ -1441,6 +1441,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   const [naming, setNaming] = useState<string | null>(null);
   const [making, setMaking] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
+  const slash = useSlashMenu(prompt, setPrompt, field);
   /* Files for the first message: held here until the chat exists, then sent with it. */
   const [files, setFiles] = useUnsent<Held[]>("new:files", noHeld);
   const [dragging, setDragging] = useState(false);
@@ -1566,10 +1567,11 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
         <div className="cd-entry">
           <input ref={picker} type="file" multiple hidden onChange={(event) => { hold([...(event.target.files ?? [])]); event.target.value = ""; }} />
           <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
+          {slash.menu}
           <textarea ref={field} value={prompt} rows={1} aria-label="Message" maxLength={maxMessage} disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
             onChange={(event) => setPrompt(event.target.value)}
             onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); } }}
-            onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
+            onKeyDown={(event) => { if (slash.onKeyDown(event)) return; if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
           <div className="cd-entry-end">
             <MessageCount length={prompt.length} />
             <SendStop mode="send" busy={sending} disabled={!ready || Boolean(blocked)} onSend={() => void send()} />
@@ -2925,6 +2927,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
+  const slash = useSlashMenu(text, setText, field);
   const picker = useRef<HTMLInputElement>(null);
   const [choosing, setChoosing] = useState(false);
   /* A different model than the one this chat has been on has to take in the whole chat again. */
@@ -2993,12 +2996,13 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     <div className="cd-entry">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />
       <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={workspace.drive ? () => setChoosing(true) : undefined} />
+      {slash.menu}
       <textarea ref={field} value={text} rows={1} aria-label="Message" maxLength={maxMessage}
         placeholder={blocked ? blocked : "Ask for a change, or reply"}
         disabled={Boolean(blocked)}
         onChange={(event) => { setText(event.target.value); sayTyping(event.target.value); }}
         onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}
-        onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
+        onKeyDown={(event) => { if (slash.onKeyDown(event)) return; if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />
       <div className="cd-entry-end">
         <MessageCount length={text.length} />
         {/* files, model and thinking, and all usage, in the … menu; the rings only past half */}
@@ -3058,6 +3062,43 @@ function AccessPicker() {
 }
 
 /** One attach button: a menu of where the files come from, or straight to the device when there's no Drive. */
+/* ── the / menu: the commands of the skills a person turned on ── */
+
+let commandsLoaded: Promise<SkillChoice[]> | null = null;
+
+/**
+ * Typing "/" at the start of a message lists the commands of the skills that
+ * are on (Personalization), filtered as more is typed. Arrow keys move, Enter
+ * or Tab picks one into the box, Escape closes it.
+ */
+function useSlashMenu(text: string, setText: (text: string) => void, field: React.RefObject<HTMLTextAreaElement | null>) {
+  const [commands, setCommands] = useState<NonNullable<SkillChoice["command"]>[]>([]);
+  const [at, setAt] = useState(0);
+  const [closedFor, setClosedFor] = useState<string | null>(null);
+  const typed = /^\/([a-z-]*)$/.exec(text)?.[1];
+  useEffect(() => {
+    if (typed === undefined || commands.length) return;
+    commandsLoaded ??= code.skills().catch(() => { commandsLoaded = null; return []; });
+    void commandsLoaded.then((list) => setCommands(list.filter((s) => s.enabled && s.command).map((s) => s.command!)));
+  }, [typed, commands.length]);
+  const shown = typed === undefined || closedFor === text ? [] : commands.filter((c) => c.name.startsWith(typed));
+  const pick = (name: string) => { setText(`/${name} `); setAt(0); field.current?.focus(); };
+  const onKeyDown = (event: React.KeyboardEvent): boolean => {
+    if (!shown.length) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setAt((i) => (i + (event.key === "ArrowDown" ? 1 : shown.length - 1)) % shown.length); return true; }
+    if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") { event.preventDefault(); pick(shown[Math.min(at, shown.length - 1)].name); return true; }
+    if (event.key === "Escape") { event.preventDefault(); setClosedFor(text); return true; }
+    return false;
+  };
+  const menu = shown.length ? <div className="cd-attach-menu cd-slash-menu" role="listbox" aria-label="Commands">
+    {shown.map((c, i) => <button key={c.name} type="button" role="option" aria-selected={i === Math.min(at, shown.length - 1)} className={cx(i === Math.min(at, shown.length - 1) && "is-on")}
+      onPointerDown={(event) => event.preventDefault()} onClick={() => pick(c.name)}>
+      <b>/{c.name}{c.hint ? <i> {c.hint}</i> : null}</b><small>{c.does}</small>
+    </button>)}
+  </div> : null;
+  return { menu, onKeyDown };
+}
+
 function AttachMenu({ disabled, onDevice, onDrive }: { disabled: boolean; onDevice: () => void; onDrive?: () => void }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
