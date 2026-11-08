@@ -183,6 +183,16 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
@@ -740,7 +750,13 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
                 .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (ask.text.isNotBlank()) Text(ask.text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
+            if (ask.text.isNotBlank()) {
+                val (quoted, words) = splitQuote(ask.text)
+                val ink = MaterialTheme.colorScheme.onSecondaryContainer
+                if (quoted != null) Text(quoted, style = MaterialTheme.typography.bodyMedium, color = ink.copy(alpha = .75f), maxLines = 4, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.drawBehind { drawRect(ink.copy(alpha = .4f), size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }.padding(start = 10.dp))
+                if (words.isNotBlank()) Text(words, style = MaterialTheme.typography.bodyLarge, color = ink)
+            }
             val media = ask.attachments.filter { it.isMedia }
             val others = ask.attachments.filterNot { it.isMedia }
             if (media.isNotEmpty()) AttachedMedia(code, platform, w, media)
@@ -1398,7 +1414,11 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
         focus.clearFocus(); keyboard?.hide()
         sending = true; problem = null
         scope.launch {
-            try { code.ask(w.id, text, ready); text = ""; code.keep("draft:${w.id}", null); pending.clear() } catch (p: KimonoProblem) { problem = p.message }
+            try {
+                val quote = replyQuote
+                code.ask(w.id, if (quote != null && text.isNotBlank()) withQuote(quote, text) else text, ready)
+                text = ""; replyQuote = null; code.keep("draft:${w.id}", null); pending.clear()
+            } catch (p: KimonoProblem) { problem = p.message }
             sending = false
         }
     }
@@ -1432,6 +1452,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         }
                     }
                 }
+                QuoteAboveBox()
                 SlashCommands(code, text) { val kept = it; text = kept; code.keep("draft:${w.id}", kept) }
                 /* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */
                 Row(verticalAlignment = Alignment.Bottom) {
@@ -2186,6 +2207,7 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
     val style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface)
     val codeBg = MaterialTheme.colorScheme.surfaceContainerHighest
     val link = MaterialTheme.colorScheme.primary
+    AnswerSelection {
     androidx.compose.foundation.text.selection.SelectionContainer {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             var i = 0
@@ -2252,6 +2274,7 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
                 }
             }
         }
+    }
     }
 }
 
@@ -2325,4 +2348,88 @@ private class CommandMark(val names: Set<String>, val accent: androidx.compose.u
     }
     override fun equals(other: Any?) = other is CommandMark && other.names == names && other.accent == accent
     override fun hashCode() = names.hashCode() * 31 + accent.hashCode()
+}
+
+
+/* ── replying to part of an answer ── */
+
+/** What the next message answers: words chosen in one of its answers, until it's sent or dropped. One chat is open at a time. */
+internal var replyQuote by mutableStateOf<String?>(null)
+
+/** A reply's words as sent: the part it answers, each line as "> ", then a blank line and what they wrote. Kimono reads it as a quote. */
+internal fun withQuote(quote: String, words: String) = quote.trim().lines().joinToString("\n") { "> $it" } + "\n\n" + words
+
+/** A sent message split into the part it replies to (its "> " lines at the start) and its words. */
+internal fun splitQuote(text: String): Pair<String?, String> {
+    val lines = text.lines()
+    val quoted = lines.takeWhile { it.startsWith(">") }
+    if (quoted.isEmpty()) return null to text
+    val rest = lines.drop(quoted.size).dropWhile { it.isBlank() }.joinToString("\n")
+    return quoted.joinToString("\n") { it.removePrefix(">").removePrefix(" ") } to rest
+}
+
+/**
+ * Selected words in an answer get Kimono's own small menu (Copy, Reply) in place
+ * of the system's, which can't take another item. Reply copies them, as Copy
+ * does, and takes them from the clipboard as what the next message answers.
+ */
+@Composable
+private fun AnswerSelection(content: @Composable () -> Unit) {
+    var shown by remember { mutableStateOf<Pair<Rect, () -> Unit>?>(null) }
+    @Suppress("DEPRECATION") val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    val toolbar = remember {
+        object : TextToolbar {
+            override var status = TextToolbarStatus.Hidden
+                private set
+            override fun showMenu(rect: Rect, onCopyRequested: (() -> Unit)?, onPasteRequested: (() -> Unit)?, onCutRequested: (() -> Unit)?, onSelectAllRequested: (() -> Unit)?) {
+                val copy = onCopyRequested ?: return
+                status = TextToolbarStatus.Shown
+                shown = rect to copy
+            }
+            override fun hide() { status = TextToolbarStatus.Hidden; shown = null }
+        }
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTextToolbar provides toolbar) { content() }
+    val (rect, copy) = shown ?: return
+    val above = remember(rect) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+                val x = (rect.center.x - popupContentSize.width / 2f).toInt().coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                val y = (rect.top - popupContentSize.height - 16).toInt().let { if (it < 0) (rect.bottom + 16).toInt() else it }
+                return IntOffset(x, y)
+            }
+        }
+    }
+    Popup(popupPositionProvider = above, onDismissRequest = { toolbar.hide() }) {
+        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.inverseSurface, contentColor = MaterialTheme.colorScheme.inverseOnSurface, shadowElevation = 6.dp) {
+            Row {
+                TextButton(onClick = { copy(); toolbar.hide() }, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.inverseOnSurface)) { Text("Copy") }
+                TextButton(onClick = {
+                    copy()
+                    clipboard.getText()?.text?.trim()?.takeIf { it.isNotEmpty() }?.let { replyQuote = it.take(2000) }
+                    toolbar.hide()
+                }, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.inverseOnSurface)) {
+                    Icon(kimonoIcon("reply"), null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Reply")
+                }
+            }
+        }
+    }
+}
+
+/** Above the message box: the part of an answer the next message replies to, with a way to drop it. */
+@Composable
+internal fun QuoteAboveBox() {
+    val quote = replyQuote ?: return
+    val accent = MaterialTheme.colorScheme.primary
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp).clip(RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp))
+            .background(accent.copy(alpha = .08f)).drawBehind { drawRect(accent, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
+            .padding(start = 12.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(kimonoIcon("reply"), null, Modifier.size(16.dp), tint = accent)
+        Spacer(Modifier.width(8.dp))
+        Text(quote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        IconButton(onClick = { replyQuote = null }) { Icon(kimonoIcon("close"), "Don't reply to this", Modifier.size(16.dp)) }
+    }
 }

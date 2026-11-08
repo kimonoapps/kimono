@@ -13,6 +13,7 @@ export const icons = {
   send: '<path d="M12 19V5M6 11l6-6 6 6"/>',
   pr: '<circle cx="6" cy="5.5" r="2"/><circle cx="6" cy="18.5" r="2"/><circle cx="18" cy="18.5" r="2"/><path d="M6 7.5v9M18 16.5V9a2.5 2.5 0 0 0-2.5-2.5H11M13.5 4 11 6.5 13.5 9"/>',
   chat: '<path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/>',
+  reply: '<path d="M9.5 6.5 4.5 11.5l5 5"/><path d="M4.5 11.5h9a6 6 0 0 1 6 6v1"/>',
   diff: '<path d="M12 4v8M8 8h8M8 19h8"/>',
   panel: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>',
   rocket: '<path d="M12 3.5c3 2 4.5 5 4.5 8.5l-2 4h-5l-2-4c0-3.5 1.5-6.5 4.5-8.5z"/><circle cx="12" cy="10" r="1.6"/><path d="M9.5 16 7 19.5M14.5 16l2.5 3.5M12 16v4"/>',

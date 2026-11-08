@@ -2107,6 +2107,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   const lastContext = (items.findLast((i) => i.type === "done" && i.event.context) as Extract<Item, { type: "done" }> | undefined)?.event.context ?? null;
   return <div className="cd-chat">
     <Scroller className="cd-scroll" viewClassName="cd-scroll-view" viewRef={scroller} onScroll={onScroll}>
+      <ReplyToSelection within={timeline} />
       <div className={cx("cd-timeline", live && "is-live")} ref={timeline} aria-live="polite">
         {items.length === 0 ? <SkeletonChat /> : null}
         {items.map((item) => {
@@ -2471,6 +2472,57 @@ function WorkingWords({ phase, doing }: { phase: Phase; doing: Now | null }) {
   return <span aria-label={words}>{[...words].map((c, i) => <span key={i} aria-hidden="true" className="cd-now-letter" style={{ "--i": i } as React.CSSProperties}>{c === " " ? "\u00a0" : c}</span>)}</span>;
 }
 
+/* ── replying to part of an answer ── */
+
+/** A reply's words as sent: the part it answers, each line as "> ", then a blank line and what they wrote. Kimono reads it as a quote. */
+const withQuote = (quote: string, words: string) => `${quote.trim().split("\n").map((line) => `> ${line}`).join("\n")}\n\n${words}`;
+
+/** A sent message: the part of an answer it replies to (its "> " lines at the start), then the words. */
+function QuotedText({ text }: { text: string }) {
+  const quoted = /^((?:> ?.*(?:\n|$))+)\n?/.exec(text);
+  if (!quoted) return <p>{text}</p>;
+  const rest = text.slice(quoted[0].length);
+  return <>
+    <blockquote className="cd-ask-quote">{quoted[1].trimEnd().split("\n").map((line) => line.replace(/^> ?/, "")).join("\n")}</blockquote>
+    {rest ? <p>{rest}</p> : null}
+  </>;
+}
+
+const quoteEvent = "kimono:reply-to";
+
+/**
+ * Selecting words in one of its answers offers Reply beside them; choosing it
+ * puts them above the message box as what the next message answers.
+ */
+function ReplyToSelection({ within }: { within: React.RefObject<HTMLElement | null> }) {
+  const [at, setAt] = useState<{ x: number; y: number; text: string } | null>(null);
+  useEffect(() => {
+    const look = () => {
+      const chosen = document.getSelection();
+      const words = chosen?.toString().trim() ?? "";
+      const range = chosen && chosen.rangeCount ? chosen.getRangeAt(0) : null;
+      const answer = (node: Node | null) => (node instanceof Element ? node : node?.parentElement)?.closest(".cd-say");
+      if (!words || !range || !within.current) return setAt(null);
+      const from = answer(range.startContainer), to = answer(range.endContainer);
+      if (!from || !to || !within.current.contains(from)) return setAt(null);
+      const box = range.getBoundingClientRect();
+      setAt({ x: box.left + box.width / 2, y: box.top, text: words.slice(0, 2000) });
+    };
+    document.addEventListener("selectionchange", look);
+    window.addEventListener("scroll", look, true);
+    return () => { document.removeEventListener("selectionchange", look); window.removeEventListener("scroll", look, true); };
+  }, [within]);
+  if (!at) return null;
+  /* On the page itself, so the chat's own layers (its sticky rows, its scroller) never sit over it. */
+  return createPortal(<button type="button" className="cd-reply-to" style={{ left: at.x, top: at.y }}
+    /* Pressing it would clear the selection (and so the button) before a click lands: it acts on the press, and keeps the words selected until then. */
+    onMouseDown={(event) => event.preventDefault()}
+    onPointerDown={(event) => { event.preventDefault(); if (event.button !== 0) return; window.dispatchEvent(new CustomEvent(quoteEvent, { detail: at.text })); document.getSelection()?.removeAllRanges(); setAt(null); }}
+    onKeyDown={(event) => { if (event.key !== "Enter" && event.key !== " ") return; event.preventDefault(); window.dispatchEvent(new CustomEvent(quoteEvent, { detail: at.text })); setAt(null); }}>
+    <Icon name="reply" />Reply
+  </button>, document.querySelector(".cd-page") ?? document.body);
+}
+
 function Ask({ workspace, item, running }: { workspace: Workspace; item: Extract<Item, { type: "ask" }>; running: boolean }) {
   const { text, attachments, queued, by } = item.event;
   const { me, guest } = useContext(ViewerContext);
@@ -2507,7 +2559,7 @@ function Ask({ workspace, item, running }: { workspace: Workspace; item: Extract
   return <>
     {someoneElse ? <p className="cd-ask-by"><Face username={by} size={20} /><span>{author.name}</span></p> : null}
     <div className={cx("cd-ask", queued && !item.dropped && "is-queued", item.dropped && "is-dropped", someoneElse && "is-theirs")} title={queued && !item.dropped ? "Sent while it was working: read as soon as the current step ends" : undefined}>
-      {text ? <p>{text}</p> : null}
+      {text ? <QuotedText text={text} /> : null}
       {attachments.length ? <FileChips workspace={workspace} files={attachments} /> : null}
     </div>
     {item.dropped ? <p className="cd-ask-note">Not sent: it was stopped first</p> : null}
@@ -2986,6 +3038,13 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   const slash = useSlashMenu(text, setText, field);
   const picker = useRef<HTMLInputElement>(null);
   const [choosing, setChoosing] = useState(false);
+  /* What the next message answers: words chosen in one of its answers. */
+  const [quote, setQuote] = useState<string | null>(null);
+  useEffect(() => {
+    const take = (event: Event) => { setQuote((event as CustomEvent<string>).detail); requestAnimationFrame(() => field.current?.focus()); };
+    window.addEventListener(quoteEvent, take);
+    return () => window.removeEventListener(quoteEvent, take);
+  }, []);
   /* A different model than the one this chat has been on has to take in the whole chat again. */
   const model = useModel();
   const switching = model !== "auto" && workspace.lastModel && model !== workspace.lastModel ? model : null;
@@ -3023,9 +3082,9 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     setProblem(null);
     try {
       const said = text;
-      await code.ask(workspace.id, said, ready, effortNow());
+      await code.ask(workspace.id, quote && said.trim() ? withQuote(quote, said) : said, ready, effortNow());
       /* Words typed while it was sending stay. */
-      if (typed.current === said) setText("");
+      if (typed.current === said) { setText(""); setQuote(null); }
       forget(pending.map((p) => p.preview));
       setPending([]);
     } catch (error) { setProblem(problemText(error)); } finally {
@@ -3049,6 +3108,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     </span>)}</div> : null}
     {switching && workspace.lastModel ? <p className="cd-switching" role="status">This chat has been on {modelWords[workspace.lastModel].label}. Switching to {modelWords[switching].label} uses more of your plan.</p> : null}
     {problem ? <p className="cd-problem cd-entry-problem" role="alert">{problem}</p> : null}
+    {quote ? <div className="cd-quote"><Icon name="reply" /><span>{quote}</span><button type="button" aria-label="Don't reply to this" onClick={() => setQuote(null)}><Icon name="close" /></button></div> : null}
     {/* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */}
     <div className="cd-entry">
       <input ref={picker} type="file" multiple hidden onChange={(event) => { add([...(event.target.files ?? [])]); event.target.value = ""; }} />

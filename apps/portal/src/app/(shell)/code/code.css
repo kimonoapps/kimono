@@ -1757,3 +1757,15 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 /* Near the longest message it takes, a quiet count beside the box's tools. */
 .cd-entry-count { align-self: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); white-space: nowrap; }
 .cd-entry-count.is-over { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-weight: 700; }
+
+/* Replying to part of an answer: Reply floats over the chosen words; the part shows above the box, and above the message once sent. */
+.cd-reply-to { position: fixed; z-index: 30; transform: translate(-50%, calc(-100% - 8px)); display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 10px; border: 0; border-radius: var(--k-r-s); background: var(--k-inverse-surface, var(--k-ink)); color: var(--k-inverse-on-surface, var(--k-surface)); font: 500 13.5px/1 var(--k-sans); cursor: pointer; box-shadow: 0 6px 18px rgb(0 0 0 / .18); }
+.cd-reply-to svg { width: 16px; height: 16px; }
+.cd-reply-to:hover { background: color-mix(in oklch, var(--k-inverse-surface, var(--k-ink)) 88%, var(--k-app-accent)); }
+.cd-quote { display: flex; align-items: flex-start; gap: 8px; margin: 0 4px 6px; padding: 8px 6px 8px 12px; border-left: 3px solid var(--k-app-accent); background: color-mix(in oklch, var(--k-app-accent) 8%, transparent); border-radius: 0 var(--k-r-s) var(--k-r-s) 0; color: var(--k-on-surface-variant); font: 400 13.5px/1.45 var(--k-sans); }
+.cd-quote > svg { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--k-app-accent); }
+.cd-quote > span { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.cd-quote > button { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+.cd-quote > button:hover { background: color-mix(in oklch, var(--k-on-surface) 8%, transparent); }
+.cd-quote > button svg { width: 15px; height: 15px; }
+.cd-ask-quote { margin: 0 0 6px; padding: 2px 0 2px 10px; border-left: 3px solid color-mix(in oklch, currentColor 45%, transparent); opacity: .78; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-size: .93em; }
