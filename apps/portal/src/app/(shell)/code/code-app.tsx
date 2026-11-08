@@ -530,7 +530,7 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
       <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
       <nav className="cd-sidenav" aria-label="More">
         <button type="button" aria-current={showingConnections ? "page" : undefined} onClick={() => goTo({ connections: "1" })}><Icon name="link" /><span>Connections</span></button>
-        <button type="button" aria-current={showingMemory ? "page" : undefined} onClick={() => goTo({ memory: "1" })}><Icon name="spark" /><span>Personalization</span></button>
+        <button type="button" aria-current={showingMemory ? "page" : undefined} onClick={() => goTo({ memory: "1" })}><Icon name="spark" /><span>For you</span></button>
         <button type="button" aria-current={showingArchived ? "page" : undefined} onClick={() => goTo({ archived: "1" })}><Icon name="archive" /><span>Archived</span>{archived.length ? <small className="cd-sidenav-count">{archived.length}</small> : null}</button>
       </nav>
       <span className="k-ink-rule cd-side-rule" aria-hidden="true" />
@@ -633,7 +633,7 @@ function MemoryView({ now, page }: { now: number; page: string | null }) {
     <header className="cd-conn-head">
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
       <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
-      <h1>Personalization</h1>
+      <h1>For you</h1>
       <span className="cd-grow" />
       <Seal type="button" compact onClick={() => goTo({ memory: "1", page: "new" })}><Icon name="plus" />New page</Seal>
     </header>
@@ -731,7 +731,7 @@ function MemoryPage({ page, profile, now, onProfile }: { page: string; profile: 
   const missing = profile !== null && !instructions && page !== "new" && !memory && !id;
   return <section className="cd-sheet cd-conn cd-memory cd-page">
     <header className="cd-conn-head">
-      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({ memory: "1" })} aria-label="Personalization" title="Personalization"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({ memory: "1" })} aria-label="For you" title="For you"><Icon name="back" /></button>
       <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
       <span className="cd-page-state" role="status">{problem ? <span className="cd-problem">{problem}</span> : state === "saving" ? "Saving…" : state === "saved" ? "Saved" : memory ? `${memory.source === "ai" ? "Kimono AI kept this" : "Yours"} · ${when(memory.createdAt, now)}` : ""}</span>
       <span className="cd-grow" />
@@ -2130,7 +2130,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
               ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
               : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
-            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} {owns ? <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>Personalization</button> : null}</span></p>;
+            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} {owns ? <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>For you</button> : null}</span></p>;
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
@@ -3124,7 +3124,7 @@ let commandsLoaded: Promise<SkillChoice[]> | null = null;
 
 /**
  * Typing "/" at the start of a message lists the commands of the skills that
- * are on (Personalization), filtered as more is typed. Arrow keys move, Enter
+ * are on (For you), filtered as more is typed. Arrow keys move, Enter
  * or Tab picks one into the box, Escape closes it.
  */
 function useSlashMenu(text: string, setText: (text: string) => void, field: React.RefObject<HTMLTextAreaElement | null>) {
