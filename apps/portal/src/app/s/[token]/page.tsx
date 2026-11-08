@@ -44,9 +44,7 @@ export default async function SharedSpacePage({ params }: Props) {
   const ramp = accentRamp(app.accent);
   const palette = {
     "--k-app-accent": ramp.deep,
-    "--k-accent": ramp.deep,
-    "--k-accent-deep": `color-mix(in srgb, ${ramp.deep} 82%, #24221f)`,
-    "--k-accent-pale": ramp.tint,
+    "--k-app-tint": ramp.tint,
   } as CSSProperties;
   /* No rail here: someone opening a link isn't in the house. Drive's name sits
      in a slim bar above the sheet, both on one centred column. */

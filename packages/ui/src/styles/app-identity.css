@@ -21,7 +21,7 @@
   font: 600 26px/1.15 var(--k-display);
   letter-spacing: .005em;
   text-transform: lowercase;
-  color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink));
+  color: var(--k-app-text, color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)));
 }
 
 .k-app-header {

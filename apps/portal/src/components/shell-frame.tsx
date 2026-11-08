@@ -45,8 +45,6 @@ function palette(accent: string): CSSProperties {
   const ramp = accentRamp(accent);
   return {
     "--k-app-accent": ramp.deep,
-    "--k-accent": ramp.deep,
-    "--k-accent-deep": `color-mix(in srgb, ${ramp.deep} 82%, #24221f)`,
-    "--k-accent-pale": ramp.tint,
+    "--k-app-tint": ramp.tint,
   } as CSSProperties;
 }

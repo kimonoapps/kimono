@@ -34,19 +34,19 @@
 .rail-pins .rail-pill { height: 40px; }
 .rail-pins .k-app-bloom { width: 34px; height: 34px; }
 .rail-pins .rail-dest[draggable="true"] { cursor: grab; }
-.rail-dest.is-open .rail-pill { background: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest)); }
+.rail-dest.is-open .rail-pill { background: var(--k-primary-container); }
 .rail-dest.is-visiting { opacity: .85; }
 .rail-dest.is-dragging { opacity: .35; }
 .rail-dest.drop-before { box-shadow: 0 -3px 0 -1px var(--k-accent); }
 .rail-rooms { position: relative; display: grid; justify-items: center; gap: 2px; width: 100%; padding: 2px 0 6px; }
 /* An app's line runs 8px in from the rail's edge, clear of its rooms' names at their widest (72px, centred). */
-.rail-rooms::before { content: ""; position: absolute; top: 0; bottom: 6px; left: 50%; width: 1.5px; margin-left: -40px; border-radius: var(--k-r-s); background: color-mix(in srgb, var(--k-app-accent) 40%, transparent); }
+.rail-rooms::before { content: ""; position: absolute; top: 0; bottom: 6px; left: 50%; width: 1.5px; margin-left: -40px; border-radius: var(--k-r-s); background: color-mix(in srgb, var(--k-app-mark, var(--k-app-accent)) 40%, transparent); }
 /* An app's rooms are rail stops of their own, as in the mockup: an ink icon in a pill, the name beneath. */
 .rail-room { font-size: 12px; }
 .rail-room .rail-pill { height: 30px; width: 52px; }
 .rail-room .rail-pill .line-icon { width: 21px; height: 21px; color: var(--k-on-surface-variant); }
-.rail-room[aria-current] .rail-pill { background: color-mix(in srgb, var(--k-app-accent) 16%, var(--k-container-lowest)); }
-.rail-room[aria-current] .rail-pill .line-icon { color: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); }
+.rail-room[aria-current] .rail-pill { background: var(--k-primary-container); }
+.rail-room[aria-current] .rail-pill .line-icon { color: var(--k-app-text, color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink))); }
 .rail-you .k-ink-portrait { width: 30px; height: 30px; }
 .rail-you .portrait { width: 22px; height: 22px; font-size: 11px; box-shadow: none; background: transparent; }
 
@@ -178,6 +178,9 @@
 .app-offer-card .k-seal { pointer-events: none; }
 @media (max-width: 720px) { .app-offer-card { grid-template-columns: auto minmax(0, 1fr); } .app-offer-card .k-seal { display: none; } }
 
+/* Coloured text in the app's own colour (a link, the lockup name, a current room). */
+.app-frame { --k-app-text: color-mix(in srgb, var(--k-app-accent) var(--k-app-ink), var(--k-night-ink)); }
+
 /* ── inside an app, the app's colour takes the pink roles ──
    Home, You and Admin are the house and wear suō. Inside Code, Drive, Tools or
    VPN, every tint, link, selection and seal comes from that app's own colour,
@@ -188,6 +191,10 @@
   --k-on-primary-container: color-mix(in srgb, var(--k-app-accent) 62%, var(--k-ink));
   --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 11%, var(--k-container-lowest));
   --k-on-secondary-container: color-mix(in srgb, var(--k-app-accent) 55%, var(--k-ink));
+  --k-app-mark: var(--k-app-accent);
+  --k-accent: var(--k-app-accent);
+  --k-accent-deep: color-mix(in srgb, var(--k-app-accent) 82%, #24221f);
+  --k-accent-pale: var(--k-app-tint, var(--k-sakura-wash));
   --primary: var(--k-suo);
   --primary-container: var(--k-primary-container);
   --on-primary-container: var(--k-on-primary-container);
@@ -195,21 +202,33 @@
   --on-secondary-container: var(--k-on-secondary-container);
 }
 
-/* By night ink is pale, so the accent is mixed towards it less on text and more into containers. */
+/* By night the app's deep colour is too dark to mix from: every role is
+   rebuilt from its hue at the tones the house suō uses after dark, so Drive's
+   indigo sits on the dark exactly as suō does, never muddied with cream. */
 :root[data-theme="dark"] .app-frame.in-app {
-  --k-suo: color-mix(in srgb, var(--k-app-accent) 62%, var(--k-ink));
-  --k-primary-container: color-mix(in srgb, var(--k-app-accent) 26%, var(--k-container-lowest));
-  --k-on-primary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
-  --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 18%, var(--k-container-lowest));
-  --k-on-secondary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
+  --k-suo: oklch(from var(--k-app-accent) .66 .13 h);
+  --k-accent: var(--k-suo);
+  --k-accent-deep: oklch(from var(--k-app-accent) .58 .12 h);
+  --k-accent-pale: oklch(from var(--k-app-accent) .36 .06 h);
+  --k-primary-container: oklch(from var(--k-app-accent) .43 .1 h);
+  --k-on-primary-container: oklch(from var(--k-app-accent) .92 .04 h);
+  --k-secondary-container: oklch(from var(--k-app-accent) .4 .04 h);
+  --k-on-secondary-container: oklch(from var(--k-app-accent) .92 .04 h);
+  --k-app-text: oklch(from var(--k-app-accent) .82 .09 h);
+  --k-app-mark: var(--k-suo);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .app-frame.in-app {
-    --k-suo: color-mix(in srgb, var(--k-app-accent) 62%, var(--k-ink));
-    --k-primary-container: color-mix(in srgb, var(--k-app-accent) 26%, var(--k-container-lowest));
-    --k-on-primary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
-    --k-secondary-container: color-mix(in srgb, var(--k-app-accent) 18%, var(--k-container-lowest));
-    --k-on-secondary-container: color-mix(in srgb, var(--k-app-accent) 22%, var(--k-ink));
+    --k-suo: oklch(from var(--k-app-accent) .66 .13 h);
+    --k-accent: var(--k-suo);
+    --k-accent-deep: oklch(from var(--k-app-accent) .58 .12 h);
+    --k-accent-pale: oklch(from var(--k-app-accent) .36 .06 h);
+    --k-primary-container: oklch(from var(--k-app-accent) .43 .1 h);
+    --k-on-primary-container: oklch(from var(--k-app-accent) .92 .04 h);
+    --k-secondary-container: oklch(from var(--k-app-accent) .4 .04 h);
+    --k-on-secondary-container: oklch(from var(--k-app-accent) .92 .04 h);
+    --k-app-text: oklch(from var(--k-app-accent) .82 .09 h);
+    --k-app-mark: var(--k-suo);
   }
 }
 

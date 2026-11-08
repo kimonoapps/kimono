@@ -11,9 +11,7 @@ export function LinkFrame({ app, actions, children }: { app: AppIdentity; action
   const ramp = accentRamp(app.accent);
   const palette = {
     "--k-app-accent": ramp.deep,
-    "--k-accent": ramp.deep,
-    "--k-accent-deep": `color-mix(in srgb, ${ramp.deep} 82%, #24221f)`,
-    "--k-accent-pale": ramp.tint,
+    "--k-app-tint": ramp.tint,
   } as CSSProperties;
   return <div className="app-frame in-app ai-share" style={palette}>
     <header className="ai-share-bar"><AppLockup identity={app} />{actions ? <span className="ai-share-acts">{actions}</span> : null}</header>
