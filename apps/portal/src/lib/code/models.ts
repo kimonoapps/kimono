@@ -1,51 +1,27 @@
 /*
  * Which Claude answers (docs/kimono-ai.md, "Choosing the model"). People can
- * pick one; by default Kimono keeps a chat on one model, so it never has to
- * read the whole chat again on another: Sonnet, until the chat builds
- * something, and from then on Opus.
+ * pick one; Auto is Opus at medium thinking, every message.
  */
 
 export const modelChoices = ["auto", "opus", "sonnet", "haiku"] as const;
 export type ModelChoice = (typeof modelChoices)[number];
 export type Model = Exclude<ModelChoice, "auto">;
 
-const building = /\b(code|coding|program(ming)?|script|website|web ?site|web ?app|apps?|build|deploy|debug|bug|function|api|html|css|javascript|typescript|python|react|database|sql|compile|refactor|repo(sitory)?|git|server|frontend|backend|component)\b/i;
-
-/** The model for a message, when the person left it to Kimono: Opus once the chat builds, Sonnet until then. */
-export function chooseModel(input: { prompt: string; building: boolean; last?: Model | null }): Model {
-  if (input.last === "opus") return "opus";
-  const prompt = input.prompt.trim();
-  return input.building || building.test(prompt) || animating.test(prompt) ? "opus" : "sonnet";
+/** What the person chose, or Opus when they chose Auto (or nothing). */
+export function modelFor(choice: unknown, _input?: unknown): Model {
+  return choice === "opus" || choice === "sonnet" || choice === "haiku" ? choice : "opus";
 }
-
-/** What the person chose, or Kimono's pick when they chose Auto (or nothing). */
-export function modelFor(choice: unknown, input: { prompt: string; building: boolean; last?: Model | null }): Model {
-  return choice === "opus" || choice === "sonnet" || choice === "haiku" ? choice : chooseModel(input);
-}
-
-/* An animation or a picture that explains: Opus writes these best. */
-const animating = new RegExp([
-  /\b(animat\w*|visuali[sz]\w*|illustrat\w*|simulat\w*|walk me through|in 3d|3d|graph it|plot it)\b/.source,
-  /* "show me how", "something that shows how washers work", "make me something that shows…" */
-  /\bshows? (me )?(how|what|why)\b|\bthat shows\b/.source,
-  /\b(make|build|create|draw|give)( me)? (something|a thing|a demo|an? (little |quick |interactive )?(animation|visual|visualization|diagram|graph|chart|picture|simulation|explainer|demo))\b/.source,
-].join("|"), "i");
-
-export function wantsAnimation(prompt: string) { return animating.test(prompt); }
 
 /** Thinking Sonnet and Haiku may be asked for: no more than medium. */
 export const lightEfforts = ["low", "medium"] as const;
 
 /**
- * How hard it thinks: on Auto, Opus thinks hard and Sonnet at medium, the
- * same every message so the chat stays cached. Otherwise what the person
- * picked, except that Sonnet and Haiku stop at medium.
+ * How hard it thinks: on Auto, medium every message so the chat stays cached.
+ * Otherwise what the person picked, except that Sonnet and Haiku stop at medium.
  */
 export function effortFor<E extends string>(model: Model, input: { choice: unknown; effort?: E }): E | "low" | "medium" | "high" | undefined {
   const auto = !(input.choice === "opus" || input.choice === "sonnet" || input.choice === "haiku");
-  if (auto) return model === "opus" ? "high" : model === "sonnet" ? "medium" : undefined;
+  if (auto) return "medium";
   if (model !== "opus" && input.effort && !(lightEfforts as readonly string[]).includes(input.effort)) return "medium";
   return input.effort;
 }
-
-export const modelNames: Record<Model, string> = { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" };

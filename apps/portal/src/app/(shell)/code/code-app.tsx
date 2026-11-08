@@ -247,7 +247,7 @@ function useModel() {
   return useSyncExternalStore((listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener); }; }, modelNow, () => "auto" as ModelChoice);
 }
 const modelWords: Record<ModelChoice, { label: string; detail: string }> = {
-  auto: { label: "Auto", detail: "Sonnet, or Opus to build" },
+  auto: { label: "Auto", detail: "Opus" },
   opus: { label: "Opus", detail: "Best for building things" },
   sonnet: { label: "Sonnet", detail: "Everyday work" },
   haiku: { label: "Haiku", detail: "Quick answers" },

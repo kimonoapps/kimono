@@ -8,7 +8,7 @@ import { ProgressProbe } from '../src/lib/code/progress-probe.ts';
 import { cardOf, cardWords } from '../src/lib/code/progress-card.ts';
 import { planSync } from '../src/lib/code/sync.ts';
 import { applyEdits, artifactByMediaKey, artifactName, artifactOf, Drafts, mediaNames, partialString, saveArtifact, shownName, titleOf } from '../src/lib/code/artifacts.ts';
-import { chooseModel, effortFor } from '../src/lib/code/models.ts';
+import { effortFor } from '../src/lib/code/models.ts';
 
 test('artifacts are pages under artifacts/, by a plain name', () => {
   assert.equal(artifactName('/workspace/artifacts/Budget.html'), 'budget');
@@ -90,20 +90,11 @@ test('drafts follow a Write of an artifact as it streams, and nothing else', () 
   assert.ok(!sent.some((d) => JSON.stringify(d).includes('secret')));
 });
 
-test('animations go to Opus with light thinking; Sonnet and Haiku never think past medium', () => {
-  assert.equal(chooseModel({ prompt: 'Animate how a washer makes a volume', attachments: 0, building: false }), 'opus');
-  assert.equal(chooseModel({ prompt: 'visualize compound interest', attachments: 0, building: false }), 'opus');
-  assert.equal(chooseModel({ prompt: 'Can you make something that shows like washer slices and how they work', attachments: 0, building: false }), 'opus');
-  assert.equal(chooseModel({ prompt: 'show me how compound interest grows', attachments: 0, building: false }), 'opus');
-  assert.equal(chooseModel({ prompt: 'make me a chart of our spending', attachments: 0, building: false }), 'opus');
-  assert.equal(chooseModel({ prompt: 'what time is it in Tokyo', attachments: 0, building: false }), 'haiku');
-  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'Animate a derivative', effort: 'high' }), 'low');
-  assert.equal(effortFor('opus', { choice: 'opus', prompt: 'Animate a derivative', effort: 'high' }), 'high');
-  /* Auto picks the thinking itself: high for Opus, whatever was chosen before. */
-  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'Build me a website', effort: 'xhigh' }), 'high');
-  assert.equal(effortFor('sonnet', { choice: 'auto', prompt: 'Sort my photos', effort: 'max' }), 'medium');
-  assert.equal(effortFor('haiku', { choice: 'haiku', prompt: 'hi', effort: 'high' }), 'medium');
-  assert.equal(effortFor('sonnet', { choice: 'sonnet', prompt: 'hi', effort: 'low' }), 'low');
+test('Auto thinks at medium; Sonnet and Haiku never think past medium', () => {
+  assert.equal(effortFor('opus', { choice: 'auto', effort: 'xhigh' }), 'medium');
+  assert.equal(effortFor('opus', { choice: 'opus', effort: 'high' }), 'high');
+  assert.equal(effortFor('haiku', { choice: 'haiku', effort: 'high' }), 'medium');
+  assert.equal(effortFor('sonnet', { choice: 'sonnet', effort: 'low' }), 'low');
 });
 
 test('the agent\'s artifact reference names every scene call the kit has', () => {
