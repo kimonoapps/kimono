@@ -111,6 +111,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -412,10 +413,10 @@ private class ToolCall(val event: CodeEvent.Tool) {
 
 private sealed interface Item {
     val key: Long
-    data class Ask(override val key: Long, val event: CodeEvent.Ask) : Item
+    data class Ask(override val key: Long, val event: CodeEvent.Ask, val at: Long = 0) : Item
     data class Say(override val key: Long, val text: String) : Item
     data class Tools(override val key: Long, val calls: MutableList<ToolCall>) : Item
-    data class Done(override val key: Long, val event: CodeEvent.Done) : Item
+    data class Done(override val key: Long, val event: CodeEvent.Done, val at: Long = 0, /** what it said this turn, to copy */ val answer: String = "") : Item
     data class Plain(override val key: Long, val event: CodeEvent) : Item
     data class Shots(override val key: Long, val shots: MutableList<CodeEvent.Image>) : Item
     data class Access(override val key: Long, val event: CodeEvent.Access, val answer: CodeEvent.AccessAnswer?) : Item
@@ -426,21 +427,22 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
     val items = mutableListOf<Item>()
     val calls = mutableMapOf<String, ToolCall>()
     val answers = events.mapNotNull { it.event as? CodeEvent.AccessAnswer }.associateBy { it.id }
+    val said = mutableListOf<String>()
     for (stored in events) {
         val last = items.lastOrNull()
         when (val e = stored.event) {
-            is CodeEvent.Ask -> items += Item.Ask(stored.seq, e)
+            is CodeEvent.Ask -> { items += Item.Ask(stored.seq, e, stored.at); said.clear() }
             /* sent while it worked: read now, so no longer waiting; or never read, because it was stopped */
             is CodeEvent.Steered -> for (i in items.indices) { val a = items[i]; if (a is Item.Ask && a.key in e.seqs) items[i] = a.copy(event = a.event.copy(queued = false)) }
             is CodeEvent.Dropped -> for (i in items.indices) { val a = items[i]; if (a is Item.Ask && a.key in e.seqs) items[i] = a.copy(event = a.event.copy(dropped = true)) }
-            is CodeEvent.Say -> items += Item.Say(stored.seq, e.text)
+            is CodeEvent.Say -> { items += Item.Say(stored.seq, e.text); said += e.text }
             is CodeEvent.Tool -> {
                 val call = ToolCall(e).also { calls[e.id] = it }
                 if (last is Item.Tools) last.calls += call else items += Item.Tools(stored.seq, mutableListOf(call))
             }
             is CodeEvent.ToolResult -> calls[e.id]?.result = e
             is CodeEvent.Progress -> calls[e.id]?.probe = e
-            is CodeEvent.Done -> items += Item.Done(stored.seq, e)
+            is CodeEvent.Done -> { items += Item.Done(stored.seq, e, stored.at, said.joinToString("\n\n")); said.clear() }
             is CodeEvent.Image -> if (last is Item.Shots) last.shots += e else items += Item.Shots(stored.seq, mutableListOf(e))
             is CodeEvent.Access -> items += Item.Access(stored.seq, e, answers[e.id])
             is CodeEvent.Published, is CodeEvent.Preview, CodeEvent.PreviewStopped, is CodeEvent.Slept, is CodeEvent.Disk, is CodeEvent.Compacted,
@@ -496,9 +498,18 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     LaunchedEffect(w.id) { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } }
     val asking = askingFor(items, ratings)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    /* Swiping the conversation left slides it over to show when each message was sent, as in Messages; let go and it slides back. */
+    val reveal = remember { androidx.compose.animation.core.Animatable(0f) }
+    val shownAt = remember(items.size) { now() }
     /* A tap on the conversation itself (not on something in it) puts the keyboard away, ending a rename as tapping away does on the website. */
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
+            val reach = 72.dp.toPx()
+            androidx.compose.foundation.gestures.detectHorizontalDragGestures(
+                onDragEnd = { scope.launch { reveal.animateTo(0f, androidx.compose.animation.core.spring(dampingRatio = .8f)) } },
+                onDragCancel = { scope.launch { reveal.animateTo(0f) } },
+            ) { change, dx -> if (dx < 0 || reveal.value > 0f) { change.consume(); scope.launch { reveal.snapTo((reveal.value - dx / reach).coerceIn(0f, 1f)) } } }
+        }) {
             LazyColumn(state = list, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 if (items.isEmpty() && !w.running) item(key = "empty") { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
                 items(items, key = { it.key }) { item ->
@@ -508,12 +519,13 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                         placementSpec = androidx.compose.animation.core.spring(dampingRatio = .8f, stiffness = 380f, visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1)),
                         fadeOutSpec = null,
                     )) {
+                    TimeAside(when (item) { is Item.Ask -> item.at; is Item.Done -> item.at; else -> 0L }.takeIf { it > 0 }?.let { messageTime(it, shownAt, platform.utcOffsetMillis(it)) }, reveal.value) {
                     when (item) {
                         is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
                         /* Let out once: scrolled away and back, or already out, it just shows. */
                         is Item.Say -> if (item.key > liveFrom && (revealed[item.key] ?: -1) < item.text.length) RevealWords(item.text, from = revealed[item.key]) { revealed[item.key] = it } else Markdown(item.text)
                         is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
-                        is Item.Done -> DoneNote(item.event, ratings[item.key], asking = asking == item.key) { rating, note ->
+                        is Item.Done -> DoneNote(item.event, item.answer, ratings[item.key], asking = asking == item.key) { rating, note ->
                             ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
                             /* Not saved: show what the server has, not what was hoped. */
                             scope.launch { runCatching { code.rate(w.id, item.key, rating, note) }.onSuccess { ratings = it }.onFailure { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } } }
@@ -539,6 +551,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                             is CodeEvent.Artifact -> if (e.action == "edited") ArtifactChanged(artifacts, code, e.name) else ArtifactCard(code, platform, artifacts, e.name)
                             else -> {}
                         }
+                    }
                     }
                     }
                 }
@@ -707,6 +720,9 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
     var problem by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
+    /* Holding your message offers Edit (when it can be changed) and Copy. */
+    var held by remember { mutableStateOf(false) }
+    @Suppress("DEPRECATION") val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     editing?.let { draft ->
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
             Column(
@@ -746,7 +762,7 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
         }
         Column(
             Modifier.widthIn(max = 320.dp).alpha(if (ask.dropped) .5f else if (ask.queued) .72f else 1f).clip(RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp))
-                .then(if (editable) Modifier.combinedClickable(onClick = {}, onLongClickLabel = "Edit", onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); problem = null; editing = ask.text }) else Modifier)
+                .combinedClickable(onClick = {}, onLongClickLabel = "Copy or edit", onLongClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); held = true })
                 .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(24.dp, 24.dp, 8.dp, 24.dp)).padding(horizontal = 16.dp, vertical = 11.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -762,6 +778,10 @@ private fun AskBubble(code: Code, platform: Platform, people: Map<String, app.ki
             if (media.isNotEmpty()) AttachedMedia(code, platform, w, media)
             if (others.isNotEmpty()) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 others.forEach { a -> Box(Modifier.clip(RoundedCornerShape(14.dp)).clickable { opened = a }) { FileChip(a.name, readableSize(a.size)) } }
+            }
+            DropdownMenu(held, onDismissRequest = { held = false }) {
+                if (editable) DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(kimonoIcon("edit"), null, Modifier.size(18.dp)) }, onClick = { held = false; problem = null; editing = ask.text })
+                if (ask.text.isNotBlank()) DropdownMenuItem(text = { Text("Copy") }, leadingIcon = { Icon(kimonoIcon("copy"), null, Modifier.size(18.dp)) }, onClick = { held = false; clipboard.setText(AnnotatedString(ask.text)) })
             }
         }
         if (ask.dropped) Text("Not sent: it was stopped first", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, end = 6.dp))
@@ -1162,7 +1182,10 @@ private fun askingFor(items: List<Item>, ratings: Map<Long, Int>): Long? {
 }
 
 @Composable
-private fun DoneNote(e: CodeEvent.Done, rating: Int?, asking: Boolean, rate: (Int?, String?) -> Unit) {
+private fun DoneNote(e: CodeEvent.Done, answer: String, rating: Int?, asking: Boolean, rate: (Int?, String?) -> Unit) {
+    @Suppress("DEPRECATION") val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(1500); copied = false } }
     /* A thumb holds as soon as it's given; then there's room to say why, and who sees it. */
     var confirming by remember { mutableStateOf<Int?>(null) }
     val give = { next: Int -> if (rating == next) rate(null, null) else { rate(next, null); confirming = next } }
@@ -1173,6 +1196,10 @@ private fun DoneNote(e: CodeEvent.Done, rating: Int?, asking: Boolean, rate: (In
                 Text("How was this?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 2.dp))
             }
             val idle = if (asking) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+            /* The answer's words, to paste elsewhere; a tick for a moment says it's done. */
+            if (answer.isNotBlank()) IconButton(onClick = { clipboard.setText(AnnotatedString(answer.trim())); copied = true }, modifier = Modifier.size(36.dp)) {
+                Icon(kimonoIcon(if (copied) "check" else "copy"), if (copied) "Copied" else "Copy answer", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             IconButton(onClick = { give(1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-up"), "Good answer", modifier = Modifier.size(18.dp), tint = if (rating == 1) MaterialTheme.colorScheme.primary else idle) }
             IconButton(onClick = { give(-1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-down"), "Bad answer", modifier = Modifier.size(18.dp), tint = if (rating == -1) MaterialTheme.colorScheme.primary else idle) }
         }
@@ -2431,5 +2458,33 @@ internal fun QuoteAboveBox() {
         Spacer(Modifier.width(8.dp))
         Text(quote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         IconButton(onClick = { replyQuote = null }) { Icon(kimonoIcon("close"), "Don't reply to this", Modifier.size(16.dp)) }
+    }
+}
+
+
+/* ── when each message was sent ── */
+
+/** The time today ("3:41 PM"), with the day this week ("Tue 3:41 PM"), with the date before that ("3 Nov, 3:41 PM"). */
+internal fun messageTime(at: Long, now: Long, offset: Long): String {
+    val minutes = ((at + offset).mod(86_400_000L)) / 60_000
+    val h = (minutes / 60).toInt(); val m = (minutes % 60).toInt()
+    val time = "${if (h % 12 == 0) 12 else h % 12}:${m.toString().padStart(2, '0')} ${if (h < 12) "AM" else "PM"}"
+    val day = (at + offset).floorDiv(86_400_000L)
+    val today = (now + offset).floorDiv(86_400_000L)
+    return when {
+        day == today -> time
+        today - day < 7 -> "${listOf("Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed")[day.mod(7L).toInt()]} $time"
+        else -> "${noteWhen(at, now, offset)}, $time"
+    }
+}
+
+/** A message slid left by [reveal] (0 to 1) with its time showing in the space it leaves. */
+@Composable
+private fun TimeAside(time: String?, reveal: Float, content: @Composable () -> Unit) {
+    val reach = 72.dp
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.offset { androidx.compose.ui.unit.IntOffset((-reveal * reach.toPx()).toInt(), 0) }) { content() }
+        if (time != null && reveal > 0f) Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+            modifier = Modifier.align(Alignment.CenterEnd).offset { androidx.compose.ui.unit.IntOffset(((1f - reveal) * reach.toPx()).toInt(), 0) }.alpha(reveal))
     }
 }
