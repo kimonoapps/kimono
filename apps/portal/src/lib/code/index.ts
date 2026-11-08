@@ -10,11 +10,11 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
-import { backfillRatings } from "./feedback";
+import { backfillRatings, kimonoVersion, type Versions } from "./feedback";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
-  abandonRunningTurns, appendEvent, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, extraOf, setLastModel, runningTurn, setPreviewName, setTurnByOwner, turnByOwner, turnsByOwner, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor, workspacesOf,
+  abandonRunningTurns, appendEvent, keepThinking, keepToolCall, sandboxStartedOver, awaitsName, CodeProblem, endTurn, eventsAfter, migrate, nameWorkspace, noteTurnEnd, rewindTo, titleFrom, newId, recordUsage, extraOf, setLastModel, runningTurn, setPreviewName, setTurnByOwner, turnByOwner, turnsByOwner, usageOf, setPreview, setSession, startTurn, takeDriveNews, workspaceFor, workspacesOf,
   type StoredEvent, type Workspace,
 } from "./model";
 import { sandbox, type Effort, type NodePreview } from "./node";
@@ -604,6 +604,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (line.type === "assistant" && typeof line.uuid === "string") lastMessage = line.uuid;
         const translated = translate(line);
         if (translated.session) setSession(db(), workspace.id, translated.session);
+        for (const thought of translated.thinking ?? []) keepThinking(db(), workspace.id, thought);
+        for (const call of translated.calls ?? []) keepToolCall(db(), workspace.id, call);
         if (translated.result) result = translated.result;
         if (translated.context) context = translated.context;
         for (const call of translated.artifacts ?? []) pendingArtifacts.set(call.id, call);
@@ -906,4 +908,11 @@ async function notesFor(owner: string): Promise<string> {
     console.warn("Kimono AI couldn't read the notebooks:", error instanceof Error ? error.message : error);
     return "";
   }
+}
+
+/** Which Kimono and sandbox a thumb or report is given on: the Portal's release, and the node's version with the image it runs ("v0.15.6 · kimono-sandbox:0.9.0"). */
+export async function feedbackVersions(config: CodeConfig): Promise<Versions> {
+  const health = await sandbox.health(config).catch(() => null);
+  const image = health?.image?.split("/").at(-1);
+  return { kimono: kimonoVersion(), sandbox: health ? [health.version, image].filter(Boolean).join(" · ") : null };
 }

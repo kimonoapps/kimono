@@ -311,7 +311,23 @@ export function migrate(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS ai_ratings_by_time ON ai_ratings (at);
     CREATE TABLE IF NOT EXISTS ai_reports (id TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', chat TEXT NOT NULL, at INTEGER NOT NULL);
+    /* What the agent thought, after the event it followed: never in the timeline, so nobody a chat is shared with sees it. Read only for feedback. */
+    CREATE TABLE IF NOT EXISTS thinking (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, after_seq INTEGER NOT NULL, at INTEGER NOT NULL, text TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS thinking_by_chat ON thinking (workspace_id, after_seq);
+    /* Each tool call as it really was (the timeline keeps them shortened), for feedback alone. */
+    CREATE TABLE IF NOT EXISTS tool_calls (
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, id TEXT NOT NULL, input TEXT, output TEXT,
+      PRIMARY KEY (workspace_id, id)
+    );
   `);
+  /* Which Kimono a thumb or report was given on (its release tag, or "dev"), and which sandbox node and image. */
+  for (const table of ["ai_ratings", "ai_reports"]) {
+    const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+    if (!columns.includes("version")) db.exec(`ALTER TABLE ${table} ADD COLUMN version TEXT`);
+    if (!columns.includes("sandbox_version")) db.exec(`ALTER TABLE ${table} ADD COLUMN sandbox_version TEXT`);
+  }
   /* More of the plan an administrator gave someone, on top of their share, until the window it was given in ends. */
   db.exec(`
     CREATE TABLE IF NOT EXISTS usage_grants (
@@ -674,6 +690,7 @@ export function rewindTo(db: DatabaseSync, workspaceId: string, seq: number): { 
   try {
     const gone = (db.prepare("SELECT DISTINCT turn_id FROM events WHERE workspace_id = ? AND seq >= ? AND turn_id IS NOT NULL").all(workspaceId, seq) as { turn_id: string }[]).map((r) => r.turn_id);
     db.prepare("DELETE FROM events WHERE workspace_id = ? AND seq >= ?").run(workspaceId, seq);
+    db.prepare("DELETE FROM thinking WHERE workspace_id = ? AND after_seq >= ?").run(workspaceId, seq);
     for (const id of gone) {
       if (!db.prepare("SELECT 1 FROM events WHERE workspace_id = ? AND turn_id = ? LIMIT 1").get(workspaceId, id)) db.prepare("DELETE FROM turns WHERE id = ?").run(id);
     }
@@ -744,4 +761,31 @@ export function takeDriveNews(db: DatabaseSync, workspaceId: string): string[] {
   const row = db.prepare("SELECT drive_news FROM workspaces WHERE id = ?").get(workspaceId) as { drive_news: string | null } | undefined;
   db.prepare("UPDATE workspaces SET drive_news = NULL WHERE id = ?").run(workspaceId);
   return row?.drive_news ? JSON.parse(row.drive_news) as string[] : [];
+}
+
+/** Keeps what the agent thought, placed after the chat's latest event. */
+export function keepThinking(db: DatabaseSync, workspaceId: string, text: string, now = Date.now()) {
+  const last = db.prepare("SELECT MAX(seq) AS seq FROM events WHERE workspace_id = ?").get(workspaceId) as { seq: number | null };
+  db.prepare("INSERT INTO thinking (workspace_id, after_seq, at, text) VALUES (?, ?, ?, ?)").run(workspaceId, last.seq ?? 0, now, text);
+}
+
+/** What the agent thought in a chat up to [seq], by the event each came after. */
+export function thinkingUpTo(db: DatabaseSync, workspaceId: string, seq: number): Map<number, string[]> {
+  const rows = db.prepare("SELECT after_seq, text FROM thinking WHERE workspace_id = ? AND after_seq <= ? ORDER BY after_seq, rowid").all(workspaceId, seq) as { after_seq: number; text: string }[];
+  const by = new Map<number, string[]>();
+  for (const row of rows) by.set(row.after_seq, [...(by.get(row.after_seq) ?? []), row.text]);
+  return by;
+}
+
+/** Keeps a tool call's full input or output, whichever this is. */
+export function keepToolCall(db: DatabaseSync, workspaceId: string, call: { id: string; input?: string; output?: string }) {
+  db.prepare(`INSERT INTO tool_calls (workspace_id, id, input, output) VALUES (?, ?, ?, ?)
+    ON CONFLICT (workspace_id, id) DO UPDATE SET input = COALESCE(excluded.input, input), output = COALESCE(excluded.output, output)`)
+    .run(workspaceId, call.id, call.input ?? null, call.output ?? null);
+}
+
+/** A chat's tool calls in full, by their id. */
+export function toolCallsOf(db: DatabaseSync, workspaceId: string): Map<string, { input: string | null; output: string | null }> {
+  const rows = db.prepare("SELECT id, input, output FROM tool_calls WHERE workspace_id = ?").all(workspaceId) as { id: string; input: string | null; output: string | null }[];
+  return new Map(rows.map((r) => [r.id, { input: r.input, output: r.output }]));
 }

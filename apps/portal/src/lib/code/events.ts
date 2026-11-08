@@ -324,7 +324,7 @@ export type ArtifactCall = { id: string; name: string; action: "wrote" | "edited
 /** A file kimono-send copied aside for the person: its name, and where it is under /workspace. */
 export type SentFile = { name: string; path: string };
 
-export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult; context?: number; artifacts?: ArtifactCall[]; sent?: SentFile[] };
+export type Translated = { events: CodeEvent[]; session?: string; result?: TurnResult; context?: number; artifacts?: ArtifactCall[]; sent?: SentFile[]; /** What it thought before acting, kept apart from the timeline (lib/code/feedback.ts). */ thinking?: string[]; /** Each tool call in full, what it was given and what it gave back, kept apart for feedback the same way. */ calls?: { id: string; input?: string; output?: string }[] };
 
 /** The files a kimono-send in this output gave the person, and the output without the line that says so. */
 export function sentFiles(text: string): { files: SentFile[]; shown: string } {
@@ -374,7 +374,11 @@ export function translate(line: unknown): Translated {
     case "assistant": {
       const events: CodeEvent[] = [];
       const artifacts: ArtifactCall[] = [];
+      const thinking: string[] = [];
+      const calls: { id: string; input: string }[] = [];
       for (const part of parts) {
+        if (part.type === "tool_use" && typeof part.id === "string") calls.push({ id: part.id, input: JSON.stringify(part.input ?? {}) });
+        if (part.type === "thinking" && typeof part.thinking === "string" && part.thinking.trim()) thinking.push(part.thinking.trim());
         if (part.type === "text" && typeof part.text === "string" && part.text.trim()) events.push({ kind: "text", text: part.text });
         if (part.type === "tool_use" && typeof part.id === "string" && typeof part.name === "string") {
           const input = (part.input as Record<string, unknown>) ?? {};
@@ -386,7 +390,7 @@ export function translate(line: unknown): Translated {
           events.push({ kind: "tool", id: part.id, name: part.name, ...toolLabel(part.name, input), ...(progress ? { progress } : {}) });
         }
       }
-      return { events, session, context: contextOf(message), ...(artifacts.length ? { artifacts } : {}) };
+      return { events, session, context: contextOf(message), ...(artifacts.length ? { artifacts } : {}), ...(thinking.length ? { thinking } : {}), ...(calls.length ? { calls } : {}) };
     }
     case "system": {
       /* Claude Code folded the conversation into a summary, by itself or because it was asked to. */
@@ -399,8 +403,10 @@ export function translate(line: unknown): Translated {
     case "user": {
       const events: CodeEvent[] = [];
       const sent: SentFile[] = [];
+      const calls: { id: string; output: string }[] = [];
       for (const part of parts) {
         if (part.type === "tool_result" && typeof part.tool_use_id === "string") {
+          calls.push({ id: part.tool_use_id, output: resultText(part.content) });
           const { files, shown } = sentFiles(resultText(part.content));
           const ok = part.is_error !== true;
           events.push({ kind: "tool-result", id: part.tool_use_id, ok, output: clip(shown, 4000) });
@@ -408,7 +414,7 @@ export function translate(line: unknown): Translated {
           if (ok) sent.push(...files);
         }
       }
-      return { events, session, ...(sent.length ? { sent } : {}) };
+      return { events, session, ...(sent.length ? { sent } : {}), ...(calls.length ? { calls } : {}) };
     }
     case "result": {
       const failed = message.is_error === true || (typeof message.subtype === "string" && message.subtype !== "success");

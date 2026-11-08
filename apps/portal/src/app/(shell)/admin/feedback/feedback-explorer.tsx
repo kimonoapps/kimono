@@ -89,12 +89,15 @@ function Entry({ entry, open, onToggle }: { entry: BankEntry; open: boolean; onT
         {words ? <small className="fb-words">“{words}”</small> : null}
       </span>
       <span className="fb-meta">
-        <small>{when(entry.at)}</small>
+        <small title={entry.sandboxVersion ? `Sandbox ${entry.sandboxVersion}` : undefined}>{when(entry.at)}{entry.version ? ` · ${entry.version}` : ""}</small>
         <small>{rating ? model ?? "" : `${entry.chat.length} turn${entry.chat.length === 1 ? "" : "s"}`}</small>
       </span>
     </button>
     {open ? <div className="fb-body">
-      <button type="button" className="k-seal k-tone-quiet fb-download" onClick={() => download(entry)}><LineIcon name="download" />Download</button>
+      <div className="fb-versions">
+        <button type="button" className="k-seal k-tone-quiet fb-download" onClick={() => download(entry)}><LineIcon name="download" />Download</button>
+        {entry.version || entry.sandboxVersion ? <small>Kimono {entry.version ?? "unknown"} · Sandbox {entry.sandboxVersion ?? "unknown"}</small> : null}
+      </div>
       {rating ? [...entry.before.map((answer, n) => <Turn key={n} answer={answer} label={`Turn ${n + 1}`} />), <Turn key="rated" answer={entry.answer} label={entry.before.length ? `Turn ${entry.before.length + 1} · rated` : undefined} />] : entry.chat.map((answer, n) => <Turn key={n} answer={answer} label={`Turn ${n + 1}`} />)}
     </div> : null}
   </div>;
@@ -108,8 +111,13 @@ function Turn({ answer, label }: { answer: Answer; label?: string }) {
     <div className="fb-steps">
       {answer.steps.map((step, n) => step.said !== undefined
         ? <div key={n} className="cd-say fb-said"><Markdown text={step.said} /></div>
+        : step.thought !== undefined
+          ? <details key={n} className="fb-thought"><summary>Thinking</summary><p>{step.thought}</p></details>
         : step.tool
-          ? <div key={n} className={`fb-tool${step.ok === false ? " is-failed" : ""}`}><b>{step.tool}</b><code>{step.detail}</code>{step.ok === false ? <small>failed</small> : null}</div>
+          ? <div key={n} className="fb-tool-wrap">
+              <div className={`fb-tool${step.ok === false ? " is-failed" : ""}`}><b>{step.tool}</b><code>{step.detail}</code>{step.ok === false ? <small>failed</small> : null}</div>
+              {step.output ? <details className="fb-output"><summary>Output</summary><pre>{step.output}</pre></details> : null}
+            </div>
           : step.artifact
             ? <div key={n} className="fb-tool"><b>artifact</b><code>{step.artifact}</code></div>
             : step.sent

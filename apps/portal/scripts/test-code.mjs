@@ -357,3 +357,25 @@ test('ratings kept before the chat came along get the turns before them, once', 
   assert.equal(filled.answer.asked, 'second ask');
   assert.deepEqual(gone.before, []);
 });
+
+test('a rating keeps what it thought, where it thought it, and what its tools gave back', async () => {
+  const { rate, bank } = await import('../src/lib/code/feedback.ts');
+  const db = fresh();
+  const w = start(db);
+  model.appendEvent(db, w.id, null, { kind: 'ask', text: 'what is 12/8', attachments: [] });
+  model.keepThinking(db, w.id, 'I should compute it rather than guess.');
+  model.appendEvent(db, w.id, null, { kind: 'tool', id: 't1', name: 'Bash', label: 'Ran', detail: 'python3 -c "print(12/8)"' });
+  model.appendEvent(db, w.id, null, { kind: 'tool-result', id: 't1', ok: true, output: '1.5' });
+  model.keepToolCall(db, w.id, { id: 't1', input: '{"command":"python3 -c \\"print(12/8)\\"  # and a long comment"}' });
+  model.keepToolCall(db, w.id, { id: 't1', output: '1.5\n(full output)' });
+  model.keepThinking(db, w.id, 'It is 1.5.');
+  model.appendEvent(db, w.id, null, { kind: 'text', text: '1.5' });
+  const done = model.appendEvent(db, w.id, null, { kind: 'done', ok: true });
+  rate(db, w.id, done.seq, 'akram', -1);
+  const steps = bank(db)[0].answer.steps;
+  assert.deepEqual(steps.map((s) => s.thought ?? s.tool ?? s.said), ['I should compute it rather than guess.', 'Bash', 'It is 1.5.', '1.5']);
+  assert.equal(steps[1].output, '1.5\n(full output)');
+  assert.match(steps[1].detail, /a long comment/);
+  model.rewindTo(db, w.id, 1);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM thinking').get().n, 0);
+});

@@ -44,7 +44,7 @@ export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
 export type Effort = (typeof efforts)[number];
 
 export const sandbox = {
-  health: (config: CodeConfig) => call(config, "/v1/health", { timeout: 5_000 }).then(json<{ ok: boolean; version: string; runtime: string }>),
+  health: (config: CodeConfig) => call(config, "/v1/health", { timeout: 5_000 }).then(json<{ ok: boolean; version: string; image?: string; runtime: string }>),
 
   /** Makes sure the sandbox exists, holds the repository and is awake. Safe to call before anything. */
   ensure: async (config: CodeConfig, workspace: Workspace, who: Who, tools: ToolSession | null = null, gitLogin: string | null = null) => call(config, at(workspace), {

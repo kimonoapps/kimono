@@ -1,5 +1,5 @@
 import { apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { code, db, shareOf, workspaceAs } from "@/lib/code";
+import { code, db, feedbackVersions, shareOf, workspaceAs } from "@/lib/code";
 import { report } from "@/lib/code/feedback";
 
 type Context = { params: Promise<{ id: string }> };
@@ -14,9 +14,9 @@ export async function POST(request: Request, { params }: Context) {
   if ("response" in read) return read.response;
   const { id } = await params;
   const reason = (read.body as { reason?: unknown }).reason;
-  return code(user, () => {
+  return code(user, async (config) => {
     workspaceAs(db(), id, user.username, "read", shareOf(request));
-    report(db(), id, typeof reason === "string" ? reason : "");
+    report(db(), id, typeof reason === "string" ? reason : "", Date.now(), await feedbackVersions(config));
     return new Response(null, { status: 204 });
   }, false);
 }

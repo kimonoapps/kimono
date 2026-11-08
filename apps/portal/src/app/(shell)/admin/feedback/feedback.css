@@ -3,6 +3,8 @@
 .fb-export { margin-left: auto; gap: 6px; }
 .fb-export .line-icon, .fb-download .line-icon { width: 16px; height: 16px; }
 .fb-download { justify-self: start; gap: 6px; }
+.fb-versions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.fb-versions small { font: 500 12px/1.4 var(--k-mono); color: var(--on-surface-variant); }
 .fb { display: grid; gap: 18px; }
 .fb-stats .status-card { cursor: default; }
 .fb-stats .status-card:hover { border-radius: var(--r-xl); }
@@ -47,6 +49,11 @@
 .fb-tool:hover code { white-space: pre-wrap; word-break: break-word; }
 .fb-tool small { flex: none; font-weight: 700; color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .fb-tool.is-failed { box-shadow: inset 2px 0 0 var(--k-suo); }
+.fb-tool-wrap { display: grid; gap: 4px; min-width: 0; }
+.fb-thought, .fb-output { min-width: 0; font-size: 12.5px; color: var(--on-surface-variant); }
+.fb-thought summary, .fb-output summary { cursor: pointer; width: fit-content; font: 600 12px/1.6 var(--k-mono); color: var(--on-surface-variant); }
+.fb-thought p { margin: 4px 0 0; padding: 8px 12px; border-left: 2px solid var(--k-hair); white-space: pre-wrap; font-style: italic; line-height: 1.5; }
+.fb-output pre { margin: 4px 0 0; max-height: 280px; overflow: auto; padding: 8px 10px; border-radius: var(--k-r-2); background: var(--k-fold); font: 500 11.5px/1.45 var(--k-mono); white-space: pre-wrap; word-break: break-word; }
 .fb-error { padding: 8px 12px; border-left: 3px solid var(--k-suo); border-radius: var(--k-r-2); background: var(--k-sheet); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); font-size: 14px; }
 
 @media (max-width: 720px) {

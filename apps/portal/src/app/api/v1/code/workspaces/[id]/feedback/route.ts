@@ -1,5 +1,5 @@
 import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { code, db, shareOf, workspaceAs } from "@/lib/code";
+import { code, db, feedbackVersions, shareOf, workspaceAs } from "@/lib/code";
 import { rate, ratingsOf } from "@/lib/code/feedback";
 
 type Context = { params: Promise<{ id: string }> };
@@ -28,9 +28,10 @@ export async function POST(request: Request, { params }: Context) {
   const seq = typeof body.seq === "number" && Number.isInteger(body.seq) ? body.seq : null;
   const rating = body.rating === 1 || body.rating === -1 ? body.rating : body.rating === null ? null : undefined;
   if (seq === null || rating === undefined) return apiError(400, "Say which answer, and up or down.");
-  return code(user, () => {
+  return code(user, async (config) => {
     workspaceAs(db(), id, user.username, "read", shareOf(request));
-    try { rate(db(), id, seq, user.username, rating, typeof body.note === "string" ? body.note : ""); }
+    const versions = rating === null ? undefined : await feedbackVersions(config);
+    try { rate(db(), id, seq, user.username, rating, typeof body.note === "string" ? body.note : "", Date.now(), versions); }
     catch { return apiError(404, "That answer isn't here."); }
     return apiJson({ ratings: ratingsOf(db(), id, user.username) });
   }, false);

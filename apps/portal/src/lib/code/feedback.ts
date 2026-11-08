@@ -1,23 +1,26 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { CodeEvent } from "./events";
-import { eventsAfter } from "./model";
+import { eventsAfter, thinkingUpTo, toolCallsOf, type StoredEvent } from "./model";
 
 /*
  * What people think of Kimono AI's answers, kept as a bank to read back later
  * (an admin exports it, an AI looks for patterns). A thumbs up or down rates
  * one answer and keeps the chat up to it: every earlier turn, then the rated
- * one (its ask, what it said, the tools it used and the model), as they were
- * then, so the bank stands without the chat. A person's
+ * one (its ask, what it thought, what it said, the tools it used and what they
+ * gave back, and the model), as they were then, so the bank stands without the chat. A person's
  * name stays with their rating only so they can change it; the export leaves
  * names out. A report sends a whole chat with no name and no link to it.
  */
 
 export type Rating = 1 | -1;
 
+/** Which Kimono this is: the release tag the image was built from, or "dev". */
+export const kimonoVersion = () => process.env.KIMONO_VERSION?.trim() || "dev";
+
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max)}…`;
 
-export type Step = { said?: string; tool?: string; detail?: string; ok?: boolean; sent?: string[]; artifact?: string };
+export type Step = { said?: string; thought?: string; tool?: string; detail?: string; ok?: boolean; output?: string; sent?: string[]; artifact?: string };
 export type Answer = { asked: string; attachments: string[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
 
 /** The chat up to the answer that ended at [doneSeq]: that answer, and every turn before it. */
@@ -25,15 +28,33 @@ function answerAt(db: DatabaseSync, workspaceId: string, doneSeq: number): { ans
   const events = eventsAfter(db, workspaceId, 0, 100_000).filter((e) => e.seq <= doneSeq);
   const done = events.at(-1);
   if (!done || done.seq !== doneSeq || done.event.kind !== "done") return null;
-  const turns = turnsOf(events.map((e) => e.event));
+  const turns = turnsOf(withThinking(db, workspaceId, events, doneSeq));
   const answer = turns.pop();
   return answer ? { answer, before: turns } : null;
 }
 
+/** A thought, between the events of a turn: what it was thinking before what came next. */
+type Thought = { kind: "thought"; text: string };
+
+/** The chat's events with what it thought placed among them, where it thought it. */
+function withThinking(db: DatabaseSync, workspaceId: string, events: StoredEvent[], upTo: number): (CodeEvent | Thought)[] {
+  const thoughts = thinkingUpTo(db, workspaceId, upTo);
+  /* The timeline shortens a tool's command and output; the bank keeps them as they were, where it has them. */
+  const calls = toolCallsOf(db, workspaceId);
+  const full = (event: CodeEvent): CodeEvent => {
+    const call = "id" in event && typeof event.id === "string" ? calls.get(event.id) : undefined;
+    if (!call) return event;
+    if (event.kind === "tool" && call.input) return { ...event, detail: call.input };
+    if (event.kind === "tool-result" && call.output !== null) return { ...event, output: call.output };
+    return event;
+  };
+  return events.flatMap((e) => [full(e.event), ...(thoughts.get(e.seq) ?? []).map((text): Thought => ({ kind: "thought", text }))]);
+}
+
 /** A run of events as turns, each from an ask to the next ask after a done. */
-function turnsOf(events: CodeEvent[]): Answer[] {
+function turnsOf(events: (CodeEvent | Thought)[]): Answer[] {
   const turns: Answer[] = [];
-  let current: CodeEvent[] = [];
+  let current: (CodeEvent | Thought)[] = [];
   for (const event of events) {
     if (event.kind === "ask" && !event.queued && current.some((e) => e.kind === "done")) { turns.push(turnOf(current)); current = []; }
     current.push(event);
@@ -42,15 +63,16 @@ function turnsOf(events: CodeEvent[]): Answer[] {
   return turns;
 }
 
-function turnOf(events: CodeEvent[]): Answer {
+function turnOf(events: (CodeEvent | Thought)[]): Answer {
   const answer: Answer = { asked: "", attachments: [], steps: [], ok: true };
   const tools = new Map<string, Step>();
   for (const event of events) {
     switch (event.kind) {
       case "ask": answer.asked = answer.asked ? `${answer.asked}\n\n${event.text}` : event.text; answer.attachments.push(...event.attachments.map((a) => a.name)); break;
-      case "text": answer.steps.push({ said: clip(event.text, 8000) }); break;
-      case "tool": { const step: Step = { tool: event.name, detail: clip(event.detail ?? event.label, 600) }; tools.set(event.id, step); answer.steps.push(step); break; }
-      case "tool-result": { const step = tools.get(event.id); if (step) step.ok = event.ok; break; }
+      case "text": answer.steps.push({ said: event.text }); break;
+      case "thought": answer.steps.push({ thought: event.text }); break;
+      case "tool": { const step: Step = { tool: event.name, detail: event.detail ?? event.label }; tools.set(event.id, step); answer.steps.push(step); break; }
+      case "tool-result": { const step = tools.get(event.id); if (step) { step.ok = event.ok; if (event.output?.trim()) step.output = event.output; } break; }
       case "artifact": answer.steps.push({ artifact: event.name }); break;
       case "sent": answer.steps.push({ sent: event.files.map((f) => f.name) }); break;
       case "done": answer.ok = event.ok; if (event.error) answer.error = event.error; if (event.model) answer.model = event.model; if (event.durationMs) answer.durationMs = event.durationMs; break;
@@ -61,8 +83,11 @@ function turnOf(events: CodeEvent[]): Answer {
 
 type StoredAnswer = Answer & { before?: Answer[] };
 
+/** Which Kimono and which sandbox a thumb or report was given on. The sandbox is the node's version and the image it makes sandboxes from, when it answered. */
+export type Versions = { kimono: string; sandbox: string | null };
+
 /** Rates the answer that ended at [seq], or takes the rating back (rating null). */
-export function rate(db: DatabaseSync, workspaceId: string, seq: number, username: string, rating: Rating | null, note = "", now = Date.now()) {
+export function rate(db: DatabaseSync, workspaceId: string, seq: number, username: string, rating: Rating | null, note = "", now = Date.now(), versions: Versions = { kimono: kimonoVersion(), sandbox: null }) {
   if (rating === null) {
     db.prepare("DELETE FROM ai_ratings WHERE workspace_id = ? AND seq = ? AND username = ?").run(workspaceId, seq, username);
     return;
@@ -71,9 +96,9 @@ export function rate(db: DatabaseSync, workspaceId: string, seq: number, usernam
   if (!rated) throw new Error("no answer there");
   /* The rated answer with the chat before it alongside; ratings kept before this hold the answer alone. */
   const kept: StoredAnswer = { ...rated.answer, before: rated.before };
-  db.prepare(`INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at) VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (workspace_id, seq, username) DO UPDATE SET rating = excluded.rating, note = excluded.note, answer = excluded.answer, at = excluded.at`)
-    .run(workspaceId, seq, username, rating, clip(note.trim(), 2000), JSON.stringify(kept), now);
+  db.prepare(`INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at, version, sandbox_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (workspace_id, seq, username) DO UPDATE SET rating = excluded.rating, note = excluded.note, answer = excluded.answer, at = excluded.at, version = excluded.version, sandbox_version = excluded.sandbox_version`)
+    .run(workspaceId, seq, username, rating, clip(note.trim(), 2000), JSON.stringify(kept), now, versions.kimono, versions.sandbox);
 }
 
 /**
@@ -109,23 +134,24 @@ export function ratingsOf(db: DatabaseSync, workspaceId: string, username: strin
 }
 
 /** Sends a whole chat to the bank with no name and nothing that leads back to it. */
-export function report(db: DatabaseSync, workspaceId: string, reason: string, now = Date.now()) {
-  const turns = turnsOf(eventsAfter(db, workspaceId, 0, 100_000).map((e) => e.event));
-  db.prepare("INSERT INTO ai_reports (id, reason, chat, at) VALUES (?, ?, ?, ?)").run(randomUUID(), clip(reason.trim(), 4000), JSON.stringify(turns), now);
+export function report(db: DatabaseSync, workspaceId: string, reason: string, now = Date.now(), versions: Versions = { kimono: kimonoVersion(), sandbox: null }) {
+  const events = eventsAfter(db, workspaceId, 0, 100_000);
+  const turns = turnsOf(withThinking(db, workspaceId, events, events.at(-1)?.seq ?? 0));
+  db.prepare("INSERT INTO ai_reports (id, reason, chat, at, version, sandbox_version) VALUES (?, ?, ?, ?, ?, ?)").run(randomUUID(), clip(reason.trim(), 4000), JSON.stringify(turns), now, versions.kimono, versions.sandbox);
 }
 
 export type BankEntry =
-  | { type: "rating"; at: number; rating: Rating; note: string; answer: Answer; before: Answer[] }
-  | { type: "report"; at: number; reason: string; chat: Answer[] };
+  | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[] }
+  | { type: "report"; at: number; version: string | null; sandboxVersion: string | null; reason: string; chat: Answer[] };
 
 /** Everything in the bank since [since], oldest first, without anyone's name. */
 export function bank(db: DatabaseSync, since = 0): BankEntry[] {
-  const ratings = (db.prepare("SELECT rating, note, answer, at FROM ai_ratings WHERE at >= ?").all(since) as { rating: Rating; note: string; answer: string; at: number }[])
+  const ratings = (db.prepare("SELECT rating, note, answer, at, version, sandbox_version FROM ai_ratings WHERE at >= ?").all(since) as { rating: Rating; note: string; answer: string; at: number; version: string | null; sandbox_version: string | null }[])
     .map((r): BankEntry => {
       const { before = [], ...answer } = JSON.parse(r.answer) as StoredAnswer;
-      return { type: "rating", at: r.at, rating: r.rating, note: r.note, answer, before };
+      return { type: "rating", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, rating: r.rating, note: r.note, answer, before };
     });
-  const reports = (db.prepare("SELECT reason, chat, at FROM ai_reports WHERE at >= ?").all(since) as { reason: string; chat: string; at: number }[])
-    .map((r): BankEntry => ({ type: "report", at: r.at, reason: r.reason, chat: JSON.parse(r.chat) as Answer[] }));
+  const reports = (db.prepare("SELECT reason, chat, at, version, sandbox_version FROM ai_reports WHERE at >= ?").all(since) as { reason: string; chat: string; at: number; version: string | null; sandbox_version: string | null }[])
+    .map((r): BankEntry => ({ type: "report", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, reason: r.reason, chat: JSON.parse(r.chat) as Answer[] }));
   return [...ratings, ...reports].sort((a, b) => a.at - b.at);
 }
