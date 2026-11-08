@@ -87,7 +87,7 @@ func TestLimits(t *testing.T) {
 	if base.diskCeiling() != 11<<30 {
 		t.Errorf("ceiling %d", base.diskCeiling())
 	}
-	if prompt := limitsPrompt(base); !strings.Contains(prompt, "1 CPU, 2 GB of memory with no swap, and 10 GB of disk") {
+	if prompt := limitsPrompt(base, false); !strings.Contains(prompt, "1 CPU, 2 GB of memory with no swap, and 10 GB of disk") {
 		t.Errorf("prompt %q", prompt)
 	}
 	if diskNote(9<<30, base) != "" || !strings.Contains(diskNote(10<<30+600<<20, base), "10.6 GB of the 10 GB") {

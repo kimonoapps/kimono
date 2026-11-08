@@ -134,10 +134,10 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	s.primeOutbox(space)
 	// What it has to work with, and whether it must make room first.
 	limits := s.limitsNow()
-	system := s.cfg.SystemPrompt + "\n\n" + limitsPrompt(limits)
 	space.mu.Lock()
 	chat := space.repo.URL == ""
 	space.mu.Unlock()
+	system := s.cfg.SystemPrompt + "\n\n" + limitsPrompt(limits, chat)
 	if request.Context != "" {
 		system += "\n\n" + request.Context
 	}

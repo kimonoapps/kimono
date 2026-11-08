@@ -97,7 +97,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # See docs/kimono-code.md.
 COPY bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-link bin/kimono-progress bin/kimono-say bin/kimono-chats /usr/local/bin/
 # How to make artifacts: the kit, scenes and maths (read by the agent; see docs/kimono-ai.md).
-COPY artifacts.md /opt/kimono/artifacts.md
+COPY artifacts.md media.md /opt/kimono/
 COPY bin/shot.cjs bin/supervise /usr/local/lib/kimono/
 
 ENV PATH=/opt/kimono/python/bin:/home/agent/go/bin:/usr/local/go/bin:$PATH \

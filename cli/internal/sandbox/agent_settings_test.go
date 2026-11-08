@@ -161,3 +161,38 @@ func TestPromptTeachesRealProgress(t *testing.T) {
 		}
 	}
 }
+
+// A chat runs on Kimono's prompt alone, without coding and scheduling tools;
+// a project keeps Claude Code's and adds Kimono's.
+func TestChatsReplaceTheCodingPrompt(t *testing.T) {
+	for _, want := range []string{`[ -n "$KIMONO_CHAT" ] && sysflag=--system-prompt`, `sysflag=--append-system-prompt;`, `"$sysflag" "$KIMONO_SYSTEM"`, "${KIMONO_CHAT:+,CronCreate,"} {
+		if !strings.Contains(DefaultAgent, want) {
+			t.Fatalf("the agent command doesn't have %q", want)
+		}
+	}
+	if !strings.HasPrefix(SystemPrompt, "You are Kimono AI") {
+		t.Fatal("the prompt must say who it is first")
+	}
+	if strings.Contains(SystemPrompt, "Open pull request") || !strings.Contains(AppPrompt, "Open pull request") {
+		t.Fatal("committing on \"save it\" is for projects only")
+	}
+}
+
+// How to make real media is read when it's needed, not carried every turn.
+func TestMediaGuide(t *testing.T) {
+	guide, err := os.ReadFile("../../../infra/sandbox/media.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"GEMINI_GENERATE_VIDEOS", "480p", "kimono-fetch <link>", "search again by name", "one image rather than a set of four"} {
+		if !strings.Contains(string(guide), want) {
+			t.Fatalf("media.md doesn't say %q", want)
+		}
+	}
+	if !strings.Contains(SystemPrompt, "read /opt/kimono/media.md with Read") {
+		t.Fatal("the prompt must send it to the media guide")
+	}
+	if strings.Contains(SystemPrompt, "GEMINI_GENERATE_VIDEOS") {
+		t.Fatal("tool prices and picks belong in media.md")
+	}
+}

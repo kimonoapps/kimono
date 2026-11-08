@@ -108,11 +108,15 @@ func (s *Server) limitsNow() Limits {
 }
 
 // limitsPrompt tells the agent what it has to work with.
-func limitsPrompt(l Limits) string {
+func limitsPrompt(l Limits, chat bool) string {
 	cpus := strconv.FormatFloat(l.CPUs, 'f', -1, 64)
 	plural := "s"
 	if l.CPUs == 1 {
 		plural = ""
+	}
+	if chat {
+		return fmt.Sprintf("This computer has %s CPU%s, %s of memory with no swap, and %d GB of disk: keep jobs small enough to fit, and something that needs more memory is stopped.",
+			cpus, plural, gigabytes(int64(l.MemoryMB)<<20), l.DiskGB)
 	}
 	return fmt.Sprintf("This sandbox has %s CPU%s, %s of memory with no swap, and %d GB of disk, shared by your tools and the app you publish. Build apps that fit: one server process, a production build or a light dev server, no heavy background jobs, and small data. Something that needs more memory is stopped.",
 		cpus, plural, gigabytes(int64(l.MemoryMB)<<20), l.DiskGB)

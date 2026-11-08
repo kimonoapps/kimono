@@ -391,6 +391,9 @@ export async function readFromSandbox<T>(config: CodeConfig, workspace: Workspac
 
 const who = (user: ApiUser) => ({ name: user.name || user.username, email: user.email || `${user.username}@users.kimono` });
 
+/** Who it's talking with and what day it is: the model knows neither by itself. */
+const aboutNow = (name: string, at = Date.now()) => `The person's name is ${name}: use it for things they sign or send, but don't call them by it unless they do. Today is ${new Date(at).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`;
+
 const clock = (at: number) => new Date(at).toLocaleString("en", { weekday: "short", hour: "numeric", minute: "2-digit" });
 
 /** Refuses a person who has used their share of the plan's 5-hour or weekly window. The owner has no share: it's their plan. */
@@ -516,7 +519,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: (byOwner ? [contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []).filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
+    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: (byOwner ? [aboutNow(who(user).name), contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []).filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
     const response = await sandbox.turn(config, workspace, input, controller.signal).catch(async (error) => {
       /* The sandbox lost the chat's session (its container was made again): a new
          one is told the conversation so far, so it never starts from nothing. */

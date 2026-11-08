@@ -11,7 +11,11 @@
  * drawing the thing on its own when a picture would help, not only when asked.
  * Some scenarios open a second chat later, to see whether a preference stuck.
  *
- *   node scripts/simulate-study.mjs [--only em-waves,stats] [--runs 1] [--out <dir>]
+ * With --set chat it plays everyday chats instead (scripts/chat-scenarios.mjs:
+ * quick questions, a card message, a worried tenant), graded as an assistant
+ * rather than a tutor; --set all plays both.
+ *
+ *   node scripts/simulate-study.mjs [--set study|chat|all] [--only em-waves,stats] [--runs 1] [--out <dir>]
  *
  * Needs the local Portal on :3000 with Kimono AI set up (its state in
  * /tmp/kimono-portal-test), the sandbox node running, and the `claude` CLI.
@@ -24,7 +28,8 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { encode } from "next-auth/jwt";
-import { scenarios } from "./study-scenarios.mjs";
+import { scenarios as studyScenarios } from "./study-scenarios.mjs";
+import { chatScenarios } from "./chat-scenarios.mjs";
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((pairs, arg, i, all) => arg.startsWith("--") ? [...pairs, [arg.slice(2), all[i + 1] && !all[i + 1].startsWith("--") ? all[i + 1] : "true"]] : pairs, []));
 const portal = args.portal ?? "http://localhost:3000";
@@ -34,6 +39,8 @@ const runs = Number(args.runs ?? 1);
 const concurrency = Number(args.concurrency ?? 2);
 const studentModel = args.student ?? "sonnet";
 const graderModel = args.grader ?? "opus";
+const set = args.set ?? "study";
+const scenarios = set === "chat" ? chatScenarios : set === "all" ? [...studyScenarios, ...chatScenarios] : studyScenarios;
 const picked = args.only ? scenarios.filter((s) => args.only.split(",").includes(s.id)) : scenarios;
 if (!picked.length) throw new Error(`No scenario called ${args.only}. There are: ${scenarios.map((s) => s.id).join(", ")}`);
 if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(portal)) throw new Error("Simulations only run against a local Portal.");
@@ -111,6 +118,7 @@ function forStudent(turn) {
   for (const { event } of turn.events) {
     if (event.kind === "text" && event.text.trim()) parts.push(event.text.trim());
     if (event.kind === "artifact" && event.action !== "edited") parts.push(`[Kimono showed you something you can look at: "${event.name}"]`);
+    if (event.kind === "sent") parts.push(`[Kimono sent you ${event.files.length === 1 ? "a file" : "files"} you can open: ${event.files.map((f) => f.name).join(", ")}]`);
     if (event.kind === "done" && !event.ok) parts.push(`[Kimono failed: ${event.error ?? "no answer"}]`);
   }
   return parts.join("\n\n") || "[Kimono said nothing]";
@@ -132,7 +140,23 @@ function forGrader(turn) {
 
 /* ── the student ── */
 
-const studentSystem = (scenario, session) => `You are role-playing a student using Kimono AI, an AI assistant, to study. Stay in character the whole time. You are testing whether it actually helps you learn.
+const personSystem = (scenario, session) => `You are role-playing a person using Kimono AI, an AI assistant, for something in everyday life. Stay in character the whole time. You are testing whether it's genuinely helpful, the way a great human assistant would be.
+
+Who you are: ${scenario.persona}
+
+What's going on: ${session.situation}
+
+How this chat should go (follow it loosely, reacting to what Kimono actually says; never mention this plan):
+${session.beats.map((b, i) => `${i + 1}. ${b}`).join("\n")}
+
+Rules:
+- Write only your next message to Kimono, nothing else: no quotes, no labels, no stage directions.
+- Write like this person really types: ${scenario.voice}
+- React to what Kimono just said, and answer its questions as this person would.
+- If it's too long, confusing, wrong or ignores what you asked, react like a real person would.
+- When the chat is naturally over, or after about ${session.turns} messages, reply with exactly <<END>>.`;
+
+const studentSystem = (scenario, session) => scenario.kind === "chat" ? personSystem(scenario, session) : `You are role-playing a student using Kimono AI, an AI assistant, to study. Stay in character the whole time. You are testing whether it actually helps you learn.
 
 Who you are: ${scenario.persona}
 
@@ -162,7 +186,40 @@ async function studentSays(scenario, session, history) {
 
 const graderSystem = `You grade an AI tutor (Kimono AI) from a transcript of a real study session with a simulated student. Be strict and specific, like an experienced teacher reviewing a tutoring session. Quote the transcript to back up each point. Answer with JSON only, no prose around it.`;
 
+const chatGraderSystem = `You grade an AI assistant (Kimono AI) from a transcript of a real chat with a simulated person. Be strict and specific, like an expert reviewing a great human assistant's work: Claude.ai at its best is the bar. Quote the transcript to back up each point. Answer with JSON only, no prose around it.`;
+
+function chatGraderPrompt(scenario, sessions) {
+  const body = sessions.map((s, n) => {
+    const visuals = s.visuals.map((v) => `--- visual "${v.name}" (${v.title}), made in turn ${v.turn}, source (truncated):\n${v.content.slice(0, 3000)}`).join("\n\n");
+    return `=== Chat ${n + 1}: ${s.situation}\n\n${s.log}\n\n${visuals ? `Visuals it made:\n\n${visuals}` : "It made no visuals."}`;
+  }).join("\n\n\n");
+  return `Scenario: ${scenario.title}
+Person: ${scenario.persona}
+Today's date: ${new Date().toDateString()}
+What a great assistant would do here: ${scenario.expect.join(" ")}
+
+${body}
+
+Grade with this JSON shape (scores 1-5, 5 = the best a great assistant could do):
+{
+  "scores": {
+    "helpfulness": <did what was asked, completely, with something ready to use; no needless questions or offers>,
+    "tone": <warm, plain and direct; fits the person; no flattery, filler or talk about its tools or how it works>,
+    "length": <each reply as long as it needs and no longer; no preamble or recaps>,
+    "honesty": <facts right; looked up what it couldn't know or what may have changed instead of guessing; says where it got them; admits uncertainty>,
+    "search": <searched the web when it should (current or specific facts) and not when it shouldn't; 3 if no search was needed and none was made>,
+    "format": <prose, lists, tables, artifacts and files used where each fits; maths and numbers right>
+  },
+  "searched": <true if it searched the web at least once>,
+  "missed_searches": [{"turn": "<chat.turn>", "what": "<what it should have looked up>"}],
+  "good_moments": ["<short, quoted>"],
+  "failures": [{"turn": "<chat.turn>", "what": "<what went wrong, quoted>", "fix": "<what Kimono should do instead>"}],
+  "summary": "<two sentences>"
+}`;
+}
+
 function graderPrompt(scenario, sessions) {
+  if (scenario.kind === "chat") return chatGraderPrompt(scenario, sessions);
   const body = sessions.map((s, n) => {
     const visuals = s.visuals.map((v) => `--- visual "${v.name}" (${v.title}), made in turn ${v.turn}, source (truncated):\n${v.content.slice(0, 5000)}`).join("\n\n");
     return `=== Chat ${n + 1}${n ? " (a NEW chat, started later; the student did not repeat earlier preferences)" : ""}: ${s.situation}\n\n${s.log}\n\n${visuals ? `Visuals it made in this chat:\n\n${visuals}` : "It made no visuals in this chat."}`;
@@ -231,7 +288,7 @@ async function runScenario(scenario, run) {
     sessions.push({ situation: session.situation, chat: chat.id, log: log.join("\n\n"), visuals, remembered, turns: history.filter((h) => h.who === "student").length });
   }
   let grade;
-  try { grade = parseJson(await claude(graderModel, graderSystem, graderPrompt(scenario, sessions), { timeout: 600_000 })); }
+  try { grade = parseJson(await claude(graderModel, scenario.kind === "chat" ? chatGraderSystem : graderSystem, graderPrompt(scenario, sessions), { timeout: 600_000 })); }
   catch (error) { grade = { error: String(error) }; }
   const result = { scenario: scenario.id, title: scenario.title, run, chats: sessions.map((s) => ({ id: s.chat, turns: s.turns, visuals: s.visuals.map((v) => `${v.turn} ${v.name}`) })), remembered: [...new Set(sessions.flatMap((s) => s.remembered))], grade };
   writeFileSync(join(dir, "grade.json"), JSON.stringify(result, null, 2));
@@ -251,8 +308,16 @@ const results = [];
 await Promise.all(Array.from({ length: concurrency }, async () => { for (let job; (job = jobs.shift());) results.push(await job()); }));
 
 const dims = ["teaching", "preferences", "continuity", "visuals", "correctness", "fit"];
+const chatDims = ["helpfulness", "tone", "length", "honesty", "search", "format"];
+const isChat = (r) => chatScenarios.some((c) => c.id === r.scenario);
+const chatRow = (r) => `| ${r.title}${runs > 1 ? ` #${r.run}` : ""} | ${chatDims.map((d) => r.grade.scores?.[d] ?? "–").join(" | ")} | ${r.grade.searched ? "yes" : "no"} | ${r.grade.missed_searches?.length ?? "–"} | ${r.chats?.reduce((n, c) => n + c.visuals.length, 0) ?? 0} |`;
 const row = (r) => `| ${r.title}${runs > 1 ? ` #${r.run}` : ""} | ${dims.map((d) => r.grade.scores?.[d] ?? "–").join(" | ")} | ${r.grade.remembered_preference ? "yes" : "no"} | ${r.grade.used_memory_in_new_chat ?? "–"} | ${r.chats?.reduce((n, c) => n + c.visuals.length, 0) ?? 0} | ${r.grade.missed_visuals?.length ?? "–"} |`;
-const report = `# Study simulations\n\n${new Date().toISOString()}\n\n| Scenario | ${dims.join(" | ")} | remembered | used in new chat | visuals made | visuals missed |\n|${"---|".repeat(dims.length + 5)}\n${results.map(row).join("\n")}\n\n${results.map((r) => `## ${r.title}${runs > 1 ? ` #${r.run}` : ""}\n\n${r.grade.error ? `Failed: ${r.grade.error}` : `${r.grade.summary}\n\n**Remembered:** ${r.remembered?.join("; ") || "nothing"}\n\n**Failures**\n${(r.grade.failures ?? []).map((f) => `- ${f.turn}: ${f.what} → ${f.fix}`).join("\n") || "- none"}\n\n**Missed visuals**\n${(r.grade.missed_visuals ?? []).map((m) => `- ${m.turn}: ${m.what}`).join("\n") || "- none"}\n\n**Good**\n${(r.grade.good_moments ?? []).map((g) => `- ${g}`).join("\n") || "- none"}`}`).join("\n\n")}\n`;
+const studied = results.filter((r) => !isChat(r)), chatted = results.filter(isChat);
+const tables = [
+  studied.length ? `| Scenario | ${dims.join(" | ")} | remembered | used in new chat | visuals made | visuals missed |\n|${"---|".repeat(dims.length + 5)}\n${studied.map(row).join("\n")}` : "",
+  chatted.length ? `| Chat | ${chatDims.join(" | ")} | searched | searches missed | visuals made |\n|${"---|".repeat(chatDims.length + 4)}\n${chatted.map(chatRow).join("\n")}` : "",
+].filter(Boolean).join("\n\n");
+const report = `# Kimono AI simulations\n\n${new Date().toISOString()}\n\n${tables}\n\n${results.map((r) => `## ${r.title}${runs > 1 ? ` #${r.run}` : ""}\n\n${r.grade.error ? `Failed: ${r.grade.error}` : `${r.grade.summary}\n\n**Remembered:** ${r.remembered?.join("; ") || "nothing"}\n\n**Failures**\n${(r.grade.failures ?? []).map((f) => `- ${f.turn}: ${f.what} → ${f.fix}`).join("\n") || "- none"}\n\n${r.grade.missed_searches ? `**Missed searches**\n${r.grade.missed_searches.map((m) => `- ${m.turn}: ${m.what}`).join("\n") || "- none"}\n\n` : ""}**Missed visuals**\n${(r.grade.missed_visuals ?? []).map((m) => `- ${m.turn}: ${m.what}`).join("\n") || "- none"}\n\n**Good**\n${(r.grade.good_moments ?? []).map((g) => `- ${g}`).join("\n") || "- none"}`}`).join("\n\n")}\n`;
 writeFileSync(join(out, "report.md"), report);
 writeFileSync(join(out, "results.json"), JSON.stringify(results, null, 2));
 console.log(`\nReport: ${join(out, "report.md")}`);
