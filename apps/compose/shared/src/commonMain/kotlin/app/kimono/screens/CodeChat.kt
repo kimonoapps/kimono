@@ -1418,16 +1418,21 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                 SlashCommands(code, text) { val kept = it; text = kept; code.keep("draft:${w.id}", kept) }
                 /* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */
                 Row(verticalAlignment = Alignment.Bottom) {
-                    AttachMenu(onDevice = {
+                    val attach: (suspend () -> List<app.kimono.data.PickedFile>) -> Unit = { pick ->
                         scope.launch {
-                            val picked = platform.pickFiles().take(10 - pending.size)
+                            val picked = pick().take(10 - pending.size)
                             for (file in picked) {
                                 val item = Pending(file.name, file.size, file.mimeType, file)
                                 pending += item
                                 launch { try { item.attachment = code.attach(w.id, file) } catch (p: KimonoProblem) { item.failed = p.message ?: "Didn't attach" } }
                             }
                         }
-                    }, onDrive = if (w.drive != null && w.isOwner) ({ choosing = true }) else null)
+                    }
+                    AttachMenu(
+                        onDevice = { attach { platform.pickFiles() } },
+                        onDrive = if (w.drive != null && w.isOwner) ({ choosing = true }) else null,
+                        onPhotos = if (platform.photoPicker) ({ attach { platform.pickMedia() } }) else null,
+                    )
                     BasicTextField(
                         /* the longest message it takes (the server refuses more) */
                         value = text, onValueChange = { val kept = it.take(32_000); text = kept; code.keep("draft:${w.id}", kept) },

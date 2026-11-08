@@ -383,13 +383,19 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: St
             moving = null
         }
     }
-    if (adding) AddSheet(onDismiss = { adding = false }, onUpload = {
+    val upload: (suspend () -> List<app.kimono.data.PickedFile>) -> Unit = { pick ->
         adding = false
         scope.launch {
-            val files = platform.pickFiles()
+            val files = pick()
             if (files.isNotEmpty() && here != null) model.uploads.start(files, here.folder.id)
         }
-    }, onFolder = { adding = false; naming = true })
+    }
+    if (adding) AddSheet(
+        onDismiss = { adding = false },
+        onUpload = { upload { platform.pickFiles() } },
+        onFolder = { adding = false; naming = true },
+        onPhotos = if (platform.photoPicker) ({ upload { platform.pickMedia() } }) else null,
+    )
     if (naming && here != null) NameDialog(title = "New folder", action = "Make it", initial = "", onDismiss = { naming = false }) { name ->
         model.drive.createFolder(here.folder.id, name)
         /* Reload before closing: the dialog's work stops when it goes. */
@@ -686,14 +692,19 @@ private fun UploadRow(task: UploadStatus, retry: () -> Unit, dismiss: () -> Unit
 }
 
 @Composable
-private fun AddSheet(onDismiss: () -> Unit, onUpload: () -> Unit, onFolder: () -> Unit) {
+private fun AddSheet(onDismiss: () -> Unit, onUpload: () -> Unit, onFolder: () -> Unit, onPhotos: (() -> Unit)? = null) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     InkSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
-            listOf(Triple("Upload files", "upload", onUpload), Triple("New folder", "folder", onFolder)).forEachIndexed { index, (label, icon, action) ->
+            val rows = listOfNotNull(
+                onPhotos?.let { Triple("Upload photos", "image", it) },
+                Triple("Upload files", "upload", onUpload),
+                Triple("New folder", "folder", onFolder),
+            )
+            rows.forEachIndexed { index, (label, icon, action) ->
                 SegmentedListItem(
                     onClick = action,
-                    shapes = ListItemDefaults.segmentedShapes(index, 2),
+                    shapes = ListItemDefaults.segmentedShapes(index, rows.size),
                     colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
                     leadingContent = { InkBlot("add-$icon", size = 36.dp) { Icon(kimonoIcon(icon), null, modifier = Modifier.size(18.dp), tint = app.kimono.theme.Kata.ink) } },
                 ) { Text(label, style = MaterialTheme.typography.bodyLarge) }

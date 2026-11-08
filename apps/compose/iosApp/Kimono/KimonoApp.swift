@@ -21,9 +21,7 @@ struct KimonoApp: App {
 
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        let controller = MainKt.MainViewController(host: Host.shared)
-        Attach.shared.watch(controller.view)
-        return controller
+        MainKt.MainViewController(host: Host.shared)
     }
     func updateUIViewController(_ controller: UIViewController, context: Context) {}
 }

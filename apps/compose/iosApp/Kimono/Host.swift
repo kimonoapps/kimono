@@ -99,9 +99,12 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         }
     }
 
-    /// The attach menu: Photo Library, Take Photo or Video, Choose Files.
     func pickFiles(done: @escaping ([IosPickedFile]) -> Void) {
-        DispatchQueue.main.async { Attach.shared.present(done) }
+        DispatchQueue.main.async { Attach.shared.files(done) }
+    }
+
+    func pickMedia(done: @escaping ([IosPickedFile]) -> Void) {
+        DispatchQueue.main.async { Attach.shared.photos(done) }
     }
 
     func readFile(path: String, offset: Int64, max: Int32) -> Data {

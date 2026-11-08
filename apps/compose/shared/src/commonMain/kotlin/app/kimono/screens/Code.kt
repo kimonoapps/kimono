@@ -601,11 +601,16 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     /* attach, the words, Send: one line, as in the chat; the buttons keep to the last line as the words grow */
                     SlashCommands(code, prompt) { prompt = it }
                     Row(verticalAlignment = Alignment.Bottom) {
-                        AttachMenu(onDevice = {
+                        val hold: (suspend () -> List<app.kimono.data.PickedFile>) -> Unit = { pick ->
                             scope.launch {
-                                platform.pickFiles().take(10 - held.size).forEach { f -> held += Held(f.name, f.size, file = f, failed = if (f.size > Code.MAX_ATTACHMENT) "Over 20 MB" else null) }
+                                pick().take(10 - held.size).forEach { f -> held += Held(f.name, f.size, file = f, failed = if (f.size > Code.MAX_ATTACHMENT) "Over 20 MB" else null) }
                             }
-                        }, onDrive = if (marks.driveApp != null || marks.spaces.isNotEmpty()) ({ choosing = true }) else null)
+                        }
+                        AttachMenu(
+                            onDevice = { hold { platform.pickFiles() } },
+                            onDrive = if (marks.driveApp != null || marks.spaces.isNotEmpty()) ({ choosing = true }) else null,
+                            onPhotos = if (platform.photoPicker) ({ hold { platform.pickMedia() } }) else null,
+                        )
                         BasicTextField(
                             prompt, { prompt = it.take(32_000) },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -758,14 +763,20 @@ internal fun AccessChip(code: Code) {
     }
 }
 
-/** One attach button: a menu of where the files come from, or straight to the phone's when there's no Drive. */
+/**
+ * One attach button: a menu of where the files come from, or straight to the phone's when there's no Drive.
+ * Where the phone has its own photo picker ([onPhotos]), Photos and Files stand apart in the menu.
+ */
 @Composable
-internal fun AttachMenu(onDevice: () -> Unit, onDrive: (() -> Unit)?, enabled: Boolean = true) {
+internal fun AttachMenu(onDevice: () -> Unit, onDrive: (() -> Unit)?, enabled: Boolean = true, onPhotos: (() -> Unit)? = null) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { if (onDrive != null) open = true else onDevice() }, enabled = enabled) { Icon(kimonoIcon("clip"), "Attach files") }
+        IconButton(onClick = { if (onDrive != null || onPhotos != null) open = true else onDevice() }, enabled = enabled) { Icon(kimonoIcon("clip"), "Attach files") }
         InkMenu(expanded = open, onDismissRequest = { open = false }) {
-            InkMenuItem("From your phone", icon = "phone", onClick = { open = false; onDevice() })
+            if (onPhotos != null) {
+                InkMenuItem("Photos", icon = "image", onClick = { open = false; onPhotos() })
+                InkMenuItem("Files", icon = "file", onClick = { open = false; onDevice() })
+            } else InkMenuItem("From your phone", icon = "phone", onClick = { open = false; onDevice() })
             if (onDrive != null) InkMenuItem("From Drive", icon = "folder", onClick = { open = false; onDrive() })
         }
     }

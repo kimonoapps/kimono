@@ -30,6 +30,10 @@ interface Platform {
     fun openFile(path: String, mimeType: String?)
     /** Asks the person for files to upload. Empty if they changed their mind. */
     suspend fun pickFiles(): List<PickedFile>
+    /** Whether attaching offers the phone's own photo picker beside its files ([pickMedia]). */
+    val photoPicker: Boolean get() = false
+    /** Asks for photos and videos from the phone's photo picker. Empty if they changed their mind. */
+    suspend fun pickMedia(): List<PickedFile> = pickFiles()
     /** Uploads the OS carries on with after the app closes; null to upload while the app is open. */
     val uploads: Uploads?
     /** This app's build number (Android's versionCode, iOS's CFBundleVersion), for knowing when to update. */

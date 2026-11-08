@@ -54,6 +54,8 @@ interface IosHost {
     fun driveAvailable(on: Boolean)
     /** Files from the document picker, copied somewhere the app can read. */
     fun pickFiles(done: (List<IosPickedFile>) -> Unit)
+    /** Photos and videos from the system's photo picker, copied somewhere the app can read. */
+    fun pickMedia(done: (List<IosPickedFile>) -> Unit)
     /** Up to [max] bytes of the file at [path], from [offset]. */
     fun readFile(path: String, offset: Long, max: Int): NSData
     /** Hands a picked file to iOS's background uploads; the file is moved, not copied. */
@@ -120,6 +122,10 @@ private class IosPlatform(private val host: IosHost) : Platform {
     override val build: Long get() = host.appBuild()
     override suspend fun pickFiles(): List<PickedFile> =
         suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickFiles { waiting.resume(it) } }
+            .map { IosFile(it.path, it.name, it.size, it.mimeType, host) }
+    override val photoPicker = true
+    override suspend fun pickMedia(): List<PickedFile> =
+        suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickMedia { waiting.resume(it) } }
             .map { IosFile(it.path, it.name, it.size, it.mimeType, host) }
     override val uploads: Uploads = IosUploads(host)
     @androidx.compose.runtime.Composable
