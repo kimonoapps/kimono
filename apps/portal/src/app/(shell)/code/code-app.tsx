@@ -6,6 +6,7 @@ import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, Ink
 import { cardOf, cardWords } from "@/lib/code/progress-card";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
+import { filesIn, useFileDrop } from "@/components/file-drop";
 import { FileOverlay, FilePreview, FileThumb, previewable, TypeMark } from "@/components/file-preview/file-preview";
 import { extensionLabel, lowerExtension, pictureExtensions, previewKind } from "@/components/file-preview/kinds";
 import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
@@ -1444,7 +1445,6 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   const slash = useSlashMenu(prompt, setPrompt, field);
   /* Files for the first message: held here until the chat exists, then sent with it. */
   const [files, setFiles] = useUnsent<Held[]>("new:files", noHeld);
-  const [dragging, setDragging] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const marks = useContext(MarksContext);
@@ -1452,6 +1452,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   /* Drive is known from the start; its spaces arrive later, and an early click shouldn't skip the menu. */
   const drivePresent = marks.drive !== null;
   const hold = (picked: File[]) => setFiles((list) => [...list, ...picked.map((file): Held => ({ id: crypto.randomUUID(), name: file.name, size: file.size, file, preview: isPicture(file.type) ? URL.createObjectURL(file) : null, failed: file.size > 20 * 1024 * 1024 ? "Over 20 MB" : undefined }))].slice(0, 10));
+  useFileDrop(blocked ? null : { label: "Drop to attach", onDrop: (data) => hold(filesIn(data)) });
   const project = (on: boolean) => { setOnProject(on); try { localStorage.setItem("kimono-ai-project", on ? "1" : "0"); } catch { /* not remembered */ } };
 
   async function makeProject() {
@@ -1553,10 +1554,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
         <Picker label="Starting from" value={base} onChange={setBase} disabled={!chosen} mono
           options={branches.map((b) => ({ value: b, label: b, detail: b === chosen?.defaultBranch ? "The main version" : undefined }))} />
       </div> : null}
-      <div className={cx("cd-hello-box", dragging && "is-dropping")}
-        onDragOver={(event) => { if (!blocked && event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } }}
-        onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
-        onDrop={(event) => { event.preventDefault(); setDragging(false); hold([...event.dataTransfer.files]); }}>
+      <div className="cd-hello-box">
         {files.length ? <div className="cd-pending">{files.map((f) => <span key={f.id} className={cx("cd-filechip", f.failed && "is-failed")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {f.preview ? <img src={f.preview} alt="" /> : <FileThumb name={f.name} size={30} />}
@@ -1577,7 +1575,6 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
             <SendStop mode="send" busy={sending} disabled={!ready || Boolean(blocked)} onSend={() => void send()} />
           </div>
         </div>
-        {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
       </div>
       <div className="cd-hello-tools">
         {admin && !blocked ? <button type="button" className={cx("cd-chip", onProject && "is-on")} aria-pressed={onProject} onClick={() => project(!onProject)}><Icon name="code" />Build a website</button> : null}
@@ -2924,7 +2921,6 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   };
   const [pending, setPending] = useUnsent<Pending[]>(`${workspace.id}:files`, noPending);
   const [problem, setProblem] = useState<string | null>(null);
-  const [dragging, setDragging] = useState(false);
   const [sending, setSending] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const slash = useSlashMenu(text, setText, field);
@@ -2979,10 +2975,10 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     }
   }
 
-  return <div className={cx("cd-composer", dragging && "is-dropping")}
-    onDragOver={(event) => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); setDragging(true); } }}
-    onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false); }}
-    onDrop={(event) => { event.preventDefault(); setDragging(false); add([...event.dataTransfer.files]); }}>
+  /* Files let go of anywhere on the chat are attached to the next message. */
+  useFileDrop(blocked ? null : { label: "Drop to attach", onDrop: (data) => add(filesIn(data)) });
+
+  return <div className="cd-composer">
     {pending.length ? <div className="cd-pending">{pending.map((p) => <span key={p.id} className={cx("cd-filechip", !p.attachment && !p.failed && "is-sending", p.failed && "is-failed")}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {p.preview ? <img src={p.preview} alt="" /> : <FileThumb name={p.name} size={30} />}
@@ -3012,7 +3008,6 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
           onSend={() => void send()} onStop={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))} />
       </div>
     </div>
-    {dragging ? <div className="cd-drop" aria-hidden="true">Drop to attach</div> : null}
     {choosing ? <DrivePicker onClose={() => setChoosing(false)} onPick={async (items) => {
       setChoosing(false);
       const shown = items.map((item): Pending => ({ id: item.id, name: item.name, size: item.size, preview: null }));

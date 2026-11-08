@@ -233,12 +233,6 @@
 .dv-stated.moss { border-color: color-mix(in srgb, var(--k-moss) 45%, transparent); background: var(--k-moss-wash); color: var(--k-moss-deep); }
 
 /* upload */
-.dv-drop { position: absolute; inset: 0; z-index: 9; pointer-events: none; display: grid; place-items: start center; padding: 96px 16px 0; background: color-mix(in srgb, var(--k-container-low) 88%, transparent); border: 2px dashed var(--k-app-accent); border-radius: var(--k-r-xl); }
-.dv-drop > div { position: sticky; top: 30vh; text-align: center; }
-.dv-drop b { display: block; font: 600 27px/1.2 var(--k-display); color: var(--k-plum); }
-.dv-drop small { display: block; margin-top: 6px; font-size: 13.5px; color: var(--k-ink-soft); }
-.dv-drop .arrow { width: 64px; height: 64px; margin: 0 auto 14px; display: grid; place-items: center; border-radius: 20px; background: var(--k-app-accent); color: var(--k-lift); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-app-accent) 60%, #000); }
-.dv-drop .arrow svg.i { width: 26px; height: 26px; stroke-width: 2; }
 .dv-uploads { position: fixed; z-index: 50; right: 24px; bottom: 24px; width: 400px; max-width: calc(100vw - 32px); max-height: min(60vh, 480px); display: flex; flex-direction: column; padding: 6px; border-radius: var(--k-r-l); background: var(--k-container-lowest); box-shadow: var(--k-shadow-raised); }
 .dv-uploads > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 8px; font-weight: 700; }
 .dv-uploads > header small { font-weight: 500; color: var(--k-ink-soft); font-size: 12px; }

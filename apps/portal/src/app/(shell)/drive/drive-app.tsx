@@ -6,6 +6,7 @@ import { rise, riseWhenReady, slide } from "@/components/motion";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { useCrossTo } from "@/components/crossing";
+import { useFileDrop } from "@/components/file-drop";
 import { InkCrest } from "@/components/ink-crest";
 import { AppBloom, Choice, cx, InkBlot, InkPortraitFrame, InkWave, InkLoader, Joint, Seal } from "@kimono/ui";
 import { Portrait as Face } from "@/components/portrait";
@@ -353,7 +354,6 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
   const [sort, setSort] = useState<Sort>("name");
   const [query, setQuery] = useState("");
   const [results, setFound] = useState<DriveNode[] | null>(null);
-  const [dragging, setDragging] = useState(false);
   const [detail, setDetail] = useState<SpaceDetail | null>(null);
   const [sharing, setSharing] = useState<DriveNode | null>(null);
   const name = useSyncExternalStore(guestName.subscribe, guestName.get, () => "");
@@ -361,7 +361,6 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
   const searchField = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const pivot = useRef<string | null>(null);
-  const depth = useRef(0);
   // A folder opening: its rows rise into place once they've arrived.
   // Deeper slides in from the right, back out from the left.
   const shownFolder = folder?.folder.id;
@@ -516,6 +515,9 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
     })();
   };
 
+  /* Files let go of anywhere on the page land in the folder that's open. */
+  useFileDrop(canAdd && folder ? { label: `Drop to add to ${folder.path.length ? folder.folder.name : space.name}`, onDrop: drop } : null);
+
   /* ── the keyboard: arrows move, space chooses, shift stretches ── */
   const onKeys = (event: React.KeyboardEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
@@ -568,10 +570,7 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
     style={space.code ? { "--dv-code": space.code.accent } as React.CSSProperties : undefined}
     onKeyDown={onKeys}
     onKeyUp={(event) => { const target = event.target as HTMLElement; if (event.key === " " && target.closest("[data-row]") && !target.closest("input")) event.preventDefault(); }}
-    onDragEnter={(event) => { if (canAdd && event.dataTransfer.types.includes("Files")) { depth.current += 1; setDragging(true); } }}
-    onDragOver={(event) => { if (canAdd && event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
-    onDragLeave={() => { if (!dragging) return; depth.current = Math.max(0, depth.current - 1); if (!depth.current) setDragging(false); }}
-    onDrop={(event) => { event.preventDefault(); depth.current = 0; setDragging(false); drop(event.dataTransfer); }}>
+>
     <div className="dv-mast">
       <div className="dv-mast-id">
         {room ? <Wash icon="people" seed={SHARED} tint={FOLDER_TINT} tone="folder" size="lg" /> : <Mark space={space} size="lg" />}
@@ -695,11 +694,6 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
         <MenuItem icon="trash" danger onPick={() => void trash(group(menuNode))}>Move to Trash</MenuItem>
       </> : null}
     </FloatingMenu> : null}
-
-    {dragging ? <div className="dv-drop"><div>
-      <span className="arrow"><Icon name="upload" /></span>
-      <b>Drop to add to {folder && folder.path.length ? folder.folder.name : space.name}</b>
-    </div></div> : null}
 
     {naming && folder ? <NameDialog title="New folder" action="Make it" onClose={() => setNaming(false)} onSave={async (folderName) => { await drive.createFolder(folder.folder.id, folderName); setNaming(false); await load(); }} /> : null}
     {sharing && me ? <ShareDialog node={sharing} me={me} people={people} canEdit={editable(sharing)} onClose={(changed) => { setSharing(null); if (changed) void load(); }} /> : null}

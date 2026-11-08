@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Seal } from "@kimono/ui";
+import { useFileDrop } from "@/components/file-drop";
 import { Portrait } from "@/components/portrait";
 
 const stage = 288;
@@ -123,6 +124,11 @@ export function PictureEditor({ name, username, picture }: { name: string; usern
       setBusy(false);
     }
   }
+
+  useFileDrop(crop || busy ? null : { label: "Drop to use as your picture", onDrop: (data) => {
+    const photo = Array.from(data.files).find((file) => file.type.startsWith("image/"));
+    if (photo) choose(photo); else setError("That isn't a photo.");
+  } });
 
   const placed = crop ? fit(crop) : null;
   return <div className="picture-editor">

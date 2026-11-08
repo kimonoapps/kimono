@@ -346,3 +346,13 @@ html, body, .app-frame { overflow-x: clip; }
   .home-glances { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
   .home-glances > .home-glance { flex: 0 0 min(84%, 320px); scroll-snap-align: start; }
 }
+
+/* ── files held over the page (components/file-drop) ── */
+.k-filedrop { position: fixed; z-index: 60; inset: 12px 12px 12px 108px; pointer-events: none; display: grid; place-items: center; padding: 16px; border: 2px dashed var(--k-app-accent, var(--k-accent)); border-radius: var(--k-r-xl); background: color-mix(in srgb, var(--k-container-low) 90%, transparent); animation: k-filedrop-in var(--k-t-state, .15s) var(--k-ease-settle, ease-out); }
+.k-filedrop > div { text-align: center; }
+.k-filedrop b { display: block; font: 600 27px/1.2 var(--k-display); color: var(--k-plum); text-wrap: balance; }
+.k-filedrop-mark { width: 64px; height: 64px; margin: 0 auto 14px; display: grid; place-items: center; border-radius: 20px; background: var(--k-app-accent, var(--k-accent)); color: var(--k-lift); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-app-accent, var(--k-accent)) 60%, #000); }
+.k-filedrop-mark svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@keyframes k-filedrop-in { from { opacity: 0; transform: scale(.985); } }
+@media (max-width: 720px) { .k-filedrop { inset: 12px 12px 88px; } .k-filedrop b { font-size: 22px; } }
+@media (prefers-reduced-motion: reduce) { .k-filedrop { animation: none; } }
