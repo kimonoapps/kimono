@@ -514,7 +514,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                             is CodeEvent.Disk -> Note("close", if (e.full) "Stopped: this chat's files took ${gigabytes(e.used)}, past its ${gigabytes(e.quota)}. Its app was stopped too. Ask it to free some space."
                                 else "This chat's files take ${gigabytes(e.used)} of its ${gigabytes(e.quota)}. It was asked to free some space first.", failed = true)
                             is CodeEvent.Compacted -> Note("diff", "Compacted the conversation${e.before?.let { " · it held ${kTokens(it)} tokens" } ?: ""}")
-                            is CodeEvent.Remembered -> Note("chat", "${when (e.how) { "forgot" -> "Forgot"; "changed" -> "Now remembers"; else -> "Remembered" }}: ${e.text}", trailing = { TextLink("Personalization") { open("ai/memory") } })
+                            is CodeEvent.Remembered -> Note("chat", "${when (e.how) { "forgot" -> "Forgot"; "changed" -> "Now remembers"; else -> "Remembered" }}: ${e.text}", trailing = { TextLink("For you") { open("ai/memory") } })
                             is CodeEvent.Published -> Note("pr", "Opened pull request #${e.number}", trailing = { TextLink("Open") { platform.openUrl(e.url) } })
                             is CodeEvent.Connect -> ConnectCard(code, platform, e.app, e.url, waitingFor = if (w.isOwner) null else people.nameOf(w.owner))
                             is CodeEvent.Sent -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2254,7 +2254,7 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
 
 /**
  * The / menu: while the box holds "/" and the start of a command, the
- * commands of the skills the person turned on (Personalization), to tap into
+ * commands of the skills the person turned on (For you), to tap into
  * the box. Loaded once, the first time a "/" is typed.
  */
 @Composable

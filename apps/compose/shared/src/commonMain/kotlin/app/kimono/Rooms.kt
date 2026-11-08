@@ -55,8 +55,8 @@ class RoomApp(val id: String, val name: String, val accent: String?, val glyph: 
 /* Kimono's own pages: Home (what's happening), the flower (every app), You. */
 private val kimono = RoomApp("kimono", "Kimono", null, null, listOf(Room("home", "Home", "home")))
 private val drive = RoomApp("kimono-drive", "Drive", "#5f5596", "file", listOf(Room("drive", "Spaces", "folder")), listOf(Room("trash", "Trash", "trash")))
-/* Kimono AI's bar: Chats (it slides the drawer out) and Personalization left of the bloom, Connections right; the bloom leads to every other app. */
-private val code = RoomApp(app.kimono.data.Code.APP_ID, "Kimono AI", "#2c7783", "code", listOf(Room("ai/chats", "Chats", "chat", action = true), Room("ai/memory", "Personalization", "spark")), listOf(Room("ai/connections", "Connections", "link")))
+/* Kimono AI's bar: Chats (it slides the drawer out) and For you left of the bloom, Connections right; the bloom leads to every other app. */
+private val code = RoomApp(app.kimono.data.Code.APP_ID, "Kimono AI", "#2c7783", "code", listOf(Room("ai/chats", "Chats", "chat", action = true), Room("ai/memory", "For you", "spark")), listOf(Room("ai/connections", "Connections", "link")))
 private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("vpn", "Devices", "phone"), Room("vpn/people", "People", "person")), listOf(Room("vpn/connect", "Connect", "link")))
 
 /* Notes, as its mockup has it: Home (all notes), the bloom, Search. */
@@ -83,7 +83,7 @@ fun RoomBar(app: RoomApp, route: String?, launcherApp: LauncherApp?, me: Account
         @Composable fun RowScope.place(room: Room) = ShortNavigationBarItem(
             selected = route == room.route, onClick = { if (room.action) startTask() else go(room.route) },
             icon = { Icon(kimonoIcon(room.icon), null) }, label = { Text(room.label, maxLines = 1, softWrap = false) }, colors = colors,
-            /* A long name gets the room it needs from a short one beside it, so "Personalization" isn't cut off. */
+            /* A longer name gets more room than a short one beside it, so none is cut off. */
             modifier = Modifier.weight(maxOf(room.label.length, 10).toFloat()),
         )
         /* The bloom stays dead centre whatever the app: its rooms share the left half, the rest and You the right. */

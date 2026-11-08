@@ -117,7 +117,7 @@ data class Memory(val id: String, val text: String, val source: String = "person
 @Serializable
 data class SkillCommand(val name: String, val hint: String? = null, val does: String = "")
 
-/** A skill from Personalization, and whether it's on for this person. */
+/** A skill from For you, and whether it's on for this person. */
 @Serializable
 data class SkillChoice(val id: String, val name: String, val description: String = "", val enabled: Boolean = false, val command: SkillCommand? = null, val icon: String = "spark", val author: String = "", val source: String = "")
 
