@@ -15,6 +15,9 @@ beside the chat or full screen.
 - It is a real page: any HTML, CSS and JavaScript works, and you can draw
   anything yourself with SVG, canvas or the DOM. The kit is a shortcut, not a
   limit. Inline `<style>` and `<script>` are fine.
+- How something works, or anything that happens in stages, is a `<k-scene>`
+  (see Animations) that plays it out, never your own SVG with a slider or
+  Next buttons to step through it.
 - It has **no network**: no `fetch`, no CDN, no images from the web. Put data
   in the page. Pictures go in as `data:` URLs, or as files (see Sound,
   video and pictures). What's available: the kit,
