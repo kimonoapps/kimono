@@ -247,8 +247,8 @@ function setModel(model: ModelChoice) {
 function useModel() {
   return useSyncExternalStore((listener) => { modelListeners.add(listener); return () => { modelListeners.delete(listener); }; }, modelNow, () => "auto" as ModelChoice);
 }
-const modelWords: Record<ModelChoice, { label: string; detail: string }> = {
-  auto: { label: "Auto", detail: "Opus" },
+const modelWords: Record<ModelChoice, { label: string; detail?: string }> = {
+  auto: { label: "Auto" },
   fable: { label: "Fable", detail: "Experimental, usually overkill" },
   opus: { label: "Opus", detail: "Best for building things" },
   sonnet: { label: "Sonnet", detail: "Everyday work" },
@@ -396,7 +396,7 @@ function Meters({ workspace, usage, context, running, blocked }: { workspace: Wo
 function ComposerMore({ workspace, usage, context, running, blocked, files }: { workspace: Workspace; usage: Usage | null; context: ContextUse; running: boolean; blocked: string | null; files: boolean }) {
   const { open, setOpen, box } = usePopover();
   const f = usageFacts(usage, context);
-  const everything = { context: true, five: true, week: true, tools: Boolean(f.media) };
+  const everything = { context: true, five: !f.noFiveHour, week: true, tools: Boolean(f.media) };
   return <div className="cd-more" ref={box}>
     <button type="button" className="cd-more-btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Settings and usage" title="Settings and usage" onClick={() => setOpen(!open)}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.7" /><circle cx="12" cy="12" r="1.7" /><circle cx="18" cy="12" r="1.7" /></svg>

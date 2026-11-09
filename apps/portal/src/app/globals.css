@@ -944,12 +944,14 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
  * stay native.
  */
 .k-scroller { --k-scroll-thumb: color-mix(in srgb, var(--k-ink) 38%, transparent); --k-scroll-thumb-hot: color-mix(in srgb, var(--k-ink) 62%, transparent); --k-scroll-thumb-wet: var(--k-suo); position: relative; overflow: hidden; min-height: 0; min-width: 0; }
+/* Choice menus scroll with the same ink. */
+.k-choice-list { --k-scroll-thumb: color-mix(in srgb, var(--k-ink) 38%, transparent); --k-scroll-thumb-hot: color-mix(in srgb, var(--k-ink) 62%, transparent); --k-scroll-thumb-wet: var(--k-suo); }
 .k-scroller.lift { --k-scroll-thumb: rgba(236, 228, 220, .34); --k-scroll-thumb-hot: rgba(236, 228, 220, .58); }
 .k-scroller-view { position: absolute; inset: 0; overflow: auto; outline: none; }
 .k-scroller.fit > .k-scroller-view { position: relative; inset: auto; }
-.k-scroller-view::-webkit-scrollbar { width: 14px; height: 14px; background: transparent; }
-.k-scroller-view::-webkit-scrollbar-track, .k-scroller-view::-webkit-scrollbar-corner { background: transparent; }
-.k-scroller-view::-webkit-scrollbar-thumb {
+.k-scroller-view::-webkit-scrollbar, .k-choice-list::-webkit-scrollbar { width: 14px; height: 14px; background: transparent; }
+.k-scroller-view::-webkit-scrollbar-track, .k-choice-list::-webkit-scrollbar-track, .k-scroller-view::-webkit-scrollbar-corner, .k-choice-list::-webkit-scrollbar-corner { background: transparent; }
+.k-scroller-view::-webkit-scrollbar-thumb, .k-choice-list::-webkit-scrollbar-thumb {
   min-height: 44px; min-width: 44px;
   border: 3.5px solid transparent; background-clip: padding-box;
   /* uneven corners: a dab of the brush, not a ruled pill */
@@ -959,17 +961,17 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 100' preserveAspectRatio='none'%3E%3Cpath d='M3 4 C2.4 30 3.6 55 2.8 96' stroke='%23fff' stroke-opacity='.22' stroke-width='.9' fill='none'/%3E%3Cpath d='M5.4 12 C5.8 40 4.9 62 5.3 84' stroke='%23fff' stroke-opacity='.14' stroke-width='.6' fill='none'/%3E%3C/svg%3E");
   background-size: 100% 100%; background-repeat: no-repeat;
 }
-.k-scroller-view::-webkit-scrollbar-thumb:horizontal {
+.k-scroller-view::-webkit-scrollbar-thumb:horizontal, .k-choice-list::-webkit-scrollbar-thumb:horizontal {
   border-radius: 16px 9px 18px 8px / 9px 6px 10px 5px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 8' preserveAspectRatio='none'%3E%3Cpath d='M4 3 C30 2.4 55 3.6 96 2.8' stroke='%23fff' stroke-opacity='.22' stroke-width='.9' fill='none'/%3E%3Cpath d='M12 5.4 C40 5.8 62 4.9 84 5.3' stroke='%23fff' stroke-opacity='.14' stroke-width='.6' fill='none'/%3E%3C/svg%3E");
 }
-.k-scroller-view::-webkit-scrollbar-thumb:hover { border-width: 2.5px; background-color: var(--k-scroll-thumb-hot); }
-.k-scroller-view::-webkit-scrollbar-thumb:active { border-width: 2px; background-color: var(--k-scroll-thumb-wet); }
+.k-scroller-view::-webkit-scrollbar-thumb:hover, .k-choice-list::-webkit-scrollbar-thumb:hover { border-width: 2.5px; background-color: var(--k-scroll-thumb-hot); }
+.k-scroller-view::-webkit-scrollbar-thumb:active, .k-choice-list::-webkit-scrollbar-thumb:active { border-width: 2px; background-color: var(--k-scroll-thumb-wet); }
 /* Focused from the keyboard, the bar itself takes the app's colour: the arrow keys move this. */
 .k-scroller-view:focus-visible::-webkit-scrollbar-thumb { border-width: 2.5px; background-color: var(--k-scroll-thumb-wet); }
 /* Firefox has no thumb to shape: the same ink, at its full width. */
 @supports not selector(::-webkit-scrollbar) {
-  .k-scroller-view { scrollbar-width: auto; scrollbar-color: var(--k-scroll-thumb) transparent; }
+  .k-scroller-view, .k-choice-list { scrollbar-width: auto; scrollbar-color: var(--k-scroll-thumb) transparent; }
   .k-scroller-view:hover { scrollbar-color: var(--k-scroll-thumb-hot) transparent; }
   .k-scroller-view:focus-visible { scrollbar-color: var(--k-scroll-thumb-wet) transparent; }
 }
