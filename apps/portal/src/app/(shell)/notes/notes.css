@@ -19,11 +19,30 @@
 .nt-quietbutton:hover { background: var(--k-container-highest); }
 .nt-quietbutton.is-danger { background: var(--k-primary-container); color: var(--k-on-primary-container); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-on-primary-container) 20%, transparent); }
 
-/* ── the notebooks panel: over the list, never beside it ── */
-.nt-side { position: absolute; z-index: 30; top: 0; bottom: 0; left: 0; width: 248px; display: flex; flex-direction: column; gap: 6px; padding: 8px 6px; overflow: auto; overscroll-behavior: contain; background: var(--k-container); scrollbar-width: thin;
+/* ── the notebooks panel: beside the list while no note is open; on a note, folded away and opened over the list ── */
+.nt-side { position: absolute; z-index: 30; top: 0; bottom: 0; left: 0; width: 248px; display: flex; flex-direction: column; gap: 6px; padding: 8px 6px; overflow: auto; overscroll-behavior: contain; background: var(--k-container);
   transform: translateX(-100%); visibility: hidden; transition: transform var(--k-t-seat) var(--k-spring), visibility 0s linear var(--k-t-seat), box-shadow var(--k-t-seat); }
 .nt.is-placing .nt-side { transform: none; visibility: visible; box-shadow: 8px 0 24px -12px rgba(40, 22, 28, .28); transition: transform var(--k-t-seat) var(--k-spring), box-shadow var(--k-t-seat); }
 .nt-side-shade { display: none; }
+/* the rail: the panel narrowed while a note is open */
+.nt-rail { display: none; }
+@media (min-width: 760px) {
+  .nt.is-railed { grid-template-columns: 56px 300px minmax(0, 1fr); }
+  .nt.is-railed .nt-rail { order: -1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; overflow-y: auto; overflow-x: hidden; background: var(--k-container); }
+  .nt.is-railed .nt-side { left: 0; }
+}
+.nt-rail-new { width: 36px; height: 34px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 8px; background: var(--k-primary-container); color: var(--k-on-primary-container); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-on-primary-container) 20%, transparent); cursor: pointer; }
+.nt-rail-new:hover { background: color-mix(in srgb, var(--k-on-primary-container) 8%, var(--k-primary-container)); }
+.nt-rail-rule { width: 24px; height: 1px; margin: 4px 0; flex: none; background: var(--k-outline-variant); }
+.nt-rail-place { width: 36px; height: 34px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--k-on-surface-variant); cursor: pointer; transition: background-color var(--k-t-state); }
+.nt-rail-place:hover { background: var(--k-container-high); }
+.nt-rail-place[aria-current="page"] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.nt-rail-place svg.i { width: 18px; height: 18px; }
+.nt-rail :focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
+@media (min-width: 760px) {
+  .nt.is-docked { grid-template-columns: 248px 300px minmax(0, 1fr); }
+  .nt.is-docked .nt-side { position: relative; order: -1; z-index: auto; width: auto; min-height: 0; transform: none; visibility: visible; box-shadow: none; transition: none; }
+}
 .nt-side-head { display: flex; align-items: center; min-height: 36px; padding: 0 2px 0 10px; }
 .nt-side-head > span { flex: 1; font: 600 18px/1 var(--k-display); color: var(--k-plum); }
 .nt-newnote { display: flex; align-items: center; gap: 8px; height: 34px; flex: none; padding: 0 12px 2px 10px; border: 0; border-radius: 8px; background: var(--k-primary-container); color: var(--k-on-primary-container); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-on-primary-container) 20%, transparent); font: 700 13.5px/1 var(--k-sans); cursor: pointer; transition: background-color var(--k-t-state); }
@@ -95,15 +114,12 @@
 @keyframes nt-menu-in { from { opacity: 0; transform: scale(.92); } }
 
 /* ── the list ── */
-.nt-listcol { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 6px; overflow: auto; overscroll-behavior: contain; background: var(--k-container-low); scrollbar-width: thin; }
+.nt-listcol { min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 6px; overflow: auto; overscroll-behavior: contain; background: var(--k-container-low); }
 .nt-listhead { position: sticky; top: -6px; z-index: 2; display: flex; align-items: center; gap: 6px; min-height: 50px; margin: -6px -6px 0; padding: 6px 8px 0 6px; background: var(--k-container-low); }
 .nt-listhead-id { flex: 1; min-width: 0; display: grid; gap: 1px; padding-left: 2px; }
 .nt-listhead h1 { display: flex; margin: 0; min-width: 0; font: inherit; line-height: 1; }
-.nt-placename { max-width: 100%; display: inline-flex; align-items: center; gap: 6px; padding: 0 4px; margin-left: -4px; border: 0; border-radius: 6px; background: none; font: 600 18px/1 var(--k-display); color: var(--k-plum); cursor: pointer; }
+.nt-placename { max-width: 100%; display: flex; min-width: 0; padding-left: 4px; font: 600 18px/1.1 var(--k-display); color: var(--k-plum); }
 .nt-placename > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nt-placename svg.i { width: 15px; height: 15px; color: var(--k-on-surface-variant); stroke-width: 2.2; transition: rotate var(--k-t-seat) var(--k-spring); }
-.nt-placename[aria-expanded="true"] svg.i { rotate: 180deg; }
-.nt-placename:hover { background: var(--k-container-high); }
 .nt-crumb { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; min-width: 0; font: 600 11.5px/1.2 var(--k-sans); color: var(--k-on-surface-variant); white-space: nowrap; overflow: hidden; }
 .nt-crumb > span { color: var(--k-faint); }
 .nt-plus { width: 32px; height: 32px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 8px; background: var(--k-container-high); color: var(--k-on-surface); box-shadow: inset 0 -2px 0 var(--k-container-highest); cursor: pointer; }
@@ -117,6 +133,7 @@
 .nt-row-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 14px/1.3 var(--k-sans); }
 .nt-row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12.5px/1.35 var(--k-sans); color: var(--k-on-surface-variant); }
 .nt-row-side { flex: none; display: flex; align-items: flex-start; gap: 6px; padding-top: 3px; min-width: 24px; justify-content: flex-end; }
+.nt-edited { font: 500 12.5px/1 var(--k-sans); color: var(--k-on-surface-variant); white-space: nowrap; }
 .nt-when, .nt-word { font: 600 11.5px/1 var(--k-sans); color: var(--k-on-surface-variant); white-space: nowrap; }
 .nt-saving { width: 14px; height: 14px; flex: none; }
 .nt-row > .nt-more { position: absolute; right: 6px; top: 50%; translate: 0 -50%; opacity: 0; transition: opacity var(--k-t-state); }
@@ -140,15 +157,15 @@
 .nt-off { padding: 12vh 16px; }
 .nt-nothing { min-height: 100%; display: grid; place-items: center; }
 /* at night the pale wash would glare: it sinks back to a quiet stain */
-:root[data-theme="dark"] .nt-empty-blot .k-ink-wash { opacity: .28; }
+:root[data-theme="dark"] :is(.nt-empty-blot, .nt-share-mark) .k-ink-wash { opacity: .28; }
 :root[data-theme="dark"] .nt-empty-blot { color: var(--k-on-surface-variant); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .nt-empty-blot .k-ink-wash { opacity: .28; }
+  :root:not([data-theme="light"]) :is(.nt-empty-blot, .nt-share-mark) .k-ink-wash { opacity: .28; }
   :root:not([data-theme="light"]) .nt-empty-blot { color: var(--k-on-surface-variant); }
 }
 
 /* ── the note ── */
-.nt-notecol { position: relative; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; background: var(--k-container-lowest); scrollbar-width: thin; }
+.nt-notecol { position: relative; min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; background: var(--k-container-lowest); }
 .nt-page { min-height: 100%; display: flex; flex-direction: column; padding: 6px 12px 0; }
 .nt-page.nt-gone { display: grid; justify-items: center; align-content: start; gap: 8px; padding-top: 8vh; }
 .nt-pagehead { display: flex; align-items: center; gap: 6px; min-height: 40px; }
@@ -260,6 +277,7 @@
 /* under 1200px the list steps aside while a note is open, with a back arrow */
 @media (max-width: 1199px) {
   .nt.has-note { grid-template-columns: minmax(0, 1fr); }
+  .nt.has-note.is-railed { grid-template-columns: 56px minmax(0, 1fr); }
   .nt.has-note .nt-listcol { display: none; }
   .nt.has-note .nt-back { display: inline-grid !important; }
 }
@@ -283,3 +301,47 @@
   .nt-side, .nt-chev svg.i, .nt-title-wrap::after { transition: none; }
   .nt-notebook.is-arriving, .nt-menu, .nt-sheet, .nt-shade, .nt-snack, .nt-side-shade, .nt-confirm, .nt-tick.is-fresh .tick, .nt-tick.is-fresh .ring { animation: none; }
 }
+
+/* ── sharing: the same dialog a chat has (code.css, .cd-share) ── */
+.nt-share { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 0; border: 0; border-radius: var(--k-r-xl); background: var(--k-container-high); color: var(--k-on-surface); box-shadow: var(--k-shadow-raised); }
+.nt-share::backdrop { background: color-mix(in srgb, var(--k-on-surface) 32%, transparent); }
+.nt-share[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; animation: nt-share-in var(--k-t-seat) var(--k-spring); }
+.nt-share[open]::backdrop { animation: nt-fade var(--k-t-fold) var(--k-ease-settle); }
+@keyframes nt-share-in { from { opacity: 0; translate: 0 12px; } }
+.nt-share svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.nt-share button:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
+.nt-share header { padding: 24px 24px 12px; }
+.nt-share header h2 { margin: 0; font: 600 22px/30px var(--k-display); color: var(--k-on-surface); overflow-wrap: anywhere; }
+.nt-share-body { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px; padding: 4px 24px 8px; overflow: auto; }
+.nt-share footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 24px 20px; }
+.nt-share footer .nt-problem { flex: 1 1 100%; }
+.nt-share-find { display: grid; gap: 6px; }
+.nt-share-search { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: var(--k-r-full); background: var(--k-container-highest); color: var(--k-on-surface-variant); }
+.nt-share-search:focus-within { box-shadow: inset 0 0 0 2px var(--k-app-accent); }
+.nt-share-search input { flex: 1; min-width: 0; border: 0; background: none; font: 400 16px/1.4 var(--k-sans); color: var(--k-on-surface); outline: none; }
+.nt-share-search input::placeholder { color: var(--k-on-surface-variant); }
+.nt-share-found { display: grid; gap: 2px; padding: 6px; border-radius: var(--k-r-l); background: var(--k-container-lowest); }
+.nt-share-found button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 10px; border: 0; border-radius: var(--k-r-m, 12px); background: none; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.nt-share-found button:hover, .nt-share-found button:focus-visible { background: var(--k-hover, var(--k-container-high)); }
+.nt-share-found span, .nt-share-who { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.nt-share-found b, .nt-share-who b { font: 500 15px/1.3 var(--k-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-share-found small, .nt-share-who small { font: 400 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+.nt-share-people { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.nt-share-person { display: flex; align-items: center; gap: 12px; min-height: 56px; }
+.nt-share-can.k-choice { width: auto; flex: none; }
+.nt-share-sub { margin: 10px 0 0; font: 600 14px/1.3 var(--k-sans); color: var(--k-on-surface); }
+.nt-share-general { display: flex; align-items: center; gap: 12px; min-height: 56px; }
+.nt-share .k-ink-blot.nt-share-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: none; color: var(--k-on-surface-variant); }
+.nt-share-link.k-choice { flex: 1; min-width: 0; max-width: none; }
+.nt-share-link .k-choice-button { padding-block: 8px; }
+.nt-share-link .k-choice-value { white-space: normal; line-height: 1.35; }
+.nt-share-note { margin: 0; font: 400 13px/1.45 var(--k-sans); color: var(--k-on-surface-variant); }
+@media (prefers-reduced-motion: reduce) { .nt-share[open] { animation: none; } }
+
+/* ── a table in a note: drawn as one while the caret is elsewhere ── */
+.nt-table { margin: .4em 0; overflow-x: auto; cursor: text; }
+.nt-table table { border-collapse: collapse; font-size: .94em; line-height: 1.45; }
+.nt-table th, .nt-table td { padding: 6px 12px; border: 1px solid var(--k-outline-variant); text-align: left; vertical-align: top; }
+.nt-table th { background: var(--k-container-low); font-weight: 700; }
+.nt-table a { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); text-underline-offset: 3px; }
+

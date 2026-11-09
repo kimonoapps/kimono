@@ -186,6 +186,100 @@ const live = ViewPlugin.fromClass(class {
 }, { decorations: (plugin) => plugin.decorations });
 const atomic = EditorView.atomicRanges.of((view) => view.plugin(live)?.atomic ?? Decoration.none);
 
+/* ── tables: drawn as a table while the caret is elsewhere, as typed while it's in one ── */
+
+const focusMoved = StateEffect.define<boolean>();
+const hasFocus = StateField.define<boolean>({
+  create: () => false,
+  update: (value, tr) => { for (const e of tr.effects) if (e.is(focusMoved)) return e.value; return value; },
+});
+const followFocus = EditorView.focusChangeEffect.of((_state, focusing) => focusMoved.of(focusing));
+
+const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+/** A cell's Markdown, enough of it: code, bold, italic, struck, links. */
+function cellHtml(raw: string) {
+  const codes: string[] = [];
+  let html = escapeHtml(raw.replace(/\\\|/g, "|")).replace(/`([^`]+)`/g, (_, code: string) => { codes.push(code); return `\u0000${codes.length - 1}\u0000`; });
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*])\*([^*]+)\*/g, "$1<i>$2</i>").replace(/~~([^~]+)~~/g, "<s>$1</s>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, (_, words: string, url: string) => `<a href="${url}" target="_blank" rel="noreferrer">${words}</a>`);
+  return html.replace(/\u0000(\d+)\u0000/g, (_, i: string) => `<code class="nt-md-code">${codes[Number(i)]}</code>`);
+}
+/** "| a | b |" → its cells, each with where it starts in the line. */
+function cellsOf(line: string): { text: string; at: number }[] {
+  const out: { text: string; at: number }[] = [];
+  let start = 0, i = 0;
+  const lead = /^\s*\|/.exec(line);
+  if (lead) start = i = lead[0].length;
+  for (; i <= line.length; i++) {
+    if (i < line.length && !(line[i] === "|" && line[i - 1] !== "\\")) continue;
+    const text = line.slice(start, i);
+    if (i < line.length || text.trim()) out.push({ text: text.trim(), at: start + (text.length - text.trimStart().length) });
+    start = i + 1;
+  }
+  return out;
+}
+
+class TableView extends WidgetType {
+  constructor(readonly source: string, readonly from: number) { super(); }
+  eq(other: TableView) { return other.source === this.source && other.from === this.from; }
+  toDOM(view: EditorView) {
+    const rows = this.source.split("\n");
+    const align = cellsOf(rows[1] ?? "").map((c) => /^:-+:$/.test(c.text) ? "center" : /-:$/.test(c.text) ? "right" : "");
+    const wrap = document.createElement("div");
+    wrap.className = "nt-table";
+    const table = document.createElement("table");
+    let offset = 0;
+    rows.forEach((line, r) => {
+      const lineFrom = this.from + offset;
+      offset += line.length + 1;
+      if (r === 1) return;
+      const tr = document.createElement("tr");
+      const cells = cellsOf(line);
+      const width = Math.max(align.length, cells.length);
+      for (let c = 0; c < width; c++) {
+        const cell = document.createElement(r === 0 ? "th" : "td");
+        cell.innerHTML = cellHtml(cells[c]?.text ?? "");
+        cell.dataset.pos = String(lineFrom + (cells[c] ? cells[c].at + cells[c].text.length : line.length));
+        if (align[c]) cell.style.textAlign = align[c];
+        tr.append(cell);
+      }
+      (r === 0 ? (table.tHead ?? table.createTHead()) : (table.tBodies[0] ?? table.createTBody())).append(tr);
+    });
+    wrap.append(table);
+    /* A click in a cell puts the caret at the end of that cell's text, and the table opens as typed. */
+    wrap.addEventListener("mousedown", (event) => {
+      if (event.target instanceof HTMLAnchorElement) return;
+      const cell = (event.target as Element).closest<HTMLElement>("[data-pos]");
+      event.preventDefault();
+      view.focus();
+      view.dispatch({ selection: { anchor: Math.min(Number(cell?.dataset.pos ?? this.from), view.state.doc.length) } });
+    });
+    return wrap;
+  }
+  ignoreEvent() { return true; }
+}
+
+function tablesOf(state: EditorState): DecorationSet {
+  const found: Range<Decoration>[] = [];
+  const focused = state.field(hasFocus, false) ?? false;
+  const sel = state.selection;
+  syntaxTree(state).iterate({
+    enter: (ref) => {
+      if (ref.name !== "Table") return;
+      const from = state.doc.lineAt(ref.from).from, to = state.doc.lineAt(ref.to).to;
+      if (focused && sel.ranges.some((r) => r.from <= to && r.to >= from)) return false;
+      found.push(Decoration.replace({ widget: new TableView(state.doc.sliceString(from, to), from), block: true }).range(from, to));
+      return false;
+    },
+  });
+  return Decoration.set(found, true);
+}
+const tables = StateField.define<DecorationSet>({
+  create: tablesOf,
+  update: (value, tr) => tr.docChanged || tr.selection || tr.effects.some((e) => e.is(focusMoved)) || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? tablesOf(tr.state) : value,
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 /* ── finding where the caret is ── */
 
 function enclosing(state: EditorState, from: number, to: number, name: string): Node | null {
@@ -504,7 +598,7 @@ export function NoteBody({ initial, readOnly, onChange, onBlur, onReady, onForma
           EditorView.editable.of(!readOnly),
           EditorView.contentAttributes.of({ "aria-label": "Note", spellcheck: "true", autocapitalize: "sentences" }),
           placeholder(readOnly ? "" : "Start writing"),
-          live, atomic, links, look,
+          live, atomic, links, look, hasFocus, followFocus, tables,
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !update.transactions.every((t) => t.annotation(fromOutside))) changed.current(update.state.doc.toString());
             if (update.focusChanged && !update.view.hasFocus) blurred.current();

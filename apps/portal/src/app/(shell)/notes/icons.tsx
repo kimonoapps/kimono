@@ -25,6 +25,8 @@ export const icons = {
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/>',
   code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
+  lock: '<path d="M5 10.5h14v9.5H5zM8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  tick: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
 } as const;
 
 export type IconName = keyof typeof icons;
