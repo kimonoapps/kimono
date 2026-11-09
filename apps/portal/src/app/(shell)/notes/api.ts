@@ -65,7 +65,9 @@ export const notes = {
   /** A new notebook, in the space named or the person's own. */
   createNotebook: (name: string, space?: string) => call<Notebook>("/notebooks", json("POST", { name, space })),
   /** The spaces a notebook can go in: Drive's list (only while Drive is on; Notes falls back to the person's own). */
-  spaces: () => call<{ spaces: { id: string; name: string; role: Role; code?: unknown }[] }>("/api/v1/drive/spaces").then((r) => r.spaces.filter((s) => s.role !== "viewer" && !s.code)),
+  /* Spaces a notebook can go in besides your Notes space, which is "your own". */
+  spaces: () => call<{ spaces: { id: string; name: string; role: Role; code?: unknown; purpose?: string | null }[] }>("/api/v1/drive/spaces")
+    .then((r) => r.spaces.filter((s) => s.role !== "viewer" && !s.code && !(s.purpose === "notes" && s.role === "owner"))),
   renameNotebook: (id: string, name: string) => call<Notebook>(`/notebooks/${id}`, json("PATCH", { name })),
   removeNotebook: (id: string) => call<unknown>(`/notebooks/${id}`, { method: "DELETE" }),
   sharing: (thing: Pick<Shareable, "kind" | "id">) => call<Sharing>(`${base(thing)}/members`),

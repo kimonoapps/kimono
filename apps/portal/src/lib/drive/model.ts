@@ -47,7 +47,10 @@ export type LinkAccess = "view" | "add";
 export type Space = {
   id: string; name: string; crest: string; color: string; rootId: string; createdBy: string; createdAt: number; role: Role; members: number;
   link: string | null; linkAccess: LinkAccess | null;
+  /** "notes" for the person's Kimono Notes space, which Drive lists with Kimono's own; null for any other. */
+  purpose: SpacePurpose | null;
 };
+export type SpacePurpose = "notes";
 /** What a folder is when it is more than a folder (see migration 7). */
 export type FolderPurpose = "notebook" | "chat" | "project";
 export const folderPurposes: readonly FolderPurpose[] = ["notebook", "chat", "project"];
@@ -436,13 +439,13 @@ export function nodeFor(db: DatabaseSync, id: string, username: string, need: Ro
 
 export function spacesOf(db: DatabaseSync, username: string): Space[] {
   const rows = db.prepare(`
-    SELECT s.id, s.name, s.crest, s.color, s.root_id, s.created_by, s.created_at, s.link, s.link_access, m.role,
+    SELECT s.id, s.name, s.crest, s.color, s.root_id, s.created_by, s.created_at, s.link, s.link_access, s.purpose, m.role,
       (SELECT count(*) FROM members x WHERE x.space_id = s.id) AS members
     FROM spaces s JOIN members m ON m.space_id = s.id AND m.username = ?
     ORDER BY lower(s.name)
-  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; color: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; role: Role; members: number }[];
+  `).all(username.toLowerCase()) as { id: string; name: string; crest: string; color: string; root_id: string; created_by: string; created_at: number; link: string | null; link_access: LinkAccess | null; purpose: SpacePurpose | null; role: Role; members: number }[];
   return rows.map((r) => ({ id: r.id, name: r.name, crest: r.crest, color: r.color, rootId: r.root_id, createdBy: r.created_by, createdAt: r.created_at, role: r.role, members: r.members,
-    link: seesLinks(r.role) ? r.link : null, linkAccess: seesLinks(r.role) ? r.link_access : null }));
+    link: seesLinks(r.role) ? r.link : null, linkAccess: seesLinks(r.role) ? r.link_access : null, purpose: r.purpose ?? null }));
 }
 
 export function spaceFor(db: DatabaseSync, spaceId: string, username: string): Space & { memberList: Member[] } {
@@ -652,6 +655,40 @@ export function moveNode(db: DatabaseSync, id: string, username: string, toFolde
   db.prepare("UPDATE nodes SET parent_id = ?, name = ?, updated_at = ? WHERE id = ?").run(target.id, name, now, id);
   touch(db, id, node.spaceId, now);
   return toNode(nodeRow(db, id)!, "editor");
+}
+
+/**
+ * Moves a folder or file, with everything in it, into a folder of another
+ * space. Only between spaces the person owns and nobody else is in, so no one
+ * gains or loses sight of it; its own shares go with it.
+ */
+export function moveToSpace(db: DatabaseSync, id: string, username: string, toFolderId: string, now = Date.now()): DriveNode {
+  const node = nodeFor(db, id, username, "owner");
+  const target = nodeFor(db, toFolderId, username, "owner");
+  if (target.spaceId === node.spaceId) return moveNode(db, id, username, toFolderId, now);
+  if (isRoot(db, node)) throw new DriveProblem("A space's top folder can't be moved.");
+  if (target.kind !== "folder") throw new DriveProblem("You can only move things into a folder.");
+  const alone = (spaceId: string) => (db.prepare("SELECT count(*) AS n FROM members WHERE space_id = ?").get(spaceId) as { n: number }).n === 1;
+  if (!alone(node.spaceId) || !alone(target.spaceId)) throw new DriveProblem("Things only move between spaces that are yours alone.");
+  const subtree = (db.prepare(`WITH RECURSIVE t(id) AS (SELECT ? UNION ALL SELECT c.id FROM nodes c JOIN t ON c.parent_id = t.id) SELECT id FROM t`).all(id) as { id: string }[]).map((r) => r.id);
+  const name = freeName(db, target.id, node.name, node.id);
+  db.exec("BEGIN");
+  try {
+    for (const at of subtree) {
+      db.prepare("UPDATE nodes SET space_id = ? WHERE id = ?").run(target.spaceId, at);
+      /* Gone from the old space for its devices, there in the new one. */
+      db.prepare("INSERT INTO changes (node_id, space_id, at) VALUES (?, ?, ?)").run(at, node.spaceId, now);
+      touch(db, at, target.spaceId, now);
+    }
+    db.prepare("UPDATE nodes SET parent_id = ?, name = ?, updated_at = ? WHERE id = ?").run(target.id, name, now, id);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  return toNode(nodeRow(db, id)!, "owner");
+}
+
+/** Marks a space as what it is for (see SpacePurpose), or as an ordinary one. */
+export function setSpacePurpose(db: DatabaseSync, spaceId: string, purpose: SpacePurpose | null) {
+  db.prepare("UPDATE spaces SET purpose = ? WHERE id = ?").run(purpose, spaceId);
 }
 
 export function trashNode(db: DatabaseSync, id: string, username: string, now = Date.now()) {

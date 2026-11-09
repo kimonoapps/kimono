@@ -53,6 +53,7 @@ test('collections become notebooks shared only with who was added; drafts stay t
 
   const akram = notes.libraryOf(db, 'akram');
   assert.deepEqual(akram.notebooks.map((n) => n.name).sort(), ['Akram private', 'Household', 'Recipes']);
+  assert.ok(akram.notebooks.every((n) => n.space.name === 'Notes'), 'in their Notes space');
   const sam = notes.libraryOf(db, 'sam');
   const samBooks = sam.notebooks.map((n) => [n.name, n.sharedWithYou, n.role]).sort();
   /* Household was open to the whole Outline workspace, which doesn't make it Sam's; Recipes Sam was added to. */

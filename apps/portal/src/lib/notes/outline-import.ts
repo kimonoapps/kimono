@@ -3,7 +3,7 @@
  *
  * `kimono server import-outline` reads the database Outline left behind and
  * writes it as JSON for the Portal (see ./outline-import-run.ts). Here that
- * becomes notebooks: each collection is a notebook in its creator's own space,
+ * becomes notebooks: each collection is a notebook in its creator's Notes space,
  * shared with whoever could see it in Outline; a document with documents
  * under it is a note and, beside it, a section holding them; drafts, which
  * only their writer saw, go to that person's own "Drafts" notebook; archived

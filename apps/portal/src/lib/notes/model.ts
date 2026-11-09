@@ -10,17 +10,25 @@
  * its space, and can also be shared, staying where it is, with people outside
  * it, as can a single note (Drive's shares; see ../drive/model.ts).
  *
- * Someone with no notebook gets one, "Notes", the first time they ask, in
- * their own space: the oldest one they own and nobody else is in, or a new
- * "Personal" space if they have none. A notebook never holds another.
+ * Everyone has a "Notes" space of their own, marked as Notes' (purpose
+ * "notes"), which Drive lists with Kimono's own spaces next to the AI one.
+ * It is made the first time Notes needs it, and again if they deleted or
+ * left it. New notebooks go there unless another space is named. When it is
+ * first made, the notebooks they already had in spaces only they are in move
+ * into it; ones in shared spaces stay where they are. Someone with no
+ * notebook gets one, "Notes", there. A notebook never holds another.
  *
  * Pure logic over the Drive database, tested in scripts/test-notes.mjs.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { cleanName, createFolder, createSpace, DriveProblem, nodeFor, roleOn, setPurpose, sharedWithYou, spacesOf, type DriveNode, type Role, type Space } from "../drive/model";
+import {
+  cleanName, createFolder, createSpace, DriveProblem, moveToSpace, nodeFor, roleOn, setPurpose, setSpacePurpose, sharedWithYou, spacesOf,
+  type DriveNode, type Role, type Space,
+} from "../drive/model";
 
 export const firstNotebookName = "Notes";
-export const personalSpaceName = "Personal";
+/** What the person's Notes space is called when it is made. */
+export const notesSpaceName = "Notes";
 /** The largest note: Markdown this long is a book, not a note. */
 export const maxNoteBytes = 2 * 1024 * 1024;
 
@@ -109,11 +117,27 @@ function notebookAbove(db: DatabaseSync, id: string): string | null {
   return null;
 }
 
-/** The person's own space for a first notebook: the oldest they own alone, else a new "Personal". */
+/**
+ * The person's Notes space: the one marked as Notes' that they own, else a new
+ * one. The first time one is made for them, their notebooks in spaces only they
+ * are in move into it.
+ */
 export function personalSpace(db: DatabaseSync, username: string, now = Date.now()): Space {
   const who = username.toLowerCase();
-  const alone = spacesOf(db, who).filter((s) => s.role === "owner" && s.members === 1 && s.createdBy === who).sort((a, b) => a.createdAt - b.createdAt);
-  return alone[0] ?? createSpace(db, who, { name: personalSpaceName, crest: "sakura", color: "plum" }, now);
+  const own = spacesOf(db, who).filter((s) => s.purpose === "notes" && s.role === "owner").sort((a, b) => a.createdAt - b.createdAt);
+  if (own[0]) return own[0];
+  const made = createSpace(db, who, { name: notesSpaceName, crest: "sakura", color: "plum" }, now);
+  setSpacePurpose(db, made.id, "notes");
+  const movedKey = `notes_moved:${who}`;
+  if (!db.prepare("SELECT 1 FROM meta WHERE key = ?").get(movedKey)) {
+    const solo = new Set(spacesOf(db, who).filter((s) => s.id !== made.id && s.role === "owner" && s.members === 1).map((s) => s.id));
+    for (const book of notebooksOf(db, who)) {
+      if (book.sharedWithYou || book.isSpace || !solo.has(book.space.id)) continue;
+      try { moveToSpace(db, book.id, who, made.rootId, now); } catch (error) { if (!(error instanceof DriveProblem)) throw error; }
+    }
+    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(movedKey, String(now));
+  }
+  return { ...made, purpose: "notes" };
 }
 
 /** A new notebook, in the space named (by its id) or the person's own. */
@@ -126,8 +150,10 @@ export function createNotebook(db: DatabaseSync, username: string, input: { name
   return notebooksOf(db, username).find((n) => n.id === folder.id)!;
 }
 
-/** The person's notebooks, making their first if they have none. */
+/** The person's notebooks, making their Notes space if it is missing and their first notebook if they have none. */
 export function ensureNotebook(db: DatabaseSync, username: string, now = Date.now()): Notebook[] {
+  /* Their Notes space first: made if it isn't there, taking in the notebooks of spaces only they are in. */
+  personalSpace(db, username, now);
   const found = notebooksOf(db, username);
   return found.some((n) => !n.sharedWithYou) ? found : [createNotebook(db, username, {}, now), ...found];
 }
@@ -210,7 +236,7 @@ export function notebookFor(db: DatabaseSync, id: string, username: string, need
   return book;
 }
 
-/** Where a notebook is, as Kimono AI asks for it: "Personal / Notes", or just its name when it is a space. */
+/** Where a notebook is, as Kimono AI asks for it: "Notes / Journal", or just its name when it is a space. */
 export const notebookPlace = (book: Pick<Notebook, "name" | "isSpace" | "space">) => book.isSpace ? book.name : `${book.space.name} / ${book.name}`;
 
 /** A note's text, cut to its first [chars] characters of prose: no markup, no title line. */

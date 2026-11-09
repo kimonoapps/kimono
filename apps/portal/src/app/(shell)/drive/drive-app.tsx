@@ -175,21 +175,23 @@ export function DriveApp({ me }: { me: Me }) {
 
   const go = useCallback((to: Record<string, string | null>) => goTo("/drive", to), []);
   const current = spaces?.find((s) => s.id === spaceParam) ?? (view ? null : spaces?.[0] ?? null);
-  const codeSpace = spaces?.find((s) => s.code) ?? null;
-  const yours = spaces?.filter((s) => s.role === "owner" && !s.code) ?? [];
+  /* Kimono's own spaces: the AI one and your Notes one, apart from the spaces you made. */
+  const isKimono = (s: Space) => Boolean(s.code || s.notes);
+  const kimono = [...(spaces ?? []).filter((s) => s.code), ...(spaces ?? []).filter((s) => !s.code && isKimono(s))];
+  const yours = spaces?.filter((s) => s.role === "owner" && !isKimono(s)) ?? [];
   const sharedWithYou = spaces?.filter((s) => s.role !== "owner") ?? [];
 
   return <div className="dv">
     <div className="dv-body" ref={body}>
       <aside className="dv-side">
-        {codeSpace ? <div>
-          <div className="dv-side-label">Kimono AI</div>
-          <div className="dv-nav"><SpaceLink space={codeSpace} here={!view && current?.id === codeSpace.id} people={people} onOpen={() => go({ space: codeSpace.id })} /></div>
+        {kimono.length ? <div>
+          <div className="dv-side-label">Kimono</div>
+          <div className="dv-nav">{kimono.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
         </div> : null}
         <div>
           <div className="dv-side-label">Your spaces</div>
           <div className="dv-nav">{yours.map((space) => <SpaceLink key={space.id} space={space} here={!view && current?.id === space.id} people={people} onOpen={() => go({ space: space.id })} />)}</div>
-          {spaces && !yours.length && !codeSpace ? <p className="dv-quiet-text dv-side-none">None yet.</p> : null}
+          {spaces && !yours.length && !kimono.length ? <p className="dv-quiet-text dv-side-none">None yet.</p> : null}
         </div>
         {sharedWithYou.length ? <div>
           <div className="dv-side-label">Others&apos; spaces</div>
@@ -273,7 +275,10 @@ export function GuestDrive({ token, space, mark }: { token: string; space: Share
 
 /* ── the sidebar ── */
 
-function Mark({ space, size = "" }: { space: Pick<Space, "id" | "crest" | "color" | "mark" | "code">; size?: string }) {
+function Mark({ space, size = "" }: { space: Pick<Space, "id" | "crest" | "color" | "mark" | "code" | "notes">; size?: string }) {
+  if (space.notes) return <span className={`dv-mark dv-code-mark ${size}`} aria-hidden="true">
+    <AppBloom identity={{ id: "kimono-notes", name: "Notes", accent: space.notes.accent, glyph: "notes" }} size="mark" />
+  </span>;
   if (space.code) return <span className={`dv-mark dv-code-mark ${size}`} aria-hidden="true">
     <AppBloom identity={{ id: "kimono-code", name: "AI", accent: space.code.accent, glyph: "code" }} size="mark" />
   </span>;
@@ -283,7 +288,7 @@ function Mark({ space, size = "" }: { space: Pick<Space, "id" | "crest" | "color
 
 function SpaceLink({ space, here, people, onOpen }: { space: Space; here: boolean; people: Record<string, Person>; onOpen: () => void }) {
   const owner = people[space.createdBy?.toLowerCase()];
-  const meta = space.code ? "Kept by Kimono AI" : space.role === "owner"
+  const meta = space.code ? "Kept by Kimono AI" : space.notes ? "Kept by Kimono Notes" : space.role === "owner"
     ? space.members === 1 ? "Only you" : `${space.members} people`
     : `${owner?.name.split(" ")[0] ?? space.createdBy}'s · ${space.role === "editor" ? "you edit" : "you view"}`;
   return <button type="button" className="dv-space" aria-current={here ? "page" : undefined} onClick={onOpen}>
@@ -435,9 +440,7 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
   const openFolder = (id: string) => { setMenu(null); setQuery(""); onGo(id); };
   const openNode = (node: DriveNode) => {
     setMenu(null);
-    /* A notebook opens in Notes and a chat in Kimono AI; what's inside is still a folder's worth away, from the menu. */
-    const app = appHref(node);
-    if (app) return crossTo("kakejiku", app);
+    /* A notebook or chat opens as the folder it is, its files and all; its app is a menu pick away. */
     if (node.kind === "folder") return openFolder(node.id);
     if (found) setQuery("");
     onGo(node.parentId ?? here, !found && opened?.id === node.id ? null : node.id);
@@ -672,8 +675,8 @@ function SpaceView({ space, guest = null, room = false, me, folderId, openFile, 
     </div>
 
     {menu && menuNode ? <FloatingMenu at={menu} label={`Actions for ${menuNode.name}`} onClose={closeMenu}>
-      <MenuItem icon="open" onPick={() => openNode(menuNode)}>{menuNode.purpose === "notebook" ? "Open in Notes" : menuNode.purpose === "chat" ? "Open chat" : "Open"}</MenuItem>
-      {appHref(menuNode) ? <MenuItem icon="folder" onPick={() => openFolder(menuNode.id)}>Show files</MenuItem> : null}
+      <MenuItem icon="open" onPick={() => openNode(menuNode)}>Open</MenuItem>
+      {appHref(menuNode) ? <MenuItem icon="open" onPick={() => { setMenu(null); crossTo("kakejiku", appHref(menuNode)!); }}>{menuNode.purpose === "notebook" ? "Open in Notes" : "Open chat"}</MenuItem> : null}
       {menuNode.kind === "file" ? <MenuItem icon="download" onPick={() => save([menuNode])}>Download</MenuItem> : null}
       {!guest ? <MenuItem icon="people" onPick={() => setSharing(menuNode)}>Share</MenuItem> : null}
       {menuNode.kind === "file" && !guest && (menuNode.link || editable(menuNode)) ? <>
@@ -1119,7 +1122,7 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
     <div className="k-tray">
       <div className="dv-mast">
         <div className="dv-mast-id">
-          <Mark space={detail ?? space} size="lg" />
+          <Mark space={detail ? { ...detail, code: space.code, notes: space.notes } : space} size="lg" />
           <div>
             <div className="dv-kicker dv-trail"><button type="button" className="dv-linkbtn" onClick={back}>{space.name}</button><span>/</span><span>Settings</span></div>
             <h1>People and settings</h1>

@@ -15,6 +15,10 @@ export type Space = {
   /** Set on your Code space: each top-level folder is a project, each folder in one a task. */
   /** Kimono AI's space: its colour, and the names of its top-level folders that are code projects. */
   code?: { accent: string; repos?: string[] };
+  /** "notes" on your Kimono Notes space. */
+  purpose?: "notes" | null;
+  /** Your Notes space: Notes' colour. */
+  notes?: { accent: string };
 };
 export type Member = { username: string; role: Role };
 export type SpaceDetail = Space & { memberList: Member[] };

@@ -5,6 +5,7 @@ import { knownMembers } from "@/lib/drive/members";
 import { db as codeDb, driveSpaceOf } from "@/lib/code";
 import { codeIdentity } from "@/lib/code/config";
 import { nameAiSpace } from "@/lib/code/drive";
+import { notesIdentity } from "@/lib/notes/config";
 import { getPlatformSettings } from "@/lib/settings";
 
 /** Which of your spaces is Code's, and Code's colour, so Drive can show it as Code's own place. */
@@ -23,11 +24,14 @@ export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
   const code = await codeSpace(user.username);
+  const notesAccent = await notesIdentity(await getPlatformSettings()).then((n) => n.accent, () => null);
   return drive(() => {
     /* Kimono AI's space, still under a name it had before, takes its current one. */
     if (code) nameAiSpace(db(), code.id, user.username);
     return apiJson({ spaces: spacesOf(db(), user.username).map(withMark)
-    .map((space) => space.id === code?.id ? { ...space, code: { accent: code.accent, repos: code.repos } } : space) });
+    .map((space) => space.id === code?.id ? { ...space, code: { accent: code.accent, repos: code.repos } }
+      /* Your Notes space wears Notes' colour, as Kimono AI's wears its. */
+      : space.purpose === "notes" && space.role === "owner" && notesAccent ? { ...space, notes: { accent: notesAccent } } : space) });
   });
 }
 

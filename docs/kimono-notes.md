@@ -36,10 +36,18 @@ anything that reads Markdown. Drive's rules decide who may read or change them.
   without signing in, at `/n/<token>`. The admin's Drive switch for public
   links turns these off too. The page shows the notes typeset, and nothing
   about who wrote them or where they live.
-- Someone with no notebook gets **Notes** the first time they open the app or
-  Kimono AI needs one. It goes in their own space: the oldest one they own with
-  nobody else in it, or a new **Personal** space if they have none. **New
-  notebook** asks which space it goes in, and defaults to that one.
+- Everyone has a **Notes** space of their own, marked as Notes' (Drive's
+  space `purpose` is `notes`). Drive lists it under **Kimono**, next to the AI
+  space, not under Your spaces. It is made the first time Notes needs it, and
+  made again if it was deleted or left. **New notebook** asks which space it
+  goes in and defaults to it; the Outline import puts collections there too.
+- When someone's Notes space is first made, notebooks they already had in
+  spaces only they are in move into it, with their notes and shares. Notebooks
+  in shared spaces stay where they are.
+- Someone with no notebook gets **Notes**, in their Notes space, the first time
+  they open the app or Kimono AI needs one.
+- In Drive a notebook is a folder: opening it shows its `.md` files. **Open in
+  Notes** is in its menu.
 - A notebook never holds another: one moved inside another becomes a section.
 - Saving goes through Drive's upload bookkeeping, so the change log, the Files
   app and conflict handling all work as they do for any file. A save names the

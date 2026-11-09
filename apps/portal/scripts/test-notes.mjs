@@ -11,17 +11,43 @@ function fresh() {
 }
 const md = (name, blob = drive.newId()) => ({ name, size: 10, mime: 'text/markdown', blob });
 
-test('someone with no notebook gets "Notes" in their own space, made once', () => {
+test('someone with no notebook gets "Notes" in their own Notes space, made once', () => {
   const db = fresh();
   const [first] = notes.ensureNotebook(db, 'Akram');
   assert.equal(first.name, 'Notes');
-  assert.equal(first.space.name, 'Personal');
+  assert.equal(first.space.name, 'Notes');
   assert.equal(first.isSpace, false);
   assert.equal(notes.ensureNotebook(db, 'akram').length, 1);
   assert.equal(drive.spacesOf(db, 'akram').length, 1, 'one space, not one per notebook');
-  /* Someone who already owns a space of their own gets it there. */
+  assert.equal(drive.spacesOf(db, 'akram')[0].purpose, 'notes', 'Drive knows it as the Notes space');
+  /* New notebooks go there too. */
+  assert.equal(notes.createNotebook(db, 'akram', { name: 'Ideas' }).space.id, first.space.id);
+});
+
+test('notebooks in spaces only you are in move into the Notes space when it is made; shared ones stay', () => {
+  const db = fresh();
   const mine = drive.createSpace(db, 'mina', { name: 'Mina' });
-  assert.equal(notes.ensureNotebook(db, 'mina')[0].space.id, mine.id);
+  const family = drive.createSpace(db, 'mina', { name: 'Family', members: [{ username: 'sam', role: 'editor' }] });
+  const solo = drive.createFolder(db, mine.rootId, 'mina', 'Journal');
+  drive.setPurpose(db, solo.id, 'mina', 'notebook');
+  drive.addFile(db, solo.id, 'mina', md('Monday.md'));
+  drive.shareNode(db, solo.id, 'mina', 'sam', 'viewer');
+  const together = notes.createNotebook(db, 'mina', { name: 'Recipes', space: family.id });
+  notes.ensureNotebook(db, 'mina');
+  const space = notes.personalSpace(db, 'mina');
+  assert.equal(space.purpose, 'notes');
+  const books = Object.fromEntries(notes.notebooksOf(db, 'mina').map((b) => [b.name, b]));
+  assert.equal(books.Journal.space.id, space.id, 'the solo notebook moved');
+  assert.equal(books.Recipes.space.id, family.id, 'the shared one stayed');
+  assert.equal(notes.libraryOf(db, 'mina').notes.length, 1, 'its notes came with it');
+  assert.ok(notes.notebooksOf(db, 'sam').some((b) => b.id === solo.id), 'its own shares came with it');
+  assert.equal(together.space.id, family.id);
+  /* Deleted (here, left to someone else), it is made again; later solo notebooks aren't moved again. */
+  const later = notes.createNotebook(db, 'mina', { name: 'Scratch', space: mine.id });
+  db.prepare("UPDATE members SET role = 'editor' WHERE space_id = ?").run(space.id);
+  const again = notes.personalSpace(db, 'mina');
+  assert.notEqual(again.id, space.id);
+  assert.equal(notes.notebooksOf(db, 'mina').find((b) => b.id === later.id).space.id, mine.id);
 });
 
 test('notebooks are folders in any space; Drive marks them, and sees who shares one by its space', () => {
@@ -105,9 +131,9 @@ test('an excerpt is the prose, without the title line or markup', () => {
 test('Kimono AI is told which notebooks are theirs and how to write notes', async () => {
   const { notesGuide } = await import('../src/lib/notes/agent.ts');
   assert.equal(notesGuide([]), '');
-  const guide = notesGuide([{ name: 'Notes', isSpace: false, space: { name: 'Personal' } }, { name: 'Kyoto trip', isSpace: true, space: { name: 'Kyoto trip' } }]);
-  assert.match(guide, /"Personal \/ Notes", "Kyoto trip"/);
-  assert.match(guide, /kimono-access ask --space "Personal" --path "Notes"/);
+  const guide = notesGuide([{ name: 'Notes', isSpace: false, space: { name: 'Notes' } }, { name: 'Kyoto trip', isSpace: true, space: { name: 'Kyoto trip' } }]);
+  assert.match(guide, /"Notes \/ Notes", "Kyoto trip"/);
+  assert.match(guide, /kimono-access ask --space "Notes" --path "Notes"/);
   assert.match(guide, /- \[ \] /);
   assert.match(guide, /kimono-remember is only for what you should know about them/);
 });

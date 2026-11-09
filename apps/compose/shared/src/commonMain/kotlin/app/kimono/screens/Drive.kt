@@ -328,8 +328,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: St
                                     onClick = {
                                         when {
                                             selecting -> if (isPicked) selected.remove(node.id) else selected.add(node.id)
-                                            /* A notebook opens in Notes and a chat in Kimono AI; what's inside is a folder's worth away, from the menu. */
-                                            node.appRoute != null -> open(node.appRoute!!)
+                                            /* A notebook or chat opens as the folder it is, its files and all; its app is in the menu. */
                                             node.isFolder -> open("folder/${node.id}")
                                             else -> openFile(node)
                                         }
@@ -354,10 +353,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: St
             node = node,
             thumbnail = { pixels -> platform.thumbnail(node, pixels) },
             choices = buildList {
-                node.appRoute?.let { route ->
-                    add(NodeChoice(if (node.purpose == "notebook") "Open in Notes" else "Open chat", if (node.purpose == "notebook") "notes" else "chat") { open(route) })
-                    add(NodeChoice("Show files", "folder") { open("folder/${node.id}") })
-                }
+                node.appRoute?.let { route -> add(NodeChoice(if (node.purpose == "notebook") "Open in Notes" else "Open chat", if (node.purpose == "notebook") "notes" else "chat") { open(route) }) }
                 if (!node.isFolder) add(NodeChoice("Open", "file") { openFile(node) })
                 if (canEdit && !node.isFolder) add(NodeChoice("Share link", "share") { shareLinks(listOf(node)) })
                 if (!node.isFolder && (canEdit || node.link != null)) add(NodeChoice(if (node.link == null) "Copy public link" else "Copy link", "link") {
@@ -836,7 +832,7 @@ fun SharedWithYouScreen(model: DriveModel, platform: Platform, me: String?, open
                         NodeRow(
                             node = node, thumbnail = { pixels -> platform.thumbnail(node, pixels) }, index = index, count = list.size,
                             busy = opening?.id == node.id, progress = null, selecting = false, selected = false,
-                            onClick = { node.appRoute?.let(open) ?: if (node.isFolder) open("folder/${node.id}") else openFile(node) },
+                            onClick = { if (node.isFolder) open("folder/${node.id}") else openFile(node) },
                             onLongClick = { acting = node }, onMore = { acting = node },
                         )
                     }
@@ -850,7 +846,6 @@ fun SharedWithYouScreen(model: DriveModel, platform: Platform, me: String?, open
             thumbnail = { pixels -> platform.thumbnail(node, pixels) },
             choices = buildList {
                 node.appRoute?.let { route -> add(NodeChoice(if (node.purpose == "notebook") "Open in Notes" else "Open chat", if (node.purpose == "notebook") "notes" else "chat") { open(route) }) }
-                if (node.isFolder) add(NodeChoice("Show files", "folder") { open("folder/${node.id}") })
                 add(NodeChoice("Share", "person") { sharing = node })
                 add(NodeChoice("Leave", "door", danger = true) { leaving = node })
             },
