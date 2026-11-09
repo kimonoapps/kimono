@@ -61,6 +61,14 @@
         "description": "Optional. Lets it use people's own apps, such as Gmail or Calendar, once they connect them, and Pro Tools. A scoped key needs observability read access, or Pro Tools stay off."
       },
       {
+        "key": "openai_api_key",
+        "label": "OpenAI API key",
+        "kind": "secret",
+        "group": "agent",
+        "target": "settings",
+        "description": "Optional. Lets people speak a message instead of typing it."
+      },
+      {
         "key": "git_address",
         "label": "Kimono Git address",
         "kind": "text",

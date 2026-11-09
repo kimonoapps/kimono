@@ -22,6 +22,7 @@ import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
 import { ArtifactFrame, SceneBar, type SceneControl, type SceneState } from "./artifact-frame";
 import { Picker } from "./picker";
+import { Dictation, joinSaid } from "./dictation";
 
 /*
  * 工 Kimono Code on the web. One page: the sidebar of workspaces, and the
@@ -1448,6 +1449,8 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   const [fetched, setFetched] = useState<{ repo: string; list: string[] } | null>(null);
   const [picked, setPicked] = useState<{ repo: string; branch: string } | null>(null);
   const [prompt, setPrompt] = useUnsentText("new");
+  const promptNow = useRef(prompt);
+  promptNow.current = prompt;
   const [problem, setProblem] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [naming, setNaming] = useState<string | null>(null);
@@ -1584,6 +1587,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
             onKeyDown={(event) => { if (slash.onKeyDown(event)) return; if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />)}
           <div className="cd-entry-end">
             <MessageCount length={prompt.length} />
+            <Dictation disabled={Boolean(blocked) || sending} onProblem={setProblem} onText={(said) => { setPrompt(joinSaid(promptNow.current, said)); requestAnimationFrame(() => field.current?.focus()); }} />
             <SendStop mode="send" busy={sending} disabled={!ready || Boolean(blocked)} onSend={() => void send()} />
           </div>
         </div>
@@ -3155,6 +3159,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
         {/* files, model and thinking, and all usage, in the … menu; the rings only past half */}
         <Meters workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} />
         <ComposerMore workspace={workspace} usage={usage} context={context} running={running} blocked={blocked} files={Boolean(workspace.drive && owns)} />
+        <Dictation disabled={Boolean(blocked) || sending} onProblem={setProblem} onText={(said) => { setText(joinSaid(typed.current, said)); requestAnimationFrame(() => field.current?.focus()); }} />
         <SendStop mode={running && !canSend && !text.trim() && !pending.length ? "stop" : "send"} disabled={running && !text.trim() && !pending.length ? false : !canSend}
           onSend={() => void send()} onStop={() => void code.stop(workspace.id).catch((error) => setProblem(problemText(error)))} />
       </div>

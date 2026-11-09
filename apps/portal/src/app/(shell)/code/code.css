@@ -1796,3 +1796,26 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-ask-acts .cd-iconbutton { width: 32px; height: 32px; color: var(--k-on-surface-variant); }
 .cd-ask-acts .cd-iconbutton svg.i { width: 16px; height: 16px; }
 .cd-ask-time { margin-right: 6px; font: 500 12.5px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
+
+/* ── speaking a message ──
+   While it listens the entry line becomes one strip over the same place:
+   cancel, the voice drawn in the app's ink, the time, and the done seal. */
+.cd .cd-entry:has(.cd-dictating) > * { visibility: hidden; }
+.cd .cd-entry .cd-dictating { visibility: visible; position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 0 0 0 2px;
+  background: var(--k-container-lowest); border-radius: 18px; animation: cd-dict-in .38s var(--k-spring) both; }
+@keyframes cd-dict-in { from { clip-path: inset(0 0 0 calc(100% - 48px) round 18px); opacity: .4; } to { clip-path: inset(0 0 0 0 round 18px); opacity: 1; } }
+.cd .cd-dict-cancel { width: 40px; height: 40px; border-radius: 12px; color: var(--k-on-surface-variant); }
+.cd .cd-dict-cancel:hover:not(:disabled) { background: var(--k-container-high); color: var(--k-on-surface); }
+.cd .cd-dict-ink { flex: 1; min-width: 0; height: 30px; color: var(--k-app-text, var(--k-app-accent)); transition: opacity .3s var(--k-ease-settle); }
+.cd .cd-dictating.is-writing .cd-dict-ink { opacity: .35; }
+.cd .cd-dict-time { flex: none; display: inline-flex; align-items: center; gap: 7px; min-width: 52px; justify-content: flex-end; font: 500 13.5px/1 var(--k-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; color: var(--k-on-surface-variant); }
+/* the red of a seal's ink: recording */
+.cd .cd-dict-time i { width: 8px; height: 8px; border-radius: 2.5px; background: var(--k-error, #b3261e); transform: rotate(45deg); animation: cd-dict-beat 1.4s var(--k-ease-settle) infinite; }
+@keyframes cd-dict-beat { 50% { opacity: .35; transform: rotate(45deg) scale(.8); } }
+.cd .cd-dictating.is-writing .cd-dict-time { font: inherit; color: var(--k-on-surface-variant); }
+.cd .cd-dict-done { width: 40px; min-height: 40px; height: 40px; padding: 0; border-radius: 14px; flex: none; }
+.cd .cd-dict-done svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.cd .cd-dict-done svg path { stroke-dasharray: 20; stroke-dashoffset: 20; animation: cd-dict-tick .45s var(--k-ease-settle) .18s forwards; }
+@keyframes cd-dict-tick { to { stroke-dashoffset: 0; } }
+.cd .cd-mic.is-on { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+@media (prefers-reduced-motion: reduce) { .cd .cd-entry .cd-dictating, .cd .cd-dict-time i { animation: none; } .cd .cd-dict-done svg path { animation: none; stroke-dashoffset: 0; } }
