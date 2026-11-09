@@ -249,7 +249,7 @@ function useModel() {
 }
 const modelWords: Record<ModelChoice, { label: string; detail: string }> = {
   auto: { label: "Auto", detail: "Opus" },
-  fable: { label: "Fable", detail: "The hardest problems" },
+  fable: { label: "Fable", detail: "Experimental, usually overkill" },
   opus: { label: "Opus", detail: "Best for building things" },
   sonnet: { label: "Sonnet", detail: "Everyday work" },
   haiku: { label: "Haiku", detail: "Quick answers" },

@@ -337,7 +337,7 @@ val efforts = listOf("low", "medium", "high", "xhigh", "max")
 val effortWords = mapOf("low" to "Low", "medium" to "Medium", "high" to "High", "xhigh" to "Extra high", "max" to "Max")
 /** Which Claude answers: Auto (Kimono picks per message), or one the person chose. */
 val modelChoices = listOf("auto", "fable", "opus", "sonnet", "haiku")
-val modelWords = mapOf("auto" to ("Auto" to "Opus"), "fable" to ("Fable" to "The hardest problems"), "opus" to ("Opus" to "Best for building things"), "sonnet" to ("Sonnet" to "Everyday work"), "haiku" to ("Haiku" to "Quick answers"))
+val modelWords = mapOf("auto" to ("Auto" to "Opus"), "fable" to ("Fable" to "Experimental, usually overkill"), "opus" to ("Opus" to "Best for building things"), "sonnet" to ("Sonnet" to "Everyday work"), "haiku" to ("Haiku" to "Quick answers"))
 val modelNames = mapOf("fable" to "Fable", "opus" to "Opus", "sonnet" to "Sonnet", "haiku" to "Haiku")
 
 private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
