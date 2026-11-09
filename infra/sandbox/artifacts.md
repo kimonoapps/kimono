@@ -18,7 +18,9 @@ beside the chat or full screen.
 - How something works, or anything that happens in stages, is a `<k-scene>`
   (see Animations) that plays it out, never your own SVG with a slider or
   Next buttons to step through it. A real object (a device, a machine, an
-  organ) is drawn as itself, its parts in place and moving: see Any 3D model.
+  organ) is drawn as itself, its parts in place and moving: a `drawing()` in
+  SVG when a side view or cutaway shows it, a 3D `model()` when its shape in
+  depth matters.
 - Make it as good as the idea deserves. Take the time to build the real thing
   well; a quick stand-in is worse than none.
 - It has **no network**: no `fetch`, no CDN, no images from the web. Put data
@@ -27,8 +29,9 @@ beside the chat or full screen.
   three.js (`await K.loadThree()`), and KaTeX (see Maths).
 - Write it in one go with Write. The person watches it render as you write,
   so put the important part first. Keep it under about 200 KB.
-- To change one, use Edit on the file. Every place it is shown updates. To
-  show one again further down the chat, run `kimono-show <name>`.
+- To change one, use Edit on the file. Every place it is shown updates, and
+  the edited one shows again in the chat by itself: don't `kimono-show` it after
+  an edit. `kimono-show <name>` is only for bringing back one you didn't change.
 - Say in one short line what you made. Don't describe what they can already see.
 
 ## Maths
@@ -116,8 +119,8 @@ Rules:
   hard to picture, not the whole topic: the reply's words carry the rest.
   Before you write it, add up the waits and steps.
 - Maths (a function, a curve, an area, a vector) goes on `axes()`. A real,
-  physical thing (an EpiPen, an engine, a heart, a lock) is built as itself
-  with `model()` and moved (see Any 3D model): never as labelled cards. Ideas
+  physical thing (an EpiPen, an engine, a heart, a lock) is drawn as itself and
+  moved: a `drawing()` (see Drawings) or a 3D `model()`, never labelled cards. Ideas
   with no body (steps, flows, who links to whom, a hierarchy) are a diagram
   (see Diagrams): no `axes()`, and never boxes built from `line()` or a row of
   blocks from `bars()`.
@@ -174,6 +177,33 @@ const usb = node([80, 55], "/media/usb", { sub: "the USB stick", color: "amber" 
 together(() => { link(root, home); link(root, etc); link(root, usb, { label: "mounted" }) })
 pulse(usb)
 wait(2)
+```
+
+### Drawings: a real thing in SVG
+
+A side view or cutaway of a real thing (a pen, a valve, a cell, a circuit),
+drawn by you in SVG with its parts in place, filling the stage between the
+title and the caption.
+
+- `drawing(svg, move, { viewBox })`: `svg` is markup, a whole
+  `<svg viewBox="…">` or its inside with `{ viewBox }` (default `"0 0 200 100"`).
+  Give each part that moves an `id`. `move(parts, t)` runs every frame (`t` is
+  seconds since the step began) and sets them from trackers you `animate()`:
+  `` parts.needle.setAttribute("transform", `translate(${push.v * 20} 0)`) ``.
+- Colours: `var(--suo)`, `var(--indigo)`, `var(--moss)`, `var(--amber)`,
+  `var(--plum)`, `var(--teal)`, `var(--rust)`, `var(--ink)`, `var(--soft)`,
+  `var(--line)`, `var(--card)`, so it suits light and dark. Label parts with
+  SVG `<text>` inside the drawing, so labels stay on their parts.
+- Real proportions and real colours (an EpiPen's blue cap and orange tip),
+  parts that move as separate pieces, and only the motion that explains it.
+
+```
+const cap = tracker(0), push = tracker(0)
+drawing(`<svg viewBox="0 0 220 90"><g id="pen"><rect id="cap" x="0" y="34" width="18" height="22" rx="4" fill="var(--indigo)"/><rect x="18" y="32" width="100" height="26" rx="6" fill="var(--card)" stroke="var(--ink)"/><rect id="needle" x="104" y="44" width="16" height="2" fill="var(--soft)"/></g><text x="185" y="88" text-anchor="middle">thigh</text></svg>`, (p) => { p.cap.setAttribute("transform", `translate(${-30 * cap.v} 0)`); p.pen.setAttribute("transform", `translate(${22 * push.v} 0)`) })
+caption("Pull off the blue safety cap.")
+animate(cap, 1, 1)
+caption("Press the orange tip into the thigh.")
+animate(push, 1, 1.2)
 ```
 
 ### 3D (x right, y across, z up)

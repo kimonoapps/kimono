@@ -398,7 +398,9 @@
       this.canvas = html("canvas");
       /* words and formulas sit over the drawing as text, so they're crisp and can be typeset */
       this.overlay = html("div", "k-overlay");
-      this.stage.append(this.canvas, this.overlay);
+      /* drawings: SVG pictures of real things, laid over the canvas and moved by the timeline */
+      this.art = html("div", "k-art");
+      this.stage.append(this.canvas, this.art, this.overlay);
       /* what the person set by hand: sliders by name, dragged points by order; kept while the script grows */
       this.params = {}; this.drags = {}; this.turn = { az: 0, el: 0 };
       this.controls = html("div", "k-controls");
@@ -459,6 +461,29 @@
       this.stage.addEventListener("pointercancel", () => { action = null; });
     }
     setParam(name, value) { if (this.timeline?.params.some((p) => p.name === name)) { this.params[name] = +value; this.report(true); } }
+    /* The scene's drawings: one SVG per drawing() step, rewritten only when its markup changes, its parts moved each frame. */
+    drawArts(arts) {
+      const seen = new Set();
+      this._arts ??= new Map();
+      for (const a of arts) {
+        seen.add(a.key);
+        let node = this._arts.get(a.key);
+        if (!node) { node = html("div", "k-art-item"); this.art.append(node); this._arts.set(a.key, node); }
+        if (node._markup !== a.markup) {
+          node._markup = a.markup;
+          const markup = /^\s*<svg[\s>]/i.test(a.markup) ? a.markup : `<svg viewBox="${a.viewBox}">${a.markup}</svg>`;
+          node.innerHTML = markup;
+          const svg = node.querySelector("svg");
+          if (svg) { svg.setAttribute("preserveAspectRatio", "xMidYMid meet"); svg.removeAttribute("width"); svg.removeAttribute("height"); }
+          /* parts.needle is the element with id="needle"; a missing one takes what's done to it and shows nothing */
+          const none = new Proxy(() => none, { get: () => none, set: () => true });
+          node._parts = new Proxy({}, { get: (_, id) => (typeof id === "string" && svg?.querySelector(`#${CSS.escape(id)}`)) || none });
+        }
+        Object.assign(node.style, { left: `${a.box.x}px`, top: `${a.box.y}px`, width: `${a.box.w}px`, height: `${a.box.h}px`, opacity: String(a.alpha) });
+        if (a.move) { try { a.move(node._parts); } catch (e) { if (node._failed !== String(e)) { node._failed = String(e); console.error(e); } } }
+      }
+      for (const [key, node] of this._arts) if (!seen.has(key)) { node.remove(); this._arts.delete(key); }
+    }
     /* The overlay's words: one element per label, moved each frame, rewritten only when its words change. */
     drawLabels(labels) {
       const seen = new Set();
@@ -706,6 +731,7 @@
       if (!tl) return;
       tl.paint(ctx, this.t, this.w, this.h);
       if (this.gl && tl.uses3d) tl.paint3d(this.gl, this.t, this.w, this.h);
+      this.drawArts(tl.arts || []);
       this.drawLabels(tl.labels);
     }
   }
@@ -738,7 +764,7 @@
     const uy = (Y, h) => view.y[0] + (1 - (Y - top()) / (h - top() - bottom())) * (view.y[1] - view.y[0]);
     /* a label over the drawing (crisp text, and $…$ typeset as maths) */
     const say = (key, kind, x, y, text, o = {}) => { tl.labels.push({ key, kind, x, y, text, ...o }); if (hasMath(text)) tl.usesTex = true; };
-    let labelId = 0;
+    let labelId = 0, artId = 0;
     const font = (size, weight = 600, family = "--k-sans") => `${weight} ${size}px ${css(family)}`;
     let seriesIndex = 0;
 
@@ -1127,6 +1153,22 @@
           obj.userData.say = { key, text: value(text), alpha: p, color: o.color ? colour(o.color) : undefined };
         }, o.dur ?? .4);
       },
+      /*
+       * A drawing of a real thing in SVG (a pen, a valve, a cell, a circuit), filling the stage between the
+       * title and the caption. svg is markup: a whole <svg viewBox="…">, or its inside with { viewBox }.
+       * Give the parts that move an id; move(parts, t) runs every frame, t seconds after this step began,
+       * and sets them from trackers: parts.needle.setAttribute("transform", `translate(${n.v} 0)`).
+       * Colours by name work as var(--indigo) and the like, so it suits light and dark.
+       */
+      drawing(svg, move, o = {}) {
+        const key = `a${artId++}`;
+        const op = { draw(ctx, p, w, h) {
+          (tl.arts ??= []).push({ key, markup: String(value(svg)), viewBox: o.viewBox || "0 0 200 100", alpha: ctx.globalAlpha * p,
+            box: { x: 16, y: top(), w: Math.max(0, w - 32), h: Math.max(0, h - top() - bottom()) },
+            move: move ? (parts) => move(parts, Math.max(0, now - op.t0)) : null });
+        } };
+        return add(op, o.dur ?? .6);
+      },
       /* helpers people's code can use */
       PI: Math.PI, sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, log: Math.log, sqrt: Math.sqrt, abs: Math.abs, pow: Math.pow, floor: Math.floor, round: Math.round, min: Math.min, max: Math.max,
       range(a, b, step = 1) { const out = []; for (let v = a; step > 0 ? v <= b + 1e-9 : v >= b - 1e-9; v += step) out.push(+v.toFixed(10)); return out; },
@@ -1155,6 +1197,7 @@
     tl.paint = (ctx, t, w, h) => {
       now = t;
       tl.labels = [];
+      tl.arts = [];
       for (const op of ops) {
         if (!op.draw || t < op.t0) continue;
         const p = op.d ? clamp((t - op.t0) / op.d) : 1;
