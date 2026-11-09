@@ -30,8 +30,7 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 /**
- * 鍵 Signing in, staying signed in, and talking to the Portal — the same
- * contract as the React Native app: the Portal says where to sign in, the
+ * 鍵 Signing in, staying signed in, and talking to the Portal: the Portal says where to sign in, the
  * page opens in the system browser sheet with PKCE and prompt=login, only the
  * refresh token is kept (by the OS keystore), and access tokens live in memory.
  */

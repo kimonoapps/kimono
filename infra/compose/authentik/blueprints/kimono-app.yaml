@@ -46,13 +46,6 @@ entries:
         - url: kimono://auth
           matching_mode: strict
           redirect_uri_type: authorization
-        # Development only: Expo Go on a phone, and the app in a browser.
-        - url: ^exp://[^/]+/--/auth$
-          matching_mode: regex
-          redirect_uri_type: authorization
-        - url: http://localhost:8081/auth
-          matching_mode: strict
-          redirect_uri_type: authorization
 
   - model: authentik_core.application
     state: present

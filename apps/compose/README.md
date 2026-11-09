@@ -1,8 +1,7 @@
-# Kimono app — Compose proof
+# Kimono app
 
 The Kimono phone app in Compose Multiplatform with Material 3 Expressive,
-themed with Kata, built to compare against the React Native app in
-`apps/mobile`. Android and iPhone share everything in `shared/src/commonMain`.
+themed with Kata. Android and iPhone share everything in `shared/src/commonMain`.
 
 - `shared/` — the app: Kata as a `MaterialExpressiveTheme`, the seal, sign-in
   (PKCE, `max_age`), the You tab, name and email, devices, the share sheet.
@@ -19,9 +18,9 @@ themed with Kata, built to compare against the React Native app in
 ```
 
 The APK lands in `androidApp/build/outputs/apk/release/`, signed with the
-Kimono key in `~/.config/kimono/` (see `apps/mobile/README.md`). It installs
-beside the React Native app (`app.kimono.compose`); with both installed,
-Android asks which one should finish a sign-in.
+Kimono key in `~/.config/kimono/android-release.jks` (its password beside it in
+`android-release.password`). Every APK has to carry that same key, or Android
+won't install it over the copy already on a phone, so keep both backed up.
 
 Needs JDK 21 and the Android SDK with platform 37 (`sdk.dir` in
 `local.properties`).

@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
-/* The Kimono signing key, kept outside the repo (see apps/mobile/README.md). */
+/* The Kimono signing key, kept outside the repo (see apps/compose/README.md). */
 val kimonoKey = File(System.getProperty("user.home"), ".config/kimono/android-release.jks")
 val kimonoKeyPassword = File(kimonoKey.parentFile, "android-release.password").takeIf { it.exists() }?.readText()?.trim()
 /* -PkimonoLocalTest lets a test build reach a Portal on this machine over http. */
