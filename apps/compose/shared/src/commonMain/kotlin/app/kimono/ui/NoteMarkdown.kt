@@ -33,7 +33,13 @@ import androidx.compose.ui.unit.sp
  * touches the span; heading and quote markers when it's on the line; code
  * fences while it's in the block). Bullets are drawn as dots, checkboxes as
  * ink rings; numbers stay. Pictures stay as their words, and HTML is only text.
+ * A table is set in monospace with faint pipes for its columns, its head bold
+ * and its --- row and uneven widths kept off the screen (not out of the note)
+ * unless the caret is in it.
  */
+
+/** A table: where it is in the text, and where each of its rows is (the second is its --- row). */
+data class NoteTable(val range: IntRange, val rows: List<IntRange>)
 
 /** A checkbox: which line it's on, where its brackets are, and whether it's ticked. */
 data class NoteCheck(val line: Int, val at: Int, val checked: Boolean)
@@ -57,7 +63,64 @@ class NoteSpans(
     val bullets: List<NoteBullet>, val quotes: List<IntRange>, val formats: Set<String>,
     /** Inline code, drawn as a chip behind its words. */
     val chips: List<IntRange> = emptyList(),
+    /** Tables, drawn with a washed head and a rule under each row. */
+    val tables: List<NoteTable> = emptyList(),
 )
+
+private val tableRule = Regex("^[ \\t]*\\|?[ \\t]*:?-{3,}:?[ \\t]*(\\|[ \\t]*:?-{3,}:?[ \\t]*)*\\|?[ \\t]*$")
+
+/** The tables in [all]: a line with a pipe over a --- row, and the piped lines under them. */
+fun noteTables(all: String): List<NoteTable> {
+    val lines = mutableListOf<IntRange>()
+    var start = 0
+    while (start <= all.length) {
+        val end = all.indexOf('\n', start).let { if (it < 0) all.length else it }
+        lines += start until end
+        start = end + 1
+    }
+    val text = { r: IntRange -> all.substring(r.first, r.last + 1) }
+    val found = mutableListOf<NoteTable>()
+    var i = 0
+    while (i < lines.size - 1) {
+        val head = text(lines[i])
+        if ('|' in head && tableRule.matches(text(lines[i + 1])) && '|' in text(lines[i + 1]) + head.trim().take(1)) {
+            var j = i + 2
+            while (j < lines.size && '|' in text(lines[j]) && text(lines[j]).isNotBlank()) j++
+            val rows = lines.subList(i, j).toList()
+            found += NoteTable(rows.first().first..rows.last().last, rows)
+            i = j
+        } else i++
+    }
+    return found
+}
+
+/** A row's cells, without the pipes around them. */
+private fun cellsOf(row: String): List<String> {
+    var body = row.trim()
+    if (body.startsWith("|")) body = body.drop(1)
+    if (body.endsWith("|") && !body.endsWith("\\|")) body = body.dropLast(1)
+    val cells = mutableListOf<String>()
+    val cell = StringBuilder()
+    body.forEachIndexed { i, c -> if (c == '|' && (i == 0 || body[i - 1] != '\\')) { cells += cell.toString().trim(); cell.clear() } else cell.append(c) }
+    cells += cell.toString().trim()
+    return cells
+}
+
+/** A table's rows with every cell padded to its column's width, so in monospace the pipes line up. */
+fun tidyTable(rows: List<String>): List<String> {
+    val cells = rows.map(::cellsOf)
+    val count = cells.maxOf { it.size }
+    val aligns = cells.getOrNull(1).orEmpty().map { c -> when { c.startsWith(":") && c.endsWith(":") -> 'c'; c.endsWith(":") -> 'r'; c.startsWith(":") -> 'l'; else -> ' ' } }
+    val widths = (0 until count).map { c -> maxOf(3, cells.withIndex().filter { it.index != 1 }.maxOfOrNull { it.value.getOrNull(c)?.length ?: 0 } ?: 0) }
+    return cells.mapIndexed { r, row ->
+        (0 until count).joinToString(" | ", "| ", " |") { c ->
+            if (r == 1) {
+                val w = widths[c]
+                when (aligns.getOrNull(c)) { 'c' -> ":" + "-".repeat(w - 2) + ":"; 'r' -> "-".repeat(w - 1) + ":"; 'l' -> ":" + "-".repeat(w - 1); else -> "-".repeat(w) }
+            } else (row.getOrNull(c) ?: "").padEnd(widths[c])
+        }
+    }
+}
 
 private val heading = Regex("^(#{1,6})[ \\t]+")
 private val item = Regex("^([ \\t]*)([-*+]|\\d{1,3}[.)])[ \\t]+(\\[[ xX]\\][ \\t]?)?")
@@ -102,6 +165,9 @@ fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): Not
         }
         open?.let { blocks += it..all.length }
     }
+    val tables = noteTables(all).filter { t -> blocks.none { t.range.first in it } }
+    val tableText = SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, letterSpacing = 0.sp)
+    val pipeOut = SpanStyle(color = look.mark.copy(alpha = .45f))
     var start = 0
     var lineNo = 0
     while (start <= all.length) {
@@ -109,7 +175,19 @@ fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): Not
         val line = all.substring(start, end)
         val here = at != null && at in start..end
         val block = blocks.firstOrNull { start in it }
+        val table = if (block == null) tables.firstOrNull { start in it.range } else null
         when {
+            table != null -> {
+                val inTable = at != null && at in table.range
+                val row = table.rows.indexOfFirst { it.first == start }
+                if (row == 1) add(if (inTable) faded else gone, start, end)
+                else {
+                    add(tableText, start, end)
+                    if (row == 0) add(SpanStyle(fontWeight = FontWeight.SemiBold), start, end)
+                    line.forEachIndexed { i, c -> if (c == '|' && (i == 0 || line[i - 1] != '\\')) add(if (inTable) faded else pipeOut, start + i, start + i + 1) }
+                }
+                if (here) formats += "table"
+            }
             block != null -> {
                 val inBlock = at != null && at in block
                 if (fence.containsMatchIn(line)) add(if (inBlock) faded else gone, start, end)
@@ -171,7 +249,7 @@ fun noteSpans(text: CharSequence, look: NoteLook, caret: TextRange? = null): Not
         start = end + 1
         lineNo++
     }
-    return NoteSpans(styles, checks, links, bullets, quotes, formats, chips)
+    return NoteSpans(styles, checks, links, bullets, quotes, formats, chips, tables)
 }
 
 private fun inline(
@@ -211,7 +289,62 @@ private fun inline(
 
 /** Styles the body as it's drawn, following the caret in [state]; the text itself stays as typed. */
 fun noteOutput(look: NoteLook, state: TextFieldState, focused: () -> Boolean) = OutputTransformation {
-    noteSpans(asCharSequence(), look, if (focused()) state.selection else null).styles.forEach { (style, s, e) -> if (e <= length) addStyle(style, s, e) }
+    val raw = asCharSequence().toString()
+    val caret = if (focused()) state.selection else null
+    val spans = noteSpans(raw, look, caret)
+    val display = noteDisplay(raw, caret?.start)
+    display.edits.asReversed().forEach { (s, e, r) -> replace(s, e, r) }
+    spans.styles.forEach { (style, s, e) ->
+        val a = display.map(s)
+        val b = display.map(e)
+        if (b > a && b <= length) addStyle(style, a, b)
+    }
+}
+
+/**
+ * What the field shows that the note doesn't have, or the other way round,
+ * for every table the caret isn't in: spaces before each pipe so the columns
+ * line up, and the --- row taken out. [map] takes a place in the note to its
+ * place on screen, for what is drawn over the text.
+ */
+class NoteDisplay(val edits: List<Triple<Int, Int, String>>) {
+    fun map(raw: Int): Int {
+        var shift = 0
+        for ((s, e, r) in edits) {
+            if (raw >= e && (e > s || raw >= s)) shift += r.length - (e - s)
+            else if (raw > s) return s + shift
+            else break
+        }
+        return raw + shift
+    }
+}
+
+fun noteDisplay(text: String, caret: Int?): NoteDisplay {
+    val edits = mutableListOf<Triple<Int, Int, String>>()
+    for (table in noteTables(text)) {
+        if (caret != null && caret in table.range) continue
+        /* Each row's pipes, and the width between each pair. */
+        val pipes = table.rows.map { row ->
+            val line = text.substring(row.first, row.last + 1)
+            line.indices.filter { line[it] == '|' && (it == 0 || line[it - 1] != '\\') }.map { row.first + it }
+        }
+        val widths = mutableMapOf<Int, Int>()
+        table.rows.forEachIndexed { r, row ->
+            if (r == 1) return@forEachIndexed
+            var from = row.first
+            pipes[r].forEachIndexed { c, at -> widths[c] = maxOf(widths[c] ?: 0, at - from); from = at + 1 }
+        }
+        table.rows.forEachIndexed { r, row ->
+            if (r == 1) { edits += Triple(row.first, minOf(row.last + 2, text.length), ""); return@forEachIndexed }
+            var from = row.first
+            pipes[r].forEachIndexed { c, at ->
+                val pad = (widths[c] ?: 0) - (at - from)
+                if (pad > 0) edits += Triple(at, at, " ".repeat(pad))
+                from = at + 1
+            }
+        }
+    }
+    return NoteDisplay(edits.sortedWith(compareBy({ it.first }, { it.second })))
 }
 
 /*
@@ -292,6 +425,22 @@ private fun TextFieldBuffer.setPrefix(prefix: (String) -> String?) {
     replace(line.first, line.first + old.length, want)
     val at = (line.first + want.length + keep).coerceIn(line.first + want.length, length)
     selection = TextRange(at)
+}
+
+/** A table of two columns, a head and one row to fill, on lines of its own below the caret's; its first heading picked to type over. */
+fun TextFieldState.insertTable() = edit {
+    val text = asCharSequence().toString()
+    val pos = selection.start.coerceIn(0, text.length)
+    val lineStart = text.lastIndexOf('\n', pos - 1) + 1
+    val lineEnd = text.indexOf('\n', pos).let { if (it < 0) text.length else it }
+    val empty = text.substring(lineStart, lineEnd).isBlank()
+    val above = text.substring(0, lineStart)
+    val before = if (empty) (if (above.isNotBlank() && !above.endsWith("\n\n")) "\n" else "") else "\n\n"
+    val table = tidyTable(listOf("| Heading | Heading |", "| --- | --- |", "| | |")).joinToString("\n")
+    val at = if (empty) lineStart else lineEnd
+    replace(at, if (empty) lineEnd else at, "$before$table\n")
+    val first = at + before.length + 2
+    selection = TextRange(first, first + "Heading".length)
 }
 
 fun TextFieldState.toggleChecklist() = edit { setPrefix { old -> if (old.contains("[")) null else "- [ ] " } }

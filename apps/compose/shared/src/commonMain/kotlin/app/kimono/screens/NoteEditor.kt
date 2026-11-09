@@ -132,6 +132,8 @@ import app.kimono.ui.noteOutput
 import app.kimono.ui.noteSpans
 import app.kimono.ui.toggleBold
 import app.kimono.ui.toggleChecklist
+import app.kimono.ui.insertTable
+import app.kimono.ui.noteDisplay
 import app.kimono.ui.toggleList
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -349,7 +351,12 @@ private fun NoteBody(
     val haptics = LocalHapticFeedback.current
     val caret = if (focused) draft.body.selection else null
     val spans = remember(draft.body.text, caret, look) { noteSpans(draft.body.text, look, caret) }
+    /* What's drawn over the text goes where the text is shown, past a table's padding. */
+    val display = remember(draft.body.text, caret) { noteDisplay(draft.body.text.toString(), caret?.start) }
+    val d = display::map
     SideEffect { onFormats(spans.formats) }
+    val rule = scheme.outlineVariant
+    val headWash = scheme.surfaceContainerHigh.copy(alpha = .7f)
     val dot = accent
     val bar = accent.copy(alpha = .55f)
     val chip = scheme.surfaceContainerHigh
@@ -358,11 +365,27 @@ private fun NoteBody(
             /* Inline code's chip, behind its words: 4 either side, 1 above and below, 5 round. */
             layout?.let { result ->
                 val length = result.layoutInput.text.length
+                /* A table: its head washed, a hairline under each row, as wide as its widest row. */
+                spans.tables.forEach { table ->
+                    if (d(table.range.last) > length) return@forEach
+                    val shown = table.rows.filterIndexed { i, _ -> i != 1 }
+                    val firstLine = result.getLineForOffset(d(table.range.first))
+                    val lastLine = result.getLineForOffset(minOf(d(table.range.last), length))
+                    val right = (firstLine..lastLine).maxOf { result.getLineRight(it) } + 4.dp.toPx()
+                    val hair = 1.dp.toPx()
+                    shown.forEachIndexed { i, row ->
+                        val top = result.getLineTop(result.getLineForOffset(d(row.first)))
+                        val bottom = result.getLineBottom(result.getLineForOffset(minOf(d(maxOf(row.first, row.last)), length)))
+                        if (i == 0) drawRect(headWash, Offset(-4.dp.toPx(), top), Size(right + 4.dp.toPx(), bottom - top))
+                        drawRect(rule, Offset(-4.dp.toPx(), bottom - hair), Size(right + 4.dp.toPx(), hair))
+                    }
+                }
                 spans.chips.forEach { range ->
-                    if (range.isEmpty() || range.last >= length) return@forEach
-                    for (line in result.getLineForOffset(range.first)..result.getLineForOffset(range.last)) {
-                        val from = maxOf(range.first, result.getLineStart(line))
-                        val to = minOf(range.last, result.getLineEnd(line, visibleEnd = true) - 1)
+                    val first = d(range.first); val last = d(range.last)
+                    if (range.isEmpty() || last >= length) return@forEach
+                    for (line in result.getLineForOffset(first)..result.getLineForOffset(last)) {
+                        val from = maxOf(first, result.getLineStart(line))
+                        val to = minOf(last, result.getLineEnd(line, visibleEnd = true) - 1)
                         if (to < from) continue
                         val a = result.getBoundingBox(from)
                         val b = result.getBoundingBox(to)
@@ -377,19 +400,21 @@ private fun NoteBody(
             val length = result.layoutInput.text.length
             /* Bullets as dots: filled at even depths, open rings at odd ones. */
             spans.bullets.forEach { bullet ->
-                if (bullet.at >= length) return@forEach
-                val box = result.getBoundingBox(bullet.at)
+                val at = d(bullet.at)
+                if (at >= length) return@forEach
+                val box = result.getBoundingBox(at)
                 /* A .36em dot; an open ring with a 1.5 stroke at odd depths. */
                 val r = 2.88.dp.toPx()
-                val line = result.getLineForOffset(bullet.at)
+                val line = result.getLineForOffset(at)
                 val c = Offset(box.left + 7.dp.toPx(), (result.getLineTop(line) + result.getLineBottom(line)) / 2 + .5.dp.toPx())
                 if (bullet.depth % 2 == 0) drawCircle(dot, r, c) else drawCircle(dot, r - .75.dp.toPx(), c, style = Stroke(1.5.dp.toPx()))
             }
             /* A quote's bar, down its lines. */
             spans.quotes.forEach { lines ->
-                if (lines.first >= length) return@forEach
-                val top = result.getLineTop(result.getLineForOffset(lines.first))
-                val bottom = result.getLineBottom(result.getLineForOffset((lines.last - 1).coerceIn(lines.first, length - 1)))
+                val first = d(lines.first)
+                if (first >= length) return@forEach
+                val top = result.getLineTop(result.getLineForOffset(first))
+                val bottom = result.getLineBottom(result.getLineForOffset(d(lines.last - 1).coerceIn(first, length - 1)))
                 drawRect(bar, Offset(0f, top), Size(3.dp.toPx(), bottom - top))
             }
         },
@@ -410,7 +435,7 @@ private fun NoteBody(
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         val at = layout?.getOffsetForPosition(down.position) ?: return@awaitEachGesture
-                        val link = spans.links.firstOrNull { at in it.start until it.end } ?: return@awaitEachGesture
+                        val link = spans.links.firstOrNull { at in d(it.start) until d(it.end) } ?: return@awaitEachGesture
                         val up = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation(PointerEventPass.Initial) }
                         if (up == null) {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -426,11 +451,12 @@ private fun NoteBody(
         if (result != null) {
             val density = LocalDensity.current
             spans.checks.forEach { check ->
-                if (check.at + 2 >= result.layoutInput.text.length) return@forEach
-                val box: Rect = result.getBoundingBox(check.at).let { first -> first.copy(right = result.getBoundingBox(check.at + 2).right) }
+                val at = d(check.at)
+                if (at + 2 >= result.layoutInput.text.length) return@forEach
+                val box: Rect = result.getBoundingBox(at).let { first -> first.copy(right = result.getBoundingBox(at + 2).right) }
                 /* 1.2em, at the line's start, centred on the line. */
                 val side = with(density) { 19.2.dp.toPx() }
-                val line = result.getLineForOffset(check.at)
+                val line = result.getLineForOffset(at)
                 val x = box.left
                 val y = (result.getLineTop(line) + result.getLineBottom(line) - side) / 2
                 with(density) {
@@ -480,7 +506,7 @@ private fun shortcut(draft: NoteDraft, event: androidx.compose.ui.input.key.KeyE
 }
 
 /**
- * Just above the keyboard: Bold, Italic | Heading | Bullets, Checklist | Link,
+ * Just above the keyboard: Bold, Italic | Heading | Bullets, Checklist, Table | Link,
  * Code. Flat buttons; the one for the formatting at the caret sits filled, as
  * a seal block with a pressed base. Done puts the keyboard away.
  */
@@ -503,6 +529,7 @@ private fun FormatBar(draft: NoteDraft, formats: Set<String>, done: () -> Unit) 
                 FormatButton("heading", if (level == null) "Heading" else "Heading $level", level != null, label = level?.let { "H$it" }) { body.cycleHeading() }
                 FormatButton("list", "Bullets", "bullet" in formats) { body.toggleList() }
                 FormatButton("checklist", "Checklist", "check" in formats) { body.toggleChecklist() }
+                FormatButton("table", "Table", "table" in formats) { body.insertTable() }
                 Gap()
                 FormatButton("link", "Link", "link" in formats) { body.makeLink() }
                 FormatButton("code", "Code", "code" in formats) { body.toggleCode() }

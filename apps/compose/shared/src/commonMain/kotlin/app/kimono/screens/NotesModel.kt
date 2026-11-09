@@ -213,10 +213,14 @@ class NotesModel(val notes: Notes, val drive: Drive, val platform: Platform) {
 
 /** The start of a note's prose, as the list shows it. */
 internal fun excerptOf(text: String): String {
-    val prose = text.lineSequence().filter { !it.trimStart().startsWith("#") && !it.trimStart().startsWith("```") }
-        .map { it.replace(Regex("^\\s*(?:[-*+]|\\d+\\.)\\s+(\\[[ xX]\\]\\s+)?"), "") }.joinToString(" ")
-        .replace(Regex("!\\[[^\\]]*\\]\\([^)]*\\)"), "").replace(Regex("\\[([^\\]]*)\\]\\([^)]*\\)"), "$1")
-        .replace(Regex("[#>*_`~|]"), "").replace(Regex("\\s+"), " ").trim()
+    /* Each line stays its own, set apart with a dot, so a list doesn't read as one sentence (as the Portal's). */
+    val prose = text.lineSequence().filter { !it.trimStart().startsWith("#") && !it.trimStart().startsWith("```") && !Regex("^\\s*\\|?\\s*:?-{3,}").containsMatchIn(it) }
+        .map { line ->
+            line.replace(Regex("^\\s*(?:[-*+]|\\d+\\.)\\s+(\\[[ xX]\\]\\s+)?"), "")
+                .replace(Regex("!\\[[^\\]]*\\]\\([^)]*\\)"), "").replace(Regex("\\[([^\\]]*)\\]\\([^)]*\\)"), "$1")
+                .replace(Regex("\\s*\\|\\s*"), " ").replace(Regex("[#>*_`~]"), "").replace(Regex("\\s+"), " ").trim()
+        }
+        .filter { it.isNotEmpty() }.joinToString(" · ")
     return if (prose.length > 160) prose.take(160).trimEnd() + "…" else prose
 }
 

@@ -112,6 +112,7 @@ internal val iconPaths = mapOf(
     "italic" to "M10 4.5h8 M6 19.5h8 M14 4.5l-4 15",
     "bold" to "M7 4.5h6a3.75 3.75 0 0 1 0 7.5H7z M7 12h7a3.75 3.75 0 0 1 0 7.5H7z",
     "list" to "M9 6.5h11 M9 12h11 M9 17.5h11 M4.5 6.5h.5 M4.5 12h.5 M4.5 17.5h.5",
+    "table" to "M5.5 5h13a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M3.5 10h17 M3.5 14.5h17 M12 5v14",
 )
 
 /** One of Kimono's line icons, brushed in ink as on the website (see InkIcon.kt). */
