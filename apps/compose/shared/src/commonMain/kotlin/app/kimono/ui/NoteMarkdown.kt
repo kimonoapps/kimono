@@ -33,9 +33,9 @@ import androidx.compose.ui.unit.sp
  * touches the span; heading and quote markers when it's on the line; code
  * fences while it's in the block). Bullets are drawn as dots, checkboxes as
  * ink rings; numbers stay. Pictures stay as their words, and HTML is only text.
- * A table is set in monospace with faint pipes for its columns, its head bold
- * and its --- row and uneven widths kept off the screen (not out of the note)
- * unless the caret is in it.
+ * A table never shows as Markdown: on screen its lines are blank, one for
+ * each row, and the table is drawn over them with cells to type in
+ * (screens/NoteEditor.kt, NoteTable); its columns are as wide as their dashes.
  */
 
 /** A table: where it is in the text, and where each of its rows is (the second is its --- row). */
@@ -106,21 +106,6 @@ private fun cellsOf(row: String): List<String> {
     return cells
 }
 
-/** A table's rows with every cell padded to its column's width, so in monospace the pipes line up. */
-fun tidyTable(rows: List<String>): List<String> {
-    val cells = rows.map(::cellsOf)
-    val count = cells.maxOf { it.size }
-    val aligns = cells.getOrNull(1).orEmpty().map { c -> when { c.startsWith(":") && c.endsWith(":") -> 'c'; c.endsWith(":") -> 'r'; c.startsWith(":") -> 'l'; else -> ' ' } }
-    val widths = (0 until count).map { c -> maxOf(3, cells.withIndex().filter { it.index != 1 }.maxOfOrNull { it.value.getOrNull(c)?.length ?: 0 } ?: 0) }
-    return cells.mapIndexed { r, row ->
-        (0 until count).joinToString(" | ", "| ", " |") { c ->
-            if (r == 1) {
-                val w = widths[c]
-                when (aligns.getOrNull(c)) { 'c' -> ":" + "-".repeat(w - 2) + ":"; 'r' -> "-".repeat(w - 1) + ":"; 'l' -> ":" + "-".repeat(w - 1); else -> "-".repeat(w) }
-            } else (row.getOrNull(c) ?: "").padEnd(widths[c])
-        }
-    }
-}
 
 private val heading = Regex("^(#{1,6})[ \\t]+")
 private val item = Regex("^([ \\t]*)([-*+]|\\d{1,3}[.)])[ \\t]+(\\[[ xX]\\][ \\t]?)?")
@@ -319,33 +304,66 @@ class NoteDisplay(val edits: List<Triple<Int, Int, String>>) {
     }
 }
 
-fun noteDisplay(text: String, caret: Int?): NoteDisplay {
-    val edits = mutableListOf<Triple<Int, Int, String>>()
-    for (table in noteTables(text)) {
-        if (caret != null && caret in table.range) continue
-        /* Each row's pipes, and the width between each pair. */
-        val pipes = table.rows.map { row ->
-            val line = text.substring(row.first, row.last + 1)
-            line.indices.filter { line[it] == '|' && (it == 0 || line[it - 1] != '\\') }.map { row.first + it }
-        }
-        val widths = mutableMapOf<Int, Int>()
-        table.rows.forEachIndexed { r, row ->
-            if (r == 1) return@forEachIndexed
-            var from = row.first
-            pipes[r].forEachIndexed { c, at -> widths[c] = maxOf(widths[c] ?: 0, at - from); from = at + 1 }
-        }
-        table.rows.forEachIndexed { r, row ->
-            if (r == 1) { edits += Triple(row.first, minOf(row.last + 2, text.length), ""); return@forEachIndexed }
-            var from = row.first
-            pipes[r].forEachIndexed { c, at ->
-                val pad = (widths[c] ?: 0) - (at - from)
-                if (pad > 0) edits += Triple(at, at, " ".repeat(pad))
-                from = at + 1
-            }
-        }
+fun noteDisplay(text: String, caret: Int? = null): NoteDisplay {
+    val edits = noteTables(text).map { table ->
+        /* One blank line for each row that shows (not the --- row): the table is drawn over them. */
+        Triple(table.range.first, table.range.last + 1, List(table.rows.size - 1) { "\u00A0" }.joinToString("\n"))
     }
-    return NoteDisplay(edits.sortedWith(compareBy({ it.first }, { it.second })))
+    return NoteDisplay(edits)
 }
+
+/** A table as its cells: the heading row, each column's dashes and alignment, and the rows under them. */
+data class TableModel(val head: MutableList<String>, val dashes: MutableList<Int>, val align: MutableList<String>, val rows: MutableList<MutableList<String>>) {
+    val sized get() = dashes.any { it > 3 }
+}
+
+fun parseTable(text: String): TableModel {
+    val lines = text.split("\n")
+    val head = cellsOf(lines.getOrElse(0) { "" })
+    val rule = cellsOf(lines.getOrElse(1) { "" })
+    val width = maxOf(head.size, rule.size, 1)
+    fun pad(cells: List<String>) = MutableList(width) { cells.getOrElse(it) { "" } }
+    return TableModel(
+        head = pad(head),
+        dashes = MutableList(width) { maxOf(3, rule.getOrElse(it) { "" }.count { c -> c == '-' }) },
+        align = MutableList(width) { val r = rule.getOrElse(it) { "" }; when { r.startsWith(":") && r.endsWith(":") -> "center"; r.endsWith(":") -> "right"; r.startsWith(":") -> "left"; else -> "" } },
+        rows = lines.drop(2).map { pad(cellsOf(it)) }.toMutableList(),
+    )
+}
+
+private fun cellText(text: String) = text.replace("\n", " ").replace(Regex("(^|[^\\\\])\\|"), "$1\\\\|").trim()
+
+fun writeTable(t: TableModel): String {
+    fun row(cells: List<String>) = "| " + cells.joinToString(" | ") { cellText(it).ifEmpty { " " } } + " |"
+    val rule = "| " + t.dashes.mapIndexed { i, d ->
+        val dash = "-".repeat(maxOf(3, d))
+        when (t.align.getOrNull(i)) { "center" -> ":" + dash.drop(2) + ":"; "right" -> dash.drop(1) + ":"; "left" -> ":" + dash.drop(1); else -> dash }
+    }.joinToString(" | ") + " |"
+    return (listOf(row(t.head), rule) + t.rows.map(::row)).joinToString("\n")
+}
+
+/** Changes the table that starts at [start] (as the text is now), and writes it back. */
+fun TextFieldState.editTable(start: Int, edit: (TableModel) -> Unit) {
+    val all = text.toString()
+    val table = noteTables(all).firstOrNull { it.range.first == start } ?: return
+    val model = parseTable(all.substring(table.range.first, table.range.last + 1))
+    edit(model)
+    /* No heading left: the table goes, with its line. */
+    val gone = model.head.isEmpty()
+    val written = if (gone) "" else writeTable(model)
+    val end = if (gone && table.range.last + 1 < all.length) table.range.last + 2 else table.range.last + 1
+    edit {
+        val keep = selection
+        replace(table.range.first, end, written)
+        if (gone) { selection = TextRange(table.range.first.coerceAtMost(length)); return@edit }
+        val shift = written.length - (end - table.range.first)
+        if (keep.start > table.range.last) selection = TextRange(keep.start + shift, keep.end + shift)
+    }
+}
+
+/** Which cell to put the caret in once a table is drawn: the table's start, its row (-1 the heading) and column. */
+data class TableFocus(val start: Int, val r: Int, val c: Int)
+val tableFocus = androidx.compose.runtime.mutableStateOf<TableFocus?>(null)
 
 /*
  * Typing: a new line after a list item or quote starts the next one, and an
@@ -427,20 +445,25 @@ private fun TextFieldBuffer.setPrefix(prefix: (String) -> String?) {
     selection = TextRange(at)
 }
 
-/** A table of two columns, a head and one row to fill, on lines of its own below the caret's; its first heading picked to type over. */
-fun TextFieldState.insertTable() = edit {
-    val text = asCharSequence().toString()
+/** A table of two columns, a heading row and two rows to fill, on lines of its own below the caret's; the caret goes in its first heading. */
+fun TextFieldState.insertTable() {
+    val text = text.toString()
     val pos = selection.start.coerceIn(0, text.length)
     val lineStart = text.lastIndexOf('\n', pos - 1) + 1
     val lineEnd = text.indexOf('\n', pos).let { if (it < 0) text.length else it }
     val empty = text.substring(lineStart, lineEnd).isBlank()
     val above = text.substring(0, lineStart)
     val before = if (empty) (if (above.isNotBlank() && !above.endsWith("\n\n")) "\n" else "") else "\n\n"
-    val table = tidyTable(listOf("| Heading | Heading |", "| --- | --- |", "| | |")).joinToString("\n")
+    val table = writeTable(TableModel(mutableListOf("", ""), mutableListOf(3, 3), mutableListOf("", ""), mutableListOf(mutableListOf("", ""), mutableListOf("", ""))))
     val at = if (empty) lineStart else lineEnd
-    replace(at, if (empty) lineEnd else at, "$before$table\n")
-    val first = at + before.length + 2
-    selection = TextRange(first, first + "Heading".length)
+    /* A blank line after it, or the next line would be read as one of its rows. */
+    val rest = text.substring(if (empty) lineEnd else at)
+    val after = if (rest.startsWith("\n\n")) "" else if (rest.startsWith("\n")) "\n" else "\n\n"
+    edit {
+        replace(at, if (empty) lineEnd else at, "$before$table$after")
+        selection = TextRange((at + before.length + table.length + after.length).coerceAtMost(length))
+    }
+    tableFocus.value = TableFocus(at + before.length, -1, 0)
 }
 
 fun TextFieldState.toggleChecklist() = edit { setPrefix { old -> if (old.contains("[")) null else "- [ ] " } }

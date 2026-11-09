@@ -134,6 +134,15 @@ import app.kimono.ui.toggleBold
 import app.kimono.ui.toggleChecklist
 import app.kimono.ui.insertTable
 import app.kimono.ui.noteDisplay
+import app.kimono.ui.editTable
+import app.kimono.ui.parseTable
+import app.kimono.ui.tableFocus
+import app.kimono.ui.TableModel
+import app.kimono.ui.NoteTable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import app.kimono.ui.toggleList
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -355,8 +364,13 @@ private fun NoteBody(
     val display = remember(draft.body.text, caret) { noteDisplay(draft.body.text.toString(), caret?.start) }
     val d = display::map
     SideEffect { onFormats(spans.formats) }
-    val rule = scheme.outlineVariant
-    val headWash = scheme.surfaceContainerHigh.copy(alpha = .7f)
+    /* The caret never stays inside a table's Markdown: the table is written in through its cells. */
+    LaunchedEffect(caret, spans.tables) {
+        val at = caret?.start ?: return@LaunchedEffect
+        val table = spans.tables.firstOrNull { at in it.range } ?: return@LaunchedEffect
+        val after = (table.range.last + 1).coerceAtMost(draft.body.text.length)
+        draft.body.edit { selection = TextRange(after) }
+    }
     val dot = accent
     val bar = accent.copy(alpha = .55f)
     val chip = scheme.surfaceContainerHigh
@@ -365,21 +379,6 @@ private fun NoteBody(
             /* Inline code's chip, behind its words: 4 either side, 1 above and below, 5 round. */
             layout?.let { result ->
                 val length = result.layoutInput.text.length
-                /* A table: its head washed, a hairline under each row, as wide as its widest row. */
-                spans.tables.forEach { table ->
-                    if (d(table.range.last) > length) return@forEach
-                    val shown = table.rows.filterIndexed { i, _ -> i != 1 }
-                    val firstLine = result.getLineForOffset(d(table.range.first))
-                    val lastLine = result.getLineForOffset(minOf(d(table.range.last), length))
-                    val right = (firstLine..lastLine).maxOf { result.getLineRight(it) } + 4.dp.toPx()
-                    val hair = 1.dp.toPx()
-                    shown.forEachIndexed { i, row ->
-                        val top = result.getLineTop(result.getLineForOffset(d(row.first)))
-                        val bottom = result.getLineBottom(result.getLineForOffset(minOf(d(maxOf(row.first, row.last)), length)))
-                        if (i == 0) drawRect(headWash, Offset(-4.dp.toPx(), top), Size(right + 4.dp.toPx(), bottom - top))
-                        drawRect(rule, Offset(-4.dp.toPx(), bottom - hair), Size(right + 4.dp.toPx(), hair))
-                    }
-                }
                 spans.chips.forEach { range ->
                     val first = d(range.first); val last = d(range.last)
                     if (range.isEmpty() || last >= length) return@forEach
@@ -446,6 +445,21 @@ private fun NoteBody(
                     }
                 },
         )
+        /* Each table, drawn over the blank lines that stand for it. */
+        layout?.let { result ->
+            val all = draft.body.text.toString()
+            spans.tables.forEach { table ->
+                val first = d(table.range.first)
+                if (first > result.layoutInput.text.length) return@forEach
+                val line = result.getLineForOffset(first.coerceAtMost(maxOf(0, result.layoutInput.text.length - 1)))
+                val shown = table.rows.size - 1
+                if (line + shown - 1 >= result.lineCount) return@forEach
+                val tops = (0 until shown).map { result.getLineTop(line + it) }
+                val heights = (0 until shown).map { result.getLineBottom(line + it) - result.getLineTop(line + it) }
+                val model = parseTable(all.substring(table.range.first, minOf(all.length, table.range.last + 1)))
+                NoteTableView(table.range.first, model, tops, heights, result.size.width.toFloat(), canWrite) { edit -> draft.body.editTable(table.range.first, edit) }
+            }
+        }
         /* Each checkbox's ink ring, over the brackets it stands for. */
         val result = layout
         if (result != null) {
@@ -577,3 +591,113 @@ private fun HeadButton(icon: String, name: String, onClick: () -> Unit) = Box(
     Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = name, onClick = onClick).semantics { contentDescription = name },
     contentAlignment = Alignment.Center,
 ) { Icon(kimonoIcon(icon), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp)) }
+
+/*
+ * 表 A table in a note, as a table: cells to type in, a washed heading row and
+ * hairlines between, laid over the blank lines that stand for it in the text.
+ * Next on the keyboard moves on, and past the last cell makes a row; ··· adds
+ * and takes away rows and columns; a heading's edge drags its column wider
+ * or narrower, kept as the dashes under it (eight points each). With every
+ * column at three dashes, they share the width.
+ */
+@Composable
+private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heights: List<Float>, width: Float, canWrite: Boolean, change: ((TableModel) -> Unit) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val density = LocalDensity.current
+    val cols = model.head.size
+    val perDash = 8.dp
+    val more = if (canWrite) 32.dp else 0.dp
+    val fullWidth = with(density) { width.toDp() }
+    /* While a column's edge is being dragged, its width as dragged. */
+    val dragging = remember(start) { mutableStateMapOf<Int, Float>() }
+    val widths = (0 until cols).map { c ->
+        dragging[c]?.let { with(density) { it.toDp() } }
+            ?: if (model.sized) perDash * model.dashes[c] else maxOf(72.dp, (fullWidth - more - 2.dp) / cols)
+    }
+    val focusers = remember(start, cols, model.rows.size) { List((model.rows.size + 1) * cols) { FocusRequester() } }
+    fun focuser(r: Int, c: Int) = focusers.getOrNull((r + 1) * cols + c)
+    var here by remember(start) { mutableStateOf(-1 to 0) }
+    var menu by remember { mutableStateOf(false) }
+    val pending by tableFocus
+    LaunchedEffect(pending, start, model.rows.size, cols) {
+        val want = pending ?: return@LaunchedEffect
+        if (want.start != start) return@LaunchedEffect
+        tableFocus.value = null
+        runCatching { focuser(want.r, want.c)?.requestFocus() }
+    }
+    val line = scheme.outlineVariant
+    val wash = scheme.surfaceContainerHigh
+    val textStyle = MaterialTheme.typography.bodyMedium.copy(color = scheme.onSurface, fontSize = 14.sp)
+    Box(Modifier.offset { IntOffset(0, tops.first().toInt()) }.horizontalScroll(rememberScrollState())) {
+        Column {
+            (-1 until model.rows.size).forEach { r ->
+                val height = with(density) { heights.getOrElse(r + 1) { heights.last() }.toDp() }
+                Row(
+                    Modifier.height(height).then(if (r == -1) Modifier.background(wash) else Modifier).drawBehind {
+                        drawRect(line, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
+                        if (r == -1) drawRect(line, Offset.Zero, Size(size.width, 1.dp.toPx()))
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    (0 until cols).forEach { c ->
+                        val value = (if (r == -1) model.head[c] else model.rows[r][c]).replace("\\|", "|")
+                        /* What's typed stays as typed (a space at the end, before the next word); the note's own value comes in when it differs. */
+                        var typed by remember(start, r, c) { mutableStateOf(value) }
+                        LaunchedEffect(value) { if (typed.trim() != value) typed = value }
+                        Box(Modifier.width(widths[c]).fillMaxSize().drawBehind { drawRect(line, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }, contentAlignment = Alignment.CenterStart) {
+                            val isLast = r == model.rows.size - 1 && c == cols - 1
+                            BasicTextField(
+                                value = typed,
+                                onValueChange = { next -> typed = next; change { m -> if (r == -1) m.head[c] = next else m.rows[r][c] = next } },
+                                readOnly = !canWrite, singleLine = true,
+                                textStyle = if (r == -1) textStyle.copy(fontWeight = FontWeight.Bold) else textStyle,
+                                cursorBrush = SolidColor(scheme.primary),
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+                                keyboardActions = KeyboardActions(onNext = {
+                                    if (isLast) { change { m -> m.rows.add(MutableList(cols) { "" }) }; tableFocus.value = app.kimono.ui.TableFocus(start, r + 1, 0) }
+                                    else { val next = (r + 1) * cols + c + 1; focusers.getOrNull(next)?.requestFocus() }
+                                }),
+                                decorationBox = { inner ->
+                                    Box(Modifier.padding(horizontal = 8.dp)) {
+                                        if (typed.isEmpty() && r == -1) Text("Heading", style = textStyle.copy(fontWeight = FontWeight.Bold), color = faintColor())
+                                        inner()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().then(focuser(r, c)?.let { Modifier.focusRequester(it) } ?: Modifier)
+                                    .onFocusChanged { if (it.isFocused) here = r to c },
+                            )
+                            /* A heading's edge: drag to make its column wider or narrower. */
+                            if (r == -1 && canWrite) Box(
+                                Modifier.align(Alignment.CenterEnd).width(18.dp).fillMaxSize().pointerInput(start, c, model.dashes.toList()) {
+                                    detectHorizontalDragGestures(
+                                        onDragStart = { dragging[c] = widths[c].toPx() },
+                                        onDragEnd = {
+                                            val done = (0 until cols).map { i -> dragging[i] ?: widths[i].toPx() }
+                                            dragging.clear()
+                                            change { m -> done.forEachIndexed { i, px -> m.dashes[i] = maxOf(3, (px / perDash.toPx()).toInt()) }; if (m.dashes.all { it <= 3 }) m.dashes[c] = 4 }
+                                        },
+                                        onDragCancel = { dragging.clear() },
+                                    ) { _, by -> dragging[c] = maxOf(3 * perDash.toPx(), (dragging[c] ?: widths[c].toPx()) + by) }
+                                },
+                            )
+                        }
+                    }
+                    if (canWrite) Box(Modifier.width(more).fillMaxSize(), contentAlignment = Alignment.Center) {
+                        if (r == -1) {
+                            HeadButton("more", "Table") { menu = true }
+                            InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                val (hr, hc) = here
+                                InkMenuItem("Add a row", { menu = false; change { m -> m.rows.add(maxOf(0, hr + 1).coerceAtMost(m.rows.size), MutableList(cols) { "" }) }; tableFocus.value = app.kimono.ui.TableFocus(start, maxOf(0, hr + 1), 0) }, icon = "plus")
+                                InkMenuItem("Add a column", { menu = false; change { m -> val at = (hc + 1).coerceAtMost(cols); m.head.add(at, ""); m.dashes.add(at, if (m.sized) 12 else 3); m.align.add(at, ""); m.rows.forEach { it.add(at, "") } }; tableFocus.value = app.kimono.ui.TableFocus(start, -1, (hc + 1).coerceAtMost(cols)) }, icon = "plus")
+                                if (hr >= 0) InkMenuItem("Remove this row", { menu = false; change { m -> if (m.rows.size > 1) m.rows.removeAt(hr) else m.rows[0] = MutableList(cols) { "" } } }, icon = "close")
+                                if (cols > 1) InkMenuItem("Remove this column", { menu = false; change { m -> m.head.removeAt(hc); m.dashes.removeAt(hc); m.align.removeAt(hc); m.rows.forEach { it.removeAt(hc) } } }, icon = "close")
+                                InkMenuItem("Delete the table", { menu = false; change { m -> m.rows.clear(); m.head.clear() } }, icon = "trash", danger = true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
