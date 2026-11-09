@@ -143,6 +143,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.border
 import app.kimono.ui.toggleList
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -606,17 +607,20 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
     val density = LocalDensity.current
     val cols = model.head.size
     val perDash = 8.dp
-    val more = if (canWrite) 32.dp else 0.dp
     val fullWidth = with(density) { width.toDp() }
     /* While a column's edge is being dragged, its width as dragged. */
     val dragging = remember(start) { mutableStateMapOf<Int, Float>() }
     val widths = (0 until cols).map { c ->
         dragging[c]?.let { with(density) { it.toDp() } }
-            ?: if (model.sized) perDash * model.dashes[c] else maxOf(72.dp, (fullWidth - more - 2.dp) / cols)
+            ?: if (model.sized) perDash * model.dashes[c] else maxOf(72.dp, (fullWidth - 2.dp) / cols)
     }
     val focusers = remember(start, cols, model.rows.size) { List((model.rows.size + 1) * cols) { FocusRequester() } }
     fun focuser(r: Int, c: Int) = focusers.getOrNull((r + 1) * cols + c)
     var here by remember(start) { mutableStateOf(-1 to 0) }
+    /* While a cell is being typed in, each heading's edge shows its handle. */
+    var writing by remember(start) { mutableStateOf<Pair<Int, Int>?>(null) }
+    val shape = RoundedCornerShape(12.dp)
+    val accent = appAccent()
     var menu by remember { mutableStateOf(false) }
     val pending by tableFocus
     LaunchedEffect(pending, start, model.rows.size, cols) {
@@ -628,14 +632,15 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
     val line = scheme.outlineVariant
     val wash = scheme.surfaceContainerHigh
     val textStyle = MaterialTheme.typography.bodyMedium.copy(color = scheme.onSurface, fontSize = 14.sp)
-    Box(Modifier.offset { IntOffset(0, tops.first().toInt()) }.horizontalScroll(rememberScrollState())) {
-        Column {
+    val tableWidth = widths.fold(0.dp) { a, b -> a + b }
+    Box(Modifier.offset { IntOffset(0, tops.first().toInt()) }) {
+        Box(Modifier.horizontalScroll(rememberScrollState())) {
+        Column(Modifier.clip(shape).border(1.dp, line, shape)) {
             (-1 until model.rows.size).forEach { r ->
                 val height = with(density) { heights.getOrElse(r + 1) { heights.last() }.toDp() }
                 Row(
                     Modifier.height(height).then(if (r == -1) Modifier.background(wash) else Modifier).drawBehind {
-                        drawRect(line, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
-                        if (r == -1) drawRect(line, Offset.Zero, Size(size.width, 1.dp.toPx()))
+                        if (r < model.rows.size - 1) drawRect(line, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
                     },
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -644,7 +649,8 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
                         /* What's typed stays as typed (a space at the end, before the next word); the note's own value comes in when it differs. */
                         var typed by remember(start, r, c) { mutableStateOf(value) }
                         LaunchedEffect(value) { if (typed.trim() != value) typed = value }
-                        Box(Modifier.width(widths[c]).fillMaxSize().drawBehind { drawRect(line, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }, contentAlignment = Alignment.CenterStart) {
+                        val lastColumn = c == cols - 1
+                        Box(Modifier.width(widths[c]).fillMaxSize().drawBehind { if (!lastColumn) drawRect(line, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }, contentAlignment = Alignment.CenterStart) {
                             val isLast = r == model.rows.size - 1 && c == cols - 1
                             BasicTextField(
                                 value = typed,
@@ -664,11 +670,11 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
                                     }
                                 },
                                 modifier = Modifier.fillMaxWidth().then(focuser(r, c)?.let { Modifier.focusRequester(it) } ?: Modifier)
-                                    .onFocusChanged { if (it.isFocused) here = r to c },
+                                    .onFocusChanged { if (it.isFocused) { here = r to c; writing = r to c } else if (writing == (r to c)) writing = null },
                             )
-                            /* A heading's edge: drag to make its column wider or narrower. */
+                            /* A heading's edge: drag to make its column wider or narrower. Its handle shows while you're in the table. */
                             if (r == -1 && canWrite) Box(
-                                Modifier.align(Alignment.CenterEnd).width(18.dp).fillMaxSize().pointerInput(start, c, model.dashes.toList()) {
+                                Modifier.align(Alignment.CenterEnd).width(24.dp).fillMaxSize().semantics { contentDescription = "Drag to resize the column" }.pointerInput(start, c, model.dashes.toList()) {
                                     detectHorizontalDragGestures(
                                         onDragStart = { dragging[c] = widths[c].toPx() },
                                         onDragEnd = {
@@ -679,23 +685,31 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
                                         onDragCancel = { dragging.clear() },
                                     ) { _, by -> dragging[c] = maxOf(3 * perDash.toPx(), (dragging[c] ?: widths[c].toPx()) + by) }
                                 },
-                            )
-                        }
-                    }
-                    if (canWrite) Box(Modifier.width(more).fillMaxSize(), contentAlignment = Alignment.Center) {
-                        if (r == -1) {
-                            HeadButton("more", "Table") { menu = true }
-                            InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                val (hr, hc) = here
-                                InkMenuItem("Add a row", { menu = false; change { m -> m.rows.add(maxOf(0, hr + 1).coerceAtMost(m.rows.size), MutableList(cols) { "" }) }; tableFocus.value = app.kimono.ui.TableFocus(start, maxOf(0, hr + 1), 0) }, icon = "plus")
-                                InkMenuItem("Add a column", { menu = false; change { m -> val at = (hc + 1).coerceAtMost(cols); m.head.add(at, ""); m.dashes.add(at, if (m.sized) 12 else 3); m.align.add(at, ""); m.rows.forEach { it.add(at, "") } }; tableFocus.value = app.kimono.ui.TableFocus(start, -1, (hc + 1).coerceAtMost(cols)) }, icon = "plus")
-                                if (hr >= 0) InkMenuItem("Remove this row", { menu = false; change { m -> if (m.rows.size > 1) m.rows.removeAt(hr) else m.rows[0] = MutableList(cols) { "" } } }, icon = "close")
-                                if (cols > 1) InkMenuItem("Remove this column", { menu = false; change { m -> m.head.removeAt(hc); m.dashes.removeAt(hc); m.align.removeAt(hc); m.rows.forEach { it.removeAt(hc) } } }, icon = "close")
-                                InkMenuItem("Delete the table", { menu = false; change { m -> m.rows.clear(); m.head.clear() } }, icon = "trash", danger = true)
+                                contentAlignment = Alignment.CenterEnd,
+                            ) {
+                                val shown = writing != null || dragging.containsKey(c)
+                                val alpha by animateFloatAsState(if (shown) 1f else 0f, spring())
+                                Box(
+                                    Modifier.padding(end = 2.dp).size(width = 5.dp, height = 18.dp)
+                                        .drawBehind { drawRoundRect((if (dragging.containsKey(c)) accent else accent.copy(alpha = .7f)).copy(alpha = alpha * (if (dragging.containsKey(c)) 1f else .7f)), cornerRadius = CornerRadius(3.dp.toPx())) },
+                                )
                             }
                         }
                     }
+                        }
+                    }
                 }
+            }
+        /* ··· floats over the table's corner while you're in it: rows, columns, and taking it away. */
+        if (canWrite && (writing != null || menu)) Box(Modifier.offset(x = minOf(tableWidth, fullWidth) - 32.dp, y = (-34).dp)) {
+            HeadButton("more", "Table") { menu = true }
+            InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                val (hr, hc) = here
+                InkMenuItem("Add a row", { menu = false; change { m -> m.rows.add(maxOf(0, hr + 1).coerceAtMost(m.rows.size), MutableList(cols) { "" }) }; tableFocus.value = app.kimono.ui.TableFocus(start, maxOf(0, hr + 1), 0) }, icon = "plus")
+                InkMenuItem("Add a column", { menu = false; change { m -> val at = (hc + 1).coerceAtMost(cols); m.head.add(at, ""); m.dashes.add(at, if (m.sized) 12 else 3); m.align.add(at, ""); m.rows.forEach { it.add(at, "") } }; tableFocus.value = app.kimono.ui.TableFocus(start, -1, (hc + 1).coerceAtMost(cols)) }, icon = "plus")
+                if (hr >= 0) InkMenuItem("Remove this row", { menu = false; change { m -> if (m.rows.size > 1) m.rows.removeAt(hr) else m.rows[0] = MutableList(cols) { "" } } }, icon = "close")
+                if (cols > 1) InkMenuItem("Remove this column", { menu = false; change { m -> m.head.removeAt(hc); m.dashes.removeAt(hc); m.align.removeAt(hc); m.rows.forEach { it.removeAt(hc) } } }, icon = "close")
+                InkMenuItem("Delete the table", { menu = false; change { m -> m.rows.clear(); m.head.clear() } }, icon = "trash", danger = true)
             }
         }
     }
