@@ -50,10 +50,7 @@ export const GuestChat = dynamic(() => import("./code-app").then((m) => m.GuestC
   loading: () => <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note"><InkLoader label="Opening" className="cd-artifact-loading" /></div></div>,
 });
 
-/** A chat read from Admin → Kimono AI feedback: the whole chat UI, fetched only there. */
-export const PeekChat = dynamic(() => import("./code-app").then((m) => m.PeekChat), {
-  loading: () => <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note"><InkLoader label="Opening" className="cd-artifact-loading" /></div></div>,
-});
+/** A chat kept by a thumb or a report, read from Admin → Kimono AI feedback: the whole chat UI, fetched only there. */
 export const KeptChat = dynamic(() => import("./code-app").then((m) => m.KeptChat), {
   loading: () => <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note"><InkLoader label="Opening" className="cd-artifact-loading" /></div></div>,
 });

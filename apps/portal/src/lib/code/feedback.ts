@@ -178,15 +178,15 @@ export function bank(db: DatabaseSync, since = 0, refs = false): BankEntry[] {
   return [...ratings, ...reports].sort((a, b) => a.at - b.at);
 }
 
-/** One entry by its ref; a rating with the chat it rates, to read there up to the rated answer. */
-export function bankEntry(db: DatabaseSync, ref: string): { entry: BankEntry; chat: { id: string; upTo: number } | null } | null {
+/** One entry by its ref, as it was kept. */
+export function bankEntry(db: DatabaseSync, ref: string): BankEntry | null {
   if (/^r\d+$/.test(ref)) {
     const row = db.prepare(`SELECT ${ratingCols} FROM ai_ratings WHERE rowid = ?`).get(Number(ref.slice(1))) as RatingRow | undefined;
-    return row ? { entry: ratingEntry(row, true), chat: { id: row.workspace_id, upTo: row.seq } } : null;
+    return row ? ratingEntry(row, true) : null;
   }
   if (/^p[\w-]+$/.test(ref)) {
     const row = db.prepare(`SELECT ${reportCols} FROM ai_reports WHERE id = ?`).get(ref.slice(1)) as ReportRow | undefined;
-    return row ? { entry: reportEntry(row, true), chat: null } : null;
+    return row ? reportEntry(row, true) : null;
   }
   return null;
 }

@@ -51,8 +51,8 @@ const saveAs = (url: string, name: string) => { const link = document.createElem
  * going back would wait on that.
  */
 const codeNav = "kimono-code-nav";
-/* Where these screens live: Kimono AI's own page, or Admin reading one chat. */
-let codeHome = "/code";
+/* Where these screens live. */
+const codeHome = "/code";
 function goTo(to: Record<string, string | null>, replace = false) {
   const next = new URLSearchParams();
   for (const [key, value] of Object.entries(to)) if (value) next.set(key, value);
@@ -1682,30 +1682,7 @@ function SuggestedApps() {
 
 /* ── a workspace ── */
 
-/** A chat someone gave a thumb on, read by an administrator from the feedback page: as its owner sees it, up to the rated answer, to read. */
-export function PeekChat({ token, id, upTo }: { token: string; id: string; upTo: number }) {
-  useState(() => { setShareLink(token); codeHome = window.location.pathname; return token; });
-  const params = useCodeParams();
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const load = useCallback(() => code.workspace(id).then((w) => { setWorkspace(w); setProblem(null); }, (error) => setProblem(problemText(error))), [id]);
-  useEffect(() => { void load(); }, [load]);
-  const now = useNow(false);
-  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: new Map() }), []);
-  const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
-  const tab = (["files", "changes", "app"] as const).find((t) => t === params.get("tab")) ?? "chat";
-  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><div className="cd-page">
-    <div className="cd cd-guest cd-peek has-workspace">
-      <main className="cd-main">
-        {workspace ? <WorkspaceView workspace={workspace} projects={[]} others={[]} tab={tab} path={params.get("path") ?? ""} blocked={null} onChange={() => void load()} now={now} upTo={upTo} />
-          : problem ? <div className="cd-sheet cd-empty"><p>{problem}</p></div>
-          : <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>}
-      </main>
-    </div>
-  </div></MarksContext.Provider></ViewerContext.Provider>;
-}
-
-/** A reported chat, as it was kept: the same conversation, its artifacts by name. */
+/** A thumbed or reported chat, as it was kept: the same conversation and its artifacts, nothing after. */
 export function KeptChat({ title, at, chat }: { title: string; at: number; chat: KeptAnswer[] }) {
   const events = useMemo(() => keptEvents(chat, at), [chat, at]);
   const workspace = useMemo(() => ({ id: "kept", title, kind: "chat", owner: "" }) as unknown as Workspace, [title]);
@@ -1750,11 +1727,8 @@ function keptEvents(chat: KeptAnswer[], at: number): StoredEvent[] {
   return out;
 }
 
-function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked, onChange, now, upTo }: { projects: Project[]; workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number; /** Read up to this event and no further. */ upTo?: number }) {
-  const timeline = useTimeline(workspace.id, onChange);
-  const events = useMemo(() => upTo ? timeline.events.filter((e) => e.seq <= upTo) : timeline.events, [timeline.events, upTo]);
-  const { connected, typing } = timeline;
-  const drafts = upTo ? noDrafts : timeline.drafts;
+function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked, onChange, now }: { projects: Project[]; workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
+  const { events, connected, drafts, typing } = useTimeline(workspace.id, onChange);
   const { me } = useContext(ViewerContext);
   const othersTyping = useMemo(() => typing.filter((who) => who !== me?.toLowerCase()), [typing, me]);
   /* Artifacts: the latest saved version of each, and where a big one is open (beside the chat, or full screen). */
@@ -1777,7 +1751,7 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
   /* A guest has the conversation only: files, changes and the app's controls are for people signed in. */
   const isApp = !guest && (project || Boolean(workspace.preview));
   const tab: Tab = isApp ? asked : "chat";
-  const running = !upTo && workspace.turn?.state === "running";
+  const running = workspace.turn?.state === "running";
   const [publishing, setPublishing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const go = (to: Partial<Record<"tab" | "path", string | null>>) => goTo({ w: workspace.id, tab: to.tab === "chat" ? null : to.tab ?? tab, path: to.path ?? null });

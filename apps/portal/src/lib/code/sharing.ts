@@ -1,6 +1,5 @@
 import "server-only";
 
-import { createHmac, timingSafeEqual } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { artifactOf, type Artifact } from "./artifacts";
 import { CodeProblem, newId, sharedWorkspacesOf, workspaceFor, type Workspace } from "./model";
@@ -55,7 +54,6 @@ export function accessOf(db: DatabaseSync, id: string, username: string | null, 
     const share = db.prepare("SELECT access FROM chat_shares WHERE workspace_id = ? AND username = ?").get(id, username.toLowerCase()) as { access: "read" | "edit" } | undefined;
     if (share) found = share.access;
   }
-  if (token && username && peekOk(token, id, username)) return found ?? "read";
   if (token) {
     const link = db.prepare("SELECT access FROM chat_links WHERE workspace_id = ? AND token = ?").get(id, token) as { access: "read" | "edit" } | undefined;
     /* A link that lets people write still only lets someone signed in do it. */
@@ -63,29 +61,6 @@ export function accessOf(db: DatabaseSync, id: string, username: string | null, 
     if (given && (!found || rank[given] > rank[found])) found = given;
   }
   return found;
-}
-
-/*
- * An administrator reading a chat someone gave a thumb on, from Admin →
- * Kimono AI feedback: a key the feedback page signs for that administrator
- * and that chat, good to read it for a few hours, through the same calls a
- * chat's link uses.
- */
-const peekFor = 6 * 60 * 60 * 1000;
-const peekSign = (id: string, username: string, until: number) =>
-  createHmac("sha256", process.env.AUTH_SECRET || "kimono-development").update(`kimono-peek:${id}:${username.toLowerCase()}:${until}`).digest("hex").slice(0, 32);
-
-/** A key for [username] to read chat [id]. Hand it only to an administrator. */
-export function peekToken(id: string, username: string, now = Date.now()) {
-  const until = now + peekFor;
-  return `peek.${until}.${peekSign(id, username, until)}`;
-}
-
-function peekOk(token: string, id: string, username: string, now = Date.now()) {
-  const [kind, until, sig] = token.split(".");
-  if (kind !== "peek" || !sig || !(Number(until) > now)) return false;
-  const expected = peekSign(id, username, Number(until));
-  return sig.length === expected.length && timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
 }
 
 /** The chat, for someone who needs at least [need]: refused as if it weren't there when they have no access at all. */
