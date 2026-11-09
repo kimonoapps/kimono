@@ -126,8 +126,7 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
   const [draft, setDraft] = useState<Draft | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
   /* On a note, whether you've widened the notebooks back out of their rail: kept for the next time. */
-  const [pinned, setPinnedState] = useState(false);
-  useEffect(() => { try { if (window.localStorage.getItem(panelKey) === "open") setPinnedState(true); } catch { /* this page only */ } }, []);
+  const [pinned, setPinnedState] = useState(() => { try { return typeof window !== "undefined" && window.localStorage.getItem(panelKey) === "open"; } catch { return false; } });
   const setPinned = useCallback((open: boolean) => {
     setPinnedState(open);
     try { window.localStorage.setItem(panelKey, open ? "open" : "rail"); } catch { /* this page only */ }
