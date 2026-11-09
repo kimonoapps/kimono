@@ -1436,6 +1436,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     val canSend = !sending && !uploading && (text.isNotBlank() || ready.isNotEmpty())
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val dictation = rememberDictation(code, platform, onText = { said -> val kept = joinSaid(text, said).take(32_000); text = kept; code.keep("draft:${w.id}", kept) }, onProblem = { problem = it })
     fun send() {
         if (!canSend) return
         /* Sending puts the keyboard away, so the answer can be read as it comes. */
@@ -1483,6 +1484,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                 QuoteAboveBox()
                 SlashCommands(code, text) { val kept = it; text = kept; code.keep("draft:${w.id}", kept) }
                 /* As in any chat app: attach beside the words, Send at their end, on one line; as the words grow, both stay on their last line. */
+                Box {
                 Row(verticalAlignment = Alignment.Bottom) {
                     val attach: (suspend () -> List<app.kimono.data.PickedFile>) -> Unit = { pick ->
                         scope.launch {
@@ -1512,9 +1514,12 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                     if (shown.any) IconButton(onClick = { meters = true }) { Ring(shown.most, 22.dp) }
                     /* Files, model and thinking, and every meter whatever its level, behind … */
                     IconButton(onClick = { more = true }) { Icon(kimonoIcon("more"), "Settings and usage") }
+                    if (dictation != null) MicButton(dictation)
                     /* One seal: Stop while it works and nothing is written, Send otherwise. */
                     val stopping = w.running && text.isBlank() && pending.isEmpty()
                     SendStop(stop = stopping, enabled = stopping || canSend, busy = sending, onSend = { send() }, onStop = { scope.launch { try { code.stop(w.id) } catch (p: KimonoProblem) { problem = p.message } } })
+                }
+                DictationStrip(dictation)
                 }
                 if (problem != null) Box(Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) { Problem(problem) }
             }

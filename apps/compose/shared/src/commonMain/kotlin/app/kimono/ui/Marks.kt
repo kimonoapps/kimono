@@ -49,6 +49,7 @@ internal val iconPaths = mapOf(
     "home" to "M4 11 12 4l8 7M6 9.5V20h12V9.5 M10 20v-5h4v5",
     "back" to "M19 12H5M11 6l-6 6 6 6",
     "close" to "M6 6l12 12M18 6 6 18",
+    "mic" to "M12 3.5a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0v-5a3 3 0 0 1 3-3zM5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5",
     "camera" to "M4 8h3.5L9 5.5h6L16.5 8H20v11H4z M15.5 13.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z",
     "check" to "m5 12.5 4.5 4.5L19 7.5",
     "go" to "m9 6 6 6-6 6",

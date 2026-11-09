@@ -717,6 +717,20 @@ class Code(private val session: Session, private val platform: Platform? = null)
         })
     }
 
+    /** Whether speaking a message is set up on this Kimono; asked once. */
+    private var dictation: Boolean? = null
+    suspend fun dictationOn(): Boolean = dictation ?: runCatching {
+        (json.parseToJsonElement(session.call("/api/v1/code/dictation")) as? JsonObject)?.get("on")?.let { (it as? JsonPrimitive)?.content == "true" } == true
+    }.onSuccess { dictation = it }.getOrDefault(false)
+
+    /** A finished recording (AAC in MP4) turned into words. */
+    suspend fun transcribe(audio: ByteArray): String {
+        val answer = json.parseToJsonElement(session.call("/api/v1/code/dictation", HttpMethod.Post) {
+            setBody(ByteArrayContent(audio, ContentType("audio", "mp4")))
+        }) as? JsonObject
+        return (answer?.get("text") as? JsonPrimitive)?.content?.trim() ?: ""
+    }
+
     /** The Kimono this app talks to, for the artifact frame and its engine. */
     val server: String? get() = session.server
 

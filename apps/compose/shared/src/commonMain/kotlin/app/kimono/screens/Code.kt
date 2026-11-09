@@ -523,6 +523,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
     val ready = prompt.isNotBlank() && (!onProject || chosen != null) && !sending
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val dictation = rememberDictation(code, platform, onText = { said -> prompt = joinSaid(prompt, said).take(32_000) }, onProblem = { problem = it })
     fun send() {
         if (!ready) return
         focus.clearFocus(); keyboard?.hide()
@@ -601,6 +602,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     }
                     /* attach, the words, Send: one line, as in the chat; the buttons keep to the last line as the words grow */
                     SlashCommands(code, prompt) { prompt = it }
+                    Box {
                     Row(verticalAlignment = Alignment.Bottom) {
                         val hold: (suspend () -> List<app.kimono.data.PickedFile>) -> Unit = { pick ->
                             scope.launch {
@@ -618,7 +620,10 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                             modifier = Modifier.weight(1f).heightIn(min = 44.dp).focusRequester(field).padding(horizontal = 4.dp, vertical = 11.dp),
                             decorationBox = { inner -> Box { if (prompt.isEmpty()) Text(if (onProject) "Describe what you want" else "Ask anything", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
                         )
+                        if (dictation != null) MicButton(dictation)
                         app.kimono.screens.SendStop(stop = false, enabled = ready, busy = sending, onSend = { send() })
+                    }
+                    DictationStrip(dictation)
                     }
                 }
             }

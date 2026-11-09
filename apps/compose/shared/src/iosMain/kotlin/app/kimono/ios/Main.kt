@@ -67,6 +67,12 @@ interface IosHost {
     fun thumbnail(id: String, contentVersion: Long, name: String, mime: String?, size: Long, pixels: Long, done: (String?) -> Unit)
     /** A frame of the local video at [path], saved as a JPEG, and how long the video runs; null when AVFoundation can't. */
     fun videoFrame(path: String, pixels: Long, done: (IosVideoFrame?) -> Unit)
+    /** Starts recording from the microphone (asking the first time); [done] gets a problem to show, or null once it listens. */
+    fun startRecording(done: (String?) -> Unit)
+    /** How loud it is now, 0 to 1. */
+    fun recordingLevel(): Float
+    /** Stops; [done] gets the recording's path (AAC in MP4) when [keep], else null. */
+    fun stopRecording(keep: Boolean, done: (String?) -> Unit)
 }
 
 /** A video's poster, as the Swift side makes it: where the JPEG is, and the length in seconds (0 when unknown). */
@@ -128,6 +134,13 @@ private class IosPlatform(private val host: IosHost) : Platform {
         suspendCancellableCoroutine<List<IosPickedFile>> { waiting -> host.pickMedia { waiting.resume(it) } }
             .map { IosFile(it.path, it.name, it.size, it.mimeType, host) }
     override val uploads: Uploads = IosUploads(host)
+    override val canRecord = true
+    override suspend fun startRecording(): String? = suspendCancellableCoroutine { waiting -> host.startRecording { waiting.resume(it) } }
+    override fun recordingLevel(): Float = host.recordingLevel()
+    override suspend fun stopRecording(keep: Boolean): ByteArray? {
+        val path = suspendCancellableCoroutine<String?> { waiting -> host.stopRecording(keep) { waiting.resume(it) } } ?: return null
+        return host.readFile(path, 0, 24 * 1024 * 1024).toByteArray().takeIf { it.isNotEmpty() }
+    }
     @androidx.compose.runtime.Composable
     override fun WebFrame(url: String, modifier: androidx.compose.ui.Modifier, control: app.kimono.data.WebFrameControl?, keepLinks: Boolean, onMessage: (String) -> Unit, onLoaded: () -> Unit) =
         IosWebFrame(url, modifier, control, keepLinks, ::openUrl, onMessage, onLoaded)

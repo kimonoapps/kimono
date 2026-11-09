@@ -29,12 +29,15 @@ class MainActivity : ComponentActivity() {
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> platform.filesPicked(uris) }
     /* Upload progress shows as a notification; Android 13 asks once. */
     private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    /* The microphone, asked for the first time someone speaks a message. */
+    private val microphone = registerForActivityResult(ActivityResultContracts.RequestPermission()) { allowed -> platform.microphoneAnswered(allowed) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         platform = (application as KimonoApplication).platform
         platform.activity = this
+        platform.askMicrophone = { microphone.launch(android.Manifest.permission.RECORD_AUDIO) }
         platform.launchPicker = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
         platform.launchFilePicker = {
             if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {

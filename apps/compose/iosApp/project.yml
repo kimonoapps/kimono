@@ -53,6 +53,7 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
         NSPhotoLibraryUsageDescription: Pick photos to attach, or one for your portrait.
+        NSMicrophoneUsageDescription: Speak a message to Kimono AI instead of typing it.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     preBuildScripts:

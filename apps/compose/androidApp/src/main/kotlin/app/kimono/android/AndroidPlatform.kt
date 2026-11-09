@@ -91,6 +91,63 @@ class AndroidPlatform(private val context: Context) : Platform {
     fun signInMaybeAbandoned() { signIn?.complete(null) }
     val signingIn get() = signIn != null
 
+    /* ── speaking a message: AAC in MP4, which OpenAI reads ── */
+    var askMicrophone: (() -> Unit)? = null
+    private var microphone: CompletableDeferred<Boolean>? = null
+    private var recorder: android.media.MediaRecorder? = null
+    private var recording: File? = null
+
+    fun microphoneAnswered(allowed: Boolean) { microphone?.complete(allowed); microphone = null }
+
+    override val canRecord: Boolean get() = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE)
+
+    override suspend fun startRecording(): String? {
+        if (context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val waiting = CompletableDeferred<Boolean>()
+            microphone = waiting
+            askMicrophone?.invoke() ?: return "Kimono can't hear you. Allow the microphone in Settings, then try again."
+            if (!waiting.await()) return "Kimono can't hear you. Allow the microphone in Settings, then try again."
+        }
+        return withContext(Dispatchers.IO) {
+            runCatching { recorder?.release() }
+            val file = File(context.cacheDir, "spoken.m4a").apply { delete() }
+            val made = (if (Build.VERSION.SDK_INT >= 31) android.media.MediaRecorder(context) else @Suppress("DEPRECATION") android.media.MediaRecorder())
+            try {
+                made.setAudioSource(android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION)
+                made.setOutputFormat(android.media.MediaRecorder.OutputFormat.MPEG_4)
+                made.setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
+                made.setAudioChannels(1)
+                made.setAudioSamplingRate(24_000)
+                made.setAudioEncodingBitRate(48_000)
+                made.setOutputFile(file.absolutePath)
+                made.prepare()
+                made.start()
+                recorder = made; recording = file
+                null
+            } catch (e: Exception) {
+                runCatching { made.release() }
+                "The microphone didn't start. Try again."
+            }
+        }
+    }
+
+    override fun recordingLevel(): Float {
+        val amplitude = runCatching { recorder?.maxAmplitude ?: 0 }.getOrDefault(0)
+        return kotlin.math.sqrt(amplitude / 32767f).coerceIn(0f, 1f)
+    }
+
+    override suspend fun stopRecording(keep: Boolean): ByteArray? = withContext(Dispatchers.IO) {
+        val made = recorder ?: return@withContext null
+        val file = recording
+        recorder = null; recording = null
+        /* stop() throws when nothing was recorded yet */
+        val stopped = runCatching { made.stop() }.isSuccess
+        runCatching { made.release() }
+        val bytes = if (keep && stopped && file != null && file.exists()) file.readBytes() else null
+        file?.delete()
+        bytes
+    }
+
     override suspend fun pickPicture(): ByteArray? {
         val waiting = CompletableDeferred<Uri?>()
         picking = waiting

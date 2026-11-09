@@ -56,6 +56,14 @@ interface Platform {
     fun share(text: String) {}
     /** How far the phone's clock is from UTC at [at] (ms since 1970), for showing times as the person reads them. */
     fun utcOffsetMillis(at: Long): Long = 0
+    /** Whether this phone can record a spoken message ([startRecording]). */
+    val canRecord: Boolean get() = false
+    /** Starts recording from the microphone, asking for it the first time; a problem to show, or null once it's listening. */
+    suspend fun startRecording(): String? = "This phone can't record."
+    /** How loud it is now, from 0 to 1, while recording. */
+    fun recordingLevel(): Float = 0f
+    /** Stops recording: what was heard as AAC in MP4 (audio/mp4) when [keep], else null and it's thrown away. */
+    suspend fun stopRecording(keep: Boolean): ByteArray? = null
     /** Whether the person asked the phone for less motion. */
     val reduceMotion: Boolean get() = false
     /** Drive was switched on or off on the server: the Files app entry follows. */

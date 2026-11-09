@@ -224,6 +224,55 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         }
     }
 
+    // MARK: Speaking a message
+
+    private var recorder: AVAudioRecorder?
+
+    func startRecording(done: @escaping (String?) -> Void) {
+        AVAudioApplication.requestRecordPermission { allowed in
+            DispatchQueue.main.async {
+                guard allowed else { done("Kimono can't hear you. Allow the microphone in Settings, then try again."); return }
+                do {
+                    let session = AVAudioSession.sharedInstance()
+                    try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
+                    try session.setActive(true)
+                    let url = FileManager.default.temporaryDirectory.appendingPathComponent("spoken.m4a")
+                    try? FileManager.default.removeItem(at: url)
+                    let made = try AVAudioRecorder(url: url, settings: [
+                        AVFormatIDKey: kAudioFormatMPEG4AAC,
+                        AVSampleRateKey: 24_000,
+                        AVNumberOfChannelsKey: 1,
+                        AVEncoderBitRateKey: 48_000,
+                    ])
+                    made.isMeteringEnabled = true
+                    guard made.record() else { done("The microphone didn't start. Try again."); return }
+                    self.recorder = made
+                    done(nil)
+                } catch {
+                    done("The microphone didn't start. Try again.")
+                }
+            }
+        }
+    }
+
+    func recordingLevel() -> Float {
+        guard let recorder, recorder.isRecording else { return 0 }
+        recorder.updateMeters()
+        /* decibels, -160…0, to a 0…1 the ink can draw */
+        let power = max(recorder.averagePower(forChannel: 0), -50)
+        return min(1, sqrt(pow(10, power / 20)) * 1.4)
+    }
+
+    func stopRecording(keep: Bool, done: @escaping (String?) -> Void) {
+        DispatchQueue.main.async {
+            guard let recorder = self.recorder else { done(nil); return }
+            self.recorder = nil
+            recorder.stop()
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            if keep { done(recorder.url.path) } else { recorder.deleteRecording(); done(nil) }
+        }
+    }
+
     // MARK: Photos
 
     private var picked: ((Data?) -> Void)?
