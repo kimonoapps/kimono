@@ -22,6 +22,8 @@ async function first(candidates, context, next, error) {
 const stubs = {
   /* A marker Next provides; outside Next it would throw, and installing it confuses Next's own. */
   'server-only': '',
+  /* Draws through glyphs.tsx, JSX plain Node can't load; no test looks at the picture. */
+  '@kimono/ui/bloom-svg': 'export const bloomSvg = () => "<svg/>";',
   '@/auth': 'export const auth = async () => null; export const roleFromGroups = () => "member"; export const signIn = async () => {}; export const signOut = async () => {};',
 };
 export async function resolve(specifier, context, next) {

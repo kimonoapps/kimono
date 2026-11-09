@@ -42,6 +42,8 @@ const node = http.createServer((req, res) => {
   });
 });
 await new Promise((r) => node.listen(0, '127.0.0.1', r));
+/* Closed however the tests went, so a failure can't leave the run hanging. */
+test.after(() => node.close());
 const config = { nodeAddress: `http://127.0.0.1:${node.address().port}`, nodeKey: 'k' };
 
 /* Drive: Mina's Photos with 2026/a.txt and 2026/b.txt, and Family, where she can only view. */
@@ -70,8 +72,8 @@ const driveText = async (id) => (await import('node:fs')).readFileSync(drive.blo
 
 test('the agent learns the spaces it can ask for, and nothing is open yet', () => {
   const note = access.accessPrompt(db, ws);
-  assert.match(note, /^Drive spaces you can ask for: (Code, )?Family, Photos\./);
-  assert.match(note, /keeps its files in the "Code" space/, "it's told where the person's chats keep their files");
+  assert.match(note, /^Drive spaces you can ask for: (AI, )?Family, Photos\./);
+  assert.match(note, /keeps its files in the "AI" space/, "it's told where the person's chats keep their files");
   assert.doesNotMatch(note, /Open to you now/);
 });
 
@@ -177,8 +179,7 @@ test("a chat opens another of the person's chats' files without asking", async (
   await put(other.id, 'mina', 'itinerary.md', 'day one');
   const ws5 = model.createWorkspace(db, 'mina', { prompt: 'Fifth' });
   sandboxFiles.clear();
-  const asked = await access.onRequest(db, config, ws5, null, { id: '1-00000008', space: 'Code', path: 'Chats/Plan the trip', need: 'change', why: 'To build on the plan.' });
+  const asked = await access.onRequest(db, config, ws5, null, { id: '1-00000008', space: 'AI', path: 'Chats/Plan the trip', need: 'change', why: 'To build on the plan.' });
   assert.equal(asked.event.state, 'auto');
-  assert.equal(text('.kimono/files/Code/Chats/Plan the trip/itinerary.md'), 'day one');
-  node.close();
+  assert.equal(text('.kimono/files/AI/Chats/Plan the trip/itinerary.md'), 'day one');
 });
