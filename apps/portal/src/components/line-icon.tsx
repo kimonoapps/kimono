@@ -44,9 +44,9 @@ export function LineIcon({ name, className }: { name: LineIconName; className?: 
   </svg>;
 }
 
-/** The icons' brush, defined once in the root layout. */
+/** The icons' brush, defined once in the root layout. Its room is set in the icon's own units, not its shape's: a straight stroke has no width to measure, and would vanish. */
 export function InkIconDefs() {
   return <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
-    <defs><filter id="k-ink-icon" x="-15%" y="-15%" width="130%" height="130%"><feTurbulence type="fractalNoise" baseFrequency=".22" numOctaves="2" seed="13" result="n" /><feDisplacementMap in="SourceGraphic" in2="n" scale="2" /></filter></defs>
+    <defs><filter id="k-ink-icon" filterUnits="userSpaceOnUse" x="-8" y="-8" width="240" height="240"><feTurbulence type="fractalNoise" baseFrequency=".22" numOctaves="2" seed="13" result="n" /><feDisplacementMap in="SourceGraphic" in2="n" scale="2" /></filter></defs>
   </svg>;
 }
