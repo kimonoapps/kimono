@@ -301,9 +301,12 @@ export async function disconnect(db: DatabaseSync, key: string, username: string
 
 /** One Instant charge: when (ms) and how much, in millionths of a dollar. */
 export type InstantCharge = { at: number; micros: number };
-const spends = new Map<string, { from: number; spent: number; at: number; charges: InstantCharge[] }>();
+/* What was read of each person's month: its total, and the log entries counted, so a later read only asks for what's new. */
+const spends = new Map<string, { from: number; spent: number; at: number; charges: InstantCharge[]; micros: number; seen: Set<string> }>();
+/* Logs land a little after the call: each read goes back this far over the last one, and what it already counted is skipped. */
+const overlap = 10 * 60 * 1000;
 
-type ExecutionLog = { timestamp?: string; metadata?: { credential_source?: string; instant_charge?: string } };
+type ExecutionLog = { id?: string; timestamp?: string; metadata?: { credential_source?: string; instant_charge?: string } };
 
 /** The key can't read Composio's execution logs (it needs "observability" read): spending can't be counted. */
 export class SpendUnreadable extends Error {}
@@ -323,21 +326,28 @@ export async function instantSpent(key: string, username: string, origin: string
 
 async function readSpent(key: string, username: string, origin: string, from: number, now: number): Promise<number | null> {
   const cached = spends.get(username);
+  /* The same month read before: only what's new since then (a page, not the whole month), before every turn. */
+  const carry = cached?.from === from ? cached : null;
   /* Millionths of a dollar, so adding up many small charges stays exact. */
-  let micros = 0;
-  const charges: InstantCharge[] = [];
+  let micros = carry?.micros ?? 0;
+  const charges = [...(carry?.charges ?? [])];
+  const seen = new Set(carry?.seen ?? []);
+  const since = carry ? Math.max(from, carry.at - overlap) : from;
   let cursor: string | null = null;
   for (let page = 0; page < 50; page++) {
     const response = await call(key, "/logs/tool_execution", {
       method: "POST",
-      body: JSON.stringify({ limit: 100, cursor, filters: [{ field: "user_id", operator: "==", value: composioUser(username, origin) }], time_range: { from, to: now } }),
+      body: JSON.stringify({ limit: 100, cursor, filters: [{ field: "user_id", operator: "==", value: composioUser(username, origin) }], time_range: { from: since, to: now } }),
     }).catch(() => null);
     if (response?.status === 401 || response?.status === 403) throw new SpendUnreadable(`Composio refused to show the execution logs (${response.status}): give the API key "observability" read access`);
-    if (!response?.ok) return cached?.from === from ? cached.spent : null;
+    if (!response?.ok) return carry ? carry.spent : null;
     const answer = (await response.json()) as { logs?: ExecutionLog[]; next_cursor?: string | null };
     for (const log of answer.logs ?? []) {
       const charge = Number(log.metadata?.instant_charge);
       if (log.metadata?.credential_source !== "instant_account" || !Number.isFinite(charge) || charge <= 0) continue;
+      const id = log.id || `${log.timestamp}:${charge}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
       const amount = Math.round(charge * 1_000_000);
       micros += amount;
       const at = Date.parse(log.timestamp ?? "");
@@ -347,7 +357,7 @@ async function readSpent(key: string, username: string, origin: string, from: nu
     if (!cursor || !(answer.logs ?? []).length) break;
   }
   const spent = micros / 1_000_000;
-  spends.set(username, { from, spent, at: now, charges });
+  spends.set(username, { from, spent, at: now, charges, micros, seen });
   return spent;
 }
 

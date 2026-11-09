@@ -30,7 +30,7 @@ import { portalOrigin } from "../account";
 import { serveTempLink, tempLinkBase, tempLinkKey } from "./temp-links";
 export { efforts, type Effort } from "./node";
 import { markChat, retitle, shotToDrive, syncDrive } from "./drive";
-import { historyNote, syncHistory } from "./history";
+import { hasHistory, historyNote, syncHistory } from "./history";
 import { gitAccountOf, ownProject } from "./forgejo";
 import { suggestTitle } from "./title";
 import { db as driveDb } from "../drive";
@@ -342,9 +342,12 @@ export async function ensure(config: CodeConfig, workspace: Workspace, person: {
     workspace.kind === "project" ? gitAccountOf(config, { username: workspace.owner }, false).catch(() => null) : null,
     owner ? toolSession(db(), config.composioKey, workspace.owner, portalOrigin()) : null,
   ]);
-  /* Their paid tools open or close with this month's allowance before the agent starts: checked while the node readies the sandbox. */
+  /* Their paid tools open or close with this month's allowance. Once it has been read, the turn goes on with that
+     reading while it's checked again (nothing is spent before the agent calls a tool, and each tool call checks
+     too); only the first time since Portal started does the agent wait for it, alongside the node readying the sandbox. */
+  const held = tools ? holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error)) : null;
   const [, answer] = await Promise.all([
-    tools ? holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error)) : null,
+    lastAllowance(workspace.owner) ? null : held,
     sandbox.ensure(config, workspace, person, tools, gitLogin),
   ]);
   /* A new, empty sandbox: what was synced into the old one must go back in, not be taken as deleted. */
@@ -505,15 +508,18 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     await ensure(config, workspace, who(user), { owner: byOwner });
     timing.ensured = Date.now();
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
-    /* The person's other chats, for it to look back on (none in a chat shared with others), brought in alongside the files. */
-    const historySynced = syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
+    /* The person's other chats, for it to look back on (none in a chat shared with others). Each is a file written
+       into the sandbox, so a first chat of someone with many would wait seconds for them: the agent starts as they
+       go in, told they're there (it only looks back when it needs to, and they're in by then). */
+    void syncHistory(db(), config, workspace).catch((error) => console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error));
+    const history = hasHistory(db(), workspace);
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. The task's
        files and the ones the person let it use (.kimono/files) are apart, so both sync at once. */
     const driveSynced = syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
     /* Files the person let it use follow Drive, and what is no longer allowed goes. */
     const openedSynced = syncOpened(db(), config, workspace, { readOnly: turnsByOwner(db(), workspace.id, 2)[1] === false }).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
     /* With Notes on, the person has a notebook before it is named, so the agent can write to it from the first chat. */
-    const [, openedNews, history, notes] = await Promise.all([driveSynced, openedSynced, historySynced, byOwner ? notesFor(workspace.owner) : ""]);
+    const [, openedNews, notes] = await Promise.all([driveSynced, openedSynced, byOwner ? notesFor(workspace.owner) : ""]);
     timing.synced = Date.now();
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
     const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];

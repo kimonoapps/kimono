@@ -85,7 +85,22 @@ function shared(db: DatabaseSync, id: string) {
  * Brings the sandbox's copy of the person's other chats up to date, writing
  * only what changed. Returns whether the chat has them, for the instructions.
  */
-export async function syncHistory(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<boolean> {
+/** Whether this chat has earlier chats of its person's to look back on (none in a chat shared with others): known without the sandbox. */
+export const hasHistory = (db: DatabaseSync, workspace: Workspace) =>
+  !shared(db, workspace.id) && workspacesOf(db, workspace.owner).some((chat) => chat.id !== workspace.id && chat.lastSeq > 0);
+
+/* One bringing-in per chat at a time: a turn doesn't wait for it, so two quick ones could otherwise overlap. */
+const syncing = new Map<string, Promise<boolean>>();
+
+export function syncHistory(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<boolean> {
+  const going = syncing.get(workspace.id);
+  if (going) return going.then(() => syncHistory(db, config, workspace));
+  const run = syncHistoryNow(db, config, workspace).finally(() => syncing.delete(workspace.id));
+  syncing.set(workspace.id, run);
+  return run;
+}
+
+async function syncHistoryNow(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<boolean> {
   const kept = new Map((db.prepare("SELECT chat_id, seq FROM history_synced WHERE workspace_id = ?").all(workspace.id) as { chat_id: string; seq: number }[]).map((r) => [r.chat_id, r.seq]));
   const forget = async (id: string, file: string) => {
     await sandbox.removeFile(config, workspace, `${historyDir}/${file}`).catch(() => {});

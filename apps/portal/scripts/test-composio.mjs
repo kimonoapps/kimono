@@ -227,6 +227,26 @@ test('media allowance: spending past it switches Instant off, and a new month sw
   } finally { composio.close(); }
 });
 
+test('media allowance: a later read asks only for what is new, and counts nothing twice', async () => {
+  const composio = await fakeComposio();
+  try {
+    const db = fresh();
+    const day = 24 * 60 * 60 * 1000;
+    await toolSession(db, 'key-a', 'jo', origin, month + day);
+    for (let i = 0; i < 9; i++) composio.logs.push(charge('jo', month + day + i, '0.10'));
+    const first = await media.holdMediaBudget(db, settings(50), 'jo', origin, month + 2 * day);
+    assert.equal(first.spent, 0.9);
+    const read = composio.calls.filter((c) => c.url === '/logs/tool_execution').length;
+    /* one made just before the last read, logged late, and one since */
+    composio.logs.push(charge('jo', month + 2 * day - 60_000, '1.00'), charge('jo', month + 2 * day + 30_000, '2.00'));
+    const later = await media.holdMediaBudget(db, settings(50), 'jo', origin, month + 2 * day + 2 * 60_000);
+    assert.equal(later.spent, 3.9, 'the late one and the new one, and the month’s earlier ones once');
+    const asked = composio.calls.filter((c) => c.url === '/logs/tool_execution').slice(read);
+    assert.equal(asked.length, 1, 'one page, not the month again');
+    assert.ok(asked[0].body.time_range.from > month + day + 9, 'from shortly before the last read');
+  } finally { composio.close(); }
+});
+
 test('media allowance: unreadable logs keep it as it was; 0 switches Instant off; no session, no allowance', async () => {
   const composio = await fakeComposio();
   try {
