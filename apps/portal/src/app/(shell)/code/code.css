@@ -577,7 +577,8 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-side-label { margin-top: 8px; }
 
 .cd-ws-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: start; }
-.cd-ws { height: calc(100vh - 56px); }
+/* Fill the window and no more: a floor here made the page scroll too, a second bar beside the chat's. */
+.cd-ws { height: calc(100dvh - 56px); min-height: 0; }
 .cd-bar { display: flex; align-items: center; gap: 14px; padding: 14px 18px 10px; }
 .cd-bar .cd-back { display: none; }
 .cd-iconTabs { display: flex; gap: 4px; padding: 4px; border-radius: var(--k-r-full); background: var(--k-container-high); flex: none; }
