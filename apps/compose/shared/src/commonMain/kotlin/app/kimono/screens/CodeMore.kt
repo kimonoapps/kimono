@@ -6,6 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -46,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -195,10 +199,10 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
                         /* The eight people reach for most, four to a row; the rest folded away. */
                         val shownPro = if (allPro) pro else pro.take(8)
                         items(shownPro.chunked(4), key = { row -> "pro-${row.first().app}" }) { row ->
-                            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 row.forEach { a ->
                                     Column(
-                                        Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).clickable { open("ai/connections/${a.app}") }.padding(vertical = 12.dp, horizontal = 4.dp),
+                                        Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).clickable { open("ai/connections/${a.app}") }.padding(vertical = 12.dp, horizontal = 4.dp),
                                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
                                     ) {
                                         Box { LogoTile(a.logo, 40.dp); ProBolt(Modifier.align(Alignment.TopEnd).size(14.dp)) }
@@ -237,7 +241,7 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
                             val at = found
                             if (at != null && (at.index > 0 || at.page.next != null)) item {
                                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { turn(at.index - 1) }, enabled = at.index > 0 && !turning) { Icon(kimonoIcon("back"), "Previous page", modifier = Modifier.size(20.dp)) }
+                                    IconButton(onClick = { turn(at.index - 1) }, enabled = at.index > 0 && !turning) { Icon(kimonoIcon("chevron"), "Previous page", modifier = Modifier.size(20.dp).rotate(180f)) }
                                     Text("Page ${at.index + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 8.dp))
                                     IconButton(onClick = { turn(at.index + 1) }, enabled = at.page.next != null && !turning) { Icon(kimonoIcon("chevron"), "Next page", modifier = Modifier.size(20.dp)) }
                                 }

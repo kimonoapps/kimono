@@ -891,7 +891,7 @@ function AddApps({ conn }: { conn: Conn }) {
       <Seal type="button" compact tone="quiet" busy={conn.busy === a.app} onClick={() => conn.connect(a.app)}>Connect</Seal>
     </li>)}</ul>}
     {apps && found && (found.page > 0 || found.next) ? <nav className="cd-conn-pages" aria-label="Pages">
-      <button type="button" className="cd-roundbutton" disabled={found.page === 0 || turning} onClick={() => turn(found.page - 1)} aria-label="Previous page" title="Previous page"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-flip" disabled={found.page === 0 || turning} onClick={() => turn(found.page - 1)} aria-label="Previous page" title="Previous page"><Icon name="chevron" /></button>
       <span aria-live="polite">Page {found.page + 1}</span>
       <button type="button" className="cd-roundbutton" disabled={!found.next || turning} onClick={() => turn(found.page + 1)} aria-label="Next page" title="Next page"><Icon name="chevron" /></button>
     </nav> : null}

@@ -1390,6 +1390,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd .cd-pro-tile .cd-pro-bolt { top: 1px; right: 1px; width: 14px; height: 14px; }
 @media (max-width: 560px) { .cd-pro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .cd-conn-pages { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 12px 0 4px; font: 600 14px/1 var(--k-sans); color: var(--k-on-surface-variant); font-variant-numeric: tabular-nums; }
+.cd-conn-pages .cd-flip svg { transform: rotate(180deg); }
 .cd-conn-pages .cd-roundbutton:disabled { opacity: .38; cursor: default; }
 .cd-conn-grid.is-turning { opacity: .5; transition: opacity .15s; }
 .cd-conn-search { scroll-margin-top: 12px; }

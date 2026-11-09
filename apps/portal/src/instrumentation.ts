@@ -12,6 +12,9 @@ export async function register() {
   } catch (error) {
     console.error("kimono: could not publish the deployment plan", error);
   }
+  /* Notes people left in Outline, when `kimono server import-outline` has put them out. */
+  const { importOutlineIfWaiting } = await import("./lib/notes/outline-import-run");
+  await importOutlineIfWaiting();
   /* TestFlight follows Kimono's accounts on its own: checked every quarter hour, synced when an hour has passed. */
   const { syncTestflightIfDue } = await import("./lib/testflight");
   setInterval(() => { void syncTestflightIfDue().catch(() => {}); }, 15 * 60 * 1000).unref();
