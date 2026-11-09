@@ -31,7 +31,18 @@ data class DriveSpace(
     val id: String, val name: String, val crest: String, val rootId: String, val role: String, val members: Int,
     val createdBy: String = "",
     val color: String = "plum",
-)
+    /** "notes" on a Kimono Notes space. */
+    val purpose: String? = null,
+    /** Set on your Kimono AI space, and on your Notes space: that app's colour. Drive lists them as Kimono's own. */
+    val code: SpaceApp? = null,
+    val notes: SpaceApp? = null,
+) {
+    /** Kimono's own: your AI or Notes space, apart from the spaces people make. */
+    val kimono get() = code != null || notes != null
+}
+
+@Serializable
+data class SpaceApp(val accent: String)
 
 @Serializable
 data class SpaceMember(val username: String, val role: String)

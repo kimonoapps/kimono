@@ -24,14 +24,15 @@ export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
   const code = await codeSpace(user.username);
-  const notesAccent = await notesIdentity(await getPlatformSettings()).then((n) => n.accent, () => null);
+  /* Notes' colour, or its own default when its definition can't be read: the space is Notes' either way. */
+  const notesAccent = await getPlatformSettings().then(notesIdentity).then((n) => n.accent, () => "#b56d78");
   return drive(() => {
     /* Kimono AI's space, still under a name it had before, takes its current one. */
     if (code) nameAiSpace(db(), code.id, user.username);
     return apiJson({ spaces: spacesOf(db(), user.username).map(withMark)
     .map((space) => space.id === code?.id ? { ...space, code: { accent: code.accent, repos: code.repos } }
       /* Your Notes space wears Notes' colour, as Kimono AI's wears its. */
-      : space.purpose === "notes" && space.role === "owner" && notesAccent ? { ...space, notes: { accent: notesAccent } } : space) });
+      : space.purpose === "notes" && space.role === "owner" ? { ...space, notes: { accent: notesAccent } } : space) });
   });
 }
 

@@ -131,7 +131,7 @@ fun SpaceScreen(model: DriveModel, spaceId: String, me: String?, back: () -> Uni
             else -> LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 48.dp)) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        InkCrest(here.crest, here.color, 88.dp)
+                        InkCrest(here.crest, here.color, 88.dp, seed = here.id)
                         Spacer(Modifier.height(12.dp))
                         Text(here.name, style = MaterialTheme.typography.headlineSmall)
                         Text(if (here.memberList.size == 1) "Only you" else "${here.memberList.size} people", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -49,8 +49,8 @@ fun KimonoTopBar(title: String, onBack: (() -> Unit)? = null, mark: (@Composable
 }
 
 @Composable
-fun GroupLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 8.dp))
+fun GroupLabel(text: String, modifier: Modifier = Modifier.padding(start = 28.dp, top = 24.dp, bottom = 8.dp)) {
+    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = modifier)
 }
 
 /** One entry in a grouped list. */

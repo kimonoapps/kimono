@@ -671,7 +671,7 @@ internal fun NewNotebookSheet(model: NotesModel, onDismiss: () -> Unit, made: (S
             androidx.compose.material3.OutlinedTextField(name, { name = it; problem = null }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
             if (writable.size > 1) LazyColumn(Modifier.heightIn(max = 280.dp)) {
                 items(writable, key = { it.id }) { each ->
-                    NotesRow(selected = each.id == chosen, onClick = { space = each.id }, lead = { InkCrest(each.crest, each.color, 24.dp) }) {
+                    NotesRow(selected = each.id == chosen, onClick = { space = each.id }, lead = { InkCrest(each.crest, each.color, 24.dp, seed = each.id) }) {
                         Text(each.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }

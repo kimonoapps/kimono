@@ -1654,7 +1654,7 @@ internal fun FromDriveSheet(drive: Drive, onDismiss: () -> Unit, onAdd: (List<Dr
                                 SegmentedListItem(
                                     onClick = { trail += Triple(space.rootId, space.name, space) },
                                     shapes = ListItemDefaults.segmentedShapes(index, list.size), colors = segmentColors(),
-                                    leadingContent = { InkCrest(space.crest, space.color, 24.dp) },
+                                    leadingContent = { InkCrest(space.crest, space.color, 24.dp, seed = space.id) },
                                     trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(16.dp)) },
                                 ) { Text(space.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                             }

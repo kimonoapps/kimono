@@ -145,7 +145,7 @@ internal fun SpaceChip(marks: AiMarks, name: String, open: (String) -> Unit) {
         shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Row(Modifier.padding(start = 6.dp, end = 10.dp, top = 3.dp, bottom = 3.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            if (space != null) InkCrest(space.crest, space.color, 16.dp)
+            if (space != null) InkCrest(space.crest, space.color, 16.dp, seed = space.id)
             Text(name, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer, maxLines = 1)
         }
     }

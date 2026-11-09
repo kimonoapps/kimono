@@ -170,33 +170,60 @@ val crestColours: Map<String, String> = mapOf(
     "ai" to "#2f4f80", "asagi" to "#2c7783", "koke" to "#5c7150", "kincha" to "#a8741f",
 )
 
-private class CrestDrawing(val disc: Path, val ring: Path, val ink: List<Pair<Path, Float>>, val paper: List<Pair<Path, Float>>, val ink2: Color, val paperColour: Color, val discWash: Brush, val flowerWash: Brush)
+/** One petal or leaf laid on by hand: a touch off its turn and its size, washed, then outlined with a broken brush. */
+private class CrestPiece(val path: Path, val turn: Float, val scale: Float, val outline: Path)
 
+private class CrestDrawing(val disc: Path, val ring: Path, val ink: List<CrestPiece>, val paper: List<Pair<Path, Float>>, val ink2: Color, val outline: Color, val paperColour: Color, val discWash: Brush, val flowerWash: Brush)
+
+/** As crest.ts's crestSvg: same seed, same order of draws, so a crest is the website's. */
 private fun crestDrawing(name: String, colour: String): CrestDrawing {
     val kind = crestKinds[name] ?: crestKinds.getValue("sakura")
     val ink = inkHex(crestColours[colour] ?: crestColours.getValue("plum"))
     val paper = accentRamp(crestColours[colour] ?: crestColours.getValue("plum")).tint
-    val random = InkRandom(inkSeed("crest:$name:$colour"))
-    val disc = circlePath(50f, 50f, 46f, random, .012f)
+    val random = InkRandom(inkSeed("crest-$name-$colour"))
+    val pieces = kind.ink.flatMap { shape ->
+        val path = parse(shape.d)
+        shape.turns.map { turn ->
+            val t = turn + (random.next() - .5f) * 7
+            val k = .95f + random.next() * .08f
+            CrestPiece(path, t, k, inkBrushLine(path, random, .5f))
+        }
+    }
     val ring = inkBrush(inkRing(random, 46.5f, .18f + random.next() * .25f), random, 3.6f, closed = false, lift = 110f..170f)
-    fun pieces(shapes: List<CrestShape>) = shapes.flatMap { shape -> val path = parse(shape.d); shape.turns.map { path to it } }
+    val disc = circlePath(50f, 50f, 46f, random, .012f)
     return CrestDrawing(
-        disc, ring, pieces(kind.ink), pieces(kind.paper), ink, paper,
+        disc, ring, pieces, kind.paper.flatMap { shape -> val path = parse(shape.d); shape.turns.map { path to it } }, ink, mix(ink, Color.Black, .3f), paper,
         inkWash(mix(paper, Color.White, .55f), paper, mix(paper, ink, .18f), Offset(50f, 62f), 66f),
-        Brush.radialGradient(listOf(mix(ink, Color.White, .28f), ink, mix(ink, Color.Black, .12f)), Offset(50f, 50f), 44f),
+        /* The website's flower wash: pale at the heart, the ink pooling at the rim. */
+        Brush.radialGradient(0f to mix(ink, Color.White, .5f), .55f to mix(ink, Color.White, .2f), .85f to ink, 1f to mix(ink, Color.Black, .15f), center = Offset(50f, 50f), radius = 44f),
     )
 }
 
-/** A space's crest, inked: the flower in its colour's ink on a wash of that colour, in a brushed ring. */
+/**
+ * A space's crest, inked as the website inks it: each petal washed in its
+ * colour's ink and brushed round, on a wash of that colour, in a broken ring.
+ * [seed] (the space's id) turns the whole crest, so two spaces with the same
+ * crest still read as two, as on the website.
+ */
 @Composable
-fun InkCrest(crest: String, colour: String, size: Dp, modifier: Modifier = Modifier) {
+fun InkCrest(crest: String, colour: String, size: Dp, modifier: Modifier = Modifier, seed: String? = null) {
     val drawing = remember(crest, colour) { crestDrawing(crest, colour) }
+    val turn = remember(seed) { seed?.let { (inkSeed(it).toUInt() % 360u).toFloat() } ?: 0f }
     Canvas(modifier.size(size)) {
         inBox {
-            drawWash(drawing.disc, drawing.discWash, drawing.ink2, alpha = 1f, pool = .7f)
-            drawing.ink.forEach { (path, turn) -> rotate(turn, Offset(50f, 50f)) { drawWash(path, drawing.flowerWash, Color.Black, alpha = .96f, pool = .5f) } }
-            drawing.paper.forEach { (path, turn) -> rotate(turn, Offset(50f, 50f)) { drawPath(path, drawing.paperColour) } }
-            drawPath(drawing.ring, drawing.ink2, alpha = .88f)
+            rotate(turn, Offset(50f, 50f)) {
+                drawWash(drawing.disc, drawing.discWash, drawing.ink2, alpha = 1f, pool = .7f)
+                drawing.ink.forEach { piece ->
+                    rotate(piece.turn, Offset(50f, 50f)) {
+                        scale(piece.scale, Offset(50f, 50f)) {
+                            drawWash(piece.path, drawing.flowerWash, drawing.ink2, alpha = .94f, pool = .5f)
+                            drawPath(piece.outline, drawing.outline, alpha = .85f)
+                        }
+                    }
+                }
+                drawing.paper.forEach { (path, turn) -> rotate(turn, Offset(50f, 50f)) { drawPath(path, drawing.paperColour) } }
+                drawPath(drawing.ring, drawing.ink2, alpha = .88f)
+            }
         }
     }
 }

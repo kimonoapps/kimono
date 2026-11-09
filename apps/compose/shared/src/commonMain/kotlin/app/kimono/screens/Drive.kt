@@ -3,6 +3,7 @@
 package app.kimono.screens
 
 import app.kimono.ui.InkDialog
+import app.kimono.ui.GroupLabel
 import app.kimono.ui.InkConfirm
 import app.kimono.ui.InkTitle
 import app.kimono.ui.InkSheet
@@ -172,17 +173,32 @@ fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
             when {
                 list == null && problem == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 list.isNullOrEmpty() -> Empty(problem ?: "Spaces hold your files. Make one, or ask someone to add you to theirs.")
-                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
-                    itemsIndexed(list, key = { _, s -> s.id }) { index, space ->
-                        SegmentedListItem(
-                            onClick = { open("folder/${space.rootId}") },
-                            onLongClick = { open("space/${space.id}") },
-                            shapes = ListItemDefaults.segmentedShapes(index, list.size),
-                            colors = segmentColors(),
-                            leadingContent = { InkCrest(space.crest, space.color, 44.dp) },
-                            supportingContent = { Text(listOf(roleWord(space.role), if (space.members == 1) "Just you" else "${space.members} people").joinToString(" · ")) },
-                            trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) },
-                        ) { Text(space.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                else -> LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 120.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                    /* Kimono's own spaces (AI first, then Notes), then yours, then others'. */
+                    val groups = listOf(
+                        "Kimono" to list.filter { it.kimono }.sortedBy { if (it.code != null) 0 else 1 },
+                        "Your spaces" to list.filter { !it.kimono && it.role == "owner" },
+                        "Others’ spaces" to list.filter { !it.kimono && it.role != "owner" },
+                    ).filter { it.second.isNotEmpty() }
+                    groups.forEach { (label, group) ->
+                        item(key = "label-$label") { GroupLabel(label, Modifier.padding(start = 12.dp, top = 16.dp, bottom = 4.dp)) }
+                        itemsIndexed(group, key = { _, s -> s.id }) { index, space ->
+                            SegmentedListItem(
+                                onClick = { open("folder/${space.rootId}") },
+                                onLongClick = { open("space/${space.id}") },
+                                shapes = ListItemDefaults.segmentedShapes(index, group.size),
+                                colors = segmentColors(),
+                                leadingContent = { SpaceMark(space, 44.dp) },
+                                supportingContent = {
+                                    Text(when {
+                                        space.code != null -> "Kept by Kimono AI"
+                                        space.notes != null -> "Kept by Kimono Notes"
+                                        else -> listOf(roleWord(space.role), if (space.members == 1) "Just you" else "${space.members} people").joinToString(" · ")
+                                    })
+                                },
+                                trailingContent = { Icon(kimonoIcon("go"), null, modifier = Modifier.size(18.dp)) },
+                            ) { Text(space.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        }
                     }
                     /* Folders and files shared with you from spaces you aren't in. */
                     val theirs = shared.orEmpty()
@@ -207,6 +223,16 @@ fun DriveScreen(model: DriveModel, me: String?, open: (String) -> Unit) {
     }
 }
 
+/** A space's mark: Kimono AI's and Notes' wear their app's bloom, any other its crest. */
+@Composable
+private fun SpaceMark(space: DriveSpace, size: androidx.compose.ui.unit.Dp) {
+    when {
+        space.code != null -> app.kimono.ui.InkBloom("kimono-code", space.code.accent, "code", size)
+        space.notes != null -> app.kimono.ui.InkBloom("kimono-notes", space.notes.accent, "notes", size)
+        else -> InkCrest(space.crest, space.color, size, seed = space.id)
+    }
+}
+
 private fun roleWord(role: String) = when (role) { "owner" -> "Yours"; "editor" -> "You can edit"; else -> "You can view" }
 
 /** One folder: its files and folders, uploads on their way, and what you can do with each. */
@@ -228,7 +254,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: St
     val knownSpace = remember { folder?.let { f -> model.drive.knownSpaces()?.firstOrNull { it.id == f.folder.spaceId } } }
     var canEdit by remember { mutableStateOf(knownSpace?.role != "viewer") }
     /* The space's crest stays beside the name, however deep in it you go. */
-    var crest by remember { mutableStateOf(knownSpace?.let { it.crest to it.color }) }
+    var crest by remember { mutableStateOf(knownSpace) }
     /* Long-press picks things; while any are picked, a tap adds or drops one. */
     val selected = remember { mutableStateListOf<String>() }
     var acting by remember { mutableStateOf<DriveNode?>(null) }
@@ -244,7 +270,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: St
             selected.retainAll(loaded.children.map { it.id }.toSet())
             val space = model.drive.spaces().firstOrNull { it.id == loaded.folder.spaceId }
             canEdit = space?.role != "viewer"
-            crest = space?.let { it.crest to it.color }
+            crest = space
         } catch (p: KimonoProblem) { problem = p.message }
     }
     fun act(done: String? = null, work: suspend () -> Unit) = scope.launch {
@@ -285,7 +311,7 @@ fun FolderScreen(model: DriveModel, platform: Platform, folderId: String, me: St
                     if (selected.size < all.size) TextButton(onClick = { selected.clear(); selected.addAll(all.map { it.id }) }) { Text("Select all") }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-            ) else KimonoTopBar(here?.folder?.name ?: "", onBack = back, mark = crest?.let { { InkCrest(it.first, it.second, 30.dp) } }) {
+            ) else KimonoTopBar(here?.folder?.name ?: "", onBack = back, mark = crest?.let { { SpaceMark(it, 30.dp) } }) {
                 /* Wherever you are in a space: who's in it, what each can do, and its settings. */
                 if (here != null) IconButton(onClick = { open("space/${here.folder.spaceId}") }) { Icon(kimonoIcon("person"), "People and settings") }
             }
