@@ -796,7 +796,7 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-meter b { font-size: 14px; }
 /* Pro Tools wear a lightning bolt wherever they're named. */
 .cd-pro { display: inline-flex; align-items: center; gap: 4px; }
-.cd .cd-pro svg.i { width: 14px; height: 14px; stroke-width: 1.8; }
+.cd .cd-pro svg.i { width: 14px; height: 14px; stroke-width: 1.8; fill: currentColor; }
 .cd-meter small { font-size: 12.5px; color: var(--k-on-surface-variant); }
 .cd-meter-note { margin: -4px 0 2px 42px; font-size: 12px; line-height: 1.45; color: var(--k-on-surface-variant); }
 .cd-compacted { color: var(--k-on-surface-variant); }
@@ -1031,6 +1031,14 @@ details[open] > summary > .chev { transform: rotate(225deg); margin-top: 3px; }
 .cd-conn-tile { display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; border-radius: var(--k-r-l); background: var(--k-container-low); }
 .cd-conn-on { display: inline-flex; align-items: center; gap: 6px; flex: none; height: 32px; padding: 0 12px 0 8px; border-radius: 8px; background: var(--k-secondary-container); color: var(--k-on-secondary-container); font: 600 13px/1 var(--k-sans); }
 .cd-conn-on svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
+.cd .cd-conn-tile .cd-pro-bolt, .cd .cd-app-hero .cd-pro-bolt { top: 1px; right: 1px; width: 14px; height: 14px; }
+.cd-conn-prohead { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin: 18px 0 10px; }
+.cd-conn-prohead.is-first { margin-top: 0; }
+.cd-conn-prohead > span { display: grid; gap: 4px; min-width: 0; }
+.cd-conn-prohead .cd-conn-sub { margin: 0; display: flex; }
+.cd-conn-prohead small { font-size: 13px; color: var(--k-on-surface-variant); }
+.cd-conn-budget { text-align: right; flex: none; }
+.cd-conn-budget b { font: 600 14px/1.2 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-on-surface); }
 @media (max-width: 720px) { .cd-conn-body { padding: 8px 12px 24px; } .cd-conn-card { flex-wrap: wrap; } }
 
 /* ── on a phone: the whole screen is the chat ──

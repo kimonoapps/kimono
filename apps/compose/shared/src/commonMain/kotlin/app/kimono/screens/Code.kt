@@ -691,7 +691,7 @@ internal fun UsageRow(title: String, value: Double?, detail: String, icon: Strin
         Ring(value, 26.dp)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (icon != null) Icon(kimonoIcon(icon), null, modifier = Modifier.size(15.dp))
+                if (icon != null) Icon(if (icon == "bolt") FilledBolt else kimonoIcon(icon), null, modifier = Modifier.size(15.dp))
                 Text(title, style = MaterialTheme.typography.titleSmall)
             }
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

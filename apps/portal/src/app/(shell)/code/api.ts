@@ -202,7 +202,7 @@ export const code = {
   forget: (id: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),
   changeMemory: (id: string, text: string, title?: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, json("PATCH", { text, ...(title !== undefined ? { title } : {}) })),
   /** The apps this person has connected through Composio, and whether connections are set up at all. */
-  connections: () => call<{ available: boolean; connections: Connection[] }>("/connections"),
+  connections: () => call<{ available: boolean; connections: Connection[]; pro?: ConnectableApp[] }>("/connections"),
   findApps: (q: string, cursor?: string | null) => call<{ apps: ConnectableApp[]; next: string | null }>(`/connections/apps?q=${encodeURIComponent(q)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`),
   connect: (app: string) => call<{ url: string }>("/connections", json("POST", { app })).then((r) => r.url),
   disconnect: (account: string) => call<void>(`/connections/${encodeURIComponent(account)}`, { method: "DELETE" }),

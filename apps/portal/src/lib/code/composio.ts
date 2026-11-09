@@ -431,31 +431,55 @@ export async function instantToolkit(key: string, raw: string, now = Date.now())
   return kits?.has(slug) ?? false;
 }
 
-let instantList: { slugs: Set<string>; at: number; key: string } | null = null;
+let instantList: { slugs: Set<string>; apps: App[]; at: number; key: string } | null = null;
 
 /**
  * Every toolkit with Instant tools, from Composio's toolkit list, kept a day. Only the list says: one
  * toolkit asked for alone comes back with no Instant information at all. Null when it can't be read.
  */
 async function instantKitList(key: string, now: number): Promise<Set<string> | null> {
+  return (await instantKits(key, now))?.slugs ?? null;
+}
+
+async function instantKits(key: string, now: number): Promise<{ slugs: Set<string>; apps: App[] } | null> {
   const hash = hashOf(key);
-  if (instantList && instantList.key === hash && now - instantList.at < day) return instantList.slugs;
+  if (instantList && instantList.key === hash && now - instantList.at < day) return instantList;
   return once(`kits:${hash}`, () => readKitList(key, hash, now));
 }
 
-async function readKitList(key: string, hash: string, now: number): Promise<Set<string> | null> {
+/** The apps with Pro Tools (Instant), as the catalog names and draws them; empty when it can't be read. */
+export async function proApps(key: string, now = Date.now()): Promise<App[]> {
+  if (!key) return [];
+  return (await instantKits(key, now))?.apps ?? [];
+}
+
+const leading = ["elevenlabs", "fal.ai", "black forest labs", "luma labs", "google maps", "tavily", "openai", "gemini", "deepgram", "photoroom", "firecrawl", "yelp"];
+
+type KitItem = { slug?: string; name?: string; meta?: { logo?: string; description?: string }; instant?: { supported?: boolean } | null };
+
+async function readKitList(key: string, hash: string, now: number): Promise<{ slugs: Set<string>; apps: App[] } | null> {
   const slugs = new Set<string>();
+  const apps: App[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 20; page++) {
     const response = await call(key, `/toolkits?limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`).catch(() => null);
-    if (!response?.ok) return instantList?.key === hash ? instantList.slugs : null;
+    if (!response?.ok) return instantList?.key === hash ? instantList : null;
     /* Some descriptions carry raw control characters, which JSON doesn't allow: blank them first. */
     const text = (await response.text()).replace(/[\u0000-\u001f]/g, " ");
-    const answer = JSON.parse(text) as { items?: { slug?: string; instant?: { supported?: boolean } | null }[]; next_cursor?: string | null };
-    for (const item of answer.items ?? []) if (item.slug && item.instant?.supported) slugs.add(item.slug.toLowerCase());
+    const answer = JSON.parse(text) as { items?: KitItem[]; next_cursor?: string | null };
+    for (const item of answer.items ?? []) {
+      if (!item.slug || !item.instant?.supported) continue;
+      const slug = item.slug.toLowerCase();
+      if (slugs.has(slug) || slug.startsWith("composio")) { slugs.add(slug); continue; }
+      slugs.add(slug);
+      apps.push({ app: slug, name: item.name || plainName(slug), logo: item.meta?.logo?.startsWith("https://") ? item.meta.logo : `https://logos.composio.dev/api/${encodeURIComponent(slug)}`, description: item.meta?.description ?? "", connected: false });
+    }
     cursor = answer.next_cursor || null;
     if (!cursor) break;
   }
-  instantList = { slugs, at: now, key: hash };
-  return slugs;
+  /* What people reach for (voice, pictures, video, search, maps) leads; the rest by name. */
+  const rank = (a: App) => { const i = leading.indexOf(a.name.toLowerCase()); return i < 0 ? leading.length : i; };
+  apps.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  instantList = { slugs, apps, at: now, key: hash };
+  return instantList;
 }

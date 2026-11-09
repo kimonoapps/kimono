@@ -767,7 +767,7 @@ const connStatus = (c: Connection, now: number) => c.status === "ACTIVE" ? c.sin
 
 /** The person's connections, kept fresh: coming back from connecting (another tab) looks again. */
 function useConnections() {
-  const [state, setState] = useState<{ available: boolean; connections: Connection[] } | null>(null);
+  const [state, setState] = useState<{ available: boolean; connections: Connection[]; pro?: ConnectableApp[] } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const load = useCallback(() => code.connections().then((next) => { setState(next); setProblem(null); }, (error) => setProblem(problemText(error))), []);
@@ -806,7 +806,9 @@ function ConnectionsView({ now, app }: { now: number; app: string | null }) {
       {state === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
       {state && !state.available ? <p className="cd-conn-empty">Connections aren&rsquo;t available on this Kimono yet.</p> : null}
       {state?.available ? <>
-        {mine.length ? <><h2 className="cd-conn-sub is-first">Connected</h2><YourApps now={now} conn={conn} /><h2 className="cd-conn-sub">Add apps</h2></> : null}
+        {mine.length ? <><h2 className="cd-conn-sub is-first">Connected</h2><YourApps now={now} conn={conn} /></> : null}
+        {state.pro?.length ? <ProApps apps={state.pro} first={!mine.length} /> : null}
+        {mine.length || state.pro?.length ? <h2 className="cd-conn-sub">Add apps</h2> : null}
         <AddApps conn={conn} />
       </> : null}
     </div>
@@ -830,7 +832,30 @@ function YourApps({ now, conn }: { now: number; conn: Conn }) {
   </li>)}</ul>;
 }
 
+/** Apps that work as Pro Tools, with nothing to connect: a few, then all of them when asked. */
+function ProApps({ apps, first }: { apps: ConnectableApp[]; first: boolean }) {
+  const [all, setAll] = useState(false);
+  const [media, setMedia] = useState<Usage["media"]>(null);
+  useEffect(() => { let live = true; code.usage().then((u) => { if (live) setMedia(u.media ?? null); }, () => {}); return () => { live = false; }; }, []);
+  const shown = all ? apps : apps.slice(0, 6);
+  return <>
+    <div className={cx("cd-conn-prohead", first && "is-first")}>
+      <span><h2 className="cd-conn-sub cd-pro"><Icon name="bolt" />Pro Tools</h2><small>No connection needed, with a limited budget each month.</small></span>
+      {media ? <span className="cd-conn-budget"><b>{media.spent == null ? credits(media.budget) : `${creditNumber(Math.max(0, media.budget - media.spent))} of ${credits(media.budget)} left`}</b><small>Resets {monthWords(media.resetsAt)}</small></span> : null}
+    </div>
+    <ul className="cd-conn-grid">{shown.map((a) => <li key={a.app} className="cd-conn-tile is-link">
+      <button type="button" className="cd-conn-open" onClick={() => openApp(a.app)} aria-label={`About ${a.name}`} />
+      {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
+      <span className="cd-pro-logo"><InkBlot className="cd-conn-logo" tint={inkTint.quiet} seed={a.app}><img src={a.logo} alt="" /></InkBlot><svg className="cd-pro-bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg></span>
+      <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
+    </li>)}</ul>
+    {apps.length > shown.length ? <div className="cd-conn-more"><Seal type="button" tone="quiet" onClick={() => setAll(true)}>Show all {apps.length}</Seal></div> : null}
+  </>;
+}
+
 function AddApps({ conn }: { conn: Conn }) {
+  /* The search is ready to type into, without the page jumping down to it. */
+  const searchFocused = useRef(false);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<{ q: string; apps: ConnectableApp[]; next: string | null } | null>(null);
   const [more, setMore] = useState(false);
@@ -851,7 +876,7 @@ function AddApps({ conn }: { conn: Conn }) {
     code.findApps(asked.q, asked.next).then((page) => setFound((now) => now?.q !== asked.q ? now : { q: asked.q, next: page.next, apps: [...now.apps, ...page.apps.filter((a) => realApp(a) && !now.apps.some((b) => b.app === a.app))] }), (error) => setProblem(problemText(error))).finally(() => setMore(false));
   };
   return <>
-    <label className="cd-conn-search"><Icon name="search" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search apps" aria-label="Search apps" /></label>
+    <label className="cd-conn-search"><Icon name="search" /><input ref={(el) => { if (el && !searchFocused.current) { searchFocused.current = true; el.focus({ preventScroll: true }); } }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search apps" aria-label="Search apps" /></label>
     {apps === null ? <SkeletonRows rows={2} mark={false} /> : !found?.apps.length ? <p className="cd-conn-empty">No app by that name.</p> : !apps.length ? null : <ul className="cd-conn-grid">{apps.map((a) => <li key={a.app} className="cd-conn-tile is-link">
       <button type="button" className="cd-conn-open" onClick={() => openApp(a.app)} aria-label={`About ${a.name}`} />
       {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
@@ -870,6 +895,7 @@ function AppPage({ slug, now, conn, head }: { slug: string; now: number; conn: C
   const look = useAppLook(slug);
   useEffect(() => { let live = true; code.appDetails(slug).then((d) => { if (live) setAbout(d); }, () => {}); return () => { live = false; }; }, [slug]);
   const mine = conn.state?.connections.find((c) => c.app === slug) ?? null;
+  const pro = conn.state?.pro?.some((a) => a.app === slug) ?? false;
   const name = about?.name ?? mine?.name ?? look.name;
   const logo = about?.logo ?? mine?.logo ?? look.logo;
   const more = about?.toolCount && about.toolCount > about.tools.length ? about.toolCount - about.tools.length : 0;
@@ -883,7 +909,7 @@ function AppPage({ slug, now, conn, head }: { slug: string; now: number; conn: C
         <span className="cd-conn-id">
           <b>{name}</b>
           {about?.categories.length ? <small>{about.categories.join(" · ")}</small> : null}
-          <small className={cx(mine?.status === "FAILED" && "is-bad")}>{mine ? connStatus(mine, now) : conn.state ? "Not connected" : "\u00a0"}</small>
+          <small className={cx(mine?.status === "FAILED" && "is-bad")}>{mine ? connStatus(mine, now) : pro ? <span className="cd-pro"><Icon name="bolt" />Pro Tool</span> : conn.state ? "Not connected" : "\u00a0"}</small>
         </span>
         <span className="cd-conn-acts">
           {!conn.state?.available ? null
@@ -898,7 +924,7 @@ function AppPage({ slug, now, conn, head }: { slug: string; now: number; conn: C
           <h2 className="cd-conn-sub">What Kimono AI can do with it</h2>
           <ul className="cd-app-tools">{about.tools.map((t) => <li key={t.name}><b>{t.name}</b>{t.description ? <small>{t.description}</small> : null}</li>)}</ul>
           {more ? <p className="cd-conn-empty">And {more} more.</p> : null}
-        </> : about.toolCount ? <p className="cd-app-count"><b>{about.toolCount}</b> things Kimono AI can do with it{mine ? "" : " once it\u2019s connected"}.</p> : null}
+        </> : about.toolCount ? <p className="cd-app-count"><b>{about.toolCount}</b> things Kimono AI can do with it{mine || pro ? "" : " once it\u2019s connected"}.</p> : null}
       </>}
     </div>
   </section>;

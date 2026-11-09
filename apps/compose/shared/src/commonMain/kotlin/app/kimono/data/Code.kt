@@ -133,7 +133,7 @@ data class CodeProfile(val instructions: String = "", val memories: List<Memory>
 data class Connection(val app: String, val name: String, val logo: String = "", val account: String, val status: String, val since: String? = null)
 
 @Serializable
-data class Connections(val available: Boolean = false, val connections: List<Connection> = emptyList())
+data class Connections(val available: Boolean = false, val connections: List<Connection> = emptyList(), val pro: List<ConnectableApp> = emptyList())
 
 @Serializable
 data class ConnectableApp(val app: String, val name: String, val logo: String = "", val description: String = "", val connected: Boolean = false) {
@@ -183,6 +183,8 @@ data class UsageWindow(val used: Double = 0.0, val share: Double = 1.0, val rese
 @Serializable
 data class MediaAllowance(val budget: Double = 0.0, val spent: Double? = null, val resetsAt: Long? = null, val chatSpent: Double = 0.0) {
     val fraction get() = spent?.let { if (budget <= 0.0) 0.0 else (it / budget).coerceAtMost(1.0) }
+    /** What's left of the month's budget: "1,753 of 2,000 credits left". */
+    val leftWords get() = spent?.let { "${credits((budget - it).coerceAtLeast(0.0))} of ${credits(budget)} credits left" } ?: "${credits(budget)} credits"
     val words get() = spent?.let { "${credits(it)} of ${credits(budget)} credits this month${if (chatSpent > 0) " · ${credits(chatSpent)} in this chat" else ""}" }
 }
 

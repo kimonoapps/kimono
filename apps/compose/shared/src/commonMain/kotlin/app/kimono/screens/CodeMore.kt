@@ -51,6 +51,7 @@ import app.kimono.data.CodeProfile
 import app.kimono.data.Connection
 import app.kimono.data.Connections
 import app.kimono.data.KimonoProblem
+import app.kimono.data.MediaAllowance
 import app.kimono.data.Memory
 import app.kimono.data.Platform
 import app.kimono.theme.Kata
@@ -116,6 +117,9 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
     }
     val state = conn.state
     val mine = state?.connections.orEmpty()
+    val pro = state?.pro.orEmpty()
+    var allPro by remember { mutableStateOf(false) }
+    val budget by produceState<MediaAllowance?>(null, pro.isNotEmpty()) { if (pro.isNotEmpty()) value = runCatching { code.usage().media }.getOrNull() }
     /* What's connected is listed above, so the catalogue leaves it out. */
     val apps = found?.takeIf { it.first == query }?.second?.apps?.filter { !it.connected }
     Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Connections", onBack = back, mark = { AiMark(code, 32.dp) }) }) { padding ->
@@ -136,8 +140,39 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
                                 trailingContent = { if (c.status == "FAILED") Seal("Connect again", compact = true, busy = conn.busy == c.app, onClick = { scope.launch { conn.connect(c.app) } }) else Icon(kimonoIcon("go"), null, modifier = Modifier.size(16.dp)) },
                             ) { Text(c.name, style = MaterialTheme.typography.bodyLarge) }
                         }
-                        item { Box(Modifier.padding(top = 12.dp)) { Heading("Add apps") } }
                     }
+                    if (pro.isNotEmpty()) {
+                        item {
+                            Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = if (mine.isEmpty()) 8.dp else 20.dp, bottom = 6.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Column(Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Icon(FilledBolt, null, modifier = Modifier.size(16.dp))
+                                        Text("Pro Tools", style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    Text("No connection needed, with a limited budget each month.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                budget?.let { m ->
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(m.leftWords, style = MaterialTheme.typography.labelLarge)
+                                        resetWords(m.resetsAt)?.let { Text("Resets $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                    }
+                                }
+                            }
+                        }
+                        val shownPro = if (allPro) pro else pro.take(6)
+                        itemsIndexed(shownPro, key = { _, a -> "pro-${a.app}" }) { index, a ->
+                            SegmentedListItem(
+                                onClick = { open("ai/connections/${a.app}") },
+                                shapes = ListItemDefaults.segmentedShapes(index, shownPro.size), colors = segmentColors(),
+                                leadingContent = { Box { LogoTile(a.logo, 40.dp); ProBolt(Modifier.align(Alignment.TopEnd).size(14.dp)) } },
+                                supportingContent = { if (a.description.isNotBlank()) Text(a.description, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            ) { Text(a.name, style = MaterialTheme.typography.bodyLarge) }
+                        }
+                        if (pro.size > shownPro.size) item {
+                            Box(Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) { Seal("Show all ${pro.size}", tone = SealTone.Quiet, onClick = { allPro = true }) }
+                        }
+                    }
+                    if (mine.isNotEmpty() || pro.isNotEmpty()) item { Box(Modifier.padding(top = 12.dp)) { Heading("Add apps") } }
                     item {
                         OutlinedTextField(
                             query, { query = it }, singleLine = true, placeholder = { Text("Search apps") },
@@ -197,6 +232,7 @@ fun AppConnectionScreen(code: Code, platform: Platform, slug: String, back: () -
     val about by produceState<AppDetails?>(null, slug) { value = runCatching { code.appDetails(slug) }.getOrNull() ?: AppDetails(slug, app.kimono.data.plainName(slug)) }
     var confirming by remember { mutableStateOf(false) }
     val mine = conn.state?.connections?.firstOrNull { it.app == slug }
+    val pro = conn.state?.pro.orEmpty().any { it.app == slug }
     val look by produceState(code.knownLook(slug), slug) { value = code.appLook(slug) }
     val name = about?.name ?: mine?.name ?: look?.name ?: slug
     val logo = about?.logo?.takeIf { it.isNotBlank() } ?: mine?.logo ?: look?.logo
@@ -209,7 +245,10 @@ fun AppConnectionScreen(code: Code, platform: Platform, slug: String, back: () -
                     Column(Modifier.weight(1f)) {
                         Text(name, style = MaterialTheme.typography.titleLarge)
                         about?.categories?.takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        Text(if (mine != null) connStatus(mine, time) else if (conn.state != null) "Not connected" else " ", style = MaterialTheme.typography.bodySmall, color = if (mine?.status == "FAILED") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (mine == null && pro) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Icon(FilledBolt, null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Pro Tool", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else Text(if (mine != null) connStatus(mine, time) else if (conn.state != null) "Not connected" else " ", style = MaterialTheme.typography.bodySmall, color = if (mine?.status == "FAILED") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -243,7 +282,7 @@ fun AppConnectionScreen(code: Code, platform: Platform, slug: String, back: () -
                     val more = (a.toolCount ?: 0) - a.tools.size
                     if (more > 0) item { Text("And $more more.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
                 } else if (a.toolCount != null && a.toolCount > 0) item {
-                    Text("${a.toolCount} things Kimono AI can do with it${if (mine != null) "" else " once it’s connected"}.", style = MaterialTheme.typography.bodyLarge)
+                    Text("${a.toolCount} things Kimono AI can do with it${if (mine != null || pro) "" else " once it’s connected"}.", style = MaterialTheme.typography.bodyLarge)
                 }
             }
         }

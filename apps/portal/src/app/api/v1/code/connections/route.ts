@@ -1,15 +1,27 @@
 import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { portalOrigin } from "@/lib/account";
 import { code, db } from "@/lib/code";
-import { connectLink, ConnectionProblem, connections } from "@/lib/code/composio";
+import { connectLink, ConnectionProblem, connections, proApps } from "@/lib/code/composio";
+import { budgetOf } from "@/lib/code/media";
 
-/** The apps this person has connected, and whether connections are set up here at all. */
+/**
+ * The apps this person has connected, whether connections are set up here at
+ * all, and the apps that work as Pro Tools with nothing to connect (when they
+ * have an allowance for them; one they connected uses their own account instead).
+ */
 export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
   return code(user, async (config) => {
-    if (!config.composioKey) return apiJson({ available: false, connections: [] });
-    try { return apiJson({ available: true, connections: await connections(db(), config.composioKey, user.username, portalOrigin()) }); }
+    if (!config.composioKey) return apiJson({ available: false, connections: [], pro: [] });
+    try {
+      const [mine, pro] = await Promise.all([
+        connections(db(), config.composioKey, user.username, portalOrigin()),
+        budgetOf(db(), config, user.username) > 0 ? proApps(config.composioKey) : [],
+      ]);
+      const own = new Set(mine.filter((c) => c.status === "ACTIVE").map((c) => c.app));
+      return apiJson({ available: true, connections: mine, pro: pro.filter((a) => !own.has(a.app)) });
+    }
     catch (error) { if (error instanceof ConnectionProblem) return apiError(error.status, error.message); throw error; }
   }, false);
 }

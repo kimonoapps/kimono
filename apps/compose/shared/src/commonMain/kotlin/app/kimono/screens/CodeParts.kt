@@ -169,6 +169,11 @@ internal fun AppLogo(code: Code, slug: String, size: Dp = 20.dp, pro: Boolean = 
 
 private const val boltPath = "M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z"
 
+/** The Pro Tools bolt, always filled, in the text's colour. */
+internal val FilledBolt: ImageVector by lazy {
+    ImageVector.Builder("bolt-filled", 24.dp, 24.dp, 24f, 24f).addPath(addPathNodes(boltPath), fill = SolidColor(Color.Black)).build()
+}
+
 /** A lightning bolt filled with the app's accent, cut out from the page by a ring of the surface: what marks a Pro Tool. */
 @Composable
 internal fun ProBolt(modifier: Modifier = Modifier) {
