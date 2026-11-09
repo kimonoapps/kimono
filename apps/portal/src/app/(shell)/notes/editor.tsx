@@ -187,7 +187,7 @@ const live = ViewPlugin.fromClass(class {
 }, { decorations: (plugin) => plugin.decorations });
 const atomic = EditorView.atomicRanges.of((view) => view.plugin(live)?.atomic ?? Decoration.none);
 
-/* ── tables: drawn as a table while the caret is elsewhere, as typed while it's in one ── */
+/* ── tables: always drawn as tables, and written in cell by cell ── */
 
 const focusMoved = StateEffect.define<boolean>();
 const hasFocus = StateField.define<boolean>({
@@ -220,55 +220,287 @@ function cellsOf(line: string): { text: string; at: number }[] {
   return out;
 }
 
+/*
+ * A table is always drawn as one, and written in directly: each cell is
+ * typed into where it stands, and what is typed goes back into the note's
+ * Markdown underneath, which never shows. Tab and Enter move between cells
+ * (past the last, a new row); the bar over it adds and takes away rows and
+ * columns. A column's width is the dashes under its heading, ten pixels
+ * each: dragging its edge writes more or fewer. With every column at three,
+ * the widths follow what's in them.
+ */
+type TableModel = { head: string[]; dashes: number[]; align: string[]; rows: string[][] };
+const pxPerDash = 10;
+
+function parseTable(text: string): TableModel {
+  const lines = text.split("\n");
+  const head = cellsOf(lines[0] ?? "").map((c) => c.text);
+  const rule = cellsOf(lines[1] ?? "").map((c) => c.text);
+  const width = Math.max(head.length, rule.length, 1);
+  const pad = (cells: string[]) => Array.from({ length: width }, (_, i) => cells[i] ?? "");
+  return {
+    head: pad(head),
+    dashes: Array.from({ length: width }, (_, i) => Math.max(3, (rule[i] ?? "").replace(/[^-]/g, "").length)),
+    align: Array.from({ length: width }, (_, i) => { const r = rule[i] ?? ""; return /^:-+:$/.test(r) ? "center" : /-:$/.test(r) ? "right" : /^:-/.test(r) ? "left" : ""; }),
+    rows: lines.slice(2).map((line) => pad(cellsOf(line).map((c) => c.text))),
+  };
+}
+const cellText = (text: string) => text.replace(/\n/g, " ").replace(/(^|[^\\])\|/g, "$1\\|").trim();
+function writeTable(t: TableModel): string {
+  const row = (cells: string[]) => `| ${cells.map((c) => cellText(c) || " ").join(" | ")} |`;
+  const rule = `| ${t.dashes.map((d, i) => { const dash = "-".repeat(Math.max(3, d)); return t.align[i] === "center" ? `:${dash.slice(2)}:` : t.align[i] === "right" ? `${dash.slice(1)}:` : t.align[i] === "left" ? `:${dash.slice(1)}` : dash; }).join(" | ")} |`;
+  return [row(t.head), rule, ...t.rows.map(row)].join("\n");
+}
+const sized = (t: TableModel) => t.dashes.some((d) => d > 3);
+
+/* The table this widget stands for, found again in the note as it is now. */
+function tableAt(view: EditorView, dom: HTMLElement): { from: number; to: number; model: TableModel } | null {
+  let pos: number;
+  try { pos = view.posAtDOM(dom); } catch { return null; }
+  let found: { from: number; to: number } | null = null;
+  syntaxTree(view.state).iterate({ from: pos, to: pos + 1, enter: (ref) => { if (ref.name === "Table" && !found) { found = { from: view.state.doc.lineAt(ref.from).from, to: view.state.doc.lineAt(ref.to).to }; } return !found; } });
+  if (!found) return null;
+  const { from, to } = found as { from: number; to: number };
+  return { from, to, model: parseTable(view.state.doc.sliceString(from, to)) };
+}
+
+/* Where to put the caret once a table is drawn again: its cell, and whether to pick its words. */
+let focusNext: { from: number; r: number; c: number; pick: boolean } | null = null;
+
+function placeCaret(cell: HTMLElement, pick: boolean) {
+  cell.focus();
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  if (!pick) range.collapse(false);
+  const sel = window.getSelection();
+  sel?.removeAllRanges(); sel?.addRange(range);
+}
+
 class TableView extends WidgetType {
   constructor(readonly source: string, readonly from: number) { super(); }
-  eq(other: TableView) { return other.source === this.source && other.from === this.from; }
+  eq(other: TableView) { return other.source === this.source; }
+  /* Same shape: the cells being typed in stay as they are, the rest follow. */
+  updateDOM(dom: HTMLElement, view: EditorView) {
+    const t = parseTable(this.source);
+    const cells = [...dom.querySelectorAll<HTMLElement>("[data-r]")];
+    if (cells.length !== (t.rows.length + 1) * t.head.length) return false;
+    for (const cell of cells) {
+      const r = Number(cell.dataset.r), c = Number(cell.dataset.c);
+      const raw = r < 0 ? t.head[c] : t.rows[r][c];
+      if (document.activeElement !== cell && cell.dataset.raw !== raw) fill(cell, raw);
+    }
+    layout(dom, t);
+    void view;
+    return true;
+  }
   toDOM(view: EditorView) {
-    const rows = this.source.split("\n");
-    const align = cellsOf(rows[1] ?? "").map((c) => /^:-+:$/.test(c.text) ? "center" : /-:$/.test(c.text) ? "right" : "");
+    const t = parseTable(this.source);
+    const editable = !view.state.readOnly;
     const wrap = document.createElement("div");
     wrap.className = "nt-table";
     const table = document.createElement("table");
-    let offset = 0;
-    rows.forEach((line, r) => {
-      const lineFrom = this.from + offset;
-      offset += line.length + 1;
-      if (r === 1) return;
-      const tr = document.createElement("tr");
-      const cells = cellsOf(line);
-      const width = Math.max(align.length, cells.length);
-      for (let c = 0; c < width; c++) {
-        const cell = document.createElement(r === 0 ? "th" : "td");
-        cell.innerHTML = cellHtml(cells[c]?.text ?? "");
-        cell.dataset.pos = String(lineFrom + (cells[c] ? cells[c].at + cells[c].text.length : line.length));
-        if (align[c]) cell.style.textAlign = align[c];
-        tr.append(cell);
-      }
-      (r === 0 ? (table.tHead ?? table.createTHead()) : (table.tBodies[0] ?? table.createTBody())).append(tr);
+    table.append(document.createElement("colgroup"));
+    const make = (tag: "th" | "td", r: number, c: number, raw: string) => {
+      const cell = document.createElement(tag);
+      cell.dataset.r = String(r); cell.dataset.c = String(c);
+      if (editable) { cell.contentEditable = "true"; cell.spellcheck = true; }
+      cell.dataset.placeholder = r < 0 ? "Heading" : "";
+      fill(cell, raw);
+      if (t.align[c]) cell.style.textAlign = t.align[c];
+      return cell;
+    };
+    const headRow = document.createElement("tr");
+    t.head.forEach((raw, c) => {
+      const th = make("th", -1, c, raw);
+      if (editable) { const grip = document.createElement("span"); grip.className = "nt-table-grip"; grip.contentEditable = "false"; grip.dataset.c = String(c); th.append(grip); }
+      headRow.append(th);
     });
-    wrap.append(table);
-    /* A click in a cell puts the caret at the end of that cell's text, and the table opens as typed. */
-    wrap.addEventListener("mousedown", (event) => {
-      if (event.target instanceof HTMLAnchorElement) return;
-      const cell = (event.target as Element).closest<HTMLElement>("[data-pos]");
-      event.preventDefault();
-      view.focus();
-      view.dispatch({ selection: { anchor: Math.min(Number(cell?.dataset.pos ?? this.from), view.state.doc.length) } });
-    });
+    table.createTHead().append(headRow);
+    const body = table.createTBody();
+    t.rows.forEach((row, r) => { const tr = document.createElement("tr"); row.forEach((raw, c) => tr.append(make("td", r, c, raw))); body.append(tr); });
+    const scroller = document.createElement("div");
+    scroller.className = "nt-table-scroll";
+    scroller.append(table);
+    wrap.append(scroller);
+    if (editable) wrap.append(tableBar(view, wrap));
+    layout(wrap, t);
+    if (editable) wire(view, wrap);
+    if (focusNext && focusNext.from === this.from) {
+      const want = focusNext; focusNext = null;
+      requestAnimationFrame(() => { const cell = wrap.querySelector<HTMLElement>(`[data-r="${want.r}"][data-c="${want.c}"]`); if (cell) placeCaret(cell, want.pick); });
+    }
     return wrap;
   }
   ignoreEvent() { return true; }
 }
 
+/* A cell shows its words; while it's being typed in, its Markdown. */
+function fill(cell: HTMLElement, raw: string) {
+  cell.dataset.raw = raw;
+  const grip = cell.querySelector(".nt-table-grip");
+  if (document.activeElement === cell) cell.textContent = raw.replace(/\\\|/g, "|");
+  else cell.innerHTML = cellHtml(raw);
+  if (grip) cell.append(grip);
+  cell.classList.toggle("is-empty", !raw);
+}
+
+function layout(wrap: HTMLElement, t: TableModel) {
+  const table = wrap.querySelector("table")!;
+  const group = table.querySelector("colgroup")!;
+  group.replaceChildren(...t.dashes.map((d) => { const col = document.createElement("col"); if (sized(t)) col.style.width = `${d * pxPerDash}px`; return col; }));
+  table.classList.toggle("is-sized", sized(t));
+}
+
+/* Changes the table in the note, and says where the caret goes after. */
+function change(view: EditorView, wrap: HTMLElement, edit: (t: TableModel) => void, after?: { r: number; c: number; pick?: boolean }) {
+  const found = tableAt(view, wrap);
+  if (!found) return;
+  edit(found.model);
+  const text = writeTable(found.model);
+  if (after) focusNext = { from: found.from, r: after.r, c: after.c, pick: Boolean(after.pick) };
+  view.dispatch({ changes: { from: found.from, to: found.to, insert: text }, userEvent: "input.table" });
+  /* The table is drawn again as the change lands: the caret goes into it now, before the next key. */
+  if (after) focusCellNow(view, found.from);
+}
+
+function focusCellNow(view: EditorView, from: number) {
+  const want = focusNext;
+  if (!want || want.from !== from) return;
+  for (const el of view.contentDOM.querySelectorAll<HTMLElement>(".nt-table")) {
+    if (tableAt(view, el)?.from !== from) continue;
+    const cell = el.querySelector<HTMLElement>(`[data-r="${want.r}"][data-c="${want.c}"]`);
+    if (cell) { focusNext = null; placeCaret(cell, want.pick); }
+    return;
+  }
+}
+
+/* Out of a table, below it, with a blank line between: a line straight under a table would be one of its rows. */
+function leaveBelow(view: EditorView, to: number) {
+  const doc = view.state.doc;
+  const next = doc.sliceString(to, to + 2);
+  if (next === "\n\n") view.dispatch({ selection: { anchor: to + 2 } });
+  else if (next.startsWith("\n")) view.dispatch({ changes: { from: to + 1, insert: "\n" }, selection: { anchor: to + 2 } });
+  else view.dispatch({ changes: { from: to, insert: "\n\n" }, selection: { anchor: to + 2 } });
+  view.focus();
+}
+
+function wire(view: EditorView, wrap: HTMLElement) {
+  const at = (el: EventTarget | null) => { const cell = (el as Element | null)?.closest?.<HTMLElement>("[data-r]"); return cell ? { cell, r: Number(cell.dataset.r), c: Number(cell.dataset.c) } : null; };
+  wrap.addEventListener("focusin", (event) => { const hit = at(event.target); if (hit) { hit.cell.textContent = (hit.cell.dataset.raw ?? "").replace(/\\\|/g, "|"); wrap.classList.add("is-writing"); } });
+  wrap.addEventListener("focusout", (event) => { const hit = at(event.target); if (hit) { fill(hit.cell, hit.cell.dataset.raw ?? ""); wrap.classList.remove("is-writing"); } });
+  wrap.addEventListener("input", (event) => {
+    const hit = at(event.target);
+    if (!hit) return;
+    const raw = cellText(hit.cell.textContent ?? "");
+    hit.cell.dataset.raw = raw;
+    hit.cell.classList.toggle("is-empty", !raw);
+    change(view, wrap, (t) => { if (hit.r < 0) t.head[hit.c] = raw; else if (t.rows[hit.r]) t.rows[hit.r][hit.c] = raw; });
+  });
+  wrap.addEventListener("paste", (event) => {
+    if (!at(event.target)) return;
+    event.preventDefault();
+    document.execCommand("insertText", false, (event.clipboardData?.getData("text/plain") ?? "").replace(/\s*\n\s*/g, " "));
+  });
+  wrap.addEventListener("keydown", (event) => {
+    const hit = at(event.target);
+    if (!hit) return;
+    const found = tableAt(view, wrap);
+    if (!found) return;
+    const t = found.model, cols = t.head.length, last = t.rows.length - 1;
+    const go = (r: number, c: number, pick = true) => {
+      const cell = wrap.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`);
+      if (cell) { event.preventDefault(); placeCaret(cell, pick); }
+    };
+    if (event.key === "Tab") {
+      event.preventDefault();
+      const order = hit.r * cols + hit.c + (event.shiftKey ? -1 : 1);
+      const r = Math.floor(order / cols), c = ((order % cols) + cols) % cols;
+      if (order < -cols) return;
+      if (r > last) change(view, wrap, (m) => { m.rows.push(Array(cols).fill("")); }, { r: last + 1, c: 0 });
+      else go(r, c);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (hit.r >= last) change(view, wrap, (m) => { m.rows.splice(hit.r + 1, 0, Array(cols).fill("")); }, { r: hit.r + 1, c: hit.c });
+      else go(hit.r + 1, hit.c, false);
+    } else if (event.key === "ArrowDown" && hit.r < last) go(hit.r + 1, hit.c, false);
+    else if (event.key === "ArrowUp" && hit.r > -1) go(hit.r - 1, hit.c, false);
+    else if (event.key === "ArrowDown" || event.key === "Escape") {
+      /* Out of the table, to the line after it. */
+      event.preventDefault();
+      leaveBelow(view, found.to);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: Math.max(0, found.from - 1) } });
+      view.focus();
+    } else if (event.key === "Backspace" && hit.r >= 0 && t.rows.length > 1 && t.rows[hit.r].every((x) => !x) && !(hit.cell.textContent ?? "").length) {
+      /* An empty row goes with a Backspace in it. */
+      change(view, wrap, (m) => { m.rows.splice(hit.r, 1); }, { r: Math.max(-1, hit.r - 1), c: hit.c });
+      event.preventDefault();
+    }
+  });
+  /* A column's edge, dragged: the dashes under its heading follow. */
+  wrap.addEventListener("pointerdown", (event) => {
+    const grip = (event.target as Element).closest<HTMLElement>(".nt-table-grip");
+    if (!grip) return;
+    event.preventDefault();
+    const c = Number(grip.dataset.c);
+    const table = wrap.querySelector("table")!;
+    const cols = [...table.querySelectorAll<HTMLElement>("col")];
+    const ths = [...table.querySelectorAll<HTMLElement>("th")];
+    /* The first drag fixes every column at the width it has now. */
+    const widths = ths.map((th) => th.getBoundingClientRect().width);
+    cols.forEach((col, i) => { col.style.width = `${widths[i]}px`; });
+    table.classList.add("is-sized");
+    const x0 = event.clientX, w0 = widths[c];
+    const move = (e: PointerEvent) => { widths[c] = Math.max(3 * pxPerDash, w0 + e.clientX - x0); cols[c].style.width = `${widths[c]}px`; };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      change(view, wrap, (m) => { m.dashes = widths.map((w) => Math.max(3, Math.round(w / pxPerDash))); if (m.dashes.every((d) => d <= 3)) m.dashes[c] = 4; });
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+}
+
+/* Over the table while you're in it or near it: rows, columns, and taking it away. */
+function tableBar(view: EditorView, wrap: HTMLElement) {
+  const bar = document.createElement("div");
+  bar.className = "nt-table-bar";
+  bar.contentEditable = "false";
+  const where = () => {
+    const cell = wrap.querySelector<HTMLElement>("[data-r]:focus") ?? wrap.querySelector<HTMLElement>("[data-r].was-here");
+    return cell ? { r: Number(cell.dataset.r), c: Number(cell.dataset.c) } : null;
+  };
+  wrap.addEventListener("focusin", (e) => { wrap.querySelectorAll(".was-here").forEach((x) => x.classList.remove("was-here")); (e.target as Element).closest?.("[data-r]")?.classList.add("was-here"); });
+  const button = (label: string, icon: string, run: () => void, danger = false) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.title = label; b.setAttribute("aria-label", label);
+    b.className = danger ? "is-danger" : "";
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>`;
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", run);
+    bar.append(b);
+  };
+  const row = '<path d="M4 9h16M4 15h16M4 5h16v14H4z"/>', col = '<path d="M9 4v16M15 4v16M5 4h14v16H5z"/>';
+  button("Add a row", `${row}<path d="M19 2v6M16 5h6" />`, () => { const w = where(); change(view, wrap, (m) => { const at = w ? Math.max(0, w.r + 1) : m.rows.length; m.rows.splice(at, 0, Array(m.head.length).fill("")); }, { r: w ? Math.max(0, w.r + 1) : -2, c: w?.c ?? 0 }); });
+  button("Add a column", `${col}<path d="M19 2v6M16 5h6" />`, () => { const w = where(); change(view, wrap, (m) => { const at = w ? w.c + 1 : m.head.length; m.head.splice(at, 0, ""); m.dashes.splice(at, 0, sized(m) ? 12 : 3); m.align.splice(at, 0, ""); m.rows.forEach((r) => r.splice(at, 0, "")); }, { r: -1, c: w ? w.c + 1 : 0 }); });
+  button("Remove this row", `${row}<path d="M15 2l6 6M21 2l-6 6" />`, () => { const w = where(); if (!w || w.r < 0) return; change(view, wrap, (m) => { if (m.rows.length > 1) m.rows.splice(w.r, 1); else m.rows[0] = m.rows[0].map(() => ""); }, { r: Math.max(-1, w.r - 1), c: w.c }); });
+  button("Remove this column", `${col}<path d="M15 2l6 6M21 2l-6 6" />`, () => { const w = where(); if (!w) return; change(view, wrap, (m) => { if (m.head.length < 2) return; for (const list of [m.head, m.dashes, m.align, ...m.rows] as unknown[][]) list.splice(w.c, 1); }, { r: w.r, c: Math.max(0, w.c - 1) }); });
+  button("Delete the table", '<path d="M4 7h16M9 7V4.5h6V7M6 7l1 13h10l1-13"/>', () => {
+    const found = tableAt(view, wrap);
+    if (!found) return;
+    const to = Math.min(found.to + 1, view.state.doc.length);
+    view.dispatch({ changes: { from: found.from, to }, selection: { anchor: found.from }, userEvent: "delete.table" });
+    view.focus();
+  }, true);
+  return bar;
+}
+
 function tablesOf(state: EditorState): DecorationSet {
   const found: Range<Decoration>[] = [];
-  const focused = state.field(hasFocus, false) ?? false;
-  const sel = state.selection;
   syntaxTree(state).iterate({
     enter: (ref) => {
       if (ref.name !== "Table") return;
       const from = state.doc.lineAt(ref.from).from, to = state.doc.lineAt(ref.to).to;
-      if (focused && sel.ranges.some((r) => r.from <= to && r.to >= from)) return false;
       found.push(Decoration.replace({ widget: new TableView(state.doc.sliceString(from, to), from), block: true }).range(from, to));
       return false;
     },
@@ -277,8 +509,8 @@ function tablesOf(state: EditorState): DecorationSet {
 }
 const tables = StateField.define<DecorationSet>({
   create: tablesOf,
-  update: (value, tr) => tr.docChanged || tr.selection || tr.effects.some((e) => e.is(focusMoved)) || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? tablesOf(tr.state) : value,
-  provide: (field) => EditorView.decorations.from(field),
+  update: (value, tr) => tr.docChanged || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? tablesOf(tr.state) : value,
+  provide: (field) => [EditorView.decorations.from(field), EditorView.atomicRanges.of((view) => view.state.field(field))],
 });
 
 /* ── writing together: others' cursors, and the note's shared changes ── */
@@ -616,11 +848,12 @@ function insertTable(view: EditorView): boolean {
   const line = view.state.doc.lineAt(view.state.selection.main.head);
   const empty = !line.text.trim();
   const before = empty ? (line.number > 1 && view.state.doc.line(line.number - 1).text.trim() ? "\n" : "") : "\n\n";
-  const table = "| Heading | Heading |\n| --- | --- |\n|  |  |";
+  const table = writeTable({ head: ["", ""], dashes: [3, 3], align: ["", ""], rows: [["", ""], ["", ""]] });
   const at = empty ? line.from : line.to;
-  const insert = `${before}${table}\n`;
-  const first = at + before.length + 2;
-  view.dispatch({ changes: { from: at, to: empty ? line.to : at, insert }, selection: { anchor: first, head: first + "Heading".length }, userEvent: "input.table", scrollIntoView: true });
+  const from = at + before.length;
+  focusNext = { from, r: -1, c: 0, pick: false };
+  view.dispatch({ changes: { from: at, to: empty ? line.to : at, insert: `${before}${table}\n` }, userEvent: "input.table", scrollIntoView: true });
+  focusCellNow(view, from);
   return true;
 }
 
