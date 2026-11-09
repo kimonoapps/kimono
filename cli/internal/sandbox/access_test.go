@@ -56,7 +56,7 @@ func TestAChatHasNoRepository(t *testing.T) {
 }
 
 func TestTurnsRunOnAKnownModel(t *testing.T) {
-	for name, want := range map[string]string{"": "claude-opus-5-5", "opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"} {
+	for name, want := range map[string]string{"": "claude-opus-5-5", "fable": "claude-fable-5-2", "opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"} {
 		if Models[name] != want {
 			t.Errorf("%q runs %q, want %q", name, Models[name], want)
 		}

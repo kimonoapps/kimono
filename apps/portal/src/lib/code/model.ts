@@ -40,7 +40,7 @@ export type Workspace = {
   /** When its owner archived it: it shows under Archived, not in the list. */
   archivedAt: number | null;
   /** The model that answered its last message, so Auto stays on it and switching can be warned about. */
-  lastModel: "opus" | "sonnet" | "haiku" | null;
+  lastModel: "fable" | "opus" | "sonnet" | "haiku" | null;
   /* the last turn, which is what the list shows */
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
   lastSeq: number;
@@ -472,7 +472,7 @@ function toWorkspace(row: WorkspaceRow): Workspace {
     previewName: row.preview_name ?? null,
     drive: row.drive_space && row.drive_folder ? { spaceId: row.drive_space, folderId: row.drive_folder } : null,
     createdAt: row.created_at, updatedAt: row.updated_at, lastSeq: row.last_seq, archivedAt: row.archived_at ?? null,
-    lastModel: row.last_model === "opus" || row.last_model === "sonnet" || row.last_model === "haiku" ? row.last_model : null,
+    lastModel: row.last_model === "fable" || row.last_model === "opus" || row.last_model === "sonnet" || row.last_model === "haiku" ? row.last_model : null,
     turn: row.turn_id ? { id: row.turn_id, state: row.turn_state!, startedAt: row.turn_started!, endedAt: row.turn_ended } : null,
   };
 }
@@ -631,7 +631,7 @@ export function runningTurn(db: DatabaseSync, workspaceId: string): string | nul
   return row?.id ?? null;
 }
 
-export function setLastModel(db: DatabaseSync, id: string, model: "opus" | "sonnet" | "haiku") {
+export function setLastModel(db: DatabaseSync, id: string, model: "fable" | "opus" | "sonnet" | "haiku") {
   db.prepare("UPDATE workspaces SET last_model = ? WHERE id = ?").run(model, id);
 }
 

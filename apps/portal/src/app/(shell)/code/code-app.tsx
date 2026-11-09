@@ -249,6 +249,7 @@ function useModel() {
 }
 const modelWords: Record<ModelChoice, { label: string; detail: string }> = {
   auto: { label: "Auto", detail: "Opus" },
+  fable: { label: "Fable", detail: "The hardest problems" },
   opus: { label: "Opus", detail: "Best for building things" },
   sonnet: { label: "Sonnet", detail: "Everyday work" },
   haiku: { label: "Haiku", detail: "Quick answers" },
@@ -267,7 +268,7 @@ function EffortPicker() {
   const model = useModel();
   /* Auto picks how hard it thinks along with the model: nothing to choose. */
   if (model === "auto") return null;
-  /* Sonnet and Haiku think at low or medium only (the Portal holds them there too); Opus offers all of it. The choice made for Opus is kept for when it comes back. */
+  /* Sonnet and Haiku think at low or medium only (the Portal holds them there too); Fable and Opus offer all of it. The choice made for them is kept for when it comes back. */
   const light = model === "sonnet" || model === "haiku";
   const offered: readonly Effort[] = light ? efforts.filter((e) => e === "low" || e === "medium") : efforts;
   const shown = light && !offered.includes(effort) ? "medium" : effort;
@@ -2873,7 +2874,7 @@ function Done({ event, at, answer, rating, asking, onRate }: { event: Extract<Co
   const [confirming, setConfirming] = useState<1 | -1 | null>(null);
   if (event.cancelled) return <p className="cd-note">Stopped.</p>;
   /* Which Claude answered, and how long it took. Never what it cost. */
-  const facts = [event.model ? { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null, saidAt(at)].filter(Boolean);
+  const facts = [event.model ? { fable: "Fable", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }[event.model] : null, event.durationMs ? elapsed(event.durationMs) : null, saidAt(at)].filter(Boolean);
   const give = (next: 1 | -1) => {
     if (rating === next) void onRate(null).catch(() => { /* the thumb comes back as the server has it */ });
     else { void onRate(next).catch(() => { /* Send in the dialog tries again */ }); setConfirming(next); }

@@ -737,7 +737,7 @@ internal fun EffortChip(code: Code) {
     val effort by code.effort.collectAsState()
     /* Auto picks how hard it thinks along with the model: nothing to choose. */
     if (model == "auto") return
-    /* Sonnet and Haiku think at low or medium only; the choice made for Opus is kept for when it comes back. */
+    /* Sonnet and Haiku think at low or medium only; the choice made for Fable or Opus is kept for when it comes back. */
     val light = model == "sonnet" || model == "haiku"
     val offered = if (light) listOf("low", "medium") else app.kimono.data.efforts
     val shown = if (light && effort !in offered) "medium" else effort

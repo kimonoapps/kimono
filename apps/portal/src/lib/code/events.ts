@@ -28,7 +28,7 @@ export type CodeEvent =
   | { kind: "typing"; by: string }
   /** What a Pro Tool call cost, in US dollars, as Composio charged it; read a moment after it answered. */
   | { kind: "tool-cost"; id: string; usd: number }
-  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** Which Claude answered. */ model?: "opus" | "sonnet" | "haiku"; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
+  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; /** Which Claude answered. */ model?: "fable" | "opus" | "sonnet" | "haiku"; /** How full the agent's context was at the end, in tokens, and of how many. */ context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }

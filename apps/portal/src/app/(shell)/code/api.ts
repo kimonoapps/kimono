@@ -24,7 +24,7 @@ export type Workspace = {
   /** When its owner archived it, if they did. */
   archivedAt?: number | null;
   /** The model that answered its last message. */
-  lastModel?: "opus" | "sonnet" | "haiku" | null;
+  lastModel?: "fable" | "opus" | "sonnet" | "haiku" | null;
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
 };
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };
@@ -44,7 +44,7 @@ export type CodeEvent =
   | { kind: "typing"; by: string }
   /** What a Pro Tool call cost, in US dollars. */
   | { kind: "tool-cost"; id: string; usd: number }
-  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; model?: "opus" | "sonnet" | "haiku"; context?: { used: number; window?: number } }
+  | { kind: "done"; ok: boolean; cancelled?: boolean; error?: string; costUsd?: number; durationMs?: number; model?: "fable" | "opus" | "sonnet" | "haiku"; context?: { used: number; window?: number } }
   | { kind: "compacted"; before?: number }
   | { kind: "published"; url: string; number: number }
   | { kind: "image"; name: string; caption?: string }
@@ -308,7 +308,7 @@ export const drive = {
 };
 
 /* Which Claude answers: Auto (Kimono picks per message), or one the person chose. Remembered in this browser. */
-export const modelChoices = ["auto", "opus", "sonnet", "haiku"] as const;
+export const modelChoices = ["auto", "fable", "opus", "sonnet", "haiku"] as const;
 export type ModelChoice = (typeof modelChoices)[number];
 export const modelKey = "kimono-ai-model";
 export function modelNow(): ModelChoice {

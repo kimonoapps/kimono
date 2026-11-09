@@ -21,7 +21,7 @@ type turnRequest struct {
 	Attachments []string `json:"attachments"`
 	// Effort is how hard the agent thinks: low, medium, high, xhigh or max; empty is Claude Code's default.
 	Effort string `json:"effort"`
-	// Model is which Claude runs the turn: opus, sonnet or haiku; empty is opus. Portal chooses.
+	// Model is which Claude runs the turn: fable, opus, sonnet or haiku; empty is opus. Portal chooses.
 	Model string `json:"model"`
 	// Context is the person's own: their instructions and what Kimono remembers
 	// about them. It joins the system prompt for this turn.
@@ -47,7 +47,7 @@ type turnRequest struct {
 const maxContext = 24 * 1024
 
 // Models are the Claudes a turn may run on, by the short name Portal sends.
-var Models = map[string]string{"": Model, "opus": Model, "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
+var Models = map[string]string{"": Model, "fable": "claude-fable-5-2", "opus": Model, "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
 
 var efforts = map[string]bool{"": true, "low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
@@ -70,7 +70,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 		return problem(400, "Say what the agent should do.")
 	}
 	if _, ok := Models[request.Model]; !ok {
-		return problem(400, "Model is opus, sonnet or haiku.")
+		return problem(400, "Model is fable, opus, sonnet or haiku.")
 	}
 	if len(request.Context) > maxContext {
 		return problem(400, "The person's instructions and memories are too long.")
