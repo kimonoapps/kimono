@@ -124,7 +124,7 @@ test('titles become file names and back', () => {
 });
 
 test('an excerpt is the prose, without the title line or markup', () => {
-  assert.equal(notes.excerptOf('# Groceries\n\n- [ ] **Milk**\n- [x] [Eggs](https://x)\n\n```js\ncode\n```\nDone'), 'Milk Eggs Done');
+  assert.equal(notes.excerptOf('# Groceries\n\n- [ ] **Milk**\n- [x] [Eggs](https://x)\n\n```js\ncode\n```\nDone'), 'Milk · Eggs · Done');
   assert.equal(notes.excerptOf('a'.repeat(200), 10), `${'a'.repeat(10)}…`);
 });
 

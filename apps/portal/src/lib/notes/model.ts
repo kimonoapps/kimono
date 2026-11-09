@@ -246,11 +246,14 @@ export function excerptOf(text: string, chars = 160): string {
   const prose = text
     .replace(/^---\n[\s\S]*?\n---\n/, "")
     .replace(/```[\s\S]*?(```|$)/g, " ")
-    .split("\n").filter((line) => !/^\s*#\s/.test(line))
-    .map((line) => line.replace(/^\s*(?:[-*+]|\d+\.)\s+(\[[ xX]\]\s+)?/, "")).join(" ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[#>*_`~|]/g, "")
-    .replace(/\s+/g, " ").trim();
+    .split("\n").filter((line) => !/^\s*#\s/.test(line) && !/^\s*\|?\s*:?-{3,}/.test(line))
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d+\.)\s+(\[[ xX]\]\s+)?/, "")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\s*\|\s*/g, " ")
+      .replace(/[#>*_`~]/g, "")
+      .replace(/\s+/g, " ").trim())
+    /* Each line stays its own, so a list doesn't read as one sentence. */
+    .filter(Boolean).join(" · ");
   return [...prose].length > chars ? `${[...prose].slice(0, chars).join("").trimEnd()}…` : prose;
 }

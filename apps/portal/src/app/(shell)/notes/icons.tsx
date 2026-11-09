@@ -26,6 +26,7 @@ export const icons = {
   code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
   lock: '<path d="M5 10.5h14v9.5H5zM8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+  table: '<rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.5 10h17M3.5 14.5h17M12 5v14"/>',
   tick: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
 } as const;
 

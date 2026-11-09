@@ -45,9 +45,18 @@ function goTo(to: Record<string, string | null | undefined>, replace = false) {
 
 /** The line a note's row shows: its first prose, without markup. */
 function excerptOf(text: string, chars = 160) {
-  const prose = text.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/```[\s\S]*?(```|$)/g, " ")
-    .split("\n").filter((line) => !/^\s*#\s/.test(line)).map((line) => line.replace(/^\s*(?:[-*+]|\d+\.)\s+(\[[ xX]\]\s+)?/, "")).join(" ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/[#>*_`~|]/g, "").replace(/\s+/g, " ").trim();
+  const prose = text
+    .replace(/^---\n[\s\S]*?\n---\n/, "")
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .split("\n").filter((line) => !/^\s*#\s/.test(line) && !/^\s*\|?\s*:?-{3,}/.test(line))
+    .map((line) => line.replace(/^\s*(?:[-*+]|\d+\.)\s+(\[[ xX]\]\s+)?/, "")
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\s*\|\s*/g, " ")
+      .replace(/[#>*_`~]/g, "")
+      .replace(/\s+/g, " ").trim())
+    /* Each line stays its own, so a list doesn't read as one sentence. */
+    .filter(Boolean).join(" · ");
   return [...prose].length > chars ? `${[...prose].slice(0, chars).join("").trimEnd()}…` : prose;
 }
 
@@ -1243,6 +1252,7 @@ const formatButtons: ({ action: Action; icon: IconName; label: string; keys: str
   { action: "heading", icon: "heading", label: "Heading", keys: "Mod-Alt-1", on: (f) => f.heading > 0, gap: true },
   { action: "bullets", icon: "bullets", label: "Bullets", keys: "Mod-Shift-8", on: (f) => f.bullets, gap: true },
   { action: "checklist", icon: "check", label: "Checklist", keys: "Mod-Shift-9", on: (f) => f.checklist },
+  { action: "table", icon: "table", label: "Table", keys: "", on: () => false, gap: true },
   { action: "link", icon: "link", label: "Link", keys: "Mod-K", on: (f) => f.link, gap: true },
   { action: "code", icon: "code", label: "Code", keys: "Mod-E", on: (f) => f.code },
 ];
@@ -1253,7 +1263,7 @@ function FormatBar({ formats, onRun }: { formats: Formats | null; onRun: (action
       const on = Boolean(formats && b.on(formats));
       const label = b.action === "heading" && formats?.heading ? `Heading ${formats.heading}` : b.label;
       return <button key={b.action} type="button" className={cx("nt-format", b.gap && "is-gap", on && "is-on")} aria-pressed={on} aria-label={label}
-        data-tip={`${label} ${keyName(b.keys)}`} onMouseDown={(event) => event.preventDefault()} onClick={() => onRun(b.action)}><Icon name={b.icon} /></button>;
+        data-tip={b.keys ? `${label} ${keyName(b.keys)}` : label} onMouseDown={(event) => event.preventDefault()} onClick={() => onRun(b.action)}><Icon name={b.icon} /></button>;
     })}
   </div>;
 }

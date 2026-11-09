@@ -343,7 +343,7 @@ function enclosing(state: EditorState, from: number, to: number, name: string): 
 }
 
 export type Formats = { bold: boolean; italic: boolean; code: boolean; link: boolean; heading: number; bullets: boolean; checklist: boolean; numbered: boolean };
-export type Action = "bold" | "italic" | "code" | "link" | "heading" | "bullets" | "checklist" | "numbered";
+export type Action = "bold" | "italic" | "code" | "link" | "heading" | "bullets" | "checklist" | "numbered" | "table";
 
 const prefix = /^(\s*)(?:(#{1,6})\s+|>\s?|([-*+])\s+(?:\[([ xX])\]\s+)?|(\d+)[.)]\s+(?:\[([ xX])\]\s+)?)?/;
 
@@ -610,9 +610,23 @@ const look = EditorView.theme({
   ".cm-placeholder": { color: "var(--k-faint)" },
 });
 
+/* A table: two columns, a header row and one row to fill, on lines of their own below the caret's; the caret in the first heading. */
+function insertTable(view: EditorView): boolean {
+  if (view.state.readOnly) return false;
+  const line = view.state.doc.lineAt(view.state.selection.main.head);
+  const empty = !line.text.trim();
+  const before = empty ? (line.number > 1 && view.state.doc.line(line.number - 1).text.trim() ? "\n" : "") : "\n\n";
+  const table = "| Heading | Heading |\n| --- | --- |\n|  |  |";
+  const at = empty ? line.from : line.to;
+  const insert = `${before}${table}\n`;
+  const first = at + before.length + 2;
+  view.dispatch({ changes: { from: at, to: empty ? line.to : at, insert }, selection: { anchor: first, head: first + "Heading".length }, userEvent: "input.table", scrollIntoView: true });
+  return true;
+}
+
 const actions: Record<Action, (view: EditorView) => boolean> = {
   bold: toggleWrap("bold"), italic: toggleWrap("italic"), code: toggleWrap("code"), link: makeLink,
-  heading: setLines("cycle"), bullets: setLines("bullets"), checklist: setLines("checklist"), numbered: setLines("numbered"),
+  heading: setLines("cycle"), bullets: setLines("bullets"), checklist: setLines("checklist"), numbered: setLines("numbered"), table: insertTable,
 };
 
 export type LiveUpdate = { clientID: string; changes: unknown };
