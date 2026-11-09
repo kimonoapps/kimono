@@ -453,7 +453,7 @@ export async function proApps(key: string, now = Date.now()): Promise<App[]> {
   return (await instantKits(key, now))?.apps ?? [];
 }
 
-const leading = ["elevenlabs", "higgsfield", "fal.ai", "black forest labs", "luma labs", "tavily", "openai", "gemini", "google maps", "deepgram", "photoroom", "firecrawl", "yelp"];
+const leading = ["elevenlabs", "higgsfield", "parallel", "black forest labs", "luma labs", "tavily", "openai", "gemini", "google maps", "fal.ai", "deepgram", "photoroom", "firecrawl", "yelp"];
 
 type KitItem = { slug?: string; name?: string; meta?: { logo?: string; description?: string }; instant?: { supported?: boolean } | null };
 
