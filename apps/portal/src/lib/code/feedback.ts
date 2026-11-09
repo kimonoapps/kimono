@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { artifactOf } from "./artifacts";
 import type { CodeEvent } from "./events";
 import { eventsAfter, thinkingUpTo, toolCallsOf, type StoredEvent } from "./model";
 
@@ -20,7 +21,7 @@ export const kimonoVersion = () => process.env.KIMONO_VERSION?.trim() || "dev";
 
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max)}…`;
 
-export type Step = { said?: string; thought?: string; tool?: string; detail?: string; ok?: boolean; output?: string; sent?: string[]; artifact?: string };
+export type Step = { said?: string; thought?: string; tool?: string; detail?: string; ok?: boolean; output?: string; sent?: string[]; artifact?: string; /** The artifact's page as it stood when kept (kept since these began; older entries have the name alone). */ page?: { title: string; content: string } };
 export type Answer = { asked: string; attachments: string[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
 
 /** The chat up to the answer that ended at [doneSeq]: that answer, and every turn before it. */
@@ -83,6 +84,18 @@ function turnOf(events: (CodeEvent | Thought)[]): Answer {
 
 type StoredAnswer = Answer & { before?: Answer[] };
 
+/** Each artifact in [answers] with its page as it is now, so the bank opens it without the chat. */
+function withPages(db: DatabaseSync, workspaceId: string, answers: Answer[]): Answer[] {
+  const pages = new Map<string, Step["page"] | null>();
+  for (const answer of answers) for (const step of answer.steps) {
+    if (!step.artifact) continue;
+    if (!pages.has(step.artifact)) { const found = artifactOf(db, workspaceId, step.artifact); pages.set(step.artifact, found ? { title: found.title, content: clip(found.content, 1_000_000) } : null); }
+    const page = pages.get(step.artifact);
+    if (page) step.page = page;
+  }
+  return answers;
+}
+
 /** Which Kimono and which sandbox a thumb or report was given on. The sandbox is the node's version and the image it makes sandboxes from, when it answered. */
 export type Versions = { kimono: string; sandbox: string | null };
 
@@ -95,6 +108,7 @@ export function rate(db: DatabaseSync, workspaceId: string, seq: number, usernam
   const rated = answerAt(db, workspaceId, seq);
   if (!rated) throw new Error("no answer there");
   /* The rated answer with the chat before it alongside; ratings kept before this hold the answer alone. */
+  withPages(db, workspaceId, [...rated.before, rated.answer]);
   const kept: StoredAnswer = { ...rated.answer, before: rated.before };
   db.prepare(`INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at, version, sandbox_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (workspace_id, seq, username) DO UPDATE SET rating = excluded.rating, note = excluded.note, answer = excluded.answer, at = excluded.at, version = excluded.version, sandbox_version = excluded.sandbox_version`)
@@ -136,7 +150,7 @@ export function ratingsOf(db: DatabaseSync, workspaceId: string, username: strin
 /** Sends a whole chat to the bank with no name and nothing that leads back to it. */
 export function report(db: DatabaseSync, workspaceId: string, reason: string, now = Date.now(), versions: Versions = { kimono: kimonoVersion(), sandbox: null }) {
   const events = eventsAfter(db, workspaceId, 0, 100_000);
-  const turns = turnsOf(withThinking(db, workspaceId, events, events.at(-1)?.seq ?? 0));
+  const turns = withPages(db, workspaceId, turnsOf(withThinking(db, workspaceId, events, events.at(-1)?.seq ?? 0)));
   db.prepare("INSERT INTO ai_reports (id, reason, chat, at, version, sandbox_version) VALUES (?, ?, ?, ?, ?, ?)").run(randomUUID(), clip(reason.trim(), 4000), JSON.stringify(turns), now, versions.kimono, versions.sandbox);
 }
 

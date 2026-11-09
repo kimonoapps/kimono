@@ -1712,13 +1712,19 @@ export function KeptChat({ title, at, chat }: { title: string; at: number; chat:
   const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: new Map() }), []);
   const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
   const access = useMemo(() => ({ access: "read" as Access, owner: "" }), []);
-  const artifacts = useMemo<ArtifactsShared>(() => ({ workspaceId: "kept", drafts: {}, versions: {}, beside: null, setBeside: () => {}, setFull: () => {}, kept: true }), []);
+  const [beside, setBeside] = useState<string | null>(null);
+  const [full, setFull] = useState<string | null>(null);
+  const pages = useMemo(() => Object.fromEntries(chat.flatMap((a) => a.steps.flatMap((step) => step.artifact && step.page ? [[step.artifact, step.page] as const] : []))), [chat]);
+  const artifacts = useMemo<ArtifactsShared>(() => ({ workspaceId: "kept", drafts: {}, versions: {}, beside, setBeside, setFull, kept: pages }), [beside, pages]);
   return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><ChatAccess.Provider value={access}><ArtifactsContext.Provider value={artifacts}><div className="cd-page">
     <div className="cd cd-guest cd-peek has-workspace">
-      <main className="cd-main"><div className="cd-ws-grid is-chat"><div className="cd-sheet cd-ws">
+      <main className="cd-main"><div className={cx("cd-ws-grid", "is-chat", beside && "has-beside")}><div className="cd-sheet cd-ws">
         <header className="cd-ws-head"><div className="cd-ws-id"><h1 title={title}>{title}</h1></div></header>
         <Chat workspace={workspace} events={events} drafts={noDrafts} running={false} blocked={null} />
-      </div></div></main>
+      </div>
+      {beside ? <aside className="cd-beside" aria-label="Artifact"><ArtifactCard name={beside} mode="beside" /></aside> : null}
+      {full ? <div className="cd-artifact-full" role="dialog" aria-modal="true" aria-label="Artifact"><ArtifactCard name={full} mode="full" /></div> : null}
+      </div></main>
     </div>
   </div></ArtifactsContext.Provider></ChatAccess.Provider></MarksContext.Provider></ViewerContext.Provider>;
 }
@@ -2153,7 +2159,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   const { access } = useContext(ChatAccess);
   const { me } = useContext(ViewerContext);
   const owns = access === "owner";
-  const keptArtifacts = useContext(ArtifactsContext)?.kept ?? false;
+  const keptPages = useContext(ArtifactsContext)?.kept;
   const items = useMemo(() => itemsOf(events), [events]);
   /* Your thumbs, kept with the chat they belong to so another chat's never show. */
   const [rated, setRated] = useState<{ chat: string; ratings: Record<number, 1 | -1> }>({ chat: "", ratings: {} });
@@ -2252,7 +2258,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
             case "connect": return <ConnectCard key={item.seq} app={item.app} url={item.url} />;
-            case "artifact": return keptArtifacts
+            case "artifact": return keptPages && !keptPages[item.name]
               ? <p key={`art-${item.id}`} className="cd-note"><Icon name="spark" /><span>{item.action === "edited" ? "Changed" : "Made"} <b>{item.name}</b></span></p>
               : item.action === "edited"
               ? <ArtifactChanged key={`art-${item.id}`} name={item.name} />
@@ -2443,8 +2449,8 @@ type ArtifactsShared = {
   beside: string | null;
   setBeside: (name: string | null) => void;
   setFull: (name: string | null) => void;
-  /** A chat kept as it was, with each artifact's name and not its page. */
-  kept?: boolean;
+  /** A chat kept as it was: each artifact's page as it was kept, where it was (older ones have the name alone). */
+  kept?: Record<string, { title: string; content: string }>;
 };
 const ArtifactsContext = createContext<ArtifactsShared | null>(null);
 
@@ -2460,9 +2466,10 @@ function useArtifact(name: string) {
     return () => { live = false; };
   }, [shared.workspaceId, name, version]);
   const draft = shared.drafts[name];
-  const content = draft?.content ?? saved?.content ?? "";
-  const title = shared.versions[name]?.title ?? /<title>([^<]{1,120})<\/title>/i.exec(content)?.[1]?.trim() ?? name.replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
-  return { shared, content, title, media: saved?.media, writing: Boolean(draft), ready: Boolean(draft || saved) };
+  const page = shared.kept?.[name];
+  const content = draft?.content ?? saved?.content ?? page?.content ?? "";
+  const title = shared.versions[name]?.title ?? page?.title ?? /<title>([^<]{1,120})<\/title>/i.exec(content)?.[1]?.trim() ?? name.replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
+  return { shared, content, title, media: saved?.media, writing: Boolean(draft), ready: Boolean(draft || saved || page) };
 }
 
 /** An artifact in the chat (and, bigger, beside it or full screen). */
