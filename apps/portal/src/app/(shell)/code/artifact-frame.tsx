@@ -12,7 +12,7 @@ import { Icon } from "./icons";
 /** The frame, and the conversation with it: the text as it arrives, its height back. */
 export type SceneParam = { name: string; label: string; min: number; max: number; step: number; value: number; unit?: string };
 /** voiced: it narrates; muted: its sound is off; blocked: the browser wants a tap before it plays sound. */
-export type SceneState = { t: number; end: number; playing: boolean; complete: boolean; count: number; params: SceneParam[]; voiced?: boolean; muted?: boolean; blocked?: boolean; volume?: number };
+export type SceneState = { t: number; end: number; playing: boolean; complete: boolean; count: number; params: SceneParam[]; voiced?: boolean; muted?: boolean; blocked?: boolean; volume?: number; held?: boolean };
 export type SceneControl = { n: number; action: "play" | "pause" | "replay" | "seek" | "set" | "sound-on" | "sound-off" | "volume"; t?: number; name?: string; value?: number };
 
 export function ArtifactFrame({ content, final, title, media, control, onHeight, onScene }: { content: string; final: boolean; title: string; media?: string; control: SceneControl | null; onHeight?: (height: number) => void; onScene?: (state: SceneState) => void }) {
@@ -34,7 +34,7 @@ export function ArtifactFrame({ content, final, title, media, control, onHeight,
       if (m.type === "ready") { ready.current = true; post(); }
       if (m.type === "size" && typeof m.height === "number") heightTo.current?.(m.height);
       if (m.type === "error") console.warn("Artifact:", (m as { message?: string }).message);
-      if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, voiced: Boolean(m.voiced), muted: Boolean(m.muted), blocked: Boolean(m.blocked), volume: typeof m.volume === "number" ? m.volume : 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });
+      if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, voiced: Boolean(m.voiced), muted: Boolean(m.muted), blocked: Boolean(m.blocked), held: Boolean(m.held), volume: typeof m.volume === "number" ? m.volume : 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });
     };
     window.addEventListener("message", hear);
     return () => window.removeEventListener("message", hear);
@@ -96,7 +96,9 @@ function SoundControl({ scene, send }: { scene: SceneState; send: (action: Scene
 
 export function SceneBar({ scene, send }: { scene: SceneState; send: (action: SceneControl["action"], t?: number, name?: string, value?: number) => void }) {
   const ended = scene.complete && scene.t >= scene.end - 0.01;
-  const label = scene.playing ? "Pause" : ended ? "Play again" : "Play";
+  /* playing, but not all there yet (still being written, or waiting on what it needs): the seal shows it loading, not a pause */
+  const loading = scene.playing && (!scene.complete || Boolean(scene.held));
+  const label = loading ? "Loading" : scene.playing ? "Pause" : ended ? "Play again" : "Play";
   return <div className="cd-scene-controls">
   {scene.params.length ? <div className="cd-scene-params">{scene.params.map((p) => <label key={p.name} className="cd-scene-param">
     <span className="cd-scene-param-head"><span>{p.label}</span><output>{+p.value.toFixed(4)}{p.unit ?? ""}</output></span>
@@ -111,7 +113,8 @@ export function SceneBar({ scene, send }: { scene: SceneState; send: (action: Sc
         <rect x="4.5" y="4.5" width="35" height="35" rx="7.5" pathLength="1" />
         <rect x="4.5" y="4.5" width="35" height="35" rx="7.5" pathLength="1" className="is-done" strokeDasharray="1 1" strokeDashoffset={scene.end ? 1 - Math.min(1, scene.t / scene.end) : 1} />
       </svg>
-      {scene.playing ? <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5.5" width="4" height="13" rx="1.5" /><rect x="13.5" y="5.5" width="4" height="13" rx="1.5" /></svg>
+      {loading ? <InkLoader tone="plain" label="Loading" className="cd-scene-loading" />
+        : scene.playing ? <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5.5" width="4" height="13" rx="1.5" /><rect x="13.5" y="5.5" width="4" height="13" rx="1.5" /></svg>
         : ended ? <Icon name="restart" /> : <Icon name="play" />}
     </button>
     {scene.voiced ? <SoundControl scene={scene} send={send} /> : null}
@@ -119,7 +122,7 @@ export function SceneBar({ scene, send }: { scene: SceneState; send: (action: Sc
       style={{ ["--p" as string]: `${scene.end ? scene.t / scene.end * 100 : 0}%` }}
       onChange={(event) => send("seek", (+event.target.value / 1000) * scene.end)} />
     <span className="cd-scene-time">{scene.t.toFixed(1)} / {scene.end.toFixed(1)}s</span>
-    {!scene.complete ? <InkLoader tone="plain" label="Still being written" className="cd-morph cd-scene-writing" /> : null}
+    {!scene.complete && !loading ? <InkLoader tone="plain" label="Still being written" className="cd-morph cd-scene-writing" /> : null}
   </div>
   </div>;
 }

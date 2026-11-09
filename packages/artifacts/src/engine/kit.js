@@ -424,7 +424,9 @@
         if (!this.isConnected) { this._loop = 0; this.silence(); return; }
         const dt = Math.min(.1, (now - last) / 1000); last = now;
         /* Time stands still while what the scene needs is still on its way: it starts, and goes on, only once it can be seen and heard. */
-        if (this.playing && this.timeline && !this.waiting(now)) {
+        /* held: meant to play, but what it needs isn't here yet; Kimono's play button shows it loading, not paused */
+        this.held = this.playing && (!this.timeline || this.waiting(now));
+        if (this.playing && this.timeline && !this.held) {
           const end = this.timeline.end;
           this.t = Math.min(this.t + dt, end);
           if (this.t >= end && this.complete) { this.playing = false; }
@@ -644,9 +646,9 @@
       /* voiced: it narrates, so Kimono's controls show a sound switch; blocked: the browser wants a tap first */
       const voiced = Boolean(this.timeline?.voices?.length);
       const volume = this.volume ?? 1;
-      const state = { kimono: "scene", index, t: this.t, end, playing: this.playing && !(this.t >= end && this.complete), complete: this.complete, params, voiced, muted: Boolean(this.muted), blocked: Boolean(this.blocked), volume };
+      const state = { kimono: "scene", index, t: this.t, end, playing: this.playing && !(this.t >= end && this.complete), complete: this.complete, params, voiced, muted: Boolean(this.muted), blocked: Boolean(this.blocked), volume, held: Boolean(this.held) };
       /* only when something moved: a paused scene says nothing */
-      const key = `${index}|${state.t.toFixed(2)}|${end}|${state.playing}|${state.complete}|${voiced}|${state.muted}|${state.blocked}|${volume}|${params.map((p) => `${p.name}=${p.value}`).join(",")}`;
+      const key = `${index}|${state.t.toFixed(2)}|${end}|${state.playing}|${state.complete}|${voiced}|${state.muted}|${state.blocked}|${volume}|${state.held}|${params.map((p) => `${p.name}=${p.value}`).join(",")}`;
       if (key === this._said) return;
       this._said = key;
       /* the frame sums every scene up for Kimono's controls */

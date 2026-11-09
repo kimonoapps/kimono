@@ -43,7 +43,7 @@ export const frameHtml = (origin: string) => `<!doctype html>
     const params = []; for (const s of all) for (const p of s.params || []) if (!params.some((q) => q.name === p.name)) params.push(p);
     const voiced = all.filter((s) => s.voiced);
     tell({ type: "scene", t: Math.max(...all.map((s) => s.t)), end: Math.max(...all.map((s) => s.end)), playing: all.some((s) => s.playing), complete: all.every((s) => s.complete), count: all.length, params,
-      voiced: voiced.length > 0, muted: voiced.length > 0 && voiced.every((s) => s.muted), blocked: voiced.some((s) => s.blocked), volume: voiced.length ? voiced[0].volume : 1 });
+      voiced: voiced.length > 0, muted: voiced.length > 0 && voiced.every((s) => s.muted), blocked: voiced.some((s) => s.blocked), held: all.some((s) => s.held), volume: voiced.length ? voiced[0].volume : 1 });
   };
   function pointMedia() { try { if (window.K && window.K.pointMedia) window.K.pointMedia(); } catch (e) {} }
   function reset() {

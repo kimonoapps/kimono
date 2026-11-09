@@ -102,7 +102,7 @@ internal class Artifacts(val workspaceId: String) {
 
 internal class SceneParam(val name: String, val label: String, val min: Float, val max: Float, val step: Float, val value: Float, val unit: String)
 /** voiced: it narrates; muted: its sound is off; blocked: the web view wants a tap before it plays sound. */
-internal class SceneState(val t: Double, val end: Double, val playing: Boolean, val complete: Boolean, val params: List<SceneParam>, val voiced: Boolean = false, val muted: Boolean = false, val blocked: Boolean = false, val volume: Double = 1.0)
+internal class SceneState(val t: Double, val end: Double, val playing: Boolean, val complete: Boolean, val params: List<SceneParam>, val voiced: Boolean = false, val muted: Boolean = false, val blocked: Boolean = false, val volume: Double = 1.0, val held: Boolean = false)
 
 private val loose = Json { ignoreUnknownKeys = true }
 
@@ -281,7 +281,7 @@ private fun sceneOf(m: JsonObject): SceneState? {
         SceneParam(name, o["label"]?.jsonPrimitive?.content ?: name, min.toFloat(), max.toFloat(), (o["step"]?.jsonPrimitive?.doubleOrNull ?: 0.0).toFloat(), value.toFloat(), o["unit"]?.jsonPrimitive?.content ?: "")
     }.take(8) }.getOrDefault(emptyList())
     val flag = { key: String -> m[key]?.jsonPrimitive?.booleanOrNull == true }
-    return SceneState(t, end, flag("playing"), flag("complete"), params, voiced = flag("voiced"), muted = flag("muted"), blocked = flag("blocked"), volume = m["volume"]?.jsonPrimitive?.doubleOrNull ?: 1.0)
+    return SceneState(t, end, flag("playing"), flag("complete"), params, voiced = flag("voiced"), muted = flag("muted"), blocked = flag("blocked"), held = flag("held"), volume = m["volume"]?.jsonPrimitive?.doubleOrNull ?: 1.0)
 }
 
 private fun sceneControl(control: WebFrameControl, action: String, t: Double? = null, name: String? = null, value: Double? = null) {
@@ -305,7 +305,9 @@ private fun PlaySeal(scene: SceneState, ended: Boolean, onClick: () -> Unit) {
     val corner by animateDpAsState(if (pressed) 12.dp else 22.dp, spring(dampingRatio = 0.55f, stiffness = 600f))
     val progress = if (scene.end > 0) (scene.t / scene.end).toFloat().coerceIn(0f, 1f) else 0f
     val ink = MaterialTheme.colorScheme.onPrimary
-    val label = if (scene.playing) "Pause" else if (ended) "Play again" else "Play"
+    /* playing, but not all there yet: the seal shows it loading, not a pause */
+    val loading = scene.playing && (!scene.complete || scene.held)
+    val label = if (loading) "Loading" else if (scene.playing) "Pause" else if (ended) "Play again" else "Play"
     Surface(onClick = onClick, interactionSource = source, shape = RoundedCornerShape(corner), color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(44.dp)) {
         Box(Modifier.fillMaxSize().drawWithContent {
             drawContent()
@@ -319,7 +321,8 @@ private fun PlaySeal(scene: SceneState, ended: Boolean, onClick: () -> Unit) {
                 drawPath(done, ink, style = Stroke(1.8.dp.toPx(), cap = StrokeCap.Round))
             }
         }, contentAlignment = Alignment.Center) {
-            if (scene.playing) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { repeat(2) { Box(Modifier.width(4.dp).height(13.dp).clip(RoundedCornerShape(2.dp)).background(ink)) } }
+            if (loading) InkLoader(size = 22.dp, color = ink)
+            else if (scene.playing) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { repeat(2) { Box(Modifier.width(4.dp).height(13.dp).clip(RoundedCornerShape(2.dp)).background(ink)) } }
             else Icon(kimonoIcon(if (ended) "restart" else "play"), label, tint = ink, modifier = Modifier.size(18.dp))
         }
     }
@@ -358,7 +361,7 @@ private fun SceneBar(scene: SceneState, control: WebFrameControl) {
             }
             Slider(value = if (scene.end > 0) (scene.t / scene.end).toFloat().coerceIn(0f, 1f) else 0f, onValueChange = { sceneControl(control, "seek", t = it * scene.end) }, modifier = Modifier.weight(1f))
             Text("${(scene.t * 10).toInt() / 10.0} / ${(scene.end * 10).toInt() / 10.0}s", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (!scene.complete) InkLoader(size = 16.dp)
+            if (!scene.complete && !scene.playing) InkLoader(size = 16.dp)
         }
     }
 }
