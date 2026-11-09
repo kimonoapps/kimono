@@ -832,59 +832,68 @@ function YourApps({ now, conn }: { now: number; conn: Conn }) {
   </li>)}</ul>;
 }
 
-/** Apps that work as Pro Tools, with nothing to connect: a few, then all of them when asked. */
+/** Apps that work as Pro Tools, with nothing to connect: the eight people reach for most, the rest folded away. */
 function ProApps({ apps, first }: { apps: ConnectableApp[]; first: boolean }) {
   const [all, setAll] = useState(false);
   const [media, setMedia] = useState<Usage["media"]>(null);
   useEffect(() => { let live = true; code.usage().then((u) => { if (live) setMedia(u.media ?? null); }, () => {}); return () => { live = false; }; }, []);
-  const shown = all ? apps : apps.slice(0, 6);
+  const shown = all ? apps : apps.slice(0, 8);
   return <>
     <div className={cx("cd-conn-prohead", first && "is-first")}>
       <span><h2 className="cd-conn-sub cd-pro"><Icon name="bolt" />Pro Tools</h2><small>No connection needed, with a limited budget each month.</small></span>
       {media ? <span className="cd-conn-budget"><b>{media.spent == null ? credits(media.budget) : `${creditNumber(Math.max(0, media.budget - media.spent))} of ${credits(media.budget)} left`}</b><small>Resets {monthWords(media.resetsAt)}</small></span> : null}
     </div>
-    <ul className="cd-conn-grid">{shown.map((a) => <li key={a.app} className="cd-conn-tile is-link">
-      <button type="button" className="cd-conn-open" onClick={() => openApp(a.app)} aria-label={`About ${a.name}`} />
+    <ul className="cd-pro-grid" id="cd-pro-grid">{shown.map((a) => <li key={a.app} className="cd-pro-tile">
+      <button type="button" className="cd-conn-open" onClick={() => openApp(a.app)} aria-label={`About ${a.name}`} title={a.description || undefined} />
       {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
       <span className="cd-pro-logo"><InkBlot className="cd-conn-logo" tint={inkTint.quiet} seed={a.app}><img src={a.logo} alt="" /></InkBlot><svg className="cd-pro-bolt" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg></span>
-      <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
+      <b>{a.name}</b>
     </li>)}</ul>
-    {apps.length > shown.length ? <div className="cd-conn-more"><Seal type="button" tone="quiet" onClick={() => setAll(true)}>Show all {apps.length}</Seal></div> : null}
+    {apps.length > 8 ? <div className="cd-conn-more"><Seal type="button" tone="quiet" aria-expanded={all} aria-controls="cd-pro-grid" onClick={() => setAll(!all)}>{all ? "Show fewer" : `See all ${apps.length}`}</Seal></div> : null}
   </>;
 }
 
+/** The catalog, a page at a time: each page asked for by Composio's cursor, the ones already seen kept to go back to. */
 function AddApps({ conn }: { conn: Conn }) {
   /* The search is ready to type into, without the page jumping down to it. */
   const searchFocused = useRef(false);
+  const top = useRef<HTMLLabelElement>(null);
   const [query, setQuery] = useState("");
-  const [found, setFound] = useState<{ q: string; apps: ConnectableApp[]; next: string | null } | null>(null);
-  const [more, setMore] = useState(false);
+  const [found, setFound] = useState<{ q: string; page: number; cursors: (string | null)[]; apps: ConnectableApp[]; next: string | null } | null>(null);
+  const [turning, setTurning] = useState(false);
   const { setProblem } = conn;
   useEffect(() => {
     /* A search you've moved on from never answers over the one you're on. */
     let live = true;
-    const wait = setTimeout(() => { code.findApps(query).then((page) => { if (live) setFound({ q: query, apps: page.apps.filter(realApp), next: page.next }); }, (error) => { if (live) setProblem(problemText(error)); }); }, query ? 250 : 0);
+    const wait = setTimeout(() => { code.findApps(query).then((page) => { if (live) setFound({ q: query, page: 0, cursors: [null], apps: page.apps.filter(realApp), next: page.next }); }, (error) => { if (live) setProblem(problemText(error)); }); }, query ? 250 : 0);
     return () => { live = false; clearTimeout(wait); };
   }, [query, setProblem]);
   /* What's connected is listed above, so the catalog leaves it out. */
   const apps = found && found.q === query ? found.apps.filter((a) => !a.connected) : null;
-  /* The catalog is long: a page at a time, the next one added below when asked for. */
-  const showMore = () => {
-    if (!found?.next || more) return;
+  const turn = (to: number) => {
+    if (!found || turning) return;
     const asked = found;
-    setMore(true);
-    code.findApps(asked.q, asked.next).then((page) => setFound((now) => now?.q !== asked.q ? now : { q: asked.q, next: page.next, apps: [...now.apps, ...page.apps.filter((a) => realApp(a) && !now.apps.some((b) => b.app === a.app))] }), (error) => setProblem(problemText(error))).finally(() => setMore(false));
+    const cursors = to > asked.page ? [...asked.cursors.slice(0, asked.page + 1), asked.next] : asked.cursors;
+    setTurning(true);
+    code.findApps(asked.q, cursors[to]).then((page) => {
+      setFound((now) => now?.q !== asked.q ? now : { q: asked.q, page: to, cursors, apps: page.apps.filter(realApp), next: page.next });
+      top.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, (error) => setProblem(problemText(error))).finally(() => setTurning(false));
   };
   return <>
-    <label className="cd-conn-search"><Icon name="search" /><input ref={(el) => { if (el && !searchFocused.current) { searchFocused.current = true; el.focus({ preventScroll: true }); } }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search apps" aria-label="Search apps" /></label>
-    {apps === null ? <SkeletonRows rows={2} mark={false} /> : !found?.apps.length ? <p className="cd-conn-empty">No app by that name.</p> : !apps.length ? null : <ul className="cd-conn-grid">{apps.map((a) => <li key={a.app} className="cd-conn-tile is-link">
+    <label ref={top} className="cd-conn-search"><Icon name="search" /><input ref={(el) => { if (el && !searchFocused.current) { searchFocused.current = true; el.focus({ preventScroll: true }); } }} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search apps" aria-label="Search apps" /></label>
+    {apps === null ? <SkeletonRows rows={2} mark={false} /> : !found?.apps.length ? <p className="cd-conn-empty">No app by that name.</p> : <ul className={cx("cd-conn-grid", turning && "is-turning")}>{apps.map((a) => <li key={a.app} className="cd-conn-tile is-link">
       <button type="button" className="cd-conn-open" onClick={() => openApp(a.app)} aria-label={`About ${a.name}`} />
       {/* eslint-disable-next-line @next/next/no-img-element -- the app's own logo, as Composio serves it */}
       <InkBlot className="cd-conn-logo" tint={inkTint.quiet} seed={a.app}><img src={a.logo} alt="" /></InkBlot>
       <span className="cd-conn-id"><b>{a.name}</b>{a.description ? <small>{a.description}</small> : null}</span>
-      {a.connected ? <span className="cd-conn-on"><Icon name="check" />Connected</span> : <Seal type="button" compact tone="quiet" busy={conn.busy === a.app} onClick={() => conn.connect(a.app)}>Connect</Seal>}
+      <Seal type="button" compact tone="quiet" busy={conn.busy === a.app} onClick={() => conn.connect(a.app)}>Connect</Seal>
     </li>)}</ul>}
-    {apps?.length && found?.next ? <div className="cd-conn-more"><Seal type="button" tone="quiet" busy={more} onClick={showMore}>Show more</Seal></div> : null}
+    {apps && found && (found.page > 0 || found.next) ? <nav className="cd-conn-pages" aria-label="Pages">
+      <button type="button" className="cd-roundbutton" disabled={found.page === 0 || turning} onClick={() => turn(found.page - 1)} aria-label="Previous page" title="Previous page"><Icon name="back" /></button>
+      <span aria-live="polite">Page {found.page + 1}</span>
+      <button type="button" className="cd-roundbutton" disabled={!found.next || turning} onClick={() => turn(found.page + 1)} aria-label="Next page" title="Next page"><Icon name="chevron" /></button>
+    </nav> : null}
   </>;
 }
 

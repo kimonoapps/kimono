@@ -2,6 +2,8 @@
 
 package app.kimono.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,7 +17,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,6 +45,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,11 +116,13 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
     val conn = rememberConn(code, platform)
     val time = ticking(false)
     var query by remember { mutableStateOf("") }
-    var found by remember { mutableStateOf<Pair<String, AppPage>?>(null) }
-    var more by remember { mutableStateOf(false) }
+    /* The catalogue, a page at a time: each page asked for by Composio's cursor, the ones already seen kept to go back to. */
+    var found by remember { mutableStateOf<CatalogPage?>(null) }
+    var turning by remember { mutableStateOf(false) }
+    val list = rememberLazyListState()
     LaunchedEffect(query) {
         if (query.isNotEmpty()) delay(250)
-        try { found = query to code.findApps(query).let { it.copy(apps = it.apps.filter { a -> a.real }) } } catch (p: KimonoProblem) { conn.problem = p.message }
+        try { found = CatalogPage(query, 0, listOf(null), code.findApps(query).let { it.copy(apps = it.apps.filter { a -> a.real }) }) } catch (p: KimonoProblem) { conn.problem = p.message }
     }
     val state = conn.state
     val mine = state?.connections.orEmpty()
@@ -121,9 +130,33 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
     var allPro by remember { mutableStateOf(false) }
     val budget by produceState<MediaAllowance?>(null, pro.isNotEmpty()) { if (pro.isNotEmpty()) value = runCatching { code.usage().media }.getOrNull() }
     /* What's connected is listed above, so the catalogue leaves it out. */
-    val apps = found?.takeIf { it.first == query }?.second?.apps?.filter { !it.connected }
+    val apps = found?.takeIf { it.q == query }?.page?.apps?.filter { !it.connected }
+    /* Where the search sits in the list, to come back up to it on a new page: everything above it counted. */
+    fun searchIndex(): Int {
+        val shown = if (allPro) pro.size else minOf(pro.size, 8)
+        return (if (conn.problem != null) 1 else 0) +
+            (if (mine.isNotEmpty()) 1 + mine.size else 0) +
+            (if (pro.isNotEmpty()) 1 + (shown + 3) / 4 + (if (pro.size > 8) 1 else 0) else 0) +
+            (if (mine.isNotEmpty() || pro.isNotEmpty()) 1 else 0)
+    }
+    fun turn(to: Int) {
+        val asked = found ?: return
+        if (turning) return
+        val cursors = if (to > asked.index) asked.cursors.take(asked.index + 1) + asked.page.next else asked.cursors
+        turning = true
+        scope.launch {
+            try {
+                val page = code.findApps(asked.q, cursors[to])
+                if (found?.q == asked.q) {
+                    found = CatalogPage(asked.q, to, cursors, page.copy(apps = page.apps.filter { a -> a.real }))
+                    list.animateScrollToItem(searchIndex())
+                }
+            } catch (p: KimonoProblem) { conn.problem = p.message }
+            turning = false
+        }
+    }
     Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Connections", onBack = back, mark = { AiMark(code, 32.dp) }) }) { padding ->
-        LazyColumn(Modifier.padding(padding).fillMaxSize().imePadding(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+        LazyColumn(Modifier.padding(padding).fillMaxSize().imePadding(), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
             if (conn.problem != null) item { Problem(conn.problem) }
             when {
                 state == null && conn.problem == null -> item { Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { InkLoader() } }
@@ -159,21 +192,28 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
                                 }
                             }
                         }
-                        val shownPro = if (allPro) pro else pro.take(6)
-                        itemsIndexed(shownPro, key = { _, a -> "pro-${a.app}" }) { index, a ->
-                            SegmentedListItem(
-                                onClick = { open("ai/connections/${a.app}") },
-                                shapes = ListItemDefaults.segmentedShapes(index, shownPro.size), colors = segmentColors(),
-                                leadingContent = { Box { LogoTile(a.logo, 40.dp); ProBolt(Modifier.align(Alignment.TopEnd).size(14.dp)) } },
-                                supportingContent = { if (a.description.isNotBlank()) Text(a.description, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                            ) { Text(a.name, style = MaterialTheme.typography.bodyLarge) }
+                        /* The eight people reach for most, four to a row; the rest folded away. */
+                        val shownPro = if (allPro) pro else pro.take(8)
+                        items(shownPro.chunked(4), key = { row -> "pro-${row.first().app}" }) { row ->
+                            Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                row.forEach { a ->
+                                    Column(
+                                        Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).clickable { open("ai/connections/${a.app}") }.padding(vertical = 12.dp, horizontal = 4.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
+                                    ) {
+                                        Box { LogoTile(a.logo, 40.dp); ProBolt(Modifier.align(Alignment.TopEnd).size(14.dp)) }
+                                        Text(a.name, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
                         }
-                        if (pro.size > shownPro.size) item {
-                            Box(Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) { Seal("Show all ${pro.size}", tone = SealTone.Quiet, onClick = { allPro = true }) }
+                        if (pro.size > 8) item {
+                            Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) { Seal(if (allPro) "Show fewer" else "See all ${pro.size}", tone = SealTone.Quiet, onClick = { allPro = !allPro }) }
                         }
                     }
                     if (mine.isNotEmpty() || pro.isNotEmpty()) item { Box(Modifier.padding(top = 12.dp)) { Heading("Add apps") } }
-                    item {
+                    item(key = "search") {
                         OutlinedTextField(
                             query, { query = it }, singleLine = true, placeholder = { Text("Search apps") },
                             leadingIcon = { Icon(kimonoIcon("search"), null, modifier = Modifier.size(20.dp)) },
@@ -183,7 +223,7 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
                     }
                     when {
                         apps == null -> item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { InkLoader(size = 32.dp) } }
-                        found?.second?.apps.isNullOrEmpty() -> item { Text("No app by that name.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
+                        found?.page?.apps.isNullOrEmpty() -> item { Text("No app by that name.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
                         else -> {
                             itemsIndexed(apps, key = { _, a -> "app-${a.app}" }) { index, a ->
                                 SegmentedListItem(
@@ -194,22 +234,12 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
                                     trailingContent = { Seal("Connect", compact = true, tone = SealTone.Quiet, busy = conn.busy == a.app, onClick = { scope.launch { conn.connect(a.app) } }) },
                                 ) { Text(a.name, style = MaterialTheme.typography.bodyLarge) }
                             }
-                            /* The catalogue is long: a page at a time, the next one added below when asked for. */
-                            val next = found?.second?.next
-                            if (next != null) item {
-                                Box(Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
-                                    Seal("Show more", tone = SealTone.Quiet, busy = more, onClick = {
-                                        val asked = found ?: return@Seal
-                                        more = true
-                                        scope.launch {
-                                            try {
-                                                val page = code.findApps(asked.first, next)
-                                                val now = found
-                                                if (now != null && now.first == asked.first) found = now.first to AppPage(now.second.apps + page.apps.filter { a -> a.real && now.second.apps.none { it.app == a.app } }, page.next)
-                                            } catch (p: KimonoProblem) { conn.problem = p.message }
-                                            more = false
-                                        }
-                                    })
+                            val at = found
+                            if (at != null && (at.index > 0 || at.page.next != null)) item {
+                                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { turn(at.index - 1) }, enabled = at.index > 0 && !turning) { Icon(kimonoIcon("back"), "Previous page", modifier = Modifier.size(20.dp)) }
+                                    Text("Page ${at.index + 1}", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 8.dp))
+                                    IconButton(onClick = { turn(at.index + 1) }, enabled = at.page.next != null && !turning) { Icon(kimonoIcon("chevron"), "Next page", modifier = Modifier.size(20.dp)) }
                                 }
                             }
                         }
@@ -219,6 +249,9 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
         }
     }
 }
+
+/** One page of the catalogue for a search, and the cursors of the pages up to it. */
+private data class CatalogPage(val q: String, val index: Int, val cursors: List<String?>, val page: AppPage)
 
 @Composable
 private fun Heading(text: String) = Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 6.dp))
