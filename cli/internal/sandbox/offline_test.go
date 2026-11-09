@@ -63,9 +63,18 @@ func TestProbeOnlyWarnsWithoutAFirewall(t *testing.T) {
 	}
 }
 
-func TestAgentHasNoWebTools(t *testing.T) {
-	if !strings.Contains(DefaultAgent, "--disallowedTools WebFetch,WebSearch") {
-		t.Fatal("the agent must run without WebFetch and WebSearch")
+// WebFetch would reach the web from the sandbox, so it stays off. WebSearch runs
+// on Anthropic's side, through the model gateway, so the sandbox stays offline
+// and search is there from the first word, without waiting on Composio.
+func TestAgentSearchesButNeverFetches(t *testing.T) {
+	if !strings.Contains(DefaultAgent, "--disallowedTools WebFetch${") {
+		t.Fatal("the agent must run without WebFetch")
+	}
+	if strings.Contains(DefaultAgent, "WebSearch") {
+		t.Fatal("the agent should have WebSearch")
+	}
+	if !strings.Contains(SystemPrompt, "not a Composio search tool") {
+		t.Fatal("the agent isn't told to search with WebSearch")
 	}
 }
 
