@@ -188,6 +188,7 @@ func (m *Manager) reportOutlineImport(result string) error {
 			Sections        int    `json:"sections"`
 			Notes           int    `json:"notes"`
 			Shares          int    `json:"shares"`
+			Unshared        int    `json:"unshared"`
 			AlreadyImported int    `json:"alreadyImported"`
 			WithAttachments int    `json:"withAttachments"`
 			Unmatched       []struct {
@@ -209,6 +210,9 @@ func (m *Manager) reportOutlineImport(result string) error {
 		out := m.Runner.Stdout
 		_, _ = fmt.Fprintf(out, "Brought in %d notes, %d notebooks, %d sections; shared %d times. %d were already here.\n",
 			summary.Notes, summary.Notebooks, summary.Sections, summary.Shares, summary.AlreadyImported)
+		if summary.Unshared > 0 {
+			_, _ = fmt.Fprintf(out, "Took back %d shares that gave notebooks to people Outline hadn't added to them.\n", summary.Unshared)
+		}
 		if summary.WithAttachments > 0 {
 			_, _ = fmt.Fprintf(out, "%d notes link to Outline attachments, which didn't come across.\n", summary.WithAttachments)
 		}

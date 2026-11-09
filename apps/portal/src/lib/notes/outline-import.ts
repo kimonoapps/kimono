@@ -38,6 +38,8 @@ export type KimonoAccount = { username: string; email?: string | null; name?: st
 
 export type OutlineImportSummary = {
   notebooks: number; sections: number; notes: number; shares: number;
+  /** Shares an earlier run made that it shouldn't have, taken back. */
+  unshared: number;
   /** Already brought over by an earlier run. */
   alreadyImported: number;
   /** Outline people with notes and no Kimono account to give them to. */
@@ -186,7 +188,7 @@ export function importOutline(
   putBlob: (bytes: Buffer) => string,
   now = Date.now(),
 ): OutlineImportSummary {
-  const summary: OutlineImportSummary = { notebooks: 0, sections: 0, notes: 0, shares: 0, alreadyImported: 0, unmatched: [], skipped: [], withAttachments: 0 };
+  const summary: OutlineImportSummary = { notebooks: 0, sections: 0, notes: 0, shares: 0, unshared: 0, alreadyImported: 0, unmatched: [], skipped: [], withAttachments: 0 };
   const { live, record } = ledger(db);
   const users = dump.users ?? [];
   const people = matchPeople(users, accounts);
@@ -200,14 +202,13 @@ export function importOutline(
   /* Who could open each collection, and how. */
   const groupMembers = new Map<string, string[]>();
   for (const g of dump.groupUsers ?? []) if (g.groupId && g.userId) groupMembers.set(g.groupId, [...(groupMembers.get(g.groupId) ?? []), g.userId]);
-  const everyone = users.filter((u) => !u.deletedAt).map((u) => u.id);
   function accessTo(collection: OutlineCollection): Map<string, Exclude<Role, "owner">> {
     const access = new Map<string, Exclude<Role, "owner">>();
     const give = (outlineUser: string, role: Exclude<Role, "owner">) => {
       const username = people.get(outlineUser);
       if (username && access.get(username) !== "editor") access.set(username, role);
     };
-    if (collection.permission) for (const id of everyone) give(id, roleFor(collection.permission));
+    /* Outline opens a new collection to the whole workspace unless told otherwise, so that says nothing about who it was for: only people and groups added to it count. */
     for (const p of [...(dump.userPermissions ?? []), ...(dump.collectionUsers ?? [])]) if (p.collectionId === collection.id && !p.documentId && !p.deletedAt && p.userId) give(p.userId, roleFor(p.permission));
     for (const p of [...(dump.groupPermissions ?? []), ...(dump.collectionGroups ?? [])]) {
       if (p.collectionId !== collection.id || p.documentId || p.deletedAt || !p.groupId) continue;
@@ -281,6 +282,13 @@ export function importOutline(
       continue;
     }
     const book = folderIn(`collection:${c.id}`, owns(owner), owner, c.name || "Notes", time(c.createdAt, now), true);
+    /* Shares made with the notebook (earlier runs gave it to everyone) and not owed now go; ones people added since stay. */
+    const madeAt = (db.prepare("SELECT at FROM outline_imports WHERE outline_key = ?").get(`collection:${c.id}`) as { at: number }).at;
+    for (const { username } of db.prepare("SELECT username FROM shares WHERE node_id = ? AND added_at <= ?").all(book, madeAt) as { username: string }[]) {
+      if (access.has(username) || username === owner) continue;
+      shareNode(db, book, owner, username, null, now);
+      summary.unshared++;
+    }
     for (const [username, role] of access) {
       if (username === owner) continue;
       try {

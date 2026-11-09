@@ -333,8 +333,11 @@ with no network, writes what it reads to `/var/lib/kimono-portal/imports/outline
 and restarts the Portal, which brings it into Notes at boot and prints how it
 went (`lib/notes/outline-import.ts`):
 
-- each collection is a notebook in its creator's own space, shared with
-  whoever could see it in Outline (editors, or viewers for read-only);
+- each collection is a notebook in its creator's own space, shared only
+  with the people and groups added to it in Outline (editors, or viewers for
+  read-only). Outline opens collections to the whole workspace by default,
+  which isn't counted: a rerun takes back shares an earlier run made that way,
+  and keeps any added by hand since;
 - a document with documents under it is a note plus a section of the same
   name beside it, holding them; archived ones go in an "Archived" section;
 - drafts go to their writer's own "Drafts" notebook; deleted documents and
