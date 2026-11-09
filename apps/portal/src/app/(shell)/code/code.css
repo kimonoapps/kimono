@@ -443,8 +443,8 @@ button.cd-filechip { cursor: pointer; font: inherit; font-size: 13px; font-weigh
    tonal card with your messages as suō bubbles, tool calls open to show what
    they did, and the running app is a moss card. ── */
 .cd-page { padding-bottom: 24px; }
-/* An open chat is already the window's height: room below it would only make the page scroll. */
-@media (min-width: 981px) { .cd-page:has(> .cd.has-workspace) { padding-bottom: 0; } }
+/* On a wide screen the side column is already the window's height: room below it would only make the page scroll. */
+@media (min-width: 981px) { .cd-page { padding-bottom: 0; } }
 .cd-top { padding-left: 28px; padding-right: 28px; }
 .cd-top .cd-new svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .cd { grid-template-columns: 300px minmax(0, 1fr); gap: 16px; padding: 0 24px 24px; }
