@@ -664,12 +664,46 @@
       /* a statement still being written keeps its lines back until it parses */
       for (; take > 0 && take >= lines.length - 12; take--) {
         const code = lines.slice(0, take).join("\n");
-        if (code === this.ran) { this.state.textContent = complete ? "" : "Writing…"; return; }
+        if (code === this.ran) { this.state.textContent = complete ? "" : "Writing…"; this.sketch(); return; }
         try { new Function(code); } catch { continue; }
         this.run(code);
         break;
       }
       this.state.textContent = complete ? "" : "Writing…";
+      this.sketch();
+    }
+    /*
+     * A drawing() is one long line, so it can't run until all of it is in. Until then its SVG is
+     * shown as far as it has come, still, so the thing appears part by part as it's written.
+     */
+    sketch() {
+      let markup = null;
+      const pending = !this.complete && this.source.startsWith(this.ran) ? this.source.slice(this.ran.length) : "";
+      const at = pending.lastIndexOf("drawing(");
+      if (at >= 0) {
+        const rest = pending.slice(at + 8).trimStart(), quote = rest[0];
+        if (quote === "`" || quote === '"' || quote === "'") {
+          const body = rest.slice(1), end = body.indexOf(quote);
+          const svg = end >= 0 ? body.slice(0, end) : body;
+          const cut = svg.lastIndexOf(">");
+          if (cut > 0) markup = svg.slice(0, cut + 1);
+        }
+      }
+      if (!markup) {
+        const old = this._sketch; this._sketch = null;
+        if (old) { old.style.opacity = "0"; setTimeout(() => old.remove(), 600); }
+        return;
+      }
+      if (!/^\s*<svg[\s>]/i.test(markup)) markup = `<svg viewBox="0 0 200 100">${markup}</svg>`;
+      if (!this._sketch) { this._sketch = html("div", "k-art-item k-sketch"); this.art.append(this._sketch); }
+      const node = this._sketch;
+      if (node._markup !== markup) {
+        node._markup = markup; node.innerHTML = markup;
+        const svg = node.querySelector("svg");
+        if (svg) { svg.setAttribute("preserveAspectRatio", "xMidYMid meet"); svg.removeAttribute("width"); svg.removeAttribute("height"); }
+      }
+      const top = this.timeline?.titled ? 48 : 20;
+      Object.assign(node.style, { left: "16px", top: `${top}px`, width: `${Math.max(0, (this.w || 0) - 32)}px`, height: `${Math.max(0, (this.h || 0) - top - 34)}px` });
     }
     run(code) {
       const timeline = makeTimeline(this);

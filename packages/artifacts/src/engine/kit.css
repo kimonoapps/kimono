@@ -128,6 +128,7 @@ k-scene .k-art { position: absolute; inset: 0; pointer-events: none; overflow: h
   --suo: var(--k-s1); --indigo: var(--k-s2); --moss: var(--k-s3); --amber: var(--k-s4); --plum: var(--k-s5); --teal: var(--k-s6); --rust: var(--k-s7);
   --ink: var(--k-ink); --soft: var(--k-soft); --faint: var(--k-faint); --line: var(--k-line); --card: var(--k-card); --page: var(--k-page); }
 k-scene .k-art-item { position: absolute; }
+k-scene .k-sketch { transition: opacity .5s; }
 k-scene .k-art-item svg { display: block; width: 100%; height: 100%; overflow: visible; font: 600 7px var(--k-sans); fill: var(--k-ink); }
 k-scene .k-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 k-scene .k-label { position: absolute; left: 0; top: 0; white-space: nowrap; font: 600 14px/1.2 var(--k-sans); color: var(--k-ink); will-change: transform; }
