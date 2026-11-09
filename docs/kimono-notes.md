@@ -324,4 +324,24 @@ there (`lib/notes/mcp-site.ts`, rendered by `deployment.ts`). Tests:
 - Note history.
 - Editing together live; the version rule keeps both edits instead.
 - Public links to a note.
-- Importing from Outline.
+
+## Bringing notes over from Outline
+
+Outline's database outlives the app (compose keeps a removed service's
+volumes). `sudo kimono server import-outline` starts Postgres on that volume
+with no network, writes what it reads to `/var/lib/kimono-portal/imports/outline.json`
+and restarts the Portal, which brings it into Notes at boot and prints how it
+went (`lib/notes/outline-import.ts`):
+
+- each collection is a notebook in its creator's own space, shared with
+  whoever could see it in Outline (editors, or viewers for read-only);
+- a document with documents under it is a note plus a section of the same
+  name beside it, holding them; archived ones go in an "Archived" section;
+- drafts go to their writer's own "Drafts" notebook; deleted documents and
+  templates stay behind;
+- people are matched to accounts by email, then by name; anyone unmatched is
+  listed, and running it again once they have an account adds only what is
+  missing;
+- attachments don't come across; links to them are counted.
+
+Tests: `pnpm --filter @kimono/portal test:outline-import`.

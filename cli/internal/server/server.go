@@ -31,7 +31,7 @@ func New(runner *system.Runner) *Manager {
 
 func (m *Manager) Execute(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: kimono server <install|start|stop|status|apply|doctor|enrollment|cloudflare-ddns|logs|update|backup>")
+		return errors.New("usage: kimono server <install|start|stop|status|apply|doctor|enrollment|cloudflare-ddns|logs|update|backup|import-outline>")
 	}
 	switch args[0] {
 	case "install":
@@ -56,6 +56,8 @@ func (m *Manager) Execute(args []string) error {
 		return m.logs(args[1:])
 	case "update":
 		return m.update()
+	case "import-outline":
+		return m.importOutline(args[1:])
 	case "backup":
 		if len(args) > 1 && (args[1] == "run" || args[1] == "check" || args[1] == "restore" || args[1] == "import-kit") {
 			return m.encryptedBackup(args[1:])

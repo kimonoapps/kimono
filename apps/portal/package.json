@@ -14,6 +14,7 @@
     "test:account": "node --test scripts/test-account.mjs",
     "test:drive": "node --test scripts/test-drive.mjs",
     "test:notes": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-notes.mjs",
+    "test:outline-import": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-outline-import.mjs",
     "test:notes-mcp": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-notes-mcp.mjs",
     "test:marks": "node --test scripts/test-marks.mjs",
     "test:app-updates": "node --test scripts/test-app-updates.mjs",

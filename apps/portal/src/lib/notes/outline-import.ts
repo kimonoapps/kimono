@@ -26,7 +26,7 @@ export type OutlineDocument = {
   id: string; title?: string | null; text?: string | null; content?: unknown; collectionId?: string | null; parentDocumentId?: string | null;
   createdById?: string | null; createdAt?: When; updatedAt?: When; publishedAt?: When; deletedAt?: When; archivedAt?: When; template?: boolean | null;
 };
-type Permission = { userId?: string | null; groupId?: string | null; collectionId?: string | null; documentId?: string | null; permission?: string | null };
+type Permission = { deletedAt?: When; userId?: string | null; groupId?: string | null; collectionId?: string | null; documentId?: string | null; permission?: string | null };
 export type OutlineDump = {
   users?: OutlineUser[]; collections?: OutlineCollection[]; documents?: OutlineDocument[];
   /** user_permissions (collection_users before Outline 0.80). */
@@ -208,9 +208,9 @@ export function importOutline(
       if (username && access.get(username) !== "editor") access.set(username, role);
     };
     if (collection.permission) for (const id of everyone) give(id, roleFor(collection.permission));
-    for (const p of [...(dump.userPermissions ?? []), ...(dump.collectionUsers ?? [])]) if (p.collectionId === collection.id && !p.documentId && p.userId) give(p.userId, roleFor(p.permission));
+    for (const p of [...(dump.userPermissions ?? []), ...(dump.collectionUsers ?? [])]) if (p.collectionId === collection.id && !p.documentId && !p.deletedAt && p.userId) give(p.userId, roleFor(p.permission));
     for (const p of [...(dump.groupPermissions ?? []), ...(dump.collectionGroups ?? [])]) {
-      if (p.collectionId !== collection.id || p.documentId || !p.groupId) continue;
+      if (p.collectionId !== collection.id || p.documentId || p.deletedAt || !p.groupId) continue;
       for (const id of groupMembers.get(p.groupId) ?? []) give(id, roleFor(p.permission));
     }
     return access;
