@@ -304,10 +304,20 @@ class NoteDisplay(val edits: List<Triple<Int, Int, String>>) {
     }
 }
 
+/**
+ * How many of the note's lines each row of each table (by its place among the
+ * note's tables) takes: a row whose words wrap takes more. Measured where the
+ * table is drawn (screens/NoteEditor.kt), and read here to leave it the room.
+ */
+val tableRowLines = androidx.compose.runtime.mutableStateMapOf<Int, List<Int>>()
+
+fun rowLinesOf(index: Int, shown: Int): List<Int> = tableRowLines[index]?.takeIf { it.size == shown } ?: List(shown) { 1 }
+
 fun noteDisplay(text: String, caret: Int? = null): NoteDisplay {
-    val edits = noteTables(text).map { table ->
-        /* One blank line for each row that shows (not the --- row): the table is drawn over them. */
-        Triple(table.range.first, table.range.last + 1, List(table.rows.size - 1) { "\u00A0" }.joinToString("\n"))
+    val edits = noteTables(text).mapIndexed { i, table ->
+        /* Blank lines for each row that shows (not the --- row), as many as its words need: the table is drawn over them. */
+        val lines = rowLinesOf(i, table.rows.size - 1).sum()
+        Triple(table.range.first, table.range.last + 1, List(lines) { "\u00A0" }.joinToString("\n"))
     }
     return NoteDisplay(edits)
 }

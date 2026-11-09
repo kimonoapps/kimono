@@ -138,6 +138,10 @@ import app.kimono.ui.editTable
 import app.kimono.ui.parseTable
 import app.kimono.ui.tableFocus
 import app.kimono.ui.TableModel
+import app.kimono.ui.tableRowLines
+import app.kimono.ui.rowLinesOf
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import app.kimono.ui.NoteTable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -362,7 +366,8 @@ private fun NoteBody(
     val caret = if (focused) draft.body.selection else null
     val spans = remember(draft.body.text, caret, look) { noteSpans(draft.body.text, look, caret) }
     /* What's drawn over the text goes where the text is shown, past a table's padding. */
-    val display = remember(draft.body.text, caret) { noteDisplay(draft.body.text.toString(), caret?.start) }
+    val rowLines = tableRowLines.toMap()
+    val display = remember(draft.body.text, caret, rowLines) { noteDisplay(draft.body.text.toString(), caret?.start) }
     val d = display::map
     SideEffect { onFormats(spans.formats) }
     /* The caret never stays inside a table's Markdown: the table is written in through its cells. */
@@ -449,16 +454,20 @@ private fun NoteBody(
         /* Each table, drawn over the blank lines that stand for it. */
         layout?.let { result ->
             val all = draft.body.text.toString()
-            spans.tables.forEach { table ->
+            spans.tables.forEachIndexed { index, table ->
                 val first = d(table.range.first)
-                if (first > result.layoutInput.text.length) return@forEach
+                if (first > result.layoutInput.text.length) return@forEachIndexed
                 val line = result.getLineForOffset(first.coerceAtMost(maxOf(0, result.layoutInput.text.length - 1)))
                 val shown = table.rows.size - 1
-                if (line + shown - 1 >= result.lineCount) return@forEach
-                val tops = (0 until shown).map { result.getLineTop(line + it) }
-                val heights = (0 until shown).map { result.getLineBottom(line + it) - result.getLineTop(line + it) }
+                val counts = rowLinesOf(index, shown)
+                if (line + counts.sum() - 1 >= result.lineCount) return@forEachIndexed
+                /* Each row over its own lines: from the top of its first to the foot of its last. */
+                var at = line
+                val tops = mutableListOf<Float>(); val heights = mutableListOf<Float>()
+                counts.forEach { k -> tops += result.getLineTop(at); heights += result.getLineBottom(at + k - 1) - result.getLineTop(at); at += k }
+                val lineHeight = result.getLineBottom(line) - result.getLineTop(line)
                 val model = parseTable(all.substring(table.range.first, minOf(all.length, table.range.last + 1)))
-                NoteTableView(table.range.first, model, tops, heights, result.size.width.toFloat(), canWrite) { edit -> draft.body.editTable(table.range.first, edit) }
+                NoteTableView(index, table.range.first, model, tops, heights, lineHeight, result.size.width.toFloat(), canWrite) { edit -> draft.body.editTable(table.range.first, edit) }
             }
         }
         /* Each checkbox's ink ring, over the brackets it stands for. */
@@ -602,26 +611,32 @@ private fun HeadButton(icon: String, name: String, onClick: () -> Unit) = Box(
  * column at three dashes, they share the width.
  */
 @Composable
-private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heights: List<Float>, width: Float, canWrite: Boolean, change: ((TableModel) -> Unit) -> Unit) {
+private fun NoteTableView(index: Int, start: Int, model: TableModel, tops: List<Float>, heights: List<Float>, lineHeight: Float, width: Float, canWrite: Boolean, change: ((TableModel) -> Unit) -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val density = LocalDensity.current
     val cols = model.head.size
     val perDash = 8.dp
+    /* Room on the table's right for its ··· while you're in it. */
+    val room = if (canWrite) 36.dp else 2.dp
     val fullWidth = with(density) { width.toDp() }
     /* While a column's edge is being dragged, its width as dragged. */
     val dragging = remember(start) { mutableStateMapOf<Int, Float>() }
     val widths = (0 until cols).map { c ->
         dragging[c]?.let { with(density) { it.toDp() } }
-            ?: if (model.sized) perDash * model.dashes[c] else maxOf(72.dp, (fullWidth - 2.dp) / cols)
+            ?: if (model.sized) perDash * model.dashes[c] else maxOf(72.dp, (fullWidth - room) / cols)
     }
     val focusers = remember(start, cols, model.rows.size) { List((model.rows.size + 1) * cols) { FocusRequester() } }
     fun focuser(r: Int, c: Int) = focusers.getOrNull((r + 1) * cols + c)
     var here by remember(start) { mutableStateOf(-1 to 0) }
     /* While a cell is being typed in, each heading's edge shows its handle. */
     var writing by remember(start) { mutableStateOf<Pair<Int, Int>?>(null) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(10.dp)
     val accent = appAccent()
     var menu by remember { mutableStateOf(false) }
+    /* Changes that take away or add the cell being typed in wait a frame, so the keyboard lets go of it first. */
+    val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
+    fun later(block: () -> Unit) { scope.launch { androidx.compose.runtime.withFrameNanos { }; block() } }
     val pending by tableFocus
     LaunchedEffect(pending, start, model.rows.size, cols) {
         val want = pending ?: return@LaunchedEffect
@@ -629,9 +644,23 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
         tableFocus.value = null
         runCatching { focuser(want.r, want.c)?.requestFocus() }
     }
-    val line = scheme.outlineVariant
-    val wash = scheme.surfaceContainerHigh
-    val textStyle = MaterialTheme.typography.bodyMedium.copy(color = scheme.onSurface, fontSize = 14.sp)
+    val line = scheme.outlineVariant.copy(alpha = .7f)
+    val wash = scheme.surfaceContainer
+    val textStyle = MaterialTheme.typography.bodyMedium.copy(color = scheme.onSurface, fontSize = 14.sp, lineHeight = 19.sp)
+    val headStyle = textStyle.copy(fontWeight = FontWeight.SemiBold)
+    /* How many of the note's lines each row needs, its longest cell wrapped in its column; told to the text so it leaves the room. */
+    val measurer = rememberTextMeasurer()
+    val padX = 10.dp; val padY = 3.dp
+    val needs = (-1 until model.rows.size).map { r ->
+        val tallest = (0 until cols).maxOf { c ->
+            val text = (if (r == -1) model.head[c] else model.rows[r][c]).replace("\\|", "|").ifEmpty { " " }
+            val inner = with(density) { (widths[c] - padX * 2).roundToPx().coerceAtLeast(1) }
+            measurer.measure(text, if (r == -1) headStyle else textStyle, constraints = Constraints(maxWidth = inner)).size.height
+        }
+        val px = tallest + with(density) { (padY * 2).toPx() }
+        maxOf(1, kotlin.math.ceil(px / lineHeight - .05f).toInt())
+    }
+    LaunchedEffect(needs, index) { if (tableRowLines[index] != needs) tableRowLines[index] = needs }
     val tableWidth = widths.fold(0.dp) { a, b -> a + b }
     Box(Modifier.offset { IntOffset(0, tops.first().toInt()) }) {
         Box(Modifier.horizontalScroll(rememberScrollState())) {
@@ -642,37 +671,37 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
                     Modifier.height(height).then(if (r == -1) Modifier.background(wash) else Modifier).drawBehind {
                         if (r < model.rows.size - 1) drawRect(line, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
                     },
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     (0 until cols).forEach { c ->
                         val value = (if (r == -1) model.head[c] else model.rows[r][c]).replace("\\|", "|")
-                        /* What's typed stays as typed (a space at the end, before the next word); the note's own value comes in when it differs. */
-                        var typed by remember(start, r, c) { mutableStateOf(value) }
-                        LaunchedEffect(value) { if (typed.trim() != value) typed = value }
                         val lastColumn = c == cols - 1
                         Box(Modifier.width(widths[c]).fillMaxSize().drawBehind { if (!lastColumn) drawRect(line, Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height)) }, contentAlignment = Alignment.CenterStart) {
-                            val isLast = r == model.rows.size - 1 && c == cols - 1
-                            BasicTextField(
-                                value = typed,
-                                onValueChange = { next -> typed = next; change { m -> if (r == -1) m.head[c] = next else m.rows[r][c] = next } },
-                                readOnly = !canWrite, singleLine = true,
-                                textStyle = if (r == -1) textStyle.copy(fontWeight = FontWeight.Bold) else textStyle,
-                                cursorBrush = SolidColor(scheme.primary),
-                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-                                keyboardActions = KeyboardActions(onNext = {
-                                    if (isLast) { change { m -> m.rows.add(MutableList(cols) { "" }) }; tableFocus.value = app.kimono.ui.TableFocus(start, r + 1, 0) }
-                                    else { val next = (r + 1) * cols + c + 1; focusers.getOrNull(next)?.requestFocus() }
-                                }),
-                                decorationBox = { inner ->
-                                    Box(Modifier.padding(horizontal = 8.dp)) {
-                                        if (typed.isEmpty() && r == -1) Text("Heading", style = textStyle.copy(fontWeight = FontWeight.Bold), color = faintColor())
-                                        inner()
+                            TableCell(
+                                value = value, r = r, c = c, canWrite = canWrite,
+                                style = if (r == -1) headStyle else textStyle, placeholder = if (r == -1) "Heading" else null,
+                                padX = padX, padY = padY, focuser = focuser(r, c),
+                                onFocus = { on -> if (on) { here = r to c; writing = r to c } else if (writing == (r to c)) writing = null },
+                                onText = { text -> change { m -> if (r == -1) m.head[c] = text else m.rows[r][c] = text } },
+                                onNext = {
+                                    if (r == model.rows.size - 1 && c == cols - 1) later { change { m -> m.rows.add(MutableList(cols) { "" }) }; tableFocus.value = app.kimono.ui.TableFocus(start, r + 1, 0) }
+                                    else focusers.getOrNull((r + 1) * cols + c + 1)?.requestFocus()
+                                },
+                                onBackAtStart = {
+                                    /* Backspace at a cell's start: an empty table goes, an empty row goes, else back a cell. */
+                                    val tableEmpty = model.head.all { it.isBlank() } && model.rows.all { row -> row.all { it.isBlank() } }
+                                    val rowEmpty = r >= 0 && model.rows[r].all { it.isBlank() }
+                                    when {
+                                        value.isEmpty() && tableEmpty -> { focusManager.clearFocus(); later { change { m -> m.rows.clear(); m.head.clear() } } }
+                                        value.isEmpty() && rowEmpty && model.rows.size > 1 -> {
+                                            focuser(r - 1, cols - 1)?.requestFocus()
+                                            later { change { m -> if (r < m.rows.size) m.rows.removeAt(r) } }
+                                        }
+                                        c > 0 -> focuser(r, c - 1)?.requestFocus()
+                                        r > -1 -> focuser(r - 1, cols - 1)?.requestFocus()
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth().then(focuser(r, c)?.let { Modifier.focusRequester(it) } ?: Modifier)
-                                    .onFocusChanged { if (it.isFocused) { here = r to c; writing = r to c } else if (writing == (r to c)) writing = null },
                             )
-                            /* A heading's edge: drag to make its column wider or narrower. Its handle shows while you're in the table. */
+                            /* A heading's edge: drag to make its column wider or narrower. Its handle shows on the column you're in. */
                             if (r == -1 && canWrite) Box(
                                 Modifier.align(Alignment.CenterEnd).width(24.dp).fillMaxSize().semantics { contentDescription = "Drag to resize the column" }.pointerInput(start, c, model.dashes.toList()) {
                                     detectHorizontalDragGestures(
@@ -687,21 +716,20 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
                                 },
                                 contentAlignment = Alignment.CenterEnd,
                             ) {
-                                val shown = writing != null || dragging.containsKey(c)
-                                val alpha by animateFloatAsState(if (shown) 1f else 0f, spring())
-                                Box(
-                                    Modifier.padding(end = 2.dp).size(width = 5.dp, height = 18.dp)
-                                        .drawBehind { drawRoundRect((if (dragging.containsKey(c)) accent else accent.copy(alpha = .7f)).copy(alpha = alpha * (if (dragging.containsKey(c)) 1f else .7f)), cornerRadius = CornerRadius(3.dp.toPx())) },
-                                )
+                                val held = dragging.containsKey(c)
+                                val alpha by animateFloatAsState(if (held) 1f else if (writing?.second == c) .5f else 0f, spring())
+                                Box(Modifier.padding(end = 3.dp).size(width = 3.dp, height = 14.dp).drawBehind { drawRoundRect(accent.copy(alpha = alpha), cornerRadius = CornerRadius(2.dp.toPx())) })
                             }
-                        }
-                    }
                         }
                     }
                 }
             }
-        /* ··· floats over the table's corner while you're in it: rows, columns, and taking it away. */
-        if (canWrite && (writing != null || menu)) Box(Modifier.offset(x = minOf(tableWidth, fullWidth) - 32.dp, y = (-34).dp)) {
+        }
+        }
+        /* ··· to the table's right while you're in it: rows, columns, and taking it away. */
+        val headHeight = with(density) { heights.first().toDp() }
+        val beside = if (tableWidth + 34.dp <= fullWidth) tableWidth + 2.dp else fullWidth - 32.dp
+        if (canWrite && (writing != null || menu)) Box(Modifier.offset(x = beside, y = (headHeight - 32.dp) / 2)) {
             HeadButton("more", "Table") { menu = true }
             InkMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 val (hr, hc) = here
@@ -713,5 +741,58 @@ private fun NoteTableView(start: Int, model: TableModel, tops: List<Float>, heig
             }
         }
     }
+}
+
+/* Marks a cell's start, so a Backspace there is seen even when the cell is empty. Never written to the note. */
+private const val cellStart = "​"
+
+/** One cell: its words, wrapping in its column; Return moves on, Backspace at its start goes back (or takes away what's empty). */
+@Composable
+private fun TableCell(
+    value: String, r: Int, c: Int, canWrite: Boolean, style: androidx.compose.ui.text.TextStyle, placeholder: String?,
+    padX: androidx.compose.ui.unit.Dp, padY: androidx.compose.ui.unit.Dp, focuser: FocusRequester?,
+    onFocus: (Boolean) -> Unit, onText: (String) -> Unit, onNext: () -> Unit, onBackAtStart: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    /* What's typed stays as typed (a space before the next word); the note's own value comes in when it differs. */
+    var field by remember(r, c) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(cellStart + value, TextRange(value.length + 1))) }
+    LaunchedEffect(value) {
+        if (field.text.removePrefix(cellStart).trim() != value) field = androidx.compose.ui.text.input.TextFieldValue(cellStart + value, TextRange(value.length + 1))
+    }
+    val words = field.text.removePrefix(cellStart)
+    BasicTextField(
+        value = field,
+        onValueChange = { next ->
+            when {
+                /* The mark went: Backspace at the start. */
+                !next.text.contains(cellStart) -> onBackAtStart()
+                next.text.contains('\n') -> {
+                    val text = next.text.replace("\n", "").removePrefix(cellStart).replace(cellStart, "")
+                    field = androidx.compose.ui.text.input.TextFieldValue(cellStart + text, TextRange(text.length + 1))
+                    if (text != words) onText(text)
+                    onNext()
+                }
+                else -> {
+                    val text = next.text.replace(cellStart, "")
+                    val at = (next.selection.start).coerceAtLeast(1)
+                    field = androidx.compose.ui.text.input.TextFieldValue(cellStart + text, TextRange(at, maxOf(at, next.selection.end)), next.composition)
+                    if (text != words) onText(text)
+                }
+            }
+        },
+        readOnly = !canWrite,
+        textStyle = style,
+        cursorBrush = SolidColor(scheme.primary),
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
+        keyboardActions = KeyboardActions(onNext = { onNext() }),
+        decorationBox = { inner ->
+            Box(Modifier.padding(horizontal = padX, vertical = padY)) {
+                if (words.isEmpty() && placeholder != null) Text(placeholder, style = style, color = faintColor())
+                inner()
+            }
+        },
+        modifier = Modifier.fillMaxWidth().then(focuser?.let { Modifier.focusRequester(it) } ?: Modifier)
+            .onFocusChanged { onFocus(it.isFocused) },
+    )
 }
 

@@ -267,7 +267,18 @@ function tableAt(view: EditorView, dom: HTMLElement): { from: number; to: number
 /* Where to put the caret once a table is drawn again: its cell, and whether to pick its words. */
 let focusNext: { from: number; r: number; c: number; pick: boolean } | null = null;
 
+/* Whether the caret sits at the very start of a cell, nothing picked. */
+function atCellStart(cell: HTMLElement) {
+  const sel = window.getSelection();
+  if (!sel || !sel.isCollapsed || !sel.rangeCount) return false;
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  range.setEnd(sel.getRangeAt(0).startContainer, sel.getRangeAt(0).startOffset);
+  return range.toString().length === 0;
+}
+
 function placeCaret(cell: HTMLElement, pick: boolean) {
+  if (!cell.isConnected) return;
   cell.focus();
   const range = document.createRange();
   range.selectNodeContents(cell);
@@ -432,10 +443,19 @@ function wire(view: EditorView, wrap: HTMLElement) {
       event.preventDefault();
       view.dispatch({ selection: { anchor: Math.max(0, found.from - 1) } });
       view.focus();
-    } else if (event.key === "Backspace" && hit.r >= 0 && t.rows.length > 1 && t.rows[hit.r].every((x) => !x) && !(hit.cell.textContent ?? "").length) {
-      /* An empty row goes with a Backspace in it. */
-      change(view, wrap, (m) => { m.rows.splice(hit.r, 1); }, { r: Math.max(-1, hit.r - 1), c: hit.c });
+    } else if (event.key === "Backspace" && atCellStart(hit.cell)) {
+      /* Backspace at a cell's start: an empty table goes, an empty row goes, else back a cell. */
+      const empty = !(hit.cell.textContent ?? "").trim();
+      const tableEmpty = t.head.every((x) => !x.trim()) && t.rows.every((row) => row.every((x) => !x.trim()));
       event.preventDefault();
+      if (empty && tableEmpty) {
+        const to = Math.min(found.to + 1, view.state.doc.length);
+        view.dispatch({ changes: { from: found.from, to }, selection: { anchor: found.from }, userEvent: "delete.table" });
+        view.focus();
+      } else if (empty && hit.r >= 0 && t.rows.length > 1 && t.rows[hit.r].every((x) => !x.trim())) {
+        change(view, wrap, (m) => { m.rows.splice(hit.r, 1); }, { r: hit.r - 1, c: cols - 1 });
+      } else if (hit.c > 0) go(hit.r, hit.c - 1, false);
+      else if (hit.r > -1) go(hit.r - 1, cols - 1, false);
     }
   });
   /* A column's edge, dragged: the dashes under its heading follow. */
