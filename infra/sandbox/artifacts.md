@@ -17,7 +17,10 @@ beside the chat or full screen.
   limit. Inline `<style>` and `<script>` are fine.
 - How something works, or anything that happens in stages, is a `<k-scene>`
   (see Animations) that plays it out, never your own SVG with a slider or
-  Next buttons to step through it.
+  Next buttons to step through it. A real object (a device, a machine, an
+  organ) is drawn as itself, its parts in place and moving: see Any 3D model.
+- Make it as good as the idea deserves. Take the time to build the real thing
+  well; a quick stand-in is worse than none.
 - It has **no network**: no `fetch`, no CDN, no images from the web. Put data
   in the page. Pictures go in as `data:` URLs, or as files (see Sound,
   video and pictures). What's available: the kit,
@@ -112,9 +115,11 @@ Rules:
   caption for each, and one scene per artifact. Show the one thing that is
   hard to picture, not the whole topic: the reply's words carry the rest.
   Before you write it, add up the waits and steps.
-- Maths (a function, a curve, an area, a vector) goes on `axes()`. Anything
-  else (how a thing works, its parts, steps, flows) is a diagram (see
-  Diagrams): no `axes()`, and never boxes built from `line()` or a row of
+- Maths (a function, a curve, an area, a vector) goes on `axes()`. A real,
+  physical thing (an EpiPen, an engine, a heart, a lock) is built as itself
+  with `model()` and moved (see Any 3D model): never as labelled cards. Ideas
+  with no body (steps, flows, who links to whom, a hierarchy) are a diagram
+  (see Diagrams): no `axes()`, and never boxes built from `line()` or a row of
   blocks from `bars()`.
 - `height` is 200 to 520.
 
@@ -145,7 +150,7 @@ Rules:
 - Every step returns `.fade(seconds)` to take it away later.
 
 ### Diagrams
-For ideas that aren't a graph. With no `axes()`, the stage is 0 to 100 across
+For abstract ideas that aren't a graph and have no body to draw. With no `axes()`, the stage is 0 to 100 across
 from the left and 0 to 100 down from the top.
 - `node([x, y], words, { sub, color, shape: "box"|"pill"|"circle", fill: "solid", dashed, w, h })`
   a labelled card centred at `[x, y]`; `sub` is a smaller second line. It sizes
@@ -184,8 +189,9 @@ wait(2)
 
 ### Any 3D model: `model()`
 
-For a real thing (an engine, a heart, a molecule, the solar system), build it
-yourself with three.js and let the scene move it. It keeps time with the
+For a real thing (an engine, a heart, a molecule, the solar system, a
+syringe), build it yourself with three.js, with its real shape, proportions and
+colours, and the parts that move as separate pieces, and let the scene move it. It keeps time with the
 scene, so narration, pause, scrub and replay all work.
 
 - `model(build, move, { frame })`: `build(T)` gets THREE and returns your model
