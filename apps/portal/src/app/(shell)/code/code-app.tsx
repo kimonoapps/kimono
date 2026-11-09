@@ -23,6 +23,7 @@ import { Markdown } from "./markdown";
 import { ArtifactFrame, SceneBar, type SceneControl, type SceneState } from "./artifact-frame";
 import { Picker } from "./picker";
 import { Dictation, joinSaid } from "./dictation";
+import type { Answer as KeptAnswer } from "@/lib/code/feedback";
 
 /*
  * 工 Kimono Code on the web. One page: the sidebar of workspaces, and the
@@ -50,10 +51,12 @@ const saveAs = (url: string, name: string) => { const link = document.createElem
  * going back would wait on that.
  */
 const codeNav = "kimono-code-nav";
+/* Where these screens live: Kimono AI's own page, or Admin reading one chat. */
+let codeHome = "/code";
 function goTo(to: Record<string, string | null>, replace = false) {
   const next = new URLSearchParams();
   for (const [key, value] of Object.entries(to)) if (value) next.set(key, value);
-  const url = `/code${next.size ? `#${next}` : ""}`;
+  const url = `${codeHome}${next.size ? `#${next}` : ""}`;
   /* Keep Next.js's own history state, so its back button handling sees this as the same page. */
   if (replace) window.history.replaceState(window.history.state, "", url); else window.history.pushState(window.history.state, "", url);
   window.dispatchEvent(new Event(codeNav));
@@ -950,7 +953,7 @@ const MarksContext = createContext<Marks>({ drive: null, spaces: new Map() });
    in it, or only read it. Someone who opened its link without signing in is
    a guest, and sees the chat alone. */
 
-type Viewer = { me: string | null; guest: boolean; people: Map<string, Person> };
+type Viewer = { me: string | null; guest: boolean; people: Map<string, Person>; /** An administrator reading it from the feedback page. */ peek?: boolean };
 const ViewerContext = createContext<Viewer>({ me: null, guest: false, people: new Map() });
 const ChatAccess = createContext<{ access: Access; owner: string }>({ access: "owner", owner: "" });
 /** Whether the person looking owns the chat in front of them: only they rename, share, run its app, answer for its Drive. */
@@ -1679,8 +1682,73 @@ function SuggestedApps() {
 
 /* ── a workspace ── */
 
-function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked, onChange, now }: { projects: Project[]; workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number }) {
-  const { events, connected, drafts, typing } = useTimeline(workspace.id, onChange);
+/** A chat someone gave a thumb on, read by an administrator from the feedback page: as its owner sees it, up to the rated answer, to read. */
+export function PeekChat({ token, id, upTo }: { token: string; id: string; upTo: number }) {
+  useState(() => { setShareLink(token); codeHome = window.location.pathname; return token; });
+  const params = useCodeParams();
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const load = useCallback(() => code.workspace(id).then((w) => { setWorkspace(w); setProblem(null); }, (error) => setProblem(problemText(error))), [id]);
+  useEffect(() => { void load(); }, [load]);
+  const now = useNow(false);
+  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: new Map() }), []);
+  const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
+  const tab = (["files", "changes", "app"] as const).find((t) => t === params.get("tab")) ?? "chat";
+  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><div className="cd-page">
+    <div className="cd cd-guest cd-peek has-workspace">
+      <main className="cd-main">
+        {workspace ? <WorkspaceView workspace={workspace} projects={[]} others={[]} tab={tab} path={params.get("path") ?? ""} blocked={null} onChange={() => void load()} now={now} upTo={upTo} />
+          : problem ? <div className="cd-sheet cd-empty"><p>{problem}</p></div>
+          : <div className="cd-sheet cd-loading"><div className="cd-timeline"><SkeletonChat /></div></div>}
+      </main>
+    </div>
+  </div></MarksContext.Provider></ViewerContext.Provider>;
+}
+
+/** A reported chat, as it was kept: the same conversation, its artifacts by name. */
+export function KeptChat({ title, at, chat }: { title: string; at: number; chat: KeptAnswer[] }) {
+  const events = useMemo(() => keptEvents(chat, at), [chat, at]);
+  const workspace = useMemo(() => ({ id: "kept", title, kind: "chat", owner: "" }) as unknown as Workspace, [title]);
+  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: new Map() }), []);
+  const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
+  const access = useMemo(() => ({ access: "read" as Access, owner: "" }), []);
+  const artifacts = useMemo<ArtifactsShared>(() => ({ workspaceId: "kept", drafts: {}, versions: {}, beside: null, setBeside: () => {}, setFull: () => {}, kept: true }), []);
+  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><ChatAccess.Provider value={access}><ArtifactsContext.Provider value={artifacts}><div className="cd-page">
+    <div className="cd cd-guest cd-peek has-workspace">
+      <main className="cd-main"><div className="cd-ws-grid is-chat"><div className="cd-sheet cd-ws">
+        <header className="cd-ws-head"><div className="cd-ws-id"><h1 title={title}>{title}</h1></div></header>
+        <Chat workspace={workspace} events={events} drafts={noDrafts} running={false} blocked={null} />
+      </div></div></main>
+    </div>
+  </div></ArtifactsContext.Provider></ChatAccess.Provider></MarksContext.Provider></ViewerContext.Provider>;
+}
+
+/** A kept turn (lib/code/feedback.ts) back as the events it came from, near enough for the chat to draw. */
+function keptEvents(chat: KeptAnswer[], at: number): StoredEvent[] {
+  const out: StoredEvent[] = [];
+  const push = (event: CodeEvent) => out.push({ seq: out.length + 1, turn: null, at, event });
+  const file = (name: string): Attachment => ({ name, path: "", size: 0, type: "" });
+  chat.forEach((answer, n) => {
+    push({ kind: "ask", by: "", text: answer.asked, attachments: answer.attachments.map(file) });
+    answer.steps.forEach((step, i) => {
+      if (step.said !== undefined) push({ kind: "text", text: step.said });
+      else if (step.tool) {
+        const id = `kept-${n}-${i}`;
+        push({ kind: "tool", id, name: step.tool, label: step.tool, detail: step.detail });
+        if (step.ok !== undefined || step.output) push({ kind: "tool-result", id, ok: step.ok !== false, output: step.output ?? "" });
+      } else if (step.artifact) push({ kind: "artifact", id: `kept-${n}-${i}`, name: step.artifact, action: "wrote" });
+      else if (step.sent) push({ kind: "sent", files: step.sent.map(file) });
+    });
+    push({ kind: "done", ok: answer.ok, ...(answer.error ? { error: answer.error } : {}), ...(answer.durationMs ? { durationMs: answer.durationMs } : {}), ...(answer.model ? { model: answer.model as "opus" } : {}) });
+  });
+  return out;
+}
+
+function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked, onChange, now, upTo }: { projects: Project[]; workspace: Workspace; others: Workspace[]; tab: Tab; path: string; blocked: string | null; onChange: () => void; now: number; /** Read up to this event and no further. */ upTo?: number }) {
+  const timeline = useTimeline(workspace.id, onChange);
+  const events = useMemo(() => upTo ? timeline.events.filter((e) => e.seq <= upTo) : timeline.events, [timeline.events, upTo]);
+  const { connected, typing } = timeline;
+  const drafts = upTo ? noDrafts : timeline.drafts;
   const { me } = useContext(ViewerContext);
   const othersTyping = useMemo(() => typing.filter((who) => who !== me?.toLowerCase()), [typing, me]);
   /* Artifacts: the latest saved version of each, and where a big one is open (beside the chat, or full screen). */
@@ -1697,13 +1765,13 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
   const project = workspace.kind === "project";
   const access: Access = workspace.access ?? "owner";
   const owns = access === "owner";
-  const { guest } = useContext(ViewerContext);
+  const { guest, peek } = useContext(ViewerContext);
   const chatAccess = useMemo(() => ({ access, owner: workspace.owner ?? "" }), [access, workspace.owner]);
   const [sharing, setSharing] = useState(false);
   /* A guest has the conversation only: files, changes and the app's controls are for people signed in. */
   const isApp = !guest && (project || Boolean(workspace.preview));
   const tab: Tab = isApp ? asked : "chat";
-  const running = workspace.turn?.state === "running";
+  const running = !upTo && workspace.turn?.state === "running";
   const [publishing, setPublishing] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const go = (to: Partial<Record<"tab" | "path", string | null>>) => goTo({ w: workspace.id, tab: to.tab === "chat" ? null : to.tab ?? tab, path: to.path ?? null });
@@ -1724,13 +1792,13 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
   return <ChatAccess.Provider value={chatAccess}><ArtifactsContext.Provider value={artifacts}><div className={cx("cd-ws-grid", !isApp && "is-chat", tab === "chat" && beside && "has-beside")}>
     <div className="cd-sheet cd-ws">
       <header className="cd-ws-head">
-        {guest ? null : <>
+        {guest || peek ? null : <>
           <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
           <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
         </>}
         <div className="cd-ws-id">
           <ChatTitle workspace={workspace} onRenamed={onChange} />
-          {!owns && workspace.owner ? <p className="cd-ws-shared"><SharedBy username={workspace.owner} words="Shared by " /></p> : null}
+          {!owns && !peek && workspace.owner ? <p className="cd-ws-shared"><SharedBy username={workspace.owner} words="Shared by " /></p> : null}
           {project && owns ? <p className="cd-mono">{repoName(workspace)} · {workspace.branch}</p> : null}
           {/* Working shows once, at the end of the conversation; here only a lost connection. */}
           {!isApp && !connected ? <span className="cd-status" role="status">Reconnecting…</span> : null}
@@ -2085,6 +2153,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   const { access } = useContext(ChatAccess);
   const { me } = useContext(ViewerContext);
   const owns = access === "owner";
+  const keptArtifacts = useContext(ArtifactsContext)?.kept ?? false;
   const items = useMemo(() => itemsOf(events), [events]);
   /* Your thumbs, kept with the chat they belong to so another chat's never show. */
   const [rated, setRated] = useState<{ chat: string; ratings: Record<number, 1 | -1> }>({ chat: "", ratings: {} });
@@ -2183,7 +2252,9 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
             case "connect": return <ConnectCard key={item.seq} app={item.app} url={item.url} />;
-            case "artifact": return item.action === "edited"
+            case "artifact": return keptArtifacts
+              ? <p key={`art-${item.id}`} className="cd-note"><Icon name="spark" /><span>{item.action === "edited" ? "Changed" : "Made"} <b>{item.name}</b></span></p>
+              : item.action === "edited"
               ? <ArtifactChanged key={`art-${item.id}`} name={item.name} />
               : <ArtifactCard key={`art-${item.id}`} name={item.name} />;
           }
@@ -2372,6 +2443,8 @@ type ArtifactsShared = {
   beside: string | null;
   setBeside: (name: string | null) => void;
   setFull: (name: string | null) => void;
+  /** A chat kept as it was, with each artifact's name and not its page. */
+  kept?: boolean;
 };
 const ArtifactsContext = createContext<ArtifactsShared | null>(null);
 
@@ -2634,16 +2707,16 @@ function fileKind(name: string, type: string) {
 function SentFile({ workspace, file }: { workspace: Workspace; file: Attachment }) {
   const [open, setOpen] = useState(false);
   const url = code.attachmentUrl(workspace.id, file);
-  const shows = previewable(file.name, file.type) || previewKind(file.name, file.type) === "audio";
+  const shows = Boolean(file.path) && (previewable(file.name, file.type) || previewKind(file.name, file.type) === "audio");
   const download = () => saveAs(url, file.name);
   const face = <>
     <FileThumb name={file.name} picture={isPicture(file.type) ? url : null} video={previewKind(file.name, file.type) === "video" ? url : null} size={48} className="cd-sentfile-thumb" />
-    <span className="cd-sentfile-name"><b title={file.name}>{file.name}</b><small>{fileKind(file.name, file.type)} · {readableSize(file.size)}</small></span>
+    <span className="cd-sentfile-name"><b title={file.name}>{file.name}</b><small>{file.path ? `${fileKind(file.name, file.type)} · ${readableSize(file.size)}` : fileKind(file.name, file.type)}</small></span>
   </>;
   return <figure className={cx("cd-sentfile", shows && "is-open-able")}>
     {shows ? <button type="button" className="cd-sentfile-face" aria-label={`Open ${file.name}`} title="Open" onClick={() => setOpen(true)}>{face}</button>
       : <div className="cd-sentfile-face">{face}</div>}
-    <Seal type="button" tone="quiet" compact onClick={download}><Icon name="download" />Download</Seal>
+    {file.path ? <Seal type="button" tone="quiet" compact onClick={download}><Icon name="download" />Download</Seal> : null}
     {open ? <FileOverlay name={file.name} mime={file.type} url={url} onClose={() => setOpen(false)}
       actions={<Seal type="button" tone="quiet" compact onClick={download}><Icon name="download" />Download</Seal>} /> : null}
   </figure>;
@@ -2655,7 +2728,7 @@ function FileChips({ workspace, files }: { workspace: Workspace; files: Attachme
   const others = files.filter((a) => !isMedia(a));
   return <>
     {files.some(isMedia) ? <MediaGrid workspace={workspace} files={files.filter(isMedia)} /> : null}
-    {others.length ? <div className="cd-attached">{others.map((a) => <button type="button" key={a.path} className="cd-filechip" onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span><small>{readableSize(a.size)}</small></button>)}</div> : null}
+    {others.length ? <div className="cd-attached">{others.map((a) => <button type="button" key={a.path || a.name} className="cd-filechip" disabled={!a.path} onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span>{a.path ? <small>{readableSize(a.size)}</small> : null}</button>)}</div> : null}
     {opened ? <FileOverlay name={opened.name} mime={opened.type} url={code.attachmentUrl(workspace.id, opened)} onClose={() => setOpened(null)}
       actions={<Seal type="button" tone="quiet" compact onClick={() => saveAs(code.attachmentUrl(workspace.id, opened), opened.name)}><Icon name="download" />Download</Seal>} /> : null}
   </>;

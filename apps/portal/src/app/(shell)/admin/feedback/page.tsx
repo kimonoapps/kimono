@@ -26,7 +26,7 @@ export default async function FeedbackPage() {
   const settings = await getPlatformSettings();
   let entries: BankEntry[] = [];
   if (codeConfig(settings).enabled) {
-    try { entries = bank(db()).reverse(); } catch { entries = []; }
+    try { entries = bank(db(), 0, true).reverse(); } catch { entries = []; }
   }
 
   return <AppShell user={session.user} brandColors={settings.brand.colors} active="admin">

@@ -141,17 +141,38 @@ export function report(db: DatabaseSync, workspaceId: string, reason: string, no
 }
 
 export type BankEntry =
-  | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[] }
-  | { type: "report"; at: number; version: string | null; sandboxVersion: string | null; reason: string; chat: Answer[] };
+  | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[]; /** Admin's page only: where to open it. */ ref?: string }
+  | { type: "report"; at: number; version: string | null; sandboxVersion: string | null; reason: string; chat: Answer[]; ref?: string };
 
-/** Everything in the bank since [since], oldest first, without anyone's name. */
-export function bank(db: DatabaseSync, since = 0): BankEntry[] {
-  const ratings = (db.prepare("SELECT rating, note, answer, at, version, sandbox_version FROM ai_ratings WHERE at >= ?").all(since) as { rating: Rating; note: string; answer: string; at: number; version: string | null; sandbox_version: string | null }[])
-    .map((r): BankEntry => {
-      const { before = [], ...answer } = JSON.parse(r.answer) as StoredAnswer;
-      return { type: "rating", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, rating: r.rating, note: r.note, answer, before };
-    });
-  const reports = (db.prepare("SELECT reason, chat, at, version, sandbox_version FROM ai_reports WHERE at >= ?").all(since) as { reason: string; chat: string; at: number; version: string | null; sandbox_version: string | null }[])
-    .map((r): BankEntry => ({ type: "report", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, reason: r.reason, chat: JSON.parse(r.chat) as Answer[] }));
+type RatingRow = { ref: number; workspace_id: string; seq: number; rating: Rating; note: string; answer: string; at: number; version: string | null; sandbox_version: string | null };
+type ReportRow = { id: string; reason: string; chat: string; at: number; version: string | null; sandbox_version: string | null };
+const ratingCols = "rowid AS ref, workspace_id, seq, rating, note, answer, at, version, sandbox_version";
+const reportCols = "id, reason, chat, at, version, sandbox_version";
+
+function ratingEntry(r: RatingRow, refs: boolean): BankEntry {
+  const { before = [], ...answer } = JSON.parse(r.answer) as StoredAnswer;
+  return { type: "rating", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, rating: r.rating, note: r.note, answer, before, ...(refs ? { ref: `r${r.ref}` } : {}) };
+}
+function reportEntry(r: ReportRow, refs: boolean): BankEntry {
+  return { type: "report", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, reason: r.reason, chat: JSON.parse(r.chat) as Answer[], ...(refs ? { ref: `p${r.id}` } : {}) };
+}
+
+/** Everything in the bank since [since], oldest first, without anyone's name. [refs] gives each the ref Admin opens it by; the export leaves them out. */
+export function bank(db: DatabaseSync, since = 0, refs = false): BankEntry[] {
+  const ratings = (db.prepare(`SELECT ${ratingCols} FROM ai_ratings WHERE at >= ?`).all(since) as RatingRow[]).map((r) => ratingEntry(r, refs));
+  const reports = (db.prepare(`SELECT ${reportCols} FROM ai_reports WHERE at >= ?`).all(since) as ReportRow[]).map((r) => reportEntry(r, refs));
   return [...ratings, ...reports].sort((a, b) => a.at - b.at);
+}
+
+/** One entry by its ref; a rating with the chat it rates, to read there up to the rated answer. */
+export function bankEntry(db: DatabaseSync, ref: string): { entry: BankEntry; chat: { id: string; upTo: number } | null } | null {
+  if (/^r\d+$/.test(ref)) {
+    const row = db.prepare(`SELECT ${ratingCols} FROM ai_ratings WHERE rowid = ?`).get(Number(ref.slice(1))) as RatingRow | undefined;
+    return row ? { entry: ratingEntry(row, true), chat: { id: row.workspace_id, upTo: row.seq } } : null;
+  }
+  if (/^p[\w-]+$/.test(ref)) {
+    const row = db.prepare(`SELECT ${reportCols} FROM ai_reports WHERE id = ?`).get(ref.slice(1)) as ReportRow | undefined;
+    return row ? { entry: reportEntry(row, true), chat: null } : null;
+  }
+  return null;
 }

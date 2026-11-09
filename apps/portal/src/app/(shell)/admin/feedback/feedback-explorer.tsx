@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Answer, BankEntry } from "@/lib/code/feedback";
 import { LineIcon } from "@/components/line-icon";
+import { CrossingSeal } from "@/components/crossing";
 import { Icon } from "../../code/icons";
 import { Markdown } from "../../code/markdown";
 
@@ -12,7 +13,7 @@ const when = (at: number) => new Date(at).toLocaleString(undefined, { month: "sh
 const took = (ms?: number) => !ms ? null : ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
 /** One entry as its own JSON file, in the shape the JSONL export gives each line. */
 function download(entry: BankEntry) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(entry, null, 2)], { type: "application/json" }));
+  const url = URL.createObjectURL(new Blob([JSON.stringify({ ...entry, ref: undefined }, null, 2)], { type: "application/json" }));
   const link = document.createElement("a");
   link.href = url;
   link.download = `kimono-ai-${entry.type}-${new Date(entry.at).toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`;
@@ -95,6 +96,7 @@ function Entry({ entry, open, onToggle }: { entry: BankEntry; open: boolean; onT
     </button>
     {open ? <div className="fb-body">
       <div className="fb-versions">
+        {entry.ref ? <CrossingSeal compact href={`/admin/feedback/${entry.ref}`}>Open chat</CrossingSeal> : null}
         <button type="button" className="k-seal k-tone-quiet fb-download" onClick={() => download(entry)}><LineIcon name="download" />Download</button>
         {entry.version || entry.sandboxVersion ? <small>Kimono {entry.version ?? "unknown"} · Sandbox {entry.sandboxVersion ?? "unknown"}</small> : null}
       </div>
