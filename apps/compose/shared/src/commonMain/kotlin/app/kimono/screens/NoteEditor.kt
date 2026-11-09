@@ -276,7 +276,8 @@ fun NoteEditorScreen(model: NotesModel, platform: Platform, key: String, me: Str
                 })
             }
             /* The format bar sits just above the keyboard (or at the foot, with a hardware one) while you write. */
-            if (bodyFocused && canWrite) FormatBar(draft, formats) { focusManager.clearFocus() }
+            val inCell = cellFormat.value
+            if ((bodyFocused || inCell != null) && canWrite) FormatBar(draft, formats, inCell) { focusManager.clearFocus() }
         }
     }
     if (sharing && meta != null) ShareSheet(shareTarget(model, meta.id, false, draft.title.text.toString().ifBlank { meta.title }, canWrite), me, platform) { sharing = false }
@@ -535,8 +536,11 @@ private fun shortcut(draft: NoteDraft, event: androidx.compose.ui.input.key.KeyE
  * a seal block with a pressed base. Done puts the keyboard away.
  */
 @Composable
-private fun FormatBar(draft: NoteDraft, formats: Set<String>, done: () -> Unit) {
+private fun FormatBar(draft: NoteDraft, formats: Set<String>, cell: ((String) -> Unit)?, done: () -> Unit) {
     val body = draft.body
+    /* In a table cell, bold, italic, links and code go to the cell; headings, lists and tables have no place there. */
+    val inCell = cell != null
+    val formats = if (inCell) emptySet() else formats
     val level = (1..3).firstOrNull { "h$it" in formats }
     /* A dock floating just above the keyboard, inset from the edges, on its own soft shadow. */
     Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
@@ -547,16 +551,18 @@ private fun FormatBar(draft: NoteDraft, formats: Set<String>, done: () -> Unit) 
                 Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                FormatButton("bold", "Bold", "bold" in formats) { body.toggleBold() }
-                FormatButton("italic", "Italic", "italic" in formats) { body.toggleItalic() }
+                FormatButton("bold", "Bold", "bold" in formats) { if (cell != null) cell("bold") else body.toggleBold() }
+                FormatButton("italic", "Italic", "italic" in formats) { if (cell != null) cell("italic") else body.toggleItalic() }
+                if (!inCell) {
+                    Gap()
+                    FormatButton("heading", if (level == null) "Heading" else "Heading $level", level != null, label = level?.let { "H$it" }) { body.cycleHeading() }
+                    FormatButton("list", "Bullets", "bullet" in formats) { body.toggleList() }
+                    FormatButton("checklist", "Checklist", "check" in formats) { body.toggleChecklist() }
+                    FormatButton("table", "Table", "table" in formats) { body.insertTable() }
+                }
                 Gap()
-                FormatButton("heading", if (level == null) "Heading" else "Heading $level", level != null, label = level?.let { "H$it" }) { body.cycleHeading() }
-                FormatButton("list", "Bullets", "bullet" in formats) { body.toggleList() }
-                FormatButton("checklist", "Checklist", "check" in formats) { body.toggleChecklist() }
-                FormatButton("table", "Table", "table" in formats) { body.insertTable() }
-                Gap()
-                FormatButton("link", "Link", "link" in formats) { body.makeLink() }
-                FormatButton("code", "Code", "code" in formats) { body.toggleCode() }
+                FormatButton("link", "Link", "link" in formats) { if (cell != null) cell("link") else body.makeLink() }
+                FormatButton("code", "Code", "code" in formats) { if (cell != null) cell("code") else body.toggleCode() }
                 Gap()
                 FormatButton("check", "Done", false, onClick = done)
             }
@@ -746,6 +752,48 @@ private fun NoteTableView(index: Int, start: Int, model: TableModel, tops: List<
 /* Marks a cell's start, so a Backspace there is seen even when the cell is empty. Never written to the note. */
 private const val cellStart = "​"
 
+/** What the format dock does while a table cell is being typed in: "bold", "italic", "code" or "link" on that cell. */
+private val cellFormat = mutableStateOf<((String) -> Unit)?>(null)
+
+private val cellInlines = listOf(
+    Regex("`([^`\\n]+)`") to "code",
+    Regex("\\[([^\\]\\n]*)\\]\\(([^)\\s]*)\\)") to "link",
+    Regex("(\\*\\*|__)(?=\\S)(.+?)(?<=\\S)\\1") to "bold",
+    Regex("(?<![*\\w])([*_])(?=\\S)([^*_\\n]+?)(?<=\\S)\\1(?![*\\w])") to "italic",
+)
+
+/**
+ * A cell's words as they'll read: bold, italic, code and links styled, their
+ * marks faint while you're in the cell and gone when you're not (they stay in
+ * the text, so the caret lands where it should).
+ */
+private class CellLook(val marks: Boolean, val faint: Color, val link: Color, val codeBack: Color) : androidx.compose.ui.text.input.VisualTransformation {
+    override fun filter(text: androidx.compose.ui.text.AnnotatedString): androidx.compose.ui.text.input.TransformedText {
+        val raw = text.text
+        val styled = androidx.compose.ui.text.AnnotatedString.Builder(raw)
+        val mark = if (marks) SpanStyle(color = faint) else SpanStyle(color = Color.Transparent, fontSize = 0.01.sp, letterSpacing = 0.sp)
+        val taken = BooleanArray(raw.length)
+        for ((regex, kind) in cellInlines) for (m in regex.findAll(raw)) {
+            if (m.range.any { taken[it] }) continue
+            m.range.forEach { taken[it] = true }
+            val s = m.range.first; val e = m.range.last + 1
+            when (kind) {
+                "code" -> { styled.addStyle(SpanStyle(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, background = codeBack, fontSize = 13.sp), s + 1, e - 1); styled.addStyle(mark, s, s + 1); styled.addStyle(mark, e - 1, e) }
+                "link" -> {
+                    val words = m.groups[1]!!.range
+                    styled.addStyle(SpanStyle(color = link, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline), words.first, words.last + 1)
+                    styled.addStyle(mark, s, words.first); styled.addStyle(mark, words.last + 1, e)
+                }
+                "bold" -> { val n = m.groupValues[1].length; styled.addStyle(SpanStyle(fontWeight = FontWeight.Bold), s + n, e - n); styled.addStyle(mark, s, s + n); styled.addStyle(mark, e - n, e) }
+                "italic" -> { styled.addStyle(SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic), s + 1, e - 1); styled.addStyle(mark, s, s + 1); styled.addStyle(mark, e - 1, e) }
+            }
+        }
+        return androidx.compose.ui.text.input.TransformedText(styled.toAnnotatedString(), androidx.compose.ui.text.input.OffsetMapping.Identity)
+    }
+    override fun equals(other: Any?) = other is CellLook && other.marks == marks && other.faint == faint
+    override fun hashCode() = marks.hashCode() * 31 + faint.hashCode()
+}
+
 /** One cell: its words, wrapping in its column; Return moves on, Backspace at its start goes back (or takes away what's empty). */
 @Composable
 private fun TableCell(
@@ -760,6 +808,31 @@ private fun TableCell(
         if (field.text.removePrefix(cellStart).trim() != value) field = androidx.compose.ui.text.input.TextFieldValue(cellStart + value, TextRange(value.length + 1))
     }
     val words = field.text.removePrefix(cellStart)
+    var focused by remember { mutableStateOf(false) }
+    /* The dock's bold, italic, code and link, on what's picked here (or the word the caret is in), or off again. */
+    val format: (String) -> Unit = remember(r, c) {
+        { kind ->
+            val text = field.text.removePrefix(cellStart)
+            var from = (field.selection.min - 1).coerceIn(0, text.length)
+            var to = (field.selection.max - 1).coerceIn(from, text.length)
+            if (from == to) {
+                while (from > 0 && (text[from - 1].isLetterOrDigit() || text[from - 1] in "_'-")) from--
+                while (to < text.length && (text[to].isLetterOrDigit() || text[to] in "_'-")) to++
+            }
+            val (next, a, b) = when (kind) {
+                "link" -> { val w = text.substring(from, to).ifEmpty { "link" }; val at = from + w.length + 3; Triple(text.substring(0, from) + "[" + w + "](https://)" + text.substring(to), at, at + 8) }
+                else -> {
+                    val m = when (kind) { "bold" -> "**"; "italic" -> "*"; else -> "`" }
+                    if (from >= m.length && text.substring(from - m.length, from) == m && text.startsWith(m, to))
+                        Triple(text.substring(0, from - m.length) + text.substring(from, to) + text.substring(to + m.length), from - m.length, to - m.length)
+                    else Triple(text.substring(0, from) + m + text.substring(from, to) + m + text.substring(to), from + m.length, to + m.length)
+                }
+            }
+            field = androidx.compose.ui.text.input.TextFieldValue(cellStart + next, TextRange(a + 1, b + 1))
+            onText(next)
+        }
+    }
+    DisposableEffect(Unit) { onDispose { if (cellFormat.value === format) cellFormat.value = null } }
     BasicTextField(
         value = field,
         onValueChange = { next ->
@@ -782,6 +855,7 @@ private fun TableCell(
         },
         readOnly = !canWrite,
         textStyle = style,
+        visualTransformation = CellLook(focused, faintColor(), appAccent(), scheme.surfaceContainerHigh),
         cursorBrush = SolidColor(scheme.primary),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { onNext() }),
@@ -792,7 +866,11 @@ private fun TableCell(
             }
         },
         modifier = Modifier.fillMaxWidth().then(focuser?.let { Modifier.focusRequester(it) } ?: Modifier)
-            .onFocusChanged { onFocus(it.isFocused) },
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) cellFormat.value = format else if (cellFormat.value === format) cellFormat.value = null
+                onFocus(it.isFocused)
+            },
     )
 }
 

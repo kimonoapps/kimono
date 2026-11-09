@@ -267,6 +267,65 @@ function tableAt(view: EditorView, dom: HTMLElement): { from: number; to: number
 /* Where to put the caret once a table is drawn again: its cell, and whether to pick its words. */
 let focusNext: { from: number; r: number; c: number; pick: boolean } | null = null;
 
+/*
+ * Bold, italic, code and links in a cell: the same marks as in the rest of
+ * the note, put around what's picked (or the word being typed), or taken off
+ * when they're already there. Shown as typed while you're in the cell.
+ */
+const cellMarks: Partial<Record<Action, [string, string]>> = { bold: ["**", "**"], italic: ["*", "*"], code: ["`", "`"] };
+function cellRange(cell: HTMLElement): [number, number] | null {
+  const sel = window.getSelection();
+  if (!sel?.rangeCount || !cell.contains(sel.anchorNode)) return null;
+  const r = sel.getRangeAt(0);
+  const pre = document.createRange();
+  pre.selectNodeContents(cell);
+  pre.setEnd(r.startContainer, r.startOffset);
+  const from = pre.toString().length;
+  return [from, from + r.toString().length];
+}
+function setCellText(cell: HTMLElement, text: string, from: number, to: number) {
+  const grip = cell.querySelector(".nt-table-grip");
+  cell.textContent = text;
+  if (grip) cell.append(grip);
+  const node = cell.firstChild;
+  if (node && node.nodeType === Node.TEXT_NODE) {
+    const range = document.createRange();
+    range.setStart(node, Math.min(from, text.length));
+    range.setEnd(node, Math.min(to, text.length));
+    const sel = window.getSelection();
+    sel?.removeAllRanges(); sel?.addRange(range);
+  }
+  cell.dispatchEvent(new Event("input", { bubbles: true }));
+}
+/** Formats what's picked in [cell]; false for what a cell can't hold (headings, lists, tables). */
+function formatCell(cell: HTMLElement, action: Action): boolean {
+  if (action !== "link" && !cellMarks[action]) return action === "heading" || action === "bullets" || action === "checklist" || action === "numbered" || action === "table";
+  const at = cellRange(cell);
+  if (!at) return true;
+  const text = (cell.textContent ?? "");
+  let [from, to] = at;
+  /* Nothing picked: the word the caret is in. */
+  if (from === to) {
+    while (from > 0 && /[\p{L}\p{N}_'-]/u.test(text[from - 1])) from--;
+    while (to < text.length && /[\p{L}\p{N}_'-]/u.test(text[to])) to++;
+  }
+  if (action === "link") {
+    const words = text.slice(from, to) || "link";
+    const next = `${text.slice(0, from)}[${words}](https://)${text.slice(to)}`;
+    const url = from + words.length + 3;
+    setCellText(cell, next, url, url + "https://".length);
+    return true;
+  }
+  const [open, close] = cellMarks[action]!;
+  if (text.slice(from - open.length, from) === open && text.slice(to, to + close.length) === close) {
+    setCellText(cell, text.slice(0, from - open.length) + text.slice(from, to) + text.slice(to + close.length), from - open.length, to - open.length);
+  } else {
+    setCellText(cell, text.slice(0, from) + open + text.slice(from, to) + close + text.slice(to), from + open.length, to + open.length);
+  }
+  return true;
+}
+const focusedCell = (view: EditorView) => { const el = document.activeElement; return el instanceof HTMLElement && el.dataset.r !== undefined && view.dom.contains(el) ? el : null; };
+
 /* Whether the caret sits at the very start of a cell, nothing picked. */
 function atCellStart(cell: HTMLElement) {
   const sel = window.getSelection();
@@ -418,6 +477,11 @@ function wire(view: EditorView, wrap: HTMLElement) {
     const found = tableAt(view, wrap);
     if (!found) return;
     const t = found.model, cols = t.head.length, last = t.rows.length - 1;
+    const mod = event.metaKey || event.ctrlKey;
+    if (mod && !event.altKey && !event.shiftKey) {
+      const action = ({ b: "bold", i: "italic", e: "code", k: "link" } as Record<string, Action>)[event.key.toLowerCase()];
+      if (action) { event.preventDefault(); formatCell(hit.cell, action); return; }
+    }
     const go = (r: number, c: number, pick = true) => {
       const cell = wrap.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`);
       if (cell) { event.preventDefault(); placeCaret(cell, pick); }
@@ -956,7 +1020,12 @@ export function NoteBody({ initial, readOnly, onChange, onBlur, onReady, onForma
         view.dispatch({ changes: { from, to: now.length - end, insert: text.slice(from, text.length - end) }, annotations: fromOutside.of(true) });
       },
       focus: () => view.focus(),
-      run: (action) => { view.focus(); actions[action](view); },
+      run: (action) => {
+        /* In a table cell, the format bar formats the cell. */
+        const cell = focusedCell(view);
+        if (cell) { formatCell(cell, action); return; }
+        view.focus(); actions[action](view);
+      },
       goLive: (version, clientID, text) => {
         const mine = view.state.doc.toString();
         /* Starting again (the Portal restarted) drops what the old start remembered first. */
