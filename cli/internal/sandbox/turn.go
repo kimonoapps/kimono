@@ -61,6 +61,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "-$p" 2>/dev/null || exit 0; sleep 0.5
 kill -KILL "-$p" 2>/dev/null || true`
 
 func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) error {
+	received := time.Now()
 	var request turnRequest
 	if err := readJSON(r, 1<<20, &request); err != nil {
 		return err
@@ -146,12 +147,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	} else {
 		system += "\n\n" + AppPrompt
 	}
-	used, measuredAt := s.diskUse(id)
-	if s.now().Sub(measuredAt) > time.Minute {
-		if fresh, err := s.measureDisk(r.Context(), id); err == nil {
-			used = fresh
-		}
-	}
+	// The last count will do for the prompt: counting a big workspace again would hold up the
+	// first word, and the check below counts it afresh as soon as the agent is under way.
+	used, _ := s.diskUse(id)
 	full := diskNote(used, limits)
 	if full != "" {
 		system += "\n\n" + full
@@ -186,26 +184,31 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	w.WriteHeader(http.StatusOK)
 	out := &lineWriter{w: w}
 	out.json(map[string]any{"type": "kimono.started", "at": time.Now().UnixMilli()})
+	s.cfg.Logf("turn %s: agent started %dms after the request", id, time.Since(received).Milliseconds())
 	if full != "" {
 		out.json(map[string]any{"type": "kimono.disk", "used": used, "quota": limits.diskQuota()})
 	}
-	// Writing past the ceiling stops the turn: nothing else stops a full disk.
+	// Writing past the ceiling stops the turn: nothing else stops a full disk. The
+	// first count is straight away, the rest every 30 seconds.
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
+		first := make(chan struct{}, 1)
+		first <- struct{}{}
 		for {
 			select {
 			case <-finished:
 				return
+			case <-first:
 			case <-ticker.C:
-				check, done := context.WithTimeout(context.Background(), 20*time.Second)
-				used, err := s.measureDisk(check, id)
-				done()
-				if err == nil && used > limits.diskCeiling() {
-					out.json(map[string]any{"type": "kimono.disk.full", "used": used, "quota": limits.diskQuota()})
-					stop()
-					return
-				}
+			}
+			check, done := context.WithTimeout(context.Background(), 20*time.Second)
+			used, err := s.measureDisk(check, id)
+			done()
+			if err == nil && used > limits.diskCeiling() {
+				out.json(map[string]any{"type": "kimono.disk.full", "used": used, "quota": limits.diskQuota()})
+				stop()
+				return
 			}
 		}
 	}()

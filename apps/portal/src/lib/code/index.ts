@@ -342,9 +342,11 @@ export async function ensure(config: CodeConfig, workspace: Workspace, person: {
     workspace.kind === "project" ? gitAccountOf(config, { username: workspace.owner }, false).catch(() => null) : null,
     owner ? toolSession(db(), config.composioKey, workspace.owner, portalOrigin()) : null,
   ]);
-  /* Their paid tools open or close with this month's allowance before the agent wakes. */
-  if (tools) await holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error));
-  const answer = await sandbox.ensure(config, workspace, person, tools, gitLogin);
+  /* Their paid tools open or close with this month's allowance before the agent starts: checked while the node readies the sandbox. */
+  const [, answer] = await Promise.all([
+    tools ? holdMediaBudget(db(), config, workspace.owner, portalOrigin()).catch((error) => console.warn("Kimono AI couldn't check the Pro Tools allowance:", error instanceof Error ? error.message : error)) : null,
+    sandbox.ensure(config, workspace, person, tools, gitLogin),
+  ]);
   /* A new, empty sandbox: what was synced into the old one must go back in, not be taken as deleted. */
   if (answer.fresh) sandboxStartedOver(db(), workspace.id);
   awake.at.set(workspace.id, Date.now());
@@ -499,19 +501,22 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   /* The card this turn put up, if any: followed on after the turn only while the sandbox watches its job. */
   let probe: ProgressProbe | undefined;
   try {
+    const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
     await ensure(config, workspace, who(user), { owner: byOwner });
+    timing.ensured = Date.now();
     const session = workspaceFor(db(), workspace.id, workspace.owner).session;
     /* The person's other chats, for it to look back on (none in a chat shared with others), brought in alongside the files. */
     const historySynced = syncHistory(db(), config, workspace).catch((error) => { console.warn("Kimono AI couldn't bring earlier chats in:", error instanceof Error ? error.message : error); return false; });
-    /* Whatever a person changed in Drive since last time goes in first, and the agent is told. */
-    await syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
+    /* Whatever a person changed in Drive since last time goes in first, and the agent is told. The task's
+       files and the ones the person let it use (.kimono/files) are apart, so both sync at once. */
+    const driveSynced = syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
     /* Files the person let it use follow Drive, and what is no longer allowed goes. */
-    const openedNews = await syncOpened(db(), config, workspace, { readOnly: turnsByOwner(db(), workspace.id, 2)[1] === false }).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
-    const history = await historySynced;
+    const openedSynced = syncOpened(db(), config, workspace, { readOnly: turnsByOwner(db(), workspace.id, 2)[1] === false }).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
+    /* With Notes on, the person has a notebook before it is named, so the agent can write to it from the first chat. */
+    const [, openedNews, history, notes] = await Promise.all([driveSynced, openedSynced, historySynced, byOwner ? notesFor(workspace.owner) : ""]);
+    timing.synced = Date.now();
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
     const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
-    /* With Notes on, the person has a notebook before it is named, so the agent can write to it from the first chat. */
-    const notes = byOwner ? await notesFor(workspace.owner) : "";
     const access = prompt.startsWith("/") || !byOwner ? "" : accessPrompt(db(), workspace);
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
     /* Someone the chat was shared with wrote this: it should know who it's answering. */
@@ -529,6 +534,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
       const carried = said ? `(Your earlier messages in this chat were lost, but the conversation so far was kept. What was said before this message:)\n\n${said}\n\n(Their new message:)\n\n` : "";
       return sandbox.turn(config, workspace, { ...input, prompt: `${access ? `${access}\n\n` : ""}${news}${carried}${from}${prompt}`, session: null, resumeAt: null }, controller.signal);
     });
+    timing.agent = Date.now();
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     /* What it is writing, as it writes it; and the artifact calls waiting for their results. */
@@ -543,7 +549,15 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         if (!raw.trim()) continue;
         let line: Record<string, unknown>;
         try { line = JSON.parse(raw); } catch { continue; }
-        if (line.type === "stream_event") { drafts!.take(line); continue; }
+        if (line.type === "stream_event") {
+          if (!timing.firstWord) {
+            timing.firstWord = Date.now();
+            /* Where the wait before its first word went, for the logs. */
+            console.info(`Kimono AI turn ${turn}: ready ${timing.ensured - timing.start}ms, synced ${timing.synced - timing.ensured}ms, node ${timing.agent - timing.synced}ms, first word ${timing.firstWord - timing.agent}ms (${timing.firstWord - timing.start}ms in all)`);
+          }
+          drafts!.take(line);
+          continue;
+        }
         if (line.type === "kimono.image" && typeof line.name === "string") {
           await keepShot(config, workspace, turn, line.name, typeof line.caption === "string" ? line.caption : undefined);
           continue;
