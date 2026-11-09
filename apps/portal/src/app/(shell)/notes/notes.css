@@ -5,7 +5,7 @@
  * the list on a spring and closes again once you pick. Ink is for marks only:
  * crests, empty blots, a task's ink ring and the brush stroke under a title.
  */
-.nt { position: relative; display: grid; grid-template-columns: 300px minmax(0, 1fr); height: calc(100dvh - 16px); margin: 8px 8px 8px 0; border-radius: 16px; overflow: hidden; background: var(--k-container-low); }
+.nt { position: relative; display: grid; grid-template-columns: 300px minmax(0, 1fr); transition: grid-template-columns var(--k-t-seat) var(--k-ease-settle, ease); height: calc(100dvh - 16px); margin: 8px 8px 8px 0; border-radius: 16px; overflow: hidden; background: var(--k-container-low); }
 .nt svg.i, .nt-menu svg.i, .nt-sheet svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .nt button:focus-visible, .nt-sheet button:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
 .nt-grow { flex: 1 1 auto; }
@@ -28,7 +28,7 @@
 .nt-rail { display: none; }
 @media (min-width: 760px) {
   .nt.is-railed { grid-template-columns: 56px 300px minmax(0, 1fr); }
-  .nt.is-railed .nt-rail { order: -1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; overflow-y: auto; overflow-x: hidden; background: var(--k-container); }
+  .nt.is-railed .nt-rail { order: -1; min-height: 0; animation: nt-rail-in var(--k-t-seat) var(--k-ease-settle, ease) both; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; overflow-y: auto; overflow-x: hidden; background: var(--k-container); }
   .nt.is-railed .nt-side { left: 0; }
 }
 .nt-rail-new { width: 36px; height: 34px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 8px; background: var(--k-primary-container); color: var(--k-on-primary-container); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-on-primary-container) 20%, transparent); cursor: pointer; }
@@ -41,7 +41,8 @@
 .nt-rail :focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
 @media (min-width: 760px) {
   .nt.is-docked { grid-template-columns: 248px 300px minmax(0, 1fr); }
-  .nt.is-docked .nt-side { position: relative; order: -1; z-index: auto; width: auto; min-height: 0; transform: none; visibility: visible; box-shadow: none; transition: none; }
+  /* Docking slides the panel back in as its column opens; narrowing to the rail, it slides away as the rail fades in. */
+  .nt.is-docked .nt-side { position: relative; order: -1; z-index: 2; width: 248px; min-height: 0; transform: none; visibility: visible; box-shadow: none; transition: transform var(--k-t-seat) var(--k-spring); }
 }
 .nt-side-head { display: flex; align-items: center; min-height: 36px; padding: 0 2px 0 10px; }
 .nt-side-head > span { flex: 1; font: 600 18px/1 var(--k-display); color: var(--k-plum); }
@@ -61,11 +62,11 @@
 @keyframes nt-arrive { from { opacity: 0; transform: translateY(-10px) scale(.97); } }
 .nt-section.is-busy, .nt-notebook.is-busy { opacity: .45; pointer-events: none; }
 .nt-place-row { --d: 0; position: relative; display: flex; align-items: center; border-radius: 8px; }
-.nt-place { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 calc(22px + var(--d) * 14px); border: 0; border-radius: 8px; background: transparent; color: var(--k-on-surface-variant); font: 600 13.5px/1 var(--k-sans); text-align: left; cursor: pointer; transition: background-color var(--k-t-state); }
+.nt-place { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 calc(22px + var(--d) * 14px); border: 0; border-radius: 8px; background: transparent; color: var(--k-on-surface-variant); font: 600 13.5px/1.35 var(--k-sans); text-align: left; cursor: pointer; transition: background-color var(--k-t-state); }
 .nt-place.is-sub { font-weight: 500; }
 .nt-place-row:hover .nt-place, .nt-place:hover:not(:disabled) { background: var(--k-container-high); }
 .nt-place[aria-current="page"], .nt-place-row:hover .nt-place[aria-current="page"] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
-.nt-place-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nt-place-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.35; padding-block: 1px; }
 .nt-place-mark { width: 20px; height: 20px; display: inline-grid; place-items: center; flex: none; }
 .nt-place-mark svg.i { width: 17px; height: 17px; }
 .nt-place-new { color: var(--k-faint); font-weight: 500; }
@@ -118,9 +119,9 @@
 .nt-listhead { position: sticky; top: -6px; z-index: 2; display: flex; align-items: center; gap: 6px; min-height: 50px; margin: -6px -6px 0; padding: 6px 8px 0 6px; background: var(--k-container-low); }
 .nt-listhead-id { flex: 1; min-width: 0; display: grid; gap: 1px; padding-left: 2px; }
 .nt-listhead h1 { display: flex; margin: 0; min-width: 0; font: inherit; line-height: 1; }
-.nt-placename { max-width: 100%; display: flex; min-width: 0; padding-left: 4px; font: 600 18px/1.1 var(--k-display); color: var(--k-plum); }
+.nt-placename { max-width: 100%; display: flex; min-width: 0; padding-left: 4px; font: 600 18px/1.35 var(--k-display); color: var(--k-plum); }
 .nt-placename > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nt-crumb { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; min-width: 0; font: 600 11.5px/1.2 var(--k-sans); color: var(--k-on-surface-variant); white-space: nowrap; overflow: hidden; }
+.nt-crumb { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; min-width: 0; font: 600 11.5px/1.4 var(--k-sans); color: var(--k-on-surface-variant); white-space: nowrap; overflow: hidden; }
 .nt-crumb > span { color: var(--k-faint); }
 .nt-plus { width: 32px; height: 32px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 8px; background: var(--k-container-high); color: var(--k-on-surface); box-shadow: inset 0 -2px 0 var(--k-container-highest); cursor: pointer; }
 .nt-plus:hover { background: var(--k-container-highest); }
@@ -278,6 +279,7 @@
 @media (max-width: 1199px) {
   .nt.has-note { grid-template-columns: minmax(0, 1fr); }
   .nt.has-note.is-railed { grid-template-columns: 56px minmax(0, 1fr); }
+  .nt.has-note.is-docked { grid-template-columns: 248px minmax(0, 1fr); }
   .nt.has-note .nt-listcol { display: none; }
   .nt.has-note .nt-back { display: inline-grid !important; }
 }
@@ -297,7 +299,10 @@
 }
 @media (min-width: 721px) and (max-width: 759px) { .nt { height: 100dvh; } }
 
+@keyframes nt-rail-in { from { opacity: 0; translate: -10px 0; } }
 @media (prefers-reduced-motion: reduce) {
+  .nt, .nt.is-docked .nt-side { transition: none; }
+  .nt.is-railed .nt-rail { animation: none; }
   .nt-side, .nt-chev svg.i, .nt-title-wrap::after { transition: none; }
   .nt-notebook.is-arriving, .nt-menu, .nt-sheet, .nt-shade, .nt-snack, .nt-side-shade, .nt-confirm, .nt-tick.is-fresh .tick, .nt-tick.is-fresh .ring { animation: none; }
 }

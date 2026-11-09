@@ -125,6 +125,13 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
   const [saving, setSaving] = useState<Set<string>>(() => new Set());
   const [draft, setDraft] = useState<Draft | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
+  /* On a note, whether you've widened the notebooks back out of their rail: kept for the next time. */
+  const [pinned, setPinnedState] = useState(false);
+  useEffect(() => { try { if (window.localStorage.getItem(panelKey) === "open") setPinnedState(true); } catch { /* this page only */ } }, []);
+  const setPinned = useCallback((open: boolean) => {
+    setPinnedState(open);
+    try { window.localStorage.setItem(panelKey, open ? "open" : "rail"); } catch { /* this page only */ }
+  }, []);
   const [arriving, setArriving] = useState<string | null>(null);
   const [sharingThing, setSharing] = useState<Shareable | null>(null);
   const [leavingThing, setLeaving] = useState<Shareable | null>(null);
@@ -249,9 +256,9 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
   }, [wantsNew, lib, startNew]);
 
   const openSearch = useCallback(() => {
-    setPlacesOpen(true);
+    setPlacesOpen(true); setPinned(true);
     requestAnimationFrame(() => { searchField.current?.focus(); searchField.current?.select(); });
-  }, []);
+  }, [setPinned]);
   /*
    * Keys: N (while not typing) or ⌘⌥N starts a note; / or ⌘K goes to search.
    * Listening as the key comes down, before the rail does, so ⌘K here is
@@ -311,10 +318,14 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
   const openNotebook = openMeta ? (openMeta.notebookId ? notebookOf(openMeta.notebookId) : null)
     : editing ? (editing.parent ? notebookHolding(editing.parent) : lib?.notebooks.find((n) => n.role !== "viewer" && !n.sharedWithYou) ?? null) : null;
   const showing = Boolean(openId);
-  /* With no note open the notebooks stand beside the list; on a note they narrow to a rail of marks, and open in full over the list from it. */
+  /*
+   * With no note open the notebooks stand beside the list; on a note they
+   * narrow to a rail of marks, and widen back in place from it (staying wide
+   * until you narrow them again).
+   */
   const wide = useWide(760);
-  const docked = wide && !showing;
-  const railed = wide && showing;
+  const docked = wide && (!showing || pinned);
+  const railed = wide && showing && !pinned;
   const placeWritable = place.kind === "all" ? true : canWrite(place.notebook);
 
   return <div className={cx("nt", showing && "has-note", docked && "is-docked", railed && "is-railed", placesOpen && !docked && "is-placing")}>
@@ -337,11 +348,11 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
               onToast={setToast} onOpen={openNote} onShare={setSharing} onLeave={setLeaving} />
             : <div className="nt-page"><SkeletonRows rows={3} mark={false} /></div>}
     </section>
-    {railed ? <Rail lib={lib} place={place} open={placesOpen} buttonRef={placeButton} onOpen={() => setPlacesOpen((open) => !open)} onNew={() => startNew()} onSearch={openSearch} onPlace={openPlace} /> : null}
+    {railed ? <Rail lib={lib} place={place} open={placesOpen} buttonRef={placeButton} onOpen={() => setPinned(true)} onNew={() => startNew()} onSearch={openSearch} onPlace={openPlace} /> : null}
     <div className="nt-side-shade" aria-hidden="true" />
     <aside className="nt-side k-inkbar" aria-label="Notebooks" inert={!placesOpen && !docked}>
       <Panel lib={lib} problem={problem} place={place} find={find} onFind={setFind} found={found} faces={faces} people={people} arriving={arriving} now={now}
-        searchRef={searchField} docked={docked} notebookOf={notebookOf} onNew={startNew} onPlace={openPlace} onReload={load} onToast={setToast} under={under}
+        searchRef={searchField} docked={docked} onNarrow={docked && showing ? () => setPinned(false) : undefined} notebookOf={notebookOf} onNew={startNew} onPlace={openPlace} onReload={load} onToast={setToast} under={under}
         onShare={setSharing} onLeave={setLeaving} onOpenNote={openNote} current={openId} onClose={() => { setPlacesOpen(false); placeButton.current?.focus(); }} />
     </aside>
     {sharingThing ? <ShareSheet thing={sharingThing} me={me} people={people} publicLinks={publicLinks}
@@ -359,6 +370,7 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
 /* ── the notebooks panel ── */
 
 const foldsKey = "kimono-notes:folded";
+const panelKey = "kimono-notes:panel";
 function readFolds(): Set<string> { try { return new Set(JSON.parse(window.localStorage.getItem(foldsKey) ?? "[]") as string[]); } catch { return new Set(); } }
 
 /** A name being written where it sits: a new section, or a new name for a section or notebook. */
@@ -369,10 +381,10 @@ function NotebookCrest({ notebook, size, className }: { notebook: Notebook; size
   return <InkCrest crest={notebook.space.crest} color={notebook.space.color} seed={notebook.id} size={size} className={className} />;
 }
 
-function Panel({ lib, problem, place, find, onFind, found, faces, people, arriving, now, searchRef, docked, notebookOf, onNew, onPlace, onReload, onToast, under, onShare, onLeave, onOpenNote, current, onClose }: {
+function Panel({ lib, problem, place, find, onFind, found, faces, people, arriving, now, searchRef, docked, onNarrow, notebookOf, onNew, onPlace, onReload, onToast, under, onShare, onLeave, onOpenNote, current, onClose }: {
   lib: Library | null; problem: string | null; place: Place; find: string; onFind: (words: string) => void; found: Note[];
   faces: Record<string, string[]>; people: Record<string, Person>; arriving: string | null; now: number;
-  searchRef: React.RefObject<HTMLInputElement | null>; docked: boolean; notebookOf: (id: string) => Notebook | null;
+  searchRef: React.RefObject<HTMLInputElement | null>; docked: boolean; onNarrow?: () => void; notebookOf: (id: string) => Notebook | null;
   onNew: (where?: string | null) => void; onPlace: (id: string | null) => void; onReload: () => Promise<void>; onToast: (toast: Toast) => void;
   under: (folder: string) => Set<string>; onShare: (thing: Shareable) => void; onLeave: (thing: Shareable) => void;
   onOpenNote: (id: string) => void; current: string | null; onClose: () => void;
@@ -445,7 +457,8 @@ function Panel({ lib, problem, place, find, onFind, found, faces, people, arrivi
   return <>
     <div className="nt-side-head">
       <span>Notes</span>
-      {docked ? null : <button type="button" className="nt-iconbutton" onClick={onClose} aria-label="Close notebooks" title="Close"><Icon name="panel" /></button>}
+      {onNarrow ? <button type="button" className="nt-iconbutton" onClick={onNarrow} aria-label="Narrow the notebooks" title="Narrow"><Icon name="panel" /></button>
+        : docked ? null : <button type="button" className="nt-iconbutton" onClick={onClose} aria-label="Close notebooks" title="Close"><Icon name="panel" /></button>}
     </div>
     <button type="button" className="nt-newnote" onClick={() => onNew()} aria-keyshortcuts="n"><Icon name="pencil" />New note<kbd>N</kbd></button>
     <label className="nt-search"><Icon name="search" /><input ref={searchRef} type="search" value={find} placeholder="Search" aria-label="Search notes"
