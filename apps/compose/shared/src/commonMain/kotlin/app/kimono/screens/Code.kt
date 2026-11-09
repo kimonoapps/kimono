@@ -775,7 +775,7 @@ internal fun AccessChip(code: Code) {
 internal fun AttachMenu(onDevice: () -> Unit, onDrive: (() -> Unit)?, enabled: Boolean = true, onPhotos: (() -> Unit)? = null) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { if (onDrive != null || onPhotos != null) open = true else onDevice() }, enabled = enabled) { Icon(kimonoIcon("clip"), "Attach files") }
+        IconButton(onClick = { if (onDrive != null || onPhotos != null) open = true else onDevice() }, enabled = enabled, modifier = Modifier.padding(vertical = 2.dp).size(40.dp)) { Icon(kimonoIcon("clip"), "Attach files") }
         InkMenu(expanded = open, onDismissRequest = { open = false }) {
             if (onPhotos != null) {
                 InkMenuItem("Photos", icon = "image", onClick = { open = false; onPhotos() })

@@ -153,7 +153,7 @@ internal fun rememberDictation(code: Code, platform: Platform, onText: (String) 
 internal fun MicButton(dictation: Dictation) {
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); dictation.start() }, enabled = dictation.phase == Hearing.Idle) {
+    IconButton(onClick = { focus.clearFocus(); keyboard?.hide(); dictation.start() }, enabled = dictation.phase == Hearing.Idle, modifier = Modifier.padding(vertical = 2.dp).size(40.dp)) {
         Icon(kimonoIcon("mic"), "Speak a message", tint = if (dictation.phase == Hearing.Asking) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

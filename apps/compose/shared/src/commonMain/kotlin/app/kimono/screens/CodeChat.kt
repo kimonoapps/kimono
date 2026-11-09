@@ -287,6 +287,8 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
     var publishing by remember { mutableStateOf(false) }
     var sharing by remember { mutableStateOf(false) }
     val people = rememberPeople(code)
+    /* Settings and usage: opened from the top bar, filled by the composer, which knows the usage. */
+    val usageTop = remember(id) { UsageTop() }
     /* Someone else's chat, shared with this person: no renaming, moving, sharing, Drive or the app's controls. */
     val owns = w?.isOwner ?: true
     val versions by remember { derivedStateOf { events.mapNotNull { (it.event as? CodeEvent.ArtifactKept) }.associate { it.name to (it.version to it.title) } } }
@@ -330,6 +332,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                     }
                 },
                 actions = {
+                    if (w?.canWrite == true && (shownTab == "chat")) UsageButton(usageTop)
                     if (w?.preview != null && !w.preview.stopped) IconButton(onClick = { platform.openUrl(w.preview.url) }) { Icon(kimonoIcon("out"), "Open app") }
                     if (w?.drive != null && owns) IconButton(onClick = { open("folder/${w.drive.folderId}") }) { Icon(kimonoIcon("folder"), "Open in Drive") }
                     if (owns || w?.pullRequest != null) Box {
@@ -377,7 +380,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                     shownTab == "files" -> Files(code, platform, w)
                     shownTab == "changes" -> Changes(code, w, events.lastOrNull()?.seq ?: 0)
                     shownTab == "app" -> AppTab(code, platform, w, goChat = { tab = "chat" }) { workspace = it }
-                    else -> Chat(code, drive, platform, marks, artifacts, people, w, events, drafts, open)
+                    else -> Chat(code, drive, platform, marks, artifacts, people, w, events, drafts, open, usageTop)
                 }
             }
         }
@@ -455,7 +458,7 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
 }
 
 @Composable
-private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, artifacts: Artifacts, people: Map<String, app.kimono.data.Person>, w: CodeWorkspace, events: List<StoredCodeEvent>, drafts: Drafts, open: (String) -> Unit) {
+private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, artifacts: Artifacts, people: Map<String, app.kimono.data.Person>, w: CodeWorkspace, events: List<StoredCodeEvent>, drafts: Drafts, open: (String) -> Unit, usageTop: UsageTop) {
     val items = remember(events.size) { itemsOf(events) }
     /* Where you were in it: the end (following along), or a place you scrolled back to. */
     val savedScroll = remember(w.id) { code.recall("scroll:${w.id}")?.split(',')?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 2 } }
@@ -574,7 +577,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
             ) { Text("Latest ↓", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)) }
         }
-        if (w.canWrite) Composer(code, drive, platform, marks, w, lastContext)
+        if (w.canWrite) Composer(code, drive, platform, marks, w, lastContext, usageTop)
         else Text("You can view this chat", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().padding(horizontal = 24.dp, vertical = 16.dp))
     }
@@ -1414,20 +1417,37 @@ internal fun SendStop(stop: Boolean, enabled: Boolean, busy: Boolean = false, on
     }
 }
 
+/** The chat's settings and usage, behind one button in the top bar so the writing line keeps its room. */
+@Stable
+internal class UsageTop {
+    var open by mutableStateOf(false)
+    var shown by mutableStateOf<ShownMeters?>(null)
+}
+
+/**
+ * Model, thinking, files and usage, in the top bar: the fullest meter as a ring once one is past half,
+ * a gear otherwise. Narrower than a full icon button, beside the bar's others.
+ */
 @Composable
-private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMarks, w: CodeWorkspace, context: ContextUse?) {
+private fun UsageButton(top: UsageTop) {
+    val shown = top.shown
+    IconButton(onClick = { top.open = true }, modifier = Modifier.size(40.dp).semantics { contentDescription = "Settings and usage" }) {
+        if (shown != null && shown.any) Ring(shown.most, 20.dp) else Icon(kimonoIcon("gear"), null, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMarks, w: CodeWorkspace, context: ContextUse?, usageTop: UsageTop) {
     var choosing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var text by remember(w.id) { mutableStateOf(code.recall("draft:${w.id}") ?: "") }
     val pending = remember(w.id) { mutableStateListOf<Pending>() }
     var problem by remember { mutableStateOf<String?>(null) }
     var sending by remember { mutableStateOf(false) }
-    var meters by remember { mutableStateOf(false) }
-    /* The … sheet: files, model and thinking, and all usage. */
-    var more by remember { mutableStateOf(false) }
-    /* The person's usage for the rings beside Send, again after each turn. */
+    /* The person's usage, for the ring in the top bar, again after each turn. */
     val usage by produceState<Usage?>(null, w.id, w.running) { value = runCatching { code.usage(w.id) }.getOrNull() }
     val shown = ShownMeters.of(usage, context?.let { it.used.toDouble() / (it.window ?: 200_000) })
+    androidx.compose.runtime.SideEffect { usageTop.shown = shown }
     /* A different model than the one this chat has been on has to take in the whole chat again. */
     val model by code.model.collectAsState()
     val switching = w.lastModel?.takeIf { model != "auto" && model != it }
@@ -1510,10 +1530,6 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 11.dp),
                         decorationBox = { inner -> Box { if (text.isEmpty()) Text("Ask for a change, or reply", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
                     )
-                    /* The fullest meter past half as a ring beside Send; open it for the numbers and to compact. Nothing past half, no ring. */
-                    if (shown.any) IconButton(onClick = { meters = true }) { Ring(shown.most, 22.dp) }
-                    /* Files, model and thinking, and every meter whatever its level, behind … */
-                    IconButton(onClick = { more = true }) { Icon(kimonoIcon("more"), "Settings and usage") }
                     if (dictation != null) MicButton(dictation)
                     /* One seal: Stop while it works and nothing is written, Send otherwise. */
                     val stopping = w.running && text.isBlank() && pending.isEmpty()
@@ -1525,12 +1541,11 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
             }
         }
     }
-    if (meters && shown.any) MetersSheet(code, w, context, usage) { meters = false }
-    if (more) MetersSheet(code, w, context, usage, all = true, settings = {
+    if (usageTop.open) MetersSheet(code, w, context, usage, all = true, settings = {
         if (w.drive != null && w.isOwner && marks.spaces.isNotEmpty()) SettingRow("Files") { AccessChip(code) }
         SettingRow("Model") { ModelChip(code) }
         SettingRow("Thinking") { EffortChip(code) }
-    }) { more = false }
+    }) { usageTop.open = false }
     if (choosing) FromDriveSheet(drive, onDismiss = { choosing = false }) { nodes ->
         choosing = false
         val items = nodes.take(10 - pending.size).map { Pending(it.name, it.size) }
