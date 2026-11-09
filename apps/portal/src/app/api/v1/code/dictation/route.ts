@@ -3,24 +3,24 @@ import { code } from "@/lib/code";
 
 /*
  * Speaking a message instead of typing it. The page records until the person
- * is done, then sends the whole recording here once; OpenAI's gpt-transcribe
+ * is done, then sends the whole recording here once; gpt-transcribe, through OpenRouter,
  * turns it into words, which go into the message box to be read and sent.
  * Nothing is kept: the audio passes through and is gone.
  */
 
-const model = "gpt-transcribe";
-/* OpenAI takes files up to 25 MB; ten minutes of speech is far under that. */
+const model = "openai/gpt-transcribe";
+/* OpenRouter takes files up to 25 MB; ten minutes of speech is far under that. */
 const largest = 24 * 1024 * 1024;
-/* OpenAI tells formats apart by the file's name. */
+/* OpenRouter tells formats apart by the file's name; AAC in MP4 (Safari, the phones) is an .m4a to it. */
 const extension = (type: string) =>
-  type.includes("webm") ? "webm" : type.includes("ogg") ? "ogg" : type.includes("mp4") || type.includes("aac") || type.includes("m4a") ? "mp4"
+  type.includes("webm") ? "webm" : type.includes("ogg") ? "ogg" : type.includes("mp4") || type.includes("aac") || type.includes("m4a") ? "m4a"
     : type.includes("wav") ? "wav" : type.includes("mpeg") || type.includes("mp3") ? "mp3" : "webm";
 
 /** Whether speaking a message is set up here. */
 export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
-  return code(user, (config) => apiJson({ on: Boolean(config.openaiKey) }), false);
+  return code(user, (config) => apiJson({ on: Boolean(config.openrouterKey) }), false);
 }
 
 /** A finished recording in, its words out: { text }. */
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const user = await apiUser();
   if (!user) return unauthorized();
   return code(user, async (config) => {
-    if (!config.openaiKey) return apiError(409, "Speaking a message isn't set up.");
+    if (!config.openrouterKey) return apiError(409, "Speaking a message isn't set up.");
     const type = (request.headers.get("content-type") || "audio/webm").split(";")[0].trim();
     if (!type.startsWith("audio/") && !type.startsWith("video/")) return apiError(415, "That isn't a recording.");
     const audio = await request.arrayBuffer();
@@ -44,8 +44,8 @@ export async function POST(request: Request) {
 
     let answer: Response;
     try {
-      answer = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST", headers: { Authorization: `Bearer ${config.openaiKey}` }, body: form, signal: AbortSignal.timeout(90_000),
+      answer = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
+        method: "POST", headers: { Authorization: `Bearer ${config.openrouterKey}`, "X-Title": "Kimono" }, body: form, signal: AbortSignal.timeout(90_000),
       });
     } catch {
       return apiError(502, "Couldn't turn that into words. Try again.");

@@ -3,7 +3,7 @@
 /*
  * Speaking a message instead of typing it. The mic on the writing bar records
  * until you're done (or cancel); only then is the recording sent, once, to be
- * written down (api/v1/code/dictation, OpenAI's gpt-transcribe). The words land
+ * written down (api/v1/code/dictation, gpt-transcribe through OpenRouter). The words land
  * in the message box, where they can be read over and sent like typed ones.
  * While it listens, the bar becomes one line: cancel, your voice drawn as ink
  * as you speak, the time, and a seal to say you're done.
@@ -29,7 +29,7 @@ function useDictationOn() {
   return on;
 }
 
-/* What this browser records best that OpenAI reads: Opus in WebM, or AAC in MP4 on Safari. */
+/* What this browser records best that gpt-transcribe reads: Opus in WebM, or AAC in MP4 on Safari. */
 const kinds = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/ogg;codecs=opus"];
 const pickKind = () => kinds.find((k) => MediaRecorder.isTypeSupported?.(k)) ?? "";
 

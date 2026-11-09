@@ -61,8 +61,8 @@
         "description": "Optional. Lets it use people's own apps, such as Gmail or Calendar, once they connect them, and Pro Tools. A scoped key needs observability read access, or Pro Tools stay off."
       },
       {
-        "key": "openai_api_key",
-        "label": "OpenAI API key",
+        "key": "openrouter_api_key",
+        "label": "OpenRouter API key",
         "kind": "secret",
         "group": "agent",
         "target": "settings",

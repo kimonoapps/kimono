@@ -91,7 +91,7 @@ class AndroidPlatform(private val context: Context) : Platform {
     fun signInMaybeAbandoned() { signIn?.complete(null) }
     val signingIn get() = signIn != null
 
-    /* ── speaking a message: AAC in MP4, which OpenAI reads ── */
+    /* ── speaking a message: AAC in MP4, which gpt-transcribe reads ── */
     var askMicrophone: (() -> Unit)? = null
     private var microphone: CompletableDeferred<Boolean>? = null
     private var recorder: android.media.MediaRecorder? = null
