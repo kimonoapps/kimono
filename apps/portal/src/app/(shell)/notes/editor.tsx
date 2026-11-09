@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Annotation, EditorState, Prec, StateEffect, StateField, type ChangeSpec, type Range } from "@codemirror/state";
+import { Annotation, ChangeSet, Compartment, EditorState, Prec, StateEffect, StateField, type ChangeSpec, type Range } from "@codemirror/state";
+import { collab, getSyncedVersion, receiveUpdates, sendableUpdates } from "@codemirror/collab";
 import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, placeholder, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxTree } from "@codemirror/language";
@@ -279,6 +280,56 @@ const tables = StateField.define<DecorationSet>({
   update: (value, tr) => tr.docChanged || tr.selection || tr.effects.some((e) => e.is(focusMoved)) || syntaxTree(tr.startState) !== syntaxTree(tr.state) ? tablesOf(tr.state) : value,
   provide: (field) => EditorView.decorations.from(field),
 });
+
+/* ── writing together: others' cursors, and the note's shared changes ── */
+
+export type RemoteCursor = { clientID: string; name: string; colour: string; anchor: number; head: number };
+const setRemote = StateEffect.define<RemoteCursor[]>();
+const remote = StateField.define<RemoteCursor[]>({
+  create: () => [],
+  update: (value, tr) => {
+    for (const e of tr.effects) if (e.is(setRemote)) value = e.value;
+    if (!tr.docChanged) return value;
+    return value.map((c) => ({ ...c, anchor: tr.changes.mapPos(Math.min(c.anchor, tr.startState.doc.length), -1), head: tr.changes.mapPos(Math.min(c.head, tr.startState.doc.length), 1) }));
+  },
+  provide: (field) => EditorView.decorations.from(field, (cursors) => {
+    const found: Range<Decoration>[] = [];
+    for (const c of cursors) {
+      const from = Math.min(c.anchor, c.head), to = Math.max(c.anchor, c.head);
+      if (to > from) found.push(Decoration.mark({ class: "nt-their-pick", attributes: { style: `--who: ${c.colour}` } }).range(from, to));
+      found.push(Decoration.widget({ widget: new Caret(c.name, c.colour), side: 1 }).range(c.head));
+    }
+    return Decoration.set(found, true);
+  }),
+});
+
+class Caret extends WidgetType {
+  constructor(readonly name: string, readonly colour: string) { super(); }
+  eq(other: Caret) { return other.name === this.name && other.colour === this.colour; }
+  toDOM() {
+    const caret = document.createElement("span");
+    caret.className = "nt-their-caret";
+    caret.style.setProperty("--who", this.colour);
+    caret.setAttribute("aria-hidden", "true");
+    const flag = document.createElement("span");
+    flag.className = "nt-their-name";
+    flag.textContent = this.name;
+    caret.append(flag);
+    return caret;
+  }
+  ignoreEvent() { return true; }
+}
+
+const liveSlot = new Compartment();
+
+/** The change taking [from] to [to], as small as their shared start and end allow. */
+function difference(from: string, to: string): ChangeSpec {
+  let start = 0;
+  while (start < from.length && start < to.length && from[start] === to[start]) start++;
+  let end = 0;
+  while (end < from.length - start && end < to.length - start && from[from.length - 1 - end] === to[to.length - 1 - end]) end++;
+  return { from: start, to: from.length - end, insert: to.slice(start, to.length - end) };
+}
 
 /* ── finding where the caret is ── */
 
@@ -564,9 +615,24 @@ const actions: Record<Action, (view: EditorView) => boolean> = {
   heading: setLines("cycle"), bullets: setLines("bullets"), checklist: setLines("checklist"), numbered: setLines("numbered"),
 };
 
-export type BodyHandle = { replace: (text: string) => void; focus: () => void; run: (action: Action) => void };
+export type LiveUpdate = { clientID: string; changes: unknown };
+export type BodyHandle = {
+  replace: (text: string) => void; focus: () => void; run: (action: Action) => void;
+  /**
+   * Starts writing together from change [version], whose text is [text]: the
+   * page's own text, where it differs, becomes this page's first change.
+   */
+  goLive: (version: number, clientID: string, text: string) => void;
+  /** This page's changes not yet taken, from the change number they follow. */
+  pending: () => { version: number; updates: { changes: unknown }[] } | null;
+  /** Changes made, from change [from] on; false when some before them are missing. */
+  receive: (from: number, updates: LiveUpdate[]) => boolean;
+  /** The change number this page has caught up to. */
+  synced: () => number;
+  showCursors: (cursors: RemoteCursor[]) => void;
+};
 
-export function NoteBody({ initial, readOnly, onChange, onBlur, onReady, onFormats }: {
+export function NoteBody({ initial, readOnly, onChange, onBlur, onReady, onFormats, onCursor }: {
   initial: string;
   readOnly?: boolean;
   onChange: (text: string) => void;
@@ -575,13 +641,16 @@ export function NoteBody({ initial, readOnly, onChange, onBlur, onReady, onForma
   onReady?: (handle: BodyHandle | null) => void;
   /** The formatting at the caret, for the format bar. */
   onFormats?: (formats: Formats) => void;
+  /** Where the caret is, as it moves. */
+  onCursor?: (anchor: number, head: number) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const changed = useRef(onChange);
   const blurred = useRef(onBlur);
   const ready = useRef(onReady);
   const formats = useRef(onFormats);
-  useEffect(() => { changed.current = onChange; blurred.current = onBlur; ready.current = onReady; formats.current = onFormats; });
+  const cursor = useRef(onCursor);
+  useEffect(() => { changed.current = onChange; blurred.current = onBlur; ready.current = onReady; formats.current = onFormats; cursor.current = onCursor; });
   useEffect(() => {
     const view = new EditorView({
       parent: host.current!,
@@ -598,11 +667,12 @@ export function NoteBody({ initial, readOnly, onChange, onBlur, onReady, onForma
           EditorView.editable.of(!readOnly),
           EditorView.contentAttributes.of({ "aria-label": "Note", spellcheck: "true", autocapitalize: "sentences" }),
           placeholder(readOnly ? "" : "Start writing"),
-          live, atomic, links, look, hasFocus, followFocus, tables,
+          live, atomic, links, look, hasFocus, followFocus, tables, remote, liveSlot.of([]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged && !update.transactions.every((t) => t.annotation(fromOutside))) changed.current(update.state.doc.toString());
             if (update.focusChanged && !update.view.hasFocus) blurred.current();
             if (update.docChanged || update.selectionSet || update.focusChanged) formats.current?.(formatsAt(update.state));
+            if ((update.docChanged || update.selectionSet) && update.view.hasFocus) { const main = update.state.selection.main; cursor.current?.(main.anchor, main.head); }
           }),
         ],
       }),
@@ -620,6 +690,30 @@ export function NoteBody({ initial, readOnly, onChange, onBlur, onReady, onForma
       },
       focus: () => view.focus(),
       run: (action) => { view.focus(); actions[action](view); },
+      goLive: (version, clientID, text) => {
+        const mine = view.state.doc.toString();
+        /* Starting again (the Portal restarted) drops what the old start remembered first. */
+        view.dispatch({ effects: liveSlot.reconfigure([]) });
+        if (mine !== text) view.dispatch({ changes: difference(mine, text), annotations: [fromOutside.of(true)] });
+        view.dispatch({ effects: liveSlot.reconfigure(collab({ startVersion: version, clientID })) });
+        if (mine !== text && !view.state.readOnly) view.dispatch({ changes: difference(text, mine) });
+      },
+      pending: () => {
+        const updates = sendableUpdates(view.state);
+        return updates.length ? { version: getSyncedVersion(view.state), updates: updates.map((u) => ({ changes: u.changes.toJSON() })) } : null;
+      },
+      receive: (from, updates) => {
+        const skip = getSyncedVersion(view.state) - from;
+        if (skip < 0) return false;
+        const fresh = updates.slice(skip);
+        if (fresh.length) view.dispatch(receiveUpdates(view.state, fresh.map((u) => ({ changes: ChangeSet.fromJSON(u.changes), clientID: u.clientID }))));
+        return true;
+      },
+      synced: () => getSyncedVersion(view.state),
+      showCursors: (cursors) => {
+        const most = view.state.doc.length;
+        view.dispatch({ effects: setRemote.of(cursors.map((c) => ({ ...c, anchor: Math.min(c.anchor, most), head: Math.min(c.head, most) }))) });
+      },
     });
     formats.current?.(formatsAt(view.state));
     return () => { view.destroy(); ready.current?.(null); };

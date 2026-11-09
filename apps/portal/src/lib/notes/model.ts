@@ -56,13 +56,15 @@ export type Section = { id: string; notebookId: string; parentId: string; name: 
 export type NoteMeta = {
   /** notebookId is null for a note shared with this person on its own, outside any notebook of theirs. */
   id: string; notebookId: string | null; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number;
+  /** Who last saved its text. */
+  updatedBy: string;
   /** The version an edit must start from to save over it (Drive's contentVersion). */
   version: number;
 };
 
 type Row = {
   id: string; space_id: string; parent_id: string | null; kind: "folder" | "file"; name: string; purpose: string | null;
-  created_by: string; created_at: number; updated_at: number; content_version: number; blob: string | null; trashed_at: number | null;
+  created_by: string; created_at: number; updated_at: number; updated_by: string | null; content_version: number; blob: string | null; trashed_at: number | null;
 };
 
 /* Every live node in the person's spaces, as a walk down from each space's top folder. */
@@ -71,7 +73,7 @@ const liveIn = `WITH RECURSIVE live(id) AS (
     UNION ALL
     SELECT c.id FROM nodes c JOIN live ON c.parent_id = live.id WHERE c.trashed_at IS NULL
   )`;
-const columns = "n.id, n.space_id, n.parent_id, n.kind, n.name, n.purpose, n.created_by, n.created_at, n.updated_at, n.content_version, n.blob, n.trashed_at";
+const columns = "n.id, n.space_id, n.parent_id, n.kind, n.name, n.purpose, n.created_by, n.created_at, n.updated_at, n.updated_by, n.content_version, n.blob, n.trashed_at";
 
 /** Every notebook the person can open, by name; ones they made first. */
 export function notebooksOf(db: DatabaseSync, username: string): Notebook[] {
@@ -197,9 +199,9 @@ export function libraryOf(db: DatabaseSync, username: string): { notebooks: Note
   return { notebooks, sections, notes };
 }
 
-const meta = (row: Pick<Row, "id" | "parent_id" | "name" | "created_by" | "created_at" | "updated_at" | "content_version">, notebookId: string | null): NoteMeta => ({
+const meta = (row: Pick<Row, "id" | "parent_id" | "name" | "created_by" | "created_at" | "updated_at" | "updated_by" | "content_version">, notebookId: string | null): NoteMeta => ({
   id: row.id, notebookId, parentId: row.parent_id!, title: titleOf(row.name), createdBy: row.created_by,
-  createdAt: row.created_at, updatedAt: row.updated_at, version: row.content_version,
+  createdAt: row.created_at, updatedAt: row.updated_at, updatedBy: row.updated_by ?? row.created_by, version: row.content_version,
 });
 
 /** A Drive node as a note, refused if it isn't one, or isn't in a notebook. */
@@ -207,7 +209,7 @@ export function noteFrom(db: DatabaseSync, node: DriveNode & { blob: string | nu
   const book = node.kind === "file" && isNoteName(node.name) && node.parentId ? notebookAbove(db, node.parentId) : null;
   if (!book) throw new DriveProblem("That isn't a note.", 404);
   return {
-    ...meta({ id: node.id, parent_id: node.parentId, name: node.name, created_by: node.createdBy, created_at: node.createdAt, updated_at: node.updatedAt, content_version: node.contentVersion }, book),
+    ...meta({ id: node.id, parent_id: node.parentId, name: node.name, created_by: node.createdBy, created_at: node.createdAt, updated_at: node.updatedAt, updated_by: node.updatedBy, content_version: node.contentVersion }, book),
     blob: node.blob,
   };
 }

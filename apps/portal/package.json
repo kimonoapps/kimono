@@ -29,6 +29,7 @@
     "test:git-owners": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-git-owners.mjs"
   },
   "dependencies": {
+    "@codemirror/collab": "6.1.1",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-markdown": "6.5.2",
     "@codemirror/language": "6.13.1",

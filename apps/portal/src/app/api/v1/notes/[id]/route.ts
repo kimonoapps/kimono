@@ -1,6 +1,7 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { db, DriveProblem, moveNode, renameNode, trashNode } from "@/lib/drive";
 import { noteFor, noteName, notes, placeFor, saveNote, textOf } from "@/lib/notes";
+import { noteChanged } from "@/lib/notes/live";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -50,6 +51,7 @@ export async function PATCH(request: Request, { params }: Context) {
     if (body.title !== undefined) renameNode(db(), id, user.username, noteName(body.title));
     const { blob, ...note } = noteFor(db(), id, user.username);
     void blob;
+    void noteChanged(note);
     return apiJson(note);
   });
 }

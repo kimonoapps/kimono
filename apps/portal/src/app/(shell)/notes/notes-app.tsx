@@ -10,8 +10,8 @@ import { InkCrest } from "@/components/ink-crest";
 import { Portrait as Face } from "@/components/portrait";
 import { SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
-import { notes, when, type Library, type Note, type Notebook, type Person, type Section, type Shareable, type Sharing } from "./api";
-import type { Action, BodyHandle, Formats } from "./editor";
+import { notes, when, type Cursor, type Library, type Note, type Notebook, type Person, type Section, type Shareable, type Sharing } from "./api";
+import type { Action, BodyHandle, Formats, LiveUpdate } from "./editor";
 import { Icon, type IconName } from "./icons";
 
 /*
@@ -69,6 +69,11 @@ function edited(at: number, now: number) {
   return `Edited ${word === "now" ? "just now" : /^\d+[mh]$/.test(word) ? `${word} ago` : word}`;
 }
 const fullDate = (at: number) => new Date(at).toLocaleString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** Each person's colour while writing together: the same everywhere they appear. */
+const inks = ["#c2577a", "#3f8a8f", "#b7792b", "#6a6fc4", "#5f8f4e", "#a05ab5", "#c4623f", "#2f7fb0"];
+function inkOf(username: string) { let h = 0; for (const c of username.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0; return inks[h % inks.length]; }
+const firstName = (person: Person | undefined, username: string) => (person?.name?.trim() || username).split(/\s+/)[0];
 
 /** A clock that moves the one-word times on. */
 function useNow() {
@@ -318,7 +323,7 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
       {!showing ? <div className="nt-nothing"><Empty seed="open" words="Pick a note, or start one." onNew={placeWritable ? () => startNew() : undefined} /></div>
         : openId !== "new" && !editing && lib && !openMeta
           ? <div className="nt-page nt-gone"><Empty seed="gone" words="That note isn't here any more." /><Seal type="button" tone="quiet" onClick={() => goTo({ in: placeId })}>Back</Seal></div>
-          : openMeta || editing ? <NotePage key={noteKey} me={me} note={openMeta} draft={editing} notebook={openNotebook} lib={lib}
+          : openMeta || editing ? <NotePage key={noteKey} me={me} people={people} accessKey={facesAsked} note={openMeta} draft={editing} notebook={openNotebook} lib={lib}
               readOnly={openMeta && !openMeta.notebookId ? null : !canWrite(openNotebook)} onBack={() => goTo({ in: placeId })} onSaving={savingNow} onPatch={patch} onMade={made} onGone={gone} onDelete={deleteNote}
               onToast={setToast} onOpen={openNote} onShare={setSharing} onLeave={setLeaving} />
             : <div className="nt-page"><SkeletonRows rows={3} mark={false} /></div>}
@@ -551,9 +556,9 @@ function FolderRow({ kind, id, name, depth, mark, faces, arriving, here, count, 
 }
 
 /** Who shared it, or who it's shared with: a portrait each, the initial on the primary container when there's no picture. */
-function Faces({ usernames, people, size }: { usernames: string[]; people: Record<string, Person>; size: number }) {
+function Faces({ usernames, people, size, most = 2 }: { usernames: string[]; people: Record<string, Person>; size: number; most?: number }) {
   return <span className={cx("nt-faces", size < 30 && "is-small")} style={{ "--s": `${size}px` } as React.CSSProperties}>
-    {usernames.slice(0, 2).map((u) => {
+    {usernames.slice(0, most).map((u) => {
       const face = <Face name={people[u.toLowerCase()]?.name} username={u} picture={people[u.toLowerCase()]?.picture} size={size < 30 ? size : Math.round(size * .82)} />;
       return <span key={u} className="nt-face">{size < 30 ? face : <InkPortraitFrame seed={u} weight={4}>{face}</InkPortraitFrame>}</span>;
     })}
@@ -876,8 +881,8 @@ function MoveSheet({ note, lib, onClose, onMove }: { note: Note; lib: Library; o
 type Status = "idle" | "saving" | "failed";
 const blank = (title: string, text: string) => !text.trim() && (!title.trim() || title.trim() === "Untitled");
 
-function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onSaving, onPatch, onMade, onGone, onDelete, onToast, onOpen, onShare, onLeave }: {
-  me: string; note: Note | null; draft: Draft | null; notebook: Notebook | null; lib: Library | null;
+function NotePage({ me, people, accessKey, note, draft, notebook, lib, readOnly: given, onBack, onSaving, onPatch, onMade, onGone, onDelete, onToast, onOpen, onShare, onLeave }: {
+  me: string; people: Record<string, Person>; accessKey: number; note: Note | null; draft: Draft | null; notebook: Notebook | null; lib: Library | null;
   /** Null for a note shared with you on its own: what you may do with it is asked for. */
   readOnly: boolean | null;
   onBack: () => void; onSaving: (id: string, on: boolean) => void; onPatch: (note: Partial<Note> & { id: string }, text?: string) => void;
@@ -896,11 +901,27 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
   const [formats, setFormats] = useState<Formats | null>(null);
   const body = useRef<BodyHandle | null>(null);
   const titleField = useRef<HTMLInputElement>(null);
-  const live = useRef({ text: "", version: note?.version ?? 0, title: draft ? "" : note?.title ?? "", dirty: false, flying: false, again: false, timer: 0, retry: 0, typed: draft ? "" : note?.title ?? "", loaded: Boolean(draft), mine: draft ? true : note?.createdBy.toLowerCase() === me.toLowerCase(), readOnly });
+  const live = useRef({ live: false, sending: false, cursorWaiting: false, cursor: null as null | { anchor: number; head: number }, cursorTimer: 0, sendTimer: 0, text: "", version: note?.version ?? 0, title: draft ? "" : note?.title ?? "", dirty: false, flying: false, again: false, timer: 0, retry: 0, typed: draft ? "" : note?.title ?? "", loaded: Boolean(draft), mine: draft ? true : note?.createdBy.toLowerCase() === me.toLowerCase(), readOnly });
   useEffect(() => { live.current.readOnly = readOnly; }, [readOnly]);
   const id = useRef<string | null>(note?.id ?? draft?.id ?? null);
   const creating = useRef<Promise<string> | null>(null);
   const draftKey = draft?.key ?? null, parent = draft?.parent ?? null;
+  /* Writing together (lib/notes/live.ts): this page's name there, where it started, and who else is here. */
+  const [clientID] = useState(() => (crypto.randomUUID?.() ?? `${Math.random()}${Date.now()}`).replace(/[^A-Za-z0-9]/g, "").slice(0, 24));
+  const joined = useRef<{ version: number; text: string } | null>(null);
+  const [liveOn, setLiveOn] = useState(false);
+  const [here, setHere] = useState<Cursor[]>([]);
+  const goLive = useCallback((start: { version: number; text: string }) => {
+    joined.current = start;
+    const s = live.current;
+    s.live = true; window.clearTimeout(s.timer); s.dirty = false;
+    if (body.current) { body.current.goLive(start.version, clientID, start.text); setLiveOn(true); }
+  }, [clientID]);
+  /* The body comes after the text: it starts writing together as soon as it's there. */
+  const ready = useCallback((handle: BodyHandle | null) => {
+    body.current = handle;
+    if (handle && joined.current) { handle.goLive(joined.current.version, clientID, joined.current.text); setLiveOn(true); }
+  }, [clientID]);
   /* A new note is made by the first save that has something in it: a title or words. */
   const create = useCallback((words: string) => {
     if (!creating.current) {
@@ -909,20 +930,26 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
       creating.current = notes.create(parent, named, words).then((made) => {
         id.current = made.id; s.version = made.version; s.title = made.title;
         if (draftKey) onMade(draftKey, made, words);
+        /* Made: from here on it's written together like any other note. */
+        s.live = true; window.clearTimeout(s.timer); s.dirty = false;
+        notes.join(made.id).then(goLive, () => {});
         return made.id;
       }, (error) => { creating.current = null; throw error; });
     }
     return creating.current;
-  }, [parent, draftKey, onMade]);
+  }, [parent, draftKey, onMade, goLive]);
   const firstId = note?.id ?? null;
 
   useEffect(() => {
     if (draft || !firstId) { titleField.current?.focus(); return; }
     let gone = false;
-    notes.open(firstId).then((opened) => {
+    notes.join(firstId).then((start) => {
       if (gone) return;
-      live.current.version = opened.note.version; live.current.text = opened.text; live.current.title = opened.note.title; live.current.typed = opened.note.title; live.current.loaded = true;
-      setTitle(opened.note.title); setText(opened.text);
+      live.current.text = start.text; live.current.loaded = true;
+      if (note) { live.current.title = note.title; live.current.typed = note.title; }
+      joined.current = start; live.current.live = true;
+      setHere(start.cursors);
+      setText(start.text);
     }, () => { if (!gone) { setText(""); onToast({ text: oops }); } });
     return () => { gone = true; };
     // Opened once, when the page is made for this note.
@@ -944,9 +971,10 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
       if (!id.current) {
         const starting = !creating.current;
         noteId = await create(sent);
-        /* The note was made with these very words: nothing more to send. */
-        if (starting) { setStatus("idle"); return; }
+        /* The note was made with these very words, or it is written together now: nothing more to send this way. */
+        if (starting || s.live) { setStatus("idle"); return; }
       } else noteId = id.current;
+      if (s.live) { setStatus("idle"); return; }
       onSaving(noteId, true);
       const { note: saved, conflict } = await notes.save(noteId, sent, s.version, keepalive);
       if (conflict) {
@@ -975,13 +1003,102 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
   }, [create, onSaving, onPatch, onToast, onOpen]);
   const saveRef = useRef(save);
   useEffect(() => { saveRef.current = save; }, [save]);
+  const flushRef = useRef<(keepalive?: boolean) => Promise<void>>(async () => {});
+
+  /* Writing together: this page's changes go as they're made; one refused (someone was first) goes again once theirs are in. */
+  const flush = useCallback(async function send(keepalive = false): Promise<void> {
+    const s = live.current, noteId = id.current, handle = body.current;
+    if (!s.live || !noteId || !handle || s.sending) return;
+    const pending = handle.pending();
+    if (!pending) { setStatus((was) => was === "failed" ? was : "idle"); return; }
+    s.sending = true; setStatus("saving");
+    try {
+      const sentCursor = s.cursorWaiting && s.cursor ? s.cursor : undefined;
+      const took = await notes.send(noteId, { client: clientID, version: pending.version, updates: pending.updates, cursor: sentCursor }, keepalive);
+      if (took && sentCursor) s.cursorWaiting = false;
+    } catch {
+      setStatus("failed");
+      window.clearTimeout(s.sendTimer);
+      s.sendTimer = window.setTimeout(() => void send(), 3000);
+    } finally { s.sending = false; }
+  }, [clientID]);
+  const sendCursor = useCallback(() => {
+    const s = live.current, noteId = id.current, handle = body.current;
+    if (!s.live || !noteId || !handle || !s.cursor) return;
+    if (handle.pending()) { s.cursorWaiting = true; return; }
+    s.cursorWaiting = false;
+    void notes.send(noteId, { client: clientID, version: handle.synced(), cursor: s.cursor }).catch(() => {});
+  }, [clientID]);
+  const moved = useCallback((anchor: number, head: number) => {
+    const s = live.current;
+    s.cursor = { anchor, head };
+    window.clearTimeout(s.cursorTimer);
+    s.cursorTimer = window.setTimeout(sendCursor, 120);
+  }, [sendCursor]);
 
   const changed = useCallback((next: string) => {
     const s = live.current;
-    s.text = next; s.dirty = true;
+    s.text = next;
+    if (s.live) { window.clearTimeout(s.sendTimer); s.sendTimer = window.setTimeout(() => void flush(), 60); return; }
+    s.dirty = true;
     window.clearTimeout(s.timer);
     s.timer = window.setTimeout(() => void save(), 800);
-  }, [save]);
+  }, [save, flush]);
+
+  /*
+   * While it's open, everyone's changes come in as they're made, with where
+   * their cursors are, and word of each save. Should the Portal have started
+   * again, the page starts again from the note as it is there, and its own
+   * unsent changes go on top.
+   */
+  useEffect(() => {
+    const noteId = id.current;
+    if (!liveOn || !noteId) return;
+    let source: EventSource | null = null, stopped = false;
+    const restart = async () => {
+      source?.close();
+      try {
+        const start = await notes.join(noteId);
+        if (stopped || !body.current) return;
+        body.current.goLive(start.version, clientID, start.text);
+        connect(start.version);
+        void flush();
+      } catch { if (!stopped) window.setTimeout(() => void restart(), 3000); }
+    };
+    const connect = (version: number) => {
+      const es = new EventSource(notes.liveUrl(noteId, clientID, version));
+      source = es;
+      es.addEventListener("updates", (event) => {
+        const { from, updates } = JSON.parse((event as MessageEvent).data) as { from: number; updates: LiveUpdate[] };
+        if (!body.current?.receive(from, updates)) { void restart(); return; }
+        if (live.current.cursorWaiting) sendCursor();
+        void flush();
+      });
+      es.addEventListener("cursors", (event) => setHere((JSON.parse((event as MessageEvent).data) as { cursors: Cursor[] }).cursors));
+      es.addEventListener("saved", (event) => {
+        const saved = (JSON.parse((event as MessageEvent).data) as { note: Note }).note;
+        const s = live.current;
+        s.version = saved.version;
+        if (saved.title !== s.title && document.activeElement !== titleField.current) { s.title = saved.title; s.typed = saved.title; setTitle(saved.title); }
+        onPatch(saved, s.text);
+      });
+      es.addEventListener("copy", (event) => {
+        const copy = (JSON.parse((event as MessageEvent).data) as { note: Note }).note;
+        onPatch(copy);
+        onToast({ text: "It was changed elsewhere at the same time. What was written here is kept as a copy.", action: { label: "Open copy", run: () => onOpen(copy.id) }, ms: 10_000 });
+      });
+      es.addEventListener("gone", () => { es.close(); onToast({ text: "This note was deleted." }); });
+      es.addEventListener("reset", () => void restart());
+    };
+    connect(body.current?.synced() ?? joined.current?.version ?? 0);
+    return () => { stopped = true; source?.close(); };
+  }, [liveOn, clientID, flush, sendCursor, onPatch, onToast, onOpen]);
+
+  /* Everyone else's cursor, in their colour, with their name. */
+  useEffect(() => {
+    body.current?.showCursors(here.filter((c) => c.clientID !== clientID && c.anchor !== null && c.head !== null)
+      .map((c) => ({ clientID: c.clientID, name: firstName(people[c.username], c.username), colour: inkOf(c.username), anchor: c.anchor!, head: c.head! })));
+  }, [here, people, clientID, text]);
 
   /*
    * Kimono AI, the phone and others write here too: when the window comes
@@ -995,7 +1112,7 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
     let gone = false;
     const look = async () => {
       const s = live.current;
-      if (!id.current || s.dirty || s.flying || document.visibilityState === "hidden") return;
+      if (s.live || !id.current || s.dirty || s.flying || document.visibilityState === "hidden") return;
       try {
         const fresh = await notes.open(id.current);
         if (gone || s.dirty || s.flying || fresh.note.version <= s.version) return;
@@ -1016,7 +1133,7 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
    */
   useEffect(() => {
     const s = live.current;
-    const leave = () => { if (s.dirty) void saveRef.current(true); };
+    const leave = () => { if (s.live) void flushRef.current(true); else if (s.dirty) void saveRef.current(true); };
     window.addEventListener("pagehide", leave);
     return () => {
       window.removeEventListener("pagehide", leave);
@@ -1052,7 +1169,25 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
     } catch { if (before !== null) s.title = before; onToast({ text: oops }); }
   };
 
-  const meta = note ?? (draft?.id ? lib?.notes.find((n) => n.id === draft.id) ?? null : null);
+  useEffect(() => { flushRef.current = flush; }, [flush]);
+
+  const meta = (note ? lib?.notes.find((n) => n.id === note.id) ?? note : null) ?? (draft?.id ? lib?.notes.find((n) => n.id === draft.id) ?? null : null);
+  /* Who has it: everyone in its space, and who it's shared with on its own or through its notebook. */
+  const [access, setAccess] = useState<string[]>([]);
+  const metaId = meta?.id ?? null;
+  useEffect(() => {
+    if (!metaId) return;
+    let gone = false;
+    notes.sharing({ kind: "note", id: metaId }).then((r) => {
+      if (gone) return;
+      const all = new Map<string, true>();
+      for (const u of [...(r.members ?? []).map((m) => m.username), ...r.inherited.map((x) => x.username), ...r.shares.map((x) => x.username)]) all.set(u.toLowerCase(), true);
+      setAccess([...all.keys()]);
+    }, () => {});
+    return () => { gone = true; };
+  }, [metaId, accessKey]);
+  const others = [...new Set(here.filter((c) => c.clientID !== clientID && c.username !== me.toLowerCase()).map((c) => c.username))];
+  const nameOf = (username: string) => people[username.toLowerCase()]?.name ?? username;
   const section = meta ? lib?.sections.find((s) => s.id === meta.parentId) ?? null : draft?.parent ? lib?.sections.find((s) => s.id === draft.parent) ?? null : null;
   const now = useNow();
   const showFormats = useCallback((next: Formats) => setFormats((was) => was && JSON.stringify(was) === JSON.stringify(next) ? was : next), []);
@@ -1063,11 +1198,22 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
         <NotebookCrest notebook={notebook} size={14} />{notebook.name}{section ? <><span aria-hidden="true">/</span>{section.name}</> : null}
       </small> : meta ? <small className="nt-crumb">Shared with you</small> : <span />}
       <span className="nt-grow" />
+      {others.length ? <span className="nt-here" title={`Here now: ${listed(others.map(nameOf))}`} aria-label={`Here now: ${listed(others.map(nameOf))}`}>
+        {others.slice(0, 4).map((u) => <span key={u} className="nt-here-face" style={{ "--who": inkOf(u) } as React.CSSProperties}><Faces usernames={[u]} people={people} size={24} /></span>)}
+        {others.length > 4 ? <span className="nt-more-count">+{others.length - 4}</span> : null}
+      </span> : null}
       <span className="nt-status" aria-live="polite">
         {status === "saving" ? <InkLoader className="nt-saving" label="Saving" />
-          : status === "failed" ? <><span className="nt-word">Not saved</span><Seal type="button" compact tone="quiet" onClick={() => void save()}>Retry</Seal></>
-          : meta ? <time className="nt-edited" dateTime={new Date(meta.updatedAt).toISOString()} title={fullDate(meta.updatedAt)}>{edited(meta.updatedAt, now)}</time> : null}
+          : status === "failed" ? <><span className="nt-word">Not saved</span><Seal type="button" compact tone="quiet" onClick={() => void (live.current.live ? flush() : save())}>Retry</Seal></>
+          : meta ? <time className="nt-edited" dateTime={new Date(meta.updatedAt).toISOString()} title={fullDate(meta.updatedAt)}>
+              {edited(meta.updatedAt, now)} by {meta.updatedBy.toLowerCase() === me.toLowerCase() ? "you" : firstName(people[meta.updatedBy.toLowerCase()], meta.updatedBy)}
+            </time> : null}
       </span>
+      {meta && access.length ? <button type="button" className="nt-access" onClick={() => onShare({ kind: "note", id: meta.id, name: meta.title })}
+        title={`Who has access: ${listed(access.map(nameOf))}`} aria-label={`Who has access: ${listed(access.map(nameOf))}. Share`}>
+        <Faces usernames={access} people={people} size={22} most={3} />
+        {access.length > 3 ? <span className="nt-more-count">+{access.length - 3}</span> : null}
+      </button> : null}
       {meta ? <RowMenu label={`More for ${meta.title}`} items={[
         { icon: "people", label: "Share", run: () => onShare({ kind: "note", id: meta.id, name: meta.title }) },
         ...(notebook && !readOnly ? [{ icon: "move" as const, label: "Move", run: () => setMoving(true) }, { icon: "trash" as const, label: "Delete", danger: true, run: () => onDelete(meta) }] : []),
@@ -1081,7 +1227,7 @@ function NotePage({ me, note, draft, notebook, lib, readOnly: given, onBack, onS
     </div>
     <div className="nt-col nt-bodywrap">
       {text === null || (given === null && asked === null) ? <div className="nt-body nt-body-wait"><SkeletonRows rows={3} mark={false} /></div>
-        : <NoteBody initial={text} readOnly={readOnly} onReady={(handle) => { body.current = handle; }} onChange={changed} onBlur={() => void save()} onFormats={showFormats} />}
+        : <NoteBody initial={text} readOnly={readOnly} onReady={ready} onChange={changed} onBlur={() => void (live.current.live ? flush() : save())} onFormats={showFormats} onCursor={moved} />}
     </div>
     {readOnly || text === null ? null : <FormatBar formats={formats} onRun={(action) => body.current?.run(action)} />}
     {moving && meta && lib ? <MoveSheet note={meta} lib={lib} onClose={() => setMoving(false)}

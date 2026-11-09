@@ -3,7 +3,7 @@ import "server-only";
 import { portalOrigin } from "../account";
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "../api-v1";
 import { listAccounts } from "../directory";
-import { db, DriveProblem, linkFile, nodeFor, publicLinksAllowed, roleOn, sharesOn, shareNode, unlinkFile } from "../drive";
+import { db, DriveProblem, linkFile, nodeFor, publicLinksAllowed, roleIn, roleOn, sharesOn, shareNode, unlinkFile } from "../drive";
 import { notebookFor, noteFor } from "./model";
 import { notes } from "./index";
 
@@ -22,7 +22,11 @@ export const publicUrl = (token: string) => `${portalOrigin()}/n/${token}`;
 function view(id: string, username: string) {
   const info = sharesOn(db(), id, username);
   const node = nodeFor(db(), id, username);
-  return { ...info, role: roleOn(db(), id, username), link: node.link ? publicUrl(node.link) : null };
+  /* Who is in its space, for someone in that space too; someone with it only through a share isn't shown the space. */
+  const members = roleIn(db(), node.spaceId, username)
+    ? (db().prepare("SELECT username, role FROM members WHERE space_id = ? ORDER BY added_at").all(node.spaceId) as { username: string; role: "owner" | "editor" | "viewer" }[])
+    : [];
+  return { ...info, members, role: roleOn(db(), id, username), link: node.link ? publicUrl(node.link) : null };
 }
 
 /** Who it's shared with, who has it through its notebook, who sees it in its space, and its public link. */

@@ -345,3 +345,16 @@
 .nt-table th { background: var(--k-container-low); font-weight: 700; }
 .nt-table a { color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); text-underline-offset: 3px; }
 
+/* ── writing together: who's here, who has it, and their cursors in the text ── */
+.nt-here { display: inline-flex; align-items: center; margin-right: 4px; }
+.nt-here-face { display: inline-grid; border-radius: 50%; box-shadow: 0 0 0 2px var(--k-container-lowest), 0 0 0 4px var(--who); }
+.nt-here-face + .nt-here-face { margin-left: 2px; }
+.nt-here-face .nt-faces.is-small .portrait { box-shadow: none; }
+.nt-more-count { margin-left: 4px; font: 700 11.5px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.nt-access { display: inline-flex; align-items: center; height: 32px; padding: 0 8px 0 6px; border: 0; border-radius: 16px; background: transparent; cursor: pointer; transition: background-color var(--k-t-state); }
+.nt-access:hover { background: var(--k-container-high); }
+.nt-access:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
+.nt-their-caret { position: relative; display: inline-block; width: 0; height: 1.2em; margin: 0 -1px; vertical-align: text-bottom; border-left: 2px solid var(--who); pointer-events: none; }
+.nt-their-name { position: absolute; left: -2px; bottom: 100%; padding: 2px 6px 3px; border-radius: 6px 6px 6px 1px; background: var(--who); color: #fff; font: 700 11px/1 var(--k-sans); white-space: nowrap; user-select: none; }
+.nt-their-pick { background: color-mix(in srgb, var(--who) 22%, transparent); }
+

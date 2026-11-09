@@ -13,13 +13,15 @@ export type Notebook = {
 };
 export type Section = { id: string; notebookId: string; parentId: string; name: string; updatedAt: number };
 /** `notebookId` is null for a note shared with you on its own, outside any notebook of yours. */
-export type Note = { id: string; notebookId: string | null; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number; version: number; excerpt?: string };
+export type Note = { id: string; notebookId: string | null; parentId: string; title: string; createdBy: string; createdAt: number; updatedAt: number; updatedBy: string; version: number; excerpt?: string };
 export type Library = { notebooks: Notebook[]; sections: Section[]; notes: Note[] };
 export type Person = { username: string; name: string; picture: string | null };
 export type Share = { username: string; role: "editor" | "viewer"; addedBy: string; addedAt: number };
 /** Who has a notebook or note beyond its space, who has it through its notebook, how many see it in its space, and its public link. */
 export type Sharing = {
   shares: Share[]; inherited: (Share & { via: { id: string; name: string } })[];
+  /** Who is in its space, when you are too. */
+  members?: { username: string; role: Role }[];
   space: { id: string; name: string; members: number }; role: Role | null; link: string | null;
 };
 /** What can be shared: a notebook, or a single note. */
@@ -75,7 +77,16 @@ export const notes = {
   share: (thing: Pick<Shareable, "kind" | "id">, username: string, role: "editor" | "viewer" | null) => call<Sharing | { left: true }>(`${base(thing)}/members`, json("PUT", { username, role })),
   link: (thing: Pick<Shareable, "kind" | "id">, on: boolean) => call<{ link: string | null }>(`${base(thing)}/link`, on ? { method: "POST" } : { method: "DELETE" }).then((r) => r.link),
   people: () => call<{ people: Person[] }>("/people").then((r) => r.people),
+  /** Writing together: the text now and its change number, to start from (lib/notes/live.ts). */
+  join: (id: string) => call<{ version: number; text: string; cursors: Cursor[] }>(`/${id}/live`),
+  /** This page's changes after [version], and/or where its cursor is. False when the page is behind. */
+  send: (id: string, body: { client: string; version: number; updates?: { changes: unknown }[]; cursor?: { anchor: number; head: number } }, keepalive = false) =>
+    call<{ ok: true }>(`/${id}/live`, json("POST", body, keepalive)).then(() => true, (error) => { if (error instanceof NotesProblem && error.status === 409) return false; throw error; }),
+  liveUrl: (id: string, client: string, version: number) => `/api/v1/notes/${id}/live?client=${encodeURIComponent(client)}&version=${version}`,
 };
+
+/** Someone with the note open, and where their cursor is (null until they put it somewhere). */
+export type Cursor = { clientID: string; username: string; anchor: number | null; head: number | null; at: number };
 
 /** One word for when, and only when it says something: "now", "5m", "2h", "Tue", "3 Oct". */
 export function when(at: number, now = Date.now()) {

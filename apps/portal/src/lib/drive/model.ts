@@ -58,6 +58,8 @@ export type Member = { username: string; role: Role; addedAt: number };
 export type DriveNode = {
   id: string; spaceId: string; parentId: string | null; kind: "folder" | "file"; name: string;
   size: number; mime: string | null; createdBy: string; createdAt: number; updatedAt: number;
+  /** Who last saved its contents. */
+  updatedBy: string;
   trashedAt: number | null; link: string | null;
   /** The name a guest gave when adding this through the space's link (createdBy is then ""). */
   guest: string | null;
@@ -243,6 +245,15 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 9) {
+    /* Who last saved a file's contents (its maker, until someone saves over it). */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE nodes ADD COLUMN updated_by TEXT;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '9');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── the change log ── */
@@ -353,12 +364,12 @@ export function numbered(name: string, n: number): string {
 
 type NodeRow = {
   id: string; space_id: string; parent_id: string | null; kind: "folder" | "file"; name: string; size: number;
-  mime: string | null; blob: string | null; created_by: string; created_at: number; updated_at: number;
+  mime: string | null; blob: string | null; created_by: string; created_at: number; updated_at: number; updated_by: string | null;
   trashed_at: number | null; link: string | null; guest: string | null; version: number; content_version: number;
   purpose: FolderPurpose | null; ref: string | null;
 };
 
-const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.trashed_at, n.guest, n.version, n.content_version, n.purpose, n.ref,
+const nodeColumns = `n.id, n.space_id, n.parent_id, n.kind, n.name, n.size, n.mime, n.blob, n.created_by, n.created_at, n.updated_at, n.updated_by, n.trashed_at, n.guest, n.version, n.content_version, n.purpose, n.ref,
   (SELECT token FROM links l WHERE l.node_id = n.id AND l.revoked_at IS NULL ORDER BY l.created_at DESC LIMIT 1) AS link`;
 
 /* Links are for those who may make or turn them off: a viewer handed one could pass on what they were only meant to see. */
@@ -367,7 +378,7 @@ const seesLinks = (role: Role | null) => role !== null && rank[role] >= rank.edi
 /** A node as [role] sees it (null: a guest, or nobody in particular). */
 const toNode = (row: NodeRow, role: Role | null): DriveNode => ({
   id: row.id, spaceId: row.space_id, parentId: row.parent_id, kind: row.kind, name: row.name, size: row.size,
-  mime: row.mime, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at,
+  mime: row.mime, createdBy: row.created_by, createdAt: row.created_at, updatedAt: row.updated_at, updatedBy: row.updated_by ?? row.created_by,
   trashedAt: row.trashed_at, link: seesLinks(role) ? row.link : null, guest: row.guest, version: row.version, contentVersion: row.content_version,
   purpose: row.purpose ?? null, ref: row.ref ?? null, ...(role ? { role } : {}),
 });
@@ -1059,7 +1070,7 @@ export function finishUpload(db: DatabaseSync, upload: Upload, blob: string, now
       const target = nodeRow(db, upload.replaces);
       const live = target && target.space_id === upload.spaceId && !inTrash(db, target.id);
       if (live && target.content_version === upload.baseVersion) {
-        db.prepare("UPDATE nodes SET blob = ?, size = ?, mime = ?, content_version = content_version + 1, updated_at = ? WHERE id = ?").run(blob, upload.size, upload.mime, now, target.id);
+        db.prepare("UPDATE nodes SET blob = ?, size = ?, mime = ?, content_version = content_version + 1, updated_at = ?, updated_by = ? WHERE id = ?").run(blob, upload.size, upload.mime, now, upload.guest ? `guest:${upload.guest}` : upload.createdBy, target.id);
         touch(db, target.id, target.space_id, now);
         oldBlob = target.blob;
         node = toNode(nodeRow(db, target.id)!, "editor");

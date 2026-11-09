@@ -326,11 +326,27 @@ Portal's: MCP and its sign-in go to the Portal, anything else to `/notes`
 there (`lib/notes/mcp-site.ts`, rendered by `deployment.ts`). Tests:
 `pnpm --filter @kimono/portal test:notes-mcp`.
 
+## Writing together
+
+While anyone has a note open on the web, the Portal holds it
+(`lib/notes/live.ts`): the text, and every change made since, numbered.
+Pages send their changes against the number they've seen, CodeMirror's
+collab protocol; one that has fallen behind is refused (409), takes what it
+missed, and sends again. Changes, where everyone's cursor is, and each save go
+out over `GET /api/v1/notes/:id/live` as server-sent events; `POST` the same
+address sends changes and the cursor. The text is saved to Drive a moment
+after typing stops (at most 5s), by whoever typed last, which Drive records as
+the file's `updated_by` (migration 9). An edit made elsewhere (the phone,
+Kimono AI) comes in as a change within 5s; one that lands while there's
+unsaved typing is kept as a copy, as Drive does. The note's head shows who's
+in it now (a ring in their colour, the same as their cursor), "Edited … by
+…", and who has access (its space's members and who it's shared with), which
+opens Share.
+
 ## Not in the first version
 
 - Pictures and attachments inside notes.
 - Note history.
-- Editing together live; the version rule keeps both edits instead.
 - Public links to a note.
 
 ## Bringing notes over from Outline
