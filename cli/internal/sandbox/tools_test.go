@@ -119,6 +119,23 @@ func TestEnvironmentAddsToolsOnlyWhenThereAreSome(t *testing.T) {
 	}
 }
 
+// Composio connecting never holds up the first word, and the agent knows its tools may come a moment late.
+func TestToolsConnectWithoutHoldingTheTurn(t *testing.T) {
+	s, _ := New(Config{Key: "k", StateDir: t.TempDir()})
+	s.gatewayURL = "http://gw:7481"
+	w := &workspace{id: "ws1", capability: "cap", tools: ToolsAuth{URL: "https://backend.composio.dev/x"}}
+	found := false
+	for _, line := range s.environment(w) {
+		found = found || line == "CLAUDE_CODE_MCP_STARTUP_WAIT_MS=0"
+	}
+	if !found {
+		t.Fatal("the turn would wait for Composio to connect")
+	}
+	if !strings.Contains(SystemPrompt, "still on its way") {
+		t.Fatal("the agent isn't told Composio may take a moment")
+	}
+}
+
 // Artifacts render in the chat while they are written: the agent streams its
 // partial messages, and is told where artifacts go and how to read about them.
 func TestAgentStreamsAndKnowsArtifacts(t *testing.T) {

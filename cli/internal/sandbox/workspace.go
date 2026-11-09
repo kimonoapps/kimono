@@ -404,6 +404,9 @@ func (s *Server) environment(w *workspace) []string {
 	if w.tools.URL != "" {
 		/* kimono-fetch reaches the gateway's /media with the same capability. */
 		env = append(env, "KIMONO_MCP="+mcpConfig(gateway, w.capability), "KIMONO_GATEWAY="+gateway, "KIMONO_TOKEN="+w.capability)
+		/* Claude Code would hold the first word until Composio has connected, seconds on a slow day:
+		   it connects alongside instead, and its tools join from the agent's next step (the prompt says so). */
+		env = append(env, "CLAUDE_CODE_MCP_STARTUP_WAIT_MS=0")
 	}
 	if w.git.Name != "" {
 		env = append(env, "GIT_AUTHOR_NAME="+w.git.Name, "GIT_COMMITTER_NAME="+w.git.Name)
