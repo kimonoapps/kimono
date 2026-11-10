@@ -269,6 +269,12 @@ test("an addon's answer becomes releases; torrent hashes and links out are left 
   assert.equal(streams.addonBase('http://aiostreams:3000/stremio/u/p/manifest.json'), 'http://aiostreams:3000/stremio/u/p');
   assert.equal(streams.stremioId('tt1', 1, 2), 'tt1:1:2');
   assert.equal(streams.stremioId('tt1'), 'tt1');
+  /* A search turned away for coming too often is an error entry, not a 429: incomplete and refused, never "no copy". */
+  const refusedBody = { streams: [{ name: '[❌] AIOStreams', description: 'Rate Limit Exceeded', streamData: { type: 'error' } }] };
+  assert.equal(streams.searchRefused(refusedBody), true);
+  assert.equal(streams.searchErrors(refusedBody), 1);
+  assert.equal(streams.searchRefused({ streams: [{ name: '[❌] Torrentio', description: 'Timed out' }] }), false);
+  assert.equal(streams.searchRefused({ streams: [] }), false);
   const found = streams.releasesFrom({ streams: [
     { name: '[RD+] 4K', description: 'Show S01E02 2160p WEB-DL HDR10 HEVC', url: 'https://rd.example/1', behaviorHints: { filename: 'Show.S01E02.2160p.mkv', videoSize: 8e9 } },
     { name: 'P2P', infoHash: 'abc' },

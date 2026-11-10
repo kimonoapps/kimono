@@ -39,14 +39,20 @@ export function searchErrors(body: Json): number {
   return streams.filter((s) => typeof s.url !== "string" && /❌|⚠|error|timed? ?out|failed|unavailable/i.test(`${s.name ?? ""} ${s.description ?? ""} ${s.title ?? ""}`)).length;
 }
 
-/** Streams found, and whether the search was complete (no source failed), so an empty answer can be trusted or not. */
-export async function searchStreams(manifest: string, kind: "movie" | "series", id: string): Promise<{ releases: Release[]; complete: boolean }> {
+/** Whether the search itself turned the request away for coming too often (AIOStreams answers that as an error entry, not a 429). */
+export function searchRefused(body: Json): boolean {
+  const streams: Json[] = Array.isArray(body.streams) ? body.streams : [];
+  return streams.some((s) => typeof s.url !== "string" && /rate.?limit|too many requests/i.test(`${s.name ?? ""} ${s.description ?? ""} ${s.title ?? ""}`));
+}
+
+/** Streams found, whether the search was complete (no source failed), so an empty answer can be trusted or not, and whether it was refused for coming too often. */
+export async function searchStreams(manifest: string, kind: "movie" | "series", id: string): Promise<{ releases: Release[]; complete: boolean; refused: boolean }> {
   if (!manifest) throw new WatchProblem("Watch has nowhere to stream from yet.", 503);
   const url = `${addonBase(manifest)}/stream/${kind}/${encodeURIComponent(id)}.json`;
   const response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(25_000) }).catch(() => null);
   if (!response?.ok) throw new WatchProblem("The stream search didn't answer. Try again in a moment.", 502);
   const body = (await response.json()) as Json;
-  return { releases: releasesFrom(body), complete: searchErrors(body) === 0 };
+  return { releases: releasesFrom(body), complete: searchErrors(body) === 0, refused: searchRefused(body) };
 }
 
 export async function findStreams(manifest: string, kind: "movie" | "series", id: string): Promise<Release[]> {

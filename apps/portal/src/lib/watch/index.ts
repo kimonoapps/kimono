@@ -427,12 +427,20 @@ function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: nu
     if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
     const manifest = await ensureProvisioned(db, cfg, await nzbdavAccess());
     const id = stremioId(title.imdbId, season || undefined, episode || undefined);
-    let { releases: found, complete } = await searchStreams(manifest, title.kind, id);
-    /* Nothing at all: a busy source may have dropped it. Asked once more before it is believed. */
-    if (!found.length) {
-      await new Promise((done) => setTimeout(done, 2000));
-      ({ releases: found, complete } = await searchStreams(manifest, title.kind, id));
+    let { releases: found, complete, refused } = await searchStreams(manifest, title.kind, id);
+    /*
+     * Nothing at all: a busy source may have dropped it, or the search turned
+     * it away for coming too often (its window is 15 seconds). Asked again,
+     * after the window when refused, before it is believed.
+     */
+    for (const wait of refused ? [8000, 8000] : [2000]) {
+      if (found.length) break;
+      await new Promise((done) => setTimeout(done, wait));
+      ({ releases: found, complete, refused } = await searchStreams(manifest, title.kind, id));
+      if (!refused) break;
     }
+    /* Still nothing, and the search didn't finish: that's no answer, so it isn't kept and play doesn't say "no copy". */
+    if (!found.length && !complete) throw new WatchProblem("Watch's sources are busy right now. Try again in a moment.", 503);
     keep(db, key, found, streamTtl);
     /* Anything found says the title plays. Nothing found says it doesn't, but only for a first episode or a film, and only when no source failed: a timeout is not an answer. */
     const streak = noteSearch(db, found.length === 0);

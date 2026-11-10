@@ -241,6 +241,10 @@ services:
     environment:
       SECRET_KEY: ${AIOSTREAMS_SECRET_KEY:?AIOStreams secret key required}
       BASE_URL: http://aiostreams:3000
+      # The Portal is its only caller, so every search shares one address:
+      # the per-address limit (10 searches in 15 s) turned away Home's checks
+      # and play alike, and a turned-away search read as "no copy".
+      DISABLE_RATE_LIMITS: "true"
     security_opt:
       - no-new-privileges:true
     volumes:
