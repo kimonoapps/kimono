@@ -3,6 +3,7 @@
 package app.kimono.watch.player
 
 import android.app.PictureInPictureParams
+import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
@@ -61,6 +62,14 @@ class PlayerActivity : ComponentActivity() {
         val app = watch
         engine = Engine(this, app.tv, SubtitleView(this))
         session = runCatching { MediaSession.Builder(this, engine.player).build() }.getOrNull()
+        /* Android 12 on: picture in picture as the person leaves, with the system's own animation, whenever it's playing. */
+        if (!app.tv && Build.VERSION.SDK_INT >= 31) {
+            pipParams(false)
+            engine.player.addListener(object : androidx.media3.common.Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) = pipParams(isPlaying)
+                override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) = pipParams(engine.player.isPlaying)
+            })
+        }
         if (app.tv) engine.player.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) { matchFrameRate(format) }
         })
@@ -107,8 +116,14 @@ class PlayerActivity : ComponentActivity() {
         setContent { WatchTheme { androidx.compose.runtime.CompositionLocalProvider(LocalWatch provides app.services) {
             val ended by (together?.ended ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
             androidx.compose.runtime.LaunchedEffect(ended) { if (ended) { app.toasts.show("The party has ended."); finish() } }
-            PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish, onRec = rec, party = together)
+            PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish, onRec = rec, party = together, rotate = if (app.tv) null else ::rotate)
         } } }
+    }
+
+    /** Upright, or back on its side; each way follows the sensor within it. */
+    private fun rotate() {
+        requestedOrientation = if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
     }
 
     /** Switches the TV to a refresh rate the film's frame rate divides into, at the same resolution. */
@@ -124,12 +139,21 @@ class PlayerActivity : ComponentActivity() {
         if (best.modeId != now.modeId) window.attributes = window.attributes.also { it.preferredDisplayModeId = best.modeId }
     }
 
+    private fun ratio(): Rational {
+        val size = engine.player.videoSize
+        return clamp(if (size.width > 0 && size.height > 0) Rational(size.width, size.height) else Rational(16, 9))
+    }
+
+    @androidx.annotation.RequiresApi(31)
+    private fun pipParams(auto: Boolean) {
+        runCatching { setPictureInPictureParams(PictureInPictureParams.Builder().setAspectRatio(ratio()).setAutoEnterEnabled(auto).setSeamlessResizeEnabled(true).build()) }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (!watch.tv && engine.player.isPlaying && Build.VERSION.SDK_INT >= 26) {
-            val size = engine.player.videoSize
-            val ratio = if (size.width > 0 && size.height > 0) Rational(size.width, size.height) else Rational(16, 9)
-            runCatching { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(clamp(ratio)).build()) }
+        /* Before Android 12 there's no auto-enter: ask as the person leaves. */
+        if (!watch.tv && engine.player.isPlaying && Build.VERSION.SDK_INT in 26..30) {
+            runCatching { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(ratio()).build()) }
         }
     }
 

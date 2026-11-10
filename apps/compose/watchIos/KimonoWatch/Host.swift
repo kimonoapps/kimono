@@ -116,6 +116,14 @@ final class Host: NSObject, IosWatchHost, @unchecked Sendable {
         self.showing = nil
     }
 
+    func rotatePlayer() {
+        guard let showing = showing as? PlayerContainer else { return }
+        showing.upright.toggle()
+        AppDelegate.orientations = showing.upright ? .portrait : .landscape
+        showing.setNeedsUpdateOfSupportedInterfaceOrientations()
+        Host.rotate(to: AppDelegate.orientations)
+    }
+
     static func root() -> UIViewController? {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
         return scene?.windows.first(where: \.isKeyWindow)?.rootViewController ?? scene?.windows.first?.rootViewController
@@ -155,10 +163,13 @@ final class PlayerContainer: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         setNeedsUpdateOfSupportedInterfaceOrientations()
-        Host.rotate(to: .landscape)
+        Host.rotate(to: upright ? .portrait : .landscape)
     }
 
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
+    /** Turned upright from the player's rotate button; it starts on its side. */
+    var upright = false
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { upright ? .portrait : .landscape }
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }

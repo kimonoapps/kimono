@@ -540,6 +540,8 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
                         player.seek(to: CMTime(seconds: from, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                             if play || self.pipWanted || self.why == .airplay { player.play() }
                             self.nowPlayingTime()
+                            /* Picture in picture may have become possible before the item was ready: start it now, not on the next trip away. */
+                            if self.pipWanted, let pip = self.pip, pip.isPictureInPicturePossible { self.pipWanted = false; pip.startPictureInPicture() }
                         }
                     } else if item.status == .failed {
                         NSLog("Kimono Watch: the HLS rendition failed: %@", item.error?.localizedDescription ?? "")
