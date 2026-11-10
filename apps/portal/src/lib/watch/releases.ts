@@ -253,3 +253,24 @@ export function cleanDevice(raw: unknown): Device {
     ...(input.lan === true ? { lan: true } : {}),
   };
 }
+
+/* ───── The Quality menu ───── */
+
+export const qualityLabels: Record<Quality, string> = { auto: "Auto", "2160": "4K", "1080": "1080p", "720": "720p", saver: "Data saver" };
+
+/**
+ * The qualities worth offering: Auto, then each size a version that plays
+ * here comes in (4K only on a screen that shows it), and Data saver. With HLS
+ * the packager scales a bigger version down, so smaller sizes are there too.
+ */
+export function qualityOptions(playable: Pick<Release, "height">[], device: Device, scalable = false): { value: Quality; label: string }[] {
+  const tiers: number[] = playable.map((r) => (r.height >= 2160 ? 2160 : r.height >= 1080 ? 1080 : r.height >= 720 || r.height === 0 ? 720 : 480));
+  const top = Math.max(0, ...tiers);
+  const has = (h: number) => tiers.includes(h) || (scalable && top > h);
+  const options: Quality[] = ["auto"];
+  if (has(2160) && device.maxHeight >= 2160) options.push("2160");
+  if (has(1080) && device.maxHeight >= 1080) options.push("1080");
+  if (has(720)) options.push("720");
+  if (playable.length) options.push("saver");
+  return options.map((value) => ({ value, label: qualityLabels[value] }));
+}

@@ -130,6 +130,7 @@ export function migrate(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, body TEXT NOT NULL, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS tracks (username TEXT NOT NULL, title_id TEXT NOT NULL, audio TEXT NOT NULL, subtitles TEXT NOT NULL, PRIMARY KEY (username, title_id));
+    CREATE TABLE IF NOT EXISTS device_prefs (username TEXT NOT NULL, device_id TEXT NOT NULL, quality TEXT NOT NULL, PRIMARY KEY (username, device_id));
   `);
   const columns = (db.prepare("PRAGMA table_info(titles)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("original_language")) db.exec("ALTER TABLE titles ADD COLUMN original_language TEXT NOT NULL DEFAULT ''");
@@ -330,6 +331,36 @@ export function savePrefs(db: DatabaseSync, username: string, raw: unknown): Pre
   const prefs = cleanPrefs(raw, prefsOf(db, username));
   db.prepare("INSERT INTO prefs (username, body) VALUES (?,?) ON CONFLICT(username) DO UPDATE SET body = excluded.body").run(username, JSON.stringify(prefs));
   return prefs;
+}
+
+/* ───── Quality per device ───── */
+
+export type Quality = Prefs["quality"];
+const qualities = ["auto", "2160", "1080", "720", "saver"] as const;
+export const cleanQuality = (value: unknown): Quality | null => (qualities.includes(value as Quality) ? (value as Quality) : null);
+/** An app's or browser's own id for itself: what quality is remembered by. */
+export const cleanDeviceId = (value: unknown): string | null => (typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value) ? value : null);
+
+export function deviceQualityOf(db: DatabaseSync, username: string, deviceId: string | null): Quality | null {
+  if (!deviceId) return null;
+  const row = db.prepare("SELECT quality FROM device_prefs WHERE username = ? AND device_id = ?").get(username, deviceId) as Row | undefined;
+  return row ? cleanQuality(row.quality) : null;
+}
+
+/** null forgets the device's own choice: it follows the person's settings again. */
+export function setDeviceQuality(db: DatabaseSync, username: string, deviceId: string, quality: Quality | null) {
+  if (quality === null) db.prepare("DELETE FROM device_prefs WHERE username = ? AND device_id = ?").run(username, deviceId);
+  else db.prepare("INSERT INTO device_prefs (username, device_id, quality) VALUES (?,?,?) ON CONFLICT(username, device_id) DO UPDATE SET quality = excluded.quality").run(username, deviceId, quality);
+}
+
+/** The quality a play uses: chosen just now, else this device's, else the person's. */
+export const qualityFor = (oneOff: Quality | null, device: Quality | null, prefs: Prefs): Quality => oneOff ?? device ?? prefs.quality;
+
+/** Settings as a device sees them: its own quality over the person's, and whether it has one. */
+export function devicePrefsOf(db: DatabaseSync, username: string, deviceId: string | null) {
+  const prefs = prefsOf(db, username);
+  const own = deviceQualityOf(db, username, deviceId);
+  return { ...prefs, quality: own ?? prefs.quality, device: deviceId ? { id: deviceId, quality: own } : null };
 }
 
 /** The tracks someone picked for a show in the player, kept so the next episode starts the same way. */

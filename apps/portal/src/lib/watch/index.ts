@@ -14,12 +14,12 @@ import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { badge, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
   cached, episodesOf, finished, fraction, getTitle, getTitles, isStale, keep, listOf, markFillers, markSeasonFillers, migrate, parseTitleId,
-  prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, tracksOf, WatchProblem, readState, writeState,
+  cleanDeviceId, cleanQuality, deviceQualityOf, prefsOf, progressOf, qualityFor, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, tracksOf, WatchProblem, readState, writeState,
   type Episode, type Title,
 } from "./model";
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
-import { badges, cleanDevice, describe, heightCap, rank, type Release } from "./releases";
+import { badges, cleanDevice, describe, heightCap, qualityOptions, rank, type Release } from "./releases";
 import { fetchUpstream, findStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
 import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
@@ -358,7 +358,8 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   const device = cleanDevice(raw.device);
   const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
-  return { next, ready: rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db)).length > 0 };
+  const quality = qualityFor(cleanQuality(raw.quality), deviceQualityOf(db, username, cleanDeviceId(raw.deviceId)), prefs);
+  return { next, ready: rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db)).length > 0 };
 }
 
 /**
@@ -375,6 +376,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const device = screenFor(asked, cast);
   const hls = Boolean(cfg.packager.key) && (cast !== null || asked.client === "web");
   const prefs = prefsOf(db, username);
+  /* Quality: picked in the player just now, else this device's own, else the person's. */
+  const quality = qualityFor(cleanQuality(raw.quality), deviceQualityOf(db, username, cleanDeviceId(raw.deviceId)), prefs);
   const season = title.kind === "series" ? Number(raw.season) || 1 : 0;
   const episode = title.kind === "series" ? Number(raw.episode) || 1 : 0;
   let minutes = title.runtime;
@@ -389,9 +392,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const [found, markers] = await Promise.all([releasesFor(cfg, title, season, episode), markersFor(cfg, title, episodes, season, episode)]);
   /* Sub or dub: the person's choice for this show, else their settings; the release is picked to carry it. */
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
-  let ranked = rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  let ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
   /* Nothing the screen plays as it is: with HLS the packager can transcode anything. */
-  if (!ranked.length && hls) ranked = rank(found, anything(device), prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
 
@@ -404,7 +407,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
   const hlsGrant: HlsGrant | null = hls ? {
     stream: sealed(wanted), username, expiresAt,
-    screen: { codecs: device.codecs, hdr: device.hdr, dvProfiles: device.dvProfiles, maxHeight: heightCap(device, prefs.quality), passthrough: device.passthrough },
+    screen: { codecs: device.codecs, hdr: device.hdr, dvProfiles: device.dvProfiles, maxHeight: heightCap(device, quality), passthrough: device.passthrough },
     audio: tracks.audio.tags,
     subtitles: tracks.subtitles ? { tags: tracks.subtitles.tags, kind: tracks.subtitles.kind, signsTitles: tracks.subtitles.signsTitles } : null,
     burn: raw.burnSubtitles === true,
@@ -413,6 +416,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     url: address(wanted),
     /* The same stream as HLS, for browsers, AirPlay and Chromecast; null for the native apps, which play the file. */
     hls: hlsGrant ? `${origin}/api/v1/watch/hls/${sealHls(sealKey, hlsGrant)}/main.m3u8` : null,
+    /* The Quality menu: what's in effect and what else plays here. Switching calls play again with quality and the position. */
+    quality: { current: quality, options: qualityOptions(ranked, device, hls) },
     version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service },
     versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
     startAt: p && !finished(p) ? p.position : 0,

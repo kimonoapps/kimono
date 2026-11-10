@@ -743,3 +743,39 @@ test('HLS addresses are sealed like stream addresses, and the two never open as 
   assert.equal(hls.sessionOf(sealed), hls.sessionOf(sealed));
   assert.match(hls.sessionOf(sealed), /^[a-f0-9]{32}$/);
 });
+
+/* ───── Quality per device ───── */
+
+test('quality: chosen just now, else the device, else the person', () => {
+  const db = fresh();
+  const prefs = { ...model.defaultPrefs, quality: '1080' };
+  assert.equal(model.qualityFor(null, null, prefs), '1080');
+  model.setDeviceQuality(db, 'a', 'tv-living', '2160');
+  assert.equal(model.deviceQualityOf(db, 'a', 'tv-living'), '2160');
+  assert.equal(model.deviceQualityOf(db, 'b', 'tv-living'), null, 'per person');
+  assert.equal(model.deviceQualityOf(db, 'a', 'phone'), null);
+  assert.equal(model.qualityFor(null, model.deviceQualityOf(db, 'a', 'tv-living'), prefs), '2160');
+  assert.equal(model.qualityFor('saver', '2160', prefs), 'saver', 'the player\'s pick wins for that play');
+  model.setDeviceQuality(db, 'a', 'tv-living', '720');
+  assert.equal(model.deviceQualityOf(db, 'a', 'tv-living'), '720');
+  const merged = model.devicePrefsOf(db, 'a', 'tv-living');
+  assert.deepEqual([merged.quality, merged.device], ['720', { id: 'tv-living', quality: '720' }]);
+  model.setDeviceQuality(db, 'a', 'tv-living', null);
+  assert.deepEqual(model.devicePrefsOf(db, 'a', 'tv-living').device, { id: 'tv-living', quality: null });
+  assert.equal(model.devicePrefsOf(db, 'a', null).device, null);
+  assert.equal(model.cleanQuality('4k'), null);
+  assert.equal(model.cleanDeviceId('web:3f2a-91'), 'web:3f2a-91');
+  assert.equal(model.cleanDeviceId('a b'), null);
+  assert.equal(model.cleanDeviceId('x'.repeat(200)), null);
+});
+
+test('the Quality menu offers only sizes that play here', () => {
+  const sizes = (...hs) => hs.map((height) => ({ height }));
+  const values = (o) => o.map((x) => x.value);
+  assert.deepEqual(values(releases.qualityOptions(sizes(2160, 1080), tv)), ['auto', '2160', '1080', 'saver']);
+  assert.deepEqual(values(releases.qualityOptions(sizes(2160, 1080), { ...tv, maxHeight: 1080 })), ['auto', '1080', 'saver'], '4K only on a screen that shows it');
+  assert.deepEqual(values(releases.qualityOptions(sizes(1080), tv)), ['auto', '1080', 'saver']);
+  assert.deepEqual(values(releases.qualityOptions(sizes(1080), tv, true)), ['auto', '1080', '720', 'saver'], 'HLS scales down');
+  assert.deepEqual(values(releases.qualityOptions([], tv)), ['auto']);
+  assert.deepEqual(releases.qualityOptions(sizes(2160), tv, true).map((x) => x.label), ['Auto', '4K', '1080p', '720p', 'Data saver']);
+});
