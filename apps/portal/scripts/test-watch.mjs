@@ -1230,6 +1230,15 @@ const bytesOf = (chunks, delayMs = 0) => new ReadableStream({
   async pull(c) { if (!chunks.length) return c.close(); if (delayMs) await new Promise((r) => setTimeout(r, delayMs)); c.enqueue(chunks.shift()); },
 });
 
+test('the encoder starts in the segment the player resumes from', () => {
+  const segments = [0, 8.2, 16.4, 24.6];
+  assert.equal(hls.startSegment(segments, 0), 0);
+  assert.equal(hls.startSegment(segments, undefined), 0);
+  assert.equal(hls.startSegment(segments, 16.4), 2);
+  assert.equal(hls.startSegment(segments, 20), 2);
+  assert.equal(hls.startSegment(segments, 999), 3);
+});
+
 test('two streams per person; a third waits until one stops, and what plays carries on', async () => {
   flow.forgetFlows();
   const a = flow.tracked(bytesOf([new Uint8Array(10)]), 'sami', 'tv-1:1:1');

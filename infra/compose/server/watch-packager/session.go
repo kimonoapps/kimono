@@ -41,6 +41,9 @@ type Spec struct {
 	SeekPad float64 `json:"seekPad,omitempty"`
 	// Seconds produced past the latest request before the encoder pauses.
 	Ahead float64 `json:"ahead,omitempty"`
+	// The segment the player starts in (where the viewer left off): the
+	// encoder starts there before anything is asked for.
+	Start int `json:"start,omitempty"`
 }
 
 const (
@@ -118,6 +121,9 @@ func newSession(id string, spec Spec, root string) (*Session, error) {
 	}
 	for _, o := range spec.Outputs {
 		s.ready[o.Name] = map[int]bool{}
+	}
+	if spec.Start > 0 && spec.Start < len(spec.Segments) {
+		s.lastReq = spec.Start
 	}
 	go s.tick()
 	return s, nil

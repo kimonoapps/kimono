@@ -59,6 +59,8 @@ export type HlsGrant = {
   subtitles: { tags: string[]; kind: "full" | "signs"; signsTitles: string[] } | null;
   /** Burn the wanted subtitles into the picture (text ones too), for screens that draw WebVTT badly. */
   burn: boolean;
+  /** Seconds the player starts from (where this person left off), so the encoder starts there rather than at the opening. */
+  from?: number;
 };
 
 export const sealHls = (key: Buffer, grant: HlsGrant) => sealJson(key, { k: "hls", ...grant }, grant.expiresAt);
@@ -415,4 +417,12 @@ export function hlsPath(path: string[], plan: Pick<HlsPlan, "video" | "subtitles
     if (m && Number(m[1]) < plan.segments.length && (m[2] === "m4s") === video) return { kind: "file", output: path[0], file: path[1] };
   }
   return null;
+}
+
+/** The segment a play starts in: the packager's encoder starts there, not at the opening the player then skips. */
+export function startSegment(segments: number[], from: number | undefined): number {
+  if (!from || from <= 0) return 0;
+  let k = 0;
+  while (k + 1 < segments.length && segments[k + 1] <= from) k++;
+  return k;
 }

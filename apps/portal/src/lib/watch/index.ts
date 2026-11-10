@@ -32,7 +32,7 @@ import { openStream, sealStream } from "./token";
 import { migrateTogether } from "./together";
 import { markDead, isDead } from "./dead";
 import { playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
-import { anything, castOf, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
+import { anything, castOf, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, startSegment, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
 
@@ -555,12 +555,14 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
   const names = namer(db, title, prefs, username);
   const ahead = title.kind === "series" && prefs.fillers === "ask" ? fillerAhead(episodes, { season, episode }) : null;
+  const startAt = p && !finished(p) ? p.position : 0;
   const hlsGrant: HlsGrant | null = hls ? {
     stream: sealed(wanted), username, expiresAt,
     screen: { codecs: device.codecs, hdr: device.hdr, dvProfiles: device.dvProfiles, maxHeight: heightCap(device, quality), passthrough: device.passthrough },
     audio: tracks.audio.tags,
     subtitles: tracks.subtitles ? { tags: tracks.subtitles.tags, kind: tracks.subtitles.kind, signsTitles: tracks.subtitles.signsTitles } : null,
     burn: raw.burnSubtitles === true,
+    from: startAt,
   } : null;
   return {
     url: address(wanted),
@@ -570,7 +572,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     quality: { current: quality, options: qualityOptions(ranked, device, hls) },
     version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service },
     versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
-    startAt: p && !finished(p) ? p.position : 0,
+    startAt,
     /* Episodes as this person sees them: layout, and labels like "S2:E3", "E27" or "E3". */
     ...(title.kind === "series" ? { layout: names.layout, label: names.label(season, episode) } : {}),
     next: names.named(next),
@@ -752,7 +754,7 @@ function linkOf(username: string): number | undefined {
 
 /* ───── HLS (./hls.ts) ───── */
 
-type HlsSession = { id: string; plan: HlsPlan; spec: PackagerJob & { input: string; segments: number[]; duration: number; ahead: number }; at: number };
+type HlsSession = { id: string; plan: HlsPlan; spec: PackagerJob & { input: string; segments: number[]; duration: number; ahead: number; start: number }; at: number };
 const hlsSessions = ((globalThis as unknown as { kimonoWatchHls?: Map<string, HlsSession> }).kimonoWatchHls ??= new Map());
 const hlsStarting = ((globalThis as unknown as { kimonoWatchHlsStarting?: Map<string, Promise<HlsSession>> }).kimonoWatchHlsStarting ??= new Map());
 
@@ -794,7 +796,7 @@ function hlsSession(cfg: WatchConfig, token: string, grant: HlsGrant): Promise<H
     const probe = (await answer.json()) as HlsProbe;
     const plan = planHls(probe, grant);
     const job = ffmpegArgs(plan, probe.hardware);
-    const session: HlsSession = { id, plan, spec: { ...job, input, segments: plan.segments, duration: plan.duration, ahead: 45 }, at: Date.now() };
+    const session: HlsSession = { id, plan, spec: { ...job, input, segments: plan.segments, duration: plan.duration, ahead: 45, start: startSegment(plan.segments, grant.from) }, at: Date.now() };
     await putSession(cfg, session);
     for (const [key, s] of hlsSessions) if (Date.now() - s.at > 6 * 60 * 60 * 1000) hlsSessions.delete(key);
     hlsSessions.set(id, session);
