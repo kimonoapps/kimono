@@ -225,13 +225,20 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
     /* In a party the player is the page: no title sheet under it. */
     writePlace(readPlace().page, id ? null : readPlace().title, false);
   }, []);
-  const startParty = async (invite: string[]) => {
+  const startParty = async (invite: string[], copy: boolean) => {
     const what = asking;
     if (!what) return;
     setAsking(null);
+    const made = together.create({ ...what, client: screenId(), invite });
+    /* Copied while the click still counts: the clipboard waits on the party's link. */
+    const link = made.then((state) => `${location.origin}/watch?party=${state.id}`);
+    const copied = copy ? copyLater(link) : null;
     try {
-      const state = await together.create({ ...what, client: screenId(), invite });
-      if (invite.length) say(invite.length === 1 ? `Invited ${(people.find((p) => p.username.toLowerCase() === invite[0])?.name ?? invite[0]).split(" ")[0]}` : `Invited ${invite.length} people`);
+      const state = await made;
+      const invited = invite.length === 1 ? `Invited ${(people.find((p) => p.username.toLowerCase() === invite[0])?.name ?? invite[0]).split(" ")[0]}` : invite.length ? `Invited ${invite.length} people` : "";
+      const ok = copied ? await copied.then(() => true, () => false) : false;
+      const said = [invited, ok ? "Link copied" : ""].filter(Boolean).join(" · ");
+      if (said) say(said);
       joinParty(state.id);
     } catch (error) { say(error instanceof Error ? error.message : "That didn't work."); }
   };
@@ -300,7 +307,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
       {searching ? <SearchPage onClose={() => setSearching(false)} /> : null}
       {sheetId && profile ? <TitleSheet key={sheetId} id={sheetId} onClose={closeSheet} refreshKey={refreshKey} /> : null}
       <Player ref={player} onExit={exitPlayer} me={me.username} people={people} onTogether={fromPlayer} onParty={onParty} />
-      {asking ? <TogetherDialog people={people.filter((p) => p.username.toLowerCase() !== me.username.toLowerCase())} onStart={(list) => void startParty(list)} onClose={() => setAsking(null)} /> : null}
+      {asking ? <TogetherDialog people={people.filter((p) => p.username.toLowerCase() !== me.username.toLowerCase())} onStart={(list, copy) => void startParty(list, copy)} onClose={() => setAsking(null)} /> : null}
       {arriving && profile && !playing ? <Arriving id={arriving} people={people} onJoin={() => joinParty(arriving)} onClose={() => { setArriving(null); partyInUrl = null; writePlace(readPlace().page, readPlace().title, false); }} /> : null}
       {invite && profile && !playing && !arriving ? <div className="kw-invite" role="status">
         <InviteFace person={people.find((x) => x.username.toLowerCase() === invite.host) ?? { username: invite.host, name: invite.hostName, picture: null }} />
@@ -353,8 +360,20 @@ function InviteFace({ person }: { person: Person }) {
   </span>;
 }
 
-function TogetherDialog({ people, onStart, onClose }: { people: Person[]; onStart: (usernames: string[]) => void; onClose: () => void }) {
+/** Writes [text] to the clipboard once it's known, starting now so the click still counts (Safari asks that). */
+function copyLater(text: Promise<string>): Promise<void> {
+  try {
+    if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      return navigator.clipboard.write([new ClipboardItem({ "text/plain": text.then((t) => new Blob([t], { type: "text/plain" })) })]);
+    }
+  } catch { /* falls through */ }
+  return text.then((t) => navigator.clipboard.writeText(t));
+}
+
+/* Start a party: a link to share, and anyone you look up by name. */
+function TogetherDialog({ people, onStart, onClose }: { people: Person[]; onStart: (usernames: string[], copy: boolean) => void; onClose: () => void }) {
   const [chosen, setChosen] = useState<string[]>([]);
+  const [query, setQuery] = useState("");
   const [shown, setShown] = useState(false);
   useEffect(() => {
     const frame = requestAnimationFrame(() => setShown(true));
@@ -362,24 +381,35 @@ function TogetherDialog({ people, onStart, onClose }: { people: Person[]; onStar
     document.addEventListener("keydown", key, true);
     return () => { cancelAnimationFrame(frame); document.removeEventListener("keydown", key, true); };
   }, [onClose]);
-  const flip = (u: string) => setChosen((c) => (c.includes(u) ? c.filter((x) => x !== u) : [...c, u]));
+  const q = query.trim().toLowerCase();
+  const found = q ? people.filter((p) => !chosen.includes(p.username.toLowerCase()) && (p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q))).slice(0, 5) : [];
+  const picked = chosen.map((u) => people.find((p) => p.username.toLowerCase() === u)).filter((p): p is Person => Boolean(p));
+  const field = useRef<HTMLInputElement>(null);
+  const add = (u: string) => { setChosen((c) => [...c, u]); setQuery(""); field.current?.focus(); };
   return <div className={cx("kw-dialog", shown && "kw-on")} role="dialog" aria-modal="true" aria-label="Watch together" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="kw-dialog-box">
+    <div className="kw-dialog-box kw-together">
       <h3>Watch together</h3>
-      {people.length ? <div className="kw-who kw-who-s">
-        {people.map((p) => <button key={p.username} aria-pressed={chosen.includes(p.username.toLowerCase())} onClick={() => flip(p.username.toLowerCase())}>
-          <span className="kw-face" style={{ background: faceOf(p.username) }}>
-            {p.picture
-              // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
-              ? <img src={p.picture} alt="" /> : initial(p)}
-            <span className="kw-tick"><Icon name="check" /></span>
-          </span>
-          <span className="kw-name">{p.name.split(" ")[0] || p.username}</span>
-        </button>)}
-      </div> : <p>Share the link from the player once it starts.</p>}
+      {people.length ? <div className="kw-tg">
+        <label className="kw-tg-field">
+          <Icon name="search" />
+          <input ref={field} autoFocus value={query} placeholder="Invite someone" aria-label="Invite someone" onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter" && found[0]) { event.preventDefault(); add(found[0].username.toLowerCase()); } if (event.key === "Backspace" && !query && chosen.length) setChosen((c) => c.slice(0, -1)); }} />
+        </label>
+        {found.length ? <div className="kw-tg-found" role="listbox">
+          {found.map((p) => <button key={p.username} role="option" aria-selected={false} onClick={() => add(p.username.toLowerCase())}>
+            <InviteFace person={p} /><b>{p.name || p.username}</b><span>{p.username}</span>
+          </button>)}
+        </div> : q ? <p className="kw-tg-none">No one by that name</p> : null}
+        {picked.length ? <div className="kw-tg-chips">
+          {picked.map((p) => <button key={p.username} aria-label={`Remove ${p.name || p.username}`} onClick={() => setChosen((c) => c.filter((u) => u !== p.username.toLowerCase()))}>
+            <InviteFace person={p} />{(p.name || p.username).split(" ")[0]}<Icon name="close" />
+          </button>)}
+        </div> : null}
+      </div> : null}
       <div className="kw-btns">
         <button className="kw-btn kw-tonal" onClick={onClose}>Cancel</button>
-        <button className="kw-btn kw-primary" onClick={() => onStart(chosen)}><Icon name="play" />{chosen.length ? "Start and invite" : "Start"}</button>
+        <button className="kw-btn kw-tonal" onClick={() => onStart(chosen, true)}><Icon name="link" />Copy link</button>
+        <button className="kw-btn kw-primary" onClick={() => onStart(chosen, false)}><Icon name="play" />Start</button>
       </div>
     </div>
   </div>;
