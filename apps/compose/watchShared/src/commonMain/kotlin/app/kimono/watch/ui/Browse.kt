@@ -250,3 +250,45 @@ class TitleViewModel(private val api: WatchApi, private val toasts: Toasts, val 
         }
     }
 }
+
+/* ───── Settings ───── */
+
+data class SettingsState(
+    val loading: Boolean = true,
+    /** This device's own quality, null when it follows the person's. */
+    val quality: String? = null,
+    /** On mobile data (phones), its own quality. */
+    val cellQuality: String? = null,
+    val prefs: app.kimono.watch.model.Prefs? = null,
+)
+
+/**
+ * Settings: quality for this device (and for mobile data on a phone, kept
+ * as a device of its own), and how playback behaves for the person.
+ */
+class SettingsViewModel(private val api: WatchApi, private val deviceId: String, private val cellular: Boolean) : ViewModel() {
+    private val _state = MutableStateFlow(SettingsState())
+    val state: StateFlow<SettingsState> = _state
+    val cellId get() = "$deviceId.cell"
+
+    init {
+        viewModelScope.launch {
+            runCatching {
+                val mine = api.prefs(deviceId)
+                val cell = if (cellular) api.prefs(cellId).device?.quality else null
+                _state.value = SettingsState(false, mine.device?.quality, cell, mine)
+            }.onFailure { _state.value = _state.value.copy(loading = false) }
+        }
+    }
+
+    fun quality(value: String, cell: Boolean) {
+        _state.value = if (cell) _state.value.copy(cellQuality = value) else _state.value.copy(quality = value)
+        viewModelScope.launch { runCatching { api.deviceQuality(if (cell) cellId else deviceId, value) } }
+    }
+
+    fun toggle(key: String, on: Boolean) {
+        val prefs = _state.value.prefs ?: return
+        _state.value = _state.value.copy(prefs = when (key) { "skipIntros" -> prefs.copy(skipIntros = on); else -> prefs.copy(autoplayNext = on) })
+        viewModelScope.launch { runCatching { api.savePrefs(kotlinx.serialization.json.buildJsonObject { put(key, kotlinx.serialization.json.JsonPrimitive(on)) }) } }
+    }
+}

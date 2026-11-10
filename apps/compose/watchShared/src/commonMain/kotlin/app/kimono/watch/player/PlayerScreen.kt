@@ -1,10 +1,5 @@
-@file:OptIn(UnstableApi::class)
-
 package app.kimono.watch.player
 
-import android.view.KeyEvent
-import android.view.SurfaceView
-import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
@@ -40,6 +35,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -72,12 +69,21 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import app.kimono.watch.EngineListener
+import app.kimono.watch.PlaybackEngine
+import app.kimono.watch.TrackOption
+import app.kimono.watch.dlKey
+import app.kimono.watch.nowMs
+import app.kimono.watch.ink.InkLoader
+import app.kimono.watch.ink.InkRing
+import app.kimono.watch.phone.Choice
+import androidx.compose.ui.draw.blur
+import kotlin.math.pow
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.nativeKeyCode
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
@@ -91,12 +97,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.C
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.Tracks
-import androidx.media3.common.util.UnstableApi
 import app.kimono.watch.theme.Night
 import app.kimono.watch.theme.display
 import app.kimono.watch.theme.ui
@@ -107,8 +107,8 @@ import app.kimono.watch.ui.Logo
 import app.kimono.watch.ui.PaperButton
 import app.kimono.watch.ui.PlayerViewModel
 import app.kimono.watch.ui.Post
-import app.kimono.watch.ui.WavyRing
 import app.kimono.watch.ui.clickableScale
+import app.kimono.watch.ui.clickableScaleClipped
 import app.kimono.watch.ui.clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -125,9 +125,8 @@ private enum class Sheet { Tracks, Speed, Episodes }
  * TV the D-pad drives it: left/right seek, hold to scrub, OK pauses.
  */
 @Composable
-fun PlayerScreen(vm: PlayerViewModel, engine: Engine, tv: Boolean, pip: Boolean, onExit: () -> Unit) {
+fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: Boolean, onExit: () -> Unit, onRec: (String) -> Unit) {
     val state by vm.state.collectAsState()
-    val player = engine.player
     val scope = rememberCoroutineScope()
 
     var position by remember { mutableDoubleStateOf(0.0) }
@@ -147,66 +146,67 @@ fun PlayerScreen(vm: PlayerViewModel, engine: Engine, tv: Boolean, pip: Boolean,
     var tracksVersion by remember { mutableIntStateOf(0) }
     var hinted by remember { mutableIntStateOf(-1) }
     var focusScrub by remember { mutableIntStateOf(0) }
+    var startFill by remember { mutableFloatStateOf(0f) }
+    /* Keys held down, for telling a tap from a hold (D-pad scrubbing). */
+    val held = remember { mutableMapOf<Key, Long>() }
 
     fun show(hold: Boolean = false) { ctl = true; poke++; if (hold) poke = -kotlin.math.abs(poke) - 1 }
-    fun seekBy(d: Double) { player.seekTo(((position + d).coerceIn(0.0, duration.coerceAtLeast(0.0)) * 1000).toLong()); position = (position + d).coerceIn(0.0, duration) }
-    fun seekTo(s: Double) { player.seekTo((s * 1000).toLong()); position = s }
-    fun toggle() { if (player.isPlaying) player.pause() else player.play() }
+    fun seekBy(d: Double) { engine.seekTo((position + d).coerceIn(0.0, duration.coerceAtLeast(0.0))); position = (position + d).coerceIn(0.0, duration) }
+    fun seekTo(s: Double) { engine.seekTo(s); position = s }
+    fun toggle() { if (engine.playing || engine.playWhenReady) engine.pause() else engine.play() }
     fun rip(right: Boolean) { ripple = right to ((ripple?.second ?: 0) + 1) }
 
     /* A new stream to load. */
     LaunchedEffect(state.loads) {
         val answer = state.answer ?: return@LaunchedEffect
         if (state.loads == 0) return@LaunchedEffect
-        engine.load(answer.url, Downloads.key(vm.titleId, state.season, state.episode), state.startAt)
-        player.setPlaybackSpeed(speed)
+        engine.load(answer.url, dlKey(vm.titleId, state.season, state.episode), state.startAt)
+        engine.setSpeed(speed)
         sheet = null
     }
-    DisposableEffect(player) {
-        val l = object : Player.Listener {
-            override fun onRenderedFirstFrame() { vm.started() }
-            override fun onPlayerError(error: PlaybackException) {
+    DisposableEffect(engine) {
+        val stop = engine.listen(object : EngineListener {
+            override fun firstFrame() { vm.started() }
+            override fun error(decoder: Boolean, network: Boolean) {
                 /* A version this device can't decode: quietly try the next one. */
-                if (error.errorCode in 4000..4999 && vm.fallback(player.currentPosition / 1000.0)) return
-                vm.failed(if (error.errorCode in 2000..2999) "The stream stopped answering. Try again." else "This version won't play here. Try another.")
+                if (decoder && vm.fallback(engine.position)) return
+                vm.failed(if (network) "The stream stopped answering. Try again." else "This version won’t play here. Try another.")
             }
-            override fun onTracksChanged(tracks: Tracks) {
+            override fun tracks() {
                 tracksVersion++
                 val answer = vm.state.value.answer ?: return
-                if (hinted != vm.state.value.loads && tracks.groups.isNotEmpty()) {
+                if (hinted != vm.state.value.loads) {
                     hinted = vm.state.value.loads
-                    if (engine.videoBeyondDecoders() && vm.fallback(player.currentPosition / 1000.0)) return
+                    if (engine.videoBeyondDecoders() && vm.fallback(engine.position)) return
                     engine.applyHints(answer.tracks)
                 }
             }
-            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) aspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
-            }
-            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            override fun aspect(ratio: Float) { aspect = ratio }
+            override fun playing(on: Boolean) { playing = on }
             /* Paused by the person (not a buffering stall): the controls come up, and "You're watching" later. */
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                if (!playWhenReady) { pausedAt = System.currentTimeMillis(); show() } else { pausedAt = 0; pauseCard = false }
+            override fun userPaused(paused: Boolean) {
+                if (paused) { pausedAt = nowMs(); show() } else { pausedAt = 0; pauseCard = false }
             }
-        }
-        player.addListener(l)
-        onDispose { player.removeListener(l) }
+        })
+        onDispose { stop() }
     }
     /* Where playback is, four times a second. */
     LaunchedEffect(Unit) {
         while (isActive) {
-            position = player.currentPosition / 1000.0
-            duration = player.duration.takeIf { it != C.TIME_UNSET }?.div(1000.0) ?: 0.0
-            buffered = player.bufferedPosition / 1000.0
-            buffering = player.playbackState == Player.STATE_BUFFERING
-            vm.tick(position, duration, player.isPlaying)?.let { seekTo(it) }
-            if (player.playbackState == Player.STATE_ENDED) {
+            position = engine.position
+            duration = engine.duration
+            buffered = engine.buffered
+            buffering = engine.buffering
+            startFill = engine.startFill
+            vm.tick(position, duration, engine.playing)?.let { seekTo(it) }
+            if (engine.ended) {
                 when (vm.state.value.post) {
                     is Post.Next -> if (vm.state.value.answer?.autoplayNext != false) vm.playNext()
                     else -> {}
                 }
             }
             /* "You're watching" after five seconds paused. */
-            if (pausedAt > 0 && !player.playWhenReady && System.currentTimeMillis() - pausedAt > 5000 && sheet == null && vm.state.value.post == Post.None && !state.loading) { pauseCard = true; ctl = false }
+            if (pausedAt > 0 && !engine.playWhenReady && nowMs() - pausedAt > 5000 && sheet == null && vm.state.value.post == Post.None && !state.loading) { pauseCard = true; ctl = false }
             delay(250)
         }
     }
@@ -226,18 +226,20 @@ fun PlayerScreen(vm: PlayerViewModel, engine: Engine, tv: Boolean, pip: Boolean,
 
     Box(Modifier.fillMaxSize().background(Color.Black).focusRequester(focusRoot).focusable()
         .onPreviewKeyEvent { e ->
-            val code = e.key.nativeKeyCode
+            val code = e.key
             val down = e.type == KeyEventType.KeyDown
             if (!down && e.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+            val repeat = down && held.containsKey(code)
+            if (down && !repeat) held[code] = nowMs() else if (!down) held.remove(code)
             when (code) {
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> { if (down) { toggle(); show() }; true }
-                KeyEvent.KEYCODE_MEDIA_PLAY -> { if (down) { player.play(); show() }; true }
-                KeyEvent.KEYCODE_MEDIA_PAUSE -> { if (down) { player.pause(); show() }; true }
-                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (down) { seekBy(10.0); rip(true) }; true }
-                KeyEvent.KEYCODE_MEDIA_REWIND -> { if (down) { seekBy(-10.0); rip(false) }; true }
-                KeyEvent.KEYCODE_MEDIA_NEXT -> { if (down) vm.playNext(); true }
-                KeyEvent.KEYCODE_MEDIA_STOP -> { if (down) onExit(); true }
-                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                Key.MediaPlayPause, Key.Spacebar -> { if (down) { toggle(); show() }; true }
+                Key.MediaPlay -> { if (down) { engine.play(); show() }; true }
+                Key.MediaPause -> { if (down) { engine.pause(); show() }; true }
+                Key.MediaFastForward -> { if (down) { seekBy(10.0); rip(true) }; true }
+                Key.MediaRewind -> { if (down) { seekBy(-10.0); rip(false) }; true }
+                Key.MediaNext -> { if (down) vm.playNext(); true }
+                Key.MediaStop -> { if (down) onExit(); true }
+                Key.Back, Key.Escape -> {
                     if (!down) return@onPreviewKeyEvent true
                     when {
                         sheet != null -> { sheet = null; show() }
@@ -247,28 +249,28 @@ fun PlayerScreen(vm: PlayerViewModel, engine: Engine, tv: Boolean, pip: Boolean,
                     }
                     true
                 }
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                Key.DirectionLeft, Key.DirectionRight -> {
                     /* Hidden controls: tap to seek ten seconds, hold to scrub. */
                     if (!tv || ctl || post != Post.None || state.loading) return@onPreviewKeyEvent false
-                    val right = code == KeyEvent.KEYCODE_DPAD_RIGHT
+                    val right = code == Key.DirectionRight
                     if (down) {
-                        if (e.nativeKeyEvent.repeatCount == 0) { holdStart = System.currentTimeMillis(); seekBy(if (right) 10.0 else -10.0); rip(right) }
+                        if (!repeat) { holdStart = nowMs(); seekBy(if (right) 10.0 else -10.0); rip(right) }
                         else {
-                            val held = (System.currentTimeMillis() - holdStart) / 1000.0
-                            val step = if (held > 4) 60.0 else if (held > 2) 30.0 else 10.0
+                            val heldFor = (nowMs() - holdStart) / 1000.0
+                            val step = if (heldFor > 4) 60.0 else if (heldFor > 2) 30.0 else 10.0
                             scrub = ((scrub ?: position) + if (right) step else -step).coerceIn(0.0, duration)
                         }
                     } else scrub?.let { seekTo(it); scrub = null }
                     true
                 }
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                     if (!tv || ctl || post != Post.None) { if (down) show(); return@onPreviewKeyEvent false }
                     val offer = state.skip
                     if (offer != null) { if (down) seekTo(offer.to); return@onPreviewKeyEvent true }
                     if (down) { toggle(); show(); scope.launch { delay(50); runCatching { playFocus.requestFocus() } } }
                     true
                 }
-                KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                Key.DirectionUp, Key.DirectionDown -> {
                     if (!tv) return@onPreviewKeyEvent false
                     if (!ctl && post == Post.None) { if (down) { show(); focusScrub++ }; true }
                     else { if (down) show(); false }
@@ -300,10 +302,10 @@ fun PlayerScreen(vm: PlayerViewModel, engine: Engine, tv: Boolean, pip: Boolean,
             val y by animateDpAsState(if (small) (if (maxWidth < maxHeight) 70.dp else 24.dp) else 0.dp, tween(700), label = "y")
             Box(Modifier.offset(x, y).size(w, h).clip(RoundedCornerShape(if (small) 10.dp else 0.dp)).then(if (small) Modifier.border(2.dp, Color(0x4DFFFFFF), RoundedCornerShape(10.dp)) else Modifier), contentAlignment = Alignment.Center) {
                 Box(Modifier.aspectRatio(aspect, matchHeightConstraintsFirst = w / h > aspect).fillMaxSize()) {
-                    AndroidView({ SurfaceView(it).also { v -> player.setVideoSurfaceView(v) } }, Modifier.fillMaxSize())
+                    engine.Picture(Modifier.fillMaxSize())
                     if (!small) {
                         val lift by animateDpAsState(if (ctl && !pip) 70.dp else 0.dp, tween(300), label = "lift")
-                        AndroidView({ engine.subtitles }, Modifier.fillMaxSize().padding(bottom = lift).alpha(if (post is Post.Next || post is Post.Ask) 0f else 1f))
+                        engine.Captions(Modifier.fillMaxSize().padding(bottom = lift).alpha(if (post is Post.Next || post is Post.Ask) 0f else 1f))
                     }
                 }
             }
@@ -316,7 +318,9 @@ fun PlayerScreen(vm: PlayerViewModel, engine: Engine, tv: Boolean, pip: Boolean,
 
         Ripple(ripple, Modifier.fillMaxSize())
 
-        if (buffering && !state.loading && post == Post.None) WavyRing(72.dp, Night.suo, amp = 2.6f, modifier = Modifier.align(Alignment.Center))
+        var stalled by remember { mutableStateOf(false) }
+        LaunchedEffect(buffering) { stalled = false; if (buffering) { delay(600); stalled = true } }
+        if (stalled && buffering && !state.loading && post == Post.None) InkLoader(Modifier.align(Alignment.Center), size = 48.dp)
 
         PauseCard(pauseCard && post == Post.None, state, Modifier.fillMaxSize())
 
@@ -374,17 +378,17 @@ fun PlayerScreen(vm: PlayerViewModel, engine: Engine, tv: Boolean, pip: Boolean,
 
         AnimatedVisibility(sheet != null, Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 90.dp),
             enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.7f)) { it / 10 }, exit = fadeOut(tween(200))) {
-            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; player.setPlaybackSpeed(it) }, position, { sheet = null; show() })
+            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it) }, position, { sheet = null; show() })
         }
 
         when (post) {
             is Post.Next -> NextUp(vm, post, buffering || !playing, ctl, tv)
             is Post.Ask -> FillerAsk(vm, post, tv)
-            Post.End -> EndCard(vm, state, onExit, tv)
+            Post.End -> EndCard(vm, state, onExit, onRec, tv)
             Post.None -> {}
         }
 
-        Loading(state, vm, onExit)
+        Loading(state, vm, startFill, onExit)
     }
     LaunchedEffect(Unit) { runCatching { focusRoot.requestFocus() } }
     LaunchedEffect(ctl, tv) { if (tv && !ctl) runCatching { focusRoot.requestFocus() } }
@@ -409,7 +413,7 @@ private fun LabBtn(icon: ImageVector, label: String, tv: Boolean, onClick: () ->
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     Box {
-        Row(Modifier.height(48.dp).clip(RoundedCornerShape(10.dp)).clickableScale(onClick, focusScale = 1.08f).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.height(48.dp).clickableScaleClipped(RoundedCornerShape(10.dp), onClick, focusScale = 1.08f).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             I(icon, if (tv) 28.dp else 22.dp, Color.White)
             if (!tv) Text(label, style = ui(13, color = Color.White))
         }
@@ -435,7 +439,7 @@ private fun Ripple(ripple: Pair<Boolean, Int>?, modifier: Modifier) {
 
 /** The track with buffered, played, the intro and credits marked, the knob, and a thumbnail while scrubbing. */
 @Composable
-private fun Scrubber(position: Double, duration: Double, buffered: Double, scrub: Double?, state: app.kimono.watch.ui.PlayerState, engine: Engine, tv: Boolean, focus: FocusRequester, onScrub: (Double) -> Unit, onCommit: () -> Unit) {
+private fun Scrubber(position: Double, duration: Double, buffered: Double, scrub: Double?, state: app.kimono.watch.ui.PlayerState, engine: PlaybackEngine, tv: Boolean, focus: FocusRequester, onScrub: (Double) -> Unit, onCommit: () -> Unit) {
     val d = duration.coerceAtLeast(1.0)
     var width by remember { mutableIntStateOf(1) }
     val source = remember { MutableInteractionSource() }
@@ -445,11 +449,12 @@ private fun Scrubber(position: Double, duration: Double, buffered: Double, scrub
     val thick by animateDpAsState(if (active) 7.dp else 4.dp, tween(150), label = "t")
     val knob by animateFloatAsState(if (active) 1.25f else 0.85f, tween(150), label = "k")
     val markers = state.answer?.markers
-    val thumbs = remember(state.answer?.url) { state.answer?.url?.let { Thumbs(it) } }
+    val thumbs = remember(state.answer?.url) { state.answer?.url?.let { engine.thumbnails(it) } }
     DisposableEffect(thumbs) { onDispose { thumbs?.close() } }
     val frame by (thumbs?.frame ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
     LaunchedEffect(scrub) { scrub?.let { thumbs?.want(it) } }
     var holdAt by remember { mutableLongStateOf(0L) }
+    var holding by remember { mutableStateOf(false) }
     /* Read live in the key handler: several presses can land before the next frame. */
     val live = remember { mutableStateOf<Double?>(null) }
     LaunchedEffect(scrub) { live.value = scrub }
@@ -457,17 +462,18 @@ private fun Scrubber(position: Double, duration: Double, buffered: Double, scrub
         Box(Modifier.weight(1f).height(28.dp).onSizeChanged { width = it.width }
             .focusRequester(focus).focusable(interactionSource = source)
             .onPreviewKeyEvent { e ->
-                val code = e.key.nativeKeyCode
-                if (code != KeyEvent.KEYCODE_DPAD_LEFT && code != KeyEvent.KEYCODE_DPAD_RIGHT && code != KeyEvent.KEYCODE_DPAD_CENTER && code != KeyEvent.KEYCODE_ENTER) return@onPreviewKeyEvent false
-                if (code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER) { if (e.type == KeyEventType.KeyUp && live.value != null) { live.value = null; onCommit() }; return@onPreviewKeyEvent true }
+                val code = e.key
+                if (code != Key.DirectionLeft && code != Key.DirectionRight && code != Key.DirectionCenter && code != Key.Enter) return@onPreviewKeyEvent false
+                if (code == Key.DirectionCenter || code == Key.Enter) { if (e.type == KeyEventType.KeyUp && live.value != null) { live.value = null; onCommit() }; return@onPreviewKeyEvent true }
                 if (e.type == KeyEventType.KeyDown) {
-                    if (e.nativeKeyEvent.repeatCount == 0) holdAt = System.currentTimeMillis()
-                    val held = (System.currentTimeMillis() - holdAt) / 1000.0
-                    val step = if (held > 4) 60.0 else if (held > 2) 30.0 else 10.0
-                    val next = ((live.value ?: position) + if (code == KeyEvent.KEYCODE_DPAD_RIGHT) step else -step).coerceIn(0.0, duration)
+                    if (!holding) { holding = true; holdAt = nowMs() }
+                    val heldFor = (nowMs() - holdAt) / 1000.0
+                    val step = if (heldFor > 4) 60.0 else if (heldFor > 2) 30.0 else 10.0
+                    val next = ((live.value ?: position) + if (code == Key.DirectionRight) step else -step).coerceIn(0.0, duration)
                     live.value = next
                     onScrub(next)
-                } else if (e.type == KeyEventType.KeyUp && e.nativeKeyEvent.repeatCount == 0) {
+                } else if (e.type == KeyEventType.KeyUp) {
+                    holding = false
                     /* Let go: a short wait so a few taps add up before it seeks. */
                 }
                 true
@@ -516,7 +522,7 @@ private fun Scrubber(position: Double, duration: Double, buffered: Double, scrub
                     if (chapter.isNotEmpty()) Text(chapter, style = ui(12, FontWeight.Bold, Night.blush))
                     Box(Modifier.requiredSize(192.dp, 108.dp).border(2.dp, Color.White, RoundedCornerShape(6.dp)).clip(RoundedCornerShape(6.dp)).background(Night.surface2)) {
                         Img(state.current?.still ?: state.page?.title?.backdrop, Modifier.fillMaxSize())
-                        frame?.takeIf { it.first == (scrub / 10).toInt() }?.second?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                        frame?.takeIf { it.first == (scrub / 10).toInt() }?.second?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                     }
                     Text(clock(scrub), style = ui(14, FontWeight.Bold, Color.White))
                 }
@@ -545,24 +551,45 @@ private fun PauseCard(on: Boolean, state: app.kimono.watch.ui.PlayerState, modif
     }
 }
 
-/** The ring with its percentage while the stream starts, the title and episode under it. */
+/**
+ * The start of playback (review spec §4.2): the episode's still, blurred and
+ * dark, the title, then Kimono's InkRing with a real percentage. Each stage
+ * owns a span of the ring and fills only by its real signal: Find (the
+ * server's search, no measure: the ring holds) 0–25%, Choose 25–35%, Buffer
+ * 35–100% by ExoPlayer's buffer against its start threshold. Stage words
+ * under it, and after a while a way to try another copy.
+ */
 @Composable
-private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel, onExit: () -> Unit) {
+private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel, fill: Float, onExit: () -> Unit) {
     if (!state.loading && state.problem == null) return
-    var pct by remember(state.loads, state.problem) { mutableIntStateOf(0) }
-    LaunchedEffect(state.loads, state.loading) {
-        val t0 = System.currentTimeMillis()
-        while (state.loading) {
-            val f = ((System.currentTimeMillis() - t0) / 6000f).coerceAtMost(1f)
-            pct = ((1 - Math.pow((1 - f).toDouble(), 2.4)) * 99).toInt()
-            delay(50)
-        }
-    }
+    val page = state.page
+    val ep = state.current
+    val stage = when { state.finding -> 0; fill <= 0f -> 1; else -> 2 }
+    val value = when (stage) { 0 -> 0f; 1 -> .35f; else -> .35f + .65f * fill.coerceIn(0f, 1f) }
+    var waited by remember(state.loads, state.finding) { mutableIntStateOf(0) }
+    LaunchedEffect(state.loads, state.finding) { while (true) { delay(1000); waited++ } }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Img(ep?.still ?: page?.title?.backdropLarge ?: page?.title?.backdrop, Modifier.fillMaxSize().blur(24.dp).alpha(.35f))
         if (state.problem == null) {
-            Box(Modifier.align(Alignment.Center).size(96.dp), contentAlignment = Alignment.Center) {
-                WavyRing(96.dp, Night.suo, stroke = 4f)
-                Text("$pct%", style = ui(18, FontWeight.Bold))
+            Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (page != null) {
+                    Logo(page.title.name, page.title.logo, 34, Modifier.widthIn(max = 420.dp), center = true, maxHeight = 84.dp)
+                    if (!state.isFilm) Text("S${state.season}:E${state.episode}" + (ep?.let { " · ${it.name}" } ?: ""), style = ui(15, color = Night.fg2))
+                }
+                Spacer(Modifier.size(8.dp))
+                InkRing({ value }, size = 96.dp, percent = true, percentStyle = ui(18, FontWeight.Bold))
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    listOf("Find", "Choose", "Buffer").forEachIndexed { i, word ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (i < stage) I(Ic.check, 14.dp, Night.moss)
+                            Text(word, style = ui(14, color = when { i < stage -> Night.fg2; i == stage -> Night.fg; else -> Night.fg3 }))
+                        }
+                    }
+                }
+                val picked = state.answer?.version?.let { v -> (listOf(v.label.substringBefore(" · ")) + v.badges.filter { it != "HD" && it != "4K" }).joinToString(" · ") }
+                Text(when (stage) { 0 -> "Finding the best copy…"; 1 -> "Picked ${picked ?: "a copy"}"; else -> "Buffering · ${(fill * 100).toInt()}%" }, style = ui(16, color = Night.fg))
+                if (waited >= 12) Text("This one’s taking a while.", style = ui(14, color = Night.fg3))
+                if (waited >= 25 && !state.finding) PaperButton("Try another copy", null, { vm.fallback(state.startAt) }, tonal = true)
             }
         } else {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -575,21 +602,15 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
                 LaunchedEffect(Unit) { runCatching { f.requestFocus() } }
             }
         }
-        val page = state.page
-        if (page != null) Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp, start = 20.dp, end = 20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(page.title.name, style = display(30), textAlign = TextAlign.Center)
-            val ep = state.current
-            if (!state.isFilm) Text("S${state.season}:E${state.episode}" + (ep?.let { " · ${it.name}" } ?: ""), style = ui(14, color = Night.fg3))
-        }
         Box(Modifier.padding(top = 14.dp, start = 20.dp)) { PBtn(Ic.back, onExit) }
     }
 }
 
 @Composable
-private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: Engine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit) {
+private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit) {
     val state by vm.state.collectAsState()
     val first = remember { FocusRequester() }
-    Column(Modifier.widthIn(max = 460.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xF51B1412)).padding(18.dp)) {
+    Column(Modifier.widthIn(max = 460.dp).heightIn(max = 620.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xF51B1412)).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(18.dp)) {
         when (sheet) {
             Sheet.Tracks -> {
                 val audio = remember(tracksVersion) { engine.audioOptions() }
@@ -601,9 +622,9 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: Engine, trac
                         LazyColumn(Modifier.height(240.dp)) {
                             items(audio) { o ->
                                 Opt(o.label, o.selected, if (o == audio.firstOrNull()) first else null) {
-                                    engine.select(o, C.TRACK_TYPE_AUDIO); tick++
+                                    engine.selectAudio(o); tick++
                                     val sub = engine.subtitleOptions().firstOrNull { it.selected }
-                                    vm.tracks(o.language ?: "en", sub?.let { if (it.group == null) "off" else if (it.signs) "signs" else it.language ?: "off" } ?: "off")
+                                    vm.tracks(o.language ?: "en", sub?.let { if (it.handle == null) "off" else if (it.signs) "signs" else it.language ?: "off" } ?: "off")
                                 }
                             }
                         }
@@ -613,12 +634,20 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: Engine, trac
                         LazyColumn(Modifier.height(240.dp)) {
                             items(subs) { o ->
                                 Opt(o.label, o.selected) {
-                                    engine.select(o, C.TRACK_TYPE_TEXT); tick++
+                                    engine.selectSubtitles(o); tick++
                                     val a = engine.audioOptions().firstOrNull { it.selected }
-                                    vm.tracks(a?.language ?: "en", if (o.group == null) "off" else if (o.signs) "signs" else o.language ?: "off")
+                                    vm.tracks(a?.language ?: "en", if (o.handle == null) "off" else if (o.signs) "signs" else o.language ?: "off")
                                 }
                             }
                         }
+                    }
+                }
+                /* Quality: only the sizes play says this device can have; switching keeps the place. */
+                val quality = state.answer?.quality
+                if (quality != null && quality.options.size > 1) {
+                    Text("Quality", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        quality.options.forEach { q -> Box(Modifier.weight(1f)) { Choice(q.label, q.value == quality.current) { if (q.value != quality.current) { vm.quality(q.value, position); close() } } } }
                     }
                 }
                 val versions = state.answer?.versions.orEmpty()
@@ -671,12 +700,13 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: Engine, trac
             null -> {}
         }
     }
-    LaunchedEffect(sheet) { delay(80); runCatching { first.requestFocus() } }
+    /* The sheet takes the D-pad as soon as it's laid out. */
+    LaunchedEffect(sheet) { repeat(10) { delay(60); if (runCatching { first.requestFocus() }.isSuccess) return@LaunchedEffect } }
 }
 
 @Composable
 private fun Opt(label: String, selected: Boolean, focus: FocusRequester? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).clickableScale(onClick).padding(horizontal = 6.dp, vertical = 9.dp),
+    Row(Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).clickableScale(onClick).clip(RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         I(Ic.check, 20.dp, if (selected) Night.blush else Color.Transparent)
         Text(label, style = ui(15, if (selected) FontWeight.Bold else FontWeight.Normal, if (selected) Night.fg else Night.fg2), maxLines = 2)
@@ -732,7 +762,7 @@ private fun FillerAsk(vm: PlayerViewModel, post: Post.Ask, tv: Boolean) {
 
 /** No next episode: the picture moves to the corner, and the season's (or film's) end card takes the screen. */
 @Composable
-private fun EndCard(vm: PlayerViewModel, state: app.kimono.watch.ui.PlayerState, onExit: () -> Unit, tv: Boolean) {
+private fun EndCard(vm: PlayerViewModel, state: app.kimono.watch.ui.PlayerState, onExit: () -> Unit, onRec: (String) -> Unit, tv: Boolean) {
     val page = state.page ?: return
     val bg = remember { Animatable(0f) }
     LaunchedEffect(Unit) { bg.animateTo(1f, tween(1000)) }
@@ -744,7 +774,7 @@ private fun EndCard(vm: PlayerViewModel, state: app.kimono.watch.ui.PlayerState,
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0xCC000000))))
         /* Over the small picture: back to the credits. */
         val w = maxWidth * (if (portrait) 0.55f else 0.3f)
-        Box(Modifier.offset(24.dp, if (portrait) 70.dp else 24.dp).size(w, w * 9f / 16f).clip(RoundedCornerShape(10.dp)).clickableScale({ vm.watchCredits() }))
+        Box(Modifier.offset(24.dp, if (portrait) 70.dp else 24.dp).size(w, w * 9f / 16f).clickableScaleClipped(RoundedCornerShape(10.dp), { vm.watchCredits() }))
         Text("Watch credits", style = ui(13, FontWeight.Bold, Night.fg2), modifier = Modifier.offset(24.dp, (if (portrait) 70.dp else 24.dp) + w * 9f / 16f + 12.dp).width(w), textAlign = TextAlign.Center)
         Box(Modifier.align(Alignment.TopEnd).padding(top = 14.dp, end = 20.dp)) { PBtn(Ic.close, onExit) }
         val nextLine = when {
@@ -775,5 +805,3 @@ private fun EndCard(vm: PlayerViewModel, state: app.kimono.watch.ui.PlayerState,
     LaunchedEffect(Unit) { delay(600); runCatching { focus.requestFocus() } }
 }
 
-/** Set by the activity: plays another title from the end card. */
-var onRec: (String) -> Unit = {}

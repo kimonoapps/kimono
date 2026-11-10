@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -38,3 +39,7 @@ fun Modifier.clickableScale(onClick: () -> Unit, focusScale: Float = 1f, outline
         }
         .clickable(interactionSource = source, indication = null, onClick = onClick)
 }
+
+/** [clickableScale] on a rounded shape: the focus outline stays outside the clip. */
+fun Modifier.clickableScaleClipped(shape: androidx.compose.ui.graphics.Shape, onClick: () -> Unit, focusScale: Float = 1f, outline: Boolean = true): Modifier =
+    this.clickableScale(onClick, focusScale, outline).then(Modifier.clip(shape))

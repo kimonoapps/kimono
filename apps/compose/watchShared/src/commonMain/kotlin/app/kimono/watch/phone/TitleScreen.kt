@@ -60,8 +60,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import app.kimono.watch.model.EpisodeInfo
 import app.kimono.watch.model.TitlePage
-import app.kimono.watch.player.DlState
-import app.kimono.watch.player.Downloads
+import app.kimono.watch.DlState
+import app.kimono.watch.LocalWatch
+import app.kimono.watch.WatchDownloads
+import app.kimono.watch.dlKey
+import app.kimono.watch.ink.InkLoader
+import app.kimono.watch.ink.InkProgress
+import app.kimono.watch.ink.InkRing
 import app.kimono.watch.theme.Night
 import app.kimono.watch.theme.ui
 import app.kimono.watch.ui.Boxed
@@ -70,13 +75,12 @@ import app.kimono.watch.ui.Ic
 import app.kimono.watch.ui.Img
 import app.kimono.watch.ui.Logo
 import app.kimono.watch.ui.PaperButton
-import app.kimono.watch.ui.PreviewVideo
 import app.kimono.watch.ui.ProgressLine
 import app.kimono.watch.ui.RingButton
 import app.kimono.watch.ui.Skeleton
 import app.kimono.watch.ui.TitleViewModel
-import app.kimono.watch.ui.WavyRing
 import app.kimono.watch.ui.clickableScale
+import app.kimono.watch.ui.clickableScaleClipped
 import app.kimono.watch.ui.minutesText
 
 private val monthNames = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
@@ -88,7 +92,7 @@ fun prettyDate(date: String): String {
 
 /** The title page: full screen on a phone, a wide two-column page on TV. */
 @Composable
-fun TitleScreen(vm: TitleViewModel, go: Go, top: Int?, onClose: () -> Unit, downloads: Downloads, wide: Boolean = false, active: Boolean = true) {
+fun TitleScreen(vm: TitleViewModel, go: Go, top: Int?, onClose: () -> Unit, downloads: WatchDownloads, wide: Boolean = false, active: Boolean = true) {
     val state by vm.state.collectAsState()
     val page = state.page
     val dl by downloads.states.collectAsState()
@@ -106,7 +110,7 @@ fun TitleScreen(vm: TitleViewModel, go: Go, top: Int?, onClose: () -> Unit, down
                     if (page != null && page.playable) {
                         val r = page.resume
                         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            PreviewVideo(vm.id, if (page.title.isFilm) 0 else r?.season ?: 1, if (page.title.isFilm) 0 else r?.episode ?: 1, muted, active, { previewing = it },
+                            LocalWatch.current.preview.Show(vm.id, if (page.title.isFilm) 0 else r?.season ?: 1, if (page.title.isFilm) 0 else r?.episode ?: 1, muted, active, { previewing = it },
                                 Modifier.requiredWidth(maxOf(maxWidth, maxHeight * 16f / 9f)).height(maxOf(maxHeight, maxWidth * 9f / 16f)))
                         }
                     }
@@ -143,7 +147,7 @@ private fun Tab(label: String, on: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map<String, DlState>, downloads: Downloads, wide: Boolean, gutter: Dp, playFocus: androidx.compose.ui.focus.FocusRequester) {
+private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map<String, DlState>, downloads: WatchDownloads, wide: Boolean, gutter: Dp, playFocus: androidx.compose.ui.focus.FocusRequester) {
     val t = page.title
     val r = page.resume
     val started = if (t.isFilm) (r?.fraction ?: 0.0) > 0 else r?.started == true
@@ -247,7 +251,7 @@ private fun Tracker(page: TitlePage) {
 }
 
 @Composable
-private fun Actions(page: TitlePage, vm: TitleViewModel, dl: Map<String, DlState>, downloads: Downloads) {
+private fun Actions(page: TitlePage, vm: TitleViewModel, dl: Map<String, DlState>, downloads: WatchDownloads) {
     var rating by remember { mutableStateOf(false) }
     val t = page.title
     Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
@@ -263,14 +267,15 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, dl: Map<String, DlState
             }
         }
         if (t.isFilm) {
-            val d = dl[Downloads.key(t.id, 0, 0)]
+            val d = dl[dlKey(t.id, 0, 0)]
             DlAct(d, if (d?.done == true) "Downloaded" else if (d != null) "Downloading" else "Download") { if (d == null) downloads.start(t.id, 0, 0, t.name) }
         } else {
             val season = page.season ?: 1
-            val all = page.episodes.isNotEmpty() && page.episodes.all { dl[Downloads.key(t.id, season, it.number)]?.done == true }
-            val some = page.episodes.any { dl[Downloads.key(t.id, season, it.number)] != null }
-            DlAct(if (all) DlState(1f, true) else if (some) DlState(0f, false) else null, if (all) "Season downloaded" else "Download season") {
-                page.episodes.forEach { e -> if (dl[Downloads.key(t.id, season, e.number)] == null) downloads.start(t.id, season, e.number, "${t.name} S${season}:E${e.number}") }
+            val all = page.episodes.isNotEmpty() && page.episodes.all { dl[dlKey(t.id, season, it.number)]?.done == true }
+            val some = page.episodes.any { dl[dlKey(t.id, season, it.number)] != null }
+            val avg = page.episodes.map { dl[dlKey(t.id, season, it.number)]?.progress ?: 0f }.average().toFloat()
+            DlAct(if (all) DlState(1f, true) else if (some) DlState(avg, false) else null, if (all) "Season downloaded" else "Download season") {
+                page.episodes.forEach { e -> if (dl[dlKey(t.id, season, e.number)] == null) downloads.start(t.id, season, e.number, "${t.name} S${season}:E${e.number}") }
             }
         }
         if (page.hasFillers) SwitchAct("Skip fillers", page.fillers == "skip") { vm.skipFillers(it) }
@@ -290,7 +295,7 @@ private fun DlAct(d: DlState?, label: String, onClick: () -> Unit) {
     Column(Modifier.widthIn(min = 56.dp).clickableScale(onClick), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         when {
             d?.done == true -> I(Ic.dlDone, 26.dp, Night.blush)
-            d != null -> WavyRing(26.dp, Night.blush, radius = 24f, amp = 2f, waves = 8, stroke = 6f)
+            d != null -> InkRing({ d.progress }, size = 28.dp)
             else -> I(Ic.dl, 26.dp, Night.fg2)
         }
         Text(label, style = ui(12, color = Night.fg2))
@@ -317,7 +322,7 @@ private fun SwitchAct(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
-private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolean, vm: TitleViewModel, go: Go, dl: Map<String, DlState>, downloads: Downloads, wide: Boolean, gutter: Dp) {
+private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolean, vm: TitleViewModel, go: Go, dl: Map<String, DlState>, downloads: WatchDownloads, wide: Boolean, gutter: Dp) {
     item("eps-head") {
         var open by remember { mutableStateOf(false) }
         Row(Modifier.padding(horizontal = gutter).padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -330,7 +335,7 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
                 }
                 DropdownMenu(open, { open = false }, offset = DpOffset(0.dp, 6.dp), containerColor = Night.surface3, shape = RoundedCornerShape(12.dp), modifier = Modifier.widthIn(min = 240.dp)) {
                     page.seasons.forEach { s ->
-                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickableScale({ open = false; vm.season(s.number) }).padding(horizontal = 12.dp, vertical = 10.dp),
+                        Row(Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), { open = false; vm.season(s.number) }).padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             I(Ic.check, 18.dp, if (s.number == season) Night.blush else Color.Transparent)
                             Text("Season ${s.number}", style = ui(15, FontWeight.Bold), modifier = Modifier.weight(1f))
@@ -350,7 +355,7 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
         items(page.episodes, key = { "ep$season:${it.number}" }) { e ->
             EpisodeRow(page, season, e, now = r?.started == true && r.season == season && r.episode == e.number,
                 finale = if (e.number == last) (if (finalSeason && page.title.status.contains("Ended", true)) "FINALE" else "SEASON FINALE") else null,
-                dl = dl[Downloads.key(page.title.id, season, e.number)], wide = wide, gutter = gutter,
+                dl = dl[dlKey(page.title.id, season, e.number)], wide = wide, gutter = gutter,
                 onPlay = { go.play(page.title.id, season, e.number) },
                 onDownload = { downloads.start(page.title.id, season, e.number, "${page.title.name} S$season:E${e.number}") })
         }
@@ -383,7 +388,8 @@ private fun EpisodeRow(page: TitlePage, season: Int, e: EpisodeInfo, now: Boolea
         Box(Modifier.size(40.dp).clip(CircleShape).clickableScale(onDownload).align(Alignment.CenterVertically), contentAlignment = Alignment.Center) {
             when {
                 dl?.done == true -> I(Ic.dlDone, tint = Night.blush)
-                dl != null -> WavyRing(26.dp, Night.blush, radius = 24f, amp = 2f, waves = 8, stroke = 6f)
+                dl != null && dl.progress <= 0f -> InkLoader(size = 26.dp)
+                dl != null -> InkRing({ dl.progress }, size = 28.dp)
                 else -> I(Ic.dl, tint = Night.fg2)
             }
         }

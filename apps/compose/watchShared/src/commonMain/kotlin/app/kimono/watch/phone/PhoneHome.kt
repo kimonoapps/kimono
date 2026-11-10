@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -81,13 +82,14 @@ import app.kimono.watch.ui.Img
 import app.kimono.watch.ui.ListViewModel
 import app.kimono.watch.ui.Logo
 import app.kimono.watch.ui.PaperButton
-import app.kimono.watch.ui.PreviewVideo
+import app.kimono.watch.LocalWatch
 import app.kimono.watch.ui.ProgressLine
 import app.kimono.watch.ui.Ribbon
 import app.kimono.watch.ui.RingButton
 import app.kimono.watch.ui.Skeleton
 import app.kimono.watch.ui.Top10
 import app.kimono.watch.ui.clickableScale
+import app.kimono.watch.ui.clickableScaleClipped
 
 /** What a tap on a card or button asks for. */
 class Go(
@@ -101,7 +103,7 @@ val navBottom @Composable get() = WindowInsets.navigationBars.asPaddingValues().
 /* ───── The shell: top bar, the three pages, the bottom bar ───── */
 
 @Composable
-fun PhoneShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: ListViewModel, go: Go, onSearch: () -> Unit, onProfiles: () -> Unit, previewing: Boolean) {
+fun PhoneShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: ListViewModel, go: Go, onSearch: () -> Unit, onProfiles: () -> Unit, onSettings: () -> Unit, previewing: Boolean) {
     var page by remember { mutableStateOf("home") }
     val homeScroll = rememberLazyListState()
     val scrolled by remember { derivedStateOf { homeScroll.firstVisibleItemIndex > 0 || homeScroll.firstVisibleItemScrollOffset > 120 } }
@@ -118,7 +120,7 @@ fun PhoneShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: L
             Spacer(Modifier.weight(1f))
             Box(Modifier.size(40.dp).clip(CircleShape).clickableScale(onSearch), contentAlignment = Alignment.Center) { I(Ic.search) }
             Spacer(Modifier.width(12.dp))
-            Box(Modifier.clickableScale(onProfiles)) { Face(profile, 32.dp, corner = 0.28f) }
+            AvatarMenu(profile, onProfiles, onSettings)
         }
         if (page == "home") {
             val shelf = home.state.collectAsState().value.shelf
@@ -142,7 +144,7 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun BottomBar(page: String, modifier: Modifier, onPage: (String) -> Unit) {
-    Row(modifier.fillMaxWidth().background(Night.bg.copy(alpha = 0.98f)).border(BorderStroke(1.dp, Color(0x0DFFFFFF)), RoundedCornerShape(0.dp))
+    Row(modifier.fillMaxWidth().background(Night.bg).border(BorderStroke(1.dp, Color(0x0DFFFFFF)), RoundedCornerShape(0.dp))
         .padding(top = 8.dp, bottom = navBottom.coerceAtLeast(8.dp), start = 16.dp, end = 16.dp), horizontalArrangement = Arrangement.SpaceAround) {
         listOf(Triple("home", "Home", Ic.home), Triple("hot", "New & hot", Ic.hot), Triple("list", "My list", Ic.bookmark)).forEach { (id, label, icon) ->
             val on = page == id
@@ -198,7 +200,7 @@ private fun Hero(featured: Card?, rows: List<WatchRow>, go: Go, active: Boolean)
         Box(Modifier.fillMaxWidth().aspectRatio(3f / 4f).shadow(40.dp, RoundedCornerShape(14.dp), ambientColor = Color.Black, spotColor = Color.Black).clip(RoundedCornerShape(14.dp))) {
             Img(featured.poster ?: featured.backdropLarge, Modifier.fillMaxSize())
             BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                PreviewVideo(featured.id, if (featured.isFilm) 0 else 1, if (featured.isFilm) 0 else 1, muted, active, { playing = it }, Modifier.requiredWidth(maxHeight * 16f / 9f).height(maxHeight))
+                LocalWatch.current.preview.Show(featured.id, if (featured.isFilm) 0 else 1, if (featured.isFilm) 0 else 1, muted, active, { playing = it }, Modifier.requiredWidth(maxHeight * 16f / 9f).height(maxHeight))
             }
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color(0x00110C0A), 1f to Color(0xEB110C0A))))
             Column(Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 18.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -226,7 +228,7 @@ fun RankLine(rank: Int, shelf: String, size: Int = 15) {
 @Composable
 private fun RailRow(row: WatchRow, profile: Profile, go: Go) {
     Column(Modifier.padding(bottom = 22.dp)) {
-        val title = if (row.id == "continue") "Continue watching for ${profile.shown}" else row.title
+        val title = if (row.id == "continue") "Continue watching" else row.title
         Text(title, style = ui(17, FontWeight.Bold), modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (row.kind) {
@@ -324,7 +326,7 @@ fun ComingArticle(item: Coming, go: Go, onRemind: () -> Unit, wide: Boolean = fa
             Text(day, style = display(30))
         }
         Column(Modifier.weight(1f)) {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)).clickableScale({ go.open(item.card) })) { Img(item.page.title.backdropLarge ?: item.card.backdrop, Modifier.fillMaxSize()) }
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickableScaleClipped(RoundedCornerShape(10.dp), { go.open(item.card) })) { Img(item.page.title.backdropLarge ?: item.card.backdrop, Modifier.fillMaxSize()) }
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.weight(1f)) { Logo(item.card.name, item.card.logo, 26, maxHeight = 48.dp) }
                 Stack(Ic.bell, if (item.page.reminding) "Reminding" else "Remind me", item.page.reminding, onRemind)
@@ -359,4 +361,27 @@ private fun ListPage(vm: ListViewModel, go: Go) {
             else -> items(state.items, key = { it.id }) { PosterCard(it, go, width = Dp.Unspecified, modifier = Modifier.fillMaxWidth()) }
         }
     }
+}
+
+/**
+ * The avatar is about the person: switch profile, Settings, and their Kimono
+ * account. (Quality lives in Settings and the player, not here.)
+ */
+@Composable
+fun AvatarMenu(profile: Profile, onProfiles: () -> Unit, onSettings: () -> Unit, size: Dp = 32.dp) {
+    var open by remember { mutableStateOf(false) }
+    val watch = LocalWatch.current
+    Box {
+        Box(Modifier.clickableScale({ open = true })) { Face(profile, size, corner = 0.28f) }
+        androidx.compose.material3.DropdownMenu(open, { open = false }, containerColor = Night.surface3, shape = RoundedCornerShape(12.dp), modifier = Modifier.widthIn(min = 220.dp)) {
+            MenuRow("Switch profile") { open = false; onProfiles() }
+            MenuRow("Settings") { open = false; onSettings() }
+            MenuRow("Kimono account") { open = false; watch.openUrl(profile.server + "/account") }
+        }
+    }
+}
+
+@Composable
+fun MenuRow(label: String, onClick: () -> Unit) {
+    Text(label, style = ui(15, FontWeight.Medium), modifier = Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), onClick).padding(horizontal = 14.dp, vertical = 12.dp))
 }

@@ -1,0 +1,117 @@
+@file:OptIn(kotlin.time.ExperimentalTime::class)
+
+package app.kimono.watch
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import app.kimono.watch.data.Accounts
+import app.kimono.watch.data.WatchApi
+import app.kimono.watch.model.PlayAnswer
+import app.kimono.watch.model.TrackHints
+import app.kimono.watch.ui.Toasts
+import kotlinx.coroutines.flow.StateFlow
+import kotlin.time.Clock
+
+/*
+ * What the shared screens need from the device they run on. Android fills
+ * it with ExoPlayer, Media3 downloads and its TV screens; the iPhone app will
+ * fill it with its own player the same way.
+ */
+
+/** How far a download has got: 0–1, or done. */
+data class DlState(val progress: Float, val done: Boolean, val failed: Boolean = false)
+
+fun dlKey(titleId: String, season: Int, episode: Int) = "$titleId:$season:$episode"
+
+/** Downloads for watching offline. */
+interface WatchDownloads {
+    val states: StateFlow<Map<String, DlState>>
+    fun start(titleId: String, season: Int, episode: Int, name: String)
+    fun remove(titleId: String, season: Int, episode: Int)
+    /** The play answer kept with a finished download, for playing it with no connection. */
+    fun offline(titleId: String, season: Int, episode: Int): PlayAnswer?
+}
+
+/** A track as the audio & subtitles sheet lists it; [handle] is the player's own reference. */
+class TrackOption(val handle: Any?, val label: String, val language: String?, val signs: Boolean, val selected: Boolean)
+
+/** What the player tells its screen as it happens. */
+interface EngineListener {
+    fun firstFrame() {}
+    /** [decoder]: this device can't decode what it was given; [network]: the stream stopped answering. */
+    fun error(decoder: Boolean, network: Boolean) {}
+    fun tracks() {}
+    fun aspect(ratio: Float) {}
+    fun playing(on: Boolean) {}
+    /** The person paused (or played): not a buffering stall. */
+    fun userPaused(paused: Boolean) {}
+}
+
+/** Frames for the scrubber, ten seconds apart. */
+interface Thumbnails {
+    /** The latest frame found, with the ten-second slot it belongs to. */
+    val frame: StateFlow<Pair<Int, ImageBitmap>?>
+    fun want(seconds: Double)
+    fun close()
+}
+
+/** The decoder behind the player's controls. Seconds throughout. */
+interface PlaybackEngine {
+    val position: Double
+    /** 0 while unknown. */
+    val duration: Double
+    val buffered: Double
+    val playing: Boolean
+    val playWhenReady: Boolean
+    val buffering: Boolean
+    val ended: Boolean
+    /** How full the buffer is for starting, 0–1: the last stage of the start-of-playback ring. */
+    val startFill: Float
+    fun load(url: String, key: String, startAt: Double)
+    fun play()
+    fun pause()
+    fun seekTo(seconds: Double)
+    fun setSpeed(speed: Float)
+    /** Switches on the audio and subtitles the server asked for. */
+    fun applyHints(hints: TrackHints)
+    /** Whether the video picked is something no decoder here really handles (10-bit H.264, software AV1). */
+    fun videoBeyondDecoders(): Boolean
+    fun audioOptions(): List<TrackOption>
+    fun subtitleOptions(): List<TrackOption>
+    fun selectAudio(option: TrackOption)
+    fun selectSubtitles(option: TrackOption)
+    /** Returns a function that stops listening. */
+    fun listen(listener: EngineListener): () -> Unit
+    fun thumbnails(url: String): Thumbnails
+    /** The picture itself, fitted by the screen around it. */
+    @Composable fun Picture(modifier: Modifier)
+    /** Subtitles, drawn over the picture (libass for styled ones). */
+    @Composable fun Captions(modifier: Modifier)
+}
+
+/** A muted preview of a title, for the hero and the title page. */
+fun interface PreviewPlayer {
+    @Composable fun Show(titleId: String, season: Int, episode: Int, muted: Boolean, active: Boolean, onPlaying: (Boolean) -> Unit, modifier: Modifier)
+}
+
+/** Everything the screens use, one per app. */
+class WatchServices(
+    val accounts: Accounts,
+    val api: WatchApi,
+    val toasts: Toasts,
+    val downloads: WatchDownloads,
+    val tv: Boolean,
+    val preview: PreviewPlayer,
+    /** This install's id, as the server keeps quality per device. */
+    val deviceId: String,
+    /** Whether this is a phone that can be on mobile data (it gets its own quality). */
+    val cellular: Boolean,
+    /** Opens a link outside the app (Kimono account). */
+    val openUrl: (String) -> Unit,
+)
+
+val LocalWatch = staticCompositionLocalOf<WatchServices> { error("No WatchServices provided") }
+
+internal fun nowMs(): Long = Clock.System.now().toEpochMilliseconds()

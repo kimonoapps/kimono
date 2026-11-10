@@ -11,6 +11,7 @@
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
     <color name="night">#110C0A</color>
+    <color name="ground">#F7F1E8</color>
     <color name="suo_deep">#7E3448</color>
     <string name="downloads">Downloads</string>
 </resources>

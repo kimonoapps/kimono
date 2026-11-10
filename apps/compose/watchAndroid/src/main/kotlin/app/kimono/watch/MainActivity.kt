@@ -7,23 +7,40 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import app.kimono.watch.player.PlayerActivity
 import app.kimono.watch.theme.WatchTheme
+import app.kimono.watch.tv.AndroidTvShell
 
 /** Browsing: Who's watching, Home, title pages, search. Playing opens [PlayerActivity]. */
 class MainActivity : ComponentActivity() {
     private val resumed = mutableIntStateOf(0)
+    /** A Kimono named by a kimono-watch://connect?server=… link (the Portal's "Get the app"). */
+    private val connect = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(SystemBarStyle.dark(0), SystemBarStyle.dark(0))
         super.onCreate(savedInstanceState)
+        connect.value = connectServer(intent)
         setContent {
             WatchTheme {
-                WatchRoot(watch, resumed.intValue) { id, season, episode ->
+                WatchRoot(watch.services, resumed.intValue, connect.value, if (watch.tv) AndroidTvShell else null) { id, season, episode ->
                     startActivity(Intent(this, PlayerActivity::class.java).putExtra("titleId", id).putExtra("season", season ?: -1).putExtra("episode", episode ?: -1))
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        connectServer(intent)?.let { connect.value = it }
+    }
+
+    private fun connectServer(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "kimono-watch" || data.host != "connect") return null
+        val server = data.getQueryParameter("server")?.trim()?.trimEnd('/') ?: return null
+        return server.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: "https://$server"
     }
 
     private var paused = false

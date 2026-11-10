@@ -34,6 +34,11 @@ private val answers = mutableMapOf<String, PlayAnswer>()
  * its still once frames arrive and looping a minute of it. (The API has no
  * trailers; this plays the first episode, or the film, quietly.)
  */
+object AndroidPreview : app.kimono.watch.PreviewPlayer {
+    @Composable
+    override fun Show(titleId: String, season: Int, episode: Int, muted: Boolean, active: Boolean, onPlaying: (Boolean) -> Unit, modifier: Modifier) = PreviewVideo(titleId, season, episode, muted, active, onPlaying, modifier)
+}
+
 @Composable
 fun PreviewVideo(titleId: String, season: Int, episode: Int, muted: Boolean, active: Boolean, onPlaying: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
@@ -61,6 +66,8 @@ fun PreviewVideo(titleId: String, season: Int, episode: Int, muted: Boolean, act
         player.prepare()
         /* Past the cold open: about a sixth of the way in, then a minute of it, round again. */
         while (player.duration == C.TIME_UNSET) delay(100)
+        /* A clip this short is a source's error card, not the title: leave the still. */
+        if (player.duration < 300_000) { player.stop(); return@LaunchedEffect }
         val from = (player.duration * 0.17).toLong()
         player.seekTo(from)
         player.playWhenReady = active

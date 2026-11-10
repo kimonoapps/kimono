@@ -47,6 +47,8 @@ data class PlayerState(
     val skip: SkipOffer? = null,
     val post: Post = Post.None,
     val recs: List<Card> = emptyList(),
+    /** Waiting for the server to find and pick a copy (the ring's first stages). */
+    val finding: Boolean = true,
 ) {
     val isFilm get() = page?.title?.isFilm == true
     val current: EpisodeInfo? get() = page?.episodes?.firstOrNull { it.number == episode && page.season == season }
@@ -102,15 +104,15 @@ class PlayerViewModel(
         }
     }
 
-    private suspend fun load(season: Int, episode: Int, version: Int? = null, at: Double? = null) {
-        _state.value = _state.value.copy(season = season, episode = episode, loading = true, problem = null, skip = null, post = Post.None)
+    private suspend fun load(season: Int, episode: Int, version: Int? = null, at: Double? = null, quality: String? = null) {
+        _state.value = _state.value.copy(season = season, episode = episode, loading = true, finding = true, problem = null, skip = null, post = Post.None)
         prepared = false; autoSkipped = false; creditsDone = false; lastSaved = -100.0
         val page = _state.value.page
         if (page != null && !page.title.isFilm && page.season != season) {
             runCatching { api.title(titleId, season) }.getOrNull()?.let { _state.value = _state.value.copy(page = it) }
         }
-        val answer = (if (version == null) offline(titleId, season, episode) else null) ?: api.play(titleId, season, episode, version)
-        _state.value = _state.value.copy(answer = answer, startAt = at ?: answer.startAt, loads = _state.value.loads + 1)
+        val answer = (if (version == null && quality == null) offline(titleId, season, episode) else null) ?: api.play(titleId, season, episode, version, quality)
+        _state.value = _state.value.copy(answer = answer, finding = false, startAt = at ?: answer.startAt, loads = _state.value.loads + 1)
     }
 
     /** The decoder has the first frames: the loading ring goes. */
@@ -205,6 +207,13 @@ class PlayerViewModel(
         val s = _state.value
         loadJob?.cancel()
         loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, index, at) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "That version didn't start.") } }
+    }
+
+    /** Another quality from the player's menu, from the same moment; this play only (Settings keeps the device's). */
+    fun quality(value: String, at: Double) {
+        val s = _state.value
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, at = at, quality = value) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "That quality didn't start.") } }
     }
 
     /** This device couldn't decode the version picked: the next one down, from the same moment. False when there's none left. */

@@ -58,7 +58,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.kimono.watch.data.Profile
 import app.kimono.watch.theme.Mincho
+import app.kimono.watch.ink.InkBloom
 import app.kimono.watch.theme.Night
+import app.kimono.watch.theme.WATCH_ACCENT
+import app.kimono.watch.theme.WATCH_ID
+import androidx.compose.foundation.layout.offset
 import app.kimono.watch.theme.display
 import app.kimono.watch.theme.ui
 import coil3.compose.AsyncImage
@@ -68,24 +72,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
-
-/** The Kimono loading mark: an expressive wavy ring, three quarters round, turning. */
-@Composable
-fun WavyRing(size: Dp, color: Color = Night.suo, radius: Float = 30f, amp: Float = 2.4f, waves: Int = 10, stroke: Float = 5f, periodMs: Int = 1600, modifier: Modifier = Modifier) {
-    val turn by rememberInfiniteTransition(label = "ring").animateFloat(0f, 360f, infiniteRepeatable(tween(periodMs, easing = LinearEasing)), label = "turn")
-    Canvas(modifier.size(size).rotate(turn)) {
-        val k = this.size.minDimension / 72f
-        val path = Path()
-        for (i in 0..240) {
-            val a = i / 240f * PI.toFloat() * 2f * .78f
-            val rr = radius + amp * sin(a * waves)
-            val x = (36 + rr * cos(a)) * k
-            val y = (36 + rr * sin(a)) * k
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-        drawPath(path, color, style = Stroke(width = stroke * k, cap = StrokeCap.Round))
-    }
-}
 
 /** A grey block with light running across it, standing in while something loads. */
 @Composable
@@ -97,19 +83,17 @@ fun Skeleton(modifier: Modifier, shape: androidx.compose.ui.graphics.Shape = Rou
     })
 }
 
-/** 観, the seal. */
+/** Watch's bloom: Kimono's flower with the play glyph, in Watch's colour, as on the website and the launcher. */
 @Composable
-fun Seal(size: Dp = 44.dp, modifier: Modifier = Modifier) {
-    Box(modifier.size(size).clip(RoundedCornerShape(size * 0.2f)).background(Night.suoDeep).border(2.dp * (size / 44.dp), Night.suoEdge, RoundedCornerShape(size * 0.2f)), contentAlignment = Alignment.Center) {
-        Text("観", style = display((size.value * 0.55f).toInt(), color = Night.paper), textAlign = TextAlign.Center)
-    }
-}
+fun WatchBloom(size: Dp, modifier: Modifier = Modifier) = InkBloom(WATCH_ID, WATCH_ACCENT, "play", size, modifier)
 
+/** The house lockup every app wears: its bloom, "kimono", then "watch" in Watch's colour (the web's AppLockup). */
 @Composable
-fun Brand(compact: Boolean = false) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Seal(32.dp)
-        Text("KIMONO", style = display(20).copy(letterSpacing = 2.8.sp))
+fun Brand(size: Int = 20, bloom: Dp = 30.dp) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (bloom > 0.dp) WatchBloom(bloom)
+        Text("kimono", style = display(size, FontWeight.SemiBold).copy(letterSpacing = 0.1.sp), modifier = Modifier.offset(y = (-1).dp))
+        Text("watch", style = display(size, FontWeight.SemiBold, Night.blush).copy(letterSpacing = 0.1.sp), modifier = Modifier.offset(y = (-1).dp))
     }
 }
 

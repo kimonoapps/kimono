@@ -12,6 +12,17 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
+import android.view.SurfaceView
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
+import app.kimono.watch.EngineListener
+import app.kimono.watch.PlaybackEngine
+import app.kimono.watch.Thumbnails
+import app.kimono.watch.TrackOption
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -29,9 +40,8 @@ import okhttp3.OkHttpClient
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
-/** A track as the audio & subtitles sheet lists it. */
-data class TrackOption(val group: Tracks.Group?, val index: Int, val label: String, val language: String?, val signs: Boolean, val selected: Boolean)
 
+private const val START_MS = 2_500
 private val signsWords = listOf("signs", "songs", "forced", "s&s")
 
 /**
@@ -40,7 +50,7 @@ private val signsWords = listOf("signs", "songs", "forced", "s&s")
  * passthrough), libass for styled anime subtitles, tunnelled playback on TV,
  * and the downloads cache read first so a downloaded episode plays offline.
  */
-class Engine(context: Context, tv: Boolean, val subtitles: SubtitleView) {
+class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleView) : PlaybackEngine {
     val selector = DefaultTrackSelector(context).apply {
         setParameters(buildUponParameters().setTunnelingEnabled(tv).setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true))
     }
@@ -49,7 +59,7 @@ class Engine(context: Context, tv: Boolean, val subtitles: SubtitleView) {
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setTrackSelector(selector)
-        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 120_000, 2_000, 4_000).build())
+        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 120_000, START_MS, 4_000).build())
         .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000)
         .setHandleAudioBecomingNoisy(true)
         .setVideoChangeFrameRateStrategy(if (tv) C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
@@ -73,7 +83,7 @@ class Engine(context: Context, tv: Boolean, val subtitles: SubtitleView) {
         subtitles.setApplyEmbeddedStyles(true)
     }
 
-    fun load(url: String, key: String, startAt: Double) {
+    override fun load(url: String, key: String, startAt: Double) {
         val item = MediaItem.Builder().setUri(url).setCustomCacheKey(key).build()
         player.setMediaItem(item, (startAt * 1000).toLong().coerceAtLeast(0))
         player.prepare()
@@ -81,7 +91,7 @@ class Engine(context: Context, tv: Boolean, val subtitles: SubtitleView) {
     }
 
     /** Switches on the audio and subtitles the server asked for, by the tags containers use. */
-    fun applyHints(hints: TrackHints) {
+    override fun applyHints(hints: TrackHints) {
         val tracks = player.currentTracks
         val p = selector.buildUponParameters()
         hints.audio?.let { want ->
@@ -108,36 +118,30 @@ class Engine(context: Context, tv: Boolean, val subtitles: SubtitleView) {
     private fun matches(language: String?, tags: List<String>): Boolean {
         val l = language?.lowercase() ?: return false
         val base = l.substringBefore('-')
-        return tags.any { it.equals(l, true) || it.equals(base, true) || Locale.forLanguageTag(it).isO3Language.equals(base, true) }
+        return tags.any { it.equals(l, true) || it.equals(base, true) || runCatching { Locale.forLanguageTag(it).isO3Language }.getOrNull().equals(base, true) }
     }
 
-    fun audioOptions(): List<TrackOption> = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.mapIndexed { i, g ->
+    override fun audioOptions(): List<TrackOption> = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.mapIndexed { i, g ->
         val f = g.getTrackFormat(0)
-        TrackOption(g, 0, audioLabel(f, i), language2(f.language), false, g.isSelected)
+        TrackOption(g, audioLabel(f, i), language2(f.language), false, g.isSelected)
     }
 
-    fun subtitleOptions(): List<TrackOption> {
+    override fun subtitleOptions(): List<TrackOption> {
         val groups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-        val off = TrackOption(null, 0, "Off", null, false, groups.none { it.isSelected } || selector.parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))
+        val off = TrackOption(null, "Off", null, false, groups.none { it.isSelected } || selector.parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))
         return listOf(off) + groups.map { g ->
             val f = g.getTrackFormat(0)
             val signs = f.label?.lowercase()?.let { l -> signsWords.any { it in l } } == true
-            TrackOption(g, 0, textLabel(f, signs), language2(f.language), signs, g.isSelected && !off.selected)
+            TrackOption(g, textLabel(f, signs), language2(f.language), signs, g.isSelected && !off.selected)
         }
     }
 
-    fun select(option: TrackOption, type: Int) {
-        val p = selector.buildUponParameters()
-        if (option.group == null) p.setTrackTypeDisabled(type, true)
-        else p.setTrackTypeDisabled(type, false).setOverrideForType(TrackSelectionOverride(option.group.mediaTrackGroup, option.index))
-        selector.setParameters(p)
-    }
 
     /**
      * Whether the video picked is a profile no decoder here really handles:
      * 10-bit H.264 (common in anime) and 10-bit HEVC, which some decoders accept and then garble.
      */
-    fun videoBeyondDecoders(): Boolean {
+    override fun videoBeyondDecoders(): Boolean {
         val f = player.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO }?.getTrackFormat(0) ?: return false
         if (f.sampleMimeType == MimeTypes.VIDEO_AV1) {
             val hw = android.os.Build.VERSION.SDK_INT >= 29 && android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos.any { !it.isEncoder && it.isHardwareAccelerated && it.supportedTypes.any { t -> t.equals("video/av01", true) } }
@@ -153,6 +157,55 @@ class Engine(context: Context, tv: Boolean, val subtitles: SubtitleView) {
         val infos = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos.filter { !it.isEncoder }
         val ok = infos.any { info -> info.supportedTypes.any { t -> t.equals(mime, true) && runCatching { info.getCapabilitiesForType(t).profileLevels.any { it.profile == profile } }.getOrDefault(false) } }
         return !ok
+    }
+
+    private fun select(option: TrackOption, type: Int) {
+        val p = selector.buildUponParameters()
+        val group = option.handle as? Tracks.Group
+        if (group == null) p.setTrackTypeDisabled(type, true)
+        else p.setTrackTypeDisabled(type, false).setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, 0))
+        selector.setParameters(p)
+    }
+    override fun selectAudio(option: TrackOption) = select(option, C.TRACK_TYPE_AUDIO)
+    override fun selectSubtitles(option: TrackOption) = select(option, C.TRACK_TYPE_TEXT)
+
+    override val position get() = player.currentPosition / 1000.0
+    override val duration get() = player.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.div(1000.0) ?: 0.0
+    override val buffered get() = player.bufferedPosition / 1000.0
+    override val playing get() = player.isPlaying
+    override val playWhenReady get() = player.playWhenReady
+    override val buffering get() = player.playbackState == Player.STATE_BUFFERING
+    override val ended get() = player.playbackState == Player.STATE_ENDED
+    /* ExoPlayer starts once this much is buffered ahead (bufferForPlaybackMs below). */
+    override val startFill get() = if (player.playbackState == Player.STATE_IDLE) 0f else ((player.bufferedPosition - player.currentPosition) / START_MS.toFloat()).coerceIn(0f, 1f)
+    override fun play() = player.play()
+    override fun pause() = player.pause()
+    override fun seekTo(seconds: Double) = player.seekTo((seconds * 1000).toLong())
+    override fun setSpeed(speed: Float) = player.setPlaybackSpeed(speed)
+
+    override fun listen(listener: EngineListener): () -> Unit {
+        val l = object : Player.Listener {
+            override fun onRenderedFirstFrame() = listener.firstFrame()
+            override fun onPlayerError(error: PlaybackException) = listener.error(decoder = error.errorCode in 4000..4999, network = error.errorCode in 2000..2999)
+            override fun onTracksChanged(tracks: Tracks) { if (tracks.groups.isNotEmpty()) listener.tracks() }
+            override fun onVideoSizeChanged(videoSize: VideoSize) { if (videoSize.width > 0 && videoSize.height > 0) listener.aspect(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height) }
+            override fun onIsPlayingChanged(isPlaying: Boolean) = listener.playing(isPlaying)
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = listener.userPaused(!playWhenReady)
+        }
+        player.addListener(l)
+        return { player.removeListener(l) }
+    }
+
+    override fun thumbnails(url: String): Thumbnails = Thumbs(url)
+
+    @Composable
+    override fun Picture(modifier: Modifier) {
+        AndroidView({ SurfaceView(it).also { v -> player.setVideoSurfaceView(v) } }, modifier)
+    }
+
+    @Composable
+    override fun Captions(modifier: Modifier) {
+        AndroidView({ subtitles }, modifier)
     }
 
     fun release() { player.release() }

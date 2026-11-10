@@ -41,14 +41,30 @@ class WatchApp : Application() {
     lateinit var api: WatchApi
     val toasts = Toasts()
     lateinit var downloads: app.kimono.watch.player.Downloads
+    lateinit var services: WatchServices
     val tv by lazy { isTv(this) }
     val device by lazy { capabilities(this, tv) }
+    /** This install's own id, kept for good: the server keeps a quality per device. */
+    val deviceId: String by lazy {
+        val prefs = getSharedPreferences("watch-device", MODE_PRIVATE)
+        prefs.getString("id", null) ?: ("android-" + java.util.UUID.randomUUID().toString().take(12)).also { prefs.edit().putString("id", it).apply() }
+    }
 
     override fun onCreate() {
         super.onCreate()
         accounts = Accounts(AndroidKeeper(this), HttpClient(OkHttp))
-        api = WatchApi(accounts) { device }
+        /* On mobile data a phone counts as a device of its own, with its own quality (Settings). */
+        api = WatchApi(accounts, { device }) { if (!tv && onMobileData()) "$deviceId.cell" else deviceId }
         downloads = app.kimono.watch.player.Downloads(this)
+        services = WatchServices(accounts, api, toasts, downloads, tv, app.kimono.watch.ui.AndroidPreview, deviceId, cellular = !tv, openUrl = { url ->
+            runCatching { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        })
+    }
+
+    private fun onMobileData(): Boolean {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) && !caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
     }
 }
 

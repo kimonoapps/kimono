@@ -17,6 +17,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
@@ -25,7 +26,12 @@ import kotlinx.serialization.json.put
  * The Portal's Watch API (apps/portal/src/app/api/v1/watch): the only
  * thing the app talks to. TMDB, AIOStreams and debrid stay on the server.
  */
-class WatchApi(val accounts: Accounts, private val device: () -> Device) {
+class WatchApi(
+    val accounts: Accounts,
+    private val device: () -> Device,
+    /** This install's id, so the server keeps a quality per device (a phone on mobile data counts as its own). */
+    val deviceId: () -> String,
+) {
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
     private val base = "/api/v1/watch"
 
@@ -51,11 +57,14 @@ class WatchApi(val accounts: Accounts, private val device: () -> Device) {
             tracks?.let { put("tracks", json.encodeToJsonElement(it)) }
         }))
 
-    suspend fun play(titleId: String, season: Int = 0, episode: Int = 0, version: Int? = null): PlayAnswer =
+    /** Starts a play; [quality] is a one-off choice from the player's Quality menu. */
+    suspend fun play(titleId: String, season: Int = 0, episode: Int = 0, version: Int? = null, quality: String? = null): PlayAnswer =
         json.decodeFromString(send(HttpMethod.Post, "/play", buildJsonObject {
             put("titleId", titleId)
             if (season > 0) { put("season", season); put("episode", episode) }
             version?.let { put("version", it) }
+            quality?.let { put("quality", it) }
+            put("deviceId", deviceId())
             put("device", json.encodeToJsonElement(device()))
         }))
 
@@ -63,6 +72,7 @@ class WatchApi(val accounts: Accounts, private val device: () -> Device) {
     suspend fun prepare(titleId: String, season: Int, episode: Int): PrepareAnswer =
         json.decodeFromString(send(HttpMethod.Post, "/prepare", buildJsonObject {
             put("titleId", titleId); put("season", season); put("episode", episode)
+            put("deviceId", deviceId())
             put("device", json.encodeToJsonElement(device()))
         }))
 
@@ -72,7 +82,11 @@ class WatchApi(val accounts: Accounts, private val device: () -> Device) {
         })
     }
 
-    suspend fun prefs(): Prefs = json.decodeFromString(get("/prefs"))
+    suspend fun prefs(device: String? = null): Prefs = json.decodeFromString(get("/prefs" + (device?.let { "?device=${it.encodeURLParameter()}" } ?: "")))
+
+    /** A device's own quality ("auto", "2160", "1080", "720", "saver"), or null to follow the person's. */
+    suspend fun deviceQuality(device: String, quality: String?): Prefs =
+        json.decodeFromString(send(HttpMethod.Put, "/prefs", buildJsonObject { put("device", device); put("quality", quality?.let { JsonPrimitive(it) } ?: JsonNull) }))
 
     suspend fun savePrefs(change: JsonObject): Prefs = json.decodeFromString(send(HttpMethod.Put, "/prefs", change))
 }

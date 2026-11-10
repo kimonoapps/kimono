@@ -22,6 +22,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.SubtitleView
+import app.kimono.watch.LocalWatch
 import app.kimono.watch.theme.WatchTheme
 import app.kimono.watch.ui.PlayerViewModel
 import app.kimono.watch.watch
@@ -61,8 +62,8 @@ class PlayerActivity : ComponentActivity() {
         if (app.tv) engine.player.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) { matchFrameRate(format) }
         })
-        onRec = { id -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("titleId", id)); finish() }
-        setContent { WatchTheme { PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish) } }
+        val rec = { id: String -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("titleId", id)); finish() }
+        setContent { WatchTheme { androidx.compose.runtime.CompositionLocalProvider(LocalWatch provides app.services) { PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish, onRec = rec) } } }
     }
 
     /** Switches the TV to a refresh rate the film's frame rate divides into, at the same resolution. */

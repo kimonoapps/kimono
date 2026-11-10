@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /*
- * 観 The shapes the Portal's Watch API answers with (apps/portal/src/lib/watch).
+ * The shapes the Portal's Watch API answers with (apps/portal/src/lib/watch).
  * Everything optional the server may leave out is optional here, so a newer
  * Portal never breaks an older app.
  */
@@ -162,8 +162,16 @@ data class TrackHints(val audio: AudioHint? = null, val subtitles: SubtitleHint?
 data class Languages(val audio: List<String> = emptyList(), val subtitles: List<String> = emptyList())
 
 @Serializable
+data class QualityOption(val value: String, val label: String)
+
+/** The Quality menu: what's in effect and what else plays on this device. */
+@Serializable
+data class QualityMenu(val current: String = "auto", val options: List<QualityOption> = emptyList())
+
+@Serializable
 data class PlayAnswer(
     val url: String,
+    val quality: QualityMenu? = null,
     val version: Version? = null,
     val versions: List<Version> = emptyList(),
     val startAt: Double = 0.0,
@@ -190,7 +198,12 @@ data class Prefs(
     val subtitles: String = "auto",
     val autoplayNext: Boolean = true,
     val skipIntros: Boolean = false,
+    /** With `?device=`: this device's own quality, null when it follows the person's. */
+    val device: DevicePref? = null,
 )
+
+@Serializable
+data class DevicePref(val id: String, val quality: String? = null)
 
 /* ───── Signing in ───── */
 

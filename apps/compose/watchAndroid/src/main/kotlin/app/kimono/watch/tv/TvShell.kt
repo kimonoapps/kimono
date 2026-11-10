@@ -62,7 +62,9 @@ import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import app.kimono.watch.Entry
-import app.kimono.watch.WatchApp
+import app.kimono.watch.LocalWatch
+import app.kimono.watch.TvShellSlot
+import app.kimono.watch.phone.SettingsScreen
 import app.kimono.watch.data.Profile
 import app.kimono.watch.model.Card
 import app.kimono.watch.model.Row as WatchRow
@@ -100,21 +102,29 @@ private val gutter = 48.dp
  * turns into a muted preview, rows of 16:9 cards) with D-pad focus on
  * androidx.tv surfaces: a focused card grows and takes the blush outline.
  */
+object AndroidTvShell : TvShellSlot {
+    @Composable
+    override fun Show(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: ListViewModel, top: Entry?, go: Go, onSearch: () -> Unit, onProfiles: () -> Unit, onSettings: () -> Unit, onBack: () -> Unit) =
+        TvShell(profile, home, hot, list, top, go, onSearch, onProfiles, onSettings, onBack)
+}
+
 @Composable
-fun TvShell(app: WatchApp, profile: Profile, home: HomeViewModel, hot: HotViewModel, list: ListViewModel, top: Entry?, go: Go, onSearch: () -> Unit, onProfiles: () -> Unit, onBack: () -> Unit) {
+fun TvShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: ListViewModel, top: Entry?, go: Go, onSearch: () -> Unit, onProfiles: () -> Unit, onSettings: () -> Unit, onBack: () -> Unit) {
+    val app = LocalWatch.current
     var page by rememberSaveable { mutableStateOf("home") }
     Box(Modifier.fillMaxSize().background(Night.bg)) {
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (top == null) 1f else 0f }) {
             when (page) {
-                "home" -> TvHome(profile, home, go, active = top == null) { Nav(page, { page = it; if (it == "list") list.refresh() }, profile, onSearch, onProfiles) }
-                "hot" -> TvHot(hot, go) { Nav(page, { page = it }, profile, onSearch, onProfiles) }
-                else -> TvList(list, go) { Nav(page, { page = it; list.refresh() }, profile, onSearch, onProfiles) }
+                "home" -> TvHome(profile, home, go, active = top == null) { Nav(page, { page = it; if (it == "list") list.refresh() }, profile, onSearch, onProfiles, onSettings) }
+                "hot" -> TvHot(hot, go) { Nav(page, { page = it }, profile, onSearch, onProfiles, onSettings) }
+                else -> TvList(list, go) { Nav(page, { page = it; list.refresh() }, profile, onSearch, onProfiles, onSettings) }
             }
         }
         AnimatedContent(top, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) }, label = "tvstack") { entry ->
             when (val s = entry?.screen) {
                 is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(app.api, app.toasts, s.id) }, go, s.top, onClose = onBack, downloads = app.downloads, wide = true)
                 Screen.Search -> SearchScreen(entry.vm { SearchViewModel(app.api) }, go, onClose = onBack, tv = true)
+                Screen.Settings -> SettingsScreen(onClose = onBack, wide = true)
                 null -> Box(Modifier) {}
             }
         }
@@ -122,7 +132,7 @@ fun TvShell(app: WatchApp, profile: Profile, home: HomeViewModel, hot: HotViewMo
 }
 
 @Composable
-private fun Nav(page: String, onPage: (String) -> Unit, profile: Profile, onSearch: () -> Unit, onProfiles: () -> Unit) {
+private fun Nav(page: String, onPage: (String) -> Unit, profile: Profile, onSearch: () -> Unit, onProfiles: () -> Unit, onSettings: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = gutter, end = gutter, top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         Brand()
         Spacer(Modifier.width(8.dp))
@@ -131,6 +141,7 @@ private fun Nav(page: String, onPage: (String) -> Unit, profile: Profile, onSear
         }
         Spacer(Modifier.weight(1f))
         Pill(onClick = onSearch, shape = CircleShape) { Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { I(Ic.search) } }
+        Pill(onClick = onSettings, shape = CircleShape) { Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { I(Ic.gear) } }
         Pill(onClick = onProfiles, shape = RoundedCornerShape(9.dp)) { Face(profile, 32.dp) }
     }
 }
@@ -229,7 +240,7 @@ fun TvButton(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector
 @Composable
 private fun TvRail(row: WatchRow, profile: Profile, go: Go) {
     Column(Modifier.padding(bottom = 28.dp)) {
-        Text(if (row.id == "continue") "Continue watching for ${profile.shown}" else row.title, style = ui(19, FontWeight.Bold), modifier = Modifier.padding(start = gutter, bottom = 10.dp))
+        Text(if (row.id == "continue") "Continue watching" else row.title, style = ui(19, FontWeight.Bold), modifier = Modifier.padding(start = gutter, bottom = 10.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             when (row.kind) {
                 "continue" -> items(row.items, key = { it.id }) { TvContinue(it, go) }

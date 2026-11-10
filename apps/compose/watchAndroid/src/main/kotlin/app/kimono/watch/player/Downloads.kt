@@ -19,7 +19,10 @@ import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.scheduler.Scheduler
+import app.kimono.watch.DlState
 import app.kimono.watch.R
+import app.kimono.watch.WatchDownloads
+import app.kimono.watch.dlKey
 import app.kimono.watch.model.PlayAnswer
 import app.kimono.watch.watch
 import kotlinx.coroutines.CoroutineScope
@@ -35,9 +38,6 @@ import okhttp3.OkHttpClient
 import java.io.File
 import java.util.concurrent.Executors
 
-/** How far a download has got: 0–1, or done. */
-data class DlState(val progress: Float, val done: Boolean, val failed: Boolean = false)
-
 @Serializable
 private data class Kept(val answer: PlayAnswer, val name: String)
 
@@ -47,7 +47,7 @@ private data class Kept(val answer: PlayAnswer, val name: String)
  * cache that the player reads before the network. The play answer is kept
  * beside it, so skip intro and the tracks work offline too.
  */
-class Downloads(private val context: Context) {
+class Downloads(private val context: Context) : WatchDownloads {
     private val json = Json { ignoreUnknownKeys = true }
     val manager: DownloadManager by lazy {
         DownloadManager(context, database(context), cache(context), OkHttpDataSource.Factory(OkHttpClient()), Executors.newFixedThreadPool(2)).apply {
@@ -59,7 +59,7 @@ class Downloads(private val context: Context) {
         }
     }
     private val _states = MutableStateFlow<Map<String, DlState>>(emptyMap())
-    val states: StateFlow<Map<String, DlState>> = _states
+    override val states: StateFlow<Map<String, DlState>> = _states
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     init {
@@ -80,7 +80,7 @@ class Downloads(private val context: Context) {
     private fun Download.state() = DlState((percentDownloaded.coerceAtLeast(0f) / 100f), state == Download.STATE_COMPLETED, state == Download.STATE_FAILED)
 
     /** Downloads one episode (or a film, with season and episode 0). */
-    fun start(titleId: String, season: Int, episode: Int, name: String) {
+    override fun start(titleId: String, season: Int, episode: Int, name: String) {
         val id = key(titleId, season, episode)
         if (_states.value[id]?.done == true) return
         _states.value = _states.value + (id to DlState(0f, false))
@@ -96,18 +96,18 @@ class Downloads(private val context: Context) {
         }
     }
 
-    fun remove(titleId: String, season: Int, episode: Int) =
+    override fun remove(titleId: String, season: Int, episode: Int) =
         DownloadService.sendRemoveDownload(context, WatchDownloadService::class.java, key(titleId, season, episode), false)
 
     /** The play answer kept with a finished download, for playing it with no connection. */
-    fun offline(titleId: String, season: Int, episode: Int): PlayAnswer? {
+    override fun offline(titleId: String, season: Int, episode: Int): PlayAnswer? {
         val d = manager.downloadIndex.getDownload(key(titleId, season, episode)) ?: return null
         if (d.state != Download.STATE_COMPLETED) return null
         return runCatching { json.decodeFromString(Kept.serializer(), String(d.request.data)).answer }.getOrNull()
     }
 
     companion object {
-        fun key(titleId: String, season: Int, episode: Int) = "$titleId:$season:$episode"
+        fun key(titleId: String, season: Int, episode: Int) = dlKey(titleId, season, episode)
         private var cache: SimpleCache? = null
         private var db: StandaloneDatabaseProvider? = null
         @Synchronized fun database(context: Context) = db ?: StandaloneDatabaseProvider(context.applicationContext).also { db = it }
