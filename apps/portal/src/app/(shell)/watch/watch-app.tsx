@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { qualities, saveQuality, savedQuality, watchApi, type Card, type Home, type Rating, type Shelf, type TitleView } from "./api";
-import { cx, Toast, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
+import { AppLockup } from "@kimono/ui";
+import { cx, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
 import { Icon, Wavy } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
@@ -172,7 +173,7 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
         </div>
       </section> : <div>
         <header className={cx("kw-topbar", (scrolled || page !== "home") && "kw-solid")}>
-          <button className="kw-brand" onClick={() => go("home")} aria-label="Kimono Watch home"><WatchBloom accent={accent} /><span className="kw-word">Kimono Watch</span></button>
+          <button className="kw-brand" onClick={() => go("home")} aria-label="Kimono Watch home"><AppLockup identity={{ id: watchId, name: "Watch", accent, glyph: "play" }} /></button>
           <nav className="kw-topnav" aria-label="Sections">
             <button aria-current={page === "home" ? "page" : undefined} onClick={() => go("home")}>Home</button>
             <button aria-current={page === "hot" ? "page" : undefined} onClick={() => go("hot")}>New &amp; hot</button>

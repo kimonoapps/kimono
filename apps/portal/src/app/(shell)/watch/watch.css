@@ -561,5 +561,8 @@
 .kw .kw-menu-h{margin:6px 12px 4px;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--fg-3)}
 .kw .kw-menu-rule{height:1px;background:var(--line);margin:6px 8px}
 .kw .kw-smenu button[aria-checked="true"] .kw-ic{opacity:1}
-.kw .kw-brand .kw-word{letter-spacing:.03em;white-space:nowrap}
-@media (max-width:899px){.kw .kw-bloom{width:32px;height:32px}.kw .kw-brand .kw-word{font-size:18px}}
+/* The house lockup (bloom, kimono, watch), as every app wears it, in light ink on the dark floor. */
+.kw .kw-brand .k-app-lockup-word{color:var(--fg);font-size:23px}
+.kw .kw-brand .k-app-lockup-name{color:var(--blush);font-size:23px}
+.kw .kw-brand .k-app-lockup-mark{width:34px;height:34px}
+@media (max-width:899px){.kw .kw-brand .k-app-lockup-word,.kw .kw-brand .k-app-lockup-name{font-size:20px}.kw .kw-brand .k-app-lockup-mark{width:30px;height:30px}}
