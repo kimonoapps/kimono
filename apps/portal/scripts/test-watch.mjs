@@ -443,3 +443,28 @@ test('the image cache forgets the least recently used once past its cap, down to
   assert.deepEqual(images.evictions(files, 50).map((f) => f.path), ['b', 'c'], '120 → 40, under 45');
   assert.equal(images.evictions(files, 10).length, 3);
 });
+
+/* ───── Status ───── */
+
+import * as status from '../src/lib/watch/status.ts';
+
+test('a service that answers anything below 500 is up; silence or a 5xx is down', () => {
+  assert.deepEqual(status.probeOf(404, 12, 'nzbdav isn\'t answering'), { ok: true, ms: 12, problem: null });
+  assert.deepEqual(status.probeOf(null, null, 'nzbdav isn\'t answering'), { ok: false, ms: null, problem: 'nzbdav isn\'t answering' });
+  assert.match(status.probeOf(502, 3, 'AIOStreams isn\'t answering').problem, /answered 502/);
+});
+
+test('setup and the last error are kept for the status page; a later success clears the setup error', async () => {
+  const db = fresh();
+  assert.deepEqual(provision.provisioningOf(db), { ok: null, at: null, setupAt: null, error: null });
+  const none = { ...accounts({ usenet: { ...accounts().usenet, host: '' }, debrid: { service: '', key: '' } }), nzbdavStreamUrl: 'http://nzbdav:3000' };
+  await assert.rejects(provision.ensureProvisioned(db, none, access), /nowhere to stream/);
+  const failed = provision.provisioningOf(db);
+  assert.equal(failed.ok, false);
+  assert.match(failed.error, /nowhere to stream/);
+  provision.noteProvisioning(db, null, 5);
+  assert.deepEqual(provision.provisioningOf(db), { ok: true, at: 5, setupAt: null, error: null });
+  assert.equal(status.lastError(db), null);
+  status.noteError(db, 'The stream search didn\'t answer.', 7);
+  assert.deepEqual(status.lastError(db), { message: 'The stream search didn\'t answer.', at: 7 });
+});

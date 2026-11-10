@@ -18,7 +18,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { WatchConfig } from "./config";
-import { WatchProblem } from "./model";
+import { readState, WatchProblem, writeState } from "./model";
 
 /* nzbdav as AIOStreams reaches it: they always run side by side. */
 export const nzbdavForAiostreams = "http://nzbdav:3000";
@@ -107,6 +107,28 @@ async function aiostreams(base: string, method: "POST" | "PUT", body: unknown, a
  * and gives back AIOStreams' manifest. Cheap when nothing changed.
  */
 export async function ensureProvisioned(db: DatabaseSync, cfg: WatchConfig, nzbdav: NzbdavAccess): Promise<string> {
+  try {
+    const manifest = await provision(db, cfg, nzbdav);
+    if (provisioningOf(db).ok !== true) noteProvisioning(db, null);
+    return manifest;
+  } catch (error) {
+    noteProvisioning(db, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+}
+
+/** Whether the last setup worked, when it last ran, and what went wrong if it didn't. */
+export type Provisioning = { ok: boolean | null; at: number | null; setupAt: number | null; error: string | null };
+
+export function noteProvisioning(db: DatabaseSync, error: string | null, now = Date.now()) {
+  writeState(db, "provisioning", { ok: error === null, at: now, error });
+}
+export function provisioningOf(db: DatabaseSync): Provisioning {
+  const last = readState<{ ok: boolean; at: number; error: string | null }>(db, "provisioning");
+  return { ok: last?.ok ?? null, at: last?.at ?? null, setupAt: readSetup(db)?.at ?? null, error: last?.ok === false ? last.error : null };
+}
+
+async function provision(db: DatabaseSync, cfg: WatchConfig, nzbdav: NzbdavAccess): Promise<string> {
   if (!hasSources(cfg)) throw new WatchProblem("Watch has nowhere to stream from yet. Add a Usenet provider and indexer, or a debrid service, in Applications → Watch.", 503);
   const print = fingerprint(cfg, cfg.nzbdavStreamUrl);
   const kept = readSetup(db);

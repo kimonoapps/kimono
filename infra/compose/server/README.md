@@ -214,6 +214,14 @@ the Portal sets both up from the accounts entered in **Admin â†’ Applications â†
 Watch**: the Usenet provider and indexer, a debrid service if there is one,
 and a TMDB key. Changing an account there sets them up again.
 
+Streams are found ahead of play (a title page searches for the episode Resume
+would play, and the apps ask for the next one most of the way through an
+episode), and an hourly check leaves titles with nothing to stream off Home.
+Posters and stills are served by the Portal from a disk cache under Watch's
+state (`KIMONO_WATCH_IMAGE_CACHE_MB`, 1 GB by default), so phones never call
+TMDB. Owners and admins can read `GET /api/v1/watch/status` to see whether
+TMDB, AIOStreams and nzbdav answer, how setup went, and the last error.
+
 ## Publishing without a tunnel
 
 An app can be published on the server's own address instead of through a

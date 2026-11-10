@@ -14,14 +14,15 @@ import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { badge, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
   cached, episodesOf, finished, fraction, getTitle, getTitles, isStale, keep, listOf, markFillers, markSeasonFillers, migrate, parseTitleId,
-  prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem, writeState,
+  prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem, readState, writeState,
   type Episode, type Title,
 } from "./model";
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
 import { badges, cleanDevice, describe, rank, type Release } from "./releases";
 import { findStreams, stremioId, upstreamRequest } from "./streams";
-import { ensureProvisioned, hasSources, type NzbdavAccess } from "./provision";
+import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
+import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
 
@@ -55,8 +56,10 @@ export async function watch(work: (config: WatchConfig) => Promise<Response> | R
     if (!settings.enabled) return apiError(404, "Watch isn't switched on.");
     return await work(settings);
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!(error instanceof WatchProblem) || error.status >= 500) { try { noteError(watchDb(), message); } catch { /* the database itself is the trouble */ } }
     if (error instanceof WatchProblem) return apiError(error.status, error.message);
-    console.warn("Watch request failed:", error instanceof Error ? error.message : error);
+    console.warn("Watch request failed:", message);
     return apiError(500, "Watch couldn't do that. Try again in a moment.");
   }
 }
@@ -413,6 +416,34 @@ async function markersFor(cfg: WatchConfig, title: Title, episodes: Episode[], s
   if (markers === undefined) return null;
   keep(db, key, { markers }, markers ? 7 * 24 * hours(1) : 24 * hours(1));
   return markers;
+}
+
+/** For admins: whether each service answers, how setup went, the background check, and the last error. */
+export async function status(cfg: WatchConfig) {
+  const db = watchDb();
+  const tmdbProbe = async (): Promise<Probe> => {
+    if (!cfg.tmdbToken) return { ok: false, ms: null, problem: "There's no TMDB key yet." };
+    const started = Date.now();
+    return tmdb(cfg.tmdbToken, "/configuration").then(
+      () => ({ ok: true, ms: Date.now() - started, problem: null }),
+      (error) => ({ ok: false, ms: null, problem: error instanceof Error ? error.message : "TMDB didn't answer." }),
+    );
+  };
+  const usenet = Boolean(cfg.usenet.host);
+  const [tmdbState, aiostreams, nzbdav] = await Promise.all([
+    tmdbProbe(),
+    probe(`${cfg.aiostreamsUrl}/api/v1/status`, "AIOStreams isn't answering"),
+    usenet ? probe(`${cfg.nzbdavUrl}/api?mode=version`, "nzbdav isn't answering") : Promise.resolve(null),
+  ]);
+  return {
+    tmdb: tmdbState,
+    aiostreams,
+    nzbdav: nzbdav ? { used: true, ...nzbdav } : { used: false, ok: false, ms: null, problem: null },
+    sources: { usenet: usenet && Boolean(cfg.indexer.url), debrid: Boolean(cfg.debrid.service && cfg.debrid.key) },
+    provisioning: provisioningOf(db),
+    playability: readState<{ at: number; checked: number; of: number }>(db, "playability"),
+    lastError: lastError(db),
+  };
 }
 
 /** An image from TMDB, by way of Kimono's disk: `/watch/image/w500/abc.jpg`. */
