@@ -18,6 +18,7 @@ import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
+import androidx.media3.exoplayer.scheduler.Requirements
 import androidx.media3.exoplayer.scheduler.Scheduler
 import app.kimono.watch.DlState
 import app.kimono.watch.R
@@ -52,12 +53,28 @@ class Downloads(private val context: Context) : WatchDownloads {
     val manager: DownloadManager by lazy {
         DownloadManager(context, database(context), cache(context), OkHttpDataSource.Factory(OkHttpClient()), Executors.newFixedThreadPool(2)).apply {
             maxParallelDownloads = 2
+            requirements = Requirements(if (keep.getBoolean("dl.wifi", false)) Requirements.NETWORK_UNMETERED else Requirements.NETWORK)
             addListener(object : DownloadManager.Listener {
                 override fun onDownloadChanged(downloadManager: DownloadManager, download: Download, finalException: Exception?) { publish() }
                 override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) { publish() }
             })
         }
     }
+    private val keep = context.getSharedPreferences("watch", Context.MODE_PRIVATE)
+    private val _wifi = MutableStateFlow(keep.getBoolean("dl.wifi", false))
+    override val wifiOnly: StateFlow<Boolean> = _wifi
+
+    /** Waiting for Wi-Fi holds downloads (with the reason in their notification) until it's back. */
+    override fun setWifiOnly(on: Boolean) {
+        keep.edit().putBoolean("dl.wifi", on).apply()
+        _wifi.value = on
+        DownloadService.sendSetRequirements(context, WatchDownloadService::class.java, Requirements(if (on) Requirements.NETWORK_UNMETERED else Requirements.NETWORK), false)
+    }
+
+    override fun usedBytes(): Long = cache(context).cacheSpace
+
+    override fun removeAll() = DownloadService.sendRemoveAllDownloads(context, WatchDownloadService::class.java, false)
+
     private val _states = MutableStateFlow<Map<String, DlState>>(emptyMap())
     override val states: StateFlow<Map<String, DlState>> = _states
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -85,7 +102,7 @@ class Downloads(private val context: Context) : WatchDownloads {
         if (_states.value[id]?.done == true) return
         _states.value = _states.value + (id to DlState(0f, false))
         scope.launch {
-            runCatching { context.watch.api.play(titleId, season, episode) }.onSuccess { answer ->
+            runCatching { context.watch.api.play(titleId, season, episode, quality = app.kimono.watch.downloadQualityOf(context.watch.services.prefs.state.value)) }.onSuccess { answer ->
                 val request = DownloadRequest.Builder(id, Uri.parse(answer.url)).setCustomCacheKey(id)
                     .setData(json.encodeToString(Kept.serializer(), Kept(answer, name)).toByteArray()).build()
                 DownloadService.sendAddDownload(context, WatchDownloadService::class.java, request, false)

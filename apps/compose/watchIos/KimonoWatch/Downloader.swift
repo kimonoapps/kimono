@@ -35,10 +35,16 @@ final class Downloader: NSObject, IosDownloader, URLSessionDownloadDelegate, @un
 
     func keys() -> [String] { _ = session; return started }
 
+    /// Settings → Downloads → Wi-Fi only: each new download says whether it may use mobile data.
+    private var cellular = true
+    func setCellular(allowed: Bool) { cellular = allowed }
+
     func start(key: String, url: String) {
         guard let target = URL(string: url) else { return notify(key, 0, done: false, failed: true) }
         cancelTasks(key) {
-            let task = self.session.downloadTask(with: target)
+            var request = URLRequest(url: target)
+            request.allowsCellularAccess = self.cellular
+            let task = self.session.downloadTask(with: request)
             task.taskDescription = key
             task.resume()
             if !self.started.contains(key) { self.started.append(key) }

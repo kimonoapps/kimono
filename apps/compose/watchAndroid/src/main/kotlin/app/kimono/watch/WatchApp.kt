@@ -59,7 +59,7 @@ class WatchApp : Application() {
         downloads = app.kimono.watch.player.Downloads(this)
         services = WatchServices(accounts, api, toasts, downloads, tv, app.kimono.watch.ui.AndroidPreview, deviceId, cellular = !tv, openUrl = { url ->
             runCatching { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        })
+        }, version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty())
     }
 
     private fun onMobileData(): Boolean {

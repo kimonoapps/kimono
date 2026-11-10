@@ -32,8 +32,33 @@ class IosDownloads(private val downloader: IosDownloader, private val api: Watch
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _states = MutableStateFlow<Map<String, DlState>>(emptyMap())
     override val states: StateFlow<Map<String, DlState>> = _states
+    private val _wifi = MutableStateFlow(defaults.boolForKey("dl.wifi"))
+    override val wifiOnly: StateFlow<Boolean> = _wifi
+    /** The person's preferences, for the download quality; set once the app's services exist. */
+    var prefs: app.kimono.watch.ui.PrefsStore? = null
+
+    override fun setWifiOnly(on: Boolean) {
+        defaults.setBool(on, "dl.wifi")
+        _wifi.value = on
+        downloader.setCellular(!on)
+    }
+
+    @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+    override fun usedBytes(): Long = _states.value.keys.sumOf { key ->
+        val path = downloader.file(key) ?: return@sumOf 0L
+        (platform.Foundation.NSFileManager.defaultManager.attributesOfItemAtPath(path, null)?.get(platform.Foundation.NSFileSize) as? Number)?.toLong() ?: 0L
+    }
+
+    override fun removeAll() {
+        _states.value.keys.toList().forEach { key ->
+            downloader.cancel(key)
+            defaults.removeObjectForKey("dl.$key")
+        }
+        _states.value = emptyMap()
+    }
 
     init {
+        downloader.setCellular(!_wifi.value)
         _states.value = downloader.keys().filter { kept(it) != null }.associateWith { key ->
             if (downloader.file(key) != null) DlState(1f, true) else DlState(0f, false)
         }
@@ -51,7 +76,7 @@ class IosDownloads(private val downloader: IosDownloader, private val api: Watch
         if (_states.value[key]?.done == true) return
         _states.value = _states.value + (key to DlState(0f, false))
         scope.launch {
-            runCatching { api.play(titleId, season, episode) }.onSuccess { answer ->
+            runCatching { api.play(titleId, season, episode, quality = app.kimono.watch.downloadQualityOf(prefs?.state?.value)) }.onSuccess { answer ->
                 defaults.setObject(json.encodeToString(Kept.serializer(), Kept(answer, name)), "dl.$key")
                 downloader.start(key, answer.url)
             }.onFailure {

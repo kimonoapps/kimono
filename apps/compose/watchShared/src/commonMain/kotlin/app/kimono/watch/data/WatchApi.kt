@@ -28,7 +28,7 @@ import kotlinx.serialization.json.put
  */
 class WatchApi(
     val accounts: Accounts,
-    private val device: () -> Device,
+    internal val device: () -> Device,
     /** This install's id, so the server keeps a quality per device (a phone on mobile data counts as its own). */
     val deviceId: () -> String,
 ) {

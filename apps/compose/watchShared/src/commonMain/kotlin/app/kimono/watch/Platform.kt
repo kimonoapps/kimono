@@ -32,7 +32,16 @@ interface WatchDownloads {
     fun remove(titleId: String, season: Int, episode: Int)
     /** The play answer kept with a finished download, for playing it with no connection. */
     fun offline(titleId: String, season: Int, episode: Int): PlayAnswer?
+    /** Downloads wait for Wi-Fi (kept on this device, not with the person). */
+    val wifiOnly: StateFlow<Boolean>
+    fun setWifiOnly(on: Boolean)
+    /** Bytes the downloads take on this device. */
+    fun usedBytes(): Long
+    fun removeAll()
 }
+
+/** The quality a download asks /play for: "standard" keeps it small; "higher" takes this device's own. */
+fun downloadQualityOf(prefs: app.kimono.watch.model.Prefs?): String? = if (prefs?.downloadQuality == "higher") null else "720"
 
 /** A track as the audio & subtitles sheet lists it; [handle] is the player's own reference. */
 class TrackOption(val handle: Any?, val label: String, val language: String?, val signs: Boolean, val selected: Boolean)
@@ -79,6 +88,8 @@ interface PlaybackEngine {
     fun setVolume(volume: Float) {}
     /** Switches on the audio and subtitles the server asked for. */
     fun applyHints(hints: TrackHints)
+    /** How text subtitles look: [size] "small" | "medium" | "large", [background] "none" | "shadow" | "box". Styled ASS keeps its own. */
+    fun subtitleLook(size: String, background: String) {}
     /** Whether the video picked is something no decoder here really handles (10-bit H.264, software AV1). */
     fun videoBeyondDecoders(): Boolean
     fun audioOptions(): List<TrackOption>
@@ -113,7 +124,12 @@ class WatchServices(
     val cellular: Boolean,
     /** Opens a link outside the app (Kimono account). */
     val openUrl: (String) -> Unit,
-)
+    /** This build's version, for Settings → About. */
+    val version: String = "",
+) {
+    /** The person's preferences, read once signed in and kept as they change them. */
+    val prefs = app.kimono.watch.ui.PrefsStore(api)
+}
 
 val LocalWatch = staticCompositionLocalOf<WatchServices> { error("No WatchServices provided") }
 

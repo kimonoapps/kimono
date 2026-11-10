@@ -404,6 +404,21 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         set("sub-margin-y", String(Int(margin)))
     }
 
+    /// Plain subtitles in the house style: paper Zen Maru Gothic with an ink outline, a shadow, or on a box.
+    /// Sizes are on mpv's 720-line scale; styled ASS keeps its own look (sub-ass-override stays off).
+    func subtitleLook(size: String, background: String) {
+        set("sub-font-size", size == "small" ? "36" : size == "large" ? "54" : "44")
+        set("sub-color", "#FFF4E9E1")
+        switch background {
+        case "box":
+            set("sub-border-style", "background-box"); set("sub-back-color", "#B8110C0A"); set("sub-border-size", "6"); set("sub-shadow-offset", "0")
+        case "none":
+            set("sub-border-style", "outline-and-shadow"); set("sub-border-color", "#FF110C0A"); set("sub-border-size", "2.5"); set("sub-shadow-offset", "0")
+        default:
+            set("sub-border-style", "outline-and-shadow"); set("sub-border-color", "#99110C0A"); set("sub-border-size", "1"); set("sub-shadow-color", "#E6000000"); set("sub-shadow-offset", "2.5")
+        }
+    }
+
     func setEvents(events: IosPlayerEvents?) { self.events = events }
 
     func setHlsSource(source: IosHlsSource?) { hls = source }

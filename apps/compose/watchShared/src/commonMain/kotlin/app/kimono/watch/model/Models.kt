@@ -237,6 +237,13 @@ data class Prefs(
     val subtitles: String = "auto",
     /** Anime "seasons" or "continuous" (one numbered run). */
     val animeEpisodes: String = "seasons",
+    /** Text subtitles: "small" | "medium" | "large", and "none" | "shadow" | "box" behind them. Styled ASS keeps its own look. */
+    val subtitleSize: String = "medium",
+    val subtitleBackground: String = "shadow",
+    /** Silent previews on Home and title pages. */
+    val previews: Boolean = true,
+    /** Downloads "standard" (smaller) or "higher" (near streaming quality). */
+    val downloadQuality: String = "standard",
     val autoplayNext: Boolean = true,
     val skipIntros: Boolean = false,
     /** With `?device=`: this device's own quality, null when it follows the person's. */

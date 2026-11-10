@@ -75,12 +75,28 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
                 .setEnableDecoderFallback(true),
         )
 
+    private val onTv = tv
+    private val captionFont = ResourcesCompat.getFont(context, R.font.zen_maru_medium)
+
     init {
-        /* Plain subtitles as the demo draws them: white on a soft dark box, Zen Maru Gothic. */
-        subtitles.setStyle(CaptionStyleCompat(Color.WHITE, 0x8C000000.toInt(), Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_NONE, Color.TRANSPARENT,
-            ResourcesCompat.getFont(context, R.font.zen_maru_medium)))
-        subtitles.setFractionalTextSize(if (tv) 0.052f else 0.065f)
+        subtitleLook("medium", "shadow")
         subtitles.setApplyEmbeddedStyles(true)
+    }
+
+    /**
+     * Plain (text) subtitles in the house style: paper Zen Maru Gothic with an
+     * ink outline, a shadow, or on a box; sized as a share of the picture,
+     * larger on a phone held at arm's length. Styled ASS is drawn by libass as made.
+     */
+    override fun subtitleLook(size: String, background: String) {
+        val paper = 0xFFF4E9E1.toInt(); val ink = 0xFF110C0A.toInt()
+        subtitles.setStyle(when (background) {
+            "box" -> CaptionStyleCompat(paper, 0xB8110C0A.toInt(), Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_NONE, Color.TRANSPARENT, captionFont)
+            "none" -> CaptionStyleCompat(paper, Color.TRANSPARENT, Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_OUTLINE, ink, captionFont)
+            else -> CaptionStyleCompat(paper, Color.TRANSPARENT, Color.TRANSPARENT, CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, 0xE6000000.toInt(), captionFont)
+        })
+        val share = when (size) { "small" -> 0.036f; "large" -> 0.054f; else -> 0.044f }
+        subtitles.setFractionalTextSize(share * if (onTv) 1.15f else 1.4f)
     }
 
     override fun load(url: String, key: String, startAt: Double, play: Boolean) {

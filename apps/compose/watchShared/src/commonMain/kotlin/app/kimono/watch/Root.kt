@@ -56,7 +56,7 @@ private sealed interface Phase {
     data object Loading : Phase
     data object Profiles : Phase
     /** [server]: a Kimono named by a connect link, or null for the usual. */
-    data class SignIn(val first: Boolean, val server: String? = null) : Phase
+    data class SignIn(val first: Boolean, val server: String? = null, val back: Profile? = null) : Phase
     data class Shell(val profile: Profile) : Phase
 }
 
@@ -86,6 +86,12 @@ fun interface TvShellSlot {
  * up each time the app comes back to the front, so pages ask again. [connect]
  * is a Kimono address from a kimono-watch://connect link.
  */
+/**
+ * The "who's watching" picker. Off for now: the app opens on whoever signed in
+ * last, or on sign-in. The picker and its screen stay for when it comes back.
+ */
+const val PROFILE_PICKER = false
+
 @Composable
 fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: TvShellSlot?, play: PlayerLauncher) {
     CompositionLocalProvider(LocalWatch provides services) {
@@ -97,6 +103,10 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
             phase = when {
                 connect != null -> Phase.SignIn(all.isEmpty(), connect)
                 all.isEmpty() -> Phase.SignIn(true)
+                /* Picker off: straight into whoever signed in last, or sign in again. */
+                !PROFILE_PICKER -> (all.firstOrNull { it.key == accounts.lastKey } ?: all[0]).let { p ->
+                    runCatching { accounts.ready(p); accounts.choose(p); Phase.Shell(p) }.getOrDefault(Phase.SignIn(true))
+                }
                 /* A phone with one person on it goes straight in; a TV always asks. */
                 !services.tv && all.size == 1 -> runCatching { accounts.ready(all[0]); accounts.choose(all[0]); Phase.Shell(all[0]) }.getOrDefault(Phase.Profiles)
                 else -> Phase.Profiles
@@ -109,9 +119,14 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
                 when (p) {
                     Phase.Loading -> Starting()
                     Phase.Profiles -> ProfilesScreen(accounts, services.tv, onChosen = { phase = Phase.Shell(it) }, onAdd = { phase = Phase.SignIn(false) })
-                    is Phase.SignIn -> SignInScreen(accounts, services.tv, p.server, onDone = { phase = Phase.Shell(it) }, onCancel = if (p.first) null else ({ phase = Phase.Profiles }))
+                    is Phase.SignIn -> SignInScreen(accounts, services.tv, p.server, onDone = { phase = Phase.Shell(it) }, onCancel = if (p.first) null else ({ phase = (p.back?.let { Phase.Shell(it) } ?: Phase.Profiles) }))
                     is Phase.Shell -> Signed(services, p.profile, resumed, tvShell, play, onProfiles = {
-                        phase = if (accounts.profiles.value.orEmpty().isEmpty()) Phase.SignIn(true) else Phase.Profiles
+                        phase = when {
+                            accounts.profiles.value.orEmpty().isEmpty() -> Phase.SignIn(true)
+                            /* Picker off: "switch" signs in as someone else, Back returns here. */
+                            !PROFILE_PICKER -> Phase.SignIn(false, back = p.profile)
+                            else -> Phase.Profiles
+                        }
                     })
                 }
             }
@@ -119,7 +134,7 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
         }
         /* Signed out underneath (refused at renewal): back to the faces. */
         val active by accounts.active.collectAsState()
-        LaunchedEffect(active) { if (active == null && phase is Phase.Shell) phase = if (accounts.profiles.value.orEmpty().isEmpty()) Phase.SignIn(true) else Phase.Profiles }
+        LaunchedEffect(active) { if (active == null && phase is Phase.Shell) phase = if (!PROFILE_PICKER || accounts.profiles.value.orEmpty().isEmpty()) Phase.SignIn(true) else Phase.Profiles }
     }
 }
 
@@ -145,6 +160,7 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
     fun push(s: Screen) { stack.add(Entry(s)) }
     fun pop() { stack.removeLastOrNull()?.store?.clear() }
     val go = remember(profile.key) { Go(open = { c: Card -> push(Screen.Title(c.id, c.top)) }, play = play::play, together = play::together, join = play::join) }
+    LaunchedEffect(profile.key) { services.prefs.load() }
     LaunchedEffect(resumed) {
         if (resumed > 0) {
             home.refresh(); list.refresh()
@@ -164,7 +180,7 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
             when (val s = entry?.screen) {
                 is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(services.api, services.toasts, s.id) }, go, s.top, onClose = ::pop, downloads = services.downloads)
                 Screen.Search -> SearchScreen(entry.vm { SearchViewModel(services.api) }, go, onClose = ::pop)
-                Screen.Settings -> SettingsScreen(onClose = ::pop)
+                Screen.Settings -> SettingsScreen(onClose = ::pop, onProfiles = onProfiles)
                 null -> Box(Modifier) {}
             }
         }

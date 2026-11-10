@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package app.kimono.watch.player
 
 import androidx.compose.animation.AnimatedVisibility
@@ -143,6 +145,14 @@ fun PlayerScreen(
     var ctl by remember { mutableStateOf(true) }
     var poke by remember { mutableIntStateOf(0) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
+    /* Settings over the picture, from the sheet's "Your defaults". */
+    var settings by remember { mutableStateOf(false) }
+    androidx.compose.ui.backhandler.BackHandler(settings) { settings = false }
+    /* The person's subtitle look, applied as it changes (Settings can be opened from here). */
+    val watchPrefs = app.kimono.watch.LocalWatch.current.prefs
+    val prefs by watchPrefs.state.collectAsState()
+    LaunchedEffect(Unit) { if (prefs == null) watchPrefs.load() }
+    LaunchedEffect(prefs?.subtitleSize, prefs?.subtitleBackground) { prefs?.let { engine.subtitleLook(it.subtitleSize, it.subtitleBackground) } }
     var scrub by remember { mutableStateOf<Double?>(null) }
     var speed by remember { mutableFloatStateOf(1f) }
     var volume by remember { mutableFloatStateOf(1f) }
@@ -258,6 +268,11 @@ fun PlayerScreen(
     Box(Modifier.fillMaxSize().background(Color.Black).focusRequester(focusRoot).focusable()
         .onPreviewKeyEvent { e ->
             val code = e.key
+            /* Settings is open: it takes the keys, and Back closes it. */
+            if (settings) {
+                if (code == Key.Back || code == Key.Escape) { if (e.type == KeyEventType.KeyUp) settings = false; return@onPreviewKeyEvent true }
+                return@onPreviewKeyEvent false
+            }
             val down = e.type == KeyEventType.KeyDown
             if (!down && e.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
             val repeat = down && held.containsKey(code)
@@ -275,7 +290,7 @@ fun PlayerScreen(
                     when {
                         sheet != null -> { sheet = null; show() }
                         scrub != null -> scrub = null
-                        ctl && tv && post == Post.None -> ctl = false
+                        ctl && tv && post == Post.None && !state.loading -> ctl = false
                         else -> onExit()
                     }
                     true
@@ -414,7 +429,7 @@ fun PlayerScreen(
 
         AnimatedVisibility(sheet != null, Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 90.dp),
             enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.7f)) { it / 10 }, exit = fadeOut(tween(200))) {
-            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party)
+            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party, onDefaults = { sheet = null; settings = true })
         }
 
         when (post) {
@@ -425,9 +440,11 @@ fun PlayerScreen(
         }
 
         Loading(state, vm, startFill, onExit)
+
+        if (settings) app.kimono.watch.phone.SettingsScreen(onClose = { settings = false }, tv = tv, playerOnly = true)
     }
     LaunchedEffect(Unit) { runCatching { focusRoot.requestFocus() } }
-    LaunchedEffect(ctl, tv) { if (tv && !ctl) runCatching { focusRoot.requestFocus() } }
+    LaunchedEffect(ctl, tv, settings) { if (tv && !ctl && !settings) runCatching { focusRoot.requestFocus() } }
 }
 
 /** [shadow]: a soft drop shadow in the glyph's own shape, so it reads on bright frames. */
@@ -680,7 +697,7 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
 }
 
 @Composable
-private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit, party: TogetherViewModel?) {
+private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit, party: TogetherViewModel?, onDefaults: () -> Unit) {
     val state by vm.state.collectAsState()
     val first = remember { FocusRequester() }
     Column(Modifier.widthIn(max = 460.dp).heightIn(max = 620.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xF51B1412)).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(18.dp)) {
@@ -729,6 +746,11 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                     LazyColumn(Modifier.height(120.dp)) {
                         items(versions) { v -> Opt(v.label + if (v.source.isNotBlank()) " · ${v.source.replaceFirstChar { it.uppercase() }}" else "", v.index == state.answer?.version?.index) { vm.version(v.index, position); close() } }
                     }
+                }
+                /* Languages, subtitle look and quality for every title: Settings, over the picture. */
+                Row(Modifier.fillMaxWidth().padding(top = 12.dp).clickableScale(onDefaults).padding(horizontal = 6.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Your defaults", style = ui(15, FontWeight.Bold), modifier = Modifier.weight(1f))
+                    Text("›", style = ui(18, color = Night.fg3))
                 }
             }
             Sheet.Speed -> {

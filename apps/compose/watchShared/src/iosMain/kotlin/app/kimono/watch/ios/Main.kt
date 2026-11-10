@@ -89,8 +89,11 @@ object WatchIos {
         })
         /* On mobile data a phone counts as a device of its own, with its own quality (Settings). */
         val api = WatchApi(accounts, { device }) { if (host.onCellular()) "$deviceId.cell" else deviceId }
-        services = WatchServices(accounts, api, toasts, IosDownloads(host.downloader, api, toasts), tv = false, preview = IosPreview(host, api),
-            deviceId = deviceId, cellular = true, openUrl = host::openUrl)
+        val downloads = IosDownloads(host.downloader, api, toasts)
+        services = WatchServices(accounts, api, toasts, downloads, tv = false, preview = IosPreview(host, api),
+            deviceId = deviceId, cellular = true, openUrl = host::openUrl,
+            version = (platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String).orEmpty())
+        downloads.prefs = services.prefs
         val launcher = object : PlayerLauncher {
             override fun play(titleId: String, season: Int?, episode: Int?) = openPlayer(PlayerStart(titleId, season, episode))
             override fun together(titleId: String, season: Int?, episode: Int?, at: Double) = openPlayer(PlayerStart(titleId, season, episode, together = true, at = at))

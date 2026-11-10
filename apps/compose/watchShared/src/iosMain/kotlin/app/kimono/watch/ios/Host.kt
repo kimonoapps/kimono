@@ -85,6 +85,8 @@ interface IosPlayer {
     fun selectSubtitles(id: String?)
     /** Subtitles drawn this far up, as a fraction of the picture, while the controls are showing. */
     fun liftSubtitles(fraction: Double)
+    /** Plain subtitles' look: [size] "small" | "medium" | "large", [background] "none" | "shadow" | "box". Styled ASS keeps its own. */
+    fun subtitleLook(size: String, background: String)
     fun setEvents(events: IosPlayerEvents?)
     fun setHlsSource(source: IosHlsSource?)
     /** Lock screen and Control Center. */
@@ -103,6 +105,8 @@ interface IosDownloader {
     /** The finished file's path, or null. */
     fun file(key: String): String?
     fun keys(): List<String>
+    /** Whether downloads may use mobile data (Settings → Downloads → Wi-Fi only turns it off). */
+    fun setCellular(allowed: Boolean)
     fun listen(events: IosDownloadEvents)
 }
 

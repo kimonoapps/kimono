@@ -166,14 +166,16 @@ private fun BottomBar(page: String, modifier: Modifier, onPage: (String) -> Unit
 private fun HomePage(profile: Profile, vm: HomeViewModel, go: Go, scroll: androidx.compose.foundation.lazy.LazyListState, previewing: Boolean) {
     val state by vm.state.collectAsState()
     val home = state.home
+    /* The hero's preview stops once Home is scrolled, so the rows have the phone to themselves. */
+    val top by remember(scroll) { derivedStateOf { scroll.firstVisibleItemIndex == 0 && scroll.firstVisibleItemScrollOffset < 240 } }
     LazyColumn(Modifier.fillMaxSize(), state = scroll, contentPadding = PaddingValues(bottom = navBottom + 96.dp)) {
-        item("hero") { Hero(home?.featured, home?.rows.orEmpty(), go, previewing && scroll.firstVisibleItemIndex == 0) }
+        item("hero", contentType = "hero") { Hero(home?.featured, home?.rows.orEmpty(), go, previewing && top) }
         item("party") { PartyInvites(go, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 22.dp)) }
         if (home == null) {
             if (state.problem != null) item { Text(state.problem!!, style = ui(15, color = Night.fg3), modifier = Modifier.padding(16.dp)) }
             else items(4) { SkeletonRow() }
         } else {
-            items(home.rows, key = { it.id + state.shelf }) { row -> RailRow(row, profile, go) }
+            items(home.rows, key = { it.id + state.shelf }, contentType = { it.kind }) { row -> RailRow(row, profile, go) }
         }
     }
 }
@@ -236,9 +238,9 @@ private fun RailRow(row: WatchRow, profile: Profile, go: Go) {
         Text(title, style = ui(17, FontWeight.Bold), modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (row.kind) {
-                "continue" -> items(row.items, key = { it.id }) { ContinueCard(it, go) }
-                "top" -> itemsIndexed(row.items, key = { _, c -> c.id }) { i, c -> TopTen(i + 1, c, go) }
-                else -> items(row.items, key = { it.id }) { PosterCard(it, go) }
+                "continue" -> items(row.items, key = { it.id }, contentType = { "continue" }) { ContinueCard(it, go) }
+                "top" -> itemsIndexed(row.items, key = { _, c -> c.id }, contentType = { _, _ -> "top" }) { i, c -> TopTen(i + 1, c, go) }
+                else -> items(row.items, key = { it.id }, contentType = { "poster" }) { PosterCard(it, go) }
             }
         }
     }

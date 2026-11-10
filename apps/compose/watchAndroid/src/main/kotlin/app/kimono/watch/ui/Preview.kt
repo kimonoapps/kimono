@@ -7,6 +7,7 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +42,9 @@ object AndroidPreview : app.kimono.watch.PreviewPlayer {
 
 @Composable
 fun PreviewVideo(titleId: String, season: Int, episode: Int, muted: Boolean, active: Boolean, onPlaying: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    /* Settings → Previews: off, the still stays. */
+    val prefs by app.kimono.watch.LocalWatch.current.prefs.state.collectAsState()
+    if (prefs?.previews == false) return
     val context = LocalContext.current
     var playing by remember(titleId) { mutableStateOf(false) }
     val alpha by animateFloatAsState(if (playing && active) 1f else 0f, tween(1200), label = "preview")

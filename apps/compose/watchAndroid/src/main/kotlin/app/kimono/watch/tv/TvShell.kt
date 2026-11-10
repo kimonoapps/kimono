@@ -124,7 +124,7 @@ fun TvShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: List
             when (val s = entry?.screen) {
                 is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(app.api, app.toasts, s.id) }, go, s.top, onClose = onBack, downloads = app.downloads, wide = true)
                 Screen.Search -> SearchScreen(entry.vm { SearchViewModel(app.api) }, go, onClose = onBack, tv = true)
-                Screen.Settings -> SettingsScreen(onClose = onBack, wide = true)
+                Screen.Settings -> SettingsScreen(onClose = onBack, onProfiles = onProfiles, tv = true)
                 null -> Box(Modifier) {}
             }
         }
@@ -164,11 +164,12 @@ private fun TvHome(profile: Profile, vm: HomeViewModel, go: Go, active: Boolean,
     val home = state.home
     val list = rememberLazyListState()
     val playFocus = remember { FocusRequester() }
+    val top by remember(list) { androidx.compose.runtime.derivedStateOf { list.firstVisibleItemIndex == 0 } }
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 64.dp)) {
-        item("hero") { TvHero(home?.featured, home?.rows.orEmpty(), go, active && list.firstVisibleItemIndex == 0, playFocus, nav, state.shelf) { vm.shelf(it) } }
+        item("hero", contentType = "hero") { TvHero(home?.featured, home?.rows.orEmpty(), go, active && top, playFocus, nav, state.shelf) { vm.shelf(it) } }
         item("party") { app.kimono.watch.phone.PartyInvites(go, Modifier.padding(start = gutter, end = gutter, bottom = 24.dp).widthIn(max = 760.dp)) }
         if (home == null) items(3) { TvSkeletonRow() }
-        else items(home.rows, key = { it.id + state.shelf }) { row -> TvRail(row, profile, go) }
+        else items(home.rows, key = { it.id + state.shelf }, contentType = { it.kind }) { row -> TvRail(row, profile, go) }
     }
     LaunchedEffect(home != null) { if (home != null) { runCatching { playFocus.requestFocus() }; kotlinx.coroutines.delay(100); list.scrollToItem(0) } }
 }
@@ -244,9 +245,9 @@ private fun TvRail(row: WatchRow, profile: Profile, go: Go) {
         Text(if (row.id == "continue") "Continue watching" else row.title, style = ui(19, FontWeight.Bold), modifier = Modifier.padding(start = gutter, bottom = 10.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             when (row.kind) {
-                "continue" -> items(row.items, key = { it.id }) { TvContinue(it, go) }
-                "top" -> itemsIndexed(row.items, key = { _, c -> c.id }) { i, c -> TvTopTen(i + 1, c, go) }
-                else -> items(row.items, key = { it.id }) { TvCard(it, go) }
+                "continue" -> items(row.items, key = { it.id }, contentType = { "continue" }) { TvContinue(it, go) }
+                "top" -> itemsIndexed(row.items, key = { _, c -> c.id }, contentType = { _, _ -> "top" }) { i, c -> TvTopTen(i + 1, c, go) }
+                else -> items(row.items, key = { it.id }, contentType = { "card" }) { TvCard(it, go) }
             }
         }
     }

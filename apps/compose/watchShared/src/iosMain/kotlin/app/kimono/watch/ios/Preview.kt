@@ -1,6 +1,7 @@
 package app.kimono.watch.ios
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +25,8 @@ private val answers = mutableMapOf<String, PlayAnswer>()
 class IosPreview(private val host: IosWatchHost, private val api: WatchApi) : PreviewPlayer {
     @Composable
     override fun Show(titleId: String, season: Int, episode: Int, muted: Boolean, shown: Boolean, onPlaying: (Boolean) -> Unit, modifier: Modifier) {
+        /* Settings → Previews: off, the still stays. */
+        if (app.kimono.watch.LocalWatch.current.prefs.state.collectAsState().value?.previews == false) return
         val active = shown && !WatchIos.playerUp.value
         var playing by remember(titleId) { mutableStateOf(false) }
         /* Past the seek into the episode: the cold open's first frames aren't shown. */
