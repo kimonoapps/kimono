@@ -27,6 +27,7 @@ import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from
 import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
+import { migrateTogether } from "./together";
 import { anything, castOf, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
@@ -40,11 +41,12 @@ export function watchDb(): DatabaseSync {
     mkdirSync(root, { recursive: true, mode: 0o700 });
     const opened = new DatabaseSync(join(root, "watch.db"));
     migrate(opened);
+    migrateTogether(opened);
     cache.kimonoWatch = opened;
     migrated = true;
   }
   /* A hot reload keeps the connection but brings new code: bring the schema along. */
-  if (!migrated) { migrate(cache.kimonoWatch); migrated = true; }
+  if (!migrated) { migrate(cache.kimonoWatch); migrateTogether(cache.kimonoWatch); migrated = true; }
   if (!cache.kimonoWatchSwept || Date.now() - cache.kimonoWatchSwept > 60 * 60 * 1000) {
     cache.kimonoWatchSwept = Date.now();
     sweepCache(cache.kimonoWatch);
@@ -336,6 +338,17 @@ const searching = ((globalThis as unknown as { kimonoWatchSearching?: Map<string
 function findAhead(cfg: WatchConfig, title: Title, season: number, episode: number) {
   if (!title.imdbId || !hasSources(cfg)) return;
   releasesFor(cfg, title, season, episode).catch(() => {});
+}
+
+/**
+ * What a Watch Together party plays after this episode: the host's way with
+ * filler (skipping it only if they skip it; asking isn't for a party).
+ */
+export async function nextUp(cfg: WatchConfig, host: string, titleId: string, from: { season: number; episode: number }) {
+  const title = await ensureTitle(cfg, titleId);
+  if (title.kind === "movie") return null;
+  const fillers = prefsOf(watchDb(), host).fillers === "skip" ? "skip" : "watch";
+  return nextEpisode(await allEpisodes(cfg, title), from, fillers);
 }
 
 /**

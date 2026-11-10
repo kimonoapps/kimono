@@ -342,9 +342,9 @@ function TogetherDialog({ people, onStart, onClose }: { people: Person[]; onStar
 function Arriving({ id, people, onJoin, onClose }: { id: string; people: Person[]; onJoin: () => void; onClose: () => void }) {
   const [what, setWhat] = useState<{ text: string; ok: boolean } | null>(null);
   useEffect(() => {
-    together.peek(id).then(({ state }) => {
+    together.peek(id).then(({ state, title }) => {
       const host = people.find((p) => p.username.toLowerCase() === state.host)?.name.split(" ")[0] ?? state.host;
-      setWhat({ text: `${host} is watching`, ok: true });
+      setWhat({ text: title ? `${host} is watching ${title.name}` : `${host} is watching`, ok: true });
     }, (error) => setWhat({ text: error instanceof Error ? error.message : "That didn't work.", ok: false }));
   }, [id, people]);
   return <div className="kw-dialog kw-on" role="dialog" aria-modal="true" aria-label="Join the watch party">

@@ -35,7 +35,7 @@ export const together = {
   list: () => fetch(api(""), { credentials: "same-origin" }).then((r) => (r.ok ? r.json() as Promise<{ parties: Invite[]; people: Person[] }> : Promise.reject(new Error("Watch isn't answering.")))),
   create: (body: { titleId: string; season?: number; episode?: number; position?: number; client: string; invite: string[] }) =>
     post<{ state: PartyView; error?: string }>("", body).then((r) => (r.status < 300 ? r.body.state : Promise.reject(new Error(r.body.error || "That didn't work.")))),
-  peek: (id: string) => fetch(api(`/${encodeURIComponent(id)}`), { credentials: "same-origin" }).then((r) => (r.ok ? r.json() as Promise<{ state: PartyView; chat: ChatLine[] }> : Promise.reject(new Error(r.status === 404 ? "This watch party has ended." : "Watch isn't answering.")))),
+  peek: (id: string) => fetch(api(`/${encodeURIComponent(id)}`), { credentials: "same-origin" }).then((r) => (r.ok ? r.json() as Promise<{ state: PartyView; chat: ChatLine[]; title: { id: string; name: string } | null }> : Promise.reject(new Error(r.status === 404 ? "This watch party has ended." : "Watch isn't answering.")))),
   decline: (id: string) => post(`/${encodeURIComponent(id)}`, { type: "decline" }).catch(() => null),
 };
 

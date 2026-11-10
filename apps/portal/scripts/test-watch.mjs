@@ -10,6 +10,7 @@ import * as tmdb from '../src/lib/watch/tmdb.ts';
 import * as anime from '../src/lib/watch/anime.ts';
 import * as streams from '../src/lib/watch/streams.ts';
 import * as hls from '../src/lib/watch/hls.ts';
+import * as party from '../src/lib/watch/together.ts';
 
 const day = 24 * 60 * 60 * 1000;
 function fresh() {
@@ -778,4 +779,318 @@ test('the Quality menu offers only sizes that play here', () => {
   assert.deepEqual(values(releases.qualityOptions(sizes(1080), tv, true)), ['auto', '1080', '720', 'saver'], 'HLS scales down');
   assert.deepEqual(values(releases.qualityOptions([], tv)), ['auto']);
   assert.deepEqual(releases.qualityOptions(sizes(2160), tv, true).map((x) => x.label), ['Auto', '4K', '1080p', '720p', 'Data saver']);
+});
+
+/* ───── Watch Together ───── */
+
+const T = party.together;
+const start = (now = 1_000_000, over = {}) => party.newParty('p-abcdefgh', { username: 'Akram', client: 'akram-tab1' }, { titleId: 'tv-1', season: 1, episode: 3, position: 120, ...over }, ['Sami', 'akram', 'mo'], now);
+/** A tick with every screen still connected (the live channel keeps them seen). */
+const live = (p, now) => party.tick(party.seen(p, p.members.map((m) => m.client), now), now);
+/** A party with akram and sami both ready and playing from 120 s at `now`. */
+function playing(now = 1_000_000) {
+  let p = start(now - 5000);
+  p = party.report(p, { client: 'sami-tab1', username: 'sami' }, 'loading', now - 4000);
+  p = party.report(p, { client: 'akram-tab1', username: 'akram' }, 'ready', now - 3000);
+  p = party.tick(p, now - 3000).party;
+  p = party.report(p, { client: 'sami-tab1', username: 'sami' }, 'ready', now - 2000);
+  p = party.tick(p, now - 2000).party;
+  const cmd = party.command(p, { username: 'akram' }, { type: 'seek', position: 120 }, p.seq, now);
+  assert.ok(cmd.ok);
+  return party.command(cmd.party, { username: 'akram' }, { type: 'play' }, cmd.party.seq, now).party;
+}
+
+test('the timeline says where everyone should be', () => {
+  const t = { playing: true, position: 100, rate: 1, at: 10_000 };
+  assert.equal(party.positionAt(t, 10_000), 100);
+  assert.equal(party.positionAt(t, 12_500), 102.5);
+  assert.equal(party.positionAt({ ...t, rate: 1.5 }, 12_000), 103);
+  assert.equal(party.positionAt({ ...t, playing: false }, 99_000), 100, 'paused stays put');
+  assert.equal(party.positionAt(t, 9_000), 100, 'a start set ahead holds until then');
+});
+
+test('drift is nudged out by the rate, and seeked out past 2 s', () => {
+  assert.deepEqual(party.correction(50.1, 50, false), { seek: null, rate: 1, correcting: false }, 'within 150 ms is left alone');
+  const ahead = party.correction(50.5, 50, false);
+  assert.equal(ahead.seek, null);
+  assert.ok(ahead.rate < 1 && ahead.rate >= 0.95, `ahead slows down (${ahead.rate})`);
+  const behind = party.correction(49.5, 50, false);
+  assert.ok(behind.rate > 1 && behind.rate <= 1.05, `behind speeds up (${behind.rate})`);
+  assert.equal(party.correction(51.9, 50, false).rate, 0.95, 'never more than 5%');
+  assert.equal(party.correction(48.1, 50, false).rate, 1.05);
+  assert.equal(party.correction(52.5, 50, false).seek, 50, 'over 2 s seeks');
+  assert.equal(party.correction(47, 50, true).seek, 50);
+  assert.equal(party.correction(50.1, 50, true).correcting, true, 'once correcting, keeps on to within 40 ms');
+  assert.equal(party.correction(50.03, 50, true).correcting, false);
+  assert.ok(Math.abs(party.correction(50.5, 50, false, 1.5).rate - 1.5 * ahead.rate) < 1e-9, 'relative to the party rate');
+  /* Played out: a screen 1 s behind, nudged every 250 ms, is back within 40 ms inside 30 s and never overshoots by more than that. */
+  let local = 49, expected = 50, correcting = false, worst = 0;
+  for (let i = 0; i < 120; i++) {
+    const c = party.correction(local, expected, correcting);
+    correcting = c.correcting;
+    local += 0.25 * c.rate; expected += 0.25;
+    if (i > 20) worst = Math.max(worst, local - expected);
+  }
+  assert.ok(Math.abs(local - expected) < 0.15, `caught up (${(local - expected).toFixed(3)})`);
+  assert.ok(worst < 0.05, 'no overshoot');
+});
+
+test('the server clock is read from the quickest pings', () => {
+  /* Server 5 s ahead; one slow ping with a lopsided leg. */
+  const samples = [
+    { sent: 1000, received: 1040, server: 6020 },
+    { sent: 2000, received: 2030, server: 7015 },
+    { sent: 3000, received: 3400, server: 8350 },
+    { sent: 4000, received: 4036, server: 9018 },
+    { sent: 5000, received: 5900, server: 10_100 },
+    { sent: 6000, received: 6032, server: 11_016 },
+  ];
+  const c = party.clockOffset(samples);
+  assert.equal(c.rtt, 30);
+  assert.ok(Math.abs(c.offset - 5000) <= 2, `offset ${c.offset}`);
+  assert.equal(party.clockOffset([]), null);
+  assert.equal(party.clockOffset([{ sent: 10, received: 5, server: 0 }]), null, 'a clock that went backwards is no sample');
+  assert.equal(party.clockOffset([{ sent: 0, received: 100, server: 1050 }]).offset, 1000);
+});
+
+test('a new party waits for its host to load, then plays', () => {
+  let p = start(1000);
+  assert.equal(p.host, 'akram');
+  assert.deepEqual(p.invited, ['sami', 'mo'], 'invites without the host, lower case');
+  assert.equal(p.hold.reason, 'loading');
+  assert.equal(party.tick(p, 1500).party.hold?.reason, 'loading');
+  p = party.report(p, { client: 'akram-tab1', username: 'akram' }, 'ready', 2000);
+  p = party.tick(p, 2000).party;
+  assert.equal(p.hold, null);
+  assert.equal(p.timeline.playing, true);
+  assert.equal(p.timeline.at, 2000 + T.lead, 'starts a moment ahead');
+  assert.equal(party.positionAt(p.timeline, 2000 + T.lead + 1000), 121);
+});
+
+test('stale seeks lose; play and pause always land; screens ignore old news', () => {
+  let p = playing();
+  const seen = p.seq;
+  const a = party.command(p, { username: 'akram' }, { type: 'seek', position: 300 }, seen, 1_001_000);
+  assert.ok(a.ok);
+  const b = party.command(a.party, { username: 'sami' }, { type: 'seek', position: 50 }, seen, 1_001_100);
+  assert.equal(b.ok, false);
+  assert.equal(b.reason, 'stale', 'sami seeked a timeline that had already moved');
+  assert.equal(party.positionAt(b.party.timeline, 1_001_000), 300);
+  const pause = party.command(a.party, { username: 'sami' }, { type: 'pause' }, seen, 1_001_200);
+  assert.ok(pause.ok, 'a pause from an older view still pauses');
+  assert.equal(pause.party.timeline.playing, false);
+  assert.ok(Math.abs(pause.party.timeline.position - 300.2) < 1e-9);
+  const again = party.command(pause.party, { username: 'akram' }, { type: 'pause' }, pause.party.seq, 1_001_300);
+  assert.equal(again.changed, false, 'pausing what is paused changes nothing');
+  /* Someone arriving or buffering isn't a timeline change: a seek made since still lands. */
+  let q = party.report(pause.party, { client: 'mo-phone1', username: 'mo' }, 'loading', 1_001_400);
+  assert.ok(q.seq > pause.party.seq, 'presence is news');
+  assert.ok(party.command(q, { username: 'akram' }, { type: 'seek', position: 10 }, pause.party.seq, 1_001_500).ok);
+  assert.equal(party.newer(5, 5), false);
+  assert.equal(party.newer(5, 6), true);
+  q = party.report(q, { client: 'mo-phone1', username: 'mo' }, 'loading', 1_001_600);
+  assert.equal(q.seq, party.report(pause.party, { client: 'mo-phone1', username: 'mo' }, 'loading', 1_001_400).seq, 'the same report twice is not news');
+});
+
+test('a pause keeps the frame the presser saw, within reason', () => {
+  const p = playing(1_000_000);
+  const own = party.command(p, { username: 'sami' }, { type: 'pause', position: 129.6 }, p.seq, 1_010_000);
+  assert.equal(own.party.timeline.position, 129.6);
+  const wild = party.command(p, { username: 'sami' }, { type: 'pause', position: 5 }, p.seq, 1_010_000);
+  assert.equal(wild.party.timeline.position, 130, 'a position far from the party\'s is not trusted');
+});
+
+test('someone buffering past 1.5 s pauses everyone, and everyone starts again together', () => {
+  let p = playing(1_000_000);
+  p = party.report(p, { client: 'sami-tab1', username: 'sami' }, 'buffering', 1_010_000);
+  assert.equal(party.tick(p, 1_011_000).party.hold, null, 'a blip under 1.5 s holds nobody');
+  const held = party.tick(p, 1_011_600).party;
+  assert.equal(held.hold.reason, 'buffering');
+  assert.deepEqual(held.hold.waitingFor, ['sami-tab1']);
+  assert.equal(held.timeline.playing, false);
+  assert.ok(Math.abs(held.timeline.position - (120 + 11.6 - 1.5)) < 1e-6, 'back to about where sami stopped');
+  assert.ok(held.moved === held.seq, 'a hold moves the timeline');
+  /* Paused during the wait: stays paused after it. */
+  const paused = party.command(held, { username: 'akram' }, { type: 'pause' }, held.seq, 1_012_000).party;
+  assert.equal(paused.hold.resume, false);
+  const replay = party.command(paused, { username: 'akram' }, { type: 'play' }, paused.seq, 1_012_100).party;
+  assert.equal(replay.hold.resume, true, 'play during a wait plays once it\'s over');
+  let back = party.report(replay, { client: 'sami-tab1', username: 'sami' }, 'ready', 1_014_000);
+  back = party.tick(back, 1_014_000).party;
+  assert.equal(back.hold, null);
+  assert.equal(back.timeline.playing, true);
+  assert.equal(back.timeline.at, 1_014_000 + T.lead);
+  assert.equal(back.timeline.position, held.timeline.position, 'from where it held');
+  const staysPaused = party.tick(party.report(paused, { client: 'sami-tab1', username: 'sami' }, 'ready', 1_014_000), 1_014_000).party;
+  assert.equal(staysPaused.hold, null);
+  assert.equal(staysPaused.timeline.playing, false);
+});
+
+test('a screen that keeps buffering or drops off stops holding the rest', () => {
+  let p = playing(1_000_000);
+  p = party.report(p, { client: 'sami-tab1', username: 'sami' }, 'buffering', 1_010_000);
+  p = live(p, 1_012_000).party;
+  assert.ok(p.hold);
+  assert.ok(live(p, 1_029_000).party.hold, 'still waiting at 19 s');
+  const gaveUp = live(p, 1_030_500).party;
+  assert.equal(gaveUp.hold, null, 'after 20 s the rest carry on');
+  assert.equal(gaveUp.timeline.playing, true);
+  assert.equal(live(gaveUp, 1_031_000).party.hold, null, 'and the same stall doesn\'t hold them again');
+  /* Dropped: no word for 15 s, so not waited for. */
+  let q = playing(2_000_000);
+  q = party.report(q, { client: 'sami-tab1', username: 'sami' }, 'buffering', 2_001_000);
+  q = party.tick(q, 2_003_000).party;
+  assert.ok(q.hold);
+  q = party.seen(q, ['akram-tab1'], 2_016_500);
+  const left = party.tick(q, 2_016_500).party;
+  assert.equal(left.hold, null, 'sami went quiet');
+  assert.equal(left.members.find((m) => m.client === 'sami-tab1').state, 'buffering');
+  const dropped = party.tick(party.seen(left, ['akram-tab1'], 2_062_000), 2_062_000).party;
+  assert.deepEqual(dropped.members.map((m) => m.client), ['akram-tab1'], 'off the list after a minute');
+});
+
+test('someone joining late lands where the party is without holding it', () => {
+  let p = playing(1_000_000);
+  p = party.report(p, { client: 'mo-phone1', username: 'mo' }, 'loading', 1_005_000);
+  p = party.tick(p, 1_009_000).party;
+  assert.equal(p.hold, null, 'loading late holds nobody');
+  assert.equal(p.timeline.playing, true);
+  assert.ok(Math.abs(party.positionAt(p.timeline, 1_009_000) - 129) < 1e-9);
+  /* Once they're in, a real stall of theirs is everyone's. */
+  p = party.report(p, { client: 'mo-phone1', username: 'mo' }, 'ready', 1_010_000);
+  p = party.report(p, { client: 'mo-phone1', username: 'mo' }, 'buffering', 1_020_000);
+  assert.equal(party.tick(p, 1_022_000).party.hold?.waitingFor[0], 'mo-phone1');
+});
+
+test('the next episode: one countdown, then everyone together', () => {
+  let p = playing(1_000_000);
+  const to = { season: 1, episode: 4, skipped: 0 };
+  const c = party.command(p, { username: 'sami' }, { type: 'countdown', to }, p.seq, 1_100_000);
+  assert.equal(c.party.countdown.endsAt, 1_100_000 + T.countdown);
+  const twice = party.command(c.party, { username: 'akram' }, { type: 'countdown', to: { season: 9, episode: 9, skipped: 0 } }, c.party.seq, 1_100_100);
+  assert.equal(twice.changed, false, 'the first countdown stands');
+  assert.equal(live(c.party, 1_105_000).party.timeline.episode, 3);
+  p = live(c.party, 1_110_000).party;
+  assert.deepEqual([p.timeline.season, p.timeline.episode, p.timeline.position, p.countdown], [1, 4, 0, null]);
+  assert.equal(p.hold.reason, 'loading');
+  assert.deepEqual(p.hold.waitingFor.sort(), ['akram-tab1', 'sami-tab1']);
+  assert.ok(p.members.every((m) => m.state === 'loading'), 'nobody counts as ready on the old episode');
+  p = party.tick(party.report(p, { client: 'akram-tab1', username: 'akram' }, 'ready', 1_112_000), 1_112_000).party;
+  assert.deepEqual(p.hold.waitingFor, ['sami-tab1'], 'waiting for the slower one');
+  p = party.tick(party.report(p, { client: 'sami-tab1', username: 'sami' }, 'ready', 1_113_000), 1_113_000).party;
+  assert.equal(p.hold, null);
+  assert.equal(p.timeline.at, 1_113_000 + T.lead);
+  /* Watch credits, for everyone. */
+  const cancel = party.command(c.party, { username: 'akram' }, { type: 'cancel-countdown' }, c.party.seq, 1_101_000);
+  assert.equal(cancel.party.countdown, null);
+  assert.equal(live(cancel.party, 1_120_000).party.timeline.episode, 3);
+  /* A slow screen doesn't keep a new episode waiting for ever. */
+  const slow = party.tick(party.report(p, { client: 'akram-tab1', username: 'akram' }, 'ready', 1_113_000), 1_113_000).party;
+  const ep5 = party.command(party.seen(slow, ['akram-tab1', 'sami-tab1'], 1_200_000), { username: 'akram' }, { type: 'episode', season: 1, episode: 5 }, slow.seq, 1_200_000).party;
+  const ready = party.tick(party.report(ep5, { client: 'akram-tab1', username: 'akram' }, 'ready', 1_201_000), 1_201_000).party;
+  assert.ok(ready.hold);
+  const stillSlow = party.seen(ready, ['akram-tab1', 'sami-tab1'], 1_230_500);
+  assert.equal(party.tick(stillSlow, 1_230_500).party.hold, null, 'after 30 s the rest start');
+});
+
+test('host-only, host hand-over, and the party ending', () => {
+  let p = playing(1_000_000);
+  assert.equal(party.command(p, { username: 'sami' }, { type: 'host-only', on: true }, p.seq, 1_001_000).reason, 'host-only', 'only the host sets it');
+  p = party.command(p, { username: 'akram' }, { type: 'host-only', on: true }, p.seq, 1_001_000).party;
+  for (const cmd of [{ type: 'pause' }, { type: 'seek', position: 3 }, { type: 'episode', season: 1, episode: 1 }, { type: 'skip-wait' }]) {
+    assert.equal(party.command(p, { username: 'sami' }, cmd, p.seq, 1_002_000).reason, 'host-only', cmd.type);
+  }
+  assert.ok(party.command(p, { username: 'AKRAM' }, { type: 'pause' }, p.seq, 1_002_000).ok);
+  const gone = party.leave(p, 'akram-tab1', 1_003_000);
+  assert.equal(gone.host, 'sami', 'the host left: the next person takes over');
+  assert.ok(gone.seq > p.seq);
+  /* Everyone gone: ends after five minutes, not before. */
+  let empty = party.leave(gone, 'sami-tab1', 1_004_000);
+  empty = party.tick(empty, 1_004_000).party;
+  assert.equal(empty.ended, false);
+  assert.equal(party.tick(empty, 1_004_000 + T.endAfter - 1).party.ended, false);
+  const back = party.report(empty, { client: 'sami-tab2', username: 'sami' }, 'loading', 1_100_000);
+  assert.equal(party.tick(back, 1_004_000 + T.endAfter).party.ended, false, 'someone came back');
+  const ended = party.tick(empty, 1_004_000 + T.endAfter).party;
+  assert.equal(ended.ended, true);
+  assert.equal(party.command(ended, { username: 'sami' }, { type: 'play' }, ended.seq, 1_500_000).ok, false);
+});
+
+test('commands are read carefully from the wire', () => {
+  assert.deepEqual(party.parseCommand({ type: 'seek', position: 12.5 }), { type: 'seek', position: 12.5 });
+  assert.equal(party.parseCommand({ type: 'seek', position: '12' }), null);
+  assert.equal(party.parseCommand({ type: 'explode' }), null);
+  assert.deepEqual(party.parseCommand({ type: 'pause', position: Infinity }), { type: 'pause' });
+  assert.equal(party.parseCommand({ type: 'countdown' }), null, 'the server works out the next episode itself');
+  const p = playing();
+  assert.equal(party.command(p, { username: 'akram' }, { type: 'seek', position: -4 }, p.seq, 1_000_100).reason, 'invalid');
+  assert.equal(party.command(p, { username: 'akram' }, { type: 'rate', rate: 9 }, p.seq, 1_000_100).reason, 'invalid');
+  assert.equal(party.command(p, { username: 'akram' }, party.parseCommand({ type: 'episode', season: 'x', episode: 2 }), p.seq, 1_000_100).reason, 'invalid');
+  assert.equal(party.cleanClient('abc'), null);
+  assert.equal(party.cleanClient('web-1234567'), 'web-1234567');
+  assert.equal(party.cleanPartyId('../../etc'), null);
+});
+
+test('chat keeps the last 50 lines; invites and declines', () => {
+  let p = start();
+  for (let i = 0; i < 60; i++) p = party.addChat(p, 'Sami', `  line   ${i} `, `c${i}`, 1_000_000 + i).party;
+  assert.equal(p.chat.length, 50);
+  assert.equal(p.chat[49].text, 'line 59');
+  assert.equal(p.chat[0].username, 'sami');
+  assert.equal(party.addChat(p, 'sami', '   ', 'x', 1), null);
+  assert.equal(party.addChat(p, 'sami', 'x'.repeat(900), 'y', 1).line.text.length, 300);
+  p = party.invite(p, ['Lea', 'sami', 'akram'], 2_000_000);
+  assert.deepEqual(p.invited, ['sami', 'mo', 'lea']);
+  p = party.decline(p, 'MO', 2_000_001);
+  assert.deepEqual(p.invited, ['sami', 'lea']);
+});
+
+test('parties are kept in the database and found by who is in them', () => {
+  const db = fresh();
+  party.migrateTogether(db);
+  const p = start(Date.now());
+  party.saveParty(db, p);
+  assert.deepEqual(party.loadParty(db, p.id), p);
+  assert.equal(party.partiesFor(db, 'Sami', Date.now()).length, 1, 'invited');
+  assert.equal(party.partiesFor(db, 'akram', Date.now()).length, 1, 'host');
+  assert.equal(party.partiesFor(db, 'lea', Date.now()).length, 0);
+  party.saveParty(db, { ...p, ended: true });
+  assert.equal(party.partiesFor(db, 'sami', Date.now()).length, 0, 'ended parties are gone');
+  party.saveParty(db, { ...p, id: 'p-old000000', updatedAt: Date.now() - 13 * 60 * 60 * 1000 });
+  party.endForgotten(db, Date.now());
+  assert.equal(party.loadParty(db, 'p-old000000').ended, false, 'the body is kept as it was; the row is marked');
+  assert.equal(db.prepare("SELECT ended FROM parties WHERE id = 'p-old000000'").get().ended, 1);
+  const view = party.viewOf(party.report(p, { client: 'sami-tab1', username: 'sami' }, 'ready', p.createdAt + 10_000), p.createdAt + 16_000);
+  assert.deepEqual(view.members.map((m) => [m.client, m.present]), [['akram-tab1', false], ['sami-tab1', true]]);
+  assert.equal('chat' in view, false);
+});
+
+test('a change says who made it; the party\'s own moves say nobody', () => {
+  const p = playing(1_000_000);
+  const paused = party.command(p, { username: 'Sami', client: 'sami-tab1' }, { type: 'pause' }, p.seq, 1_001_000).party;
+  assert.deepEqual(paused.by, { username: 'sami', client: 'sami-tab1', type: 'pause' });
+  const noop = party.command(paused, { username: 'akram', client: 'akram-tab1' }, { type: 'pause' }, paused.seq, 1_001_100).party;
+  assert.equal(noop.by.username, 'sami', 'nothing changed, nothing claimed');
+  const hostOnly = party.command(paused, { username: 'akram', client: 'akram-tab1' }, { type: 'host-only', on: true }, paused.seq, 1_001_200).party;
+  assert.equal(hostOnly.by.type, 'pause', 'the host switch isn\'t a timeline change');
+  let stall = party.report(p, { client: 'sami-tab1', username: 'sami' }, 'buffering', 1_002_000);
+  stall = party.tick(stall, 1_003_600).party;
+  assert.equal(stall.by, null);
+});
+
+test('with nobody ready, nobody is given up on', () => {
+  /* The host's stream takes 40 s to start: the party waits rather than running ahead of everyone. */
+  let p = start(1_000_000);
+  p = live(p, 1_040_000).party;
+  assert.equal(p.hold?.reason, 'loading');
+  p = live(party.report(p, { client: 'akram-tab1', username: 'akram' }, 'ready', 1_041_000), 1_041_000).party;
+  assert.equal(p.hold, null);
+  /* Everyone stalls at once: hold for as long as it takes. */
+  p = party.report(playing(2_000_000), { client: 'sami-tab1', username: 'sami' }, 'buffering', 2_001_000);
+  p = party.report(p, { client: 'akram-tab1', username: 'akram' }, 'buffering', 2_001_000);
+  p = live(p, 2_003_000).party;
+  assert.ok(p.hold);
+  assert.ok(live(p, 2_060_000).party.hold, 'still holding a minute later');
+  p = live(party.report(p, { client: 'akram-tab1', username: 'akram' }, 'ready', 2_061_000), 2_061_000).party;
+  assert.equal(p.hold, null, 'akram is ready, and sami has been stuck 60 s: carry on');
 });

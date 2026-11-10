@@ -574,10 +574,10 @@
 .kw .kw-faces em{font-style:normal;font-size:13px;color:var(--fg-3);margin-right:4px}
 @media (max-width:899px){.kw .kw-faces .kw-face-s:nth-of-type(n+4){display:none}}
 
-.kw .kw-wait{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);z-index:4;display:grid;justify-items:center;gap:14px;padding:18px 22px;border-radius:14px;background:rgba(17,12,10,.82);opacity:0;pointer-events:none;transition:opacity .25s,transform .35s var(--spring);text-align:center}
-.kw .kw-wait.kw-on{opacity:1;transform:translate(-50%,-50%);pointer-events:auto}
-.kw .kw-wait b{font-family:var(--display);font-weight:600;font-size:20px}
-.kw .kw-player.kw-ctl .kw-wait.kw-on ~ .kw-skip{opacity:0}
+.kw .kw-hold{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);z-index:4;width:max-content;max-width:min(440px,calc(100vw - 40px));display:grid;justify-items:center;gap:14px;padding:20px 24px;border-radius:14px;background:rgba(17,12,10,.86);box-shadow:0 20px 50px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .25s,transform .35s var(--spring);text-align:center}
+.kw .kw-hold.kw-on{opacity:1;transform:translate(-50%,-50%);pointer-events:auto}
+.kw .kw-hold b{font-family:var(--display);font-weight:600;font-size:21px}
+.kw .kw-player:has(.kw-hold.kw-on) .kw-p-mid{opacity:0;pointer-events:none}
 
 .kw .kw-pnote{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 76px);z-index:7;transform:translate(-50%,-8px);background:var(--paper);color:var(--ink);font-weight:700;font-size:14px;padding:9px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s,transform .35s var(--spring);white-space:nowrap}
 .kw .kw-pnote.kw-on{opacity:1;transform:translate(-50%,0)}

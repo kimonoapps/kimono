@@ -677,7 +677,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const lastTap = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onPointerUp = (event: React.PointerEvent) => {
-    if ((event.target as HTMLElement).closest("button, .kw-scrub, .kw-psheet, input, .kw-post, .kw-pload, .kw-chat, .kw-wait")) return;
+    if ((event.target as HTMLElement).closest("button, .kw-scrub, .kw-psheet, input, .kw-post, .kw-pload, .kw-chat, .kw-hold")) return;
     if (event.pointerType === "mouse") { if (sheet) { closeSheet(); return; } togglePlay(); showCtl(); return; }
     const now = Date.now(), side = event.clientX < innerWidth * 0.38 ? "l" : event.clientX > innerWidth * 0.62 ? "r" : null;
     if (now - lastTap.current < 300 && side) { clearTimeout(tapTimer.current); seek(side === "l" ? -10 : 10); ripple(side); lastTap.current = 0; return; }
@@ -963,7 +963,7 @@ function Waiting({ party, client, loading, firstOf, canSteer, onSkip }: { party:
   const names = [...new Set(others.map(firstOf))];
   const on = Boolean(hold && names.length && !loading);
   const text = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names.length} people`;
-  return <div className={cx("kw-wait", on && "kw-on")} role="status" aria-live="polite">
+  return <div className={cx("kw-hold", on && "kw-on")} role="status" aria-live="polite">
     {on ? <>
       <b>Waiting for {text}…</b>
       {canSteer ? <button className="kw-btn kw-tonal" onClick={onSkip}>Start without {names.length === 1 ? "them" : "everyone"}</button> : null}
