@@ -76,7 +76,8 @@ internal class SignInFlow(http: HttpClient, private val redirect: String, issuer
                 if (flow != null) {
                     val page = Url(url)
                     if (!page.host.equals(issuer.host, ignoreCase = true) || page.protocol != issuer.protocol) throw KimonoProblem("Signing in led somewhere other than Kimono.")
-                    origin = "${page.protocol.name}://${page.hostWithPort}"
+                    /* The origin as the server writes it: no ":443" on https (Authentik's CSRF check compares it exactly). */
+                    origin = "${page.protocol.name}://${if (page.port == page.protocol.defaultPort) page.host else page.hostWithPort}"
                     executor = "$origin/api/v3/flows/executor/${flow.groupValues[1]}/?query=${page.encodedQuery.encodeURLParameter()}"
                     challenge = read(client.get(executor!!))
                     return
@@ -113,6 +114,7 @@ internal class SignInFlow(http: HttpClient, private val redirect: String, issuer
                     follow(current["to"]?.jsonPrimitive?.contentOrNull ?: throw KimonoProblem(failed))
                     return@repeat
                 }
+                "ak-stage-flow-error" -> throw KimonoProblem(current["error"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: failed)
                 "ak-stage-access-denied" -> throw KimonoProblem(current["error_message"]?.jsonPrimitive?.contentOrNull ?: "This account can't sign in here.")
                 else -> throw KimonoProblem("This account needs a step the app can't do yet. Sign in on the website first.")
             }
