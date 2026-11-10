@@ -74,6 +74,11 @@ async function keyFor(issuer: string, kid: string): Promise<KeyObject | null> {
 
 const part = (value: string) => JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>;
 
+/** The sign-in service couldn't be asked for its keys; the token is neither good nor bad. */
+export class AppKeysUnavailable extends Error {
+  constructor() { super("Kimono's sign-in is starting up. Try again in a moment."); }
+}
+
 /** The account a bearer token speaks for, or null if it isn't a valid app token. */
 export async function verifyAppToken(token: string): Promise<AppToken | null> {
   const issuer = appIssuer();
@@ -93,8 +98,10 @@ export async function verifyAppToken(token: string): Promise<AppToken | null> {
   try {
     key = await keyFor(issuer, header.kid);
   } catch (error) {
+    /* Not a verdict on the token: the sign-in service is away (restarting for an
+       update, say). A refusal here would sign every phone out; this is a 503. */
     console.warn("App sign-in keys unavailable:", error instanceof Error ? error.message : error);
-    return null;
+    throw new AppKeysUnavailable();
   }
   if (!key) return null;
   const signed = verify("RSA-SHA256", Buffer.from(`${pieces[0]}.${pieces[1]}`), key, Buffer.from(pieces[2], "base64url"));

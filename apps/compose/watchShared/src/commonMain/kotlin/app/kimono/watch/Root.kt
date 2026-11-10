@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import app.kimono.watch.model.WatchProblem
 import app.kimono.watch.data.Profile
 import app.kimono.watch.ink.InkLoader
 import app.kimono.watch.model.Card
@@ -105,7 +106,10 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
                 all.isEmpty() -> Phase.SignIn(true)
                 /* Picker off: straight into whoever signed in last, or sign in again. */
                 !PROFILE_PICKER -> (all.firstOrNull { it.key == accounts.lastKey } ?: all[0]).let { p ->
-                    runCatching { accounts.ready(p); accounts.choose(p); Phase.Shell(p) }.getOrDefault(Phase.SignIn(true))
+                    /* Only a real sign-out (the server refused the saved sign-in) asks to sign in again.
+                       Offline, or the server restarting for an update: straight in, and pages retry. */
+                    val signedOut = runCatching { accounts.ready(p) }.exceptionOrNull().let { it is WatchProblem && it.status == 401 }
+                    if (signedOut) Phase.SignIn(true) else runCatching { accounts.choose(p); Phase.Shell(p) }.getOrDefault(Phase.SignIn(true))
                 }
                 /* A phone with one person on it goes straight in; a TV always asks. */
                 !services.tv && all.size == 1 -> runCatching { accounts.ready(all[0]); accounts.choose(all[0]); Phase.Shell(all[0]) }.getOrDefault(Phase.Profiles)
