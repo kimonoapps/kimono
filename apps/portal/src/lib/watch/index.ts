@@ -8,7 +8,7 @@ import { secretName } from "../secret-name";
 import { resolveSecrets } from "../secrets";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
-import { anyPlayable, notePlayable, playableOf, pool, shared, streamsKey, streamTtl, toCheck, visible } from "./ahead";
+import { anyPlayable, noteSearch, notePlayable, quietAfter, sourcesQuiet, playableOf, pool, shared, streamsKey, streamTtl, toCheck, visible } from "./ahead";
 import { animeEntriesFor, animeMap, anilistMedia, jikanFillers } from "./anime";
 import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { absoluteNumbers, availability, badge, episodeLabel, episodeLayout, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
@@ -189,7 +189,12 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
   const title = await ensureTitle(cfg, id);
   const prefs = prefsOf(db, username);
   const progress = progressOf(db, username, id);
-  const available = availability(title, playableOf(db, id) ?? undefined);
+  const known = availability(title, playableOf(db, id) ?? undefined);
+  /* Nothing to search, or sources that find nothing for anything: say that, not "no copy". */
+  const available = known.state !== "missing" && known.state !== "ready" ? known
+    : !hasSources(cfg) ? { state: "missing" as const, note: "Watch isn't connected to anything to stream from yet" }
+      : known.state === "missing" && sourcesQuiet(db) ? { state: "missing" as const, note: "Watch's sources aren't finding anything right now" }
+        : known;
   const base = {
     title: { ...cardOf(title, origin), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(origin, title.backdrop, "w1280") },
     inList: listOf(db, username).includes(id), rating: ratingOf(db, username, id), reminding: remindsOf(db, username).includes(id),
@@ -415,15 +420,23 @@ function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: nu
   const db = watchDb();
   const key = streamsKey(title.id, season, episode);
   const known = cached<Release[]>(db, key);
-  if (known) return Promise.resolve(known);
+  /* An empty answer is never reused: sources drop searches when busy, so it's asked again. */
+  if (known?.length) return Promise.resolve(known);
   return shared(searching, key, async () => {
     if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
     const manifest = await ensureProvisioned(db, cfg, await nzbdavAccess());
-    const { releases: found, complete } = await searchStreams(manifest, title.kind, stremioId(title.imdbId, season || undefined, episode || undefined));
+    const id = stremioId(title.imdbId, season || undefined, episode || undefined);
+    let { releases: found, complete } = await searchStreams(manifest, title.kind, id);
+    /* Nothing at all: a busy source may have dropped it. Asked once more before it is believed. */
+    if (!found.length) {
+      await new Promise((done) => setTimeout(done, 2000));
+      ({ releases: found, complete } = await searchStreams(manifest, title.kind, id));
+    }
     keep(db, key, found, streamTtl);
     /* Anything found says the title plays. Nothing found says it doesn't, but only for a first episode or a film, and only when no source failed: a timeout is not an answer. */
+    const streak = noteSearch(db, found.length === 0);
     if (anyPlayable(found)) notePlayable(db, title.id, true);
-    else if (season <= 1 && episode <= 1 && complete) notePlayable(db, title.id, false);
+    else if (season <= 1 && episode <= 1 && complete && streak < quietAfter) notePlayable(db, title.id, false);
     return found;
   });
 }

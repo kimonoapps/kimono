@@ -15,6 +15,7 @@
  * Whenever the accounts change, both are set up again on the next request.
  * The documents are built by pure functions, tested in scripts/test-watch.mjs.
  */
+import { forgetNoCopy } from "./ahead";
 import { createHash, randomBytes } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { WatchConfig } from "./config";
@@ -151,5 +152,7 @@ async function provision(db: DatabaseSync, cfg: WatchConfig, nzbdav: NzbdavAcces
   if (!uuid || !encrypted) throw new WatchProblem("The stream search didn't confirm Watch's setup. Try again in a moment.", 502);
   const manifest = `${cfg.aiostreamsUrl}/stremio/${uuid}/${encrypted}/manifest.json`;
   writeSetup(db, { fingerprint: print, uuid, password, manifest, at: Date.now() });
+  /* New sources: what the old ones couldn't find may be there now. */
+  forgetNoCopy(db);
   return manifest;
 }

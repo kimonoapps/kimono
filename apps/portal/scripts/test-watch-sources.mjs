@@ -165,3 +165,20 @@ test("a title that can't play says why: not out, only in cinemas, or no copy fou
   ] } }), { cinema: '2026-10-24', home: '2026-12-02' });
   assert.deepEqual(releaseDatesOf({ release_dates: { results: [{ release_dates: [{ type: 3, release_date: '2026-10-24' }] }] } }), { cinema: '2026-10-24', home: null });
 });
+
+test('sources that find nothing for anything stop branding titles "no copy", and forget the ones they did', async () => {
+  const ahead = await import('../src/lib/watch/ahead.ts');
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  ahead.notePlayable(db, 'tv-1', false);
+  ahead.notePlayable(db, 'tv-2', true);
+  for (let i = 1; i < ahead.quietAfter; i++) assert.equal(ahead.noteSearch(db, true), i);
+  assert.equal(ahead.sourcesQuiet(db), false);
+  assert.equal(ahead.playableOf(db, 'tv-1'), false, 'a few empty answers are still believed');
+  assert.equal(ahead.noteSearch(db, true), ahead.quietAfter);
+  assert.equal(ahead.sourcesQuiet(db), true);
+  assert.equal(ahead.playableOf(db, 'tv-1'), null, 'forgotten: asked again');
+  assert.equal(ahead.playableOf(db, 'tv-2'), true, 'what plays stays');
+  assert.equal(ahead.noteSearch(db, false), 0, 'one answer with something in it ends the streak');
+  assert.equal(ahead.sourcesQuiet(db), false);
+});

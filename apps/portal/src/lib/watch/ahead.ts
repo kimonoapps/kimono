@@ -13,7 +13,7 @@
  * Pure logic over SQLite and promises, tested in scripts/test-watch.mjs.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { cached, keep } from "./model";
+import { cached, keep, readState, writeState } from "./model";
 
 /** How long found streams are trusted: debrid links and Usenet results don't last much longer. */
 export const streamTtl = 20 * 60 * 1000;
@@ -67,6 +67,27 @@ export function playableOf(db: DatabaseSync, titleId: string, now = Date.now()):
 
 export function notePlayable(db: DatabaseSync, titleId: string, playable: boolean, now = Date.now()) {
   keep(db, playableKey(titleId), playable, playableTtl, now);
+}
+
+/*
+ * A source that answers but finds nothing for anything (a debrid key that
+ * stopped working, an addon that blocks the server) must not brand every
+ * title "no copy". Searches that came back empty in a row are counted; past
+ * a handful, empty answers stop counting as verdicts, and the ones already
+ * given are forgotten, as they are when the sources change.
+ */
+export const quietAfter = 5;
+export function noteSearch(db: DatabaseSync, empty: boolean): number {
+  const streak = empty ? (readState<{ empty: number }>(db, "searches")?.empty ?? 0) + 1 : 0;
+  writeState(db, "searches", { empty: streak, at: Date.now() });
+  if (streak === quietAfter) forgetNoCopy(db);
+  return streak;
+}
+/** Whether the sources have found nothing for several searches in a row. */
+export const sourcesQuiet = (db: DatabaseSync) => (readState<{ empty: number }>(db, "searches")?.empty ?? 0) >= quietAfter;
+/** Forgets every "no copy" verdict, so each title is asked about again. */
+export function forgetNoCopy(db: DatabaseSync) {
+  db.prepare("DELETE FROM cache WHERE key LIKE 'playable:%' AND body = 'false'").run();
 }
 
 /** Anything found that isn't junk means it plays. */
