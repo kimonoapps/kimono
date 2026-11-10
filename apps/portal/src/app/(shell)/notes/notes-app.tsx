@@ -327,7 +327,7 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
   const railed = wide && showing && !pinned;
   const placeWritable = place.kind === "all" ? true : canWrite(place.notebook);
 
-  return <div className={cx("nt", showing && "has-note", docked && "is-docked", railed && "is-railed", placesOpen && !docked && "is-placing")}>
+  return <div className={cx("nt", showing && "has-note", docked && "is-docked", railed && "is-railed", placesOpen && !wide && "is-placing")}>
     <section className="nt-listcol k-inkbar" aria-label="Notes" ref={listRef}>
       <ListHead place={place} faces={faces} people={people} open={placesOpen} docked={wide} buttonRef={placeButton} writable={placeWritable}
         onPlaces={() => setPlacesOpen((open) => !open)} onNew={() => startNew()} onShare={setSharing} />
@@ -349,9 +349,9 @@ export function NotesApp({ me, publicLinks }: { me: string; publicLinks: boolean
     </section>
     {railed ? <Rail lib={lib} place={place} open={placesOpen} buttonRef={placeButton} onOpen={() => setPinned(true)} onNew={() => startNew()} onSearch={openSearch} onPlace={openPlace} /> : null}
     <div className="nt-side-shade" aria-hidden="true" />
-    <aside className="nt-side k-inkbar" aria-label="Notebooks" inert={!placesOpen && !docked}>
+    <aside className="nt-side k-inkbar" aria-label="Notebooks" inert={!docked && !(placesOpen && !wide)}>
       <Panel lib={lib} problem={problem} place={place} find={find} onFind={setFind} found={found} faces={faces} people={people} arriving={arriving} now={now}
-        searchRef={searchField} docked={docked} onNarrow={docked && showing ? () => setPinned(false) : undefined} notebookOf={notebookOf} onNew={startNew} onPlace={openPlace} onReload={load} onToast={setToast} under={under}
+        searchRef={searchField} docked={docked} onNarrow={docked && showing ? () => { setPlacesOpen(false); setPinned(false); } : undefined} notebookOf={notebookOf} onNew={startNew} onPlace={openPlace} onReload={load} onToast={setToast} under={under}
         onShare={setSharing} onLeave={setLeaving} onOpenNote={openNote} current={openId} onClose={() => { setPlacesOpen(false); placeButton.current?.focus(); }} />
     </aside>
     {sharingThing ? <ShareSheet thing={sharingThing} me={me} people={people} publicLinks={publicLinks}

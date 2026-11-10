@@ -31,7 +31,6 @@
   .nt.is-railed .nt-rail { order: -1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; overflow-y: auto; overflow-x: hidden; background: var(--k-container); }
   /* Narrowing to the rail, the panel stays put under the list and the note as they slide left over it, then goes; the rail fades in on top. */
   .nt.is-railed .nt-side { left: 0; z-index: 1; transform: none; transition: visibility 0s linear var(--k-t-seat); }
-  .nt.is-railed.is-placing .nt-side { z-index: 30; }
   .nt.is-railed .nt-rail { position: relative; z-index: 2; }
   .nt.is-railed .nt-rail > * { animation: nt-rail-in var(--k-t-seat) var(--k-ease-settle, ease) both; }
   .nt.is-railed .nt-listcol, .nt.is-railed .nt-notecol { position: relative; z-index: 3; }
