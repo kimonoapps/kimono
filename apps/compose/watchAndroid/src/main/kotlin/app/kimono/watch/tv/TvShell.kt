@@ -169,7 +169,15 @@ private fun TvHome(profile: Profile, vm: HomeViewModel, go: Go, active: Boolean,
         item("hero", contentType = "hero") { TvHero(home?.featured, home?.rows.orEmpty(), go, active && top, playFocus, nav, state.shelf) { vm.shelf(it) } }
         item("party") { app.kimono.watch.phone.PartyInvites(go, Modifier.padding(start = gutter, end = gutter, bottom = 24.dp).widthIn(max = 760.dp)) }
         if (home == null) items(3) { TvSkeletonRow() }
-        else items(home.rows, key = { it.id + state.shelf }, contentType = { it.kind }) { row -> TvRail(row, profile, go) }
+        else {
+            items(home.rows, key = { it.id + state.shelf }, contentType = { it.kind }) { row -> TvRail(row, profile, go) }
+            /* More rows on the way, asked for three rows ahead of focus, so Down rarely meets the end. */
+            if (home.cursor != null) items(2, key = { "more$it" }, contentType = { "skeleton" }) { TvSkeletonRow() }
+        }
+    }
+    LaunchedEffect(list, vm) {
+        androidx.compose.runtime.snapshotFlow { list.layoutInfo.let { it.totalItemsCount - (it.visibleItemsInfo.lastOrNull()?.index ?: 0) } }
+            .collect { left -> if (left <= 5) vm.more() }
     }
     LaunchedEffect(home != null) { if (home != null) { runCatching { playFocus.requestFocus() }; kotlinx.coroutines.delay(100); list.scrollToItem(0) } }
 }

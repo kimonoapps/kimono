@@ -43,7 +43,11 @@ data class Card(
 data class Row(val id: String, val title: String, val kind: String = "cards", val items: List<Card> = emptyList())
 
 @Serializable
-data class Home(val featured: Card? = null, val rows: List<Row> = emptyList())
+/** A page of Home: rows in this person's taste order, and [next] to ask for more (null once there are no more). */
+data class Home(val featured: Card? = null, val rows: List<Row> = emptyList(), val next: kotlinx.serialization.json.JsonPrimitive? = null) {
+    /** The cursor as sent (a number today), or null at the end. */
+    val cursor: String? get() = next?.takeUnless { it is kotlinx.serialization.json.JsonNull }?.content
+}
 
 @Serializable
 data class SearchAnswer(val results: List<Card> = emptyList())

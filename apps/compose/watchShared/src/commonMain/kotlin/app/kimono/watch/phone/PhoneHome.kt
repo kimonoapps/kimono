@@ -176,7 +176,14 @@ private fun HomePage(profile: Profile, vm: HomeViewModel, go: Go, scroll: androi
             else items(4) { SkeletonRow() }
         } else {
             items(home.rows, key = { it.id + state.shelf }, contentType = { it.kind }) { row -> RailRow(row, profile, go) }
+            /* More rows on the way: skeletons where they'll land. */
+            if (home.cursor != null) items(2, key = { "more$it" }, contentType = { "skeleton" }) { SkeletonRow() }
         }
+    }
+    /* Three rows from the end, the next page is asked for. */
+    androidx.compose.runtime.LaunchedEffect(scroll, vm) {
+        androidx.compose.runtime.snapshotFlow { scroll.layoutInfo.let { it.totalItemsCount - (it.visibleItemsInfo.lastOrNull()?.index ?: 0) } }
+            .collect { left -> if (left <= 5) vm.more() }
     }
 }
 

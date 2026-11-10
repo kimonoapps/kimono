@@ -33,14 +33,23 @@ private fun problemOf(e: Throwable) = (e as? WatchProblem)?.message ?: "Somethin
 
 /* ───── Home ───── */
 
-data class HomeState(val loading: Boolean = true, val home: Home? = null, val shelf: String? = null, val problem: String? = null)
+data class HomeState(val loading: Boolean = true, val home: Home? = null, val shelf: String? = null, val problem: String? = null, val more: Boolean = false)
 
-/** Home's hero and rows, narrowed by the Series / Films / Anime chips. */
+/**
+ * Home's hero and rows, narrowed by the Series / Films / Anime chips. Rows
+ * come a page at a time in this person's taste order: [more] asks for the next
+ * page as the list nears its end, until the server says there are no more.
+ */
 class HomeViewModel(private val api: WatchApi) : ViewModel() {
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state
     private val kept = mutableMapOf<String?, Home>()
     private var job: Job? = null
+    private var moreJob: Job? = null
+    /** Rows in the first page, so a refresh can swap it and keep the pages after. */
+    private val firstPage = mutableMapOf<String?, Int>()
+    /* After a failed page, a short rest before asking again (the list keeps asking as it nears its end). */
+    private var failedAt = 0L
 
     init { load(null) }
 
@@ -53,17 +62,49 @@ class HomeViewModel(private val api: WatchApi) : ViewModel() {
     fun refresh() = load(_state.value.shelf, quiet = true)
 
     private fun load(shelf: String?, quiet: Boolean = false) {
-        job?.cancel()
+        job?.cancel(); moreJob?.cancel()
         val known = kept[shelf]
-        _state.value = _state.value.copy(shelf = shelf, loading = known == null && !quiet, home = known ?: if (quiet) _state.value.home else null, problem = null)
+        _state.value = _state.value.copy(shelf = shelf, loading = known == null && !quiet, home = known ?: if (quiet) _state.value.home else null, problem = null, more = false)
         job = viewModelScope.launch {
             try {
-                val home = api.home(shelf)
+                val fresh = api.home(shelf)
+                val old = kept[shelf]
+                val firstCount = firstPage[shelf] ?: 0
+                /* The first page anew; pages already scrolled into stay after it. */
+                val home = if (old != null && quiet && old.rows.size > firstCount) {
+                    val ids = fresh.rows.map { it.id }.toSet()
+                    fresh.copy(rows = fresh.rows + old.rows.drop(firstCount).filter { it.id !in ids }, next = old.next)
+                } else fresh
+                firstPage[shelf] = fresh.rows.size
                 kept[shelf] = home
                 _state.value = _state.value.copy(loading = false, home = home)
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
                 _state.value = _state.value.copy(loading = false, problem = if (_state.value.home == null) problemOf(e) else null)
+            }
+        }
+    }
+
+    /** The next page of rows, once; nothing when one is on its way or there are no more. */
+    fun more() {
+        val s = _state.value
+        val home = s.home ?: return
+        val cursor = home.cursor ?: return
+        if (s.more || job?.isActive == true || app.kimono.watch.nowMs() - failedAt < 5_000) return
+        val shelf = s.shelf
+        _state.value = s.copy(more = true)
+        moreJob = viewModelScope.launch {
+            try {
+                val page = api.home(shelf, cursor)
+                val now = kept[shelf] ?: home
+                val ids = now.rows.map { it.id }.toSet()
+                val joined = now.copy(rows = now.rows + page.rows.filter { it.id !in ids }, next = page.next)
+                kept[shelf] = joined
+                if (_state.value.shelf == shelf) _state.value = _state.value.copy(home = joined, more = false)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                failedAt = app.kimono.watch.nowMs()
+                _state.value = _state.value.copy(more = false)
             }
         }
     }

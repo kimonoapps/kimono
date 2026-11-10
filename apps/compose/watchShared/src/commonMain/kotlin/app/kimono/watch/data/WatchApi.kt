@@ -42,7 +42,8 @@ class WatchApi(
     }
 
     /** Home's rows; [shelf] is "Series", "Film" or "Anime". */
-    suspend fun home(shelf: String? = null): Home = json.decodeFromString(get("/home" + (shelf?.let { "?shelf=$it" } ?: "")))
+    suspend fun home(shelf: String? = null, cursor: String? = null): Home =
+        json.decodeFromString(get("/home" + listOfNotNull(shelf?.let { "shelf=$it" }, cursor?.let { "cursor=${it.encodeURLParameter()}" }).joinToString("&").let { if (it.isEmpty()) "" else "?$it" }))
 
     suspend fun search(query: String): SearchAnswer = json.decodeFromString(get("/search?q=${query.encodeURLParameter()}"))
 
