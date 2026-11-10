@@ -64,6 +64,7 @@ class IosEngine(val player: IosPlayer) : PlaybackEngine {
     override fun pause() = player.pause()
     override fun seekTo(seconds: Double) = player.seek(seconds)
     override fun setSpeed(speed: Float) = player.setRate(speed.toDouble())
+    override fun setVolume(volume: Float) = player.setLevel(volume.toDouble())
 
     internal fun tracks(): List<MpvTrack> = runCatching { json.decodeFromString<List<MpvTrack>>(player.tracksJson()) }.getOrDefault(emptyList())
 

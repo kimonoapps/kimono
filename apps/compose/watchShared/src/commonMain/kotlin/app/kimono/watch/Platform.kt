@@ -75,6 +75,8 @@ interface PlaybackEngine {
     fun pause()
     fun seekTo(seconds: Double)
     fun setSpeed(speed: Float)
+    /** The player's own loudness, 0–1, under the device's volume. */
+    fun setVolume(volume: Float) {}
     /** Switches on the audio and subtitles the server asked for. */
     fun applyHints(hints: TrackHints)
     /** Whether the video picked is something no decoder here really handles (10-bit H.264, software AV1). */

@@ -75,6 +75,8 @@ interface IosPlayer {
     fun seek(seconds: Double)
     fun setRate(rate: Double)
     fun setMuted(muted: Boolean)
+    /** The player's own loudness, 0–1. */
+    fun setLevel(level: Double)
     fun state(): IosPlayerState
     /** `[{id, type: "audio"|"sub"|"video", lang, title, selected, codec, channels, forced}]`. */
     fun tracksJson(): String

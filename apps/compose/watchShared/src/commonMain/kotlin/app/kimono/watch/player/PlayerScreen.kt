@@ -145,6 +145,7 @@ fun PlayerScreen(
     var sheet by remember { mutableStateOf<Sheet?>(null) }
     var scrub by remember { mutableStateOf<Double?>(null) }
     var speed by remember { mutableFloatStateOf(1f) }
+    var volume by remember { mutableFloatStateOf(1f) }
     var ripple by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
     var pausedAt by remember { mutableLongStateOf(0L) }
     var pauseCard by remember { mutableStateOf(false) }
@@ -171,6 +172,7 @@ fun PlayerScreen(
         if (state.loads == 0) return@LaunchedEffect
         engine.load(answer.url, dlKey(vm.titleId, state.season, state.episode), state.startAt, play = party == null)
         engine.setSpeed(speed)
+        engine.setVolume(volume)
         sheet = null
     }
     DisposableEffect(engine) {
@@ -372,7 +374,7 @@ fun PlayerScreen(
             /* Middle (phone): back ten, play, forward ten. */
             if (!tv) Row(Modifier.align(Alignment.Center).alpha(chrome), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
                 SeekBtn(false) { seekBy(-10.0); rip(false); show() }
-                PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp)
+                PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true)
                 SeekBtn(true) { seekBy(10.0); rip(true); show() }
             }
             /* Bottom: the scrubber, then the buttons. */
@@ -390,6 +392,7 @@ fun PlayerScreen(
                             if (!state.isFilm && ep != null) append("   S${state.season}:E${state.episode} “${ep.name}”")
                         }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    if (!tv) VolumeSlider(volume, { volume = it; engine.setVolume(it); show(hold = true) }, onDone = { show() })
                     LabBtn(Ic.speed, "Speed", tv) { sheet = if (sheet == Sheet.Speed) null else Sheet.Speed; show() }
                     if (!state.isFilm) LabBtn(Ic.eps, "Episodes", tv) { sheet = if (sheet == Sheet.Episodes) null else Sheet.Episodes; show() }
                     LabBtn(Ic.cc, "Audio & subtitles", tv) { sheet = if (sheet == Sheet.Tracks) null else Sheet.Tracks; show() }
@@ -427,9 +430,46 @@ fun PlayerScreen(
     LaunchedEffect(ctl, tv) { if (tv && !ctl) runCatching { focusRoot.requestFocus() } }
 }
 
+/** [shadow]: a soft drop shadow in the glyph's own shape, so it reads on bright frames. */
 @Composable
-private fun PBtn(icon: ImageVector, onClick: () -> Unit, size: Dp = 48.dp, iconSize: Dp = 28.dp, enabled: Boolean = true, focus: FocusRequester? = null) {
-    Box(Modifier.size(size).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).clip(CircleShape).clickableScale({ if (enabled) onClick() }, focusScale = 1.08f), contentAlignment = Alignment.Center) { I(icon, iconSize, Color.White) }
+private fun PBtn(icon: ImageVector, onClick: () -> Unit, size: Dp = 48.dp, iconSize: Dp = 28.dp, enabled: Boolean = true, focus: FocusRequester? = null, shadow: Boolean = false) {
+    Box(Modifier.size(size).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).clip(CircleShape).clickableScale({ if (enabled) onClick() }, focusScale = 1.08f), contentAlignment = Alignment.Center) {
+        if (shadow) I(icon, iconSize, Color.Black.copy(alpha = 0.6f), Modifier.offset(y = 2.dp).blur(8.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded))
+        I(icon, iconSize, Color.White)
+    }
+}
+
+/** The player's volume: the speaker mutes and unmutes, the track sets how loud. */
+@Composable
+private fun VolumeSlider(volume: Float, onChange: (Float) -> Unit, onDone: () -> Unit) {
+    var before by remember { mutableFloatStateOf(1f) }
+    var width by remember { mutableIntStateOf(1) }
+    Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({
+            if (volume > 0f) { before = volume; onChange(0f) } else onChange(before.takeIf { it > 0.05f } ?: 1f)
+            onDone()
+        }, focusScale = 1.08f), contentAlignment = Alignment.Center) { I(if (volume <= 0f) Ic.mute else Ic.vol, 22.dp, Color.White) }
+        Box(Modifier.width(96.dp).height(28.dp).onSizeChanged { width = it.width }.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                down.consume()
+                onChange((down.position.x / width).coerceIn(0f, 1f))
+                while (true) {
+                    val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) { change.consume(); break }
+                    change.consume()
+                    onChange((change.position.x / width).coerceIn(0f, 1f))
+                }
+                onDone()
+            }
+        }, contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF)).drawBehind {
+                drawRect(Night.suo, size = size.copy(width = size.width * volume))
+            })
+            val px = with(LocalDensity.current) { (width * volume).toDp() }
+            Box(Modifier.offset(x = px - 6.dp).size(12.dp).clip(CircleShape).background(Night.suo))
+        }
+    }
 }
 
 @Composable

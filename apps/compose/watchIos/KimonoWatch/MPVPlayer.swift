@@ -318,6 +318,14 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
 
     func setMuted(muted: Bool) { set("mute", muted ? "yes" : "no") }
 
+    private var level = 1.0
+
+    func setLevel(level: Double) {
+        self.level = max(0, min(1, level))
+        set("volume", String(Int((self.level * 100).rounded())))
+        avPlayer?.volume = Float(self.level)
+    }
+
     func state() -> IosPlayerState {
         if disposed { return IosPlayerState(position: 0, duration: 0, buffered: 0, playing: false, playWhenReady: false, buffering: false, ended: false, startFill: 0, pip: false) }
         if let avPlayer, why != nil {
@@ -492,6 +500,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         let item = AVPlayerItem(url: target)
         item.preferredForwardBufferDuration = 30
         let player = AVPlayer(playerItem: item)
+        player.volume = Float(level)
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = true
         avPlayer = player

@@ -182,6 +182,7 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     override fun pause() = player.pause()
     override fun seekTo(seconds: Double) = player.seekTo((seconds * 1000).toLong())
     override fun setSpeed(speed: Float) = player.setPlaybackSpeed(speed)
+    override fun setVolume(volume: Float) { player.volume = volume }
 
     override fun listen(listener: EngineListener): () -> Unit {
         val l = object : Player.Listener {
