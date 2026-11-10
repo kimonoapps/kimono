@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { Card, Rating, TitleView } from "./api";
+import type { Card, Prefs, Rating, TitleView } from "./api";
 import { AppIcon } from "@/components/icons";
 import { Icon } from "./icons";
 
@@ -27,6 +27,10 @@ export type Watch = {
   firstName: string;
   /** Watch's own colour, for its loaders. */
   accent: string;
+  /** This person's settings, once known; a change saves at once. */
+  prefs: Prefs | null;
+  updatePrefs: (change: Partial<Prefs>) => Promise<boolean>;
+  openSettings: () => void;
 };
 export const WatchContext = createContext<Watch | null>(null);
 export function useWatch() {

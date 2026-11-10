@@ -651,3 +651,68 @@
 @media (min-width:900px){.kw .kw-invite{bottom:28px}}
 @media (max-width:520px){.kw .kw-invite{flex-wrap:wrap}.kw .kw-invite > div{flex-basis:calc(100% - 60px)}.kw .kw-invite .kw-btn{flex:1;justify-content:center}}
 .kw .kw-ep .kw-no{width:auto;min-width:22px}
+
+/* ───── Settings (review spec §2) ───── */
+.kw .kw-settings{max-width:820px}
+.kw .kw-settings h1{margin-bottom:6px}
+.kw .kw-set{padding:22px 0 8px;border-bottom:1px solid var(--line)}
+.kw .kw-set:last-child{border-bottom:0}
+.kw .kw-set h2{margin:0 0 6px;font-family:var(--display);font-weight:800;font-size:20px}
+.kw .kw-set-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 0;min-height:56px}
+.kw .kw-set-label{display:grid;gap:3px;min-width:0}
+.kw .kw-set-label span{font-size:15px;color:var(--fg)}
+.kw .kw-set-label small{font-size:13px;color:var(--fg-3)}
+.kw .kw-set-control{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.kw .kw-set-control .kw-switch{margin-left:0}
+.kw .kw-tick{width:20px;height:20px;color:var(--moss);opacity:0;transform:scale(.6);transition:opacity .2s,transform .3s var(--spring)}
+.kw .kw-tick.kw-on{opacity:1;transform:none}
+.kw .kw-tick .kw-ic{width:20px;height:20px}
+.kw .kw-joint{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.kw .kw-joint button{padding:9px 14px;font-size:14px;font-weight:700;color:var(--fg-2);border-left:1px solid var(--line);transition:background .2s,color .2s;white-space:nowrap}
+.kw .kw-joint button:first-child{border-left:0}
+.kw .kw-joint button:hover{background:var(--surface-2);color:var(--fg)}
+.kw .kw-joint button.kw-sel{background:var(--surface-3);color:var(--fg);box-shadow:inset 0 -3px 0 var(--suo)}
+.kw select.kw-pick{min-width:200px}
+.kw .kw-set-wait{display:grid;gap:12px;padding-top:12px}
+.kw .kw-sub-preview{position:relative;aspect-ratio:16/9;max-height:300px;width:100%;border-radius:12px;overflow:hidden;background:var(--surface-2);margin:8px 0 6px}
+.kw .kw-sub-preview img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.kw .kw-subs.kw-subs-static{position:absolute;bottom:10%;left:6%;right:6%}
+.kw .kw-set-me{display:flex;align-items:center;gap:14px;padding:12px 0}
+.kw .kw-set-me div{display:grid;gap:2px}
+.kw .kw-set-me b{font-size:16px}
+.kw .kw-set-me div span{font-size:13px;color:var(--fg-3)}
+.kw .kw-avatar-lg{width:56px;height:56px;border-radius:28%;font-size:26px;overflow:hidden;background:var(--suo-deep)}
+.kw .kw-avatar-lg img{width:100%;height:100%;object-fit:cover}
+.kw .kw-set-actions{display:flex;flex-wrap:wrap;gap:10px;padding:6px 0 12px}
+.kw .kw-set-actions form{display:contents}
+.kw .kw-about{color:var(--fg-3);font-size:13px;margin:8px 0 0}
+.kw .kw-topbar .kw-iconbtn[aria-current="page"]{color:var(--blush)}
+.kw .kw-menu-link{display:grid;grid-template-columns:20px 1fr auto;align-items:center;gap:10px;width:100%;padding:10px 12px;border-radius:8px;font-size:15px}
+.kw .kw-menu-link:hover{background:rgba(255,255,255,.07)}
+.kw .kw-opt.kw-more{margin-top:10px;justify-content:space-between;color:var(--fg-2);font-weight:700}
+.kw .kw-opt.kw-more .kw-ic{opacity:1;width:20px;height:20px}
+.kw .kw-cols .kw-more.kw-span{grid-column:1/-1}
+@media (max-width:640px){
+  .kw .kw-set-row{flex-direction:column;align-items:stretch;gap:10px}
+  .kw .kw-set-control{justify-content:flex-start}
+  .kw .kw-joint{display:flex;width:100%}
+  .kw .kw-joint button{flex:1;padding:10px 6px}
+  .kw select.kw-pick{width:100%}
+}
+
+/* ───── Subtitle look (prefs subtitleSize, subtitleBackground) ───── */
+.kw .kw-subs.kw-subs-small span{font-size:clamp(14px,1.9vw,22px)}
+.kw .kw-subs.kw-subs-large span{font-size:clamp(22px,3.4vw,40px)}
+.kw .kw-subs.kw-subs-none span{background:none;text-shadow:0 0 2px #000,0 0 1px #000}
+.kw .kw-subs.kw-subs-shadow span{background:none;text-shadow:0 2px 6px rgba(0,0,0,.95),0 0 2px #000,0 0 1px #000}
+.kw .kw-subs.kw-subs-box span{background:rgba(0,0,0,.72);text-shadow:none}
+
+/* Home's long list of rows: each drawn only as it nears the screen. */
+.kw .kw-rows .kw-row{content-visibility:auto;contain-intrinsic-size:auto 280px}
+/* The preview is a small screen: its line is sized to the preview, in the same proportions as the player. */
+.kw .kw-sub-preview{container-type:inline-size}
+.kw .kw-subs.kw-subs-static span{font-size:4cqw}
+.kw .kw-subs.kw-subs-static.kw-subs-small span{font-size:3cqw}
+.kw .kw-subs.kw-subs-static.kw-subs-large span{font-size:5.2cqw}
+.kw .kw-joint button{text-align:center}
+@media (max-width:640px){.kw .kw-set-row.kw-inline{flex-direction:row;align-items:center}.kw .kw-set-row:not(.kw-inline) .kw-tick{position:absolute;right:0;top:-26px}.kw .kw-set-row{position:relative}}

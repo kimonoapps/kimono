@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { qualities, saveQuality, savedQuality, watchApi, type Card, type Home, type Rating, type Shelf, type TitleView } from "./api";
+import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, type TitleView } from "./api";
 import { AppLockup } from "@kimono/ui";
+import { Crossing } from "@/components/crossing";
 import { cx, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
 import { InkLoader } from "@kimono/ui";
 import { Icon } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
 import { Player, type PlayerHandle } from "./player";
+import { SettingsPage } from "./settings";
 import { TitleSheet } from "./title";
 import { screenId, together, type Invite } from "./party";
 
@@ -20,7 +22,7 @@ import { screenId, together, type Invite } from "./party";
  */
 
 export type Person = { username: string; name: string; picture: string | null };
-type Page = "home" | "hot" | "list";
+type Page = "home" | "hot" | "list" | "settings";
 
 const faces = ["#7E3448", "#3E5236", "#5B3F45", "#8A5A2B", "#3F4A5B", "#5A4A2B"];
 const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % faces.length];
@@ -34,7 +36,7 @@ const readParty = () => { try { return new URLSearchParams(window.location.searc
 function readPlace(): { page: Page; title: string | null } {
   const q = new URLSearchParams(window.location.search);
   const page = q.get("p");
-  return { page: page === "hot" || page === "list" ? page : "home", title: q.get("t") };
+  return { page: page === "hot" || page === "list" || page === "settings" ? page : "home", title: q.get("t") };
 }
 function writePlace(page: Page, title: string | null, push: boolean) {
   const q = new URLSearchParams();
@@ -46,7 +48,7 @@ function writePlace(page: Page, title: string | null, push: boolean) {
   if (push) window.history.pushState(null, "", url); else window.history.replaceState(null, "", url);
 }
 
-export function WatchApp({ me, household, accent }: { me: Person; household: Person[]; accent: string }) {
+export function WatchApp({ me, household, accent, signOut }: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void> }) {
   /* Arriving by a party's link goes straight in: it can only be you. */
   const [profile, setProfile] = useState<Person | null>(() => { try { return readParty() || sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
   const [people, setPeople] = useState<Person[]>(household);
@@ -66,6 +68,10 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
   const [scrolled, setScrolled] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  /* This person's settings: the player reads its subtitle look from here, Settings writes them. */
+  const [prefs, setPrefs] = useState<Prefs | null>(null);
+  const prefsRef = useRef(prefs);
+  useLayoutEffect(() => { prefsRef.current = prefs; }, [prefs]);
   const root = useRef<HTMLDivElement>(null);
   const player = useRef<PlayerHandle>(null);
   const known = useRef(new Map<string, Card>());
@@ -117,8 +123,15 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
   const go = (to: Page) => {
     setPage(to); setSheetId(null); writePlace(to, null, true); root.current?.scrollTo(0, 0);
     /* Lists and what's coming change from other devices too: ask again. */
-    if (to !== "home") watchApi.home(null).then((h) => { remember(h); setAll(h); }, () => {});
+    if (to === "hot" || to === "list") watchApi.home(null).then((h) => { remember(h); setAll(h); }, () => {});
   };
+  const goRef = useRef(go);
+  useLayoutEffect(() => { goRef.current = go; });
+  const switchProfile = () => { setProfile(null); try { sessionStorage.removeItem(chosenKey); } catch { /* fine */ } };
+  useEffect(() => {
+    if (!profile) return;
+    watchApi.prefs().then(setPrefs, () => {});
+  }, [profile]);
 
   /* ───── What every part can ask for ───── */
   const marksRef = useRef(marks);
@@ -131,6 +144,14 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
     accent,
     toast: say,
     openTitle: (id) => { setSheetId(id); writePlace(readPlace().page, id, true); },
+    prefs,
+    updatePrefs: async (change) => {
+      const before = prefsRef.current;
+      setPrefs((p) => (p ? { ...p, ...change } : p));
+      try { setPrefs(await watchApi.setPrefs(change)); if ("animeEpisodes" in change) setRefreshKey(Date.now()); return true; }
+      catch { setPrefs(before); say("That didn't work."); return false; }
+    },
+    openSettings: () => goRef.current("settings"),
     play: (id, at) => { setPlaying(true); player.current?.start(id, at); },
     marksOf: (id) => marksRef.current[id] ?? { inList: listIds.has(id), rating: null, reminding: false },
     noteView: (view: TitleView) => setMark(view.title.id, { inList: view.inList, rating: view.rating, reminding: view.reminding }),
@@ -152,7 +173,7 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
     },
     known: () => [...known.current.values()],
     together: (id, at) => setAsking({ titleId: id, season: at?.season ?? 0, episode: at?.episode ?? 0, position: at?.position ?? 0 }),
-  }), [me, accent, say, listIds, setMark, loadHome, remember]);
+  }), [me, accent, prefs, say, listIds, setMark, loadHome, remember]);
 
   /* ───── Watch together: who's asked you, and starting one ───── */
   useEffect(() => {
@@ -230,9 +251,11 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
           </nav>
           <div className="kw-spacer" />
           <button className="kw-iconbtn" aria-label="Search" onClick={() => setSearching(true)}><Icon name="search" /></button>
-          <AccountMenu profile={profile} onLayout={() => setRefreshKey(Date.now())} onSwitch={() => { setProfile(null); try { sessionStorage.removeItem(chosenKey); } catch { /* fine */ } }} />
+          <button className="kw-iconbtn" aria-label="Settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => go("settings")}><Icon name="gear" /></button>
+          <AccountMenu profile={profile} onSettings={() => go("settings")} onSwitch={switchProfile} />
         </header>
         {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} />
+          : page === "settings" ? <SettingsPage me={me} onSwitch={switchProfile} signOut={signOut} />
           : page === "hot" ? <HotPage ids={hotIds} />
             : <ListPage cards={listCards} />}
         <nav className="kw-bnav" aria-label="Sections">
@@ -258,18 +281,10 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
 }
 
 /* ───── The avatar's menu: this device's quality, and switching profile ───── */
-function AccountMenu({ profile, onSwitch, onLayout }: { profile: Person; onSwitch: () => void; onLayout: () => void }) {
+function AccountMenu({ profile, onSwitch, onSettings }: { profile: Person; onSwitch: () => void; onSettings: () => void }) {
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(false);
-  const [quality, setQuality] = useState(savedQuality);
-  const [anime, setAnime] = useState<"seasons" | "continuous">("seasons");
-  const [say, setSay] = useState<{ text: string; at: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  /* The server keeps this device's choice; the copy here only saves a flash of the old one. */
-  useEffect(() => {
-    watchApi.deviceQuality().then((q) => { const v = q ?? "auto"; setQuality(v); saveQuality(v); }, () => {});
-    watchApi.prefs().then((p) => setAnime(p.animeEpisodes === "continuous" ? "continuous" : "seasons"), () => {});
-  }, []);
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => setShown(true));
@@ -279,11 +294,8 @@ function AccountMenu({ profile, onSwitch, onLayout }: { profile: Person; onSwitc
     document.addEventListener("keydown", key);
     return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key); };
   }, [open]);
-  const pick = (value: string) => {
-    const before = quality;
-    setQuality(value); saveQuality(value);
-    watchApi.setDeviceQuality(value).then(() => setSay({ text: "Saved for this device", at: Date.now() }), () => { setQuality(before); saveQuality(before); setSay({ text: "That didn't work.", at: Date.now() }); });
-  };
+  const close = () => { setOpen(false); setShown(false); };
+  /* About the person only: switching, settings, and the Kimono account. */
   return <div className="kw-sdrop kw-account" ref={box}>
     <button className="kw-avatar" aria-label="Account" aria-haspopup="menu" aria-expanded={open} style={{ background: faceOf(profile.username), overflow: "hidden", padding: 0 }} onClick={() => { setOpen(!open); setShown(false); }}>
       {profile.picture
@@ -291,20 +303,11 @@ function AccountMenu({ profile, onSwitch, onLayout }: { profile: Person; onSwitc
         ? <img src={profile.picture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initial(profile)}
     </button>
     {open ? <div className={cx("kw-smenu", shown && "kw-on")} role="menu">
-      <p className="kw-menu-h">Quality on this device</p>
-      {qualities.map((q) => <button key={q.value} role="menuitemradio" aria-checked={quality === q.value} onClick={() => pick(q.value)}><Icon name="check" /><b>{q.label}</b><span /></button>)}
-      <div className="kw-menu-rule" />
-      <p className="kw-menu-h">Anime episodes</p>
-      {([["seasons", "By season"], ["continuous", "One list"]] as const).map(([value, label]) => <button key={value} role="menuitemradio" aria-checked={anime === value} onClick={() => {
-        if (anime === value) return;
-        const before = anime;
-        setAnime(value);
-        watchApi.setPrefs({ animeEpisodes: value }).then(() => { setSay({ text: "Saved", at: Date.now() }); onLayout(); }, () => { setAnime(before); setSay({ text: "That didn't work.", at: Date.now() }); });
-      }}><Icon name="check" /><b>{label}</b><span /></button>)}
-      <div className="kw-menu-rule" />
-      <button role="menuitem" onClick={() => { setOpen(false); onSwitch(); }}><span /><b>Switch profile</b><span /></button>
+      <p className="kw-menu-h">{profile.name}</p>
+      <button role="menuitem" onClick={() => { close(); onSwitch(); }}><span /><b>Switch profile</b><span /></button>
+      <button role="menuitem" onClick={() => { close(); onSettings(); }}><span /><b>Settings</b><span /></button>
+      <Crossing kind="shoji" role="menuitem" className="kw-menu-link" href="/account" onClick={close}><span /><b>Kimono account</b><span /></Crossing>
     </div> : null}
-    <Toast message={say} />
   </div>;
 }
 

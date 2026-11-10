@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
 import { airText, clock, deviceOf, labelOf, languageName, longLabel, shownNumber, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, TitleMark, useTabTitle, useWatch } from "./bits";
+import { subtitleClass } from "./settings";
 import { InkLoader, InkRing } from "@kimono/ui";
 import { Icon, SeekIcon } from "./icons";
 import { attach, attachThumb, type Attached } from "./source";
@@ -783,7 +784,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     <video ref={video} className="kw-pv" playsInline preload="auto" />
     <video ref={thumbVideo} muted playsInline preload="metadata" style={{ display: "none" }} />
     <div className="kw-shade" />
-    <div className="kw-subs">{cue ? <span>{cue}</span> : null}</div>
+    <div className={cx("kw-subs", subtitleClass(watch.prefs))}>{cue ? <span>{cue}</span> : null}</div>
     {(["l", "r"] as const).map((side) => <div key={`${side}${rip[side]}`} className={cx("kw-ripple", `kw-${side}`, rip[side] > 0 && "kw-go")}>
       <div><Icon name={side === "l" ? "rw" : "ff"} />10 seconds</div>
     </div>)}
@@ -873,6 +874,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
               <button className={cx("kw-opt", subsNow === "signs" && "kw-sel")} onClick={() => { if (subsNow !== "signs") void setTracks(audioNow, "signs", true); }}><Icon name="check" />Signs &amp; songs</button>
             </>}
         </div>
+        <button className="kw-opt kw-more kw-span" onClick={() => { exit(); watch.openSettings(); }}>Your defaults<Icon name="right" /></button>
       </div> : null}
       {sheet === "speed" ? <><h4>Playback speed</h4><div className="kw-speeds">{speeds.map((x) => <button key={x} className={cx((party ? party.timeline.rate : speed) === x && "kw-sel")} onClick={() => {
         const link = live.current.link;
@@ -884,6 +886,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
           oneOff.current = q.value;
           void loadEpisode(titleId, live.current.ep, { startAt: video.current.currentTime });
         }}><Icon name="check" />{q.label}</button>)}</div> : null}
+        <button className="kw-opt kw-more" onClick={() => { exit(); watch.openSettings(); }}>More settings<Icon name="right" /></button>
       </> : null}
       {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} bySeason={!view?.layout || view.layout === "seasons"} season={view?.season ?? ep.season} continuous={view?.layout === "continuous"} progress={time / d} onPick={(to) => { setSheet(null); pickEpisode(to); }} /> : null}
       {sheet === "react" && party ? <div className="kw-reacts">{reactionSet.map((e) => <button key={e} aria-label={`React ${e}`} onClick={() => void live.current.link?.react(e)}>{e}</button>)}</div> : null}

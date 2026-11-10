@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { signOutCompletely } from "@/lib/sign-out";
 import { AppShell } from "@/components/app-shell";
 import { listAccounts } from "@/lib/directory";
 import { picturePaths } from "@/lib/pictures";
@@ -25,6 +26,13 @@ export const metadata: Metadata = {
 };
 
 /** Kimono Watch on the web: the household's films, series and anime, played in the browser. */
+/* Signing out from Watch's settings: the whole session, as the account page does. */
+async function signOut() {
+  "use server";
+  await signOutCompletely();
+  redirect("/login");
+}
+
 export default async function WatchPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -38,6 +46,6 @@ export default async function WatchPage() {
   /* One profile per person in the household, you first. */
   const others = accounts.filter((a) => a.username !== username).map((a) => ({ username: a.username, name: a.name || a.username, picture: pictures[a.username.toLowerCase()] ?? null }));
   return <AppShell user={session.user} brandColors={settings.brand.colors} app={app}>
-    {watchConfig(settings).enabled ? <WatchEntry me={me} household={[me, ...others].slice(0, 6)} accent={app.accent} /> : <WatchOff accent={app.accent} />}
+    {watchConfig(settings).enabled ? <WatchEntry me={me} household={[me, ...others].slice(0, 6)} accent={app.accent} signOut={signOut} /> : <WatchOff accent={app.accent} />}
   </AppShell>;
 }

@@ -63,7 +63,13 @@ export type Play = {
   /** The quality playing and the ones this release offers here; absent from older servers. */
   quality?: { current: string; options: { value: string; label: string }[] };
 };
-export type Prefs = { fillers: FillerChoice; quality: string; audioLanguage: string; subtitleLanguage: string; animeAudio: string; filmAudio: string; subtitles: string; autoplayNext: boolean; skipIntros: boolean; animeEpisodes?: "seasons" | "continuous" };
+export type Prefs = {
+  fillers: FillerChoice; quality: string; audioLanguage: string; subtitleLanguage: string;
+  animeAudio: "original" | "dub"; filmAudio: "original" | "mine"; subtitles: "auto" | "always" | "off";
+  autoplayNext: boolean; skipIntros: boolean; animeEpisodes?: "seasons" | "continuous";
+  subtitleSize?: "small" | "medium" | "large"; subtitleBackground?: "none" | "shadow" | "box";
+  previews?: boolean; downloadQuality?: "standard" | "higher";
+};
 export type Device = { client: "web"; maxHeight: number; codecs: string[]; hdr: string[] };
 
 export class WatchError extends Error {
