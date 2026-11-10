@@ -337,6 +337,31 @@ test('a thumbs up keeps the chat up to the rated answer, not after it', async ()
   assert.deepEqual(entry.before.map((a) => a.asked), ['first ask']);
 });
 
+test('an admin replies to a thumb: the person sees the thanks and note under that answer, and no one else', async () => {
+  const { rate, bank, bankEntry, replyTo, repliesOf } = await import('../src/lib/code/feedback.ts');
+  const db = fresh();
+  const w = start(db);
+  model.appendEvent(db, w.id, null, { kind: 'ask', text: 'shrink my video', attachments: [] });
+  const done = model.appendEvent(db, w.id, null, { kind: 'done', ok: true });
+  rate(db, w.id, done.seq, 'akram', -1, 'sigh');
+  assert.deepEqual(repliesOf(db, w.id, 'akram'), {});
+  const [{ ref }] = bank(db, 0, true);
+  assert.equal(replyTo(db, 'pnot-a-rating', 'admin', 'hi'), null, 'a report has no one to reply to');
+  assert.equal(replyTo(db, 'r999', 'admin', 'hi'), null);
+  assert.deepEqual(replyTo(db, ref, 'admin', '  Big videos now go in through Drive.  ', 5), { note: 'Big videos now go in through Drive.', at: 5 });
+  assert.deepEqual(repliesOf(db, w.id, 'akram'), { [done.seq]: { note: 'Big videos now go in through Drive.', at: 5 } });
+  assert.deepEqual(repliesOf(db, w.id, 'sam'), {}, "not someone else's");
+  assert.equal(bankEntry(db, ref).reply.note, 'Big videos now go in through Drive.', 'the admin page shows it');
+  assert.equal(bank(db)[0].reply, undefined, 'the export leaves it out');
+  /* No note is still a thank-you; changing the thumb keeps it; taking the thumb back takes it away. */
+  replyTo(db, ref, 'admin', '', 6);
+  assert.deepEqual(repliesOf(db, w.id, 'akram')[done.seq], { note: '', at: 6 });
+  rate(db, w.id, done.seq, 'akram', 1);
+  assert.equal(repliesOf(db, w.id, 'akram')[done.seq].at, 6);
+  rate(db, w.id, done.seq, 'akram', null);
+  assert.deepEqual(repliesOf(db, w.id, 'akram'), {});
+});
+
 test('ratings kept before the chat came along get the turns before them, once', async () => {
   const { backfillRatings, bank } = await import('../src/lib/code/feedback.ts');
   const db = fresh();

@@ -2143,8 +2143,12 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
     let current = true;
     const chat = workspace.id;
     code.ratings(chat).then((next) => { if (current) setRated({ chat, ratings: next }); }, () => { /* read by its link, or not reachable: no thumbs shown as given */ });
+    code.replies(chat).then((next) => { if (current) setThanked({ chat, replies: next }); }, () => {});
     return () => { current = false; };
   }, [workspace.id]);
+  /* An administrator's thank-you for a thumb, shown under its answer. */
+  const [thanked, setThanked] = useState<{ chat: string; replies: Record<number, { note: string; at: number }> }>({ chat: "", replies: {} });
+  const replies = thanked.chat === workspace.id ? thanked.replies : {};
   const rateAnswer = (seq: number, rating: 1 | -1 | null, note?: string) => {
     const chat = workspace.id;
     setRated((now) => {
@@ -2215,7 +2219,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
               ? <RevealWords key={item.seq} id={`${workspace.id}:${item.seq}`} text={item.text} className="cd-say" />
               : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
             case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
-            case "done": return <Done key={item.seq} at={item.at} answer={item.answer} event={item.event} rating={ratings[item.seq] ?? null} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
+            case "done": return <Done key={item.seq} at={item.at} answer={item.answer} event={item.event} rating={ratings[item.seq] ?? null} reply={ratings[item.seq] ? replies[item.seq] : undefined} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
             case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
             case "sent": return <div key={item.seq} className="cd-sent">
               {item.files.some(isMedia) ? <MediaGrid workspace={workspace} files={item.files.filter(isMedia)} /> : null}
@@ -2926,7 +2930,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   </button>;
 }
 
-function Done({ event, at, answer, rating, asking, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; at: number; answer: string; rating: 1 | -1 | null; asking: boolean; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
+function Done({ event, at, answer, rating, reply, asking, onRate }: { event: Extract<CodeEvent, { kind: "done" }>; at: number; answer: string; rating: 1 | -1 | null; reply?: { note: string; at: number }; asking: boolean; onRate: (rating: 1 | -1 | null, note?: string) => Promise<unknown> }) {
   const { me } = useContext(ViewerContext);
   /* A thumb holds as soon as it's given; then there's room to say why, and who sees it. */
   const [confirming, setConfirming] = useState<1 | -1 | null>(null);
@@ -2947,6 +2951,7 @@ function Done({ event, at, answer, rating, asking, onRate }: { event: Extract<Co
     {event.ok
       ? <div className="cd-note cd-done"><span className="cd-done-facts">{facts.join(" · ")}</span><span className="cd-done-acts">{answer.trim() ? <CopyButton text={answer.trim()} label="Copy answer" /> : null}{thumbs}</span></div>
       : <div className="cd-note cd-done is-failed" role="alert"><Icon name="close" /><span>{event.error || "It stopped with an error."}</span><span className="cd-done-facts">{saidAt(at)}</span><span className="cd-done-acts">{thumbs}</span></div>}
+    {reply ? <div className="cd-thanks" role="note"><Icon name={rating === 1 ? "thumb-up" : "thumb-down"} /><span><b>Thank you for your feedback!</b>{reply.note ? <span className="cd-thanks-note">{reply.note}</span> : null}</span></div> : null}
     {confirming ? <RateDialog rating={confirming} onRate={onRate} onClose={() => setConfirming(null)} /> : null}
   </>;
 }

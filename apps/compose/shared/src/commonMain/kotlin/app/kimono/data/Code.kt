@@ -24,6 +24,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.intOrNull
@@ -569,6 +570,12 @@ class Code(private val session: Session, private val platform: Platform? = null)
 
     /** Your thumbs on this chat's answers (1 up, -1 down), by the seq of each answer's end. */
     suspend fun ratings(id: String): Map<Long, Int> = ratingsOf(session.call("${ws(id)}/feedback"))
+
+    /** An administrator's thank-you for your thumbs, by the seq of the answer each was on: their note, or "" for none. */
+    suspend fun replies(id: String): Map<Long, String> =
+        (json.parseToJsonElement(session.call("${ws(id)}/feedback")).jsonObject["replies"] as? JsonObject).orEmpty().mapNotNull { (seq, v) ->
+            seq.toLongOrNull()?.let { s -> s to ((v as? JsonObject)?.get("note") as? JsonPrimitive)?.contentOrNull.orEmpty() }
+        }.toMap()
 
     /** Thumbs up (1) or down (-1) on the answer ending at [seq], with what went wrong; null takes it back. */
     suspend fun rate(id: String, seq: Long, rating: Int?, note: String? = null): Map<Long, Int> =

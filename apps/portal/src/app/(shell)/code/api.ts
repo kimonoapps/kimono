@@ -182,6 +182,8 @@ export const code = {
   stop: (id: string) => call<void>(`${ws(id)}/stop`, { method: "POST" }),
   /** Your thumbs on this chat's answers, by the seq of each answer's end. */
   ratings: (id: string) => call<{ ratings: Record<number, 1 | -1> }>(`${ws(id)}/feedback`).then((r) => r.ratings),
+  /** An administrator's thank-you for your thumbs, by the seq of the answer each was on. */
+  replies: (id: string) => call<{ replies?: Record<number, { note: string; at: number }> }>(`${ws(id)}/feedback`).then((r) => r.replies ?? {}),
   rate: (id: string, seq: number, rating: 1 | -1 | null, note?: string) => call<{ ratings: Record<number, 1 | -1> }>(`${ws(id)}/feedback`, json("POST", { seq, rating, ...(note ? { note } : {}) })).then((r) => r.ratings),
   /** Reports the whole chat, with no name on it. */
   report: (id: string, reason: string) => call<void>(`${ws(id)}/report`, json("POST", { reason })),

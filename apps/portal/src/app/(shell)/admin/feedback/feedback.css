@@ -63,3 +63,16 @@
   .fb-search { flex: 1 1 100%; }
   .fb-ask { max-width: 100%; }
 }
+
+/* Replying to a thumb: a thank-you the person sees under the answer, and a note if one is written. */
+.fb-reply { display: grid; gap: 10px; max-width: 760px; margin: 0 0 20px; padding: 16px 18px; border-radius: 20px; background: var(--sc); }
+.fb-reply-head { margin: 0; font-size: 14px; color: var(--on-surface-variant); }
+.fb-reply-head b { color: var(--on-surface); font-weight: 600; }
+.fb-reply textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--outline-variant); border-radius: 8px; background: var(--surface); color: var(--on-surface); font: 400 15px/1.45 var(--k-sans); resize: vertical; }
+.fb-reply textarea:focus-visible { outline: 2px solid var(--k-suo); outline-offset: 1px; }
+.fb-reply-acts { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.fb-reply-problem { margin: 0 auto 0 0; font-size: 14px; color: var(--k-suo); }
+.fb-reply.is-sent { display: flex; align-items: flex-start; gap: 16px; }
+.fb-reply-said { flex: 1; display: grid; gap: 4px; min-width: 0; }
+.fb-reply-said b { font-weight: 600; font-size: 15px; }
+.fb-reply-said p { margin: 0; font-size: 14px; color: var(--on-surface-variant); white-space: pre-wrap; }

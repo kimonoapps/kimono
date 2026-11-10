@@ -1329,6 +1329,12 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-thumbs .i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .cd-rate-warn { display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 12px 14px; border-radius: var(--k-r-m); background: var(--k-secondary-container); color: var(--k-on-secondary-container); font: 500 14px/1.45 var(--k-sans); }
 .cd-rate-warn svg.i { margin-top: 1px; }
+/* An administrator's thank-you for a thumb, under the answer it was on. */
+.cd-thanks { display: flex; align-items: flex-start; gap: 10px; margin: 2px 0 8px; padding: 10px 14px; border-radius: var(--k-r-m); background: var(--k-container); color: var(--k-on-surface); font: 400 14px/1.45 var(--k-sans); max-width: 560px; }
+.cd-thanks svg.i { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--k-on-surface-variant); }
+.cd-thanks > span { display: grid; gap: 2px; min-width: 0; }
+.cd-thanks b { font-weight: 600; }
+.cd-thanks-note { color: var(--k-on-surface-variant); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cd-report textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--k-outline-variant); border-radius: var(--k-r-s); background: var(--k-surface); color: var(--k-on-surface); font: 400 15px/1.45 var(--k-sans); resize: vertical; }
 .cd-report textarea:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
 

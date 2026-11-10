@@ -500,6 +500,9 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
     LaunchedEffect(w.id, hasItems) { if (hasItems && liveFrom == Long.MAX_VALUE) { kotlinx.coroutines.delay(500); liveFrom = itemsNow.lastOrNull()?.key ?: 0L } }
     var ratings by remember(w.id) { mutableStateOf<Map<Long, Int>>(emptyMap()) }
     LaunchedEffect(w.id) { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } }
+    /* An administrator's thank-you for a thumb, shown under its answer. */
+    var replies by remember(w.id) { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    LaunchedEffect(w.id) { runCatching { code.replies(w.id) }.onSuccess { replies = it } }
     val asking = askingFor(items, ratings)
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     /* Swiping the conversation left slides it over to show when each message was sent, as in Messages; let go and it slides back. */
@@ -529,7 +532,7 @@ private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, a
                         /* Let out once: scrolled away and back, or already out, it just shows. */
                         is Item.Say -> if (item.key > liveFrom && (revealed[item.key] ?: -1) < item.text.length) RevealWords(item.text, from = revealed[item.key]) { revealed[item.key] = it } else Markdown(item.text)
                         is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
-                        is Item.Done -> DoneNote(item.event, item.answer, ratings[item.key], asking = asking == item.key) { rating, note ->
+                        is Item.Done -> DoneNote(item.event, item.answer, ratings[item.key], asking = asking == item.key, reply = if (ratings[item.key] != null) replies[item.key] else null) { rating, note ->
                             ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
                             /* Not saved: show what the server has, not what was hoped. */
                             scope.launch { runCatching { code.rate(w.id, item.key, rating, note) }.onSuccess { ratings = it }.onFailure { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } } }
@@ -1186,7 +1189,7 @@ private fun askingFor(items: List<Item>, ratings: Map<Long, Int>): Long? {
 }
 
 @Composable
-private fun DoneNote(e: CodeEvent.Done, answer: String, rating: Int?, asking: Boolean, rate: (Int?, String?) -> Unit) {
+private fun DoneNote(e: CodeEvent.Done, answer: String, rating: Int?, asking: Boolean, reply: String? = null, rate: (Int?, String?) -> Unit) {
     @Suppress("DEPRECATION") val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { kotlinx.coroutines.delay(1500); copied = false } }
@@ -1208,6 +1211,7 @@ private fun DoneNote(e: CodeEvent.Done, answer: String, rating: Int?, asking: Bo
             IconButton(onClick = { give(-1) }, modifier = Modifier.size(36.dp)) { Icon(kimonoIcon("thumb-down"), "Bad answer", modifier = Modifier.size(18.dp), tint = if (rating == -1) MaterialTheme.colorScheme.primary else idle) }
         }
     }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
     when {
         e.cancelled -> Note(null, "Stopped.")
         !e.ok -> Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
@@ -1222,6 +1226,16 @@ private fun DoneNote(e: CodeEvent.Done, answer: String, rating: Int?, asking: Bo
             Note(null, listOfNotNull(e.model?.let { modelNames[it] }, e.durationMs?.let { elapsedText(it) }).joinToString(" · "), Modifier.weight(1f))
             thumbs()
         }
+    }
+    if (reply != null && !e.cancelled) Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(kimonoIcon(if (rating == 1) "thumb-up" else "thumb-down"), null, modifier = Modifier.padding(top = 2.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Thank you for your feedback!", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold))
+                if (reply.isNotBlank()) Text(reply, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
     }
     confirming?.let { next ->
         var note by remember(next) { mutableStateOf("") }

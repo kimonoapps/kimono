@@ -1,17 +1,17 @@
 import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { code, db, feedbackVersions, shareOf, workspaceAs } from "@/lib/code";
-import { rate, ratingsOf } from "@/lib/code/feedback";
+import { rate, ratingsOf, repliesOf } from "@/lib/code/feedback";
 
 type Context = { params: Promise<{ id: string }> };
 
-/** The thumbs you gave this chat's answers, by the seq of each answer's end. */
+/** The thumbs you gave this chat's answers, by the seq of each answer's end, and an administrator's replies to them. */
 export async function GET(request: Request, { params }: Context) {
   const user = await apiUser();
   if (!user) return unauthorized();
   const { id } = await params;
   return code(user, () => {
     workspaceAs(db(), id, user.username, "read", shareOf(request));
-    return apiJson({ ratings: ratingsOf(db(), id, user.username) });
+    return apiJson({ ratings: ratingsOf(db(), id, user.username), replies: repliesOf(db(), id, user.username) });
   }, false);
 }
 
@@ -33,6 +33,6 @@ export async function POST(request: Request, { params }: Context) {
     const versions = rating === null ? undefined : await feedbackVersions(config);
     try { rate(db(), id, seq, user.username, rating, typeof body.note === "string" ? body.note : "", Date.now(), versions); }
     catch { return apiError(404, "That answer isn't here."); }
-    return apiJson({ ratings: ratingsOf(db(), id, user.username) });
+    return apiJson({ ratings: ratingsOf(db(), id, user.username), replies: repliesOf(db(), id, user.username) });
   }, false);
 }

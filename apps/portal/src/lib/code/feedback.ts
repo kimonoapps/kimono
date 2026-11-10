@@ -213,6 +213,23 @@ export function ratingsOf(db: DatabaseSync, workspaceId: string, username: strin
   return Object.fromEntries(rows.map((r) => [r.seq, r.rating]));
 }
 
+/** An administrator's reply to a thumb, as the person sees it: a thank-you, and their note if they wrote one. */
+export type Reply = { note: string; at: number };
+
+/** [username]'s replied-to ratings in a chat, by the seq of the answer each rates. */
+export function repliesOf(db: DatabaseSync, workspaceId: string, username: string): Record<number, Reply> {
+  const rows = db.prepare("SELECT seq, reply_note, reply_at FROM ai_ratings WHERE workspace_id = ? AND username = ? AND reply_at IS NOT NULL").all(workspaceId, username) as { seq: number; reply_note: string | null; reply_at: number }[];
+  return Object.fromEntries(rows.map((r) => [r.seq, { note: r.reply_note ?? "", at: r.reply_at }]));
+}
+
+/** Replies to the thumb [ref] names ("r<n>"), or changes the reply. Reports have no one to reply to. */
+export function replyTo(db: DatabaseSync, ref: string, by: string, note: string, now = Date.now()): Reply | null {
+  if (!/^r\d+$/.test(ref)) return null;
+  const kept = clip(note.trim(), 2000);
+  const changed = db.prepare("UPDATE ai_ratings SET reply_at = ?, reply_note = ?, reply_by = ? WHERE rowid = ?").run(now, kept, by, Number(ref.slice(1)));
+  return changed.changes ? { note: kept, at: now } : null;
+}
+
 /** Sends a whole chat to the bank with no name and nothing that leads back to it. */
 export function report(db: DatabaseSync, workspaceId: string, reason: string, now = Date.now(), versions: Versions = { kimono: kimonoVersion(), sandbox: null }) {
   const events = eventsAfter(db, workspaceId, 0, 100_000);
@@ -221,17 +238,17 @@ export function report(db: DatabaseSync, workspaceId: string, reason: string, no
 }
 
 export type BankEntry =
-  | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[]; /** Admin's page only: where to open it. */ ref?: string }
+  | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[]; /** Admin's page only: where to open it, and the reply given. */ ref?: string; reply?: Reply }
   | { type: "report"; at: number; version: string | null; sandboxVersion: string | null; reason: string; chat: Answer[]; ref?: string };
 
-type RatingRow = { ref: number; workspace_id: string; seq: number; rating: Rating; note: string; answer: string; at: number; version: string | null; sandbox_version: string | null };
+type RatingRow = { ref: number; workspace_id: string; seq: number; rating: Rating; note: string; answer: string; at: number; version: string | null; sandbox_version: string | null; reply_at: number | null; reply_note: string | null };
 type ReportRow = { id: string; reason: string; chat: string; at: number; version: string | null; sandbox_version: string | null };
-const ratingCols = "rowid AS ref, workspace_id, seq, rating, note, answer, at, version, sandbox_version";
+const ratingCols = "rowid AS ref, workspace_id, seq, rating, note, answer, at, version, sandbox_version, reply_at, reply_note";
 const reportCols = "id, reason, chat, at, version, sandbox_version";
 
 function ratingEntry(r: RatingRow, refs: boolean): BankEntry {
   const { before = [], ...answer } = JSON.parse(r.answer) as StoredAnswer;
-  return { type: "rating", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, rating: r.rating, note: r.note, answer, before, ...(refs ? { ref: `r${r.ref}` } : {}) };
+  return { type: "rating", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, rating: r.rating, note: r.note, answer, before, ...(refs ? { ref: `r${r.ref}`, ...(r.reply_at ? { reply: { note: r.reply_note ?? "", at: r.reply_at } } : {}) } : {}) };
 }
 function reportEntry(r: ReportRow, refs: boolean): BankEntry {
   return { type: "report", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, reason: r.reason, chat: JSON.parse(r.chat) as Answer[], ...(refs ? { ref: `p${r.id}` } : {}) };

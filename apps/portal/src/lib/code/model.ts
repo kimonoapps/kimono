@@ -331,6 +331,10 @@ export function migrate(db: DatabaseSync) {
     if (!columns.includes("version")) db.exec(`ALTER TABLE ${table} ADD COLUMN version TEXT`);
     if (!columns.includes("sandbox_version")) db.exec(`ALTER TABLE ${table} ADD COLUMN sandbox_version TEXT`);
   }
+  /* An administrator's reply to a thumb: a thank-you, with a note if they wrote one, shown to the person under the answer. */
+  if (!(db.prepare("PRAGMA table_info(ai_ratings)").all() as { name: string }[]).some((c) => c.name === "reply_at")) {
+    db.exec("ALTER TABLE ai_ratings ADD COLUMN reply_at INTEGER; ALTER TABLE ai_ratings ADD COLUMN reply_note TEXT; ALTER TABLE ai_ratings ADD COLUMN reply_by TEXT;");
+  }
   /* More of the plan an administrator gave someone, on top of their share, until the window it was given in ends. */
   db.exec(`
     CREATE TABLE IF NOT EXISTS usage_grants (
