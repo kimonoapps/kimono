@@ -343,21 +343,17 @@ private fun SceneBar(scene: SceneState, control: WebFrameControl) {
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PlaySeal(scene, ended) { sceneControl(control, if (scene.playing) "pause" else if (ended) "replay" else "play") }
-            /* A narrated animation's sound, beside play: the speaker turns it on or off, the slider sets how loud. */
+            /* A narrated animation's sound, beside play: at full volume, and the speaker mutes or unmutes it (the phone's buttons set how loud). */
             if (scene.voiced) {
-                val off = scene.muted || scene.blocked || scene.volume <= 0.0
+                LaunchedEffect(scene.volume) { if (scene.volume < 1.0) sceneControl(control, "volume", value = 1.0) }
+                val off = scene.muted || scene.blocked
                 val label = if (scene.blocked) "Turn sound on" else if (off) "Unmute" else "Mute"
                 IconButton(onClick = {
                     if (scene.blocked && !scene.playing) sceneControl(control, "play")
-                    if (off && scene.volume <= 0.0) sceneControl(control, "volume", value = 0.8)
                     sceneControl(control, if (off) "sound-on" else "sound-off")
                 }, modifier = Modifier.size(36.dp)) {
                     Icon(kimonoIcon(if (off) "sound-off" else "sound"), label, tint = if (scene.blocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
-                if (!scene.blocked) Slider(value = if (off) 0f else scene.volume.toFloat(), onValueChange = {
-                    sceneControl(control, "volume", value = it.toDouble())
-                    if (it > 0f && scene.muted) sceneControl(control, "sound-on")
-                }, valueRange = 0f..1f, modifier = Modifier.width(72.dp))
             }
             Slider(value = if (scene.end > 0) (scene.t / scene.end).toFloat().coerceIn(0f, 1f) else 0f, onValueChange = { sceneControl(control, "seek", t = it * scene.end) }, modifier = Modifier.weight(1f))
             Text("${(scene.t * 10).toInt() / 10.0} / ${(scene.end * 10).toInt() / 10.0}s", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
