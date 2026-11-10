@@ -1,0 +1,73 @@
+# Kimono Watch for iPhone: its own app, so the main Kimono app gains nothing
+# from the player. Generate the Xcode project with `xcodegen` (it isn't committed).
+name: KimonoWatch
+options:
+  bundleIdPrefix: app.kimono
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  # libmpv and FFmpeg (LGPL build): MKV, HEVC, 10-bit, HDR and styled ASS subtitles as they are.
+  # MPVKit/fetch.sh gets its xcframeworks (SwiftPM's own download stalls, and would fetch the GPL set too).
+  MPVKit:
+    path: MPVKit
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  KimonoWatch:
+    type: application
+    platform: iOS
+    sources:
+      - KimonoWatch
+      # The subtitle fonts mpv draws plain subtitles with, the same files the screens use.
+      - path: ../watchShared/src/commonMain/composeResources/font
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: MPVKit
+        product: MPVKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.kimono.watch
+        PRODUCT_NAME: KimonoWatch
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../watchShared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: ["-framework", "WatchShared"]
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        # The shared framework is built for Apple silicon simulators only.
+        "ARCHS[sdk=iphonesimulator*]": arm64
+    info:
+      path: KimonoWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Kimono Watch
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        CADisableMinimumFrameDurationOnPhone: true
+        # Portrait to browse; the player turns to landscape by itself.
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UIUserInterfaceStyle: Dark
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        # Picture in picture and AirPlay keep playing with the app away; nothing else does.
+        UIBackgroundModes: [audio]
+        CFBundleURLTypes:
+          - CFBundleURLName: app.kimono.watch.connect
+            CFBundleURLSchemes: [kimono-watch]
+        NSLocalNetworkUsageDescription: Find AirPlay screens and your Kimono at home.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    preBuildScripts:
+      - name: Build the shared Kotlin framework
+        basedOnDependencyAnalysis: false
+        script: |
+          "$SRCROOT/MPVKit/fetch.sh"
+          cd "$SRCROOT/.."
+          export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21}"
+          ./gradlew :watchShared:embedAndSignAppleFrameworkForXcode

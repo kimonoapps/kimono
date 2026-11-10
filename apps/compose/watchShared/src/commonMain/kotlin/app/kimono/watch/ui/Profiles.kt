@@ -172,8 +172,8 @@ fun Dialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
 @Composable
 fun SignInScreen(accounts: Accounts, tv: Boolean, server: String?, onDone: (Profile) -> Unit, onCancel: (() -> Unit)?) {
     val remembered = server ?: accounts.profiles.value.orEmpty().lastOrNull()?.server
-    var custom by remember { mutableStateOf(remembered != null && remembered.trimEnd('/') != DEFAULT_SERVER) }
-    var address by remember { mutableStateOf(remembered?.takeIf { custom }?.removePrefix("https://") ?: "") }
+    var custom by remember(server) { mutableStateOf(remembered != null && remembered.trimEnd('/') != DEFAULT_SERVER) }
+    var address by remember(server) { mutableStateOf(remembered?.takeIf { custom }?.removePrefix("https://") ?: "") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }

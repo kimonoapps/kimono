@@ -126,7 +126,7 @@ data class TitlePage(
 /** What a device can play, sent with every play so the server picks a version that works. */
 @Serializable
 data class Device(
-    /** "android" or "android-tv". */
+    /** "android", "android-tv" or "ios". */
     val client: String,
     val maxHeight: Int,
     val hdr: List<String> = emptyList(),
@@ -175,6 +175,8 @@ data class QualityMenu(val current: String = "auto", val options: List<QualityOp
 @Serializable
 data class PlayAnswer(
     val url: String,
+    /** The HLS rendition (web, AirPlay, Chromecast): set when asked with `cast`. Relative to the Portal. */
+    val hls: String? = null,
     val quality: QualityMenu? = null,
     val version: Version? = null,
     val versions: List<Version> = emptyList(),

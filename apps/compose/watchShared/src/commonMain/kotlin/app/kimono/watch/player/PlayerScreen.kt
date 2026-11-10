@@ -126,7 +126,11 @@ private enum class Sheet { Tracks, Speed, Episodes, Party }
  * TV the D-pad drives it: left/right seek, hold to scrub, OK pauses.
  */
 @Composable
-fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: Boolean, onExit: () -> Unit, onRec: (String) -> Unit, party: TogetherViewModel? = null) {
+fun PlayerScreen(
+    vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: Boolean, onExit: () -> Unit, onRec: (String) -> Unit, party: TogetherViewModel? = null,
+    /** The top corner's own buttons (iPhone: AirPlay and picture in picture). */
+    corner: (@Composable () -> Unit)? = null,
+) {
     val state by vm.state.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -361,7 +365,7 @@ fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: 
                 pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg, fontWeight = FontWeight.Bold)); append(name); pop()
                 if (!state.isFilm && ep != null) append("  E${state.episode} · ${ep.name}")
             }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.size(48.dp))
+            if (corner != null && !state.loading && chrome > 0.5f) corner() else Spacer(Modifier.size(48.dp))
         }
 
         if (!state.loading && chrome > 0.01f) {

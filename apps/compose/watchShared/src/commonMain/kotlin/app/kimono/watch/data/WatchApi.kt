@@ -57,13 +57,14 @@ class WatchApi(
             tracks?.let { put("tracks", json.encodeToJsonElement(it)) }
         }))
 
-    /** Starts a play; [quality] is a one-off choice from the player's Quality menu. */
-    suspend fun play(titleId: String, season: Int = 0, episode: Int = 0, version: Int? = null, quality: String? = null): PlayAnswer =
+    /** Starts a play; [quality] is a one-off choice from the player's Quality menu; [cast] ("airplay", "chromecast") asks for the HLS rendition too. */
+    suspend fun play(titleId: String, season: Int = 0, episode: Int = 0, version: Int? = null, quality: String? = null, cast: String? = null): PlayAnswer =
         json.decodeFromString(send(HttpMethod.Post, "/play", buildJsonObject {
             put("titleId", titleId)
             if (season > 0) { put("season", season); put("episode", episode) }
             version?.let { put("version", it) }
             quality?.let { put("quality", it) }
+            cast?.let { put("cast", it) }
             put("deviceId", deviceId())
             put("device", json.encodeToJsonElement(device()))
         }))

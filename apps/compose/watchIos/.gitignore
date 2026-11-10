@@ -1,0 +1,7 @@
+KimonoWatch.xcodeproj/
+build/
+KimonoWatch/Info.plist
+build.log
+MPVKit/Frameworks/
+build-archive/
+archive.log
