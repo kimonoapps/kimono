@@ -362,6 +362,31 @@ test('an admin replies to a thumb: the person sees the thanks and note under tha
   assert.deepEqual(repliesOf(db, w.id, 'akram'), {});
 });
 
+test('feedback is marked done by a reply, or done or ignored by hand, and can be reopened', async () => {
+  const { rate, report, bank, bankEntry, replyTo, setStatus } = await import('../src/lib/code/feedback.ts');
+  const db = fresh();
+  const w = start(db);
+  model.appendEvent(db, w.id, null, { kind: 'ask', text: 'a calculator', attachments: [] });
+  const done = model.appendEvent(db, w.id, null, { kind: 'done', ok: true });
+  rate(db, w.id, done.seq, 'akram', -1, 'wrong order of operations');
+  report(db, w.id, 'odd');
+  const entries = bank(db, 0, true);
+  const rating = entries.find((e) => e.type === 'rating'), reported = entries.find((e) => e.type === 'report');
+  assert.equal(rating.status, undefined, 'new feedback is to do');
+  replyTo(db, rating.ref, 'admin', 'Fixed');
+  assert.equal(bankEntry(db, rating.ref).status, 'done', 'a reply marks it done');
+  assert.equal(setStatus(db, rating.ref, 'ignored'), true);
+  assert.equal(bankEntry(db, rating.ref).status, 'ignored');
+  setStatus(db, rating.ref, null);
+  assert.equal(bankEntry(db, rating.ref).status, undefined, 'reopened');
+  assert.equal(bankEntry(db, rating.ref).reply.note, 'Fixed', 'reopening keeps the reply');
+  assert.equal(setStatus(db, reported.ref, 'done'), true, 'a report can be marked too');
+  assert.equal(bankEntry(db, reported.ref).status, 'done');
+  assert.equal(setStatus(db, 'r999', 'done'), false);
+  assert.equal(setStatus(db, 'nope', 'done'), false);
+  assert.ok(bank(db).every((e) => e.status === undefined), 'the export leaves it out');
+});
+
 test('ratings kept before the chat came along get the turns before them, once', async () => {
   const { backfillRatings, bank } = await import('../src/lib/code/feedback.ts');
   const db = fresh();

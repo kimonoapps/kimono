@@ -2,40 +2,66 @@
 
 import { useState } from "react";
 import { Seal } from "@kimono/ui";
-import type { Reply } from "@/lib/code/feedback";
+import type { Reply, Status } from "@/lib/code/feedback";
 
-/** A thank-you to the person who gave a thumb, with a note if you write one. They see it under the answer. */
-export function ReplyToRating({ entryRef, reply }: { entryRef: string; reply?: Reply }) {
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const said = await response.json().catch(() => ({})) as T & { error?: string };
+  if (!response.ok) throw new Error(said.error || "That didn't work. Try again.");
+  return said;
+}
+
+/**
+ * Dealing with one piece of feedback. A thumb can be replied to: the person
+ * sees "Thank you for your feedback!" under the answer, with the note if one
+ * is written, and that marks it done. Anything can be marked done or ignored
+ * without a reply, and put back to do.
+ */
+export function Triage({ entryRef, canReply, reply, status }: { entryRef: string; canReply: boolean; reply?: Reply; status?: Status }) {
+  const base = `/api/v1/code/feedback/${encodeURIComponent(entryRef)}`;
   const [given, setGiven] = useState(reply ?? null);
+  const [left, setLeft] = useState<Status | null>(status ?? null);
   const [note, setNote] = useState(reply?.note ?? "");
-  const [editing, setEditing] = useState(!reply);
-  const [sending, setSending] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  async function send() {
-    setSending(true); setProblem(null);
-    try {
-      const response = await fetch(`/api/v1/code/feedback/${encodeURIComponent(entryRef)}/reply`, {
-        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note }),
-      });
-      const said = await response.json().catch(() => ({})) as { reply?: Reply; error?: string };
-      if (!response.ok || !said.reply) throw new Error(said.error || "That didn't send. Try again.");
-      setGiven(said.reply); setNote(said.reply.note); setEditing(false);
-    } catch (error) { setProblem(error instanceof Error ? error.message : "That didn't send. Try again."); } finally { setSending(false); }
-  }
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true); setProblem(null);
+    try { await work(); } catch (error) { setProblem(error instanceof Error ? error.message : "That didn't work. Try again."); } finally { setBusy(false); }
+  };
+  const send = () => run(async () => {
+    const { reply: sent } = await post<{ reply: Reply }>(`${base}/reply`, { note });
+    setGiven(sent); setNote(sent.note); setLeft("done"); setEditing(false);
+  });
+  const mark = (next: Status | null) => run(async () => { await post(`${base}/status`, { status: next }); setLeft(next); setEditing(false); });
 
-  if (!editing && given) return <section className="fb-reply is-sent" aria-label="Your reply">
-    <div className="fb-reply-said"><b>Thank you for your feedback!</b>{given.note ? <p>{given.note}</p> : null}</div>
-    <Seal type="button" compact tone="quiet" onClick={() => setEditing(true)}>Change</Seal>
+  const failed = problem ? <p className="fb-reply-problem" role="alert">{problem}</p> : null;
+
+  if (left && !editing) return <section className={`fb-reply is-sent is-${left}`} aria-label="Status">
+    <div className="fb-reply-said">
+      <span className="fb-state">{left === "done" ? "Done" : "Ignored"}</span>
+      {given ? <><b>Thank you for your feedback!</b>{given.note ? <p>{given.note}</p> : null}</> : null}
+    </div>
+    <div className="fb-reply-acts">
+      {failed}
+      {canReply && left === "done" && given ? <Seal type="button" compact tone="quiet" onClick={() => setEditing(true)}>Change reply</Seal> : null}
+      <Seal type="button" compact tone="quiet" disabled={busy} onClick={() => void mark(null)}>Reopen</Seal>
+    </div>
   </section>;
 
   return <section className="fb-reply" aria-label="Reply">
-    <p className="fb-reply-head">They&rsquo;ll see <b>Thank you for your feedback!</b> under the answer.</p>
-    <textarea value={note} maxLength={2000} rows={3} placeholder="Admin note (optional)" aria-label="Admin note" onChange={(e) => setNote(e.target.value)} />
+    {canReply ? <>
+      <p className="fb-reply-head">They&rsquo;ll see <b>Thank you for your feedback!</b> under the answer.</p>
+      <textarea value={note} maxLength={2000} rows={3} placeholder="Admin note (optional)" aria-label="Admin note" onChange={(e) => setNote(e.target.value)} />
+    </> : <p className="fb-reply-head">Reports have no name, so there&rsquo;s no one to reply to.</p>}
     <div className="fb-reply-acts">
-      {problem ? <p className="fb-reply-problem" role="alert">{problem}</p> : null}
-      {given ? <Seal type="button" compact tone="quiet" onClick={() => { setNote(given.note); setEditing(false); }}>Cancel</Seal> : null}
-      <Seal type="button" compact disabled={sending} onClick={() => void send()}>{sending ? "Sending" : given ? "Send again" : "Reply"}</Seal>
+      {failed}
+      {editing ? <Seal type="button" compact tone="quiet" onClick={() => { setNote(given?.note ?? ""); setEditing(false); }}>Cancel</Seal> : <>
+        <Seal type="button" compact tone="quiet" disabled={busy} onClick={() => void mark("ignored")}>Ignore</Seal>
+        {canReply ? null : <Seal type="button" compact disabled={busy} onClick={() => void mark("done")}>Mark as done</Seal>}
+      </>}
+      {canReply ? <Seal type="button" compact disabled={busy} onClick={() => void send()}>{busy ? "Sending" : given ? "Send again" : "Reply"}</Seal> : null}
     </div>
   </section>;
 }

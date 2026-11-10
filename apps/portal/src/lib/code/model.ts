@@ -335,6 +335,12 @@ export function migrate(db: DatabaseSync) {
   if (!(db.prepare("PRAGMA table_info(ai_ratings)").all() as { name: string }[]).some((c) => c.name === "reply_at")) {
     db.exec("ALTER TABLE ai_ratings ADD COLUMN reply_at INTEGER; ALTER TABLE ai_ratings ADD COLUMN reply_note TEXT; ALTER TABLE ai_ratings ADD COLUMN reply_by TEXT;");
   }
+  /* Where an administrator left each piece of feedback: done (replied to, or dealt with) or ignored; null is still to do. */
+  for (const table of ["ai_ratings", "ai_reports"]) {
+    if (!(db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === "status")) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN status TEXT CHECK (status IN ('done', 'ignored')); ALTER TABLE ${table} ADD COLUMN status_at INTEGER;`);
+    }
+  }
   /* More of the plan an administrator gave someone, on top of their share, until the window it was given in ends. */
   db.exec(`
     CREATE TABLE IF NOT EXISTS usage_grants (

@@ -10,7 +10,8 @@ import { getPlatformSettings } from "@/lib/settings";
 import { KeptChat } from "../../../code/link-views";
 import "../../../code/code.css";
 import "../feedback.css";
-import { ReplyToRating } from "./reply";
+import { Triage } from "./reply";
+import { DownloadEntry } from "../download-entry";
 
 export const metadata = { title: "Kimono AI feedback · Admin" };
 export const dynamic = "force-dynamic";
@@ -40,8 +41,12 @@ export default async function FeedbackChatPage({ params }: Props) {
       <div className="topbar">
         <Crossing kind="kakejiku" className="back" href="/admin/feedback" aria-label="Back to feedback"><LineIcon name="back" /></Crossing>
         <span><h1>{title}</h1>{words ? <p className="sub">“{words}”</p> : null}</span>
+        <span className="fb-chat-acts">
+          {entry.version || entry.sandboxVersion ? <small>Kimono {entry.version ?? "unknown"} · Sandbox {entry.sandboxVersion ?? "unknown"}</small> : null}
+          <DownloadEntry entry={entry} />
+        </span>
       </div>
-      {entry.type === "rating" && entry.ref ? <ReplyToRating entryRef={entry.ref} reply={entry.reply} /> : null}
+      {entry.ref ? <Triage entryRef={entry.ref} canReply={entry.type === "rating"} reply={entry.type === "rating" ? entry.reply : undefined} status={entry.status} /> : null}
       <KeptChat title={kept[0]?.asked.trim().split("\n")[0]?.slice(0, 80) || title} at={entry.at} chat={kept} />
     </div>
   </AppShell>;

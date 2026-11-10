@@ -226,8 +226,20 @@ export function repliesOf(db: DatabaseSync, workspaceId: string, username: strin
 export function replyTo(db: DatabaseSync, ref: string, by: string, note: string, now = Date.now()): Reply | null {
   if (!/^r\d+$/.test(ref)) return null;
   const kept = clip(note.trim(), 2000);
-  const changed = db.prepare("UPDATE ai_ratings SET reply_at = ?, reply_note = ?, reply_by = ? WHERE rowid = ?").run(now, kept, by, Number(ref.slice(1)));
+  /* Replying is dealing with it: it's done. */
+  const changed = db.prepare("UPDATE ai_ratings SET reply_at = ?, reply_note = ?, reply_by = ?, status = 'done', status_at = ? WHERE rowid = ?").run(now, kept, by, now, Number(ref.slice(1)));
   return changed.changes ? { note: kept, at: now } : null;
+}
+
+/** Where an administrator left a piece of feedback: done, ignored, or still to do (null). */
+export type Status = "done" | "ignored";
+
+/** Marks the entry [ref] names done or ignored, or back to do (null). Returns whether there was one. */
+export function setStatus(db: DatabaseSync, ref: string, status: Status | null, now = Date.now()): boolean {
+  const at = status ? now : null;
+  if (/^r\d+$/.test(ref)) return db.prepare("UPDATE ai_ratings SET status = ?, status_at = ? WHERE rowid = ?").run(status, at, Number(ref.slice(1))).changes > 0;
+  if (/^p[\w-]+$/.test(ref)) return db.prepare("UPDATE ai_reports SET status = ?, status_at = ? WHERE id = ?").run(status, at, ref.slice(1)).changes > 0;
+  return false;
 }
 
 /** Sends a whole chat to the bank with no name and nothing that leads back to it. */
@@ -238,20 +250,20 @@ export function report(db: DatabaseSync, workspaceId: string, reason: string, no
 }
 
 export type BankEntry =
-  | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[]; /** Admin's page only: where to open it, and the reply given. */ ref?: string; reply?: Reply }
-  | { type: "report"; at: number; version: string | null; sandboxVersion: string | null; reason: string; chat: Answer[]; ref?: string };
+  | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[]; /** Admin's page only: where to open it, the reply given, and where it was left. */ ref?: string; reply?: Reply; status?: Status }
+  | { type: "report"; at: number; version: string | null; sandboxVersion: string | null; reason: string; chat: Answer[]; ref?: string; status?: Status };
 
-type RatingRow = { ref: number; workspace_id: string; seq: number; rating: Rating; note: string; answer: string; at: number; version: string | null; sandbox_version: string | null; reply_at: number | null; reply_note: string | null };
-type ReportRow = { id: string; reason: string; chat: string; at: number; version: string | null; sandbox_version: string | null };
-const ratingCols = "rowid AS ref, workspace_id, seq, rating, note, answer, at, version, sandbox_version, reply_at, reply_note";
-const reportCols = "id, reason, chat, at, version, sandbox_version";
+type RatingRow = { ref: number; workspace_id: string; seq: number; rating: Rating; note: string; answer: string; at: number; version: string | null; sandbox_version: string | null; reply_at: number | null; reply_note: string | null; status: Status | null };
+type ReportRow = { id: string; reason: string; chat: string; at: number; version: string | null; sandbox_version: string | null; status: Status | null };
+const ratingCols = "rowid AS ref, workspace_id, seq, rating, note, answer, at, version, sandbox_version, reply_at, reply_note, status";
+const reportCols = "id, reason, chat, at, version, sandbox_version, status";
 
 function ratingEntry(r: RatingRow, refs: boolean): BankEntry {
   const { before = [], ...answer } = JSON.parse(r.answer) as StoredAnswer;
-  return { type: "rating", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, rating: r.rating, note: r.note, answer, before, ...(refs ? { ref: `r${r.ref}`, ...(r.reply_at ? { reply: { note: r.reply_note ?? "", at: r.reply_at } } : {}) } : {}) };
+  return { type: "rating", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, rating: r.rating, note: r.note, answer, before, ...(refs ? { ref: `r${r.ref}`, ...(r.reply_at ? { reply: { note: r.reply_note ?? "", at: r.reply_at } } : {}), ...(r.status ? { status: r.status } : {}) } : {}) };
 }
 function reportEntry(r: ReportRow, refs: boolean): BankEntry {
-  return { type: "report", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, reason: r.reason, chat: JSON.parse(r.chat) as Answer[], ...(refs ? { ref: `p${r.id}` } : {}) };
+  return { type: "report", at: r.at, version: r.version, sandboxVersion: r.sandbox_version, reason: r.reason, chat: JSON.parse(r.chat) as Answer[], ...(refs ? { ref: `p${r.id}`, ...(r.status ? { status: r.status } : {}) } : {}) };
 }
 
 /** Everything in the bank since [since], oldest first, without anyone's name. [refs] gives each the ref Admin opens it by; the export leaves them out. */
