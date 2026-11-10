@@ -178,7 +178,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     clearInterval(pctTimer.current);
     try {
       const device = await deviceOf();
-      const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), ...(oneOff.current ? { quality: oneOff.current } : {}), device });
+      const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), ...(oneOff.current ? { quality: oneOff.current } : {}), ...(opts.startAt !== undefined ? { startAt: opts.startAt } : {}), device });
       if (token !== live.current.token) return;
       setPlay(p); live.current.play = p;
       setPct(30);
@@ -186,15 +186,15 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       attached.current?.detach();
       thumbDetach.current?.(); thumbDetach.current = null;
       /* Before it starts, a broken stream counts as this version not playing here (the next is tried); after, it's a stop. */
+      const link = live.current.link;
+      const sameAsParty = link?.state && link.state.timeline.titleId === id && link.state.timeline.season === (at?.season ?? 0) && link.state.timeline.episode === (at?.episode ?? 0);
+      const startAt = sameAsParty ? link!.position() : opts.startAt ?? p.startAt;
       attached.current = await attach(v, p, () => {
         if (token !== live.current.token) return;
         if (live.current.loading) v.dispatchEvent(new Event("kw-fatal"));
         else setProblem("The stream stopped. Try again in a moment.");
-      });
+      }, startAt);
       if (token !== live.current.token) return;
-      const link = live.current.link;
-      const sameAsParty = link?.state && link.state.timeline.titleId === id && link.state.timeline.season === (at?.season ?? 0) && link.state.timeline.episode === (at?.episode ?? 0);
-      const startAt = sameAsParty ? link!.position() : opts.startAt ?? p.startAt;
       await new Promise<void>((resolve, reject) => {
         const ok = () => { cleanup(); resolve(); };
         const bad = () => { cleanup(); reject(new Error("media")); };

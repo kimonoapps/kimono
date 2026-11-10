@@ -31,17 +31,23 @@ const plain = (kind: Attached["kind"], video: HTMLVideoElement): Attached => ({
 /** hls.js where the browser has Media Source (it handles every rendition the same way); the browser's own HLS only where it hasn't, as on an iPhone. */
 const viaHlsJs = () => typeof window !== "undefined" && (typeof MediaSource !== "undefined" || "ManagedMediaSource" in window);
 
-export async function attach(video: HTMLVideoElement, play: Play, onFatal: () => void): Promise<Attached> {
+/** startAt: where playback will begin, so the first segment asked for is that one, not the opening (the packager encodes wherever it's asked). */
+export async function attach(video: HTMLVideoElement, play: Play, onFatal: () => void, startAt = 0): Promise<Attached> {
   if (play.hls && viaHlsJs()) {
     const { default: Hls } = await import("hls.js");
     if (Hls.isSupported()) {
       /* The packager can take 5–20 s for a first segment: wait for it rather than give up. */
       const patient = { maxTimeToFirstByteMs: 30_000, maxLoadTimeMs: 120_000, timeoutRetry: { maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0 }, errorRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 8000 } };
-      const hls: Hls = new Hls({ enableWorker: true, backBufferLength: 60, maxBufferLength: 40, fragLoadPolicy: { default: patient }, playlistLoadPolicy: { default: patient }, manifestLoadPolicy: { default: patient } });
+      /* The playlists come from the Portal, which has already waited on the source: a copy it calls gone (404, 410) or too slow (503) is asked about once, not seven times. */
+      const settled = (code: unknown) => code === 404 || code === 410 || code === 503;
+      const playlists = { ...patient, errorRetry: { ...patient.errorRetry, shouldRetry: (_c: unknown, _n: number, _t: boolean, response: { code?: number } | undefined, retry: boolean) => retry && !settled(response?.code) } };
+      const hls: Hls = new Hls({ enableWorker: true, backBufferLength: 60, maxBufferLength: 40, fragLoadPolicy: { default: patient }, playlistLoadPolicy: { default: playlists }, manifestLoadPolicy: { default: playlists }, ...(startAt > 0 ? { startPosition: startAt } : {}) });
       /* A stream the server can't read keeps failing: after a few tries it's this version that's broken, not the network. */
       let failures = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
+        /* This version won't play: straight to the next, without loading its playlist again. */
+        if (settled(data.response?.code) && (data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR || data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR)) { onFatal(); return; }
         if (++failures > 3) { onFatal(); return; }
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
@@ -65,7 +71,7 @@ export async function attach(video: HTMLVideoElement, play: Play, onFatal: () =>
     }
   }
   if (play.hls && nativeHls(video)) {
-    video.src = play.hls;
+    video.src = startAt > 0 ? `${play.hls}#t=${Math.floor(startAt)}` : play.hls;
     video.load();
     return plain("hls-native", video);
   }

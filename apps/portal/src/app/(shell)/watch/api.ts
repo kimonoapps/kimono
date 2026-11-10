@@ -124,7 +124,7 @@ export const watchApi = {
   setPrefs: (change: Partial<Prefs>) => call<Prefs>("prefs", put(change)),
   /** This browser's own preferred quality. */
   setDeviceQuality: (quality: string) => call<Prefs>("prefs", put({ device: deviceId(), quality })),
-  play: (body: { titleId: string; season?: number; episode?: number; version?: number; quality?: string; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
+  play: (body: { titleId: string; season?: number; episode?: number; version?: number; quality?: string; startAt?: number; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
   prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number; label?: string }) | null; ready: boolean }>("prepare", post({ ...body, deviceId: deviceId() })),
   /** Kept alive so it still lands when the page is closing. */
   progress: (body: { titleId: string; season: number; episode: number; position: number; duration: number }) =>

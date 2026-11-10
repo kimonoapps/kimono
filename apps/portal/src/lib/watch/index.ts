@@ -565,7 +565,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     audio: tracks.audio.tags,
     subtitles: tracks.subtitles ? { tags: tracks.subtitles.tags, kind: tracks.subtitles.kind, signsTitles: tracks.subtitles.signsTitles } : null,
     burn: raw.burnSubtitles === true,
-    from: startAt,
+    /* A quality switch or another version carries on from where the player is; a fresh play from where they left off. */
+    from: Number(raw.startAt) > 0 ? Number(raw.startAt) : startAt,
   } : null;
   return {
     url: address(wanted),
@@ -792,7 +793,8 @@ function hlsSession(cfg: WatchConfig, token: string, grant: HlsGrant): Promise<H
       if (outcome === "unreadable") {
         const stream = openStream(await streamKey(), grant.stream);
         if (stream) markDead(stream.url);
-        throw new WatchProblem("This copy can't be played. Press play again for another.", 502);
+        /* 404: gone for good, so the player moves to the next version at once rather than asking again (./source.ts). */
+        throw new WatchProblem("This copy can't be played. Press play again for another.", 404);
       }
       answer = null;
     }
