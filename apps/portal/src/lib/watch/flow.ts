@@ -142,4 +142,24 @@ export function verdict(username: string, what: string, now = Date.now()): { slo
   return { slow: share >= 0.7 ? "server" : "connection", busy: Math.round(share * 100) / 100, mbps };
 }
 
+/** How long a play counts as starting: its opening burst and the seeks that follow resuming. */
+const startingMs = 90_000;
+
+/**
+ * Whether anyone's playback needs the source's full speed now: a play still
+ * starting, or one whose source isn't keeping up. The server's own reads
+ * (skip markers) wait while it does, so they never take Usenet or debrid
+ * bandwidth from someone watching.
+ */
+export function playbackNeedsSource(now = Date.now()): boolean {
+  for (const [username, mine] of flows) {
+    for (const [what, flow] of mine) {
+      if (!live(flow, now)) continue;
+      if (now - flow.started < startingMs) return true;
+      if (verdict(username, what, now).slow === "server") return true;
+    }
+  }
+  return false;
+}
+
 export const forgetFlows = () => flows.clear();

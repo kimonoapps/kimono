@@ -1243,6 +1243,22 @@ test('two streams per person; a third waits until one stops, and what plays carr
   assert.deepEqual(flow.streamsOf('sami', undefined, later), []);
 });
 
+test('skip reads wait while a play is starting or its source lags, not while plays run smoothly', () => {
+  flow.forgetFlows();
+  let now = 0;
+  const clock = () => now;
+  assert.equal(flow.playbackNeedsSource(now), false, 'nobody watching');
+  flow.tracked(bytesOf([]), 'sami', 'tv-1:1:1', clock);
+  assert.equal(flow.playbackNeedsSource(now), true, 'a play just started');
+  now = 100_000;
+  flow.waitOn('sami', 'tv-1:1:1', clock)();
+  assert.equal(flow.playbackNeedsSource(now), false, 'playing smoothly');
+  const over = flow.waitOn('sami', 'tv-1:1:1', clock);
+  now = 112_000;
+  assert.equal(flow.playbackNeedsSource(now), true, 'the source is lagging');
+  over();
+});
+
 test('a stall is the server when the relay waits on the source, else the connection', async () => {
   flow.forgetFlows();
   let now = 0;

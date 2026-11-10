@@ -31,7 +31,7 @@ import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb
 import { openStream, sealStream } from "./token";
 import { migrateTogether } from "./together";
 import { markDead, isDead } from "./dead";
-import { tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
+import { playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
 import { anything, castOf, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
@@ -628,6 +628,8 @@ async function skipDeps(cfg: WatchConfig, username: string, releasesOf: SkipDeps
   return {
     db: watchDb(),
     packager: async (path, body, timeoutMs) => {
+      /* Fingerprints and the ending read minutes of the file: they wait while someone's play needs the source (./flow.ts). Chapters are only the head, read at play. */
+      if (path !== "/chapters") for (const until = Date.now() + 20 * 60_000; playbackNeedsSource() && Date.now() < until;) await new Promise((done) => setTimeout(done, 3000));
       const response = await packagerFetch(cfg, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) }).catch(() => null);
       if (!response?.ok) { await response?.body?.cancel().catch(() => {}); return null; }
       try {
