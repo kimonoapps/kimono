@@ -42,6 +42,21 @@
 import type { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
 
+let savepoints = 0;
+/**
+ * Starts a transaction, or a savepoint inside one already open (a Notes space
+ * made during an import, say), so each change here is all or nothing either way.
+ */
+export function begin(db: DatabaseSync): { commit: () => void; rollback: () => void } {
+  if (db.isTransaction) {
+    const name = `kimono_${++savepoints}`;
+    db.exec(`SAVEPOINT ${name}`);
+    return { commit: () => db.exec(`RELEASE ${name}`), rollback: () => { db.exec(`ROLLBACK TO ${name}`); db.exec(`RELEASE ${name}`); } };
+  }
+  db.exec("BEGIN");
+  return { commit: () => db.exec("COMMIT"), rollback: () => db.exec("ROLLBACK") };
+}
+
 export type Role = "owner" | "editor" | "viewer";
 export type LinkAccess = "view" | "add";
 export type Space = {
@@ -533,7 +548,7 @@ export function createSpace(db: DatabaseSync, username: string, input: { name: u
   const color = typeof input.color === "string" && (crestColours as readonly string[]).includes(input.color) ? input.color : "plum";
   const owner = username.toLowerCase();
   const id = newId(), rootId = newId();
-  db.exec("BEGIN");
+  const tx = begin(db);
   try {
     db.prepare("INSERT INTO spaces (id, name, crest, color, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, name, crest, color, rootId, owner, now);
     db.prepare("INSERT INTO nodes (id, space_id, parent_id, kind, name, created_by, created_at, updated_at) VALUES (?, ?, NULL, 'folder', ?, ?, ?, ?)").run(rootId, id, name, owner, now, now);
@@ -544,8 +559,8 @@ export function createSpace(db: DatabaseSync, username: string, input: { name: u
       db.prepare("INSERT OR REPLACE INTO members (space_id, username, role, added_at) VALUES (?, ?, ?, ?)").run(id, who, validRole(member.role), now);
     }
     touch(db, rootId, id, now);
-    db.exec("COMMIT");
-  } catch (error) { db.exec("ROLLBACK"); throw error; }
+    tx.commit();
+  } catch (error) { tx.rollback(); throw error; }
   return spacesOf(db, owner).find((s) => s.id === id)!;
 }
 
@@ -683,7 +698,7 @@ export function moveToSpace(db: DatabaseSync, id: string, username: string, toFo
   if (!alone(node.spaceId) || !alone(target.spaceId)) throw new DriveProblem("Things only move between spaces that are yours alone.");
   const subtree = (db.prepare(`WITH RECURSIVE t(id) AS (SELECT ? UNION ALL SELECT c.id FROM nodes c JOIN t ON c.parent_id = t.id) SELECT id FROM t`).all(id) as { id: string }[]).map((r) => r.id);
   const name = freeName(db, target.id, node.name, node.id);
-  db.exec("BEGIN");
+  const tx = begin(db);
   try {
     for (const at of subtree) {
       db.prepare("UPDATE nodes SET space_id = ? WHERE id = ?").run(target.spaceId, at);
@@ -692,8 +707,8 @@ export function moveToSpace(db: DatabaseSync, id: string, username: string, toFo
       touch(db, at, target.spaceId, now);
     }
     db.prepare("UPDATE nodes SET parent_id = ?, name = ?, updated_at = ? WHERE id = ?").run(target.id, name, now, id);
-    db.exec("COMMIT");
-  } catch (error) { db.exec("ROLLBACK"); throw error; }
+    tx.commit();
+  } catch (error) { tx.rollback(); throw error; }
   return toNode(nodeRow(db, id)!, "owner");
 }
 
@@ -733,8 +748,8 @@ export function emptyOldTrash(db: DatabaseSync, now = Date.now()): string[] {
     if (row?.blob) blobs.push(row.blob);
     db.prepare("DELETE FROM nodes WHERE id = ?").run(id);
   };
-  db.exec("BEGIN");
-  try { for (const root of roots) remove(root.id); db.exec("COMMIT"); } catch (error) { db.exec("ROLLBACK"); throw error; }
+  const tx = begin(db);
+  try { for (const root of roots) remove(root.id); tx.commit(); } catch (error) { tx.rollback(); throw error; }
   return blobs;
 }
 
@@ -1053,7 +1068,7 @@ export function uploadFor(db: DatabaseSync, id: string, username: string | null)
 
 /** Puts a finished upload in its folder, as its member or as the guest. */
 export function finishUpload(db: DatabaseSync, upload: Upload, blob: string, now = Date.now()): { node: DriveNode; conflict: boolean; oldBlob: string | null } {
-  db.exec("BEGIN");
+  const tx = begin(db);
   try {
     let node: DriveNode, conflict = false, oldBlob: string | null = null;
     const file = { name: upload.name, size: upload.size, mime: upload.mime, blob };
@@ -1090,9 +1105,9 @@ export function finishUpload(db: DatabaseSync, upload: Upload, blob: string, now
       node = addFile(db, upload.parentId, upload.createdBy, file, now);
     }
     endUpload(db, upload.id);
-    db.exec("COMMIT");
+    tx.commit();
     return { node, conflict, oldBlob };
-  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  } catch (error) { tx.rollback(); throw error; }
 }
 
 export function recordReceived(db: DatabaseSync, id: string, received: number, now = Date.now()) {
@@ -1139,7 +1154,7 @@ export function folderToSpace(db: DatabaseSync, folderId: string, username: stri
   const crest = typeof input.crest === "string" && (crests as readonly string[]).includes(input.crest) ? input.crest : "sakura";
   const owner = username.toLowerCase();
   const id = newId();
-  db.exec("BEGIN");
+  const tx = begin(db);
   try {
     db.prepare("INSERT INTO spaces (id, name, crest, root_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(id, folder.name, crest, folder.id, owner, now);
     db.prepare(`
@@ -1155,7 +1170,7 @@ export function folderToSpace(db: DatabaseSync, folderId: string, username: stri
       if (who !== owner) db.prepare("INSERT OR REPLACE INTO members (space_id, username, role, added_at) VALUES (?, ?, ?, ?)").run(id, who, validRole(member.role), now);
     }
     touch(db, folder.id, id, now);
-    db.exec("COMMIT");
-  } catch (error) { db.exec("ROLLBACK"); throw error; }
+    tx.commit();
+  } catch (error) { tx.rollback(); throw error; }
   return spacesOf(db, owner).find((s) => s.id === id)!;
 }

@@ -95,6 +95,15 @@ test('a rerun takes back shares an earlier run gave everyone, and keeps ones add
   assert.ok(notes.libraryOf(db, 'kai').notebooks.some((n) => n.name === 'Household'));
 });
 
+test('it runs inside one transaction, as the Portal runs it, making Notes spaces as it goes', () => {
+  const db = fresh();
+  db.exec('BEGIN');
+  const summary = importOutline(db, dump, accounts, put);
+  db.exec('COMMIT');
+  assert.ok(summary.notes > 0);
+  assert.ok(notes.notebooksOf(db, 'akram').length > 0);
+});
+
 test('Outline markdown is tidied', () => {
   assert.equal(markdownOf({ text: 'Hi @[Sam](mention://a/user/b)\n\\\n\\\nok' }), 'Hi @Sam\n\nok\n');
 });
