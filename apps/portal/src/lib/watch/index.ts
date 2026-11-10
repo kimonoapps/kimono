@@ -18,7 +18,8 @@ import {
   type Episode, type Title,
 } from "./model";
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
-import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
+import { aniskip, aniskipEpisode, chooseMarkers, type Markers } from "./markers";
+import { analyseLater, skipsFor, type SkipDeps, type SkipTarget } from "./skips";
 import { badges, cleanDevice, describe, heightCap, qualityOptions, rank, type Release } from "./releases";
 import { fetchUpstream, findStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
@@ -364,15 +365,22 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   const prefs = prefsOf(db, username);
   const next = nextEpisode(await allEpisodes(cfg, title), { season: Number(raw.season) || 1, episode: Number(raw.episode) || 1 }, prefs.fillers);
   if (!next || !title.imdbId) return { next, ready: false };
-  const [found] = await Promise.all([
+  const episodes = episodesOf(db, title.id);
+  const [found, fromAniskip] = await Promise.all([
     releasesFor(cfg, title, next.season, next.episode).catch(() => []),
-    markersFor(cfg, title, episodesOf(db, title.id), next.season, next.episode).catch(() => null),
+    aniskipFor(cfg, title, episodes, next.season, next.episode).catch(() => null),
   ]);
   const device = cleanDevice(raw.device);
   const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
   const quality = qualityFor(cleanQuality(raw.quality), deviceQualityOf(db, username, cleanDeviceId(raw.deviceId)), prefs);
-  return { next, ready: rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db)).length > 0 };
+  const ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  /* Work out the next episode's skips now, for the release it will most likely play. */
+  if (ranked[0] && cfg.packager.key && !complete(fromAniskip)) {
+    const pick = picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage));
+    analyseLater(await skipDeps(cfg, username, pick), skipTarget(title, episodes, next.season, next.episode, ranked[0], minutes));
+  }
+  return { next, ready: ranked.length > 0 };
 }
 
 /**
@@ -402,7 +410,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     minutes = e.runtime ?? minutes;
   }
 
-  const [found, markers] = await Promise.all([releasesFor(cfg, title, season, episode), markersFor(cfg, title, episodes, season, episode)]);
+  const [found, fromAniskip] = await Promise.all([releasesFor(cfg, title, season, episode), aniskipFor(cfg, title, episodes, season, episode).catch(() => null)]);
   /* Sub or dub: the person's choice for this show, else their settings; the release is picked to carry it. */
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
   let ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
@@ -410,6 +418,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
+
+  const markers = await markersFor(cfg, username, title, episodes, season, episode, wanted, minutes, fromAniskip,
+    picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage)));
 
   const sealKey = await streamKey();
   const expiresAt = Date.now() + 6 * 60 * 60 * 1000;
@@ -439,7 +450,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     fillerAhead: title.kind === "series" && prefs.fillers === "ask" ? fillerAhead(episodes, { season, episode }) : null,
     autoplayNext: prefs.autoplayNext,
     /* Seconds: intro and recap as [start, end], credits as where they start. */
-    markers: markers ?? {},
+    markers,
     skipIntros: prefs.skipIntros,
     /* Which audio and subtitle tracks to switch on, by the tags containers use. */
     tracks,
@@ -448,11 +459,62 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
 }
 
 /**
- * Where the intro, recap and credits are: AniSkip for anime, kept a week when
- * found and a day when not; nothing yet for the rest (fingerprintMarkers).
+ * Where the intro, recap and credits are: AniSkip for anime, and what the
+ * file itself says for the rest (./skips.ts), each part from the best
+ * source that has it, with a guess at the credits when nothing does.
  */
-async function markersFor(cfg: WatchConfig, title: Title, episodes: Episode[], season: number, episode: number): Promise<Markers | null> {
-  if (title.shelf !== "Anime") return fingerprintMarkers(title.id, season, episode);
+async function markersFor(
+  cfg: WatchConfig, username: string, title: Title, episodes: Episode[], season: number, episode: number,
+  release: Release, minutes: number | null, fromAniskip: Markers | null, pick: SkipDeps["releasesOf"],
+): Promise<Markers> {
+  const kind = title.kind === "movie" ? "film" : "episode";
+  if (complete(fromAniskip) || !cfg.packager.key) return chooseMarkers({ kind, aniskip: fromAniskip, duration: minutes ? minutes * 60 : null });
+  try {
+    return await skipsFor(await skipDeps(cfg, username, pick), skipTarget(title, episodes, season, episode, release, minutes), 1500, fromAniskip);
+  } catch {
+    return chooseMarkers({ kind, aniskip: fromAniskip, duration: minutes ? minutes * 60 : null });
+  }
+}
+
+/** AniSkip already has the intro and the credits: nothing to work out. */
+const complete = (m: Markers | null) => Boolean(m?.intro && m.credits !== undefined);
+
+function skipTarget(title: Title, episodes: Episode[], season: number, episode: number, release: Release, minutes: number | null): SkipTarget {
+  return {
+    titleId: title.id, kind: title.kind === "movie" ? "film" : "episode", season, episode, release, runtime: minutes,
+    seasonEpisodes: episodes.filter((e) => e.season === season).map((e) => e.number),
+  };
+}
+
+/** The releases another episode would play on this device, best first: the ones worth fingerprinting. */
+function picker(cfg: WatchConfig, title: Title, episodes: Episode[], device: ReturnType<typeof cleanDevice>, quality: ReturnType<typeof qualityFor>, want: ReturnType<typeof wantFor>) {
+  return async (season: number, episode: number) => {
+    const minutes = episodes.find((e) => e.season === season && e.number === episode)?.runtime ?? title.runtime;
+    return rank(await releasesFor(cfg, title, season, episode), device, quality, minutes, want, speedsOf(watchDb()));
+  };
+}
+
+/** How ./skips.ts reaches the packager and the Portal's relay. */
+async function skipDeps(cfg: WatchConfig, username: string, releasesOf: SkipDeps["releasesOf"]): Promise<SkipDeps> {
+  const sealKey = await streamKey();
+  return {
+    db: watchDb(),
+    packager: async (path, body, timeoutMs) => {
+      const response = await packagerFetch(cfg, path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) }).catch(() => null);
+      if (!response?.ok) { await response?.body?.cancel().catch(() => {}); return null; }
+      try {
+        const answer = JSON.parse((await response.text()).trim());
+        return answer && typeof answer === "object" && !answer.error ? answer : null;
+      } catch { return null; }
+    },
+    input: (r) => `${cfg.packager.input}/api/v1/watch/stream/${sealStream(sealKey, { url: r.url, username, expiresAt: Date.now() + 6 * 60 * 60 * 1000, source: r.service })}`,
+    releasesOf,
+  };
+}
+
+/** AniSkip's markers for anime, kept a week when found and a day when not; null for everything else. */
+async function aniskipFor(cfg: WatchConfig, title: Title, episodes: Episode[], season: number, episode: number): Promise<Markers | null> {
+  if (title.shelf !== "Anime") return null;
   const db = watchDb();
   const key = `markers:${title.id}:${season}:${episode}`;
   const known = cached<{ markers: Markers | null }>(db, key);

@@ -382,6 +382,103 @@ test("AniSkip's times become intro, recap and credits", () => {
   assert.equal(markers.markersFrom({ found: true, results: [{ skipType: 'op', interval: { startTime: 5, endTime: 5 } }] }), null);
 });
 
+test('chapter names say intro, recap, credits or nothing', () => {
+  for (const t of ['Opening', 'OP', 'OP 2', 'Intro', 'Opening Credits', 'Main Titles', 'OP: Yuusha', 'オープニング']) assert.equal(markers.chapterKind(t), 'intro', t);
+  for (const t of ['Recap', 'Previously on Severance', 'Previously', 'Summary']) assert.equal(markers.chapterKind(t), 'recap', t);
+  for (const t of ['Ending', 'ED', 'ED2', 'Credits', 'End Credits', 'Closing Credits', 'Outro', 'エンディング']) assert.equal(markers.chapterKind(t), 'credits', t);
+  for (const t of ['Preview', 'Next Episode']) assert.equal(markers.chapterKind(t), 'preview', t);
+  for (const t of ['Chapter 1', 'Chapter 01', '03', '00:12:01.000', '']) assert.equal(markers.chapterKind(t), 'generic', t);
+  for (const t of ['Prologue', 'Part A', 'Cold Open', 'The Opening Scene']) assert.equal(markers.chapterKind(t), 'other', t);
+});
+
+test('named chapters become markers; unnamed ones only lend the last chapter to credits', () => {
+  const anime = [
+    { start: 0, end: 62, title: 'Prologue' }, { start: 62, end: 152, title: 'Opening' }, { start: 152, end: 1290, title: 'Part A' },
+    { start: 1290, end: 1380, title: 'Ending' }, { start: 1380, end: 1420, title: 'Preview' },
+  ];
+  assert.deepEqual(markers.chapterMarkers(anime, 1420), { intro: [62, 152], credits: 1290 });
+  const show = [{ start: 0, end: 45, title: 'Previously' }, { start: 45, end: 600, title: 'Chapter 2' }, { start: 2500, end: 2600, title: 'Preview' }];
+  assert.deepEqual(markers.chapterMarkers(show, 2600), { recap: [0, 45], credits: 2500 }, 'a preview stands in for credits');
+  assert.equal(markers.chapterMarkers([{ start: 0, end: 300, title: 'Opening' }], 1400), null, 'five minutes is not an intro');
+  assert.equal(markers.chapterMarkers([{ start: 100, end: 200, title: 'Credits' }], 1400), null, 'credits early on are opening credits gone wrong');
+  const disc = [1, 2, 3, 4].map((n) => ({ start: (n - 1) * 1800, end: n * 1800, title: `Chapter ${n}` })).concat([{ start: 7200, end: 7620, title: 'Chapter 5' }]);
+  assert.equal(markers.chapterMarkers(disc, 7620), null);
+  assert.equal(markers.lastChapterCredits(disc, 7620, 'film'), 7200, 'a seven-minute last chapter of a film');
+  assert.equal(markers.lastChapterCredits(disc, 7620, 'episode'), null, 'too long for an episode');
+  assert.equal(markers.lastChapterCredits(disc.slice(0, 2), 7620, 'film'), null);
+});
+
+/* Fingerprints: random points, with a shared stretch copied in at different places and a few bits flipped. */
+function rng(seed) { return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed; }; }
+function prints(length, seed) { const next = rng(seed); return Array.from({ length }, () => next()); }
+function noisy(points, seed) { const next = rng(seed); return points.map((p) => (next() % 4 === 0 ? (p ^ (1 << (next() % 32))) >>> 0 : p)); }
+const step = markers.printStep;
+
+test('the stretch two episodes share is found where it is in each', () => {
+  const theme = prints(Math.round(90 / step), 7);
+  const a = prints(4800, 1), b = prints(4800, 2);
+  a.splice(Math.round(30 / step), theme.length, ...theme);
+  b.splice(Math.round(200 / step), theme.length, ...noisy(theme, 3));
+  const shared = markers.sharedSegment({ start: 0, points: a }, { start: 0, points: b }, markers.introShare);
+  assert.ok(shared, 'found');
+  assert.ok(Math.abs(shared.a[0] - 30) < 1 && Math.abs(shared.a[1] - 120) < 1, `a ${shared.a}`);
+  assert.ok(Math.abs(shared.b[0] - 200) < 1 && Math.abs(shared.b[1] - 290) < 1, `b ${shared.b}`);
+  const tail = markers.sharedSegment({ start: 1000, points: a }, { start: 2000, points: b }, markers.introShare);
+  assert.ok(Math.abs(tail.a[0] - 1030) < 1 && Math.abs(tail.b[0] - 2200) < 1, 'counted from where each print starts');
+  assert.equal(markers.sharedSegment({ start: 0, points: prints(4000, 4) }, { start: 0, points: prints(4000, 5) }, markers.introShare), null, 'nothing shared');
+  const short = prints(Math.round(8 / step), 9), c = prints(2000, 10), d = prints(2000, 11);
+  c.splice(100, short.length, ...short); d.splice(500, short.length, ...short);
+  assert.equal(markers.sharedSegment({ start: 0, points: c }, { start: 0, points: d }, markers.introShare), null, 'eight seconds is a sting, not an intro');
+  assert.equal(markers.sharedSegment({ start: 0, points: a }, { start: 0, points: noisy(a, 12) }, markers.introShare), null, 'the same episode twice is no intro');
+});
+
+test('another release lines up with a known one, and its markers move with it', () => {
+  const head = prints(2400, 21);
+  const other = prints(Math.round(4 / step), 22).concat(noisy(head, 23)).slice(0, 2400);
+  const by = markers.alignment({ start: 0, points: head }, { start: 0, points: other });
+  assert.ok(Math.abs(by - 4) < 0.3, `four seconds later (${by})`);
+  assert.equal(markers.alignment({ start: 0, points: head }, { start: 0, points: prints(2400, 24) }), null);
+  assert.deepEqual(markers.shifted({ intro: [30, 120], credits: 1300 }, 4, 1302), { intro: [34, 124], credits: 1302 });
+  const packed = markers.packPoints([0, 1, 4294967295, 123456789]);
+  assert.deepEqual(markers.unpackPoints(packed), [0, 1, 4294967295, 123456789]);
+  assert.deepEqual(markers.printWindows(1400), { head: { start: 0, length: 420 }, tail: { start: 1120, length: 280 } });
+  assert.deepEqual(markers.printWindows(3600), { head: { start: 0, length: 600 }, tail: { start: 3300, length: 300 } });
+});
+
+test('dark pictures at the end are the credits, from where the sound stopped', () => {
+  const frames = [];
+  for (let t = 6600; t < 7000; t += 2) frames.push([t, 20]);
+  for (let t = 7000; t < 7400; t += 2) frames.push([t, t === 7100 ? 40 : 95]);
+  assert.equal(markers.creditsFromFrames(frames, [[6996.5, 6999], [7200, 7201]], 7400, 'film'), 6996.5);
+  assert.equal(markers.creditsFromFrames(frames, [], 7400, 'film'), 7000);
+  const still = [[2800, 10], [2820, 5], [2839, 2], [2848.1, 100], [2879.3, 93], [2881.9, 78], [2883.7, 0], [2885.7, 0], [2890.7, 100]];
+  assert.equal(markers.creditsFromFrames(still, [], 2892.9, 'episode'), 2848.1, 'still credits hold one keyframe for half a minute, then the studio logos');
+  const bright = frames.map(([t]) => [t, 10]).concat([[7395, 100], [7397, 100]]);
+  assert.equal(markers.creditsFromFrames(bright, [], 7400, 'film'), null, 'only the black after the last frame');
+  assert.deepEqual(markers.endingWindow(7400, 'film'), { start: 6512, length: 888 });
+  assert.deepEqual(markers.endingWindow(1400, 'episode'), { start: 1120, length: 280 });
+});
+
+test('each marker comes from the best source that has it, else credits are a guess', () => {
+  assert.deepEqual(markers.chooseMarkers({ kind: 'episode', duration: 1440, aniskip: { intro: [90, 180] }, chapters: { intro: [60, 150], credits: 1300 } }),
+    { intro: [90, 180], credits: 1300, source: 'aniskip' });
+  assert.deepEqual(markers.chooseMarkers({ kind: 'episode', duration: 2700, chapters: { recap: [0, 40] }, fingerprint: { intro: [40, 100], credits: 2600 } }),
+    { recap: [0, 40], intro: [40, 100], credits: 2600, source: 'chapters' });
+  assert.deepEqual(markers.chooseMarkers({ kind: 'episode', duration: 2700, fingerprint: { intro: [40, 100] }, frames: 2610 }),
+    { intro: [40, 100], credits: 2610, source: 'fingerprint' });
+  assert.deepEqual(markers.chooseMarkers({ kind: 'film', duration: 7400, frames: null, lastChapter: 7200 }), { credits: 7200, source: 'chapters' });
+  assert.deepEqual(markers.chooseMarkers({ kind: 'episode', duration: 3000 }), { credits: 2940, creditsGuess: true, source: 'guess' });
+  assert.deepEqual(markers.chooseMarkers({ kind: 'episode', duration: 3000, fingerprint: { intro: [60, 120] } }), { intro: [60, 120], credits: 2940, creditsGuess: true, source: 'fingerprint' });
+  assert.deepEqual(markers.chooseMarkers({ kind: 'film', duration: 6000 }), { credits: 5700, creditsGuess: true, source: 'guess' });
+  assert.deepEqual(markers.chooseMarkers({ kind: 'episode', duration: null }), {}, 'nothing known, nothing said');
+  assert.deepEqual(markers.chooseMarkers({ kind: 'episode', duration: 1400, chapters: { intro: [1300, 1390], credits: 1290 } }), { credits: 1290, source: 'chapters' }, 'an intro inside the credits goes');
+  assert.equal(markers.realFile({ duration: 120, size: 19856, audio: false }, { bytes: 6e8, minutes: 57 }), false, 'a stand-in clip');
+  assert.equal(markers.realFile({ duration: 3300, size: 5.8e8, audio: true }, { bytes: 6e8, minutes: 57 }), true);
+  assert.equal(markers.realFile({ duration: 3300, size: 1e8, audio: true }, { bytes: 6e8 }), false, 'far smaller than listed');
+  assert.equal(markers.releaseKey({ filename: 'Show.S01E01.mkv', bytes: 10 }), markers.releaseKey({ filename: 'show.s01e01.mkv ', bytes: 10, name: 'other' }));
+  assert.notEqual(markers.releaseKey({ filename: 'Show.S01E01.mkv', bytes: 10 }), markers.releaseKey({ filename: 'Show.S01E01.mkv', bytes: 11 }));
+});
+
 /* ───── Plays or not ───── */
 
 test('the playability check goes two at a time, and gives up when the search is down', async () => {
