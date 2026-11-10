@@ -4,6 +4,7 @@ import { accentRamp, cx } from "@kimono/ui";
 import { usePathname } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { FileDropLayer } from "@/components/file-drop";
+import { immersiveAt } from "@/components/immersive";
 import { PageTransition } from "@/components/page-transition";
 import { Rail, type RailApp, type RailRoom } from "@/components/rail";
 
@@ -26,7 +27,8 @@ export function ShellFrame({ apps, rooms, admin, you, defaultPins, children }: {
   const pathname = usePathname();
   const app = appAt(apps, pathname);
   const active = pathname === "/" ? "home" : under(pathname, "/admin") ? "admin" : under(pathname, "/account") ? "account" : undefined;
-  return <div className={cx("app-frame", app && "in-app")} style={app ? palette(app.accent) : undefined}>
+  /* A full-screen place (Watch) folds the rail away; shell.css animates it. */
+  return <div className={cx("app-frame", app && "in-app")} data-immersive={immersiveAt(pathname) ? "" : undefined} style={app ? palette(app.accent) : undefined}>
     <Rail apps={apps} current={app?.id} rooms={app ? rooms[app.id] : undefined} active={active} admin={admin} defaultPins={defaultPins} you={you} />
     <main className="main-content"><PageTransition>{children}</PageTransition></main>
     <FileDropLayer />

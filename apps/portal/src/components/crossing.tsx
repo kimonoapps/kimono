@@ -4,6 +4,7 @@ import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type Se
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
+import { closeIris, foldRail, immersiveAt, immersiveLayer, openIris, surface } from "@/components/immersive";
 import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
 
 /**
@@ -33,13 +34,22 @@ function Arrivals({ children }: { children: ReactNode }) {
      clears the dissolve, slides it in when you pressed something, and rises
      its pieces once any in-page skeleton gives way. */
   const landing = useRef<() => void>(() => {});
+  /* Set when the move crosses into or out of a full-screen place (Watch),
+     which arrives its own way (components/immersive). */
+  const crossing = useRef<"in" | "out" | null>(null);
   const settle = useCallback((slideIn: boolean) => {
     landing.current();
     let settling = () => {};
+    const across = crossing.current;
+    crossing.current = null;
     const stop = whenPageStands((page) => {
       page.getAnimations().forEach((animation) => animation.cancel());
+      const layer = immersiveLayer(page);
+      foldRail(!!layer);
       if (still()) return;
-      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
+      if (layer) { if (across === "in") openIris(layer); return; }
+      if (across === "out") surface(page);
+      else if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
       settling = riseWhenReady(page);
     });
     landing.current = () => { stop(); settling(); };
@@ -112,6 +122,18 @@ function Arrivals({ children }: { children: ReactNode }) {
       };
       requestAnimationFrame(watch);
     };
+    /* Into or out of a full-screen place: the rail folds or unfolds at the
+       press, and the cinema closes as an iris rather than the page drifting. */
+    const target = new URL(href, location.href).pathname;
+    const from = immersiveAt(location.pathname), to = immersiveAt(target);
+    crossing.current = from === to ? null : to ? "in" : "out";
+    if (crossing.current) foldRail(to);
+    const layer = from ? immersiveLayer(leaving) : null;
+    if (layer) {
+      if (to) { handOver(); return; }
+      void closeIris(layer).then(handOver);
+      return;
+    }
     if (!leaving || still()) { handOver(); return; }
     const dissolve = leaving.animate([
       { opacity: 1, transform: "none", filter: "blur(0)" },

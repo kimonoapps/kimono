@@ -125,12 +125,24 @@
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 
+/* ── a full-screen place (Watch, components/immersive.ts): the rail folds
+   away and its column closes, and unfolds again on the way back ── */
+.app-frame { transition: grid-template-columns 420ms cubic-bezier(.2, 0, 0, 1); }
+.rail { transition: translate 420ms cubic-bezier(.2, 0, 0, 1), opacity 260ms cubic-bezier(.2, 0, 0, 1); }
+.app-frame[data-immersive] { grid-template-columns: 0 minmax(0, 1fr); }
+/* Its own width, so it slides whole while the column closes rather than squeezing. */
+@media (min-width: 721px) { .rail { width: 96px; } }
+.app-frame[data-immersive] .rail { translate: -100% 0; opacity: 0; pointer-events: none; transition-timing-function: cubic-bezier(.3, 0, .8, .15); transition-duration: 300ms, 220ms; }
+@media (prefers-reduced-motion: reduce) { .app-frame, .rail { transition: none; } }
+
 /* ── phone: the rail is the bottom bar ── */
 @media (max-width: 720px) {
   .app-frame { grid-template-columns: minmax(0, 1fr); padding-bottom: 76px; }
   .rail { position: fixed; inset: auto 0 0; top: auto; height: auto; flex-direction: row; justify-content: space-around; padding: 8px 6px max(10px, env(safe-area-inset-bottom)); background: var(--k-container); overflow: visible; }
   .rail-mark, .rail-scroll, .rail-divider { display: none; }
   .rail-dest { width: auto; flex: 1; }
+  .app-frame[data-immersive] { grid-template-columns: minmax(0, 1fr); padding-bottom: 0; }
+  .app-frame[data-immersive] .rail { translate: 0 100%; }
   .app-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .app-tile-link { padding: 16px; }
   .app-tile-bloom.k-app-bloom { width: 56px; height: 56px; }
