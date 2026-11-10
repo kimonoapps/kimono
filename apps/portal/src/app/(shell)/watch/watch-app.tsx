@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, type TitleView } from "./api";
 import { AppLockup, KimonoBranch } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
+import { circleSettled } from "@/components/immersive";
 import { cx, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
 import { InkLoader } from "@kimono/ui";
@@ -104,7 +105,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
     for (const row of h.rows) for (const card of row.items) known.current.set(card.id, { ...known.current.get(card.id), ...card });
   }, []);
   /* My list and New & hot read Home's own rows; they page until those have come. */
-  const loadAll = useCallback(() => watchApi.homeUntil(["continue", "list"]).then((h) => { remember(h); setAll(h); }, () => {}), [remember]);
+  const loadAll = useCallback(() => watchApi.homeUntil(["continue", "list"]).then(async (h) => { remember(h); await circleSettled(); setAll(h); }, () => {}), [remember]);
   /* Home again after a change elsewhere: the first page fresh, the pages already scrolled through kept after it. */
   const loadHome = useCallback(async (shelf: Shelf | null) => {
     try {
@@ -122,7 +123,8 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
   const chooseShelf = (shelf: Shelf | null) => { filterRef.current = shelf; setHome(null); setMoreLoading(false); setFilter(shelf); };
   useEffect(() => {
     if (!profile) return;
-    watchApi.home(filter).then((h) => { remember(h); if (filterRef.current === filter) setHome(h); }, () => say("Watch isn't answering. Try again in a moment."));
+    /* Drawn once the opening circle has finished: a render this big mid-circle would make it jump. */
+    watchApi.home(filter).then(async (h) => { remember(h); await circleSettled(); if (filterRef.current === filter) setHome(h); }, () => say("Watch isn't answering. Try again in a moment."));
     void loadAll();
   }, [profile, filter, remember, say, loadAll]);
   /* Home goes on as long as you scroll: the next page when its last rows come near. */

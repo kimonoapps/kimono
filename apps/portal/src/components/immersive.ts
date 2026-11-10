@@ -24,7 +24,7 @@ const still = () => typeof window === "undefined" || matchMedia("(prefers-reduce
 /* An even ease in and out, both ways. The circle's radius runs to the far
    corner, so a curve that rushes early covers the screen before you see it
    grow from your press, and one that rushes late hides where it lands. */
-const IRIS = "cubic-bezier(.4, 0, .2, 1)";
+const IRIS = "cubic-bezier(.37, 0, .63, 1)"; /* ease-in-out sine */
 
 /* Where the last press landed. */
 let pressed: { x: number; y: number; at: number } | null = null;
@@ -51,13 +51,25 @@ const reach = ({ x, y }: Point) => Math.hypot(Math.max(x, innerWidth - x), Math.
    element on the page whatever its z-index, and the cinema's frosted glass
    goes plain (watch.css): a blur behind every chip and bar would be redrawn
    on every frame. Both are undone once it stops. */
-function quiet(layer: HTMLElement, moving: Animation) {
+let moving: Promise<void> = Promise.resolve();
+/**
+ * Resolves once no circle is moving. The circle is drawn on the main thread,
+ * so a place holds its heavy first draw until then: a long render mid-circle
+ * would freeze it and then make it jump.
+ */
+export const circleSettled = () => moving;
+
+function quiet(layer: HTMLElement, animation: Animation) {
+  const done = animation.finished.then(() => {}, () => {});
+  /* Never held longer than the circle takes: a tab sent to the background pauses it. */
+  const ceiling = Number(animation.effect?.getTiming().duration) || 0;
+  moving = Promise.race([done, new Promise<void>((resolve) => setTimeout(resolve, ceiling + 250))]);
   layer.dataset.iris = "";
   let lifted = false;
   if (typeof layer.showPopover === "function") {
     try { layer.popover = "manual"; layer.showPopover(); lifted = true; } catch { layer.removeAttribute("popover"); }
   }
-  void moving.finished.finally(() => {
+  void done.finally(() => {
     delete layer.dataset.iris;
     if (lifted) { try { layer.hidePopover(); } catch { /* already gone */ } layer.removeAttribute("popover"); }
   });
