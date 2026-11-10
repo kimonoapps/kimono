@@ -22,6 +22,7 @@ import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./mar
 import { badges, cleanDevice, describe, rank, type Release } from "./releases";
 import { fetchUpstream, findStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
+import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
 import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
@@ -356,7 +357,7 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   const device = cleanDevice(raw.device);
   const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
-  return { next, ready: rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage)).length > 0 };
+  return { next, ready: rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db)).length > 0 };
 }
 
 /**
@@ -383,17 +384,17 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const [found, markers] = await Promise.all([releasesFor(cfg, title, season, episode), markersFor(cfg, title, episodes, season, episode)]);
   /* Sub or dub: the person's choice for this show, else their settings; the release is picked to carry it. */
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
-  const ranked = rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage));
+  const ranked = rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
 
   const sealKey = await streamKey();
   const expiresAt = Date.now() + 6 * 60 * 60 * 1000;
-  const address = (url: string) => `${origin}/api/v1/watch/stream/${sealStream(sealKey, { url, username, expiresAt })}`;
+  const address = (r: { url: string; service: string }) => `${origin}/api/v1/watch/stream/${sealStream(sealKey, { url: r.url, username, expiresAt, source: r.service })}`;
   const p = progressOf(db, username, title.id).find((x) => x.season === season && x.episode === episode);
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
   return {
-    url: address(wanted.url),
+    url: address(wanted),
     version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service },
     versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
     startAt: p && !finished(p) ? p.position : 0,
@@ -455,6 +456,8 @@ export async function status(cfg: WatchConfig) {
     provisioning: provisioningOf(db),
     playability: readState<{ at: number; checked: number; of: number }>(db, "playability"),
     lastError: lastError(db),
+    /* What each source has really managed lately, in megabits a second and milliseconds to the first byte. */
+    speeds: speedsOf(db),
   };
 }
 
@@ -473,11 +476,19 @@ export async function relay(request: Request, token: string): Promise<Response> 
   if (!grant) return new Response("This link has run out. Press play again.", { status: 410 });
   const headers = new Headers();
   for (const name of ["range", "if-range", "accept"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
+  const startedAt = performance.now();
   const upstream = await fetchUpstream(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal });
   if (!upstream || (!upstream.ok && upstream.status !== 206)) return new Response("The stream stopped answering. Try another version.", { status: 502 });
   const out = new Headers({ "cache-control": "private, no-store", "accept-ranges": "bytes" });
   for (const name of ["content-length", "content-range", "last-modified", "etag"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
   const type = videoType(upstream.headers.get("content-type"), upstream.url || grant.url);
   if (type) out.set("content-type", type);
-  return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers: out });
+  if (request.method === "HEAD" || !upstream.body) return new Response(null, { status: upstream.status, headers: out });
+  /* Time the opening burst for the source it came from; the picker reads it next time (./speed.ts). */
+  const source = grant.source === "usenet" || grant.source === "debrid" ? grant.source : null;
+  const body = source ? meter(upstream.body, startedAt, (bytes, firstByteMs, burstMs) => {
+    const sample = sampleOf(bytes, firstByteMs, burstMs);
+    if (sample) try { recordSpeed(watchDb(), source, sample); } catch { /* a figure missed is no reason to break playback */ }
+  }) : upstream.body;
+  return new Response(body, { status: upstream.status, headers: out });
 }

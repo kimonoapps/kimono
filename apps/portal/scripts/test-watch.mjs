@@ -562,3 +562,51 @@ test('a "download this" type becomes the video type from the file name', () => {
   assert.equal(streams.videoType('application/octet-stream', 'http://nzbdav/content/x.mp4'), 'video/mp4');
   assert.equal(streams.videoType('video/webm', 'http://x/y.mkv'), 'video/webm');
 });
+
+/* ───── Picking the faster source ───── */
+
+import * as speed from '../src/lib/watch/speed.ts';
+
+test("each source's speed is a running figure from the opening bursts it delivered", () => {
+  assert.equal(speed.sampleOf(1024 * 1024, 100, 500), null, 'too little to say');
+  const s1 = speed.sampleOf(8 * 1024 * 1024, 600, 10_000);
+  assert.ok(Math.abs(s1.mbps - 6.71) < 0.01);
+  let fig = speed.nextSpeed(undefined, s1, 0);
+  assert.equal(fig.samples, 1);
+  fig = speed.nextSpeed(fig, { mbps: 30, firstByteMs: 500 }, 1000);
+  assert.ok(fig.mbps > 6.7 && fig.mbps < 30, 'moves toward the new figure without jumping');
+  const aged = speed.nextSpeed({ mbps: 5, firstByteMs: 500, samples: 9, at: 0 }, { mbps: 30, firstByteMs: 500 }, 5 * 3_600_000);
+  assert.ok(aged.mbps > 15, 'an old figure gives way faster');
+});
+
+test('a source that cannot keep up sinks its versions below ones that will play; unknown sources are tried', () => {
+  const slow = { mbps: 5, firstByteMs: 3000, samples: 3, at: Date.now() };
+  const fast = { mbps: 25, firstByteMs: 600, samples: 3, at: Date.now() };
+  assert.ok(speed.speedScore(slow, speed.needed({ height: 1080 }, 11)) < -200);
+  assert.equal(speed.speedScore(fast, speed.needed({ height: 1080 }, 11)), 0);
+  assert.equal(speed.speedScore(undefined, 20), 0);
+  assert.equal(speed.speedScore({ ...slow, at: Date.now() - 2 * 86_400_000 }, 20), 0, 'a day-old figure is forgotten');
+  const usenet = releases.parseRelease({ url: 'n', name: '[ND⚡] Usenet 1080p', description: '📦 2.1 GB (10.9 Mbps)' });
+  const rd = releases.parseRelease({ url: 'r', name: '[RD⚡] Torrentio 1080p', description: '📦 2.0 GB (10.2 Mbps)' });
+  assert.equal(releases.rank([usenet, rd], phone, 'auto', 26)[0], usenet, 'Usenet first while nothing is known');
+  assert.equal(releases.rank([usenet, rd], phone, 'auto', 26, 'en', { usenet: slow, debrid: fast })[0], rd, 'debrid once Usenet proves slow');
+  assert.equal(releases.rank([usenet, rd], phone, 'auto', 26, 'en', { usenet: fast, debrid: fast })[0], usenet, 'Usenet again when it keeps up');
+});
+
+test('the meter passes every byte through and reports the opening burst once', async () => {
+  let t = 0;
+  const chunks = [new Uint8Array(4 * 1024 * 1024), new Uint8Array(4 * 1024 * 1024), new Uint8Array(1024)];
+  const source = new ReadableStream({ start(c) { for (const x of chunks) c.enqueue(x); c.close(); } });
+  const seen = [];
+  const metered = speed.meter(source, 0, (...args) => seen.push(args), () => (t += 100));
+  let total = 0;
+  for await (const chunk of metered) total += chunk.byteLength;
+  assert.equal(total, 8 * 1024 * 1024 + 1024);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0][0], 8 * 1024 * 1024);
+});
+
+test('stream tokens carry their source', () => {
+  const key = randomBytes(32);
+  assert.equal(token.openStream(key, token.sealStream(key, { url: 'u', username: 'a', expiresAt: Date.now() + 1000, source: 'usenet' })).source, 'usenet');
+});

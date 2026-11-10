@@ -7,6 +7,7 @@
  */
 
 import { languageOf, type LanguageWant } from "./languages";
+import { needed, speedScore, type Speeds } from "./speed";
 
 /* Anime groups that release Japanese audio with their own subtitles (or none, for "raws"): their listed languages are subtitles. */
 const subGroups = /\[(subsplease|erai-raws|horriblesubs|judas|asw|ember|tsundere-raws|anime time|commie|gjm|kaleido-subs|yameii|dkb|ssa|toonshub|varyg|sallysubs|nep_blanc|[a-z-]*-raws)\]|-(subsplease|erai-raws|judas|asw|ember)\b|\b[a-z]+-raws\b/i;
@@ -179,7 +180,7 @@ export function languageScore(r: Pick<Release, "languages" | "subtitles">, want:
   return s;
 }
 
-export function score(r: Release, device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en"): number {
+export function score(r: Release, device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}): number {
   const cap = heightCap(device, quality);
   let s = 0;
   const h = r.height || 720;
@@ -194,6 +195,8 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
   if (r.cached) s += 80;
   if (r.service === "usenet") s += 40; /* our own provider: no one else's limits */
   s += languageScore(r, language);
+  /* What each source has really managed lately: a version its source can't keep up with drops below one that will play smoothly. */
+  if (r.service === "usenet" || r.service === "debrid") s += speedScore(speeds[r.service], needed(r, bitrate(r, minutes)));
   const mbps = bitrate(r, minutes);
   if (mbps !== null) {
     const phone = device.client === "android" || device.client === "ios";
@@ -204,10 +207,10 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
 }
 
 /** Everything that plays here, best first. */
-export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en"): Release[] {
+export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}): Release[] {
   return releases
     .filter((r) => unplayable(r, device, minutes) === null)
-    .map((r) => ({ r, s: score(r, device, quality, minutes, language) }))
+    .map((r) => ({ r, s: score(r, device, quality, minutes, language, speeds) }))
     .sort((a, b) => b.s - a.s)
     .map(({ r }) => r);
 }
