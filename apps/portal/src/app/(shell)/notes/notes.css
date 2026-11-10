@@ -332,6 +332,15 @@
 .nt-share-body { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 12px; padding: 4px 24px 8px; overflow: auto; }
 .nt-share footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 24px 20px; }
 .nt-share footer .nt-problem { flex: 1 1 100%; }
+/* a notebook's crest: its colours as round swatches, its crests as tiles */
+.nt-crestsheet { width: min(440px, calc(100vw - 32px)); }
+.nt-crest-colours { display: flex; flex-wrap: wrap; gap: 10px; }
+.nt-crest-colours button { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: var(--swatch); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--k-on-surface) 14%, transparent); cursor: pointer; transition: box-shadow var(--k-t-state); }
+.nt-crest-colours button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--k-container-high), 0 0 0 4px var(--k-on-surface); }
+.nt-crest-marks { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; }
+.nt-crest-marks button { display: grid; justify-items: center; gap: 6px; padding: 10px 0 8px; border: 0; border-radius: 12px; background: var(--k-container); color: var(--k-on-surface-variant); font: 600 12px/1 var(--k-display); cursor: pointer; transition: background-color var(--k-t-state); }
+.nt-crest-marks button:hover { background: var(--k-container-highest); }
+.nt-crest-marks button[aria-pressed="true"] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); box-shadow: inset 0 0 0 2px var(--k-app-accent); }
 .nt-share-find { display: grid; gap: 6px; }
 .nt-share-search { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: var(--k-r-full); background: var(--k-container-highest); color: var(--k-on-surface-variant); }
 .nt-share-search:focus-within { box-shadow: inset 0 0 0 2px var(--k-app-accent); }

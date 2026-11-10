@@ -7,6 +7,8 @@ export type Role = "owner" | "editor" | "viewer";
 /** A notebook is a folder in a Drive space; whoever is in the space shares it. `isSpace`: shared on its own, the space is just it. */
 export type Notebook = {
   id: string; name: string; createdBy: string; createdAt: number; updatedAt: number; role: Role; isSpace: boolean;
+  /** Its crest and colour: its own, or its space's. */
+  crest: string; color: string;
   /** Shared with this person from a space they aren't in: it stands on its own, under Shared with you. */
   sharedWithYou: boolean;
   space: { id: string; name: string; crest: string; color: string; members: number };
@@ -71,6 +73,7 @@ export const notes = {
   spaces: () => call<{ spaces: { id: string; name: string; role: Role; code?: unknown; purpose?: string | null }[] }>("/api/v1/drive/spaces")
     .then((r) => r.spaces.filter((s) => s.role !== "viewer" && !s.code && !(s.purpose === "notes" && s.role === "owner"))),
   renameNotebook: (id: string, name: string) => call<Notebook>(`/notebooks/${id}`, json("PATCH", { name })),
+  crestNotebook: (id: string, crest: string, color: string) => call<Notebook>(`/notebooks/${id}`, json("PATCH", { crest, color })),
   removeNotebook: (id: string) => call<unknown>(`/notebooks/${id}`, { method: "DELETE" }),
   sharing: (thing: Pick<Shareable, "kind" | "id">) => call<Sharing>(`${base(thing)}/members`),
   /** Shares it with someone, changes what they may do, or (null) takes them off; yourself with null is leaving. */

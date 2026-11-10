@@ -44,6 +44,8 @@ export function noteName(rawTitle: unknown): string {
 export type Notebook = {
   /** The notebook's folder. Notes and sections name it as their notebookId. */
   id: string; name: string; createdBy: string; createdAt: number; updatedAt: number;
+  /** Its crest and colour: its own, or its space's. */
+  crest: string; color: string;
   /** The space it is in: whoever is in that space shares it. */
   space: Pick<Space, "id" | "name" | "crest" | "color" | "members">;
   role: Role;
@@ -65,6 +67,7 @@ export type NoteMeta = {
 type Row = {
   id: string; space_id: string; parent_id: string | null; kind: "folder" | "file"; name: string; purpose: string | null;
   created_by: string; created_at: number; updated_at: number; updated_by: string | null; content_version: number; blob: string | null; trashed_at: number | null;
+  crest: string | null; color: string | null;
 };
 
 /* Every live node in the person's spaces, as a walk down from each space's top folder. */
@@ -73,7 +76,7 @@ const liveIn = `WITH RECURSIVE live(id) AS (
     UNION ALL
     SELECT c.id FROM nodes c JOIN live ON c.parent_id = live.id WHERE c.trashed_at IS NULL
   )`;
-const columns = "n.id, n.space_id, n.parent_id, n.kind, n.name, n.purpose, n.created_by, n.created_at, n.updated_at, n.updated_by, n.content_version, n.blob, n.trashed_at";
+const columns = "n.id, n.space_id, n.parent_id, n.kind, n.name, n.purpose, n.created_by, n.created_at, n.updated_at, n.updated_by, n.content_version, n.blob, n.trashed_at, n.crest, n.color";
 
 /** Every notebook the person can open, by name; ones they made first. */
 export function notebooksOf(db: DatabaseSync, username: string): Notebook[] {
@@ -89,16 +92,23 @@ export function notebooksOf(db: DatabaseSync, username: string): Notebook[] {
       if (!space) return [];
       return [{
         id: r.id, name: r.name, createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
+        crest: r.crest ?? space.crest, color: r.color ?? space.color,
         space: { id: space.id, name: space.name, crest: space.crest, color: space.color, members: space.members },
         role: space.role, isSpace: space.rootId === r.id, sharedWithYou: false,
       }];
     })
     .concat(sharedWithYou(db, who).filter((n) => n.kind === "folder" && n.purpose === "notebook" && !ids.has(n.id)).map((n) => ({
-      id: n.id, name: n.name, createdBy: n.createdBy, createdAt: n.createdAt, updatedAt: n.updatedAt,
+      id: n.id, name: n.name, createdBy: n.createdBy, createdAt: n.createdAt, updatedAt: n.updatedAt, ...ownCrest(db, n.id),
       space: { id: n.spaceId, name: "", crest: "kikyo", color: "plum", members: 0 },
       role: roleOn(db, n.id, who) ?? "viewer", isSpace: false, sharedWithYou: true,
     })))
     .sort((a, b) => Number(a.sharedWithYou) - Number(b.sharedWithYou) || Number(b.createdBy === who) - Number(a.createdBy === who) || a.name.localeCompare(b.name));
+}
+
+/* A notebook shared on its own shows its own crest; its space's isn't the viewer's to see. */
+function ownCrest(db: DatabaseSync, id: string): { crest: string; color: string } {
+  const row = db.prepare("SELECT n.crest, n.color, s.crest AS space_crest, s.color AS space_color FROM nodes n JOIN spaces s ON s.id = n.space_id WHERE n.id = ?").get(id) as { crest: string | null; color: string | null; space_crest: string; space_color: string } | undefined;
+  return { crest: row?.crest ?? row?.space_crest ?? "kikyo", color: row?.color ?? row?.space_color ?? "plum" };
 }
 
 function ancestors(db: DatabaseSync, from: string | null): string[] {

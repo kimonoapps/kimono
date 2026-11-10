@@ -13,6 +13,7 @@ import { swap } from "@/components/motion";
 import { notes, when, type Cursor, type Library, type Note, type Notebook, type Person, type Section, type Shareable, type Sharing } from "./api";
 import type { Action, BodyHandle, Formats, LiveUpdate } from "./editor";
 import { Icon, type IconName } from "./icons";
+import { drive, type Crests } from "../drive/api";
 
 /*
  * 帳 Kimono Notes on the web: one surface in three tones, the note list beside
@@ -377,7 +378,7 @@ type Naming = { kind: "section" | "notebook"; parent: string; id: string | null;
 
 /** A notebook's mark: its space's crest, washed in its colour and turned by the notebook's own id. */
 function NotebookCrest({ notebook, size, className }: { notebook: Notebook; size: number; className?: string }) {
-  return <InkCrest crest={notebook.space.crest} color={notebook.space.color} seed={notebook.id} size={size} className={className} />;
+  return <InkCrest crest={notebook.crest} color={notebook.color} seed={notebook.id} size={size} className={className} />;
 }
 
 function Panel({ lib, problem, place, find, onFind, found, faces, people, arriving, now, searchRef, docked, onNarrow, notebookOf, onNew, onPlace, onReload, onToast, under, onShare, onLeave, onOpenNote, current, onClose }: {
@@ -397,6 +398,7 @@ function Panel({ lib, problem, place, find, onFind, found, faces, people, arrivi
   });
   const [naming, setNaming] = useState<Naming | null>(null);
   const [making, setMaking] = useState(false);
+  const [cresting, setCresting] = useState<Notebook | null>(null);
   /* Enter and the field's blur both save it: once is enough. */
   const savingName = useRef(false);
   const saveName = async () => {
@@ -447,13 +449,16 @@ function Panel({ lib, problem, place, find, onFind, found, faces, people, arrivi
         writable={notebook.role !== "viewer"} canShare={canShare(notebook) || notebook.sharedWithYou} canDelete={!notebook.isSpace && !notebook.sharedWithYou}
         onLeave={notebook.sharedWithYou ? () => onLeave(asShareable(notebook)) : undefined}
         naming={naming?.id === notebook.id ? naming.name : null} onNaming={(name) => setNaming({ kind: "notebook", parent: "", id: notebook.id, name })} onSaveName={() => void saveName()} onCancelName={() => setNaming(null)}
-        onOpen={() => onPlace(notebook.id)} onNewNote={() => onNew(notebook.id)} onNewSection={() => newSection(notebook.id)} onShare={() => onShare(asShareable(notebook))}
+        onOpen={() => onPlace(notebook.id)} onNewNote={() => onNew(notebook.id)} onNewSection={() => newSection(notebook.id)} onShare={() => onShare(asShareable(notebook))} onCrest={() => setCresting(notebook)}
         onDeleted={deleted(notebook.id, notebook.name, null)} onFailed={() => onToast({ text: oops })}>
         {folds.has(notebook.id) ? null : tree(notebook.id, notebook, 1)}
       </FolderRow>;
   const searching = Boolean(find.trim());
   const results = useRef<HTMLDivElement>(null);
   return <>
+    {cresting ? <CrestSheet notebook={cresting} onClose={() => setCresting(null)} onPick={async (crest, color) => {
+      try { await notes.crestNotebook(cresting.id, crest, color); await onReload(); } catch { onToast({ text: oops }); }
+    }} /> : null}
     <div className="nt-side-head">
       <span>Notes</span>
       {onNarrow ? <button type="button" className="nt-iconbutton" onClick={onNarrow} aria-label="Narrow the notebooks" title="Narrow"><Icon name="panel" /></button>
@@ -531,13 +536,13 @@ function NameField({ value, label, depth, onChange, onSave, onCancel }: { value:
 
 /**
  * A notebook or a section in the panel: opens it. Its + makes a note there;
- * its ··· holds New note, New section, Rename, Share, and Delete or Leave.
+ * its ··· holds New note, New section, Rename, Crest (a notebook's), Share, and Delete or Leave.
  */
-function FolderRow({ kind, id, name, depth, mark, faces, arriving, here, count, folded, hasKids, writable, canShare, canDelete, onFold, naming, onNaming, onSaveName, onCancelName, onOpen, onNewNote, onNewSection, onShare, onLeave, onDeleted, onFailed, children }: {
+function FolderRow({ kind, id, name, depth, mark, faces, arriving, here, count, folded, hasKids, writable, canShare, canDelete, onFold, naming, onNaming, onSaveName, onCancelName, onOpen, onNewNote, onNewSection, onShare, onLeave, onCrest, onDeleted, onFailed, children }: {
   kind: "notebook" | "section"; id: string; name: string; depth: number; mark: React.ReactNode; faces?: React.ReactNode; arriving?: boolean;
   here: boolean; count: number; folded: boolean; hasKids: boolean; writable: boolean; canShare?: boolean; canDelete: boolean; onFold: (folded: boolean) => void;
   naming: string | null; onNaming: (name: string) => void; onSaveName: () => void; onCancelName: () => void;
-  onOpen: () => void; onNewNote: () => void; onNewSection: () => void; onShare?: () => void; onLeave?: () => void;
+  onOpen: () => void; onNewNote: () => void; onNewSection: () => void; onShare?: () => void; onLeave?: () => void; onCrest?: () => void;
   onDeleted: (restorable: boolean) => Promise<void>; onFailed: () => void; children: React.ReactNode;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -548,6 +553,7 @@ function FolderRow({ kind, id, name, depth, mark, faces, arriving, here, count, 
   };
   const items: MenuItem[] = [
     ...(writable ? [{ icon: "pencil" as const, label: "New note", run: onNewNote }, { icon: "section" as const, label: "New section", run: onNewSection }, { icon: "rename" as const, label: "Rename", run: () => onNaming(name) }] : []),
+    ...(writable && onCrest ? [{ icon: "crest" as const, label: "Crest", run: onCrest }] : []),
     ...(canShare && onShare ? [{ icon: "people" as const, label: "Share", run: onShare }] : []),
     ...(onLeave ? [{ icon: "door" as const, label: "Leave", run: onLeave }] : []),
     ...(writable && canDelete ? [{ icon: "trash" as const, label: "Delete", danger: true, run: () => { if (count) setConfirming(true); else remove(); } }] : []),
@@ -866,6 +872,35 @@ function ShareSheet({ thing, me, owner, people, publicLinks, onClose }: { thing:
       <span className="nt-grow" />
       <Seal type="button" compact onClick={() => box.current?.close()}>Done</Seal>
     </footer>
+  </dialog>, document.body);
+}
+
+/** A notebook's crest and its colour, each applied as it is picked. */
+function CrestSheet({ notebook, onClose, onPick }: { notebook: Notebook; onClose: () => void; onPick: (crest: string, color: string) => Promise<void> }) {
+  const [catalogue, setCatalogue] = useState<Crests | null>(null);
+  const [crest, setCrest] = useState(notebook.crest);
+  const [color, setColor] = useState(notebook.color);
+  const box = useRef<HTMLDialogElement>(null);
+  useEffect(() => { box.current?.showModal(); }, []);
+  useEffect(() => { void drive.crests().then(setCatalogue, () => {}); }, []);
+  /* Saved one after another, so quick picks land in the order they were made. */
+  const saving = useRef<Promise<void>>(Promise.resolve());
+  const pick = (nextCrest: string, nextColor: string) => {
+    setCrest(nextCrest); setColor(nextColor);
+    saving.current = saving.current.then(() => onPick(nextCrest, nextColor));
+  };
+  return createPortal(<dialog ref={box} className="nt-share nt-crestsheet" aria-labelledby="nt-crest-title" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+    <header><h2 id="nt-crest-title">{notebook.name}</h2></header>
+    <div className="nt-share-body">
+      {catalogue ? <>
+        <div className="nt-crest-colours" role="group" aria-label="Colour">{catalogue.colors.map((c) => <button key={c.id} type="button" aria-pressed={c.id === color} aria-label={c.name} title={c.name}
+          style={{ "--swatch": c.hex } as React.CSSProperties} onClick={() => pick(crest, c.id)} />)}</div>
+        <div className="nt-crest-marks" role="group" aria-label="Crest">{catalogue.crests.map((c) => <button key={c.id} type="button" aria-pressed={c.id === crest} aria-label={c.name} title={c.name} onClick={() => pick(c.id, color)}>
+          <InkCrest crest={c.id} color={color} seed={notebook.id} size={36} /><span>{c.jp}</span>
+        </button>)}</div>
+      </> : <SkeletonRows rows={2} mark={false} />}
+    </div>
+    <footer><span className="nt-grow" /><Seal type="button" compact onClick={() => box.current?.close()}>Done</Seal></footer>
   </dialog>, document.body);
 }
 

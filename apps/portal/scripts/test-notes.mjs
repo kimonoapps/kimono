@@ -50,6 +50,19 @@ test('notebooks in spaces only you are in move into the Notes space when it is m
   assert.equal(notes.notebooksOf(db, 'mina').find((b) => b.id === later.id).space.id, mine.id);
 });
 
+test('a notebook takes its own crest and colour, over its space\'s, and gives them back', () => {
+  const db = fresh();
+  const book = notes.createNotebook(db, 'akram', { name: 'Ideas' });
+  assert.deepEqual([book.crest, book.color], [book.space.crest, book.space.color]);
+  drive.setFolderCrest(db, book.id, 'akram', 'kiku', 'ai');
+  const mine = notes.notebooksOf(db, 'akram').find((n) => n.id === book.id);
+  assert.deepEqual([mine.crest, mine.color], ['kiku', 'ai']);
+  assert.throws(() => drive.setFolderCrest(db, book.id, 'akram', 'dragon', 'ai'), /crests/);
+  assert.throws(() => drive.setFolderCrest(db, book.id, 'sam', 'kiku', 'ai'));
+  drive.setFolderCrest(db, book.id, 'akram', null, null);
+  assert.equal(notes.notebooksOf(db, 'akram').find((n) => n.id === book.id).crest, book.space.crest);
+});
+
 test('notebooks are folders in any space; Drive marks them, and sees who shares one by its space', () => {
   const db = fresh();
   const family = drive.createSpace(db, 'akram', { name: 'Family', members: [{ username: 'mina', role: 'editor' }] });

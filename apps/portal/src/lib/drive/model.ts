@@ -269,6 +269,16 @@ export function migrate(db: DatabaseSync) {
       COMMIT;
     `);
   }
+  if (version < 10) {
+    /* A folder's own crest and colour (a notebook's), over its space's. */
+    db.exec(`
+      BEGIN;
+      ALTER TABLE nodes ADD COLUMN crest TEXT;
+      ALTER TABLE nodes ADD COLUMN color TEXT;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', '10');
+      COMMIT;
+    `);
+  }
 }
 
 /* ── the change log ── */
@@ -622,6 +632,17 @@ export function setPurpose(db: DatabaseSync, id: string, username: string, purpo
   if (purpose !== null && !folderPurposes.includes(purpose)) throw new DriveProblem("A folder is a notebook, a chat or a project.");
   if (node.purpose === purpose && node.ref === ref) return node;
   db.prepare("UPDATE nodes SET purpose = ?, ref = ? WHERE id = ?").run(purpose, ref, id);
+  touch(db, id, node.spaceId, now);
+  return toNode(nodeRow(db, id)!, "editor");
+}
+
+/** A folder's own crest and colour, or its space's again when both are null. */
+export function setFolderCrest(db: DatabaseSync, id: string, username: string, crest: unknown, color: unknown, now = Date.now()): DriveNode {
+  const node = nodeFor(db, id, username, "editor");
+  if (node.kind !== "folder") throw new DriveProblem("Only a folder has a crest.");
+  if (crest !== null && !(typeof crest === "string" && (crests as readonly string[]).includes(crest))) throw new DriveProblem("That isn't one of the crests.");
+  if (color !== null && !(typeof color === "string" && (crestColours as readonly string[]).includes(color))) throw new DriveProblem("That isn't one of the colours.");
+  db.prepare("UPDATE nodes SET crest = ?, color = ? WHERE id = ?").run(crest, color, id);
   touch(db, id, node.spaceId, now);
   return toNode(nodeRow(db, id)!, "editor");
 }
