@@ -59,6 +59,16 @@ test('release names are read the way people write them', () => {
   assert.equal(R('Film 1080p usenet').service, 'usenet');
 });
 
+test('a version reframed from the film as shot ranks below it, even a size smaller', () => {
+  for (const n of ['Film.1999.1080p.Open.Matte.WEB-DL.H.264', 'Film 1999 FullScreen DVDRip', 'Film.1999.Pan.and.Scan.720p', 'Film 1999 4x3 1080p'])
+    assert.equal(R(n).reframed, true, n);
+  for (const n of ['Film.1999.1080p.BluRay.x264', 'Film.1999.IMAX.2160p.WEB-DL', 'Film 1999 DTS-HD MA 5.1'])
+    assert.equal(R(n).reframed, false, n);
+  const tv = releases.cleanDevice({ client: 'android-tv', codecs: ['h264', 'hevc'] });
+  const [first] = releases.rank([R('Film.1999.2160p.Open.Matte.WEB-DL.H.265'), R('Film.1999.1080p.BluRay.x264')], tv, 'auto', 120);
+  assert.equal(first.reframed, false);
+});
+
 test('profile 5 never reaches a screen that would show it purple and green', () => {
   const p5 = R('Film.2160p.WEB-DL.DV.H.265 ⚡');
   assert.equal(releases.unplayable(p5, tv, 120), null);
@@ -803,6 +813,11 @@ test('HLS copies what the screen decodes and transcodes only what it cannot', ()
   assert.equal(hls.planHls(probeOf([vstream()], { keyframes: null }), grantFor(browser)).video.mode, 'transcode', 'without an index there is nowhere to cut a copy');
   assert.equal(hls.planHls(probeOf([vstream({ height: 2160, width: 3840 })]), grantFor(browser)).video.mode, 'transcode', 'too tall is scaled down');
 
+  const dvd = hls.planHls(probeOf([vstream({ width: 720, height: 480, sample_aspect_ratio: '32:27' })]), grantFor(browser));
+  assert.equal(dvd.video.mode, 'transcode', 'non-square pixels are made square');
+  assert.deepEqual(dvd.video.rungs.map((r) => [r.width, r.height]), [[854, 480]], 'shown 16:9, as the disc means');
+  assert.equal(hls.planHls(probeOf([vstream({ sample_aspect_ratio: '1:1' })]), grantFor(browser)).video.mode, 'copy');
+
   const pgsOnly = probeOf([vstream(), astream(1, 'jpn'), sstream(2, 'eng', 'Full', 'hdmv_pgs_subtitle')]);
   assert.deepEqual(hls.planHls(pgsOnly, grantFor(browser)).burn, { index: 2, bitmap: true }, 'PGS that is wanted is burned in');
   const burned = hls.planHls(dualAudio(), grantFor(browser, { burn: true }));
@@ -829,7 +844,7 @@ test('ffmpeg arguments: copy keeps the picture, transcoding forces keyframes on 
   const hdr = probeOf([vstream({ codec_name: 'hevc', profile: 'Main 10', pix_fmt: 'yuv420p10le', color_transfer: 'smpte2084', height: 2160, width: 3840 }), astream(1, 'eng', { codec_name: 'truehd' })]);
   const soft = hls.ffmpegArgs(hls.planHls(hdr, grantFor(browser)), { kind: 'software', tonemapx: true });
   const s = soft.args.join(' ');
-  assert.match(s, /-filter_complex \[0:0\]tonemapx=\S+,split=2\[s0\]\[s1\];\[s0\]scale=1920:1080:flags=bicubic\[v0\];\[s1\]scale=1280:720/);
+  assert.match(s, /-filter_complex \[0:0\]tonemapx=\S+,split=2\[s0\]\[s1\];\[s0\]scale=1920:1080:flags=bicubic,setsar=1\[v0\];\[s1\]scale=1280:720/);
   assert.match(s, /-map \[v0\] -c:v libx264 .* -force_key_frames:v expr:gte\(t,n_forced\*6\) -map 0:1 -c:a aac -ac 2/);
   assert.equal(soft.seekPad, 0);
 
@@ -837,7 +852,7 @@ test('ffmpeg arguments: copy keeps the picture, transcoding forces keyframes on 
   const v = vaapi.args.join(' ');
   assert.match(v, /-init_hw_device vaapi=va:\/dev\/dri\/renderD128 -filter_hw_device va -hwaccel vaapi/);
   assert.match(v, /hwdownload,format=p010le,tonemapx=\S+format=nv12,hwupload,split=3/);
-  assert.match(v, /scale_vaapi=w=1920:h=1080:format=nv12\[v0\]/);
+  assert.match(v, /scale_vaapi=w=1920:h=1080:format=nv12,setsar=1\[v0\]/);
   assert.ok(vaapi.fallback.join(' ').includes('libx264'), 'software to fall back on');
 
   const pgs = hls.ffmpegArgs(hls.planHls(probeOf([vstream(), astream(1, 'jpn'), sstream(2, 'eng', 'Full', 'hdmv_pgs_subtitle')]), grantFor(browser)), { kind: 'nvenc' });

@@ -45,6 +45,8 @@ export type Release = {
   service: "usenet" | "debrid" | "p2p" | "unknown";
   /** Cam rips and the like, never offered. */
   junk: boolean;
+  /** Not the film's own framing: cropped to fill a 4:3 or 16:9 screen ("fullscreen", "pan and scan"), opened up past it ("open matte"), or stretched. */
+  reframed: boolean;
 };
 
 export type Device = {
@@ -142,6 +144,7 @@ export function parseRelease(input: { url: string; name?: string; title?: string
   return {
     url: input.url, name: (input.name || "").trim(), filename, height, source, codec, tenBit: has(t, /\b10 ?bit\b/) || hdr.length > 0,
     hdr, dvProfile, audio, atmos: has(t, /\batmos\b/), channels, languages, subtitles, mbps, bytes, cached, service, junk,
+    reframed: has(t, /\b(full ?screen|pan ?(and|&|n) ?scan|p ?& ?s|open ?matte|4 ?(x|:) ?3|stretched|zoomed|(16 ?(x|:) ?9|wide ?screen) ?(crop|cropped))\b/),
   };
 }
 
@@ -254,6 +257,8 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
   /* A copy that doesn't say its size or codec is a guess: below one that does. */
   if (!r.height) s -= 60;
   if (r.codec === "other") s -= 40;
+  /* Someone else's framing: below the film as shot, even a size smaller. */
+  if (r.reframed) s -= 300;
   /* HEVC and AV1 carry the same picture in about half the bits, where they decode. */
   if ((r.codec === "hevc" || r.codec === "av1") && device.codecs.includes(r.codec)) s += 25;
   return s;

@@ -98,6 +98,8 @@ export type ProbeStream = {
   level?: number;
   width?: number;
   height?: number;
+  /** "32:27" for a DVD's non-square pixels; "1:1", "0:1" or missing for square ones. */
+  sample_aspect_ratio?: string;
   pix_fmt?: string;
   color_transfer?: string;
   avg_frame_rate?: string;
@@ -188,6 +190,13 @@ const ladder: Rung[] = [{ height: 2160, width: 3840, kbps: 20000 }, { height: 10
 
 const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
 
+/** How much wider each pixel shows than it is stored (DVDs and anamorphic encodes); 1 for square pixels. */
+export function pixelAspect(s: ProbeStream): number {
+  const [a, b] = (s.sample_aspect_ratio ?? "").split(":").map(Number);
+  const r = a > 0 && b > 0 ? a / b : 1;
+  return Math.abs(r - 1) < 0.01 ? 1 : r;
+}
+
 /** Why the screen can't take the video as it is, or null when it can. */
 export function cannotCopy(s: ProbeStream, screen: Screen): string | null {
   const v = videoOf(s);
@@ -199,6 +208,8 @@ export function cannotCopy(s: ProbeStream, screen: Screen): string | null {
   if (v.hdr === "hdr10" || (v.hdr === "dv" && v.dvProfile !== 5)) { if (!screen.hdr.includes("hdr10")) return "HDR needs tone-mapping"; }
   if (v.hdr === "hlg" && !screen.hdr.includes("hlg")) return "HLG needs tone-mapping";
   if ((s.height ?? 0) > screen.maxHeight * 1.1) return "too tall for this screen";
+  /* Browsers and some TVs ignore the flag that widens non-square pixels: the picture comes out squeezed. */
+  if (pixelAspect(s) !== 1) return "non-square pixels";
   return null;
 }
 
@@ -222,7 +233,9 @@ export function planHls(probe: Probe, grant: Pick<HlsGrant, "screen" | "audio" |
   const burn = burnStream ? { index: burnStream.index, bitmap: bitmapSubtitles.includes(burnStream.codec_name ?? "") } : null;
 
   const v = videoOf(video);
-  const width = video.width ?? 1920, height = video.height ?? 1080;
+  const height = video.height ?? 1080;
+  /* The width as shown, so a transcode comes out in square pixels at the film's own shape. */
+  const width = Math.round((video.width ?? 1920) * pixelAspect(video));
   const frameRate = rate(video.avg_frame_rate) ?? rate(video.r_frame_rate);
   const copy = !burn && probe.keyframes && probe.keyframes.length > 1 && !cannotCopy(video, grant.screen);
   const hw = probe.hardware.kind;
@@ -341,7 +354,7 @@ function args(plan: HlsPlan, hw: Hardware): string[] {
     const split = n > 1 ? `,split=${n}${v.rungs.map((_, i) => `[s${i}]`).join("")}` : "[s0]";
     graph.push(`${chain}${split}`);
     v.rungs.forEach((r, i) => {
-      graph.push(`[s${i}]${scale(r)}[v${i}]`);
+      graph.push(`[s${i}]${scale(r)},setsar=1[v${i}]`);
       perRung.push({ map: `[v${i}]`, codec: [...encoder(r), ...keys] });
     });
   }
