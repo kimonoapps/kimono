@@ -330,3 +330,13 @@ export function keep(db: DatabaseSync, key: string, body: unknown, ttlMs: number
 export function sweepCache(db: DatabaseSync, now = Date.now()) {
   db.prepare("DELETE FROM cache WHERE expires_at < ?").run(now);
 }
+
+/* ───── Kept state: setup, background runs, the last thing that went wrong ───── */
+
+export function readState<T>(db: DatabaseSync, key: string): T | null {
+  const row = db.prepare("SELECT body FROM state WHERE key = ?").get(key) as Row | undefined;
+  try { return row ? JSON.parse(String(row.body)) as T : null; } catch { return null; }
+}
+export function writeState(db: DatabaseSync, key: string, body: unknown) {
+  db.prepare("INSERT INTO state (key, body) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET body = excluded.body").run(key, JSON.stringify(body));
+}

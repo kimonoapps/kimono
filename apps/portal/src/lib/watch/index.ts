@@ -8,13 +8,13 @@ import { secretName } from "../secret-name";
 import { resolveSecrets } from "../secrets";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
-import { anyPlayable, notePlayable, shared, streamsKey, streamTtl } from "./ahead";
+import { anyPlayable, notePlayable, playableOf, pool, shared, streamsKey, streamTtl, toCheck, visible } from "./ahead";
 import { animeEntriesFor, animeMap, anilistMedia, jikanFillers } from "./anime";
 import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { badge, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
   cached, episodesOf, finished, fraction, getTitle, getTitles, isStale, keep, listOf, markFillers, markSeasonFillers, migrate, parseTitleId,
-  prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem,
+  prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem, writeState,
   type Episode, type Title,
 } from "./model";
 import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
@@ -164,6 +164,8 @@ export async function titleView(cfg: WatchConfig, username: string, id: string, 
   const base = {
     title: { ...cardOf(title), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(title.backdrop, "w1280") },
     inList: listOf(db, username).includes(id), rating: ratingOf(db, username, id), reminding: remindsOf(db, username).includes(id),
+    /* Taken as playable until a search says otherwise. */
+    playable: Boolean(title.imdbId) && playableOf(db, id) !== false,
   };
   if (title.kind === "movie") {
     const p = progress.find((x) => x.season === 0 && x.episode === 0);
@@ -218,26 +220,52 @@ export async function home(cfg: WatchConfig, username: string, shelf?: Title["sh
   }).slice(0, 12);
 
   const trending = await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6));
-  const top = trending.filter(ok).slice(0, 10);
   const anime = await tmdbList(cfg, "discover:anime", "/discover/tv", { with_genres: "16", with_origin_country: "JP", sort_by: "popularity.desc" }, hours(12));
   const films = await tmdbList(cfg, "trending:movie:week", "/trending/movie/week", {}, hours(6));
   const series = await tmdbList(cfg, "trending:tv:week", "/trending/tv/week", {}, hours(6));
   const last = recentTitlesList[0];
   const similar = last ? await tmdbList(cfg, `similar:${last.id}`, `/${last.kind === "movie" ? "movie" : "tv"}/${last.tmdbId}/recommendations`, {}, hours(24)) : [];
   const mine = getTitles(db, listOf(db, username));
+  /* Rows from TMDB leave out what is known not to play; someone's own rows show everything they chose. */
+  checkPlayable(cfg, [...trending, ...series, ...similar, ...anime, ...films].filter(ok).map((t) => t.id));
+  const plays = (titles: Title[]) => visible(titles.filter(ok), (id) => playableOf(db, id));
+  const top = plays(trending).slice(0, 10);
 
   const rows = [
     continuing.length && { id: "continue", title: "Continue watching", kind: "continue", items: continuing },
     top.length && { id: "top", title: "Top 10 today", kind: "top", items: top.map((t, i) => cardOf(t, { top: i + 1 })) },
-    { id: "series", title: "Popular series", kind: "cards", items: series.filter(ok).map((t) => cardOf(t)) },
-    last && similar.length && { id: "similar", title: `Because you watched ${last.name}`, kind: "cards", items: similar.filter(ok).map((t) => cardOf(t)) },
-    { id: "anime", title: "Anime", kind: "cards", items: anime.filter(ok).map((t) => cardOf(t)) },
-    { id: "films", title: "Films for tonight", kind: "cards", items: films.filter(ok).map((t) => cardOf(t)) },
+    { id: "series", title: "Popular series", kind: "cards", items: plays(series).map((t) => cardOf(t)) },
+    last && similar.length && { id: "similar", title: `Because you watched ${last.name}`, kind: "cards", items: plays(similar).map((t) => cardOf(t)) },
+    { id: "anime", title: "Anime", kind: "cards", items: plays(anime).map((t) => cardOf(t)) },
+    { id: "films", title: "Films for tonight", kind: "cards", items: plays(films).map((t) => cardOf(t)) },
     mine.length && { id: "list", title: "My list", kind: "cards", items: mine.filter(ok).map((t) => cardOf(t)) },
   ].filter((row): row is { id: string; title: string; kind: string; items: Card[] } => Boolean(row) && (row as { items: unknown[] }).items.length > 0);
 
   const featured = top.find((t) => t.backdrop) ?? null;
   return { featured: featured ? { ...cardOf(featured), backdropLarge: imageUrl(featured.backdrop, "w1280"), overview: featured.overview } : null, rows };
+}
+
+/**
+ * Checks whether the titles on Home's rows play at all, so Home can leave out
+ * the ones that don't: at most hourly, 24 titles a run, two at a time, and
+ * none after three failures in a row. A verdict lasts a day (./ahead.ts).
+ */
+function checkPlayable(cfg: WatchConfig, ids: string[]) {
+  const run = globalThis as unknown as { kimonoWatchChecked?: number };
+  if (!hasSources(cfg) || (run.kimonoWatchChecked && Date.now() - run.kimonoWatchChecked < hours(1))) return;
+  run.kimonoWatchChecked = Date.now();
+  const db = watchDb();
+  const batch = toCheck(ids, (id) => playableOf(db, id), 24);
+  if (!batch.length) return;
+  pool(batch, 2, async (id) => {
+    const title = await ensureTitle(cfg, id);
+    if (!title.imdbId) { notePlayable(db, id, false); return true; }
+    const first = title.kind === "series" ? 1 : 0;
+    await releasesFor(cfg, title, first, first);
+    return true;
+  })
+    .then((checked) => writeState(db, "playability", { at: Date.now(), checked, of: batch.length }))
+    .catch(() => {});
 }
 
 export async function search(cfg: WatchConfig, query: string) {

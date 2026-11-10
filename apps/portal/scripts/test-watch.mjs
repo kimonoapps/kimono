@@ -379,3 +379,37 @@ test("AniSkip's times become intro, recap and credits", () => {
   assert.equal(markers.markersFrom({ found: false, results: [] }), null);
   assert.equal(markers.markersFrom({ found: true, results: [{ skipType: 'op', interval: { startTime: 5, endTime: 5 } }] }), null);
 });
+
+/* ───── Plays or not ───── */
+
+test('the playability check goes two at a time, and gives up when the search is down', async () => {
+  let now = 0, most = 0;
+  const seen = [];
+  const checked = await ahead.pool([1, 2, 3, 4, 5], 2, async (n) => {
+    now++; most = Math.max(most, now);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    now--; seen.push(n);
+    return true;
+  });
+  assert.equal(checked, 5);
+  assert.equal(most, 2, 'never more than two at once');
+  assert.deepEqual(seen.sort(), [1, 2, 3, 4, 5]);
+  let tried = 0;
+  const down = await ahead.pool([1, 2, 3, 4, 5, 6, 7, 8], 1, async () => { tried++; throw new Error('502'); });
+  assert.equal(tried, 3, 'three failures in a row and the rest wait for the next run');
+  assert.equal(down, 3);
+});
+
+test('a title checked within the day is not checked again; Home hides only what is known not to play', () => {
+  const db = fresh();
+  ahead.notePlayable(db, 'tv-1', true, 0);
+  ahead.notePlayable(db, 'movie-2', false, 0);
+  const verdict = (id) => ahead.playableOf(db, id, 1000);
+  assert.equal(verdict('tv-1'), true);
+  assert.equal(verdict('tv-3'), null);
+  assert.deepEqual(ahead.toCheck(['tv-1', 'tv-3', 'movie-2', 'tv-3', 'tv-4', 'tv-5'], verdict, 2), ['tv-3', 'tv-4']);
+  assert.deepEqual(ahead.visible([{ id: 'tv-1' }, { id: 'movie-2' }, { id: 'tv-3' }], verdict).map((t) => t.id), ['tv-1', 'tv-3']);
+  assert.equal(ahead.playableOf(db, 'movie-2', ahead.playableTtl + 1), null, 'a day later it is checked again');
+  assert.equal(ahead.anyPlayable([{ junk: true }]), false);
+  assert.equal(ahead.anyPlayable([{ junk: true }, { junk: false }]), true);
+});
