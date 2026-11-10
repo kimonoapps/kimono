@@ -1,0 +1,155 @@
+"use client";
+
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { watchApi, minutesText, type Card, type ContinueCard, type Home, type Shelf, type TitleView } from "./api";
+import { CardArt, cx, Img, ListButton, RateButton, Rail, SkeletonRows, tagClass, TitleMark, Top10, useWatch } from "./bits";
+import { Icon } from "./icons";
+
+const chips: [Shelf, string][] = [["Series", "Series"], ["Film", "Films"], ["Anime", "Anime"]];
+
+export function HomePage({ home, filter, setFilter, chipsAway }: {
+  home: Home | null; filter: Shelf | null; setFilter: (shelf: Shelf | null) => void; chipsAway: boolean;
+}) {
+  const watch = useWatch();
+  const top = home?.rows.find((r) => r.kind === "top");
+  const featured = home?.featured ?? null;
+  const rank = featured ? top?.items.findIndex((c) => c.id === featured.id) ?? -1 : -1;
+  const resumable = featured ? home?.rows.find((r) => r.kind === "continue")?.items.some((c) => c.id === featured.id) : false;
+  return <main>
+    <div className={cx("kw-chips", chipsAway && "kw-away")}>
+      {chips.map(([shelf, label]) => <button key={shelf} className="kw-chip" aria-pressed={filter === shelf} onClick={() => setFilter(filter === shelf ? null : shelf)}>{label}</button>)}
+    </div>
+    <section className="kw-hero">
+      {featured ? <>
+        <div className="kw-backdrop-bleed"><Img src={featured.backdrop} eager /></div>
+        <div className="kw-hero-card">
+          <picture>
+            {featured.poster ? <source media="(max-width: 899px)" srcSet={featured.poster} /> : null}
+            <img src={featured.backdropLarge ?? featured.backdrop ?? ""} alt="" />
+          </picture>
+          <div className="kw-hero-body">
+            <TitleMark name={featured.name} logo={featured.logo} />
+            {rank >= 0 ? <div className="kw-rank"><Top10 />#{rank + 1}{filter ? ` in ${filter === "Film" ? "Films" : filter}` : ""} today</div> : null}
+            <p className="kw-tagline">{featured.overview}</p>
+            <div className="kw-btns">
+              <button className="kw-btn kw-primary" onClick={() => watch.play(featured.id)}><Icon name="play" />{resumable ? "Resume" : "Play"}</button>
+              <button className="kw-btn kw-tonal" onClick={() => watch.openTitle(featured.id)}><Icon name="info" />More info</button>
+            </div>
+          </div>
+          {featured.age ? <div className="kw-hero-side"><span className="kw-maturity">{featured.age}</span></div> : null}
+        </div>
+      </> : <div className="kw-hero-card"><div className="kw-sk" style={{ position: "absolute", inset: 0, borderRadius: 0 }} /></div>}
+    </section>
+    <div className="kw-rows">
+      {!home ? <SkeletonRows count={4} /> : home.rows.map((row, i) => <section key={row.id} className="kw-row" style={{ animationDelay: `${i * 70}ms` }}>
+        <h2>{row.kind === "continue" ? `Continue watching for ${watch.firstName}` : row.title}</h2>
+        <Rail label={row.title}>
+          {row.items.map((card) => row.kind === "continue"
+            ? <ContinueTile key={card.id} card={card as ContinueCard} />
+            : row.kind === "top"
+              ? <div key={card.id} className="kw-t10"><span className="kw-n">{card.top}</span><PosterCard card={card} plain poster /></div>
+              : <PosterCard key={card.id} card={card} />)}
+        </Rail>
+      </section>)}
+      {home && !home.rows.length ? <p className="kw-empty" style={{ paddingInline: "var(--gutter-l)" }}>Nothing here yet.</p> : null}
+    </div>
+    <HoverCard />
+  </main>;
+}
+
+export function PosterCard({ card, plain, poster }: { card: Card; plain?: boolean; poster?: boolean }) {
+  const watch = useWatch();
+  return <button className="kw-card" data-card={card.id} aria-label={card.name} onClick={() => watch.openTitle(card.id)}>
+    {card.badge && !plain ? <span className={tagClass(card.badge)}>{card.badge}</span> : null}
+    {card.top && !plain ? <Top10 /> : null}
+    <CardArt card={card} poster={poster} />
+    <span className="kw-t">{card.name}</span>
+  </button>;
+}
+
+function ContinueTile({ card }: { card: ContinueCard }) {
+  const watch = useWatch();
+  const series = card.kind === "series";
+  const label = series ? `S${card.season}:E${card.episode} · ${card.left}m left` : `${card.left}m left`;
+  return <div className="kw-cw">
+    <button className="kw-shot" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}>
+      <Img src={card.backdrop ?? card.poster} />
+      <span className="kw-play"><Icon name="play" /></span>
+    </button>
+    <div className="kw-bar"><i style={{ width: `${Math.max(4, card.fraction * 100)}%` }} /></div>
+    <div className="kw-meta"><div><b>{card.name}</b>{label}</div><button className="kw-iconbtn" aria-label="Details" onClick={() => watch.openTitle(card.id)}><Icon name="info" /></button></div>
+  </div>;
+}
+
+/* ───── The hover card: wide screens with a mouse, after a moment on a card ───── */
+
+const views = new Map<string, Promise<TitleView>>();
+export const viewOf = (id: string) => {
+  let known = views.get(id);
+  if (!known) { known = watchApi.title(id); views.set(id, known); known.catch(() => views.delete(id)); setTimeout(() => views.delete(id), 60_000); }
+  return known;
+};
+
+function HoverCard() {
+  const watch = useWatch();
+  const [at, setAt] = useState<{ card: Card; style: CSSProperties } | null>(null);
+  const [on, setOn] = useState(false);
+  const [view, setView] = useState<TitleView | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const capable = matchMedia("(hover: hover) and (min-width: 900px)");
+    const hide = () => { clearTimeout(timer.current); setOn(false); };
+    const over = (event: MouseEvent) => {
+      if (!capable.matches) return;
+      const target = event.target as HTMLElement;
+      if (box.current?.contains(target)) return;
+      const el = target.closest<HTMLElement>(".kw-rows .kw-card");
+      clearTimeout(timer.current);
+      if (!el) return;
+      timer.current = setTimeout(() => {
+        const id = el.dataset.card;
+        const card = watch.known().find((c) => c.id === id);
+        if (!card) return;
+        const r = el.getBoundingClientRect();
+        const w = Math.max(300, r.width * 1.45);
+        const x = Math.min(Math.max(r.left + r.width / 2 - w / 2, 12), innerWidth - w - 12);
+        setView(null);
+        setAt({ card, style: { width: w, left: x, top: Math.max(12, r.top + r.height / 2 - (w * 9) / 16 / 2 - 30) } });
+        setOn(true);
+        viewOf(card.id).then((v) => { setView((now) => now ?? (v.title.id === card.id ? v : null)); watch.noteView(v); }).catch(() => {});
+      }, 520);
+    };
+    const root = document.querySelector(".kw");
+    document.addEventListener("mouseover", over);
+    root?.addEventListener("scroll", hide, { passive: true });
+    return () => { document.removeEventListener("mouseover", over); root?.removeEventListener("scroll", hide); clearTimeout(timer.current); };
+  }, [watch]);
+
+  const card = at?.card;
+  const v = view && card && view.title.id === card.id ? view : null;
+  const meta = v ? (v.seasons ? (v.seasons.length > 1 ? `${v.seasons.length} seasons` : `${v.seasons[0]?.episodeCount ?? 0} episodes`) : minutesText(v.title.runtime)) : "";
+  const resume = v && v.tracker && v.resume && "season" in v.resume ? v.resume : null;
+  const resumeEp = resume && v?.episodes?.find((e) => e.number === resume.episode && v.season === resume.season);
+  return <div ref={box} className={cx("kw-hover", on && "kw-on")} style={at?.style} role="dialog" aria-label="Preview" onMouseLeave={() => setOn(false)}>
+    {card ? <>
+      <div className="kw-shot"><Img src={card.backdrop ?? card.poster} /><span className="kw-t">{card.name}</span></div>
+      <div className="kw-body">
+        <div className="kw-acts">
+          <button className="kw-ringbtn kw-go" aria-label="Play" onClick={() => { setOn(false); watch.play(card.id); }}><Icon name="play" /></button>
+          <ListButton id={card.id} variant="ring" />
+          <RateButton id={card.id} variant="ring" />
+          <span className="kw-spacer" />
+          <button className="kw-ringbtn" aria-label="More info" onClick={() => { setOn(false); watch.openTitle(card.id); }}><Icon name="more" /></button>
+        </div>
+        <div className="kw-info">{card.badge ? <span className="kw-hi">{card.badge}</span> : null}{card.age ? <span className="kw-box">{card.age}</span> : null}{meta ? <span>{meta}</span> : card.year ? <span>{card.year}</span> : null}</div>
+        {resume && resumeEp ? <>
+          <div className="kw-info"><span>S{resume.season}:E{resume.episode} “{resumeEp.name}”</span></div>
+          <div className="kw-bar"><i style={{ width: `${resumeEp.fraction * 100}%` }} /></div>
+        </> : null}
+        {v ? <div className="kw-dots">{[...v.title.genres, ...v.title.moods].slice(0, 3).map((g) => <span key={g}>{g}</span>)}</div> : <div className="kw-sk kw-sk-line" style={{ width: "60%" }} />}
+      </div>
+    </> : null}
+  </div>;
+}
