@@ -57,3 +57,4 @@ if french:
     print(f"\nFR: {french}")
 grades = [f"{g['grade']} ({g['name']})" for g in first.get("grades", []) if g.get("grade")]
 print("\nGrades: " + ("; ".join(grades) if grades else "none given in this collection"))
+print(f"Source: hadith-api by fawazahmed0 (https://github.com/fawazahmed0/hadith-api), sunnah.com numbering: https://sunnah.com/{ {'nawawi': 'nawawi40', 'qudsi': 'qudsi40'}.get(book, book) }:{number}")

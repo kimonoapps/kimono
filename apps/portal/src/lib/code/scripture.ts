@@ -92,7 +92,10 @@ const verse = (key: string) => kept(`v:${key}`, async (): Promise<Verse> => {
   return { key, number: v.verse_number, arabic: v.text_uthmani, translation: { en: of("en"), fr: of("fr") } };
 });
 
-export type Passage = { ref: string; surah: number; chapter: Chapter; before: Verse[]; verses: Verse[]; after: Verse[]; tafsirs: typeof tafsirs };
+/** Where a text was taken from, for the footer under it. */
+export type Source = { name: string; url: string };
+
+export type Passage = { ref: string; surah: number; chapter: Chapter; before: Verse[]; verses: Verse[]; after: Verse[]; tafsirs: typeof tafsirs; source: Source };
 
 /** The verses cited, with one on each side for context (grey in the chat). */
 export async function quranPassage(ref: string): Promise<Passage | null> {
@@ -104,12 +107,13 @@ export async function quranPassage(ref: string): Promise<Passage | null> {
   const to = Math.min(parsed.to, ch.verses);
   const range = (a: number, b: number) => Promise.all(Array.from({ length: Math.max(0, b - a + 1) }, (_, n) => verse(`${surah}:${a + n}`)));
   const [before, verses, after] = await Promise.all([range(Math.max(1, from - 1), from - 1), range(from, to), range(to + 1, Math.min(ch.verses, to + 1))]);
-  return { ref: from === to ? `${surah}:${from}` : `${surah}:${from}-${to}`, surah, chapter: ch, before, verses, after, tafsirs };
+  const key = from === to ? `${surah}:${from}` : `${surah}:${from}-${to}`;
+  return { ref: key, surah, chapter: ch, before, verses, after, tafsirs, source: { name: "Quran.com API", url: `https://quran.com/${surah}/${from}${to > from ? `-${to}` : ""}` } };
 }
 
 /** A heading, a paragraph, an Arabic quotation, or (gloss) a short Arabic phrase with its translation beside it. */
 export type TafsirPart = { kind: "h" | "p" | "ar" | "gloss"; text: string; ar?: string };
-export type Tafsir = { id: number; name: string; lang: string; covers: string[]; parts: TafsirPart[] };
+export type Tafsir = { id: number; name: string; lang: string; covers: string[]; parts: TafsirPart[]; edition: string; source: Source };
 
 /* Tafsir text arrives as HTML: headings, paragraphs and Arabic quotations. It's turned into plain parts, never shown as HTML. */
 function tafsirParts(html: string): TafsirPart[] {
@@ -137,12 +141,14 @@ export async function tafsir(id: number, key: string): Promise<Tafsir | null> {
   const known = tafsirs.find((t) => t.id === id);
   if (!known || !parseQuranRef(key)) return null;
   return kept(`t:${id}:${key}`, async () => {
-    const { tafsir: t } = await json(`${quranApi}/tafsirs/${id}/by_ayah/${key}`) as { tafsir: { text: string; verses: Record<string, unknown> } };
-    return { id, name: known.name, lang: known.lang, covers: Object.keys(t.verses ?? {}), parts: tafsirParts(t.text ?? "") };
+    const { tafsir: t } = await json(`${quranApi}/tafsirs/${id}/by_ayah/${key}`) as { tafsir: { text: string; verses: Record<string, unknown>; resource_name?: string; slug?: string; translated_name?: { name?: string } } };
+    const [surah, verse] = key.split(":");
+    return { id, name: known.name, lang: known.lang, covers: Object.keys(t.verses ?? {}), parts: tafsirParts(t.text ?? ""), edition: t.translated_name?.name || t.resource_name || known.name,
+      source: { name: "Quran.com API", url: `https://quran.com/${surah}:${verse}/tafsirs/${t.slug ?? ""}`.replace(/\/$/, "") } };
   });
 }
 
-export type Hadith = { book: string; bookName: string; number: number; chapter: string | null; arabic: string; translation: Partial<Record<Lang, string>>; grades: { name: string; grade: string }[] };
+export type Hadith = { book: string; bookName: string; number: number; chapter: string | null; arabic: string; translation: Partial<Record<Lang, string>>; grades: { name: string; grade: string }[]; source: Source };
 
 async function edition(name: string, number: number) {
   let failure: unknown;
@@ -173,6 +179,7 @@ export async function hadith(book: string, number: number): Promise<Hadith | nul
       arabic: ara?.hadiths[0]?.text?.trim() ?? "",
       translation: { en: first?.text?.trim() ?? "", ...(fra?.hadiths[0]?.text ? { fr: fra.hadiths[0].text.trim() } : {}) },
       grades: (first?.grades ?? []).filter((g) => g.grade),
+      source: { name: "hadith-api by fawazahmed0", url: "https://github.com/fawazahmed0/hadith-api" },
     };
   });
 }

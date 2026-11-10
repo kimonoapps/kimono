@@ -22,6 +22,13 @@ type Lang = "en" | "fr";
 const translators: Record<Lang, string> = { en: "Saheeh International", fr: "Muhammad Hamidullah" };
 const sunnahSlug: Record<string, string> = { nawawi: "nawawi40", qudsi: "qudsi40" };
 
+/* Where a text was taken from, under it: the source's name, linking to it. */
+function SourceLine({ source, detail }: { source: { name: string; url: string }; detail?: string }) {
+  return <button type="button" className="cd-scrip-source" title={source.url} onClick={() => window.open(source.url, "_blank", "noopener,noreferrer")}>
+    From {source.name}{detail ? <> · {detail}</> : null}
+  </button>;
+}
+
 /* Fetched once per page: a chat re-renders often while a reply streams in. */
 const loaded = new Map<string, Promise<unknown>>();
 function load<T>(url: string): Promise<T> {
@@ -101,12 +108,21 @@ function TipCard({ tip, onEnter, onLeave }: { tip: Tip; onEnter: () => void; onL
     style={{ left: place?.left ?? -9999, top: place?.top ?? -9999, visibility: place ? "visible" : "hidden" }}>{tip.body}</div>;
 }
 
-function LangSwitch({ lang, set, has = ["en", "fr"] }: { lang: Lang; set: (l: Lang) => void; has?: Lang[] }) {
-  if (has.length < 2) return null;
-  return <div className="cd-scrip-lang" role="radiogroup" aria-label="Translation">
-    {has.map((l) => <button key={l} type="button" role="radio" aria-checked={lang === l} onClick={() => set(l)}>{l.toUpperCase()}</button>)}
+/*
+ * What you read: AR, or a translation. Hover (or a tap) shows the other one:
+ * the translation under AR (in whichever of EN and FR was picked last), the
+ * Arabic under EN or FR.
+ */
+type View = "ar" | Lang;
+function ViewSwitch({ view, set, has = ["en", "fr"] }: { view: View; set: (v: View) => void; has?: Lang[] }) {
+  return <div className="cd-scrip-lang" role="radiogroup" aria-label="Read in">
+    {(["ar", ...has] as View[]).map((v) => <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => set(v)}>{v.toUpperCase()}</button>)}
   </div>;
 }
+
+/* The translation language last picked, for every card: someone who reads French keeps French. */
+const keptLang = (): Lang | null => { try { const l = localStorage.getItem("kimono:scripture-lang"); return l === "en" || l === "fr" ? l : null; } catch { return null; } };
+const keepLang = (l: Lang) => { try { localStorage.setItem("kimono:scripture-lang", l); } catch {} };
 
 /* The tafsir last read, opened first next time. */
 const lastTafsir = (ids: number[]) => { try { const n = Number(localStorage.getItem("kimono:tafsir")); if (ids.includes(n)) return n; } catch {} return ids[0]; };
@@ -142,6 +158,7 @@ function TafsirSection({ id, verseKey, passage, cited, lang, first }: { id: numb
           : part.kind === "ar" ? <p key={n} className="cd-ar is-quote" dir="rtl" lang="ar">{part.text}</p>
           : <p key={n} className={rtl ? "cd-ar is-prose" : undefined}>{part.text}</p>)}
       </div>}
+    <footer className="cd-tafsir-foot"><SourceLine source={data.source} detail={data.edition} /></footer>
   </section>;
 }
 
@@ -180,9 +197,12 @@ const options = (rest: string[]) => ({ lang: rest.find((o) => o === "en" || o ==
 
 export function QuranBlock({ source }: { source: string }) {
   const [ref, ...rest] = source.trim().split(/\s+/);
-  const { lang: option, translation: inverted } = options(rest);
+  const { lang: option, translation } = options(rest);
   const { data, failed } = useLoad<Passage>(ref ? `/api/v1/code/scripture/quran?ref=${encodeURIComponent(ref)}` : null);
-  const [lang, setLang] = useState<Lang>(() => firstLang(option));
+  const [lang, setLang] = useState<Lang>(() => option === "en" || option === "fr" ? option : keptLang() ?? firstLang(undefined));
+  const [inverted, setInverted] = useState(translation);
+  const view: View = inverted ? lang : "ar";
+  const setView = (v: View) => { if (v === "ar") setInverted(false); else { setInverted(true); setLang(v); keepLang(v); } };
   const [reading, setReading] = useState(false);
   const tip = useTip();
   const label = data ? data.ref.replace("-", "–") : ref;
@@ -213,8 +233,7 @@ export function QuranBlock({ source }: { source: string }) {
     <figcaption className="cd-scrip-head" lang={lang}>
       <button type="button" className="cd-scrip-title" title="Open on quran.com" onClick={() => window.open(`https://quran.com/${s}/${a}`, "_blank", "noopener,noreferrer")}>{data.chapter.name} <span>{label}</span></button>
       <span className="cd-scrip-name" lang="ar">{data.chapter.arabic}</span>
-      <LangSwitch lang={lang} set={setLang} />
-      {inverted ? <span className="cd-scrip-chapter">{translators[lang]}</span> : null}
+      <ViewSwitch view={view} set={setView} />
     </figcaption>
     <div className={inverted ? "cd-quran is-translation" : "cd-ar cd-quran"} dir={inverted ? "ltr" : "rtl"}>
       {data.before.map((v) => verse(v, true))}
@@ -225,6 +244,7 @@ export function QuranBlock({ source }: { source: string }) {
       <button type="button" className="cd-scrip-tafsir-toggle" aria-haspopup="dialog" onClick={() => setReading(true)}>
         Tafsir<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" /></svg>
       </button>
+      <SourceLine source={data.source} detail={translators[lang]} />
     </div>
     {reading ? <TafsirDialog passage={data} lang={lang} onClose={() => setReading(false)} /> : null}
     {tip.node}
@@ -235,10 +255,11 @@ export function QuranBlock({ source }: { source: string }) {
 
 export function HadithBlock({ source }: { source: string }) {
   const [book, number, ...rest] = source.trim().split(/\s+/);
-  const { lang: option, translation: inverted } = options(rest);
+  const { lang: option, translation: startInverted } = options(rest);
   const n = Number(number);
   const { data, failed } = useLoad<Hadith>(book && n ? `/api/v1/code/scripture/hadith?book=${encodeURIComponent(book)}&n=${n}` : null);
-  const [lang, setLang] = useState<Lang>(() => firstLang(option));
+  const [lang, setLang] = useState<Lang>(() => option === "en" || option === "fr" ? option : keptLang() ?? firstLang(undefined));
+  const [inverted, setInverted] = useState(startInverted);
   const tip = useTip();
   const title = data ? `${data.bookName} ${data.number}` : `${book ?? ""} ${number ?? ""}`;
 
@@ -257,7 +278,7 @@ export function HadithBlock({ source }: { source: string }) {
   return <figure className="cd-scrip is-hadith">
     <figcaption className="cd-scrip-head">
       <button type="button" className="cd-scrip-title" title="Open on sunnah.com" onClick={() => window.open(`https://sunnah.com/${sunnahSlug[data.book] ?? data.book}:${data.number}`, "_blank", "noopener,noreferrer")}>{data.bookName} <span>{data.number}</span></button>
-      <LangSwitch lang={shown} set={setLang} has={has} />
+      {data.arabic ? <ViewSwitch view={inverted ? shown : "ar"} has={has} set={(v) => { if (v === "ar") setInverted(false); else { setInverted(true); setLang(v); keepLang(v); } }} /> : null}
       {data.chapter ? <span className="cd-scrip-chapter">{data.chapter}</span> : null}
     </figcaption>
     {inverted && data.arabic
@@ -272,6 +293,7 @@ export function HadithBlock({ source }: { source: string }) {
     {data.grades.length ? <ul className="cd-scrip-grades" aria-label="Grades">
       {data.grades.map((g) => <li key={g.name}><b>{g.grade}</b> {g.name}</li>)}
     </ul> : null}
+    <div className="cd-scrip-foot is-quiet"><SourceLine source={data.source} detail="sunnah.com numbering" /></div>
     {tip.node}
   </figure>;
 }

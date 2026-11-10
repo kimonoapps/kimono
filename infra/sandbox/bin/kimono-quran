@@ -67,6 +67,7 @@ if len(args) >= 3 and args[1] == "--tafsir":
     body = text(t.get("text", ""))
     print(f"{label} on {covers[0] + '-' + covers[-1].split(':')[1] if len(covers) > 1 else covers[0] if covers else f'{surah}:{start}'}\n")
     print(body[:12000] + ("\n\n[… cut short]" if len(body) > 12000 else "") if body else "(nothing on this verse)")
+    print(f"\nSource: {t.get('resource_name') or label}, from the Quran.com API (https://quran.com/{surah}:{start}/tafsirs/{t.get('slug', '')})")
     sys.exit(0)
 
 print(f"{chapter['name_simple']} ({chapter['name_arabic']}, \"{chapter['translated_name']['name']}\"), {surah}:{start}{'-' + str(end) if end > start else ''}")
@@ -78,3 +79,4 @@ for n in range(max(1, start - 1), min(chapter["verses_count"], end + 1) + 1):
     for t in v.get("translations", []):
         print(f"    {TRANSLATIONS.get(t['resource_id'], '?')}: {text(t['text'])}")
     print()
+print(f"Source: the Quran.com API (Uthmani text; Saheeh International, Muhammad Hamidullah), https://quran.com/{surah}/{start}{'-' + str(end) if end > start else ''}")

@@ -401,11 +401,12 @@ private fun storedOf(o: JsonObject) = StoredCodeEvent(o.long("seq") ?: 0, o.long
 @Serializable data class QuranChapter(val name: String, val arabic: String, val meaning: String = "", val verses: Int = 0)
 @Serializable data class QuranVerse(val key: String, val number: Int, val arabic: String, val translation: Map<String, String> = emptyMap())
 @Serializable data class TafsirSource(val id: Int, val name: String, val lang: String)
-@Serializable data class QuranPassage(val ref: String, val surah: Int, val chapter: QuranChapter, val before: List<QuranVerse> = emptyList(), val verses: List<QuranVerse>, val after: List<QuranVerse> = emptyList(), val tafsirs: List<TafsirSource> = emptyList())
+@Serializable data class ScriptureSource(val name: String, val url: String)
+@Serializable data class QuranPassage(val ref: String, val surah: Int, val chapter: QuranChapter, val before: List<QuranVerse> = emptyList(), val verses: List<QuranVerse>, val after: List<QuranVerse> = emptyList(), val tafsirs: List<TafsirSource> = emptyList(), val source: ScriptureSource? = null)
 @Serializable data class TafsirPart(val kind: String, val text: String, val ar: String? = null)
-@Serializable data class Tafsir(val id: Int, val name: String, val lang: String, val covers: List<String> = emptyList(), val parts: List<TafsirPart> = emptyList())
+@Serializable data class Tafsir(val id: Int, val name: String, val lang: String, val covers: List<String> = emptyList(), val parts: List<TafsirPart> = emptyList(), val edition: String? = null, val source: ScriptureSource? = null)
 @Serializable data class HadithGrade(val name: String, val grade: String)
-@Serializable data class Hadith(val book: String, val bookName: String, val number: Int, val chapter: String? = null, val arabic: String = "", val translation: Map<String, String> = emptyMap(), val grades: List<HadithGrade> = emptyList())
+@Serializable data class Hadith(val book: String, val bookName: String, val number: Int, val chapter: String? = null, val arabic: String = "", val translation: Map<String, String> = emptyMap(), val grades: List<HadithGrade> = emptyList(), val source: ScriptureSource? = null)
 @Serializable private data class NoticeSeen(val seen: Boolean)
 
 class Code(private val session: Session, private val platform: Platform? = null) {
