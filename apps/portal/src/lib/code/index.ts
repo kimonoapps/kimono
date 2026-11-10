@@ -864,6 +864,11 @@ export async function stopPreview(config: CodeConfig, workspace: Workspace) {
 
 const attachmentDir = (workspaceId: string) => join(root, "attachments", workspaceId);
 const safeName = (name: string) => name.normalize("NFC").replace(/[\\/\0-\x1f]/g, "").replace(/^\.+/, "").slice(-120) || "file";
+/* The sandbox takes plain names only (letters, digits, space and `._()-`, 128 at most): accents fall off, anything else
+   (a screenshot's narrow space, quotes, emoji) turns into a dash, and the end is kept so the extension survives. */
+const sandboxName = (name: string) =>
+  safeName(name).normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ._()-]+/g, "-")
+    .replace(/\.{2,}/g, ".").replace(/-{2,}/g, "-").slice(-120).replace(/^-*(?=\.|$)/, "file").replace(/^-+/, "");
 
 export async function attach(config: CodeConfig, workspace: Workspace, user: ApiUser, name: string, type: string, body: Uint8Array): Promise<Attachment> {
   await ensure(config, workspace, who(user));
@@ -878,7 +883,7 @@ export async function attachAll(config: CodeConfig, workspace: Workspace, user: 
 }
 
 async function keepAttachment(config: CodeConfig, workspace: Workspace, name: string, type: string, body: Uint8Array): Promise<Attachment> {
-  const stored = `${newId(3)}-${safeName(name)}`;
+  const stored = `${newId(3)}-${sandboxName(name)}`;
   const { path } = await sandbox.attach(config, workspace, stored, body);
   await mkdir(attachmentDir(workspace.id), { recursive: true, mode: 0o700 });
   await writeFile(join(attachmentDir(workspace.id), stored), body, { mode: 0o600 });
