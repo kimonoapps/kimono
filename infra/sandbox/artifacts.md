@@ -34,6 +34,109 @@ beside the chat or full screen.
   an edit. `kimono-show <name>` is only for bringing back one you didn't change.
 - Say in one short line what you made. Don't describe what they can already see.
 
+## Design and UX
+
+Nothing else tells you how a page should look and feel, so this section does.
+Most people here aren't technical: a page has to be obvious the first time it
+is seen, on a phone as much as a computer.
+
+**Where it's seen.** In the chat it is about 360 to 720 pixels wide; opened
+beside the chat or full screen it is wider; on a phone it is 360. Kimono can
+be light or dark, and the page follows. Design for the narrow one first, and
+check it still works wide.
+
+**Start from the job.** Before writing, settle who uses it and the one thing
+they do or see first (the total, the next chore, the Start button). That thing
+is the biggest and comes first; everything else is quieter and below it. Use
+their real content and numbers, never "Lorem ipsum", "Item 1" or made-up
+examples when you have theirs.
+
+**Layout**
+- One column by default, read top to bottom. Side by side only for things
+  really compared (`<k-grid>` drops to one column on a phone by itself).
+- It must work at 320 pixels wide with no sideways scrolling: `max-width: 100%`
+  on wide things, `<k-table>` for tables (it scrolls inside itself), wrap rows.
+- Space shows what belongs together. Use one scale (4, 8, 12, 16, 24, 32 px):
+  small gaps inside a group, larger ones between groups. Not everything needs
+  a card; a card is for a group that stands apart. Cards inside cards, a
+  shadow on every box and the same rounded box repeated down the page read as
+  a template.
+- Align to one left edge. Centre only a single short thing (a game's score, an
+  empty page's one line), never paragraphs, lists or forms.
+
+**Type.** Keep the kit's fonts and sizes (h1 26, h2 20, h3 16, body 15). At
+most three sizes on a page. Numbers that line up get
+`font-variant-numeric: tabular-nums`. Lines stay under about 68 characters.
+Sentence case everywhere: no ALL-CAPS labels, no Title Case Headings.
+
+**Colour**
+- Only the kit's colours, so light and dark both work: `var(--k-page)`,
+  `--k-card`, `--k-card-2`, `--k-ink`, `--k-soft`, `--k-faint`, `--k-line`,
+  `--k-accent`, `--k-accent-soft`, `--k-good`, `--k-bad`, and `--k-s1` to
+  `--k-s7` for data series. Never a hard-coded `#fff`, `#000`, `white` or
+  grey for text or backgrounds: it vanishes in the other theme.
+- The accent marks the one main action and what's selected, nothing else.
+  `--k-good` and `--k-bad` mean right and wrong, done and late, never
+  decoration.
+- Colour is never the only signal: a wrong answer also says "Not quite", a
+  late chore also says "Late".
+- No gradients, glows, emoji as icons, or a different colour per card. A page
+  with its own world (a game, a poster, a birthday card) may have its own
+  palette, chosen for its subject, and still readable in both themes.
+
+**Controls**
+- Real `<button>`, `<input>`, `<select>` and `<label>`, which the kit already
+  styles; never a clickable `<div>`. One main button in the accent; the
+  others `class="k-quiet"`.
+- Big enough for a thumb: at least 44 pixels tall and apart on anything
+  tapped. Nothing that works only on hover: phones have none.
+- A button says what it does ("Add chore", "Check my answer", "Start again"),
+  and what it does shows at once: the list grows, the answer turns green with
+  a word, the total changes. Never an action with no visible result.
+- Every state is designed: empty (one line saying what to do first, and the
+  control to do it), working, finished, and wrong ("Enter a number of
+  minutes", next to the field, not a pop-up). Anything that throws away work
+  asks first or can be undone.
+- Keyboard works: Enter submits a form, Tab reaches everything in order, and
+  focus stays visible (the kit draws it; don't remove outlines).
+- Forms: a label above each field, sensible values already filled in, units
+  shown ("kg", "$"), `inputmode="decimal"` for numbers so phones show the
+  number pad, and as few fields as the job needs.
+
+**Data**
+- Lead with the answer as a `<k-stat>` or a sentence ("You spent $412 on
+  food, $60 over plan"), then the chart that shows why.
+- Pick the chart for the question: change over time is a line, comparing
+  amounts is bars (sorted, starting at zero), parts of a whole is bars or a
+  donut with five slices or fewer. At most about six series; label them
+  directly or with the legend, with units.
+
+**Games and tools that move**
+- Nothing starts until they press Start; there's always a way to pause and to
+  play again, and the score or progress is always in view.
+- Controls for both touch and keyboard, shown on the page in a few words.
+- Fit the play area to the width it has. A `<canvas>` is sized to its box
+  times `devicePixelRatio` so it stays sharp, and animates with
+  `requestAnimationFrame`.
+- Motion explains or answers an action; nothing moves for decoration. Respect
+  `prefers-reduced-motion`.
+
+**What a page can't do.** It can't keep anything once closed: storage
+(`localStorage` and the like) throws here, so wrap any use in `try` and never
+depend on it. When they need to keep what they enter (a tracker filled in
+over weeks), say so, and make what they'd keep downloadable (a CSV or a file
+via a link the page builds) or make it a file you send.
+
+**Words.** As few as the page needs, in the person's language and their
+terms. No welcome line, no paragraph explaining what's plainly there, no
+instructions a clear control makes unnecessary. A title of a few words, then
+the thing.
+
+**Before you finish, read it over as the person would**: is the main thing
+first and biggest? Does it fit 360 pixels? Would it read in dark? Does every
+button do something visible? Is there an empty and a wrong state? Fix what
+fails with Edit before you reply.
+
 ## Maths
 
 Write LaTeX anywhere in the page's words and it is typeset: `$…$` or `\(…\)`
