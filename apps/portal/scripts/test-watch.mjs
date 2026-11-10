@@ -276,3 +276,52 @@ test("an addon's answer becomes releases; torrent hashes and links out are left 
   assert.equal(found[0].bytes, 8e9);
   assert.equal(found[0].height, 2160);
 });
+
+/* ───── Setting up the services ───── */
+
+import * as provision from '../src/lib/watch/provision.ts';
+
+const accounts = (over = {}) => ({
+  usenet: { host: 'news.example.com', port: 563, ssl: true, username: 'u', password: 'p', connections: 30 },
+  indexer: { url: 'https://api.indexer.example', key: 'idx' },
+  debrid: { service: 'realdebrid', key: 'rd' },
+  ...over,
+});
+const access = { key: 'nzb-key', webdavPassword: 'dav' };
+
+test('nzbdav gets the provider as one pooled server; none when there is no provider', () => {
+  assert.deepEqual(JSON.parse(provision.nzbdavProviders(accounts().usenet)), { Providers: [{ Type: 1, Host: 'news.example.com', Port: 563, UseSsl: true, User: 'u', Pass: 'p', MaxConnections: 30 }] });
+  assert.deepEqual(JSON.parse(provision.nzbdavProviders({ ...accounts().usenet, host: '' })), { Providers: [] });
+  assert.equal(provision.indexerApi('https://api.nzbgeek.info/'), 'https://api.nzbgeek.info/api');
+  assert.equal(provision.indexerApi('https://x.example/api'), 'https://x.example/api');
+});
+
+test("AIOStreams' configuration follows the accounts: Usenet through nzbdav, torrents through the debrid service", () => {
+  const both = provision.aiostreamsConfig(accounts(), access, 'http://nzbdav:3000');
+  assert.deepEqual(both.services.map((s) => s.id), ['realdebrid', 'nzbdav']);
+  const nzb = both.services[1].credentials;
+  assert.equal(nzb.url, 'http://nzbdav:3000');
+  assert.equal(nzb.apiKey, 'nzb-key');
+  assert.equal(nzb.username, 'kimono');
+  assert.deepEqual(both.presets.map((p) => p.type), ['newznab', 'torrentio', 'comet']);
+  assert.deepEqual(both.presets[0].options.api, { url: 'https://api.indexer.example/api', apiKey: 'idx' });
+  assert.equal(both.presets[0].options.searchMode, 'query');
+  assert.deepEqual(both.presets[1].options.services, ['realdebrid']);
+  const usenetOnly = provision.aiostreamsConfig(accounts({ debrid: { service: '', key: '' } }), access, 'http://nzbdav:3000');
+  assert.deepEqual(usenetOnly.presets.map((p) => p.type), ['newznab']);
+  const debridOnly = provision.aiostreamsConfig(accounts({ usenet: { ...accounts().usenet, host: '' } }), access, 'x');
+  assert.deepEqual(debridOnly.services.map((s) => s.id), ['realdebrid']);
+  assert.equal(provision.hasSources(accounts({ usenet: { ...accounts().usenet, host: '' }, debrid: { service: '', key: '' } })), false);
+});
+
+test('a changed account sets things up again; the same accounts do not', () => {
+  const a = provision.fingerprint(accounts(), 'http://nzbdav:3000');
+  assert.equal(provision.fingerprint(accounts(), 'http://nzbdav:3000'), a);
+  assert.notEqual(provision.fingerprint(accounts({ debrid: { service: 'torbox', key: 'tb' } }), 'http://nzbdav:3000'), a);
+  assert.ok(!a.includes('rd'), 'no secret in the clear');
+});
+
+test("a login in a stream's address moves into a header", () => {
+  assert.deepEqual(streams.upstreamRequest('http://kimono:s%40cret@nzbdav:3000/content/a.mkv'), { url: 'http://nzbdav:3000/content/a.mkv', authorization: `Basic ${Buffer.from('kimono:s@cret').toString('base64')}` });
+  assert.deepEqual(streams.upstreamRequest('https://rd.example/x'), { url: 'https://rd.example/x', authorization: null });
+});

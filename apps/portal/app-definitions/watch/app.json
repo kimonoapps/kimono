@@ -22,35 +22,112 @@
     "volumes": [],
     "configuration": [
       {
+        "key": "usenet_host",
+        "label": "Provider address",
+        "kind": "text",
+        "group": "usenet",
+        "target": "settings",
+        "description": "Your Usenet provider's news server, such as news.eweka.nl."
+      },
+      {
+        "key": "usenet_port",
+        "label": "Port",
+        "kind": "number",
+        "group": "usenet",
+        "target": "settings",
+        "default": "563"
+      },
+      {
+        "key": "usenet_ssl",
+        "label": "Encrypted",
+        "kind": "toggle",
+        "group": "usenet",
+        "target": "settings",
+        "default": "on"
+      },
+      {
+        "key": "usenet_username",
+        "label": "Username",
+        "kind": "text",
+        "group": "usenet",
+        "target": "settings"
+      },
+      {
+        "key": "usenet_password",
+        "label": "Password",
+        "kind": "secret",
+        "group": "usenet",
+        "target": "settings"
+      },
+      {
+        "key": "usenet_connections",
+        "label": "Connections",
+        "kind": "number",
+        "group": "usenet",
+        "target": "settings",
+        "default": "20",
+        "description": "As many as your plan allows. Each stream uses several."
+      },
+      {
+        "key": "indexer_url",
+        "label": "Indexer address",
+        "kind": "text",
+        "group": "usenet",
+        "target": "settings",
+        "description": "Your Newznab indexer, such as https://api.nzbgeek.info."
+      },
+      {
+        "key": "indexer_key",
+        "label": "Indexer API key",
+        "kind": "secret",
+        "group": "usenet",
+        "target": "settings"
+      },
+      {
+        "key": "debrid_service",
+        "label": "Debrid service",
+        "kind": "select",
+        "group": "debrid",
+        "target": "settings",
+        "default": "None",
+        "description": "Plays torrents instantly from the service's servers. Good for anime.",
+        "options": [
+          "None",
+          "Real-Debrid",
+          "TorBox",
+          "AllDebrid",
+          "Premiumize"
+        ]
+      },
+      {
+        "key": "debrid_key",
+        "label": "Debrid API key",
+        "kind": "secret",
+        "group": "debrid",
+        "target": "settings"
+      },
+      {
         "key": "tmdb_token",
         "label": "TMDB key",
         "kind": "secret",
-        "group": "sources",
+        "group": "catalog",
         "target": "settings",
-        "description": "An API read access token or API key from themoviedb.org. Titles, artwork and episodes come from TMDB."
-      },
-      {
-        "key": "streams_manifest",
-        "label": "Stream source",
-        "kind": "secret",
-        "group": "sources",
-        "target": "settings",
-        "description": "The manifest address of Kimono's AIOStreams configuration, such as http://aiostreams:3000/stremio/…/manifest.json."
+        "description": "From themoviedb.org → Settings → API. Titles, artwork and episodes come from TMDB."
       },
       {
         "key": "region",
         "label": "Country",
         "kind": "text",
-        "group": "sources",
+        "group": "catalog",
         "target": "settings",
         "default": "US",
-        "description": "Age ratings and release dates follow this country first. Two letters, such as US or GB."
+        "description": "Age ratings follow this country first, such as US or GB."
       },
       {
         "key": "jikan_url",
         "label": "Jikan address",
         "kind": "text",
-        "group": "anime",
+        "group": "catalog",
         "target": "settings",
         "default": "https://api.jikan.moe/v4",
         "description": "Where filler and recap episodes are looked up.",
@@ -60,7 +137,7 @@
         "key": "anime_map_url",
         "label": "Anime map",
         "kind": "text",
-        "group": "anime",
+        "group": "catalog",
         "target": "settings",
         "default": "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json",
         "description": "The list that connects TMDB to AniList and MyAnimeList.",

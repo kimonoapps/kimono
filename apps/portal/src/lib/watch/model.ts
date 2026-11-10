@@ -118,6 +118,7 @@ export function migrate(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS reminders (username TEXT NOT NULL, title_id TEXT NOT NULL, PRIMARY KEY (username, title_id));
     CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, body TEXT NOT NULL, expires_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, body TEXT NOT NULL);
   `);
 }
 

@@ -17,7 +17,8 @@ import {
   type Episode, type Title,
 } from "./model";
 import { badges, cleanDevice, describe, rank } from "./releases";
-import { findStreams, stremioId } from "./streams";
+import { findStreams, stremioId, upstreamRequest } from "./streams";
+import { ensureProvisioned, type NzbdavAccess } from "./provision";
 import { fetchDetails, fetchSeason, imageUrl, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
 
@@ -250,6 +251,16 @@ async function streamKey(): Promise<Buffer> {
   return Buffer.from((await resolveSecrets([name]))[name], "hex");
 }
 
+/** nzbdav's API key and WebDAV password: the server's (shared with nzbdav at deploy), else Kimono's own for a local nzbdav. */
+async function nzbdavAccess(): Promise<NzbdavAccess> {
+  const env = { key: process.env.KIMONO_WATCH_NZBDAV_KEY?.trim(), webdavPassword: process.env.KIMONO_WATCH_NZBDAV_WEBDAV_PASSWORD?.trim() };
+  if (env.key && env.webdavPassword) return { key: env.key, webdavPassword: env.webdavPassword };
+  const names = [secretName(watchAppId, "NZBDAV_KEY"), secretName(watchAppId, "NZBDAV_WEBDAV_PASSWORD")];
+  const minted = await resolveSecrets(names);
+  return { key: env.key || minted[names[0]], webdavPassword: env.webdavPassword || minted[names[1]] };
+}
+
+
 /**
  * Picks what to play on this device and hands back a Kimono address for it,
  * with the other versions, where to start, and what comes after.
@@ -272,7 +283,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   }
 
   const key = `streams:${title.id}:${season}:${episode}`;
-  const found = cached<ReturnType<typeof rank>>(db, key) ?? await findStreams(cfg.streamsManifest, title.kind, stremioId(title.imdbId, season || undefined, episode || undefined));
+  const found = cached<ReturnType<typeof rank>>(db, key)
+    ?? await findStreams(await ensureProvisioned(db, cfg, await nzbdavAccess()), title.kind, stremioId(title.imdbId, season || undefined, episode || undefined));
   keep(db, key, found, 20 * 60 * 1000);
   const ranked = rank(found, device, prefs.quality, minutes, prefs.audioLanguage || "en");
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
@@ -301,7 +313,9 @@ export async function relay(request: Request, token: string): Promise<Response> 
   if (!grant) return new Response("This link has run out. Press play again.", { status: 410 });
   const headers = new Headers();
   for (const name of ["range", "if-range", "accept"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
-  const upstream = await fetch(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, redirect: "follow", signal: request.signal }).catch(() => null);
+  const target = upstreamRequest(grant.url);
+  if (target.authorization) headers.set("authorization", target.authorization);
+  const upstream = await fetch(target.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, redirect: "follow", signal: request.signal }).catch(() => null);
   if (!upstream || (!upstream.ok && upstream.status !== 206)) return new Response("The stream stopped answering. Try another version.", { status: 502 });
   const out = new Headers({ "cache-control": "private, no-store", "accept-ranges": "bytes" });
   for (const name of ["content-type", "content-length", "content-range", "last-modified", "etag"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }

@@ -33,9 +33,18 @@ export function releasesFrom(body: Json): Release[] {
 }
 
 export async function findStreams(manifest: string, kind: "movie" | "series", id: string): Promise<Release[]> {
-  if (!manifest) throw new WatchProblem("Watch has no stream source yet. Add the AIOStreams address in Applications → Watch.", 503);
+  if (!manifest) throw new WatchProblem("Watch has nowhere to stream from yet.", 503);
   const url = `${addonBase(manifest)}/stream/${kind}/${encodeURIComponent(id)}.json`;
   const response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(25_000) }).catch(() => null);
   if (!response?.ok) throw new WatchProblem("The stream search didn't answer. Try again in a moment.", 502);
   return releasesFrom((await response.json()) as Json);
+}
+
+/** Upstream addresses may carry a login (nzbdav's WebDAV); fetch won't take one in the address, so it moves to a header. */
+export function upstreamRequest(url: string): { url: string; authorization: string | null } {
+  const parsed = new URL(url);
+  if (!parsed.username && !parsed.password) return { url, authorization: null };
+  const authorization = `Basic ${Buffer.from(`${decodeURIComponent(parsed.username)}:${decodeURIComponent(parsed.password)}`).toString("base64")}`;
+  parsed.username = ""; parsed.password = "";
+  return { url: parsed.toString(), authorization };
 }

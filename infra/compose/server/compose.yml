@@ -152,6 +152,8 @@ services:
       KIMONO_MESH_DOMAIN: ${MESH_DOMAIN:?mesh domain required}
       KIMONO_MESH_API_URL: ${KIMONO_MESH_API_URL:-http://headscale:8080}
       KIMONO_MESH_API_KEY: ${KIMONO_MESH_API_KEY:-}
+      KIMONO_WATCH_NZBDAV_KEY: ${NZBDAV_API_KEY:?nzbdav API key required}
+      KIMONO_WATCH_NZBDAV_WEBDAV_PASSWORD: ${NZBDAV_WEBDAV_PASSWORD:?nzbdav WebDAV password required}
     depends_on:
       authentik-server:
         condition: service_healthy
@@ -229,19 +231,15 @@ services:
       - caddy_config:/config
 
   # Kimono Watch's stream search (AIOStreams) and Usenet streaming (nzbdav).
-  # Off unless the watch profile is on: COMPOSE_PROFILES=watch. Only the
-  # Portal talks to them, on this network; their setup pages are bound to
-  # this machine alone (reach them over SSH, see README "Kimono Watch").
+  # Nobody configures either by hand: the Portal sets both up from the
+  # accounts entered under Admin → Applications → Watch, and is the only thing
+  # that talks to them. Neither is published.
   aiostreams:
     image: ghcr.io/viren070/aiostreams:${AIOSTREAMS_TAG:-latest}
-    profiles: [watch]
     restart: unless-stopped
     environment:
-      SECRET_KEY: ${AIOSTREAMS_SECRET_KEY:-}
-      BASE_URL: ${AIOSTREAMS_BASE_URL:-http://127.0.0.1:7610}
-      ADDON_PASSWORD: ${AIOSTREAMS_ADDON_PASSWORD:-}
-    ports:
-      - "127.0.0.1:7610:3000"
+      SECRET_KEY: ${AIOSTREAMS_SECRET_KEY:?AIOStreams secret key required}
+      BASE_URL: http://aiostreams:3000
     security_opt:
       - no-new-privileges:true
     volumes:
@@ -249,13 +247,14 @@ services:
 
   nzbdav:
     image: docker.io/nzbdav/nzbdav:${NZBDAV_TAG:-latest}
-    profiles: [watch]
     restart: unless-stopped
     environment:
       PUID: "1000"
       PGID: "1000"
-    ports:
-      - "127.0.0.1:7611:3000"
+      # Fixed here so the Portal and nzbdav agree without being told.
+      FRONTEND_BACKEND_API_KEY: ${NZBDAV_API_KEY:?nzbdav API key required}
+      WEBDAV_USER: kimono
+      WEBDAV_PASSWORD: ${NZBDAV_WEBDAV_PASSWORD:?nzbdav WebDAV password required}
     security_opt:
       - no-new-privileges:true
     volumes:
