@@ -84,6 +84,8 @@ export function stillCopy(element: HTMLElement) {
   copy.setAttribute("aria-hidden", "true");
   copy.inert = true;
   copy.classList.remove("main-content");
+  /* A dialog or menu that was open is going, and a copy of one isn't on the top layer anyway. */
+  copy.querySelectorAll("dialog, [popover]").forEach((node) => node.remove());
   if (getComputedStyle(element).position !== "fixed") {
     const box = element.getBoundingClientRect();
     Object.assign(copy.style, { position: "fixed", left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: "0", zIndex: "5", overflow: "hidden" });

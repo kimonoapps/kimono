@@ -2,6 +2,7 @@
 
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { useState, type MouseEvent } from "react";
+import { flushSync } from "react-dom";
 import { AppBloom, cx } from "@kimono/ui";
 import type { KimonoApp } from "@/lib/apps";
 import { detectMobileOS, type MobileOS } from "@/lib/mobile-app";
@@ -85,6 +86,6 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
         </div>;
       })}
     </div>
-    {selected?.mobileApp && <MobileAppTutorial key={selected.id} app={selected.mobileApp} serverUrl={selected.href} os={mobileOS} onClose={() => setSelected(null)} onContinue={() => { setSelected(null); crossTo("kakejiku", selected.href, selected.external); }} />}
+    {selected?.mobileApp && <MobileAppTutorial key={selected.id} app={selected.mobileApp} serverUrl={selected.href} os={mobileOS} onClose={() => setSelected(null)} onContinue={() => { flushSync(() => setSelected(null)); crossTo("kakejiku", selected.href, selected.external); }} />}
   </>;
 }
