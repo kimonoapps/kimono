@@ -716,3 +716,7 @@
 .kw .kw-subs.kw-subs-static.kw-subs-large span{font-size:5.2cqw}
 .kw .kw-joint button{text-align:center}
 @media (max-width:640px){.kw .kw-set-row.kw-inline{flex-direction:row;align-items:center}.kw .kw-set-row:not(.kw-inline) .kw-tick{position:absolute;right:0;top:-26px}.kw .kw-set-row{position:relative}}
+.kw .kw-eps-layout{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.kw .kw-joint-sm button{padding:7px 12px;font-size:13px}
+.kw .kw-textbtn{font-size:13px;font-weight:700;color:var(--fg-2);text-decoration:underline;text-underline-offset:3px}
+.kw .kw-textbtn:hover{color:var(--fg)}

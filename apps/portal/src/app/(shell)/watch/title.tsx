@@ -53,6 +53,13 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
     } catch { watch.toast("That didn't work."); }
   };
 
+  /* This show by season or as one list; null goes back to the default in Settings. */
+  const setLayout = async (to: "seasons" | "continuous" | null) => {
+    setSeasonLoading(true);
+    try { apply(await watchApi.mark(id, { episodes: to })); }
+    catch { watch.toast("That didn't work."); }
+    setSeasonLoading(false);
+  };
   const t = view?.title;
   useTabTitle(t?.name);
   const series = view ? Boolean(view.seasons) : false;
@@ -92,7 +99,7 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
                 {series ? <button role="tab" aria-selected={tab === "eps"} onClick={() => setTab("eps")}>Episodes</button> : null}
                 <button role="tab" aria-selected={tab === "more" || !series} onClick={() => setTab("more")}>More like this</button>
               </div>
-              <div>{series && tab === "eps" ? <Episodes view={view} loading={seasonLoading} pickSeason={pickSeason} /> : <MoreLikeThis id={t.id} shelf={t.shelf} />}</div>
+              <div>{series && tab === "eps" ? <Episodes view={view} loading={seasonLoading} pickSeason={pickSeason} setLayout={setLayout} /> : <MoreLikeThis id={t.id} shelf={t.shelf} />}</div>
             </>}
       </div>
     </div>
@@ -171,7 +178,7 @@ function Tracker({ view }: { view: TitleView }) {
   </div>;
 }
 
-function Episodes({ view, loading, pickSeason }: { view: TitleView; loading: boolean; pickSeason: (season: number) => void }) {
+function Episodes({ view, loading, pickSeason, setLayout }: { view: TitleView; loading: boolean; pickSeason: (season: number) => void; setLayout: (to: "seasons" | "continuous" | null) => void }) {
   const watch = useWatch();
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(false);
@@ -203,6 +210,7 @@ function Episodes({ view, loading, pickSeason }: { view: TitleView; loading: boo
           </button>)}
         </div> : null}
       </div> : <h3>Episodes</h3>}
+      {view.title.shelf === "Anime" && view.layout && view.layout !== "single" ? <LayoutChoice view={view} onChange={setLayout} /> : null}
       <span className="kw-eps-count">{episodes.length} episodes</span>
     </div>
     <div>{loading ? Array.from({ length: 4 }, (_, i) => <div key={i} className="kw-sk kw-sk-ep" />) : episodes.map((e, i) => {
@@ -242,4 +250,17 @@ function MoreLikeThis({ id, shelf }: { id: string; shelf: TitleView["title"]["sh
     <button className="kw-shot" aria-label={c.name} onClick={() => watch.openTitle(c.id)}><Img src={c.backdrop ?? c.poster} /><span className="kw-t">{c.name}</span></button>
     <div className="kw-b"><div className="kw-top"><span className="kw-meta">{c.age ? <span className="kw-box">{c.age}</span> : null}{c.year}</span><ListButton id={c.id} variant="ring" /></div></div>
   </article>)}</div>;
+}
+
+/* An anime with seasons: by season or as one list, for this show; "Use my default" once it differs. */
+function LayoutChoice({ view, onChange }: { view: TitleView; onChange: (to: "seasons" | "continuous" | null) => void }) {
+  const watch = useWatch();
+  const fallback = watch.prefs?.animeEpisodes ?? "seasons";
+  const now = view.showEpisodes ?? (view.layout === "continuous" ? "continuous" : "seasons");
+  return <div className="kw-eps-layout">
+    <div className="kw-joint kw-joint-sm" role="radiogroup" aria-label="Episodes">
+      {([["seasons", "By season"], ["continuous", "One list"]] as const).map(([value, label]) => <button key={value} role="radio" aria-checked={now === value} className={cx(now === value && "kw-sel")} onClick={() => { if (now !== value) onChange(value === fallback ? null : value); }}>{label}</button>)}
+    </div>
+    {view.showEpisodes && view.showEpisodes !== fallback ? <button className="kw-textbtn" onClick={() => onChange(null)}>Use my default</button> : null}
+  </div>;
 }

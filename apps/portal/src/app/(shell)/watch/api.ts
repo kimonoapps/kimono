@@ -32,6 +32,8 @@ export type TitleView = {
   playable: boolean;
   resume: ({ season: number; episode: number; position: number; started: boolean; label?: string }) | ({ position: number; fraction: number }) | null;
   /** "single": one season, so no season anywhere; "continuous": one list numbered from the first; "seasons": the picker. */
+  /** This show's own episode layout, or null to follow the default in Settings. */
+  showEpisodes?: "seasons" | "continuous" | null;
   layout?: Layout;
   seasons?: { number: number; name: string; episodeCount: number; airDate: string | null }[];
   tracker?: { season: number; left: number; marks: Mark[]; nextAirDate: string | null } | null;
@@ -109,7 +111,7 @@ export const watchApi = {
   },
   search: (q: string, signal?: AbortSignal) => call<{ results: Card[] }>(`search?q=${encodeURIComponent(q)}`, { signal }),
   title: (id: string, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`),
-  mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null }) => call<TitleView>(`titles/${encodeURIComponent(id)}`, put(change)),
+  mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null; episodes?: "seasons" | "continuous" | null }) => call<TitleView>(`titles/${encodeURIComponent(id)}`, put(change)),
   prefs: () => call<Prefs>("prefs"),
   /** This browser's own quality, or null when it follows the person's. */
   deviceQuality: () => call<Prefs & { device?: { id: string; quality: string | null } }>(`prefs?device=${encodeURIComponent(deviceId())}`).then((p) => p.device?.quality ?? null),
