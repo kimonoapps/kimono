@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   next@16.4.5:
-    hash: 90b76f2b44fdcaf5834c50a9b17ed0f0c238bc5d87d904585168f6fc09603041
+    hash: 9ee09ba54e9cb501d786905f0a9afe1c9fef012f5fac86b1443a5c3169f39e3d
     path: patches/next@16.4.5.patch
 
 importers:
@@ -57,10 +57,10 @@ importers:
         version: 0.19.1
       next:
         specifier: 16.4.5
-        version: 16.4.5(patch_hash=90b76f2b44fdcaf5834c50a9b17ed0f0c238bc5d87d904585168f6fc09603041)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        version: 16.4.5(patch_hash=9ee09ba54e9cb501d786905f0a9afe1c9fef012f5fac86b1443a5c3169f39e3d)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       next-auth:
         specifier: 5.0.0-beta.32
-        version: 5.0.0-beta.32(next@16.4.5(patch_hash=90b76f2b44fdcaf5834c50a9b17ed0f0c238bc5d87d904585168f6fc09603041)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
+        version: 5.0.0-beta.32(next@16.4.5(patch_hash=9ee09ba54e9cb501d786905f0a9afe1c9fef012f5fac86b1443a5c3169f39e3d)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1)
       react:
         specifier: 19.3.1
         version: 19.3.1
@@ -4812,13 +4812,13 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
-  next-auth@5.0.0-beta.32(next@16.4.5(patch_hash=90b76f2b44fdcaf5834c50a9b17ed0f0c238bc5d87d904585168f6fc09603041)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1):
+  next-auth@5.0.0-beta.32(next@16.4.5(patch_hash=9ee09ba54e9cb501d786905f0a9afe1c9fef012f5fac86b1443a5c3169f39e3d)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react@19.3.1):
     dependencies:
       '@auth/core': 0.41.3
-      next: 16.4.5(patch_hash=90b76f2b44fdcaf5834c50a9b17ed0f0c238bc5d87d904585168f6fc09603041)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      next: 16.4.5(patch_hash=9ee09ba54e9cb501d786905f0a9afe1c9fef012f5fac86b1443a5c3169f39e3d)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       react: 19.3.1
 
-  next@16.4.5(patch_hash=90b76f2b44fdcaf5834c50a9b17ed0f0c238bc5d87d904585168f6fc09603041)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
+  next@16.4.5(patch_hash=9ee09ba54e9cb501d786905f0a9afe1c9fef012f5fac86b1443a5c3169f39e3d)(@babel/core@7.29.7)(@types/node@24.19.2)(babel-plugin-react-compiler@1.0.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1):
     dependencies:
       '@next/env': 16.4.5
       '@swc/helpers': 0.5.23

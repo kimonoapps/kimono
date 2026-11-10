@@ -370,3 +370,19 @@ index 1ffac3458af9549550982716233aadfbc5503354..9edc746c1f0a88a511f8834434646398
                        detail: {
                          devtools: {
                            color: "warning",
+diff --git a/dist/server/send-response.js b/dist/server/send-response.js
+index 6232e7a729e33f6550e83f8ff7ffe0581c891683..8b4196a38b48c1af6ba385444d6ba402eaa8b60f 100644
+--- a/dist/server/send-response.js
++++ b/dist/server/send-response.js
+@@ -46,7 +46,10 @@ async function sendResponse(req, res, response, waitUntil) {
+             if (name.toLowerCase() === 'x-middleware-set-cookie') {
+                 return;
+             }
+-            if (FORBIDDEN_HEADERS.includes(name)) {
++            // Kimono: a length is only stale when the body was decoded, which
++            // leaves its content-encoding behind. Without one, keep it, so
++            // downloads have a size and Chrome doesn't call them "Resuming".
++            if (FORBIDDEN_HEADERS.includes(name) && !(name === 'content-length' && !response.headers.has('content-encoding'))) {
+                 return;
+             }
+             // The append handling is special cased for `set-cookie`.
