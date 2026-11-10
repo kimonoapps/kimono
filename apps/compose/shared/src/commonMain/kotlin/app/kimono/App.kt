@@ -24,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ShortNavigationBar
@@ -115,7 +116,8 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
         var later by remember { mutableStateOf(false) }
         val server = when (val s = state) { is SessionState.SignedIn -> s.server; is SessionState.SignedOut -> s.server ?: ""; SessionState.Loading -> null }
         LaunchedEffect(server) { if (server != null) update = session.checkUpdate() }
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        /* A surface, not a painted box: it also hands text its on-surface ink, which a bare Text would leave black in dark mode. */
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             val required = update?.takeIf { it.required }
             if (required != null) UpdateScreen(required, platform) else when (val s = state) {
                 SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
