@@ -73,6 +73,7 @@ Server commands:
   logs      Follow appliance logs
   update    Pull pinned service updates and recreate the appliance
   backup    Encrypted backups: run, check, restore, import-kit
+  restore   Rebuild this whole server from a recovery kit and its latest backup
 
 Node commands:
   install   Install Tailscale and join the Kimono private mesh

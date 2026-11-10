@@ -373,3 +373,74 @@ func TestMissingSelectionFailsBeforeExport(t *testing.T) {
 		t.Fatalf("missing item was not reported: %v", err)
 	}
 }
+
+func TestPlatformSavesSettingsWithoutCredentialsAndServerVolumes(t *testing.T) {
+	w, c := fixture(t)
+	c.Platform = true
+	c.Apps["immich"] = true
+	defs := filepath.Join(t.TempDir(), "definitions")
+	if err := os.MkdirAll(defs, 0700); err != nil {
+		t.Fatal(err)
+	}
+	stage := t.TempDir()
+	var captured []string
+	w.Command = func(_ context.Context, name string, args, _ []string, _ string, out io.Writer) error {
+		if name == "docker" && args[0] == "volume" && args[1] == "inspect" && args[2] == "kimono-server_aiostreams_data" {
+			return errors.New("no such volume")
+		}
+		if name == "docker" && args[0] == "ps" {
+			io.WriteString(out, "container123\n")
+		}
+		if name == "docker" && args[0] == "run" {
+			for _, arg := range args {
+				if strings.HasPrefix(arg, "type=volume,src=") {
+					captured = append(captured, strings.TrimPrefix(strings.Split(arg, ",")[1], "src="))
+				}
+			}
+		}
+		return nil
+	}
+	// The definitions directory is fixed at /etc/kimono/app-definitions; skip
+	// the tar step where it is absent and check what precedes it.
+	_ = w.platform(context.Background(), c, stage)
+	data, err := os.ReadFile(filepath.Join(stage, "platform", "backup-settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{c.Password, c.ApplicationKey, c.KeyID} {
+		if strings.Contains(string(data), secret) {
+			t.Fatal("settings carry credentials")
+		}
+	}
+	var saved Settings
+	if err := json.Unmarshal(data, &saved); err != nil || !saved.Enabled || !saved.Apps["immich"] {
+		t.Fatalf("settings not saved: %s", data)
+	}
+	want := []string{"kimono-server_caddy_data", "kimono-server_nzbdav_config", "kimono-server_headscale_data", "kimono-server_headscale_data", "kimono-server_authentik_data"}
+	if !reflect.DeepEqual(captured, want) {
+		t.Fatalf("captured %v", captured)
+	}
+}
+
+func TestImportKitWithSettingsResumesSchedule(t *testing.T) {
+	w, c := fixture(t)
+	dir := t.TempDir()
+	kit := filepath.Join(dir, "kit.json")
+	if err := writeJSON(kit, RecoveryKit{Format: "kimono-recovery-v1", Repository: c.Repository(), Password: c.Password, KeyID: c.KeyID, ApplicationKey: c.ApplicationKey}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	settings := filepath.Join(dir, "settings.json")
+	if err := writeJSON(settings, Settings{Enabled: true, HourUTC: 5, Daily: 9, Weekly: 4, Monthly: 6, Platform: true, Apps: map[string]bool{"immich": true}, Items: map[string]bool{"immich/previews": true}}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.ImportKitWithSettings(kit, settings); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := w.loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.Enabled || restored.HourUTC != 5 || restored.Daily != 9 || !restored.Items["immich/previews"] || restored.Password != c.Password {
+		t.Fatalf("settings not resumed: %+v", restored)
+	}
+}

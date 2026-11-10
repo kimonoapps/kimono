@@ -333,7 +333,7 @@ func (w *Worker) backup(ctx context.Context, c Config) error {
 		captured = append(captured, item)
 	}
 	if c.Platform {
-		if err := w.platform(ctx, stage); err != nil {
+		if err := w.platform(ctx, c, stage); err != nil {
 			return fmt.Errorf("platform backup failed: %w", err)
 		}
 	}
@@ -436,10 +436,44 @@ func copyFile(source, target string) error {
 	return closeErr
 }
 
-func (w *Worker) platform(ctx context.Context, stage string) error {
+// ServerVolumes are the appliance's own named volumes that hold state rather
+// than cache: Watch's nzbdav and AIOStreams configuration, and Caddy's
+// certificates (kept so a restored server does not wait on, or exhaust, ACME).
+// One that an older appliance never created is skipped, not an error.
+var ServerVolumes = []string{"caddy_data", "nzbdav_config", "aiostreams_data"}
+
+// Settings are the backup choices without the repository credentials, saved in
+// every snapshot so a restored server keeps its schedule and selections; the
+// recovery kit supplies the credentials.
+type Settings struct {
+	Enabled  bool            `json:"enabled"`
+	HourUTC  int             `json:"hourUTC"`
+	Daily    int             `json:"daily"`
+	Weekly   int             `json:"weekly"`
+	Monthly  int             `json:"monthly"`
+	Platform bool            `json:"platform"`
+	Apps     map[string]bool `json:"apps"`
+	Items    map[string]bool `json:"items"`
+}
+
+func (w *Worker) platform(ctx context.Context, c Config, stage string) error {
 	target := filepath.Join(stage, "platform")
 	if err := os.MkdirAll(target, 0700); err != nil {
 		return err
+	}
+	settings := Settings{Enabled: c.Enabled, HourUTC: c.HourUTC, Daily: c.Daily, Weekly: c.Weekly, Monthly: c.Monthly, Platform: c.Platform, Apps: c.Apps, Items: c.Items}
+	if err := writeJSON(filepath.Join(target, "backup-settings.json"), settings, 0600); err != nil {
+		return err
+	}
+	for _, volume := range ServerVolumes {
+		name := "kimono-server_" + volume
+		if err := w.Command(ctx, "docker", []string{"volume", "inspect", name}, nil, "", io.Discard); err != nil {
+			continue
+		}
+		item := Item{ID: volume, Method: "files", Volume: name, Paths: []string{"."}}
+		if err := w.capture(ctx, item, filepath.Join(target, strings.ReplaceAll(volume, "_", "-")+".tar")); err != nil {
+			return fmt.Errorf("%s: %w", volume, err)
+		}
 	}
 	container, err := w.container(ctx, "kimono-server", "postgresql")
 	if err != nil {

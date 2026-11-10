@@ -17,27 +17,59 @@ type RecoveryKit struct {
 	ApplicationKey string `json:"applicationKey"`
 }
 
-// ImportKit restores repository access without minting a different encryption
-// password. Scheduling stays disabled until the administrator reviews coverage.
-func (w *Worker) ImportKit(file string) error {
+// KitConfig reads a recovery kit into backup settings with scheduling paused.
+func KitConfig(file string) (Config, error) {
 	var kit RecoveryKit
 	if err := readJSON(file, &kit); err != nil {
-		return err
+		return Config{}, err
 	}
 	if kit.Format != "kimono-recovery-v1" || !strings.HasPrefix(kit.Repository, "s3:https://") {
-		return fmt.Errorf("unsupported recovery kit")
+		return Config{}, fmt.Errorf("unsupported recovery kit")
 	}
 	u, err := url.Parse(strings.TrimPrefix(kit.Repository, "s3:"))
 	if err != nil {
-		return err
+		return Config{}, err
 	}
 	parts := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
 	if len(parts) != 2 || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return fmt.Errorf("invalid recovery repository")
+		return Config{}, fmt.Errorf("invalid recovery repository")
 	}
 	c := Config{Version: 1, Endpoint: u.Scheme + "://" + u.Host, Bucket: parts[0], Prefix: parts[1], KeyID: kit.KeyID, ApplicationKey: kit.ApplicationKey, Password: kit.Password, RecoverySaved: true, HourUTC: 3, Daily: 7, Weekly: 4, Monthly: 6, Platform: true, Apps: map[string]bool{}, Items: map[string]bool{}}
 	if err := c.Validate(); err != nil {
+		return Config{}, err
+	}
+	return c, nil
+}
+
+// ImportKit restores repository access without minting a different encryption
+// password. Scheduling stays disabled until the administrator reviews coverage.
+func (w *Worker) ImportKit(file string) error { return w.ImportKitWithSettings(file, "") }
+
+// ImportKitWithSettings also brings back the schedule and selections a
+// snapshot saved (platform/backup-settings.json), so a server restored from
+// that snapshot carries on backing up exactly as before.
+func (w *Worker) ImportKitWithSettings(file, settingsFile string) error {
+	c, err := KitConfig(file)
+	if err != nil {
 		return err
+	}
+	message := "Recovery access imported. Scheduling is paused; check stored data to load the snapshot list."
+	if settingsFile != "" {
+		var saved Settings
+		if err := readJSON(settingsFile, &saved); err != nil {
+			return fmt.Errorf("read saved backup settings: %w", err)
+		}
+		c.Enabled, c.HourUTC, c.Daily, c.Weekly, c.Monthly, c.Platform = saved.Enabled, saved.HourUTC, saved.Daily, saved.Weekly, saved.Monthly, saved.Platform
+		if saved.Apps != nil {
+			c.Apps = saved.Apps
+		}
+		if saved.Items != nil {
+			c.Items = saved.Items
+		}
+		if err := c.Validate(); err != nil {
+			return err
+		}
+		message = "Restored from backup with its saved schedule and selections."
 	}
 	return w.locked(func() error {
 		target := filepath.Join(w.dir(), "config.json")
@@ -61,7 +93,7 @@ func (w *Worker) ImportKit(file string) error {
 				}
 			}
 		}
-		status := Status{State: "ready", Message: "Recovery access imported. Scheduling is paused; check stored data to load the snapshot list."}
+		status := Status{State: "ready", Message: message}
 		return w.saveStatus(&status)
 	})
 }
