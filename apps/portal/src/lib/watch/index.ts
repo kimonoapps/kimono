@@ -20,7 +20,10 @@ import {
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, chooseMarkers, type Markers } from "./markers";
 import { analyseLater, skipsFor, type SkipDeps, type SkipTarget } from "./skips";
-import { badges, cleanDevice, describe, heightCap, qualityOptions, rank, type Release } from "./releases";
+import { badges, bitrate, cleanDevice, describe, heightCap, qualityOptions, rank, type Release } from "./releases";
+
+/** One file's size: by bitrate and runtime when known (a pack lists the whole season), else what the listing says. */
+const sizeOf = (r: Release, minutes: number | null) => { const mbps = bitrate(r, minutes); return mbps && minutes ? Math.round((mbps * 1e6 / 8) * minutes * 60) : r.bytes; };
 import { fetchUpstream, searchStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
 import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
@@ -570,7 +573,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     hls: hlsGrant ? `${origin}/api/v1/watch/hls/${sealHls(sealKey, hlsGrant)}/main.m3u8` : null,
     /* The Quality menu: what's in effect and what else plays here. Switching calls play again with quality and the position. */
     quality: { current: quality, options: qualityOptions(ranked, device, hls) },
-    version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service },
+    /* bytes: about how big this episode's file is (a season pack's share, by its bitrate), for download sizes and progress. */
+    version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service, bytes: sizeOf(wanted, minutes) },
     versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
     startAt,
     /* Episodes as this person sees them: layout, and labels like "S2:E3", "E27" or "E3". */

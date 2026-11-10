@@ -18,7 +18,7 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSUserDefaults
 
 @Serializable
-private data class Kept(val answer: PlayAnswer, val name: String)
+private data class Kept(val answer: PlayAnswer, val name: String, val art: String? = null)
 
 /**
  * Downloads for watching offline: the episode's file (asked of /play like any
@@ -71,14 +71,22 @@ class IosDownloads(private val downloader: IosDownloader, private val api: Watch
 
     private fun kept(key: String): Kept? = defaults.stringForKey("dl.$key")?.let { runCatching { json.decodeFromString(Kept.serializer(), it) }.getOrNull() }
 
-    override fun start(titleId: String, season: Int, episode: Int, name: String) {
+    @OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+    override fun entries(): List<app.kimono.watch.DlEntry> = _states.value.keys.mapNotNull { key ->
+        val (titleId, season, episode) = app.kimono.watch.dlParts(key) ?: return@mapNotNull null
+        val k = kept(key)
+        val size = downloader.file(key)?.let { (platform.Foundation.NSFileManager.defaultManager.attributesOfItemAtPath(it, null)?.get(platform.Foundation.NSFileSize) as? Number)?.toLong() }
+        app.kimono.watch.DlEntry(titleId, season, episode, k?.name ?: titleId, k?.art, size ?: k?.answer?.version?.bytes)
+    }
+
+    override fun start(titleId: String, season: Int, episode: Int, name: String, art: String?) {
         val key = dlKey(titleId, season, episode)
         if (_states.value[key]?.done == true) return
         _states.value = _states.value + (key to DlState(0f, false))
         scope.launch {
             runCatching { api.play(titleId, season, episode, quality = app.kimono.watch.downloadQualityOf(prefs?.state?.value)) }.onSuccess { answer ->
-                defaults.setObject(json.encodeToString(Kept.serializer(), Kept(answer, name)), "dl.$key")
-                downloader.start(key, answer.url)
+                defaults.setObject(json.encodeToString(Kept.serializer(), Kept(answer, name, art)), "dl.$key")
+                downloader.start(key, answer.url, answer.version?.bytes ?: 0L)
             }.onFailure {
                 _states.value = _states.value - key
                 toasts.show("That didn't download. Try again.")

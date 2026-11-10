@@ -24,6 +24,8 @@ interface IosWatchHost {
     /** Shows the player full screen in landscape, in place of any player already up. */
     fun presentPlayer(controller: UIViewController)
     fun dismissPlayer()
+    /** The player upright, or back on its side. */
+    fun rotatePlayer()
     val downloader: IosDownloader
 }
 
@@ -100,7 +102,8 @@ interface IosPlayer {
 
 /** Background URLSession downloads into the app's own storage. */
 interface IosDownloader {
-    fun start(key: String, url: String)
+    /** [expected]: the file's size as its listing gave it (0 when unknown), for progress when the server sends no length. */
+    fun start(key: String, url: String, expected: Long)
     fun cancel(key: String)
     /** The finished file's path, or null. */
     fun file(key: String): String?

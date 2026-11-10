@@ -25,10 +25,33 @@ data class DlState(val progress: Float, val done: Boolean, val failed: Boolean =
 
 fun dlKey(titleId: String, season: Int, episode: Int) = "$titleId:$season:$episode"
 
+/** One download as the Downloads page lists it: [bytes] is the file's size (about, until it's done). */
+data class DlEntry(val titleId: String, val season: Int, val episode: Int, val name: String, val art: String?, val bytes: Long?)
+
+/** A key back into its title, season and episode (a title id may itself hold a colon). */
+fun dlParts(key: String): Triple<String, Int, Int>? {
+    val e = key.substringAfterLast(':').toIntOrNull() ?: return null
+    val rest = key.substringBeforeLast(':')
+    val s = rest.substringAfterLast(':').toIntOrNull() ?: return null
+    return Triple(rest.substringBeforeLast(':'), s, e)
+}
+
+fun bytesText(bytes: Long): String = when {
+    bytes >= 1L shl 30 -> "${(bytes * 10 / (1L shl 30)) / 10.0} GB"
+    bytes >= 1L shl 20 -> "${bytes / (1L shl 20)} MB"
+    bytes > 0 -> "Under 1 MB"
+    else -> "None"
+}
+
+/** About how big an episode's download is when its copy isn't known yet: by runtime, at the download quality's usual rate. */
+fun bytesGuess(minutes: Int?, higher: Boolean): Long = ((minutes ?: 24) * 60L) * (if (higher) 6_000_000L else 2_500_000L) / 8
+
 /** Downloads for watching offline. */
 interface WatchDownloads {
     val states: StateFlow<Map<String, DlState>>
-    fun start(titleId: String, season: Int, episode: Int, name: String)
+    fun start(titleId: String, season: Int, episode: Int, name: String, art: String? = null)
+    /** Everything downloaded or on its way, for the Downloads page. */
+    fun entries(): List<DlEntry>
     fun remove(titleId: String, season: Int, episode: Int)
     /** The play answer kept with a finished download, for playing it with no connection. */
     fun offline(titleId: String, season: Int, episode: Int): PlayAnswer?

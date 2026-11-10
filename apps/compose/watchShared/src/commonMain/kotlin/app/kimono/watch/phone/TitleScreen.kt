@@ -258,6 +258,7 @@ private fun Tracker(page: TitlePage) {
 private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String, DlState>, downloads: WatchDownloads) {
     var rating by remember { mutableStateOf(false) }
     var language by remember { mutableStateOf(false) }
+    var asking by remember { mutableStateOf<List<app.kimono.watch.model.EpisodeInfo>?>(null) }
     val t = page.title
     Column {
     Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -275,14 +276,39 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
         if (page.language != null) Act(Ic.cc, "Language", language || page.tracks != null) { language = !language }
         if (t.isFilm) {
             val d = dl[dlKey(t.id, 0, 0)]
-            DlAct(d, if (d?.done == true) "Downloaded" else if (d != null) "Downloading" else "Download") { if (d == null) downloads.start(t.id, 0, 0, t.name) }
+            DlAct(d, if (d?.done == true) "Downloaded" else if (d != null) "Downloading" else "Download") { if (d == null) downloads.start(t.id, 0, 0, t.name, t.backdrop ?: t.poster) }
         } else {
             val all = page.episodes.isNotEmpty() && page.episodes.all { dl[dlKey(t.id, page.seasonOf(it), it.number)]?.done == true }
             val some = page.episodes.any { dl[dlKey(t.id, page.seasonOf(it), it.number)] != null }
             val avg = page.episodes.map { dl[dlKey(t.id, page.seasonOf(it), it.number)]?.progress ?: 0f }.average().toFloat()
             val what = if (page.bySeason) "season" else "all"
             DlAct(if (all) DlState(1f, true) else if (some) DlState(avg, false) else null, if (all) (if (page.bySeason) "Season downloaded" else "Downloaded") else "Download $what") {
-                page.episodes.forEach { e -> val es = page.seasonOf(e); if (dl[dlKey(t.id, es, e.number)] == null) downloads.start(t.id, es, e.number, "${t.name} ${e.label ?: page.label(es, e.number)}") }
+                val left = page.episodes.filter { dl[dlKey(t.id, page.seasonOf(it), it.number)] == null }
+                when {
+                    left.isEmpty() -> {}
+                    left.size == 1 -> left.first().let { e -> val es = page.seasonOf(e); downloads.start(t.id, es, e.number, "${t.name} ${e.label ?: page.label(es, e.number)}", e.still ?: t.backdrop) }
+                    else -> asking = left
+                }
+            }
+            asking?.let { left ->
+                /* More than one episode: say how many and about how big first. */
+                val watch = app.kimono.watch.LocalWatch.current
+                val higher = watch.prefs.state.collectAsState().value?.downloadQuality == "higher"
+                val wifi by downloads.wifiOnly.collectAsState()
+                val bytes = left.sumOf { app.kimono.watch.bytesGuess(it.runtime ?: t.runtime, higher) }
+                app.kimono.watch.ui.Dialog(onDismiss = { asking = null }) {
+                    Text("Download ${left.size} episodes?", style = ui(18, FontWeight.Bold))
+                    Spacer(Modifier.size(8.dp))
+                    Text("About ${app.kimono.watch.bytesText(bytes)} at ${if (higher) "Higher" else "Standard"} quality${if (wifi) ", over Wi‑Fi" else ""}.", style = ui(15, color = Night.fg2))
+                    Spacer(Modifier.size(18.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        app.kimono.watch.ui.PaperButton("Cancel", null, { asking = null }, tonal = true)
+                        app.kimono.watch.ui.PaperButton("Download", Ic.dl, {
+                            left.forEach { e -> val es = page.seasonOf(e); downloads.start(t.id, es, e.number, "${t.name} ${e.label ?: page.label(es, e.number)}", e.still ?: t.backdrop) }
+                            asking = null
+                        })
+                    }
+                }
             }
         }
         if (page.hasFillers) SwitchAct("Skip fillers", page.fillers == "skip") { vm.skipFillers(it) }
@@ -420,7 +446,7 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
                 finale = if (e === last) (if (finalSeason && page.title.status.contains("Ended", true)) "FINALE" else "SEASON FINALE") else null,
                 dl = dl[dlKey(page.title.id, s, e.number)], wide = wide, gutter = gutter,
                 onPlay = { go.play(page.title.id, s, e.number) },
-                onDownload = { downloads.start(page.title.id, s, e.number, "${page.title.name} ${e.label ?: page.label(s, e.number)}") })
+                onDownload = { downloads.start(page.title.id, s, e.number, "${page.title.name} ${e.label ?: page.label(s, e.number)}", e.still ?: page.title.backdrop) })
         }
     }
 }

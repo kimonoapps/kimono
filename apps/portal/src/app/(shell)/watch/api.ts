@@ -54,7 +54,7 @@ export type Play = {
   url: string;
   /** An HLS address, once the server packages streams for browsers. */
   hls?: string | null;
-  version: { index: number; label: string; badges: string[]; source: string };
+  version: { index: number; label: string; badges: string[]; source: string; bytes?: number | null };
   versions: { index: number; label: string; source: string }[];
   startAt: number;
   next: (Ref & { skipped: number; label?: string }) | null;

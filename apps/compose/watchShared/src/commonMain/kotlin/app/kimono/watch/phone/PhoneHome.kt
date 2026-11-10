@@ -114,6 +114,7 @@ fun PhoneShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: L
         when (page) {
             "home" -> HomePage(profile, home, go, homeScroll, previewing)
             "hot" -> HotPage(hot, go)
+            "downloads" -> DownloadsPage(go)
             else -> ListPage(list, go)
         }
         val solid = scrolled || page != "home"
@@ -149,7 +150,7 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
 private fun BottomBar(page: String, modifier: Modifier, onPage: (String) -> Unit) {
     Row(modifier.fillMaxWidth().background(Night.bg).border(BorderStroke(1.dp, Color(0x0DFFFFFF)), RoundedCornerShape(0.dp))
         .padding(top = 8.dp, bottom = navBottom.coerceAtLeast(8.dp), start = 16.dp, end = 16.dp), horizontalArrangement = Arrangement.SpaceAround) {
-        listOf(Triple("home", "Home", Ic.home), Triple("hot", "New & hot", Ic.hot), Triple("list", "My list", Ic.bookmark)).forEach { (id, label, icon) ->
+        listOf(Triple("home", "Home", Ic.home), Triple("hot", "New & hot", Ic.hot), Triple("list", "My list", Ic.bookmark), Triple("downloads", "Downloads", Ic.dl)).forEach { (id, label, icon) ->
             val on = page == id
             val pill by animateColorAsState(if (on) Color(0x38D06A82) else Color.Transparent, label = "pill")
             Column(Modifier.width(72.dp).clickableScale({ onPage(id) }, outline = false), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -372,6 +373,53 @@ private fun ListPage(vm: ListViewModel, go: Go) {
             state.loading -> items(6) { Skeleton(Modifier.fillMaxWidth().aspectRatio(2f / 3f)) }
             state.items.isEmpty() -> item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { Text("Titles you add show up here.", style = ui(15, color = Night.fg3), modifier = Modifier.padding(vertical = 40.dp)) }
             else -> items(state.items, key = { it.id }) { PosterCard(it, go, width = Dp.Unspecified, modifier = Modifier.fillMaxWidth()) }
+        }
+    }
+}
+
+/** What's on this phone: each download with how far it's got and its size; a finished one plays, offline too. */
+@Composable
+private fun DownloadsPage(go: Go) {
+    val downloads = LocalWatch.current.downloads
+    val states by downloads.states.collectAsState()
+    val entries = remember(states) { downloads.entries().sortedWith(compareBy({ it.name.substringBefore(" S") }, { it.season }, { it.episode })) }
+    var used by remember { mutableStateOf(0L) }
+    androidx.compose.runtime.LaunchedEffect(states) { used = runCatching { downloads.usedBytes() }.getOrDefault(0L) }
+    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = statusTop + 76.dp, bottom = navBottom + 100.dp, start = 16.dp, end = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Column(Modifier.padding(top = 12.dp, bottom = 4.dp)) {
+                Text("Downloads", style = display(28))
+                if (entries.isNotEmpty()) Text(app.kimono.watch.bytesText(used) + " on this phone", style = ui(14, color = Night.fg3))
+            }
+        }
+        if (entries.isEmpty()) item { Text("Episodes and films you download show up here.", style = ui(15, color = Night.fg3), modifier = Modifier.padding(vertical = 40.dp)) }
+        items(entries, key = { app.kimono.watch.dlKey(it.titleId, it.season, it.episode) }) { e ->
+            val d = states[app.kimono.watch.dlKey(e.titleId, e.season, e.episode)]
+            val done = d?.done == true
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickableScale({ if (done) go.play(e.titleId, e.season.takeIf { it > 0 }, e.episode.takeIf { it > 0 }) }, outline = false),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(Night.surface2), contentAlignment = Alignment.Center) {
+                    app.kimono.watch.ui.Img(e.art, Modifier.fillMaxSize())
+                    if (done) Box(Modifier.size(32.dp).clip(CircleShape).background(Color(0x99110C0A)), contentAlignment = Alignment.Center) { I(Ic.play, 20.dp, Color.White) }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(e.name, style = ui(15, FontWeight.Bold), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    val size = e.bytes?.takeIf { it > 0 }?.let { app.kimono.watch.bytesText(it) }
+                    Text(when {
+                        d?.failed == true -> "Didn't download"
+                        done -> size ?: "Downloaded"
+                        d != null && d.progress > 0f -> "${(d.progress * 100).toInt()}%" + (size?.let { " of about $it" } ?: "")
+                        else -> "Waiting"
+                    }, style = ui(13, color = if (d?.failed == true) Night.blush else Night.fg3))
+                }
+                Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+                    when {
+                        d != null && !done && !d.failed && d.progress <= 0f -> app.kimono.watch.ink.InkLoader(size = 26.dp)
+                        d != null && !done && !d.failed -> app.kimono.watch.ink.InkRing({ d.progress }, size = 28.dp)
+                    }
+                }
+                Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ downloads.remove(e.titleId, e.season, e.episode) }), contentAlignment = Alignment.Center) { I(Ic.close, 22.dp, Night.fg3) }
+            }
         }
     }
 }

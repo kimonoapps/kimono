@@ -40,7 +40,7 @@ import java.io.File
 import java.util.concurrent.Executors
 
 @Serializable
-private data class Kept(val answer: PlayAnswer, val name: String)
+private data class Kept(val answer: PlayAnswer, val name: String, val art: String? = null)
 
 /**
  * Downloads for watching offline: the episode's stream (asked of /play like
@@ -94,17 +94,44 @@ class Downloads(private val context: Context) : WatchDownloads {
         _states.value = out
     }
 
-    private fun Download.state() = DlState((percentDownloaded.coerceAtLeast(0f) / 100f), state == Download.STATE_COMPLETED, state == Download.STATE_FAILED)
+    /* What each download was kept with, read once per download. */
+    private val kept = mutableMapOf<String, Kept?>()
+    private fun keptOf(d: Download): Kept? = kept.getOrPut(d.request.id) { runCatching { json.decodeFromString(Kept.serializer(), String(d.request.data)) }.getOrNull() }
+
+    /** How far: by the file's length when the server says it, else by the size its listing gave. */
+    private fun Download.state(): DlState {
+        val expected = keptOf(this)?.answer?.version?.bytes ?: 0L
+        val progress = when {
+            percentDownloaded >= 0f -> percentDownloaded / 100f
+            expected > 0 -> (bytesDownloaded.toFloat() / expected).coerceAtMost(0.99f)
+            else -> 0f
+        }
+        return DlState(progress, state == Download.STATE_COMPLETED, state == Download.STATE_FAILED)
+    }
+
+    override fun entries(): List<app.kimono.watch.DlEntry> {
+        val out = mutableListOf<app.kimono.watch.DlEntry>()
+        manager.downloadIndex.getDownloads().use { c ->
+            while (c.moveToNext()) {
+                val d = c.download
+                val (titleId, season, episode) = app.kimono.watch.dlParts(d.request.id) ?: continue
+                val k = keptOf(d)
+                val bytes = if (d.state == Download.STATE_COMPLETED) d.bytesDownloaded else d.contentLength.takeIf { it > 0 } ?: k?.answer?.version?.bytes
+                out += app.kimono.watch.DlEntry(titleId, season, episode, k?.name ?: titleId, k?.art, bytes)
+            }
+        }
+        return out
+    }
 
     /** Downloads one episode (or a film, with season and episode 0). */
-    override fun start(titleId: String, season: Int, episode: Int, name: String) {
+    override fun start(titleId: String, season: Int, episode: Int, name: String, art: String?) {
         val id = key(titleId, season, episode)
         if (_states.value[id]?.done == true) return
         _states.value = _states.value + (id to DlState(0f, false))
         scope.launch {
             runCatching { context.watch.api.play(titleId, season, episode, quality = app.kimono.watch.downloadQualityOf(context.watch.services.prefs.state.value)) }.onSuccess { answer ->
                 val request = DownloadRequest.Builder(id, Uri.parse(answer.url)).setCustomCacheKey(id)
-                    .setData(json.encodeToString(Kept.serializer(), Kept(answer, name)).toByteArray()).build()
+                    .setData(json.encodeToString(Kept.serializer(), Kept(answer, name, art)).toByteArray()).build()
                 DownloadService.sendAddDownload(context, WatchDownloadService::class.java, request, false)
             }.onFailure {
                 _states.value = _states.value - id

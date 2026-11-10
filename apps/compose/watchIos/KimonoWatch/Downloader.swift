@@ -39,8 +39,9 @@ final class Downloader: NSObject, IosDownloader, URLSessionDownloadDelegate, @un
     private var cellular = true
     func setCellular(allowed: Bool) { cellular = allowed }
 
-    func start(key: String, url: String) {
+    func start(key: String, url: String, expected: Int64) {
         guard let target = URL(string: url) else { return notify(key, 0, done: false, failed: true) }
+        defaults.set(expected, forKey: "watch.dl.expected.\(key)")
         cancelTasks(key) {
             var request = URLRequest(url: target)
             request.allowsCellularAccess = self.cellular
@@ -56,6 +57,7 @@ final class Downloader: NSObject, IosDownloader, URLSessionDownloadDelegate, @un
         cancelTasks(key) {}
         if let name = defaults.string(forKey: "watch.dl.file.\(key)") { try? FileManager.default.removeItem(at: folder.appendingPathComponent(name)) }
         defaults.removeObject(forKey: "watch.dl.file.\(key)")
+        defaults.removeObject(forKey: "watch.dl.expected.\(key)")
         started.removeAll { $0 == key }
     }
 
@@ -71,7 +73,7 @@ final class Downloader: NSObject, IosDownloader, URLSessionDownloadDelegate, @un
             DispatchQueue.main.async {
                 for task in tasks where task.state == .running {
                     guard let key = task.taskDescription else { continue }
-                    self.notify(key, task.progress.fractionCompleted, done: false, failed: false)
+                    self.notify(key, self.fraction(key, written: task.countOfBytesReceived, total: task.countOfBytesExpectedToReceive), done: false, failed: false)
                 }
             }
         }
@@ -91,8 +93,15 @@ final class Downloader: NSObject, IosDownloader, URLSessionDownloadDelegate, @un
     // MARK: URLSessionDownloadDelegate
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        guard let key = downloadTask.taskDescription, totalBytesExpectedToWrite > 0 else { return }
-        notify(key, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite), done: false, failed: false)
+        guard let key = downloadTask.taskDescription else { return }
+        notify(key, fraction(key, written: totalBytesWritten, total: totalBytesExpectedToWrite), done: false, failed: false)
+    }
+
+    /// How far: by the length the server sent, else by the size the listing gave (never quite done until it is).
+    private func fraction(_ key: String, written: Int64, total: Int64) -> Double {
+        if total > 0 { return Double(written) / Double(total) }
+        let expected = (defaults.object(forKey: "watch.dl.expected.\(key)") as? NSNumber)?.int64Value ?? 0
+        return expected > 0 ? min(0.99, Double(written) / Double(expected)) : 0
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {

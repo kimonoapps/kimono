@@ -235,12 +235,7 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
 
 private fun hdrName(h: String) = when (h) { "dv" -> "Dolby Vision"; "hdr10" -> "HDR10"; "hdr10plus" -> "HDR10+"; "hlg" -> "HLG"; else -> h.uppercase() }
 
-private fun sizeOf(bytes: Long): String = when {
-    bytes >= 1L shl 30 -> "${(bytes * 10 / (1L shl 30)) / 10.0} GB"
-    bytes >= 1L shl 20 -> "${bytes / (1L shl 20)} MB"
-    bytes > 0 -> "Under 1 MB"
-    else -> "None"
-}
+private fun sizeOf(bytes: Long): String = app.kimono.watch.bytesText(bytes)
 
 /** "Player" or "App": the two halves of Settings. */
 @Composable
