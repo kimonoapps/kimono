@@ -194,6 +194,15 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
     title: { ...cardOf(title, origin), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(origin, title.backdrop, "w1280") },
     inList: listOf(db, username).includes(id), rating: ratingOf(db, username, id), reminding: remindsOf(db, username).includes(id),
     tracks: tracksOf(db, username, id),
+    /* What this title plays in, this show's own choice or the settings, and the languages to offer for it. */
+    language: (() => {
+      const plan = trackPlan(title, prefs, tracksOf(db, username, id));
+      const mine = prefs.audioLanguage || "en";
+      return {
+        audio: plan.audio, subtitles: !plan.subtitles ? "off" : plan.subtitles.kind === "signs" ? "signs" : plan.subtitles.language,
+        original: title.originalLanguage || (title.shelf === "Anime" ? "ja" : mine), mine, subtitleLanguage: prefs.subtitleLanguage || mine,
+      };
+    })(),
     /* "seasons" or "continuous" when this show has its own episode layout; null follows the default. */
     showEpisodes: showLayoutOf(db, username, id),
     /* Taken as playable until a search says otherwise, unless it isn't out at home yet. */

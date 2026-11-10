@@ -29,6 +29,8 @@ export type TitleView = {
   title: Card & { overview: string; genres: string[]; moods: string[]; cast: string[]; runtime: number | null; status: string; nextAirDate: string | null; backdropLarge: string | null };
   inList: boolean; rating: Rating | null; reminding: boolean;
   tracks: { audio: string; subtitles: string } | null;
+  /** What it plays in now ([subtitles]: "off", "signs" or a language), and the languages to offer. */
+  language?: { audio: string; subtitles: string; original: string; mine: string; subtitleLanguage: string };
   playable: boolean;
   /** Why it can't play, when it can't: not out yet, only in cinemas, or no copy found. */
   availability?: { state: "ready" | "upcoming" | "cinemas" | "missing"; note: string | null };

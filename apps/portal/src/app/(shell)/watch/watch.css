@@ -728,3 +728,29 @@
 .kw .kw-joint-sm button{padding:7px 12px;font-size:13px}
 .kw .kw-textbtn{font-size:13px;font-weight:700;color:var(--fg-2);text-decoration:underline;text-underline-offset:3px}
 .kw .kw-textbtn:hover{color:var(--fg)}
+
+/* ───── Motion: pages arrive, settings unfold, choices slide ───── */
+@keyframes kw-page-in{from{opacity:0;transform:translateY(18px)}}
+@keyframes kw-unfold{from{opacity:0;transform:translateY(22px) scale(.985)}}
+@keyframes kw-tick-pop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.18)}100%{transform:scale(1);opacity:1}}
+.kw .kw-page{animation:kw-page-in .5s cubic-bezier(.2,.75,.2,1) both}
+.kw .kw-settings h1{animation:kw-unfold .5s cubic-bezier(.2,.75,.2,1) both}
+.kw .kw-settings .kw-set{animation:kw-unfold .6s cubic-bezier(.2,.75,.2,1) both}
+.kw .kw-settings .kw-set:nth-of-type(1){animation-delay:.06s}
+.kw .kw-settings .kw-set:nth-of-type(2){animation-delay:.12s}
+.kw .kw-settings .kw-set:nth-of-type(3){animation-delay:.18s}
+.kw .kw-settings .kw-set:nth-of-type(4){animation-delay:.24s}
+.kw .kw-settings .kw-set:nth-of-type(n+5){animation-delay:.3s}
+.kw .kw-settings .kw-set-row{transition:background .2s}
+.kw .kw-tick.kw-on svg{animation:kw-tick-pop .4s cubic-bezier(.3,1.4,.5,1) both}
+.kw .kw-joint button{transition:background .25s,color .25s,box-shadow .3s cubic-bezier(.2,.75,.2,1)}
+.kw .kw-joint button:active:not(:disabled){transform:scale(.96)}
+.kw .kw-act{transition:color .2s,transform .2s}
+.kw .kw-act:active{transform:scale(.92)}
+/* A title's own language folds open under its actions. */
+.kw .kw-lang{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .4s cubic-bezier(.2,.75,.2,1),opacity .3s,margin .4s;margin-top:-16px}
+.kw .kw-lang.kw-open{grid-template-rows:1fr;opacity:1;margin-top:0}
+.kw .kw-lang-in{overflow:hidden;display:grid;gap:12px;min-height:0}
+.kw .kw-lang.kw-open .kw-lang-in{padding:14px 16px;border-radius:10px;background:var(--surface-2)}
+.kw .kw-lang-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;color:var(--fg-2)}
+.kw .kw-lang small{font-size:13px;color:var(--fg-3)}

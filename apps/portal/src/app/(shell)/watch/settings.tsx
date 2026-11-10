@@ -56,9 +56,6 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
         <Row label="My language" done={ticked === "audioLanguage"}>
           <Pick value={mine} onChange={(v) => save("audioLanguage", { audioLanguage: v })} options={languages.map((l) => [l, languageName(l)])} label="My language" />
         </Row>
-        <Row label="Anime" done={ticked === "animeAudio"}>
-          <Seg value={prefs.animeAudio} onChange={(v) => save("animeAudio", { animeAudio: v as Prefs["animeAudio"] })} options={[["original", "Original with subtitles"], ["dub", "Dubbed"]]} />
-        </Row>
         <Row label="Films and series" done={ticked === "filmAudio"}>
           <Seg value={prefs.filmAudio} onChange={(v) => save("filmAudio", { filmAudio: v as Prefs["filmAudio"] })} options={[["original", "Original audio"], ["mine", languageName(mine)]]} />
         </Row>
@@ -84,6 +81,9 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
       </Section>
 
       <Section title="Anime">
+        <Row label="Sub or dub" note="Each show can have its own, from its page." done={ticked === "animeAudio"}>
+          <Seg value={prefs.animeAudio} onChange={(v) => save("animeAudio", { animeAudio: v as Prefs["animeAudio"] })} options={[["original", "Subbed"], ["dub", `Dubbed (${languageName(mine)})`]]} />
+        </Row>
         <Row label="Episodes" done={ticked === "animeEpisodes"}>
           <Seg value={prefs.animeEpisodes ?? "seasons"} onChange={(v) => save("animeEpisodes", { animeEpisodes: v as Prefs["animeEpisodes"] })} options={[["seasons", "By season"], ["continuous", "One list"]]} />
         </Row>

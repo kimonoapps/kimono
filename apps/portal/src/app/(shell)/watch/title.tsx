@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { airText, labelOf, minutesText, watchApi, type Episode, type TitleView } from "./api";
+import { airText, labelOf, languageName, minutesText, watchApi, type Episode, type TitleView } from "./api";
 import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
 
@@ -60,6 +60,11 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
     catch { watch.toast("That didn't work."); }
     setSeasonLoading(false);
   };
+  const [langOpen, setLangOpen] = useState(false);
+  const setLanguage = async (tracks: { audio: string; subtitles: string } | null) => {
+    try { apply(await watchApi.mark(id, { tracks })); }
+    catch { watch.toast("That didn't work."); }
+  };
   const t = view?.title;
   useTabTitle(t?.name);
   const series = view ? Boolean(view.seasons) : false;
@@ -84,10 +89,12 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
                   <div className="kw-acts" style={{ position: "relative" }}>
                     <ListButton id={t.id} variant="act" />
                     <RateButton id={t.id} variant="act" />
+                    {view.language ? <button className={cx("kw-act", (langOpen || view.tracks) && "kw-on")} aria-expanded={langOpen} onClick={() => setLangOpen(!langOpen)}><Icon name="cc" /><span>Language</span></button> : null}
                     {series && view.hasFillers ? <label className={cx("kw-act kw-switch-act", view.fillers === "skip" && "kw-on")}>
                       <input type="checkbox" checked={view.fillers === "skip"} onChange={(event) => void setFillers(event.target.checked)} /><i /><span>Skip fillers</span>
                     </label> : null}
                   </div>
+                  {view.language ? <LanguageChoice view={view} open={langOpen} onChange={(tracks) => void setLanguage(tracks)} /> : null}
                 </div>
                 <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
                   {t.cast.length ? <p className="kw-kv">Cast: <span>{t.cast.slice(0, 4).join(", ")}</span></p> : null}
@@ -254,6 +261,32 @@ function MoreLikeThis({ id, shelf }: { id: string; shelf: TitleView["title"]["sh
     <button className="kw-shot" aria-label={c.name} onClick={() => watch.openTitle(c.id)}><Img src={c.backdrop ?? c.poster} /><span className="kw-t">{c.name}</span></button>
     <div className="kw-b"><div className="kw-top"><span className="kw-meta">{c.age ? <span className="kw-box">{c.age}</span> : null}{c.year}</span><ListButton id={c.id} variant="ring" /></div></div>
   </article>)}</div>;
+}
+
+/*
+ * This title's own language: audio and subtitles for this show alone, over
+ * the settings. Folds open under the actions; "Use my settings" once it differs.
+ */
+function LanguageChoice({ view, open, onChange }: { view: TitleView; open: boolean; onChange: (tracks: { audio: string; subtitles: string } | null) => void }) {
+  const l = view.language!;
+  const anime = view.title.shelf === "Anime";
+  const audios: [string, string][] = l.original === l.mine
+    ? [[l.original, languageName(l.original)]]
+    : [[l.original, anime ? "Subbed" : `${languageName(l.original)} (original)`], [l.mine, anime ? `Dubbed (${languageName(l.mine)})` : languageName(l.mine)]];
+  const subs: [string, string][] = [["off", "Off"], ["signs", "Signs only"], [l.subtitleLanguage, languageName(l.subtitleLanguage)]];
+  /* Picking audio: subtitles follow, on in your language unless you listen in it. */
+  const pickAudio = (audio: string) => onChange({ audio, subtitles: view.tracks ? l.subtitles : audio === l.subtitleLanguage ? "signs" : l.subtitleLanguage });
+  return <div className={cx("kw-lang", open && "kw-open")} aria-hidden={!open}>
+    <div className="kw-lang-in">
+      {audios.length > 1 ? <div className="kw-lang-row"><span>{anime ? "Sub or dub" : "Audio"}</span>
+        <div className="kw-joint kw-joint-sm" role="radiogroup" aria-label="Audio">{audios.map(([v, label]) => <button key={v} role="radio" tabIndex={open ? 0 : -1} aria-checked={l.audio === v} className={cx(l.audio === v && "kw-sel")} onClick={() => { if (l.audio !== v) pickAudio(v); }}>{label}</button>)}</div>
+      </div> : null}
+      <div className="kw-lang-row"><span>Subtitles</span>
+        <div className="kw-joint kw-joint-sm" role="radiogroup" aria-label="Subtitles">{subs.map(([v, label]) => <button key={v} role="radio" tabIndex={open ? 0 : -1} aria-checked={l.subtitles === v} className={cx(l.subtitles === v && "kw-sel")} onClick={() => { if (l.subtitles !== v) onChange({ audio: l.audio, subtitles: v }); }}>{label}</button>)}</div>
+      </div>
+      <small>{view.tracks ? <>Just for this {view.title.kind === "movie" ? "film" : "show"}. <button className="kw-textbtn" tabIndex={open ? 0 : -1} onClick={() => onChange(null)}>Use my settings</button></> : "From your settings. A change here is just for this " + (view.title.kind === "movie" ? "film" : "show") + "."}</small>
+    </div>
+  </div>;
 }
 
 /* An anime with seasons: by season or as one list, for this show; "Use my default" once it differs. */
