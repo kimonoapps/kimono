@@ -51,7 +51,10 @@ export type Play = {
   versions: { index: number; label: string; source: string }[];
   startAt: number;
   next: (Ref & { skipped: number; label?: string }) | null;
-  fillerAhead: { first: Ref; count: number; canon: Ref | null } | null;
+  fillerAhead: { first: Ref & { label?: string }; count: number; canon: (Ref & { label?: string }) | null } | null;
+  /** How this title lays out its episodes, and the playing one's name in it ("E2", "S2:E3"). */
+  layout?: Layout;
+  label?: string | null;
   autoplayNext: boolean;
   markers: Markers;
   skipIntros: boolean;
@@ -91,7 +94,7 @@ export const watchApi = {
   /** This browser's own preferred quality. */
   setDeviceQuality: (quality: string) => call<Prefs>("prefs", put({ device: deviceId(), quality })),
   play: (body: { titleId: string; season?: number; episode?: number; version?: number; quality?: string; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
-  prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number }) | null; ready: boolean }>("prepare", post({ ...body, deviceId: deviceId() })),
+  prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number; label?: string }) | null; ready: boolean }>("prepare", post({ ...body, deviceId: deviceId() })),
   /** Kept alive so it still lands when the page is closing. */
   progress: (body: { titleId: string; season: number; episode: number; position: number; duration: number }) =>
     fetch("/api/v1/watch/progress", { method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" }, credentials: "same-origin", keepalive: true }).catch(() => null),
@@ -192,3 +195,5 @@ export function longLabel(label: string) {
   const e = /^E(\d+)$/.exec(label);
   return e ? `Episode ${e[1]}` : label;
 }
+/** The number an episode goes by in its label: 27 for "E27", 3 for "S2:E3". */
+export const shownNumber = (label: string | undefined, fallback: number) => Number(/E(\d+)$/.exec(label ?? "")?.[1]) || fallback;

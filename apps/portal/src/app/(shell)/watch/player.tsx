@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
-import { airText, clock, deviceOf, labelOf, languageName, longLabel, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
+import { airText, clock, deviceOf, labelOf, languageName, longLabel, shownNumber, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, TitleMark, useTabTitle, useWatch } from "./bits";
 import { InkLoader, InkRing } from "@kimono/ui";
 import { Icon, SeekIcon } from "./icons";
@@ -127,7 +127,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const episodes: Episode[] = view?.episodes ?? [];
   const episode = ep ? episodes.find((e) => (e.season ?? view?.season) === ep.season && e.number === ep.episode) ?? null : null;
   /* "S2:E3", "E27" or "E3": however the title's layout names it. */
-  const epLabel = ep ? episode?.label ?? labelOf(view, ep.season, ep.episode) : "";
+  const epLabel = ep ? episode?.label ?? play?.label ?? labelOf(view, ep.season, ep.episode) : "";
 
   /* ───── Controls that come and go ───── */
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -173,7 +173,12 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       setChoice(null);
       attached.current?.detach();
       thumbDetach.current?.(); thumbDetach.current = null;
-      attached.current = await attach(v, p, () => { if (token === live.current.token) setProblem("The stream stopped. Try again in a moment."); });
+      /* Before it starts, a broken stream counts as this version not playing here (the next is tried); after, it's a stop. */
+      attached.current = await attach(v, p, () => {
+        if (token !== live.current.token) return;
+        if (live.current.loading) v.dispatchEvent(new Event("kw-fatal"));
+        else setProblem("The stream stopped. Try again in a moment.");
+      });
       if (token !== live.current.token) return;
       const link = live.current.link;
       const sameAsParty = link?.state && link.state.timeline.titleId === id && link.state.timeline.season === (at?.season ?? 0) && link.state.timeline.episode === (at?.episode ?? 0);
@@ -181,9 +186,10 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       await new Promise<void>((resolve, reject) => {
         const ok = () => { cleanup(); resolve(); };
         const bad = () => { cleanup(); reject(new Error("media")); };
-        const cleanup = () => { v.removeEventListener("loadedmetadata", ok); v.removeEventListener("error", bad); };
+        const cleanup = () => { v.removeEventListener("loadedmetadata", ok); v.removeEventListener("error", bad); v.removeEventListener("kw-fatal", bad); };
         v.addEventListener("loadedmetadata", ok, { once: true });
         v.addEventListener("error", bad, { once: true });
+        v.addEventListener("kw-fatal", bad, { once: true });
       });
       if (token !== live.current.token) return;
       setPct(50);
@@ -892,12 +898,12 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       {post === "ask" && fill ? <>
         <div className="kw-vig" />
         <div className="kw-nx kw-ask">
-          <div className="kw-ask-tx"><b>{fill.count > 1 ? `Episodes ${fill.first.episode}–${fill.first.episode + fill.count - 1} are filler` : `Episode ${fill.first.episode} is filler`}</b><span>Skip fillers automatically?</span></div>
+          <div className="kw-ask-tx"><b>{fill.count > 1 ? `Episodes ${shownNumber(fill.first.label, fill.first.episode)}–${shownNumber(fill.first.label, fill.first.episode) + fill.count - 1} are filler` : `${longLabel(fill.first.label ?? `E${fill.first.episode}`)} is filler`}</b><span>Skip fillers automatically?</span></div>
           <div className="kw-ask-btns">
             <button className="kw-btn kw-tonal" onClick={() => { void watchApi.setPrefs({ fillers: "watch" }); void goTo(fill.first, 0); }}>Watch {fill.count > 1 ? "them" : "it"}</button>
             <button className="kw-btn kw-primary" onClick={() => {
               void watchApi.setPrefs({ fillers: "skip" });
-              if (fill.canon) { watch.toast(`Skipping to episode ${fill.canon.episode}`); void goTo(fill.canon, 0); }
+              if (fill.canon) { watch.toast(`Skipping to ${longLabel(fill.canon.label ?? `E${fill.canon.episode}`).replace(/^E/, "e")}`); void goTo(fill.canon, 0); }
               else { watch.toast("Fillers will be skipped"); setPost("end"); live.current.post = "end"; }
             }}><Icon name="next" />Skip fillers</button>
           </div>
@@ -908,7 +914,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
         <div className="kw-nx">
           {next.skipped ? <span className="kw-nx-note">Skipping {next.skipped} filler episode{next.skipped > 1 ? "s" : ""}</span> : null}
           <button className="kw-btn kw-tonal" onClick={() => { live.current.creditsDone = true; if (live.current.link?.state) { if (!steering()) return; void live.current.link.command("cancel-countdown"); } endNextUp(); showCtl(); }}>Watch credits</button>
-          <button className="kw-btn kw-primary kw-countdown" title={labelOf(view, next.season, next.episode)} onClick={() => { clearInterval(countTimer.current); playNext(); }}><i style={{ width: `${countdown * 100}%` }} /><Icon name="next" /><span>Next episode</span></button>
+          <button className="kw-btn kw-primary kw-countdown" title={(next as { label?: string }).label ?? labelOf(view, next.season, next.episode)} onClick={() => { clearInterval(countTimer.current); playNext(); }}><i style={{ width: `${countdown * 100}%` }} /><Icon name="next" /><span>Next episode</span></button>
         </div>
       </> : null}
       {post === "end" && t ? <>

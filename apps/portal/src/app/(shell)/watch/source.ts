@@ -38,12 +38,16 @@ export async function attach(video: HTMLVideoElement, play: Play, onFatal: () =>
       /* The packager can take 5–20 s for a first segment: wait for it rather than give up. */
       const patient = { maxTimeToFirstByteMs: 30_000, maxLoadTimeMs: 120_000, timeoutRetry: { maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0 }, errorRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 8000 } };
       const hls: Hls = new Hls({ enableWorker: true, backBufferLength: 60, maxBufferLength: 40, fragLoadPolicy: { default: patient }, playlistLoadPolicy: { default: patient }, manifestLoadPolicy: { default: patient } });
+      /* A stream the server can't read keeps failing: after a few tries it's this version that's broken, not the network. */
+      let failures = 0;
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
+        if (++failures > 3) { onFatal(); return; }
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
         else onFatal();
       });
+      hls.on(Hls.Events.FRAG_LOADED, () => { failures = 0; });
       hls.loadSource(play.hls);
       hls.attachMedia(video);
       hls.subtitleDisplay = false;
