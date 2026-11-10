@@ -4,7 +4,7 @@ import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type Se
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
-import { closeIris, foldRail, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
+import { closeIris, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
 import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
 
 /**
@@ -50,7 +50,6 @@ function Arrivals({ children }: { children: ReactNode }) {
       page.getAnimations().forEach((animation) => animation.cancel());
       page.style.opacity = "";
       const layer = immersiveLayer(page);
-      foldRail(!!layer);
       if (copy) { if (layer) void openIris(layer).then(() => copy.remove()); else copy.remove(); }
       if (still() || layer || across === "out") return;
       if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
@@ -126,12 +125,11 @@ function Arrivals({ children }: { children: ReactNode }) {
       };
       requestAnimationFrame(watch);
     };
-    /* Into or out of a full-screen place: the rail folds or unfolds at the
-       press, and the cinema closes as an iris rather than the page drifting. */
+    /* Into or out of a full-screen place (Watch): it opens and closes as a
+       circle over everything, and nothing else moves (components/immersive). */
     const target = new URL(href, location.href).pathname;
     const from = immersiveAt(location.pathname), to = immersiveAt(target);
     crossing.current = from === to ? null : to ? "in" : "out";
-    if (crossing.current) foldRail(to);
     if (from && to) { handOver(); return; }
     /* Going in, the page you leave holds still as a copy while Watch is
        fetched and opens over it. */

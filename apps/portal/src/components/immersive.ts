@@ -2,10 +2,10 @@
  * 観 Crossing into a place that takes the whole screen (Kimono Watch), and
  * back. It is not a page beside the rail, so it doesn't move like one:
  *
- *   going in   the rail folds away and the page you leave stays still;
- *              Watch opens on top of it as a circle from where you pressed.
- *   coming out Watch closes as a circle onto the button you pressed, over
- *              Kimono already standing beneath, while the rail unfolds.
+ *   going in   Watch opens on top of everything as a circle from where you
+ *              pressed, over the page you leave, which holds still.
+ *   coming out Watch closes as a circle back into its flower in the rail,
+ *              over Kimono already standing beneath.
  *
  * The circle is the only thing that moves: nothing fades or slides.
  * The full-screen layer is position:fixed inside .main-content, so nothing
@@ -33,18 +33,20 @@ function origin() {
 }
 const reach = ({ x, y }: { x: number; y: number }) => Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) + 8;
 
-/* While the iris moves, the cinema's frosted glass goes plain (watch.css):
-   a blur behind every chip and bar would be redrawn on every frame. */
+/* While the iris moves it is drawn on the browser's top layer, above every
+   element on the page whatever its z-index, and the cinema's frosted glass
+   goes plain (watch.css): a blur behind every chip and bar would be redrawn
+   on every frame. Both are undone once it stops. */
 function quiet(layer: HTMLElement, moving: Animation) {
   layer.dataset.iris = "";
-  void moving.finished.finally(() => { delete layer.dataset.iris; });
-}
-
-/** Fold the rail away (or bring it back) now, ahead of the page changing hands. */
-export function foldRail(away: boolean) {
-  const frame = document.querySelector<HTMLElement>(".app-frame");
-  if (!frame) return;
-  if (away) frame.dataset.railAway = ""; else delete frame.dataset.railAway;
+  let lifted = false;
+  if (typeof layer.showPopover === "function") {
+    try { layer.popover = "manual"; layer.showPopover(); lifted = true; } catch { layer.removeAttribute("popover"); }
+  }
+  void moving.finished.finally(() => {
+    delete layer.dataset.iris;
+    if (lifted) { try { layer.hidePopover(); } catch { /* already gone */ } layer.removeAttribute("popover"); }
+  });
 }
 
 /**
@@ -83,10 +85,19 @@ export function openIris(layer: HTMLElement): Promise<void> {
   return opening.finished.then(() => {}, () => {});
 }
 
-/** The cinema closing on the button you pressed. Resolves once it's shut. */
+/* Where the place lives in the rail: its flower, if it's on screen. */
+function flower() {
+  const place = PLACES.find((path) => immersiveAt(location.pathname) && (location.pathname === path || location.pathname.startsWith(`${path}/`))) ?? PLACES[0];
+  const pill = document.querySelector<HTMLElement>(`.rail a.rail-dest[href="${place}"] .rail-pill`);
+  const box = pill?.getBoundingClientRect();
+  if (!box || !box.width || box.bottom < 0 || box.top > innerHeight || box.right < 0 || box.left > innerWidth) return null;
+  return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+}
+
+/** The cinema closing back into its flower in the rail (or onto the press, if the flower's out of sight). Resolves once it's shut. */
 export function closeIris(layer: HTMLElement): Promise<void> {
   if (still()) return Promise.resolve();
-  const at = origin();
+  const at = flower() ?? origin();
   const r = reach(at);
   const closing = layer.animate([
     { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)` },
