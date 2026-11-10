@@ -1826,7 +1826,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-done-acts > .cd-iconbutton { width: 32px; height: 32px; color: var(--k-on-surface-variant); }
 .cd-done-acts > .cd-iconbutton svg.i { width: 17px; height: 17px; }
 @media (hover: hover) {
-  .cd-done-facts, .cd-done-acts > .cd-iconbutton, .cd-thumbs:not(.is-asking) .cd-iconbutton:not([aria-pressed="true"]) { opacity: 0; transition: opacity var(--k-t-state) var(--k-ease-out); }
+  .cd-done-facts, .cd-done-acts > .cd-iconbutton, .cd-thumbs:where(:not(.is-asking)) .cd-iconbutton:where(:not([aria-pressed="true"])) { opacity: 0; transition: opacity var(--k-t-state) var(--k-ease-out); }
   .cd-done:hover :is(.cd-done-facts, .cd-iconbutton), .cd-done:focus-within :is(.cd-done-facts, .cd-iconbutton),
   .cd-timeline > .cd-say:hover + .cd-done :is(.cd-done-facts, .cd-iconbutton),
   .cd-timeline > .cd-say:hover + * + .cd-done :is(.cd-done-facts, .cd-iconbutton) { opacity: 1; }
