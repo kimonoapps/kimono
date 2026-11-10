@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, type TitleView } from "./api";
 import { AppLockup, KimonoBranch } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
-import { circleSettled } from "@/components/immersive";
+import { circleSettled, placeReady } from "@/components/immersive";
 import { cx, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
 import { InkLoader } from "@kimono/ui";
@@ -123,8 +123,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
   const chooseShelf = (shelf: Shelf | null) => { filterRef.current = shelf; setHome(null); setMoreLoading(false); setFilter(shelf); };
   useEffect(() => {
     if (!profile) return;
-    /* Drawn once the opening circle has finished: a render this big mid-circle would make it jump. */
-    watchApi.home(filter).then(async (h) => { remember(h); await circleSettled(); if (filterRef.current === filter) setHome(h); }, () => say("Watch isn't answering. Try again in a moment."));
+    watchApi.home(filter).then((h) => { remember(h); if (filterRef.current === filter) setHome(h); }, () => say("Watch isn't answering. Try again in a moment."));
     void loadAll();
   }, [profile, filter, remember, say, loadAll]);
   /* Home goes on as long as you scroll: the next page when its last rows come near. */
@@ -142,6 +141,9 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
     }, () => {}).finally(() => { moreBusy.current = false; setMoreLoading(false); });
   }, [remember]);
 
+  /* Opening Watch, the circle waits until this first screen is drawn
+     (components/immersive): the profiles, or home with its rows. */
+  useEffect(() => { if (!profile || home) placeReady(); }, [profile, home]);
   /* ───── The bar turns solid once the page moves ───── */
   useEffect(() => {
     const el = root.current;
@@ -160,7 +162,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
   const switchProfile = () => { setProfile(null); try { sessionStorage.removeItem(chosenKey); } catch { /* fine */ } };
   useEffect(() => {
     if (!profile) return;
-    watchApi.prefs().then(setPrefs, () => {});
+    watchApi.prefs().then(async (p) => { await circleSettled(); setPrefs(p); }, () => {});
   }, [profile]);
 
   /* ───── What every part can ask for ───── */
@@ -209,7 +211,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
   useEffect(() => {
     if (!profile) return;
     let stop = false;
-    const look = () => together.list().then((l) => { if (stop) return; setPeople(l.people.length ? l.people : household); setInvites(l.parties.filter((p) => p.invited)); }, () => {});
+    const look = () => together.list().then(async (l) => { await circleSettled(); if (stop) return; setPeople(l.people.length ? l.people : household); setInvites(l.parties.filter((p) => p.invited)); }, () => {});
     look();
     const timer = setInterval(() => { if (!document.hidden) look(); }, 15_000);
     return () => { stop = true; clearInterval(timer); };

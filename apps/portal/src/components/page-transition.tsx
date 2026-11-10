@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { closeIris, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
+import { closeIris, expectPlace, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
 
 /* Back and forward have no press: the circle centres on the screen. */
 const middle = () => ({ x: innerWidth / 2, y: innerHeight / 2 });
@@ -31,8 +31,9 @@ export function PageTransition({ children }: { children: ReactNode }) {
       if (layer && into) return;
       /* Into Watch, the page you leave holds still while Watch opens over it;
          out of Watch, a copy of it closes over Kimono arriving beneath. */
+      if (into) expectPlace();
       const ghost = layer || into ? stillCopy(layer ?? main) : null;
-      if (ghost && layer) void closeIris(ghost, middle()).then(() => ghost.remove());
+
       let slide: HTMLElement | null = null;
       if (!ghost) {
         const box = main.getBoundingClientRect();
@@ -49,7 +50,8 @@ export function PageTransition({ children }: { children: ReactNode }) {
         if (!next) return;
         const opening = immersiveLayer(next);
         if (into) { if (opening) void openIris(opening, middle()).then(() => ghost?.remove()); else ghost?.remove(); return; }
-        if (layer) return;
+        /* Out of Watch, its copy closes once Kimono beneath has painted. */
+        if (layer) { requestAnimationFrame(() => requestAnimationFrame(() => { if (ghost) void closeIris(ghost, middle()).then(() => ghost.remove()); })); return; }
         next.animate([{ opacity: 0, transform: `translateX(${back ? -48 : 48}px)` }, { opacity: 1, transform: "none" }], { duration: 380, delay: 40, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" });
       };
       main.style.opacity = "0";

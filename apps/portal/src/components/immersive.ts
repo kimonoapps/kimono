@@ -59,6 +59,28 @@ let moving: Promise<void> = Promise.resolve();
  */
 export const circleSettled = () => moving;
 
+/*
+ * The place says when its first screen is drawn (Watch: its home rows), and
+ * the circle waits for that before it opens, so nothing is drawn while it
+ * moves and nothing pops in after. Never longer than READY_AT_MOST.
+ */
+const READY_AT_MOST = 700;
+let ready: { promise: Promise<void>; resolve: () => void } | null = null;
+/** A crossing into a place is starting: from now, its first screen is awaited. */
+export function expectPlace() {
+  let resolve = () => {};
+  const promise = new Promise<void>((done) => { resolve = done; });
+  ready = { promise, resolve };
+}
+/** Called by the place once its first screen is drawn. */
+export function placeReady() { ready?.resolve(); }
+function whenPlaceReady() {
+  const waiting = ready;
+  ready = null;
+  if (!waiting) return Promise.resolve();
+  return Promise.race([waiting.promise, new Promise<void>((resolve) => setTimeout(resolve, READY_AT_MOST))]);
+}
+
 function quiet(layer: HTMLElement, animation: Animation) {
   const done = animation.finished.then(() => {}, () => {});
   /* Never held longer than the circle takes: a tab sent to the background pauses it. */
@@ -99,8 +121,12 @@ export function stillCopy(element: HTMLElement) {
 }
 
 /** The cinema opening as an iris from where you pressed, and nothing else moving. Resolves once it's open. */
-export function openIris(layer: HTMLElement, at: Point): Promise<void> {
-  if (still()) return Promise.resolve();
+export async function openIris(layer: HTMLElement, at: Point): Promise<void> {
+  if (still()) { placeReady(); ready = null; return; }
+  /* Shut, and drawing its first screen unseen, until it's ready to open. */
+  layer.style.clipPath = `circle(0px at ${at.x}px ${at.y}px)`;
+  await whenPlaceReady();
+  layer.style.clipPath = "";
   const r = reach(at);
   const opening = layer.animate([
     { clipPath: `circle(0px at ${at.x}px ${at.y}px)` },

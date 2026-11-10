@@ -4,7 +4,7 @@ import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type Se
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
-import { closeIris, immersiveAt, immersiveLayer, openIris, pressPoint, stillCopy, type Point } from "@/components/immersive";
+import { closeIris, expectPlace, immersiveAt, immersiveLayer, openIris, pressPoint, stillCopy, type Point } from "@/components/immersive";
 import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
 
 /**
@@ -37,7 +37,8 @@ function Arrivals({ children }: { children: ReactNode }) {
   /* Set when the move crosses into or out of a full-screen place (Watch),
      which arrives its own way (components/immersive). */
   const crossing = useRef<"in" | "out" | null>(null);
-  /* Going in, a still copy of the page you left stands under the opening circle. */
+  /* A still copy of the page you left: going in, it stands under Watch's
+     opening circle; coming out, it's Watch, closing once Kimono has drawn. */
   const under = useRef<HTMLElement | null>(null);
   const pressedAt = useRef<Point | null>(null);
   const settle = useCallback((slideIn: boolean) => {
@@ -53,7 +54,12 @@ function Arrivals({ children }: { children: ReactNode }) {
       page.getAnimations().forEach((animation) => animation.cancel());
       page.style.opacity = "";
       const layer = immersiveLayer(page);
-      if (copy) { if (layer) void openIris(layer, at).then(() => copy.remove()); else copy.remove(); }
+      if (copy) {
+        if (layer) void openIris(layer, at).then(() => copy.remove());
+        /* The close starts once Kimono beneath has painted, so drawing it never stalls the circle. */
+        else if (across === "out") requestAnimationFrame(() => requestAnimationFrame(() => void closeIris(copy, at).then(() => copy.remove())));
+        else copy.remove();
+      }
       if (still() || layer || across === "out") return;
       if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
       settling = riseWhenReady(page);
@@ -139,16 +145,18 @@ function Arrivals({ children }: { children: ReactNode }) {
        fetched and opens over it. */
     if (to) {
       pressedAt.current = at;
+      expectPlace();
       if (leaving && !still()) { under.current = stillCopy(leaving); leaving.style.opacity = "0"; }
       handOver();
       return;
     }
-    /* Coming out, a copy of Watch closes over Kimono arriving beneath it. */
+    /* Coming out, a still copy of Watch holds the screen while Kimono is
+       fetched and drawn beneath it, then closes (see settle). */
     const layer = from ? immersiveLayer(leaving) : null;
     if (layer && !still()) {
-      const copy = stillCopy(layer);
+      pressedAt.current = at;
+      under.current = stillCopy(layer);
       layer.style.visibility = "hidden";
-      void closeIris(copy, at).then(() => copy.remove());
     }
     if (from) { handOver(); return; }
     if (!leaving || still()) { handOver(); return; }
