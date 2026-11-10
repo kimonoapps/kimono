@@ -28,7 +28,7 @@ export function ShellFrame({ apps, rooms, admin, you, defaultPins, children }: {
   const app = appAt(apps, pathname);
   const active = pathname === "/" ? "home" : under(pathname, "/admin") ? "admin" : under(pathname, "/account") ? "account" : undefined;
   /* A full-screen place (Watch) folds the rail away; shell.css animates it. */
-  return <div className={cx("app-frame", app && "in-app")} data-immersive={immersiveAt(pathname) ? "" : undefined} style={app ? palette(app.accent) : undefined}>
+  return <div className={cx("app-frame", app && "in-app")} data-immersive={immersiveAt(pathname) ? "" : undefined} data-rail-away={immersiveAt(pathname) ? "" : undefined} style={app ? palette(app.accent) : undefined}>
     <Rail apps={apps} current={app?.id} rooms={app ? rooms[app.id] : undefined} active={active} admin={admin} defaultPins={defaultPins} you={you} />
     <main className="main-content"><PageTransition>{children}</PageTransition></main>
     <FileDropLayer />

@@ -2,8 +2,8 @@
  * 観 Crossing into a place that takes the whole screen (Kimono Watch), and
  * back. It is not a page beside the rail, so it doesn't move like one:
  *
- *   going in   the rail folds away and its column closes while the page you
- *              leave dissolves; the cinema then opens as a dark iris from
+ *   going in   the rail folds away while the page you leave dissolves, and
+ *              its column closes once that page is gone; the cinema then opens as a dark iris from
  *              where you pressed.
  *   coming out the iris closes on the button you pressed while the rail
  *              unfolds; Kimono surfaces in place, no sideways slide.
@@ -33,11 +33,18 @@ function origin() {
 }
 const reach = ({ x, y }: { x: number; y: number }) => Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) + 8;
 
+/* While the iris moves, the cinema's frosted glass goes plain (watch.css):
+   a blur behind every chip and bar would be redrawn on every frame. */
+function quiet(layer: HTMLElement, moving: Animation) {
+  layer.dataset.iris = "";
+  void moving.finished.finally(() => { delete layer.dataset.iris; });
+}
+
 /** Fold the rail away (or bring it back) now, ahead of the page changing hands. */
 export function foldRail(away: boolean) {
   const frame = document.querySelector<HTMLElement>(".app-frame");
   if (!frame) return;
-  if (away) frame.dataset.immersive = ""; else delete frame.dataset.immersive;
+  if (away) frame.dataset.railAway = ""; else delete frame.dataset.railAway;
 }
 
 /** The cinema opening as an iris from where you pressed. */
@@ -49,6 +56,7 @@ export function openIris(layer: HTMLElement) {
     { clipPath: `circle(24px at ${at.x}px ${at.y}px)`, opacity: .6 },
     { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)`, opacity: 1 },
   ], { duration: 560, easing: IN, fill: "backwards" });
+  quiet(layer, opening);
   opening.pause();
   requestAnimationFrame(() => opening.play());
   /* What's on it arrives a beat after the dark, as a room's lights settling.
@@ -65,6 +73,7 @@ export function closeIris(layer: HTMLElement): Promise<void> {
     { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)`, opacity: 1 },
     { clipPath: `circle(20px at ${at.x}px ${at.y}px)`, opacity: 0 },
   ], { duration: 340, easing: OUT, fill: "forwards" });
+  quiet(layer, closing);
   return closing.finished.then(() => {}, () => {});
 }
 

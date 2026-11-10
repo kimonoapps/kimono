@@ -126,14 +126,15 @@
 }
 
 /* ── a full-screen place (Watch, components/immersive.ts): the rail folds
-   away and its column closes, and unfolds again on the way back ── */
-.app-frame { transition: grid-template-columns 420ms cubic-bezier(.2, 0, 0, 1); }
+   away at the press (data-rail-away) and unfolds on the way back. Its column
+   (data-immersive) closes and opens with the page change itself, while the
+   page there is hidden, so nothing is laid out again frame by frame. ── */
 .rail { transition: translate 420ms cubic-bezier(.2, 0, 0, 1), opacity 260ms cubic-bezier(.2, 0, 0, 1); }
 .app-frame[data-immersive] { grid-template-columns: 0 minmax(0, 1fr); }
+.app-frame[data-rail-away] .rail { translate: -100% 0; opacity: 0; pointer-events: none; transition-timing-function: cubic-bezier(.3, 0, .8, .15); transition-duration: 300ms, 220ms; }
 /* Its own width, so it slides whole while the column closes rather than squeezing. */
 @media (min-width: 721px) { .rail { width: 96px; } }
-.app-frame[data-immersive] .rail { translate: -100% 0; opacity: 0; pointer-events: none; transition-timing-function: cubic-bezier(.3, 0, .8, .15); transition-duration: 300ms, 220ms; }
-@media (prefers-reduced-motion: reduce) { .app-frame, .rail { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rail { transition: none; } }
 
 /* ── phone: the rail is the bottom bar ── */
 @media (max-width: 720px) {
@@ -142,7 +143,7 @@
   .rail-mark, .rail-scroll, .rail-divider { display: none; }
   .rail-dest { width: auto; flex: 1; }
   .app-frame[data-immersive] { grid-template-columns: minmax(0, 1fr); padding-bottom: 0; }
-  .app-frame[data-immersive] .rail { translate: 0 100%; }
+  .app-frame[data-rail-away] .rail { translate: 0 100%; }
   .app-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .app-tile-link { padding: 16px; }
   .app-tile-bloom.k-app-bloom { width: 56px; height: 56px; }

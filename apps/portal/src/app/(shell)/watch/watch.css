@@ -18,6 +18,7 @@
   margin:0; background:var(--bg); color:var(--fg); font-family:var(--ui); font-size:16px; line-height:normal; -webkit-font-smoothing:antialiased;
 }
 .kw.kw-locked{overflow:hidden}
+.kw[data-iris] *{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 @media (min-width:900px){ .kw{ --gutter-l:max(4vw, env(safe-area-inset-left, 0px)); --gutter-r:max(4vw, env(safe-area-inset-right, 0px)); } }
 .kw [hidden]{display:none!important}
 .kw *,.kw *::before,.kw *::after{box-sizing:border-box}

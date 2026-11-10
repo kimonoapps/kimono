@@ -135,7 +135,12 @@ function Arrivals({ children }: { children: ReactNode }) {
       return;
     }
     if (!leaving || still()) { handOver(); return; }
-    const dissolve = leaving.animate([
+    /* Into the cinema the softening is left out: the rail is moving too, and
+       a blur over the whole page is the costliest thing to draw. */
+    const dissolve = leaving.animate(to ? [
+      { opacity: 1, transform: "none" },
+      { opacity: 0, transform: "translateX(-24px) scale(.985)" },
+    ] : [
       { opacity: 1, transform: "none", filter: "blur(0)" },
       { opacity: 0, transform: "translateX(-24px) scale(.985)", filter: "blur(6px)" },
     ], { duration: 240, easing: "cubic-bezier(.4, 0, .9, .7)", fill: "forwards" });
