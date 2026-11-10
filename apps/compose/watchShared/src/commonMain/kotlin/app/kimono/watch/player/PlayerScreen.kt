@@ -119,7 +119,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-private enum class Sheet { Tracks, Speed, Episodes, Party }
+private enum class Sheet { Tracks, Settings, Episodes, Party }
 
 /**
  * The player's chrome over the picture, from the demo: auto-hiding
@@ -423,9 +423,9 @@ fun PlayerScreen(
                         }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (!tv) VolumeSlider(volume, { volume = it; engine.setVolume(it); show(hold = true) }, onDone = { show() })
-                    LabBtn(Ic.speed, "Speed", tv) { sheet = if (sheet == Sheet.Speed) null else Sheet.Speed; show() }
                     if (!state.isFilm) LabBtn(Ic.eps, "Episodes", tv) { sheet = if (sheet == Sheet.Episodes) null else Sheet.Episodes; show() }
                     LabBtn(Ic.cc, "Audio & subtitles", tv) { sheet = if (sheet == Sheet.Tracks) null else Sheet.Tracks; show() }
+                    LabBtn(Ic.gear, "Settings", tv) { sheet = if (sheet == Sheet.Settings) null else Sheet.Settings; show() }
                     if (party != null) LabBtn(Ic.people, "Together", tv) { sheet = if (sheet == Sheet.Party) null else Sheet.Party; show() }
                     if (state.answer?.next != null) LabBtn(Ic.next, "Next episode", tv) { vm.playNext() }
                 }
@@ -717,7 +717,11 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
 private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit, party: TogetherViewModel?, onDefaults: () -> Unit) {
     val state by vm.state.collectAsState()
     val first = remember { FocusRequester() }
-    Column(Modifier.widthIn(max = 460.dp).heightIn(max = 620.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xF51B1412)).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(18.dp)) {
+    /* Fit the space above the controls: a phone held sideways is short. */
+    val windowH = with(androidx.compose.ui.platform.LocalDensity.current) { androidx.compose.ui.platform.LocalWindowInfo.current.containerSize.height.toDp() }
+    val maxH = (windowH - 110.dp).coerceIn(160.dp, 620.dp)
+    val listH = (maxH - 36.dp - 38.dp).coerceIn(100.dp, 240.dp)
+    Column(Modifier.widthIn(max = 460.dp).heightIn(max = maxH).clip(RoundedCornerShape(14.dp)).background(Color(0xF51B1412)).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(18.dp)) {
         when (sheet) {
             Sheet.Tracks -> {
                 val audio = remember(tracksVersion) { engine.audioOptions() }
@@ -726,7 +730,7 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("Audio", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(bottom = 10.dp))
-                        LazyColumn(Modifier.height(240.dp)) {
+                        LazyColumn(Modifier.height(listH)) {
                             items(audio) { o ->
                                 Opt(o.label, o.selected, if (o == audio.firstOrNull()) first else null) {
                                     engine.selectAudio(o); tick++
@@ -738,7 +742,7 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                     }
                     Column(Modifier.weight(1f)) {
                         Text("Subtitles", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(bottom = 10.dp))
-                        LazyColumn(Modifier.height(240.dp)) {
+                        LazyColumn(Modifier.height(listH)) {
                             items(subs) { o ->
                                 Opt(o.label, o.selected) {
                                     engine.selectSubtitles(o); tick++
@@ -749,42 +753,38 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                         }
                     }
                 }
-                /* Quality: only the sizes play says this device can have; switching keeps the place. */
-                val quality = state.answer?.quality
-                if (quality != null && quality.options.size > 1) {
-                    Text("Quality", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        quality.options.forEach { q -> Box(Modifier.weight(1f)) { Choice(q.label, q.value == quality.current) { if (q.value != quality.current) { vm.quality(q.value, position); close() } } } }
-                    }
-                }
-                val versions = state.answer?.versions.orEmpty()
-                if (versions.size > 1) {
-                    Text("Version", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
-                    LazyColumn(Modifier.height(120.dp)) {
-                        items(versions) { v -> Opt(v.label + if (v.source.isNotBlank()) " · ${v.source.replaceFirstChar { it.uppercase() }}" else "", v.index == state.answer?.version?.index) { vm.version(v.index, position); close() } }
-                    }
-                }
-                /* Languages, subtitle look and quality for every title: Settings, over the picture. */
-                Row(Modifier.fillMaxWidth().padding(top = 12.dp).clickableScale(onDefaults).padding(horizontal = 6.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Your defaults", style = ui(15, FontWeight.Bold), modifier = Modifier.weight(1f))
-                    Text("›", style = ui(18, color = Night.fg3))
-                }
             }
-            Sheet.Speed -> {
-                Text("Playback speed", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(bottom = 10.dp))
-                Box(Modifier.widthIn(min = 380.dp).padding(top = 18.dp, start = 6.dp, end = 6.dp, bottom = 6.dp)) {
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp).offset(y = 5.dp).height(2.dp).background(Color(0x40FFFFFF)))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f).forEach { x ->
-                            val sel = speed == x
-                            val dot by animateFloatAsState(if (sel) 2f else 1f, spring(dampingRatio = 0.5f), label = "dot")
-                            Column(Modifier.clickableScale({ setSpeed(x) }).then(if (x == 1f) Modifier.focusRequester(first) else Modifier), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Box(Modifier.size(12.dp).graphicsLayerScale(dot).clip(CircleShape).background(if (sel) Night.suo else Night.fg3))
-                                Text("${if (x % 1f == 0f) x.toInt() else x}x" + if (x == 1f) " (Normal)" else "", style = ui(13, if (sel) FontWeight.Bold else FontWeight.Normal, if (sel) Night.fg else Night.fg3))
-                            }
+            Sheet.Settings -> {
+                /* A short menu; each row opens its own page and Back returns to it. */
+                var page by remember { mutableStateOf<String?>(null) }
+                val quality = state.answer?.quality?.takeIf { it.options.size > 1 }
+                val versions = state.answer?.versions.orEmpty()
+                fun speedLabel(x: Float) = "${if (x % 1f == 0f) x.toInt() else x}x"
+                Column(Modifier.widthIn(min = 300.dp)) {
+                    if (page != null) Row(Modifier.fillMaxWidth().clickableScale({ page = null }).padding(horizontal = 6.dp, vertical = 8.dp).padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        I(Ic.back, 20.dp, Night.fg2)
+                        Text(when (page) { "speed" -> "Playback speed"; "quality" -> "Quality"; else -> "Version" }, style = ui(18, FontWeight.Bold))
+                    }
+                    when (page) {
+                        null -> {
+                            Text("Settings", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(start = 6.dp, bottom = 6.dp))
+                            MenuRow("Playback speed", if (speed == 1f) "Normal" else speedLabel(speed), first) { page = "speed" }
+                            if (quality != null) MenuRow("Quality", quality.options.firstOrNull { it.value == quality.current }?.label ?: "") { page = "quality" }
+                            if (versions.size > 1) MenuRow("Version", state.answer?.version?.label ?: "") { page = "version" }
+                            MenuRow("Your defaults", "") { onDefaults() }
+                        }
+                        "speed" -> listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { x ->
+                            Opt(if (x == 1f) "Normal" else speedLabel(x), speed == x, if (x == 0.5f) first else null) { setSpeed(x) }
+                        }
+                        "quality" -> quality?.options?.forEachIndexed { i, q ->
+                            Opt(q.label, q.value == quality.current, if (i == 0) first else null) { if (q.value != quality.current) { vm.quality(q.value, position); close() } }
+                        }
+                        else -> versions.forEachIndexed { i, v ->
+                            Opt(v.label + if (v.source.isNotBlank()) " · ${v.source.replaceFirstChar { it.uppercase() }}" else "", v.index == state.answer?.version?.index, if (i == 0) first else null) { vm.version(v.index, position); close() }
                         }
                     }
                 }
+                LaunchedEffect(page) { repeat(10) { delay(60); if (runCatching { first.requestFocus() }.isSuccess) return@LaunchedEffect } }
             }
             Sheet.Party -> if (party != null) PartySheet(party, app.kimono.watch.LocalWatch.current.tv, first)
             Sheet.Episodes -> {
@@ -817,6 +817,16 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
     }
     /* The sheet takes the D-pad as soon as it's laid out. */
     LaunchedEffect(sheet) { repeat(10) { delay(60); if (runCatching { first.requestFocus() }.isSuccess) return@LaunchedEffect } }
+}
+
+@Composable
+private fun MenuRow(label: String, value: String, focus: FocusRequester? = null, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier).clickableScale(onClick).clip(RoundedCornerShape(8.dp)).padding(horizontal = 6.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(label, style = ui(15, FontWeight.Bold), modifier = Modifier.weight(1f))
+        if (value.isNotEmpty()) Text(value, style = ui(14, color = Night.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("›", style = ui(18, color = Night.fg3))
+    }
 }
 
 @Composable
