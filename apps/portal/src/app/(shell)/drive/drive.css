@@ -570,6 +570,7 @@ button.dv-pick-row:hover b { color: var(--k-plum); }
 
 /* trash and recent rows */
 .dv .dv-r.trashed { grid-template-columns: 40px minmax(0, 1fr) 84px auto; }
+.dv .dv-trash-acts { display: flex; gap: 6px; justify-content: flex-end; }
 .dv .dv-r.recent { grid-template-columns: 40px minmax(0, 1fr) 84px 148px; }
 .dv-done { width: 32px; height: 32px; display: grid; place-items: center; color: var(--k-moss); }
 

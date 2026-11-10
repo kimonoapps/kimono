@@ -374,6 +374,12 @@ class Drive(private val session: Session) {
 
     suspend fun moveToTrash(id: String) { session.call("/api/v1/drive/nodes/$id", HttpMethod.Delete); answers.drop(TRASH) }
 
+    /** Everything in the trash you could put back, gone for good. */
+    suspend fun emptyTrash() { session.call(TRASH, HttpMethod.Delete); answers.drop(TRASH) }
+
+    /** One thing in the trash, gone for good. */
+    suspend fun forget(id: String) { session.call("$TRASH/$id", HttpMethod.Delete); answers.drop(TRASH) }
+
     /* Back in a folder this phone may have kept without it: that folder asks again when opened. */
     suspend fun restore(id: String) {
         session.call("/api/v1/drive/nodes/$id/restore", HttpMethod.Post)

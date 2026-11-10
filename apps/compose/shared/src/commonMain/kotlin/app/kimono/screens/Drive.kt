@@ -771,9 +771,22 @@ fun TrashScreen(model: DriveModel, back: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     var items by remember { mutableStateOf(model.drive.knownTrash()) }
     var problem by remember { mutableStateOf<String?>(null) }
+    /* Asking first: one thing, or (the trash's own id) everything. */
+    var forgetting by remember { mutableStateOf<DriveNode?>(null) }
+    var emptying by remember { mutableStateOf(false) }
     suspend fun load() { try { items = model.drive.trash(); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(Unit) { load() }
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Recently deleted", onBack = back) }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+    /* Only what you could put back is yours to delete. */
+    fun editable(node: DriveNode) = node.role == "owner" || node.role == "editor"
+    val removable = items.orEmpty().count(::editable)
+    fun act(done: String, work: suspend () -> Unit) = scope.launch {
+        try { work(); load(); snackbar.showSnackbar(done) } catch (p: KimonoProblem) { snackbar.showSnackbar(p.message ?: "That didn't work.") }
+    }
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = {
+        KimonoTopBar("Recently deleted", onBack = back) {
+            if (removable > 0) TextButton(onClick = { emptying = true }) { Text("Empty", color = MaterialTheme.colorScheme.error) }
+        }
+    }, snackbarHost = { SnackbarHost(snackbar) }) { padding ->
         val list = items
         Box(Modifier.padding(padding).fillMaxSize()) {
             when {
@@ -781,7 +794,7 @@ fun TrashScreen(model: DriveModel, back: () -> Unit) {
                 list.isNullOrEmpty() -> Empty(problem ?: "Nothing deleted. What you delete stays here for 30 days.")
                 else -> LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
                     itemsIndexed(list, key = { _, n -> n.id }) { index, node ->
-                        SegmentedListItem(
+                        val row = @Composable { SegmentedListItem(
                             onClick = {},
                             shapes = ListItemDefaults.segmentedShapes(index, list.size),
                             colors = segmentColors(),
@@ -795,12 +808,26 @@ fun TrashScreen(model: DriveModel, back: () -> Unit) {
                                     }
                                 }) { Text("Restore") }
                             },
-                        ) { Text(node.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        ) { Text(node.name, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+                        /* A swipe asks, and the row springs back either way. */
+                        if (editable(node)) SwipeRow("Delete forever", onAction = { forgetting = node; false }) { row() } else row()
                     }
                 }
             }
         }
     }
+    forgetting?.let { node ->
+        InkConfirm(
+            title = "Delete “${node.name}” forever?", text = "It can't be put back.", action = "Delete forever", icon = "trash", danger = true,
+            onConfirm = { forgetting = null; act("“${node.name}” is gone.") { model.drive.forget(node.id) } },
+            onDismiss = { forgetting = null },
+        )
+    }
+    if (emptying) InkConfirm(
+        title = "Empty Recently deleted?", text = if (removable == 1) "1 item can't be put back." else "$removable items can't be put back.", action = "Delete forever", icon = "trash", danger = true,
+        onConfirm = { emptying = false; act("Emptied.") { model.drive.emptyTrash() } },
+        onDismiss = { emptying = false },
+    )
 }
 
 @Composable

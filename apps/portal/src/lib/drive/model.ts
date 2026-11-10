@@ -769,6 +769,13 @@ export function emptyTrash(db: DatabaseSync, username: string): string[] {
   return purge(db, db.prepare("SELECT n.id FROM nodes n JOIN members m ON m.space_id = n.space_id AND m.username = ? WHERE n.trashed_at IS NOT NULL AND m.role IN ('owner', 'editor')").all(username.toLowerCase()) as { id: string }[]);
 }
 
+/** Deletes one trashed thing now, and what's inside it; the caller deletes the bytes. */
+export function purgeNode(db: DatabaseSync, id: string, username: string): string[] {
+  const node = nodeFor(db, id, username, "editor", { trashed: true });
+  if (node.trashedAt === null) throw new DriveProblem("Only what's in the trash can be deleted for good.", 409);
+  return purge(db, [{ id }]);
+}
+
 /** Trashed things and everything inside them, gone from the database; returns their blobs. */
 function purge(db: DatabaseSync, roots: { id: string }[]): string[] {
   const blobs: string[] = [];

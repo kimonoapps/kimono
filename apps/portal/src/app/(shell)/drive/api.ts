@@ -92,6 +92,7 @@ export const drive = {
   unlink: (id: string) => call<unknown>(`/nodes/${id}/link`, { method: "DELETE" }),
   trashed: () => call<{ items: DriveNode[] }>("/trash").then((r) => r.items),
   emptyTrash: () => call<unknown>("/trash", { method: "DELETE" }),
+  forget: (id: string) => call<unknown>(`/trash/${id}`, { method: "DELETE" }),
   recent: () => call<{ items: DriveNode[] }>("/recent").then((r) => r.items),
   search: (q: string) => call<{ items: DriveNode[] }>(`/search?q=${encodeURIComponent(q)}`).then((r) => r.items),
   people: () => call<{ people: Person[] }>("/people").then((r) => r.people),

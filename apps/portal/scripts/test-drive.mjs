@@ -104,6 +104,19 @@ test('emptying the trash now removes what the person can edit, and nothing else'
   assert.deepEqual(drive.emptyTrash(db, 'mina'), ['b-v']);
 });
 
+test('one thing in the trash can be deleted for good; live files and viewers can\'t', () => {
+  const db = fresh();
+  const space = drive.createSpace(db, 'akram', { name: 'S', members: [{ username: 'ren', role: 'viewer' }] });
+  const a = drive.addFile(db, space.rootId, 'akram', file('a.png', 'b-a'));
+  const b = drive.addFile(db, space.rootId, 'akram', file('b.png', 'b-b'));
+  assert.throws(() => drive.purgeNode(db, a.id, 'akram'), (e) => e.status === 409);
+  drive.trashNode(db, a.id, 'akram');
+  drive.trashNode(db, b.id, 'akram');
+  assert.throws(() => drive.purgeNode(db, a.id, 'ren'), (e) => e.status === 403);
+  assert.deepEqual(drive.purgeNode(db, a.id, 'akram'), ['b-a']);
+  assert.deepEqual(drive.trashOf(db, 'akram').map((n) => n.name), ['b.png']);
+});
+
 test('a space always keeps an owner; anyone may leave', () => {
   const db = fresh();
   const space = drive.createSpace(db, 'akram', { name: 'S', members: [{ username: 'mina', role: 'viewer' }] });

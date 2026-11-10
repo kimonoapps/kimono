@@ -1204,6 +1204,14 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
   /* What's being put back: a second press waits for the first. */
   const [restoring, setRestoring] = useState<Set<string>>(new Set());
   const [emptying, setEmptying] = useState<"ask" | "busy" | null>(null);
+  /* One thing, asked about before it goes for good. */
+  const [forgetting, setForgetting] = useState<DriveNode | null>(null);
+  const forget = async (node: DriveNode) => {
+    setForgetting(null);
+    setRestoring((now) => new Set(now).add(node.id));
+    try { await drive.forget(node.id); onToast({ text: `“${node.name}” is gone.` }); await load(); } catch (error) { onToast({ text: problemText(error) }); }
+    finally { setRestoring((now) => { const next = new Set(now); next.delete(node.id); return next; }); }
+  };
   /* Only what you could put back is yours to delete. */
   const removable = (items ?? []).filter((node) => { const role = spaceOf(node.spaceId)?.role; return role === "owner" || role === "editor"; });
   const empty = async () => {
@@ -1229,12 +1237,15 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
             <Kind node={node} plain />
             <div className="nm"><b>{node.name}</b><small>{space?.name ?? ""}{left !== null ? ` · ${left === 1 ? "1 day" : `${left} days`} left` : ""}</small></div>
             <span className="num c-size">{node.kind === "folder" ? "—" : readableSize(node.size)}</span>
-            {space && space.role !== "viewer" ? <Seal type="button" tone="quiet" compact busy={restoring.has(node.id)} disabled={restoring.has(node.id)} onClick={async () => {
-              if (restoring.has(node.id)) return;
-              setRestoring((now) => new Set(now).add(node.id));
-              try { await drive.restore(node.id); onToast({ text: `“${node.name}” is back.` }); await load(); } catch (error) { onToast({ text: problemText(error) }); }
-              finally { setRestoring((now) => { const next = new Set(now); next.delete(node.id); return next; }); }
-            }}><Icon name="restore" />Put back</Seal> : <span />}
+            {space && space.role !== "viewer" ? <span className="dv-trash-acts">
+              <Seal type="button" tone="quiet" compact busy={restoring.has(node.id)} disabled={restoring.has(node.id)} onClick={async () => {
+                if (restoring.has(node.id)) return;
+                setRestoring((now) => new Set(now).add(node.id));
+                try { await drive.restore(node.id); onToast({ text: `“${node.name}” is back.` }); await load(); } catch (error) { onToast({ text: problemText(error) }); }
+                finally { setRestoring((now) => { const next = new Set(now); next.delete(node.id); return next; }); }
+              }}><Icon name="restore" />Put back</Seal>
+              <Seal type="button" tone="danger" compact disabled={restoring.has(node.id)} aria-label={`Delete “${node.name}” forever`} onClick={() => setForgetting(node)}><Icon name="trash" />Delete</Seal>
+            </span> : <span />}
           </div>;
         })}
     </div>
@@ -1242,6 +1253,11 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
       <span className="left" />
       <Seal type="button" tone="quiet" onClick={() => setEmptying(null)}>Keep</Seal>
       <Seal type="button" tone="danger" onClick={() => void empty()}>Delete {removable.length === 1 ? "1 item" : `${removable.length} items`} forever</Seal>
+    </>} /> : null}
+    {forgetting ? <Dialog title={`Delete “${forgetting.name}” forever?`} onClose={() => setForgetting(null)} footer={<>
+      <span className="left" />
+      <Seal type="button" tone="quiet" onClick={() => setForgetting(null)}>Keep</Seal>
+      <Seal type="button" tone="danger" onClick={() => void forget(forgetting)}>Delete forever</Seal>
     </>} /> : null}
   </section>;
 }
