@@ -1,22 +1,19 @@
 "use client";
 
-import { createContext, useContext } from "react";
-import dynamic from "next/dynamic";
+import { useSyncExternalStore } from "react";
 import { Crossing } from "@/components/crossing";
 import { WatchBloom } from "./bits";
-import type { Person } from "./watch-app";
+import { WatchApp, type Person } from "./watch-app";
 
-/* Watch reads where you are and who's watching from the browser, so it draws there only. */
-const App = dynamic(() => import("./watch-app").then((m) => m.WatchApp), { ssr: false, loading: () => <Waiting /> });
-
-/* Until the app arrives: Watch's bloom, breathing on the dark floor. */
-const Accent = createContext("#a84d63");
-function Waiting() {
-  return <div className="kw kw-waiting"><WatchBloom accent={useContext(Accent)} className="kw-bloom-lg kw-breathe" /></div>;
-}
-
+/*
+ * Watch reads where you are and who's watching from the browser, so it draws
+ * there only: the server sends Watch's bloom, breathing, and the browser takes over.
+ */
+const never = () => () => {};
 export function WatchEntry(props: { me: Person; household: Person[]; accent: string }) {
-  return <Accent.Provider value={props.accent}><App {...props} /></Accent.Provider>;
+  const here = useSyncExternalStore(never, () => true, () => false);
+  if (!here) return <div className="kw kw-waiting"><WatchBloom accent={props.accent} className="kw-bloom-lg kw-breathe" /></div>;
+  return <WatchApp {...props} />;
 }
 
 export function WatchOff({ accent }: { accent: string }) {

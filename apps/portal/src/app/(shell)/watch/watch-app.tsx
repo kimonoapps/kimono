@@ -208,12 +208,18 @@ function AccountMenu({ profile, onSwitch }: { profile: Person; onSwitch: () => v
   const [quality, setQuality] = useState(savedQuality);
   const [say, setSay] = useState<{ text: string; at: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  /* The server keeps this device's choice; the copy here only saves a flash of the old one. */
+  useEffect(() => {
+    watchApi.deviceQuality().then((q) => { const v = q ?? "auto"; setQuality(v); saveQuality(v); }, () => {});
+  }, []);
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => setShown(true));
     const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) { setOpen(false); setShown(false); } };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); setShown(false); } };
     document.addEventListener("pointerdown", away, true);
-    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", away, true); };
+    document.addEventListener("keydown", key);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key); };
   }, [open]);
   const pick = (value: string) => {
     const before = quality;

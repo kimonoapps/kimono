@@ -78,6 +78,8 @@ export const watchApi = {
   title: (id: string, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`),
   mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null }) => call<TitleView>(`titles/${encodeURIComponent(id)}`, put(change)),
   prefs: () => call<Prefs>("prefs"),
+  /** This browser's own quality, or null when it follows the person's. */
+  deviceQuality: () => call<Prefs & { device?: { id: string; quality: string | null } }>(`prefs?device=${encodeURIComponent(deviceId())}`).then((p) => p.device?.quality ?? null),
   setPrefs: (change: Partial<Prefs>) => call<Prefs>("prefs", put(change)),
   /** This browser's own preferred quality. */
   setDeviceQuality: (quality: string) => call<Prefs>("prefs", put({ device: deviceId(), quality })),
