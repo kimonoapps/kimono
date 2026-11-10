@@ -4,7 +4,7 @@ import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type Se
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
-import { closeIris, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
+import { closeIris, immersiveAt, immersiveLayer, openIris, pressPoint, stillCopy, type Point } from "@/components/immersive";
 import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
 
 /**
@@ -39,18 +39,21 @@ function Arrivals({ children }: { children: ReactNode }) {
   const crossing = useRef<"in" | "out" | null>(null);
   /* Going in, a still copy of the page you left stands under the opening circle. */
   const under = useRef<HTMLElement | null>(null);
+  const pressedAt = useRef<Point | null>(null);
   const settle = useCallback((slideIn: boolean) => {
     landing.current();
     let settling = () => {};
     const across = crossing.current;
     const copy = under.current;
+    const at = pressedAt.current ?? pressPoint();
+    pressedAt.current = null;
     crossing.current = null;
     under.current = null;
     const stop = whenPageStands((page) => {
       page.getAnimations().forEach((animation) => animation.cancel());
       page.style.opacity = "";
       const layer = immersiveLayer(page);
-      if (copy) { if (layer) void openIris(layer).then(() => copy.remove()); else copy.remove(); }
+      if (copy) { if (layer) void openIris(layer, at).then(() => copy.remove()); else copy.remove(); }
       if (still() || layer || across === "out") return;
       if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
       settling = riseWhenReady(page);
@@ -131,9 +134,11 @@ function Arrivals({ children }: { children: ReactNode }) {
     const from = immersiveAt(location.pathname), to = immersiveAt(target);
     crossing.current = from === to ? null : to ? "in" : "out";
     if (from && to) { handOver(); return; }
+    const at = pressPoint();
     /* Going in, the page you leave holds still as a copy while Watch is
        fetched and opens over it. */
     if (to) {
+      pressedAt.current = at;
       if (leaving && !still()) { under.current = stillCopy(leaving); leaving.style.opacity = "0"; }
       handOver();
       return;
@@ -143,7 +148,7 @@ function Arrivals({ children }: { children: ReactNode }) {
     if (layer && !still()) {
       const copy = stillCopy(layer);
       layer.style.visibility = "hidden";
-      void closeIris(copy).then(() => copy.remove());
+      void closeIris(copy, at).then(() => copy.remove());
     }
     if (from) { handOver(); return; }
     if (!leaving || still()) { handOver(); return; }

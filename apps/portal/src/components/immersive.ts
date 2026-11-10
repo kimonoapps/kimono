@@ -4,8 +4,8 @@
  *
  *   going in   Watch opens on top of everything as a circle from where you
  *              pressed, over the page you leave, which holds still.
- *   coming out Watch closes as a circle back into its flower in the rail,
- *              over Kimono already standing beneath.
+ *   coming out Watch closes as a circle onto the button you pressed, over
+ *              Kimono already standing beneath.
  *
  * The circle is the only thing that moves: nothing fades or slides.
  * The full-screen layer is position:fixed inside .main-content, so nothing
@@ -21,17 +21,31 @@ export const immersiveLayer = (page: Element | null = document.querySelector(".m
   page?.querySelector<HTMLElement>(".kw") ?? null;
 
 const still = () => typeof window === "undefined" || matchMedia("(prefers-reduced-motion: reduce)").matches;
-const OUT = "cubic-bezier(.3, 0, .8, .15)";
-const IN = "cubic-bezier(.05, .7, .1, 1)";
+/* An even ease in and out, both ways. The circle's radius runs to the far
+   corner, so a curve that rushes early covers the screen before you see it
+   grow from your press, and one that rushes late hides where it lands. */
+const IRIS = "cubic-bezier(.4, 0, .2, 1)";
 
-/* Where the last press landed, so the iris opens from (and closes on) it. */
+/* Where the last press landed. */
 let pressed: { x: number; y: number; at: number } | null = null;
 if (typeof window !== "undefined") addEventListener("pointerdown", (event) => { pressed = { x: event.clientX, y: event.clientY, at: performance.now() }; }, true);
-function origin() {
-  if (pressed && performance.now() - pressed.at < 4000) return pressed;
+
+export type Point = { x: number; y: number };
+/**
+ * Where this move began, read at the moment it begins: the press that set it
+ * off, or the focused link if it came from the keyboard, else the middle of
+ * the screen. Read once and carried through, however long the page takes.
+ */
+export function pressPoint(): Point {
+  if (pressed && performance.now() - pressed.at < 1000) return { x: pressed.x, y: pressed.y };
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && focused !== document.body) {
+    const box = focused.getBoundingClientRect();
+    if (box.width) return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  }
   return { x: innerWidth / 2, y: innerHeight / 2 };
 }
-const reach = ({ x, y }: { x: number; y: number }) => Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) + 8;
+const reach = ({ x, y }: Point) => Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y)) + 8;
 
 /* While the iris moves it is drawn on the browser's top layer, above every
    element on the page whatever its z-index, and the cinema's frosted glass
@@ -71,38 +85,27 @@ export function stillCopy(element: HTMLElement) {
 }
 
 /** The cinema opening as an iris from where you pressed, and nothing else moving. Resolves once it's open. */
-export function openIris(layer: HTMLElement): Promise<void> {
+export function openIris(layer: HTMLElement, at: Point): Promise<void> {
   if (still()) return Promise.resolve();
-  const at = origin();
   const r = reach(at);
   const opening = layer.animate([
     { clipPath: `circle(0px at ${at.x}px ${at.y}px)` },
     { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)` },
-  ], { duration: 560, easing: IN, fill: "backwards" });
+  ], { duration: 640, easing: IRIS, fill: "backwards" });
   quiet(layer, opening);
   opening.pause();
   requestAnimationFrame(() => opening.play());
   return opening.finished.then(() => {}, () => {});
 }
 
-/* Where the place lives in the rail: its flower, if it's on screen. */
-function flower() {
-  const place = PLACES.find((path) => immersiveAt(location.pathname) && (location.pathname === path || location.pathname.startsWith(`${path}/`))) ?? PLACES[0];
-  const pill = document.querySelector<HTMLElement>(`.rail a.rail-dest[href="${place}"] .rail-pill`);
-  const box = pill?.getBoundingClientRect();
-  if (!box || !box.width || box.bottom < 0 || box.top > innerHeight || box.right < 0 || box.left > innerWidth) return null;
-  return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-}
-
-/** The cinema closing back into its flower in the rail (or onto the press, if the flower's out of sight). Resolves once it's shut. */
-export function closeIris(layer: HTMLElement): Promise<void> {
+/** The cinema closing onto the button you pressed. Resolves once it's shut. */
+export function closeIris(layer: HTMLElement, at: Point): Promise<void> {
   if (still()) return Promise.resolve();
-  const at = flower() ?? origin();
   const r = reach(at);
   const closing = layer.animate([
     { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)` },
     { clipPath: `circle(0px at ${at.x}px ${at.y}px)` },
-  ], { duration: 380, easing: OUT, fill: "forwards" });
+  ], { duration: 520, easing: IRIS, fill: "forwards" });
   quiet(layer, closing);
   return closing.finished.then(() => {}, () => {});
 }

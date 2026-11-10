@@ -3,6 +3,9 @@
 import { useEffect, type ReactNode } from "react";
 import { closeIris, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
 
+/* Back and forward have no press: the circle centres on the screen. */
+const middle = () => ({ x: innerWidth / 2, y: innerHeight / 2 });
+
 /*
  * 移 Moving between pages, as Material's shared x-axis and as the phone app
  * does: the page you leave slides a little way and fades, the next slides in
@@ -29,7 +32,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
       /* Into Watch, the page you leave holds still while Watch opens over it;
          out of Watch, a copy of it closes over Kimono arriving beneath. */
       const ghost = layer || into ? stillCopy(layer ?? main) : null;
-      if (ghost && layer) void closeIris(ghost).then(() => ghost.remove());
+      if (ghost && layer) void closeIris(ghost, middle()).then(() => ghost.remove());
       let slide: HTMLElement | null = null;
       if (!ghost) {
         const box = main.getBoundingClientRect();
@@ -45,7 +48,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
         const next = document.querySelector<HTMLElement>(".main-content:not([aria-hidden])");
         if (!next) return;
         const opening = immersiveLayer(next);
-        if (into) { if (opening) void openIris(opening).then(() => ghost?.remove()); else ghost?.remove(); return; }
+        if (into) { if (opening) void openIris(opening, middle()).then(() => ghost?.remove()); else ghost?.remove(); return; }
         if (layer) return;
         next.animate([{ opacity: 0, transform: `translateX(${back ? -48 : 48}px)` }, { opacity: 1, transform: "none" }], { duration: 380, delay: 40, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" });
       };
