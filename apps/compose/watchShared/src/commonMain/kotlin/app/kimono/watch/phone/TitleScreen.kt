@@ -168,7 +168,7 @@ private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map
             }
             if (top != null) RankLine(top, t.shelf)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val label = when { !page.playable -> "Not available yet"; started -> "Resume"; !t.isFilm -> "Play S${r?.season ?: 1}:E${r?.episode ?: 1}"; else -> "Play" }
+                val label = when { !page.playable -> "Not available yet"; started -> "Resume"; !t.isFilm -> "Play " + (r?.label ?: page.label(r?.season ?: 1, r?.episode ?: 1)); else -> "Play" }
                 PaperButton(label, Ic.play, { if (page.playable) go.play(t.id, r?.season?.takeIf { it > 0 }, r?.episode?.takeIf { it > 0 }) }, (if (wide) Modifier.widthIn(min = 260.dp) else Modifier.fillMaxWidth()).focusRequester(playFocus))
                 if (started) ResumeLine(page)
             }
@@ -209,9 +209,9 @@ private fun ResumeLine(page: TitlePage) {
         }
         return
     }
-    val ep = page.episodes.firstOrNull { page.season == r.season && it.number == r.episode }
+    val ep = page.episode(r.season, r.episode)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("S${r.season}:E${r.episode}" + (ep?.let { " “${it.name}”" } ?: ""), style = ui(13, color = Night.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        Text((r.label ?: page.label(r.season, r.episode)) + (ep?.let { " “${it.name}”" } ?: ""), style = ui(13, color = Night.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         if (ep != null) {
             ProgressLine(ep.fraction.toFloat(), Modifier.widthIn(max = 220.dp).width(90.dp))
             ep.runtime?.let { Text("${(it * (1 - ep.fraction)).toInt()}m left", style = ui(13, color = Night.fg2)) }
@@ -232,10 +232,11 @@ private fun Tracker(page: TitlePage) {
     }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Night.surface2).padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (tr.left == 1) "Last episode in Season ${tr.season}" else "${tr.left} episodes left in Season ${tr.season}", style = ui(13, FontWeight.Bold), modifier = Modifier.weight(1f))
+            val where = if (page.bySeason) " in Season ${tr.season}" else ""
+            Text(if (tr.left == 1) "Last episode$where" else "${tr.left} episodes left$where", style = ui(13, FontWeight.Bold), modifier = Modifier.weight(1f))
             Text(after, style = ui(13, color = Night.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(if (tr.marks.size > 30) 1.dp else 4.dp)) {
             tr.marks.forEach { m ->
                 Box(Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)).background(when (m.state) { "done" -> Night.blush; "upcoming" -> Color(0x14EFE0DA); else -> Color(0x29EFE0DA) })
                     .drawBehind {
@@ -271,12 +272,12 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
             val d = dl[dlKey(t.id, 0, 0)]
             DlAct(d, if (d?.done == true) "Downloaded" else if (d != null) "Downloading" else "Download") { if (d == null) downloads.start(t.id, 0, 0, t.name) }
         } else {
-            val season = page.season ?: 1
-            val all = page.episodes.isNotEmpty() && page.episodes.all { dl[dlKey(t.id, season, it.number)]?.done == true }
-            val some = page.episodes.any { dl[dlKey(t.id, season, it.number)] != null }
-            val avg = page.episodes.map { dl[dlKey(t.id, season, it.number)]?.progress ?: 0f }.average().toFloat()
-            DlAct(if (all) DlState(1f, true) else if (some) DlState(avg, false) else null, if (all) "Season downloaded" else "Download season") {
-                page.episodes.forEach { e -> if (dl[dlKey(t.id, season, e.number)] == null) downloads.start(t.id, season, e.number, "${t.name} S${season}:E${e.number}") }
+            val all = page.episodes.isNotEmpty() && page.episodes.all { dl[dlKey(t.id, page.seasonOf(it), it.number)]?.done == true }
+            val some = page.episodes.any { dl[dlKey(t.id, page.seasonOf(it), it.number)] != null }
+            val avg = page.episodes.map { dl[dlKey(t.id, page.seasonOf(it), it.number)]?.progress ?: 0f }.average().toFloat()
+            val what = if (page.bySeason) "season" else "all"
+            DlAct(if (all) DlState(1f, true) else if (some) DlState(avg, false) else null, if (all) (if (page.bySeason) "Season downloaded" else "Downloaded") else "Download $what") {
+                page.episodes.forEach { e -> val es = page.seasonOf(e); if (dl[dlKey(t.id, es, e.number)] == null) downloads.start(t.id, es, e.number, "${t.name} ${e.label ?: page.label(es, e.number)}") }
             }
         }
         if (page.hasFillers) SwitchAct("Skip fillers", page.fillers == "skip") { vm.skipFillers(it) }
@@ -331,7 +332,9 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
     item("eps-head") {
         var open by remember { mutableStateOf(false) }
         Row(Modifier.padding(horizontal = gutter).padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box {
+            /* One season, or one numbered run: no season shown, just the episodes. */
+            if (!page.bySeason) Text("Episodes", style = ui(18, FontWeight.Bold))
+            else Box {
                 val turn by animateFloatAsState(if (open) 180f else 0f, label = "chev")
                 Row(Modifier.height(44.dp).clip(RoundedCornerShape(8.dp)).background(Night.surface3).border(1.dp, Night.line, RoundedCornerShape(8.dp)).clickableScale({ if (page.seasons.size > 1) open = true }).padding(start = 16.dp, end = 10.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -349,40 +352,43 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
                     }
                 }
             }
-            Text("${page.seasons.firstOrNull { it.number == season }?.episodeCount ?: page.episodes.size} episodes", style = ui(14, color = Night.fg3))
+            Text("${(if (page.bySeason) page.seasons.firstOrNull { it.number == season }?.episodeCount else null) ?: page.episodes.size} episodes", style = ui(14, color = Night.fg3))
         }
     }
     if (loading) items(4) { Skeleton(Modifier.padding(horizontal = gutter, vertical = 10.dp).fillMaxWidth().height(96.dp)) }
     else {
         val r = page.resume
-        val last = page.episodes.lastOrNull()?.number
-        val finalSeason = page.seasons.lastOrNull()?.number == season
-        items(page.episodes, key = { "ep$season:${it.number}" }) { e ->
-            EpisodeRow(page, season, e, now = r?.started == true && r.season == season && r.episode == e.number,
-                finale = if (e.number == last) (if (finalSeason && page.title.status.contains("Ended", true)) "FINALE" else "SEASON FINALE") else null,
-                dl = dl[dlKey(page.title.id, season, e.number)], wide = wide, gutter = gutter,
-                onPlay = { go.play(page.title.id, season, e.number) },
-                onDownload = { downloads.start(page.title.id, season, e.number, "${page.title.name} S$season:E${e.number}") })
+        val last = page.episodes.lastOrNull()
+        val finalSeason = !page.bySeason || page.seasons.lastOrNull()?.number == season
+        items(page.episodes, key = { "ep${page.seasonOf(it)}:${it.number}" }) { e ->
+            /* In one run the list crosses seasons: each episode plays by its own season. */
+            val s = page.seasonOf(e)
+            EpisodeRow(page, e, now = r?.started == true && r.season == s && r.episode == e.number,
+                finale = if (e === last) (if (finalSeason && page.title.status.contains("Ended", true)) "FINALE" else "SEASON FINALE") else null,
+                dl = dl[dlKey(page.title.id, s, e.number)], wide = wide, gutter = gutter,
+                onPlay = { go.play(page.title.id, s, e.number) },
+                onDownload = { downloads.start(page.title.id, s, e.number, "${page.title.name} ${e.label ?: page.label(s, e.number)}") })
         }
     }
 }
 
 @Composable
-private fun EpisodeRow(page: TitlePage, season: Int, e: EpisodeInfo, now: Boolean, finale: String?, dl: DlState?, wide: Boolean, gutter: Dp, onPlay: () -> Unit, onDownload: () -> Unit) {
+private fun EpisodeRow(page: TitlePage, e: EpisodeInfo, now: Boolean, finale: String?, dl: DlState?, wide: Boolean, gutter: Dp, onPlay: () -> Unit, onDownload: () -> Unit) {
     val skipped = page.fillers == "skip" && e.filler
     Row(Modifier.fillMaxWidth().padding(horizontal = if (wide) gutter - 12.dp else gutter).alpha(if (skipped) 0.5f else 1f)
         .clip(RoundedCornerShape(if (wide) 8.dp else 0.dp)).background(if (now) Night.surface2 else Color.Transparent)
         .clickableScale(onPlay).drawBehind { if (wide) drawLine(Night.line, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx()) }
         .padding(horizontal = if (wide) 12.dp else 0.dp, vertical = if (wide) 16.dp else 12.dp),
         horizontalArrangement = Arrangement.spacedBy(if (wide) 16.dp else 12.dp), verticalAlignment = Alignment.Top) {
-        if (wide) Text("${e.number}", style = ui(22, color = Night.fg3), modifier = Modifier.width(26.dp).align(Alignment.CenterVertically))
+        val n = if (page.layout == "continuous") e.absolute ?: e.number else e.number
+        if (wide) Text("$n", style = ui(22, color = Night.fg3), modifier = Modifier.widthIn(min = 26.dp).align(Alignment.CenterVertically))
         Box(Modifier.width(if (wide) 150.dp else 120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp))) {
             Img(e.still ?: page.title.backdrop, Modifier.fillMaxSize())
             if (e.fraction > 0) ProgressLine(e.fraction.toFloat(), Modifier.align(Alignment.BottomCenter).padding(6.dp).fillMaxWidth().clip(RoundedCornerShape(2.dp)))
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text((if (wide) "" else "${e.number}. ") + e.name, style = ui(15, FontWeight.Bold), modifier = Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text((if (wide) "" else "$n. ") + e.name, style = ui(15, FontWeight.Bold), modifier = Modifier.weight(1f, fill = false), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (e.filler) FTag("Filler", false) else if (e.recap) FTag("Recap", true)
                 if (wide) { Spacer(Modifier.weight(1f)); Text(if (skipped) "Skipped" else e.runtime?.let { "${it}m" } ?: "", style = ui(14, color = Night.fg2)) }
             }

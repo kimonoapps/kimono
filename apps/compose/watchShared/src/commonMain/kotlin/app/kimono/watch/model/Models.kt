@@ -28,6 +28,8 @@ data class Card(
     /* Continue watching. */
     val season: Int? = null,
     val episode: Int? = null,
+    /** How the episode is named for the title's layout ("S2:E3", "E27", "E3"), when the server sends it. */
+    val label: String? = null,
     val fraction: Double? = null,
     val left: Int? = null,
     /* Home's featured title. */
@@ -77,6 +79,7 @@ data class Resume(
     val position: Double = 0.0,
     val started: Boolean = false,
     val fraction: Double? = null,
+    val label: String? = null,
 )
 
 @Serializable
@@ -91,6 +94,12 @@ data class SeasonInfo(val number: Int, val name: String = "", val episodeCount: 
 @Serializable
 data class EpisodeInfo(
     val number: Int,
+    /** Missing from older servers: the page's season then. */
+    val season: Int? = null,
+    /** Counted from the first episode, specials left out. */
+    val absolute: Int? = null,
+    /** "S2:E3", "E27" or "E3": how this episode is named everywhere. */
+    val label: String? = null,
     val name: String = "",
     val overview: String = "",
     val still: String? = null,
@@ -121,7 +130,28 @@ data class TitlePage(
     val fillers: String = "ask",
     val season: Int? = null,
     val episodes: List<EpisodeInfo> = emptyList(),
-)
+    /** "single": one season, no season shown anywhere; "continuous": one list numbered from the first; "seasons": the picker. */
+    val layout: String = "seasons",
+) {
+    val bySeason get() = layout == "seasons"
+    /** The season an episode on this page belongs to. */
+    fun seasonOf(e: EpisodeInfo) = e.season ?: season ?: 1
+    fun episode(season: Int, number: Int) = episodes.firstOrNull { seasonOf(it) == season && it.number == number }
+    /** How [season]/[number] is named on screen: the server's label, else made the same way. */
+    fun label(season: Int, number: Int): String = episode(season, number)?.label ?: episodeLabel(layout, season, number, episode(season, number)?.absolute)
+    /** The number people see: counted from the first in one run, else within the season. */
+    fun shownNumber(season: Int, number: Int): Int = label(season, number).substringAfterLast('E').toIntOrNull() ?: number
+}
+
+/** As the server names episodes (apps/portal/src/lib/watch/labels.ts). */
+fun episodeLabel(layout: String, season: Int, number: Int, absolute: Int? = null): String =
+    if (layout == "seasons") "S$season:E$number" else "E${if (layout == "continuous") absolute ?: number else number}"
+
+/** The long form for a heading: "Season 2: Episode 3" or "Episode 27". */
+fun longLabel(short: String): String {
+    val m = Regex("^S(\\d+):E(\\d+)$").find(short)
+    return if (m != null) "Season ${m.groupValues[1]}: Episode ${m.groupValues[2]}" else "Episode ${short.removePrefix("E")}"
+}
 
 /** What a device can play, sent with every play so the server picks a version that works. */
 @Serializable
@@ -202,6 +232,8 @@ data class Prefs(
     val animeAudio: String = "original",
     val filmAudio: String = "original",
     val subtitles: String = "auto",
+    /** Anime "seasons" or "continuous" (one numbered run). */
+    val animeEpisodes: String = "seasons",
     val autoplayNext: Boolean = true,
     val skipIntros: Boolean = false,
     /** With `?device=`: this device's own quality, null when it follows the person's. */

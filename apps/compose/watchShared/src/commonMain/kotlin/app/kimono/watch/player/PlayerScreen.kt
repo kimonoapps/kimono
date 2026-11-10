@@ -365,7 +365,7 @@ fun PlayerScreen(
             PBtn(Ic.back, onExit, enabled = chrome > 0.5f || state.loading)
             Text(androidx.compose.ui.text.buildAnnotatedString {
                 pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg, fontWeight = FontWeight.Bold)); append(name); pop()
-                if (!state.isFilm && ep != null) append("  E${state.episode} · ${ep.name}")
+                if (!state.isFilm && ep != null) append("  ${state.label} · ${ep.name}")
             }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (corner != null && !state.loading && chrome > 0.5f) corner() else Spacer(Modifier.size(48.dp))
         }
@@ -389,7 +389,7 @@ fun PlayerScreen(
                         SeekBtn(true, small = true) { seekBy(10.0); show() }
                         Text(androidx.compose.ui.text.buildAnnotatedString {
                             pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg, fontWeight = FontWeight.Bold)); append(name); pop()
-                            if (!state.isFilm && ep != null) append("   S${state.season}:E${state.episode} “${ep.name}”")
+                            if (!state.isFilm && ep != null) append("   ${state.label} “${ep.name}”")
                         }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     if (!tv) VolumeSlider(volume, { volume = it; engine.setVolume(it); show(hold = true) }, onDone = { show() })
@@ -618,7 +618,7 @@ private fun PauseCard(on: Boolean, state: app.kimono.watch.ui.PlayerState, modif
             Text("You're watching", style = ui(15, color = Night.fg3))
             Logo(page.title.name, page.title.logo, 48, maxHeight = 90.dp)
             val ep = state.current
-            if (!state.isFilm && ep != null) Text("Season ${state.season}: Episode ${state.episode} “${ep.name}”", style = ui(15, FontWeight.Bold))
+            if (!state.isFilm && ep != null) Text("${app.kimono.watch.model.longLabel(state.label)} “${ep.name}”", style = ui(15, FontWeight.Bold))
             Text(ep?.overview?.takeIf { it.isNotBlank() } ?: page.title.overview, style = ui(15, color = Night.fg2).copy(lineHeight = 24.sp), maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -647,7 +647,7 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (page != null) {
                     Logo(page.title.name, page.title.logo, 34, Modifier.widthIn(max = 420.dp), center = true, maxHeight = 84.dp)
-                    if (!state.isFilm) Text("S${state.season}:E${state.episode}" + (ep?.let { " · ${it.name}" } ?: ""), style = ui(15, color = Night.fg2))
+                    if (!state.isFilm) Text(state.label + (ep?.let { " · ${it.name}" } ?: ""), style = ui(15, color = Night.fg2))
                 }
                 Spacer(Modifier.size(8.dp))
                 InkRing({ value }, size = 96.dp, percent = true, percentStyle = ui(18, FontWeight.Bold))
@@ -749,22 +749,24 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
             }
             Sheet.Party -> if (party != null) PartySheet(party, app.kimono.watch.LocalWatch.current.tv, first)
             Sheet.Episodes -> {
-                Text("Season ${state.season}", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(bottom = 10.dp))
-                val eps = state.page?.episodes.orEmpty()
+                val pg = state.page
+                Text(if (pg == null || pg.bySeason) "Season ${state.season}" else "Episodes", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(bottom = 10.dp))
+                val eps = pg?.episodes.orEmpty()
                 val list = rememberLazyListState()
-                LaunchedEffect(Unit) { list.scrollToItem((eps.indexOfFirst { it.number == state.episode } - 1).coerceAtLeast(0)) }
+                LaunchedEffect(Unit) { list.scrollToItem((eps.indexOfFirst { pg?.seasonOf(it) == state.season && it.number == state.episode } - 1).coerceAtLeast(0)) }
                 LazyColumn(Modifier.height(320.dp).widthIn(min = 380.dp), state = list) {
                     items(eps) { e ->
-                        val now = e.number == state.episode
+                        val es = pg?.seasonOf(e) ?: state.season
+                        val now = es == state.season && e.number == state.episode
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (now) Color(0x24D06A82) else Color.Transparent)
-                            .clickableScale({ close(); if (party != null) party.episode(state.season, e.number) else vm.play(state.season, e.number) }).then(if (now) Modifier.focusRequester(first) else Modifier).padding(8.dp),
+                            .clickableScale({ close(); if (party != null) party.episode(es, e.number) else vm.play(es, e.number) }).then(if (now) Modifier.focusRequester(first) else Modifier).padding(8.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp))) {
                                 Img(e.still, Modifier.fillMaxSize())
                                 if (e.fraction > 0 || now) app.kimono.watch.ui.ProgressLine(if (now) (position / ((e.runtime ?: 24) * 60.0)).toFloat() else e.fraction.toFloat(), Modifier.align(Alignment.BottomCenter).fillMaxWidth())
                             }
                             Column {
-                                Text("${e.number}. ${e.name}", style = ui(14, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("${pg?.shownNumber(es, e.number) ?: e.number}. ${e.name}", style = ui(14, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(listOfNotNull(e.runtime?.let { "${it}m" }, "Filler".takeIf { e.filler }, "Recap".takeIf { e.recap }).joinToString(" · "), style = ui(12, color = Night.fg3))
                             }
                         }
@@ -825,7 +827,7 @@ private fun FillerAsk(vm: PlayerViewModel, post: Post.Ask, tv: Boolean) {
     LaunchedEffect(Unit) { vig.animateTo(1f, tween(1100)) }
     Box(Modifier.fillMaxSize().alpha(vig.value).drawBehind { drawRect(Brush.radialGradient(0f to Color(0xEB000000), 0.28f to Color(0xB3000000), 0.55f to Color(0x40000000), 0.75f to Color.Transparent, center = Offset(size.width, size.height), radius = size.width * 1.1f)) })
     val f = post.filler
-    val a = f.first.episode; val b = a + f.count - 1
+    val a = vm.state.value.page?.shownNumber(f.first.season, f.first.episode) ?: f.first.episode; val b = a + f.count - 1
     val focus = remember { FocusRequester() }
     Column(Modifier.fillMaxSize().padding(end = 32.dp, bottom = 52.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom)) {
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -270,7 +270,7 @@ private fun ContinueCard(card: Card, go: Go) {
         Row(Modifier.padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(card.name, style = ui(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val label = if (card.isFilm || (card.season ?: 0) == 0) "Film" else "S${card.season}:E${card.episode}"
+                val label = if (card.isFilm || (card.season ?: 0) == 0) "Film" else card.label ?: "S${card.season}:E${card.episode}"
                 Text("$label · ${card.left ?: 0}m left", style = ui(13, color = Night.fg2), maxLines = 1)
             }
             Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ go.open(card) }), contentAlignment = Alignment.Center) { I(Ic.info) }
@@ -418,7 +418,7 @@ fun PartyInvites(go: Go, modifier: Modifier = Modifier) {
                 Column(Modifier.weight(1f)) {
                     val mine = p.host.equals(me, true)
                     Text(if (mine) "You’re watching ${p.title?.name ?: "something"} on another screen" else "${p.hostName.ifBlank { p.host }} is watching ${p.title?.name ?: "something"}", style = ui(15, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    if (p.season > 0) Text("S${p.season}:E${p.episode} · together", style = ui(13, color = Night.fg2))
+                    if (p.season > 0) Text("${p.label ?: "S${p.season}:E${p.episode}"} · together", style = ui(13, color = Night.fg2))
                 }
                 PaperButton("Join", Ic.people, { go.join(p.id) }, height = 40.dp)
                 Box(Modifier.size(36.dp).clickableScaleClipped(CircleShape, { dismissed = dismissed + p.id }), contentAlignment = Alignment.Center) { I(Ic.close, 18.dp, Night.fg2) }

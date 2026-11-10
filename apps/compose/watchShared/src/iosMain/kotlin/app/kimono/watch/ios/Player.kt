@@ -147,7 +147,7 @@ internal class PlayerSession(private val host: IosWatchHost, private val service
         LaunchedEffect(state.page, state.season, state.episode) {
             val page = state.page ?: return@LaunchedEffect
             val ep = state.current
-            val line = if (page.title.isFilm || ep == null) page.title.year?.toString().orEmpty() else "S${state.season}:E${state.episode} · ${ep.name}"
+            val line = if (page.title.isFilm || ep == null) page.title.year?.toString().orEmpty() else "${state.label} · ${ep.name}"
             player.nowPlaying(page.title.name, line, ep?.still ?: page.title.backdrop ?: page.title.poster)
         }
         var pip by androidx.compose.runtime.remember { mutableStateOf(false) }

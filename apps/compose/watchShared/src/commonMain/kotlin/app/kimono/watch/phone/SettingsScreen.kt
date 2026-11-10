@@ -64,6 +64,10 @@ fun SettingsScreen(onClose: () -> Unit, wide: Boolean = false) {
                 item { Group("Playback", null) }
                 item { Toggle("Skip intros by themselves", prefs.skipIntros) { vm.toggle("skipIntros", it) } }
                 item { Toggle("Play the next episode", prefs.autoplayNext) { vm.toggle("autoplayNext", it) } }
+                item { Group("Anime episodes", null) }
+                listOf("seasons" to "By season", "continuous" to "One list").forEach { (value, label) ->
+                    item("a$value") { Choice(label, prefs.animeEpisodes == value) { vm.animeEpisodes(value) } }
+                }
             }
         }
         Box(Modifier.align(Alignment.TopEnd).padding(top = statusTop + 12.dp, end = 12.dp).size(38.dp).clip(CircleShape).background(Color(0xBF110C0A)).clickableScale(onClose), contentAlignment = Alignment.Center) { I(Ic.close) }

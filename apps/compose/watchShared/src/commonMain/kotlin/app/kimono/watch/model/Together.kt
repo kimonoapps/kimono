@@ -66,6 +66,8 @@ data class PartySummary(
     val title: Card? = null,
     val season: Int = 0,
     val episode: Int = 0,
+    /** The episode as the title names it, when the server sends it. */
+    val label: String? = null,
     val watching: List<String> = emptyList(),
     val seq: Long = 0,
 )

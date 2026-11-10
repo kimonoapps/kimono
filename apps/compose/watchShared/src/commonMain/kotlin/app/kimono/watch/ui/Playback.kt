@@ -51,7 +51,9 @@ data class PlayerState(
     val finding: Boolean = true,
 ) {
     val isFilm get() = page?.title?.isFilm == true
-    val current: EpisodeInfo? get() = page?.episodes?.firstOrNull { it.number == episode && page.season == season }
+    val current: EpisodeInfo? get() = page?.episode(season, episode)
+    /** "S2:E3", "E27" or "E3", as the title names its episodes. */
+    val label: String get() = page?.label(season, episode) ?: "S$season:E$episode"
     /** Seconds where the credits start: the marker, else the last 25 s. */
     fun creditsAt(duration: Double): Double = answer?.markers?.credits?.takeIf { it > 0 && it < duration } ?: (duration - 25).coerceAtLeast(duration * 0.9)
 }
@@ -108,7 +110,7 @@ class PlayerViewModel(
         _state.value = _state.value.copy(season = season, episode = episode, loading = true, finding = true, problem = null, skip = null, post = Post.None)
         prepared = false; autoSkipped = false; creditsDone = false; lastSaved = -100.0
         val page = _state.value.page
-        if (page != null && !page.title.isFilm && page.season != season) {
+        if (page != null && !page.title.isFilm && page.bySeason && page.season != season) {
             runCatching { api.title(titleId, season) }.getOrNull()?.let { _state.value = _state.value.copy(page = it) }
         }
         val answer = (if (version == null && quality == null) offline(titleId, season, episode) else null) ?: api.play(titleId, season, episode, version, quality)
@@ -235,7 +237,7 @@ class PlayerViewModel(
         viewModelScope.launch { runCatching { api.savePrefs(buildJsonObject { put("fillers", JsonPrimitive(if (skip) "skip" else "watch")) }) } }
         finishCurrent()
         val target = if (skip) ask.canon else ask.first
-        if (skip) toasts.show(target?.let { "Skipping to episode ${it.episode}" } ?: "Fillers will be skipped")
+        if (skip) toasts.show(target?.let { "Skipping to episode ${_state.value.page?.shownNumber(it.season, it.episode) ?: it.episode}" } ?: "Fillers will be skipped")
         if (target != null) play(target.season, target.episode) else _state.value = _state.value.copy(post = Post.End)
     }
 

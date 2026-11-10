@@ -284,7 +284,7 @@ private fun TvContinue(card: Card, go: Go) {
             ProgressLine(((card.fraction ?: 0.0).coerceAtLeast(0.04)).toFloat(), Modifier.fillMaxWidth())
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 Text(card.name, style = ui(14, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                val label = if (card.isFilm || (card.season ?: 0) == 0) "Film" else "S${card.season}:E${card.episode}"
+                val label = if (card.isFilm || (card.season ?: 0) == 0) "Film" else card.label ?: "S${card.season}:E${card.episode}"
                 Text("$label · ${card.left ?: 0}m left", style = ui(13, color = Night.fg2))
             }
         }

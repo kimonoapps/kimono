@@ -286,6 +286,13 @@ class SettingsViewModel(private val api: WatchApi, private val deviceId: String,
         viewModelScope.launch { runCatching { api.deviceQuality(if (cell) cellId else deviceId, value) } }
     }
 
+    /** Anime by season, or as one list numbered from the first episode. */
+    fun animeEpisodes(value: String) {
+        val prefs = _state.value.prefs ?: return
+        _state.value = _state.value.copy(prefs = prefs.copy(animeEpisodes = value))
+        viewModelScope.launch { runCatching { api.savePrefs(kotlinx.serialization.json.buildJsonObject { put("animeEpisodes", kotlinx.serialization.json.JsonPrimitive(value)) }) } }
+    }
+
     fun toggle(key: String, on: Boolean) {
         val prefs = _state.value.prefs ?: return
         _state.value = _state.value.copy(prefs = when (key) { "skipIntros" -> prefs.copy(skipIntros = on); else -> prefs.copy(autoplayNext = on) })
