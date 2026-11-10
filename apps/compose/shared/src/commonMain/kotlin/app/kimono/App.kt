@@ -194,8 +194,9 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             target.id == "kimono-vpn" -> goTab("vpn")
             target.id == app.kimono.data.Notes.APP_ID -> goTab("notes")
             /* An app with a phone app of its own: open it when it's here, and when it isn't, its page here to get it. Never its website. */
+            /* With a newer version waiting (its tile says Update), its page, which has the update. */
             target.phoneApp != null -> {
-                if (!app.kimono.screens.openPhoneApp(target.phoneApp, platform)) nav.navigate("app/${target.id}")
+                if (app.kimono.screens.phoneAppHere(target, platform).update != null || !app.kimono.screens.openPhoneApp(target.phoneApp, platform)) nav.navigate("app/${target.id}")
             }
             else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
         }
