@@ -629,6 +629,10 @@ test('someone who wants the dub never gets a Japanese-only release when a dubbed
   assert.ok(releases.languageScore(subsplease, sub) > 0);
   const device = { ...phone, codecs: ['h264', 'hevc'] };
   assert.equal(releases.rank([subsplease, multi], device, 'auto', 26, dub)[0], multi);
+  const unlisted = { ...multi, languages: ['multi'] };
+  const english = { ...multi, languages: ['ja', 'en'] };
+  assert.ok(releases.languageScore(english, dub) > releases.languageScore(unlisted, dub), 'an unlisted MULTI may be any dub: below one that says English');
+  assert.ok(releases.languageScore(unlisted, dub) > releases.languageScore(subsplease, dub));
 });
 
 test('a show remembers the tracks picked in the player; settings take the new choices', () => {

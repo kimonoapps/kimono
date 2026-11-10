@@ -210,9 +210,13 @@ export function budget(height: number, device: Pick<Device, "client" | "mbps" | 
 export function languageScore(r: Pick<Release, "languages" | "subtitles">, want: LanguageWant | string): number {
   const w = typeof want === "string" ? { audio: want, original: "", subtitles: null } : want;
   const known = r.languages.length > 0;
-  const hasAudio = r.languages.includes(w.audio) || r.languages.includes("multi");
+  /* "MULTI" with no list is usually the original plus a dub, any dub: no promise of the one asked for. */
+  const multiOnly = !r.languages.includes(w.audio) && r.languages.includes("multi");
+  const dub = Boolean(w.original) && w.audio !== w.original;
+  const hasAudio = r.languages.includes(w.audio) || (multiOnly && !dub);
   let s = 0;
   if (hasAudio) s += 40;
+  else if (multiOnly) s -= 30;
   else if (known) s -= w.audio === w.original ? 20 : 200;
   else if (w.original && w.audio !== w.original) s -= 60;
   if (w.subtitles && w.audio !== w.subtitles) s += r.subtitles.includes(w.subtitles) ? 20 : r.subtitles.length ? -40 : 0;

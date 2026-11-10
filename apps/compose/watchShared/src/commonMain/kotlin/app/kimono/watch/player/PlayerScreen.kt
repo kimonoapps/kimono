@@ -133,6 +133,8 @@ fun PlayerScreen(
     vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: Boolean, onExit: () -> Unit, onRec: (String) -> Unit, party: TogetherViewModel? = null,
     /** The top corner's own buttons (iPhone: AirPlay and picture in picture). */
     corner: (@Composable () -> Unit)? = null,
+    /** Phone: turns the player upright, or back on its side; it starts on its side. */
+    rotate: (() -> Unit)? = null,
 ) {
     val state by vm.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -189,6 +191,8 @@ fun PlayerScreen(
     DisposableEffect(engine) {
         /* In a party a dropped stream is asked again, quietly, a few times: the party waits meanwhile. */
         var retries = 0
+        var dubTries = 0
+        var dubEpisode: Pair<Int?, Int?>? = null
         val stop = engine.listen(object : EngineListener {
             override fun firstFrame() { retries = 0; vm.started() }
             override fun error(decoder: Boolean, network: Boolean) {
@@ -206,6 +210,15 @@ fun PlayerScreen(
                     hinted = vm.state.value.loads
                     if (engine.videoBeyondDecoders() && vm.fallback(engine.position)) return
                     engine.applyHints(answer.tracks)
+                    /* A dub asked for that this copy doesn't carry (a "multi" in Portuguese, say): the next copy, a few times. */
+                    val want = answer.tracks.audio?.language
+                    val original = vm.state.value.page?.language?.original
+                    val audios = engine.audioOptions()
+                    val episode = vm.state.value.season to vm.state.value.episode
+                    if (dubEpisode != episode) { dubEpisode = episode; dubTries = 0 }
+                    if (want != null && original != null && want != original && audios.isNotEmpty() && audios.all { it.language != null } && audios.none { it.language == want }) {
+                        if (dubTries < 3 && vm.fallback(engine.position)) { dubTries++; return }
+                    }
                 }
             }
             override fun aspect(ratio: Float) { aspect = ratio }
@@ -336,7 +349,7 @@ fun PlayerScreen(
                         else -> toggle()
                     }
                 },
-                onTap = { if (pauseCard) pauseCard = false else if (ctl && sheet == null) ctl = false else { sheet = null; show() } },
+                onTap = { if (pauseCard) { pauseCard = false; show() } else if (ctl && sheet == null) ctl = false else { sheet = null; show() } },
             )
         }) {
 
@@ -397,16 +410,17 @@ fun PlayerScreen(
                 pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg, fontWeight = FontWeight.Bold)); append(name); pop()
                 if (!state.isFilm && ep != null) append("  ${state.label} · ${ep.name}")
             }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (corner != null && !state.loading && chrome > 0.5f) corner() else Spacer(Modifier.size(48.dp))
+            if (rotate != null && !tv && !state.loading && chrome > 0.5f) PBtn(Ic.rotate, { rotate(); show() }, iconSize = 24.dp)
+            if (corner != null && !state.loading && chrome > 0.5f) corner() else if (rotate == null || tv) Spacer(Modifier.size(48.dp))
         }
 
+        /* Middle (phone): back ten, play, forward ten. Play stays up over "You're watching", one tap away. */
+        if (!tv && !state.loading && (chrome > 0.01f || pauseCard) && post == Post.None) Row(Modifier.align(Alignment.Center).zIndex(3f), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.alpha(chrome)) { SeekBtn(false) { if (chrome > 0.5f) { seekBy(-10.0); rip(false); show() } } }
+            Box(Modifier.alpha(if (pauseCard) 1f else chrome)) { PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true) }
+            Box(Modifier.alpha(chrome)) { SeekBtn(true) { if (chrome > 0.5f) { seekBy(10.0); rip(true); show() } } }
+        }
         if (!state.loading && chrome > 0.01f) {
-            /* Middle (phone): back ten, play, forward ten. */
-            if (!tv) Row(Modifier.align(Alignment.Center).alpha(chrome), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                SeekBtn(false) { seekBy(-10.0); rip(false); show() }
-                PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true)
-                SeekBtn(true) { seekBy(10.0); rip(true); show() }
-            }
             /* Bottom: the scrubber, then the buttons. */
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().alpha(chrome).padding(start = 20.dp, end = 20.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 LaunchedEffect(focusScrub) { if (focusScrub > 0) { delay(30); runCatching { scrubFocus.requestFocus() } } }
@@ -647,8 +661,9 @@ private fun PauseCard(on: Boolean, state: app.kimono.watch.ui.PlayerState, modif
     val a by animateFloatAsState(if (on) 1f else 0f, tween(800), label = "pause")
     if (a <= 0f) return
     val page = state.page ?: return
-    Box(modifier.alpha(a).background(Color(0x99000000)).padding(horizontal = 64.dp), contentAlignment = Alignment.CenterStart) {
-        Column(Modifier.widthIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    BoxWithConstraints(modifier.alpha(a).background(Color(0x99000000)).padding(horizontal = 64.dp), contentAlignment = Alignment.CenterStart) {
+        /* Left of the play button in the middle, never under it. */
+        Column(Modifier.widthIn(max = (maxWidth / 2 - 64.dp).coerceIn(200.dp, 560.dp)), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("You're watching", style = ui(15, color = Night.fg3))
             Logo(page.title.name, page.title.logo, 48, maxHeight = 90.dp)
             val ep = state.current
