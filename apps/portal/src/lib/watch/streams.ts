@@ -9,6 +9,7 @@
  */
 import { parseRelease, type Release } from "./releases";
 import { WatchProblem } from "./model";
+import { isStandIn, markDead } from "./dead";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -69,6 +70,13 @@ export async function fetchUpstream(url: string, init: { method: string; headers
       await response.body?.cancel().catch(() => {});
       next = new URL(location, next).toString();
       continue;
+    }
+    /* A stand-in clip ("this provider is unavailable") is a failure: mark the copy so the next play picks another. */
+    const total = Number(/\/(\d+)$/.exec(response.headers.get("content-range") ?? "")?.[1] ?? (response.status === 200 ? response.headers.get("content-length") : NaN));
+    if (response.ok && isStandIn(target.url, Number.isFinite(total) && total > 0 ? total : null, null)) {
+      await response.body?.cancel().catch(() => {});
+      markDead(url);
+      return null;
     }
     return response;
   }

@@ -547,7 +547,7 @@ test("the relay follows AIOStreams' redirect to nzbdav, with the login as that h
   const fake = async (url, init) => {
     seen.push([url, init.headers.get('authorization'), init.redirect]);
     if (url.startsWith('http://aiostreams')) return new Response(null, { status: 307, headers: { location: 'http://kimono:s3cret@nzbdav:3000/content/a.mkv' } });
-    return new Response('bytes', { status: 206, headers: { 'content-range': 'bytes 0-4/10' } });
+    return new Response('bytes', { status: 206, headers: { 'content-range': 'bytes 0-4/1500000000' } });
   };
   const r = await streams.fetchUpstream('http://aiostreams:3000/api/v1/debrid/playback/x', { method: 'GET', headers: new Headers({ range: 'bytes=0-4', authorization: 'Bearer leak' }) }, fake);
   assert.equal(r.status, 206);

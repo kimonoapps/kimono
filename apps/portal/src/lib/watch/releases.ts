@@ -8,6 +8,7 @@
 
 import { languageOf, type LanguageWant } from "./languages";
 import { needed, speedScore, type Speeds } from "./speed";
+import { isDead } from "./dead";
 
 /* Anime groups that release Japanese audio with their own subtitles (or none, for "raws"): their listed languages are subtitles. */
 const subGroups = /\[(subsplease|erai-raws|horriblesubs|judas|asw|ember|tsundere-raws|anime time|commie|gjm|kaleido-subs|yameii|dkb|ssa|toonshub|varyg|sallysubs|nep_blanc|[a-z-]*-raws)\]|-(subsplease|erai-raws|judas|asw|ember)\b|\b[a-z]+-raws\b/i;
@@ -59,6 +60,10 @@ export type Device = {
   mbps?: number;
   /** On the same network as the server: full-size remuxes are fine. */
   lan?: boolean;
+  /** Decodes 10-bit HEVC/AV1 in hardware; false on older phones and boxes. Missing means yes. */
+  tenBit?: boolean;
+  /** Decodes 10-bit H.264 ("Hi10P", common in older anime releases), which almost no hardware does. */
+  hi10p?: boolean;
 };
 
 export type Quality = "auto" | "2160" | "1080" | "720" | "saver";
@@ -150,6 +155,10 @@ export const bitrate = (r: Pick<Release, "bytes"> & { mbps?: number | null }, mi
 /** Why a release won't do on this device, or null when it plays. */
 export function unplayable(r: Release, device: Device, minutes: number | null): string | null {
   if (r.junk) return "not the film or episode itself";
+  if (isDead(r.url)) return "failed to play a moment ago";
+  /* 10-bit H.264 plays only in software; 10-bit HEVC needs a decoder that does it. */
+  if (r.codec === "h264" && r.tenBit && !r.hdr.length && !device.hi10p) return "10-bit H.264 isn't supported here";
+  if ((r.codec === "hevc" || r.codec === "av1") && r.tenBit && device.tenBit === false) return "10-bit video isn't supported here";
   if (r.cached === false) return "not ready to stream";
   if (r.codec !== "other" && r.codec !== "h264" && !device.codecs.includes(r.codec)) return `${r.codec.toUpperCase()} isn't supported here`;
   /* Profile 5 has no HDR10 under it: elsewhere the picture comes out purple and green. */
@@ -212,7 +221,26 @@ export function rank(releases: Release[], device: Device, quality: Quality, minu
     .filter((r) => unplayable(r, device, minutes) === null)
     .map((r) => ({ r, s: score(r, device, quality, minutes, language, speeds) }))
     .sort((a, b) => b.s - a.s)
-    .map(({ r }) => r);
+    .map(({ r }) => r)
+    .filter(unique());
+}
+
+/**
+ * The same file listed twice (by two scrapers of one service, or twice by
+ * one) is kept once, the better-placed copy. The same file from Usenet and
+ * from the debrid service stays twice: one is the other's fallback.
+ */
+function unique() {
+  const seen = new Set<string>();
+  return (r: Release) => {
+    const name = (r.filename || r.name).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!name) return true;
+    const size = r.bytes ? Math.round(r.bytes / (50 * 1024 * 1024)) : "?";
+    const key = `${r.service}|${name}|${size}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
 }
 
 /** How a version is shown to people: "4K · Dolby Vision · Atmos · 18 GB". */
@@ -251,6 +279,8 @@ export function cleanDevice(raw: unknown): Device {
     passthrough: pick(input.passthrough, ["truehd", "dts-hd", "dts", "eac3", "ac3"] as const),
     ...(Number(input.mbps) > 0 ? { mbps: Number(input.mbps) } : {}),
     ...(input.lan === true ? { lan: true } : {}),
+    ...(input.tenBit === false ? { tenBit: false } : {}),
+    ...(input.hi10p === true ? { hi10p: true } : {}),
   };
 }
 

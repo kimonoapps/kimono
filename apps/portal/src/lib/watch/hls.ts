@@ -44,7 +44,7 @@ export function screenFor(device: Device, cast: Cast | null): Device {
 }
 
 /** A screen that takes anything, for picking a release when only transcoding will do. */
-export const anything = (device: Device): Device => ({ ...device, codecs: ["h264", "hevc", "av1"], hdr: ["hdr10", "hdr10plus", "hlg", "dv"], dvProfiles: [5, 7, 8] });
+export const anything = (device: Device): Device => ({ ...device, codecs: ["h264", "hevc", "av1"], hdr: ["hdr10", "hdr10plus", "hlg", "dv"], dvProfiles: [5, 7, 8], tenBit: true, hi10p: true });
 
 /* ───── The address ───── */
 
