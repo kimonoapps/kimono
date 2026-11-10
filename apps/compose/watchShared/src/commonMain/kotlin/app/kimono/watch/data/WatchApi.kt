@@ -50,12 +50,12 @@ class WatchApi(
     suspend fun title(id: String, season: Int? = null): TitlePage = json.decodeFromString(get("/titles/$id" + (season?.let { "?season=$it" } ?: "")))
 
     /** Marks on a title: My list, a rating ("down", "up", "love", or null to clear), a reminder, the tracks picked in the player. */
-    suspend fun mark(id: String, inList: Boolean? = null, rating: String? = null, clearRating: Boolean = false, reminding: Boolean? = null, tracks: TrackChoice? = null): TitlePage =
+    suspend fun mark(id: String, inList: Boolean? = null, rating: String? = null, clearRating: Boolean = false, reminding: Boolean? = null, tracks: TrackChoice? = null, clearTracks: Boolean = false): TitlePage =
         json.decodeFromString(send(HttpMethod.Put, "/titles/$id", buildJsonObject {
             inList?.let { put("inList", it) }
             reminding?.let { put("reminding", it) }
             if (clearRating) put("rating", JsonNull) else rating?.let { put("rating", it) }
-            tracks?.let { put("tracks", json.encodeToJsonElement(it)) }
+            if (clearTracks) put("tracks", JsonNull) else tracks?.let { put("tracks", json.encodeToJsonElement(it)) }
         }))
 
     /** This show's episodes by season or as one list; null goes back to the anime default. Answers the page again. */

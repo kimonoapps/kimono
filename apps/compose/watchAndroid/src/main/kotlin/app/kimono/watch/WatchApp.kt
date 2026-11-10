@@ -59,7 +59,9 @@ class WatchApp : Application() {
         downloads = app.kimono.watch.player.Downloads(this)
         services = WatchServices(accounts, api, toasts, downloads, tv, app.kimono.watch.ui.AndroidPreview, deviceId, cellular = !tv, openUrl = { url ->
             runCatching { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        }, version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty())
+        }, version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty(),
+            /* "Remove animations" in Android's accessibility settings sets the animator scale to 0. */
+            reducedMotion = { android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f })
     }
 
     private fun onMobileData(): Boolean {

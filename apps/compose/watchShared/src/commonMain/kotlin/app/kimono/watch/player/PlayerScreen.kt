@@ -441,7 +441,9 @@ fun PlayerScreen(
 
         Loading(state, vm, startFill, onExit)
 
-        if (settings) app.kimono.watch.phone.SettingsScreen(onClose = { settings = false }, tv = tv, playerOnly = true)
+        androidx.compose.animation.AnimatedVisibility(settings, enter = app.kimono.watch.ui.pageEnter(), exit = fadeOut(tween(200))) {
+            app.kimono.watch.phone.SettingsScreen(onClose = { settings = false }, tv = tv, playerOnly = true)
+        }
     }
     LaunchedEffect(Unit) { runCatching { focusRoot.requestFocus() } }
     LaunchedEffect(ctl, tv, settings) { if (tv && !ctl && !settings) runCatching { focusRoot.requestFocus() } }

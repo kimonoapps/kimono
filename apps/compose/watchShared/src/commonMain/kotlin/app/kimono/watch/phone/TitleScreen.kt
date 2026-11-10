@@ -257,7 +257,9 @@ private fun Tracker(page: TitlePage) {
 @Composable
 private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String, DlState>, downloads: WatchDownloads) {
     var rating by remember { mutableStateOf(false) }
+    var language by remember { mutableStateOf(false) }
     val t = page.title
+    Column {
     Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         Act(if (page.inList) Ic.check else Ic.add, "My list", page.inList) { vm.toggleList() }
         Box {
@@ -270,6 +272,7 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
                 }
             }
         }
+        if (page.language != null) Act(Ic.cc, "Language", language || page.tracks != null) { language = !language }
         if (t.isFilm) {
             val d = dl[dlKey(t.id, 0, 0)]
             DlAct(d, if (d?.done == true) "Downloaded" else if (d != null) "Downloading" else "Download") { if (d == null) downloads.start(t.id, 0, 0, t.name) }
@@ -287,6 +290,45 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
             val r = page.resume
             go.together(t.id, r?.season?.takeIf { it > 0 }, r?.episode?.takeIf { it > 0 }, r?.position ?: 0.0)
         }
+    }
+    androidx.compose.animation.AnimatedVisibility(language && page.language != null,
+        enter = if (app.kimono.watch.ui.reducedMotion()) androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(1)) else androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(320)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(260)),
+        exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(240)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200))) {
+        page.language?.let { LanguagePanel(page, it, vm) }
+    }
+    }
+}
+
+/**
+ * This title's own language: audio and subtitles for this show alone, over
+ * Settings. Picking the audio sets subtitles too (signs only when you'll hear
+ * your own language, else full ones in it); "Use my settings" undoes it.
+ */
+@Composable
+private fun LanguagePanel(page: TitlePage, l: app.kimono.watch.model.TitleLanguage, vm: TitleViewModel) {
+    val anime = page.title.shelf == "Anime"
+    val what = if (page.title.isFilm) "film" else "show"
+    val audios = if (l.original == l.mine) emptyList() else listOf(
+        l.original to (if (anime) "Subbed" else "${languageName(l.original)} (original)"),
+        l.mine to (if (anime) "Dubbed (${languageName(l.mine)})" else languageName(l.mine)),
+    )
+    val subs = listOf("off" to "Off", "signs" to "Signs only", l.subtitleLanguage to languageName(l.subtitleLanguage))
+    Column(Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Night.surface2).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (audios.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (anime) "Sub or dub" else "Audio", style = ui(14, FontWeight.Bold))
+            Joint(audios, l.audio) { a ->
+                if (a != l.audio) vm.language(app.kimono.watch.model.TrackChoice(a, if (page.tracks != null) l.subtitles else if (a == l.subtitleLanguage) "signs" else l.subtitleLanguage))
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Subtitles", style = ui(14, FontWeight.Bold))
+            Joint(subs, l.subtitles) { v -> if (v != l.subtitles) vm.language(app.kimono.watch.model.TrackChoice(l.audio, v)) }
+        }
+        if (page.tracks != null) Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Just for this $what.", style = ui(13, color = Night.fg3))
+            Text("Use my settings", style = ui(13, FontWeight.Bold, Night.fg2),
+                modifier = Modifier.clickableScaleClipped(RoundedCornerShape(6.dp), { vm.language(null) }).padding(horizontal = 8.dp, vertical = 6.dp))
+        } else Text("From your settings. A change here is just for this $what.", style = ui(13, color = Night.fg3))
     }
 }
 

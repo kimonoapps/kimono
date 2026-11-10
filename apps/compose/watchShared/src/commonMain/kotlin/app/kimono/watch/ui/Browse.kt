@@ -278,6 +278,18 @@ class TitleViewModel(private val api: WatchApi, private val toasts: Toasts, val 
         viewModelScope.launch { runCatching { api.mark(id, inList = on) }.onSuccess { _state.value = _state.value.copy(page = keepSeason(it)) } }
     }
 
+    /** This title's own audio and subtitles, or back to the person's settings (null). */
+    fun language(tracks: app.kimono.watch.model.TrackChoice?) {
+        val page = _state.value.page ?: return
+        val lang = page.language
+        _state.value = _state.value.copy(page = page.copy(tracks = tracks, language = if (tracks != null && lang != null) lang.copy(audio = tracks.audio, subtitles = tracks.subtitles) else lang))
+        viewModelScope.launch {
+            runCatching { if (tracks == null) api.mark(id, clearTracks = true) else api.mark(id, tracks = tracks) }
+                .onSuccess { _state.value = _state.value.copy(page = keepSeason(it)) }
+                .onFailure { _state.value = _state.value.copy(page = page); toasts.show("That didn't work.") }
+        }
+    }
+
     fun rate(rating: String) {
         val page = _state.value.page ?: return
         val next = if (page.rating == rating) null else rating

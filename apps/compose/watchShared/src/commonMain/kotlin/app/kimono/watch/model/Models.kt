@@ -117,6 +117,10 @@ data class EpisodeInfo(
 @Serializable
 data class TrackChoice(val audio: String, val subtitles: String)
 
+/** A title's language as it will play: [subtitles] is "off", "signs" or a language code. */
+@Serializable
+data class TitleLanguage(val audio: String, val subtitles: String, val original: String, val mine: String, val subtitleLanguage: String)
+
 /** [state]: "ready", "upcoming", "cinemas" or "missing"; [note] says so in a few words. */
 @Serializable
 data class Availability(val state: String = "ready", val note: String? = null)
@@ -144,6 +148,8 @@ data class TitlePage(
     val layout: String = "seasons",
     /** This show's own choice ("seasons" | "continuous"), or null to follow Settings' anime default. */
     val showEpisodes: String? = null,
+    /** What it plays in now and the languages to offer; [tracks] set means this show has its own. */
+    val language: TitleLanguage? = null,
 ) {
     val bySeason get() = layout == "seasons"
     /** The season an episode on this page belongs to. */

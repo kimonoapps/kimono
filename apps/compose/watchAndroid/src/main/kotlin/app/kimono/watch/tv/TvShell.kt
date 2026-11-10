@@ -87,6 +87,7 @@ import app.kimono.watch.ui.Img
 import app.kimono.watch.ui.ListViewModel
 import app.kimono.watch.ui.Logo
 import app.kimono.watch.ui.PreviewVideo
+import app.kimono.watch.ui.reducedMotion
 import app.kimono.watch.ui.ProgressLine
 import app.kimono.watch.ui.Ribbon
 import app.kimono.watch.ui.Screen
@@ -120,7 +121,10 @@ fun TvShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: List
                 else -> TvList(list, go) { Nav(page, { page = it; list.refresh() }, profile, onSearch, onProfiles, onSettings) }
             }
         }
-        AnimatedContent(top, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) }, label = "tvstack") { entry ->
+        val still = reducedMotion()
+        AnimatedContent(top, transitionSpec = {
+            (if (still) fadeIn(tween(1)) else fadeIn(tween(250)) + androidx.compose.animation.slideInVertically(tween(400)) { it / 30 }) togetherWith fadeOut(tween(if (still) 1 else 200))
+        }, label = "tvstack") { entry ->
             when (val s = entry?.screen) {
                 is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(app.api, app.toasts, s.id) }, go, s.top, onClose = onBack, downloads = app.downloads, wide = true)
                 Screen.Search -> SearchScreen(entry.vm { SearchViewModel(app.api) }, go, onClose = onBack, tv = true)

@@ -66,6 +66,7 @@ import app.kimono.watch.ui.SettingsState
 import app.kimono.watch.ui.SettingsViewModel
 import app.kimono.watch.ui.clickableScale
 import app.kimono.watch.ui.clickableScaleClipped
+import app.kimono.watch.ui.riseIn
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -73,12 +74,12 @@ import kotlinx.coroutines.launch
 val qualityChoices = listOf("auto" to "Auto", "2160" to "4K", "1080" to "1080p", "720" to "720p", "saver" to "Data saver")
 
 /** Languages to pick from, by their ISO 639-1 code. */
-private val languages = listOf(
+val languages = listOf(
     "en" to "English", "ja" to "Japanese", "es" to "Spanish", "fr" to "French", "de" to "German", "it" to "Italian",
     "pt" to "Portuguese", "ko" to "Korean", "zh" to "Chinese", "ar" to "Arabic", "hi" to "Hindi", "ru" to "Russian",
     "nl" to "Dutch", "sv" to "Swedish", "pl" to "Polish", "tr" to "Turkish",
 )
-private fun languageName(code: String) = languages.firstOrNull { it.first == code }?.second ?: code.uppercase()
+fun languageName(code: String) = languages.firstOrNull { it.first == code }?.second ?: code.uppercase()
 
 /** The player's preferences first (language, quality, anime lead), then the app's. */
 private enum class Part(val title: String, val player: Boolean) {
@@ -96,6 +97,7 @@ private enum class Part(val title: String, val player: Boolean) {
 @Composable
 fun SettingsScreen(onClose: () -> Unit, onProfiles: (() -> Unit)? = null, tv: Boolean = false, wide: Boolean = tv, playerOnly: Boolean = false) {
     val parts = Part.entries.filter { it.player || !playerOnly }
+    val opened = remember { app.kimono.watch.nowMs() }
     val watch = LocalWatch.current
     val entry = remember { Entry(Screen.Settings) }
     androidx.compose.runtime.DisposableEffect(entry) { onDispose { entry.store.clear() } }
@@ -113,8 +115,10 @@ fun SettingsScreen(onClose: () -> Unit, onProfiles: (() -> Unit)? = null, tv: Bo
                 item { Text(if (playerOnly) "Player" else "Settings", style = display(if (wide) 40 else 28), modifier = Modifier.padding(bottom = 8.dp)) }
                 parts.forEachIndexed { i, part ->
                     if (!playerOnly && (i == 0 || part.player != parts[i - 1].player)) item("half${part.player}") { Half(if (part.player) "Player" else "App", first = i == 0) }
-                    item("h${part.name}") { Group(part.title) }
-                    item("p${part.name}") { Column(Modifier.widthIn(max = 620.dp)) { PartBody(part, watch, state, vm, p, onProfiles, tv = false) } }
+                    item("p${part.name}") {
+                        /* Each section rises in a beat after the one above. */
+                        Column(Modifier.widthIn(max = 620.dp).riseIn(i, opened)) { Group(part.title); PartBody(part, watch, state, vm, p, onProfiles, tv = false) }
+                    }
                 }
             }
         }
@@ -136,15 +140,19 @@ private fun TwoPanes(parts: List<Part>, watch: WatchServices, state: SettingsSta
                 val on = it == part
                 /* Moving onto a group shows it; the right pane is a step to the right. */
                 Text(it.title, style = ui(20, if (on) FontWeight.Bold else FontWeight.Normal, if (on) Night.fg else Night.fg2),
-                    modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier)
+                    modifier = Modifier.riseIn(i).fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier)
                         .onFocusChanged { f -> if (f.isFocused) part = it }
                         .clickableScaleClipped(RoundedCornerShape(10.dp), { part = it })
                         .background(if (on) Night.surface3 else Color.Transparent, RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 10.dp))
             }
         }
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(start = 56.dp, end = 64.dp, top = 64.dp, bottom = 64.dp).widthIn(max = 760.dp)) {
-            Text(part.title, style = ui(26, FontWeight.Bold), modifier = Modifier.padding(bottom = 14.dp))
-            PartBody(part, watch, state, vm, p, onProfiles, tv = true)
+            androidx.compose.runtime.key(part) {
+                Column(Modifier.riseIn(0)) {
+                    Text(part.title, style = ui(26, FontWeight.Bold), modifier = Modifier.padding(bottom = 14.dp))
+                    PartBody(part, watch, state, vm, p, onProfiles, tv = true)
+                }
+            }
         }
     }
 }
@@ -157,38 +165,40 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
             val device = remember { runCatching { watch.api.device() }.getOrNull() }
             val tiers = qualityChoices.filter { it.first != "2160" || (device?.maxHeight ?: 0) >= 2160 }.map { (v, l) -> v to if (v == "saver") "Saver" else l }
             val thing = if (watch.tv) "TV" else "phone"
-            Field("On this $thing") {
-                Joint(tiers, state.quality ?: "auto") { vm.quality(it, cell = false) }
+            Field("On this $thing", key = "quality") {
+                Joint(tiers, state.quality ?: "auto") { vm.quality(it, cell = false); store.flash("quality") }
                 device?.let { d -> Text("This $thing plays " + (listOf(if (d.maxHeight >= 2160) "4K" else "${minOf(d.maxHeight, 1080)}p") + d.hdr.map { hdrName(it) } + d.passthrough.filter { it == "truehd" || it == "eac3" }.map { if (it == "truehd") "Dolby TrueHD" else "Dolby Digital Plus" }).joinToString(" · "),
                     style = ui(13, color = Night.fg3), modifier = Modifier.padding(top = 8.dp)) }
             }
-            if (watch.cellular) Field("On mobile data") { Joint(tiers, state.cellQuality ?: "auto") { vm.quality(it, cell = true) } }
+            if (watch.cellular) Field("On mobile data", key = "cellQuality") { Joint(tiers, state.cellQuality ?: "auto") { vm.quality(it, cell = true); store.flash("cellQuality") } }
         }
         Part.Playing -> {
-            Toggle("Play the next episode", p.autoplayNext) { on -> store.set("autoplayNext", on) { it.copy(autoplayNext = on) } }
-            Toggle("Skip intros and recaps", p.skipIntros) { on -> store.set("skipIntros", on) { it.copy(skipIntros = on) } }
+            Toggle("Play the next episode", p.autoplayNext, key = "autoplayNext") { on -> store.set("autoplayNext", on) { it.copy(autoplayNext = on) } }
+            Toggle("Skip intros and recaps", p.skipIntros, key = "skipIntros") { on -> store.set("skipIntros", on) { it.copy(skipIntros = on) } }
         }
         Part.Home -> {
-            Toggle("Previews", p.previews) { on -> store.set("previews", on) { it.copy(previews = on) } }
+            Toggle("Previews", p.previews, key = "previews") { on -> store.set("previews", on) { it.copy(previews = on) } }
         }
         Part.Languages -> {
-            Picker("My language", languageName(p.audioLanguage), languages, p.audioLanguage) { v -> store.set("audioLanguage", v) { it.copy(audioLanguage = v) } }
-            Field("Anime") { Joint(if (tv) listOf("original" to "Original, with subtitles", "dub" to "Dubbed when there is one") else listOf("original" to "Subtitles", "dub" to "Dubbed"), p.animeAudio) { v -> store.set("animeAudio", v) { it.copy(animeAudio = v) } } }
-            Field("Films and series") { Joint(if (tv) listOf("original" to "Original audio", "mine" to "My language when there is one") else listOf("original" to "Original", "mine" to "My language"), p.filmAudio) { v -> store.set("filmAudio", v) { it.copy(filmAudio = v) } } }
-            Field("Subtitles", if (p.subtitles == "auto") "Automatic: when the audio isn’t in your language." else null) {
+            Picker("My language", languageName(p.audioLanguage), languages, p.audioLanguage, key = "audioLanguage") { v -> store.set("audioLanguage", v) { it.copy(audioLanguage = v) } }
+            Field("Films and series", key = "filmAudio") { Joint(if (tv) listOf("original" to "Original audio", "mine" to "My language when there is one") else listOf("original" to "Original", "mine" to "My language"), p.filmAudio) { v -> store.set("filmAudio", v) { it.copy(filmAudio = v) } } }
+            Field("Subtitles", if (p.subtitles == "auto") "Automatic: when the audio isn’t in your language." else null, key = "subtitles") {
                 Joint(listOf("auto" to "Automatic", "always" to "Always", "off" to "Off"), p.subtitles) { v -> store.set("subtitles", v) { it.copy(subtitles = v) } }
             }
             Picker("Subtitle language", if (p.subtitleLanguage.isBlank()) "Same as my language" else languageName(p.subtitleLanguage),
-                listOf("" to "Same as my language") + languages, p.subtitleLanguage) { v -> store.set("subtitleLanguage", v) { it.copy(subtitleLanguage = v) } }
+                listOf("" to "Same as my language") + languages, p.subtitleLanguage, key = "subtitleLanguage") { v -> store.set("subtitleLanguage", v) { it.copy(subtitleLanguage = v) } }
         }
         Part.Look -> {
             SubtitleSample(p.subtitleSize, p.subtitleBackground, watch.tv, Modifier.padding(top = 6.dp, bottom = 6.dp))
-            Field("Size") { Joint(listOf("small" to "Small", "medium" to "Medium", "large" to "Large"), p.subtitleSize) { v -> store.set("subtitleSize", v) { it.copy(subtitleSize = v) } } }
-            Field("Background") { Joint(listOf("none" to "None", "shadow" to "Shadow", "box" to "Box"), p.subtitleBackground) { v -> store.set("subtitleBackground", v) { it.copy(subtitleBackground = v) } } }
+            Field("Size", key = "subtitleSize") { Joint(listOf("small" to "Small", "medium" to "Medium", "large" to "Large"), p.subtitleSize) { v -> store.set("subtitleSize", v) { it.copy(subtitleSize = v) } } }
+            Field("Background", key = "subtitleBackground") { Joint(listOf("none" to "None", "shadow" to "Shadow", "box" to "Box"), p.subtitleBackground) { v -> store.set("subtitleBackground", v) { it.copy(subtitleBackground = v) } } }
         }
         Part.Anime -> {
-            Field("Episodes") { Joint(listOf("seasons" to "By season", "continuous" to "One list"), p.animeEpisodes) { v -> store.set("animeEpisodes", v) { it.copy(animeEpisodes = v) } } }
-            Field("Filler episodes") { Joint(listOf("ask" to "Ask", "skip" to "Skip", "watch" to "Watch"), p.fillers) { v -> store.set("fillers", v) { it.copy(fillers = v) } } }
+            Field("Sub or dub", "Each show can have its own, from its page.", key = "animeAudio") {
+                Joint(listOf("original" to "Subbed", "dub" to "Dubbed (${languageName(p.audioLanguage)})"), p.animeAudio) { v -> store.set("animeAudio", v) { it.copy(animeAudio = v) } }
+            }
+            Field("Episodes", key = "animeEpisodes") { Joint(listOf("seasons" to "By season", "continuous" to "One list"), p.animeEpisodes) { v -> store.set("animeEpisodes", v) { it.copy(animeEpisodes = v) } } }
+            Field("Filler episodes", key = "fillers") { Joint(listOf("ask" to "Ask", "skip" to "Skip", "watch" to "Watch"), p.fillers) { v -> store.set("fillers", v) { it.copy(fillers = v) } } }
         }
         Part.Downloads -> {
             val dl = watch.downloads
@@ -196,7 +206,7 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
             val states by dl.states.collectAsState()
             var used by remember { mutableLongStateOf(0L) }
             LaunchedEffect(states) { used = runCatching { dl.usedBytes() }.getOrDefault(0L) }
-            Field("Quality") { Joint(listOf("standard" to "Standard", "higher" to "Higher"), p.downloadQuality) { v -> store.set("downloadQuality", v) { it.copy(downloadQuality = v) } } }
+            Field("Quality", key = "downloadQuality") { Joint(listOf("standard" to "Standard", "higher" to "Higher"), p.downloadQuality) { v -> store.set("downloadQuality", v) { it.copy(downloadQuality = v) } } }
             Toggle("Wi‑Fi only", wifi) { dl.setWifiOnly(it) }
             Line("Storage used", sizeOf(used))
             if (states.isNotEmpty()) Confirming("Delete all downloads", "Delete every download?") { dl.removeAll() }
@@ -245,9 +255,12 @@ private fun Group(title: String) {
 
 /** A labelled control, with at most one quiet line under the label. */
 @Composable
-private fun Field(label: String, note: String? = null, content: @Composable () -> Unit) {
+private fun Field(label: String, note: String? = null, key: String? = null, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-        Text(label, style = ui(15, FontWeight.Bold), modifier = Modifier.padding(bottom = if (note == null) 8.dp else 2.dp))
+        Row(Modifier.padding(bottom = if (note == null) 8.dp else 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(label, style = ui(15, FontWeight.Bold))
+            Saved(key)
+        }
         note?.let { Text(it, style = ui(13, color = Night.fg3), modifier = Modifier.padding(bottom = 8.dp)) }
         content()
     }
@@ -271,21 +284,32 @@ fun Joint(options: List<Pair<String, String>>, selected: String, onPick: (String
 }
 
 @Composable
-private fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+private fun Toggle(label: String, on: Boolean, key: String? = null, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), { onChange(!on) }).padding(horizontal = 4.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = ui(15, color = Night.fg), modifier = Modifier.weight(1f))
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = ui(15, color = Night.fg))
+        Saved(key)
+        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
         Switch(on)
     }
 }
 
+/** The tick beside a preference just saved. */
+@Composable
+private fun Saved(key: String?) {
+    if (key == null) return
+    val saved by LocalWatch.current.prefs.saved.collectAsState()
+    app.kimono.watch.ui.SavedTick(saved?.takeIf { it.first == key }?.second)
+}
+
 /** A value with its options folded under it until it's opened. */
 @Composable
-private fun Picker(label: String, shown: String, options: List<Pair<String, String>>, selected: String, onPick: (String) -> Unit) {
+private fun Picker(label: String, shown: String, options: List<Pair<String, String>>, selected: String, key: String? = null, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), { open = !open }).padding(horizontal = 4.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, style = ui(15, FontWeight.Bold), modifier = Modifier.weight(1f))
+            Text(label, style = ui(15, FontWeight.Bold))
+            Box(Modifier.padding(start = 8.dp).weight(1f)) { Saved(key) }
             Text(shown + if (open) "" else "  ›", style = ui(15, color = Night.fg2))
         }
         AnimatedVisibility(open) {

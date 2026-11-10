@@ -92,7 +92,8 @@ object WatchIos {
         val downloads = IosDownloads(host.downloader, api, toasts)
         services = WatchServices(accounts, api, toasts, downloads, tv = false, preview = IosPreview(host, api),
             deviceId = deviceId, cellular = true, openUrl = host::openUrl,
-            version = (platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String).orEmpty())
+            version = (platform.Foundation.NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String).orEmpty(),
+            reducedMotion = { platform.UIKit.UIAccessibilityIsReduceMotionEnabled() })
         downloads.prefs = services.prefs
         val launcher = object : PlayerLauncher {
             override fun play(titleId: String, season: Int?, episode: Int?) = openPlayer(PlayerStart(titleId, season, episode))

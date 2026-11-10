@@ -174,8 +174,10 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
     }
     Box(Modifier.fillMaxSize()) {
         PhoneShell(profile, home, hot, list, go, onSearch = { push(Screen.Search) }, onProfiles = onProfiles, onSettings = { push(Screen.Settings) }, previewing = stack.isEmpty())
+        /* Pages fade up as they open; with less motion asked for, they just appear. */
+        val still = app.kimono.watch.ui.reducedMotion()
         AnimatedContent(stack.lastOrNull(), transitionSpec = {
-            (fadeIn(tween(250)) + slideInVertically(tween(400)) { it / 24 } + scaleIn(tween(400), initialScale = 0.97f)) togetherWith fadeOut(tween(200))
+            (if (still) fadeIn(tween(1)) else fadeIn(tween(250)) + slideInVertically(tween(400)) { it / 24 } + scaleIn(tween(400), initialScale = 0.97f)) togetherWith fadeOut(tween(if (still) 1 else 200))
         }, label = "stack") { entry ->
             when (val s = entry?.screen) {
                 is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(services.api, services.toasts, s.id) }, go, s.top, onClose = ::pop, downloads = services.downloads)

@@ -20,6 +20,12 @@ class PrefsStore(private val api: WatchApi) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val _state = MutableStateFlow<Prefs?>(null)
     val state: StateFlow<Prefs?> = _state
+    private val _saved = MutableStateFlow<Pair<String, Long>?>(null)
+    /** The preference saved last, and when: Settings shows a tick beside it. */
+    val saved: StateFlow<Pair<String, Long>?> = _saved
+
+    /** Says [key] was saved (for ones that save elsewhere, like this device's quality). */
+    fun flash(key: String) { _saved.value = key to app.kimono.watch.nowMs() }
 
     /** Read again for whoever is signed in now. */
     fun load() {
@@ -36,7 +42,7 @@ class PrefsStore(private val api: WatchApi) {
                 api.savePrefs(buildJsonObject {
                     put(key, when (value) { is Boolean -> JsonPrimitive(value); is Number -> JsonPrimitive(value); else -> JsonPrimitive(value.toString()) })
                 })
-            }.onSuccess { _state.value = it.copy(device = null) }
+            }.onSuccess { _state.value = it.copy(device = null); flash(key) }
         }
     }
 }

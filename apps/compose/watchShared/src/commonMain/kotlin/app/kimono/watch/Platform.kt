@@ -126,6 +126,8 @@ class WatchServices(
     val openUrl: (String) -> Unit,
     /** This build's version, for Settings → About. */
     val version: String = "",
+    /** The device asks for less motion (Android's animation scale at 0, iOS's Reduce Motion). */
+    val reducedMotion: () -> Boolean = { false },
 ) {
     /** The person's preferences, read once signed in and kept as they change them. */
     val prefs = app.kimono.watch.ui.PrefsStore(api)
