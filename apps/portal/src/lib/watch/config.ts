@@ -37,6 +37,8 @@ export function watchConfig(settings: PlatformSettings) {
     region: (value("region") || "US").toUpperCase().slice(0, 2),
     jikanUrl: (value("jikan_url") || "https://api.jikan.moe/v4").replace(/\/+$/, ""),
     anilistUrl: "https://graphql.anilist.co",
+    /* Opening, ending and recap times for anime. */
+    aniskipUrl: "https://api.aniskip.com/v2",
     /* Fribb's map between TMDB, TVDB, IMDb, AniList and MyAnimeList ids. */
     animeMapUrl: value("anime_map_url") || "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json",
     colors: instance?.colors,

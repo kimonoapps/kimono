@@ -353,3 +353,29 @@ test('found streams wait in the same cache play reads, for twenty minutes', () =
   assert.ok(model.cached(db, ahead.streamsKey('tv-1', 1, 3), ahead.streamTtl - 1));
   assert.equal(model.cached(db, ahead.streamsKey('tv-1', 1, 3), ahead.streamTtl + 1), null);
 });
+
+/* ───── Skip intro and credits ───── */
+
+import * as markers from '../src/lib/watch/markers.ts';
+
+test("AniSkip's episode is the season's own number, or counted from the first for one long entry", () => {
+  const eps = [ep(1, 1), ep(1, 2), ep(1, 3), ep(2, 1), ep(2, 2), ep(0, 1)];
+  const perSeason = [{ malId: 40748, season: 1 }, { malId: 51009, season: 2 }];
+  assert.deepEqual(markers.aniskipEpisode(perSeason, eps, { season: 2, episode: 2 }), { malId: 51009, episode: 2 });
+  assert.deepEqual(markers.aniskipEpisode([{ malId: 21, season: null }], eps, { season: 2, episode: 2 }), { malId: 21, episode: 5 }, 'specials not counted');
+  assert.equal(markers.aniskipEpisode([{ malId: 1, season: 1 }, { malId: 2, season: null }], eps, { season: 2, episode: 1 }), null, 'unclear: no guess');
+  assert.deepEqual(markers.aniskipEpisode([], [], { season: 0, episode: 0 }, 199), { malId: 199, episode: 1 }, 'a film is episode 1');
+  assert.equal(markers.aniskipUrl('https://api.aniskip.com/v2', 21, 5), 'https://api.aniskip.com/v2/skip-times/21/5?types=op&types=ed&types=recap&episodeLength=0');
+});
+
+test("AniSkip's times become intro, recap and credits", () => {
+  const m = markers.markersFrom({ found: true, results: [
+    { skipType: 'op', interval: { startTime: 89.95, endTime: 179.12 } },
+    { skipType: 'op', interval: { startTime: 1, endTime: 2 } },
+    { skipType: 'recap', interval: { startTime: 0, endTime: 60 } },
+    { skipType: 'ed', interval: { startTime: 1320.4, endTime: 1410 } },
+  ] });
+  assert.deepEqual(m, { intro: [90, 179.1], recap: [0, 60], credits: 1320.4 });
+  assert.equal(markers.markersFrom({ found: false, results: [] }), null);
+  assert.equal(markers.markersFrom({ found: true, results: [{ skipType: 'op', interval: { startTime: 5, endTime: 5 } }] }), null);
+});

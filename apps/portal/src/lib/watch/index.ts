@@ -17,6 +17,7 @@ import {
   prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem,
   type Episode, type Title,
 } from "./model";
+import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
 import { badges, cleanDevice, describe, rank, type Release } from "./releases";
 import { findStreams, stremioId, upstreamRequest } from "./streams";
 import { ensureProvisioned, hasSources, type NzbdavAccess } from "./provision";
@@ -305,7 +306,10 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   const prefs = prefsOf(db, username);
   const next = nextEpisode(await allEpisodes(cfg, title), { season: Number(raw.season) || 1, episode: Number(raw.episode) || 1 }, prefs.fillers);
   if (!next || !title.imdbId) return { next, ready: false };
-  const found = await releasesFor(cfg, title, next.season, next.episode).catch(() => []);
+  const [found] = await Promise.all([
+    releasesFor(cfg, title, next.season, next.episode).catch(() => []),
+    markersFor(cfg, title, episodesOf(db, title.id), next.season, next.episode).catch(() => null),
+  ]);
   const device = cleanDevice(raw.device);
   const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
   return { next, ready: rank(found, device, prefs.quality, minutes, prefs.audioLanguage || "en").length > 0 };
@@ -332,7 +336,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     minutes = e.runtime ?? minutes;
   }
 
-  const found = await releasesFor(cfg, title, season, episode);
+  const [found, markers] = await Promise.all([releasesFor(cfg, title, season, episode), markersFor(cfg, title, episodes, season, episode)]);
   const ranked = rank(found, device, prefs.quality, minutes, prefs.audioLanguage || "en");
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
@@ -351,7 +355,30 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     /* Ask once when filler is up next and the person hasn't chosen. */
     fillerAhead: title.kind === "series" && prefs.fillers === "ask" ? fillerAhead(episodes, { season, episode }) : null,
     autoplayNext: prefs.autoplayNext,
+    /* Seconds: intro and recap as [start, end], credits as where they start. */
+    markers: markers ?? {},
+    skipIntros: prefs.skipIntros,
   };
+}
+
+/**
+ * Where the intro, recap and credits are: AniSkip for anime, kept a week when
+ * found and a day when not; nothing yet for the rest (fingerprintMarkers).
+ */
+async function markersFor(cfg: WatchConfig, title: Title, episodes: Episode[], season: number, episode: number): Promise<Markers | null> {
+  if (title.shelf !== "Anime") return fingerprintMarkers(title.id, season, episode);
+  const db = watchDb();
+  const key = `markers:${title.id}:${season}:${episode}`;
+  const known = cached<{ markers: Markers | null }>(db, key);
+  if (known) return known.markers;
+  const map = await animeMap(cfg.animeMapUrl, join(root, "anime-list.json"));
+  const entries = map && title.kind === "series" ? animeEntriesFor(map, { kind: "series", tmdbId: title.tmdbId, imdbId: title.imdbId }) : [];
+  const target = aniskipEpisode(entries, episodes, { season, episode }, title.malId);
+  if (!target) return null;
+  const markers = await aniskip(cfg.aniskipUrl, target.malId, target.episode);
+  if (markers === undefined) return null;
+  keep(db, key, { markers }, markers ? 7 * 24 * hours(1) : 24 * hours(1));
+  return markers;
 }
 
 /** The stream itself: the sealed address opened, and the upstream bytes relayed with Range intact so seeking works. */
