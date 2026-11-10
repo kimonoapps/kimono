@@ -16,7 +16,7 @@ import (
 var Version = "dev"
 
 // DefaultImage is the sandbox image this build of Kimono expects.
-const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.9.8"
+const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.9.9"
 
 // DefaultAgent runs Claude Code for one turn. The prompt and the session to
 // resume arrive in the environment, so nothing is quoted into a shell line.
