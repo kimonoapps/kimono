@@ -10,7 +10,7 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
-import { backfillRatings, kimonoVersion, type Versions } from "./feedback";
+import { backfillRatingFiles, backfillRatings, kimonoVersion, type Versions } from "./feedback";
 import { skillsForTurn } from "./skills";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
@@ -80,7 +80,7 @@ export function db(): DatabaseSync {
   /* A hot reload keeps the connection but brings new code: bring the schema along. */
   if (!migrated) { migrate(live.db); migrated = true; }
   if (!chatsMarked) { chatsMarked = true; markOldChats(live.db); }
-  if (!ratingsFilled) { ratingsFilled = true; backfillRatings(live.db); }
+  if (!ratingsFilled) { ratingsFilled = true; backfillRatings(live.db); backfillRatingFiles(live.db); }
   return live.db;
 }
 let migrated = false;

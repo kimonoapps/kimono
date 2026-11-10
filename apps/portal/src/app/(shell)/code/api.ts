@@ -239,7 +239,10 @@ export const code = {
   }),
 
   /** Where an attachment can be seen again, from its path in the sandbox. */
-  attachmentUrl: (id: string, a: Attachment) => at(`${ws(id)}/attachments/${encodeURIComponent(a.path.replace(/^\/attachments\//, ""))}?type=${encodeURIComponent(a.type)}`),
+  attachmentUrl: (id: string, a: Attachment) => a.path.startsWith("/kept/")
+    /* one a chat in the feedback bank keeps, for an administrator */
+    ? at(`/feedback/files/${a.path.slice(6).split("/").map(encodeURIComponent).join("/")}?type=${encodeURIComponent(a.type)}`)
+    : at(`${ws(id)}/attachments/${encodeURIComponent(a.path.replace(/^\/attachments\//, ""))}?type=${encodeURIComponent(a.type)}`),
 
   eventsUrl: (id: string, after: number) => at(`${ws(id)}/events?after=${after}`),
   /** The latest saved version of one of the chat's artifacts. */

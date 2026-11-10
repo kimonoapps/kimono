@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import * as model from '../src/lib/code/model.ts';
 import { finish, translate } from '../src/lib/code/events.ts';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+/* Set before any test brings in what reads it (lib/state.ts), so kept files go here and not to the dev state. */
+process.env.KIMONO_STATE_DIR = mkdtempSync(join(tmpdir(), 'kimono-test-code-'));
 
 function fresh() {
   const db = new DatabaseSync(':memory:');
@@ -372,4 +378,45 @@ test('a rating keeps what it thought, where it thought it, and what its tools ga
   assert.match(steps[1].detail, /a long comment/);
   model.rewindTo(db, w.id, 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM thinking').get().n, 0);
+});
+
+test('feedback keeps the files a chat names, to open from the bank, and forgets them with the rating', async () => {
+  const { mkdirSync, writeFileSync, existsSync, readFileSync } = await import('node:fs');
+  const { rate, report, bank, backfillRatingFiles } = await import('../src/lib/code/feedback.ts');
+  const { keptFilePath } = await import('../src/lib/code/kept-files.ts');
+  const db = fresh();
+  const w = start(db);
+  const dir = join(process.env.KIMONO_STATE_DIR, 'code', 'attachments', w.id);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'abc123-brief.pdf'), '%PDF brief');
+  writeFileSync(join(dir, 'def456-report.pdf'), '%PDF report');
+  const brief = { name: 'brief.pdf', path: '/attachments/abc123-brief.pdf', size: 10, type: 'application/pdf' };
+  const sent = { name: 'report.pdf', path: '/attachments/def456-report.pdf', size: 11, type: 'application/pdf' };
+  model.appendEvent(db, w.id, null, { kind: 'ask', text: 'make a report', attachments: [brief] });
+  model.appendEvent(db, w.id, null, { kind: 'sent', files: [sent] });
+  const done = model.appendEvent(db, w.id, null, { kind: 'done', ok: true });
+  const opened = (file) => { const [, , id, name] = file.path.split('/'); return readFileSync(keptFilePath(id, name), 'utf8'); };
+
+  rate(db, w.id, done.seq, 'akram', 1);
+  const { answer } = bank(db)[0];
+  assert.deepEqual(answer.attachments, ['brief.pdf']);
+  assert.equal(opened(answer.attached[0]), '%PDF brief');
+  assert.equal(opened(answer.steps[0].files[0]), '%PDF report');
+  assert.equal(keptFilePath('../x', 'y'), null);
+
+  /* Taken back: its files go with it. A report keeps its own. */
+  const [, , id, name] = answer.attached[0].path.split('/');
+  rate(db, w.id, done.seq, 'akram', null);
+  assert.equal(existsSync(keptFilePath(id, name)), false);
+  report(db, w.id, 'odd');
+  assert.equal(opened(bank(db)[0].chat[0].steps[0].files[0]), '%PDF report');
+
+  /* A rating kept before files were gets them from the chat, once. */
+  const old = { asked: 'make a report', attachments: ['brief.pdf'], steps: [{ sent: ['report.pdf'] }], ok: true, before: [] };
+  db.prepare('INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(w.id, done.seq, 'akram', -1, '', JSON.stringify(old), 1);
+  assert.equal(backfillRatingFiles(db), 1);
+  assert.equal(backfillRatingFiles(db), 0);
+  const filled = bank(db).find((e) => e.type === 'rating').answer;
+  assert.equal(opened(filled.attached[0]), '%PDF brief');
+  assert.equal(opened(filled.steps[0].files[0]), '%PDF report');
 });

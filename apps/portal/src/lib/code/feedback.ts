@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { artifactOf } from "./artifacts";
-import type { CodeEvent } from "./events";
+import type { Attachment, CodeEvent } from "./events";
+import { forgetKept, keeper } from "./kept-files";
 import { eventsAfter, thinkingUpTo, toolCallsOf, type StoredEvent } from "./model";
 
 /*
@@ -21,8 +22,8 @@ export const kimonoVersion = () => process.env.KIMONO_VERSION?.trim() || "dev";
 
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max)}…`;
 
-export type Step = { said?: string; thought?: string; tool?: string; detail?: string; ok?: boolean; output?: string; sent?: string[]; artifact?: string; /** The artifact's page as it stood when kept (kept since these began; older entries have the name alone). */ page?: { title: string; content: string } };
-export type Answer = { asked: string; attachments: string[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
+export type Step = { said?: string; thought?: string; tool?: string; detail?: string; ok?: boolean; output?: string; sent?: string[]; /** What was sent, kept beside the bank (kept-files.ts) to open again; kept since these began. */ files?: Attachment[]; artifact?: string; /** The artifact's page as it stood when kept (kept since these began; older entries have the name alone). */ page?: { title: string; content: string } };
+export type Answer = { asked: string; attachments: string[]; /** What was attached, kept like a step's files. */ attached?: Attachment[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
 
 /** The chat up to the answer that ended at [doneSeq]: that answer, and every turn before it. */
 function answerAt(db: DatabaseSync, workspaceId: string, doneSeq: number): { answer: Answer; before: Answer[] } | null {
@@ -69,20 +70,42 @@ function turnOf(events: (CodeEvent | Thought)[]): Answer {
   const tools = new Map<string, Step>();
   for (const event of events) {
     switch (event.kind) {
-      case "ask": answer.asked = answer.asked ? `${answer.asked}\n\n${event.text}` : event.text; answer.attachments.push(...event.attachments.map((a) => a.name)); break;
+      case "ask": answer.asked = answer.asked ? `${answer.asked}\n\n${event.text}` : event.text; answer.attachments.push(...event.attachments.map((a) => a.name)); if (event.attachments.length) answer.attached = [...answer.attached ?? [], ...event.attachments]; break;
       case "text": answer.steps.push({ said: event.text }); break;
       case "thought": answer.steps.push({ thought: event.text }); break;
       case "tool": { const step: Step = { tool: event.name, detail: event.detail ?? event.label }; tools.set(event.id, step); answer.steps.push(step); break; }
       case "tool-result": { const step = tools.get(event.id); if (step) { step.ok = event.ok; if (event.output?.trim()) step.output = event.output; } break; }
       case "artifact": answer.steps.push({ artifact: event.name }); break;
-      case "sent": answer.steps.push({ sent: event.files.map((f) => f.name) }); break;
+      case "sent": answer.steps.push({ sent: event.files.map((f) => f.name), files: event.files }); break;
       case "done": answer.ok = event.ok; if (event.error) answer.error = event.error; if (event.model) answer.model = event.model; if (event.durationMs) answer.durationMs = event.durationMs; break;
     }
   }
   return answer;
 }
 
-type StoredAnswer = Answer & { before?: Answer[] };
+type StoredAnswer = Answer & { before?: Answer[]; /** Its files are kept (kept-files.ts): set on every rating since that began, and on older ones once tried. */ filesKept?: boolean };
+
+/** Keeps the files [answers] name beside the bank, pointing each at its kept copy; one the chat no longer has is left as a name alone. */
+function keepFiles(workspaceId: string, answers: Answer[]): Answer[] {
+  const keep = keeper(workspaceId);
+  const kept = (files: Attachment[] | undefined) => { const found = (files ?? []).flatMap((f) => keep(f) ?? []); return found.length ? found : undefined; };
+  for (const answer of answers) {
+    answer.attached = kept(answer.attached);
+    for (const step of answer.steps) if (step.files) step.files = kept(step.files);
+  }
+  return answers;
+}
+
+/** Every file [answers] keep. */
+const keptOf = (answers: Answer[]) => answers.flatMap((a) => [...a.attached ?? [], ...a.steps.flatMap((s) => s.files ?? [])]);
+
+/** The answers a stored rating holds, if there is one. */
+function storedRating(db: DatabaseSync, workspaceId: string, seq: number, username: string): Answer[] {
+  const row = db.prepare("SELECT answer FROM ai_ratings WHERE workspace_id = ? AND seq = ? AND username = ?").get(workspaceId, seq, username) as { answer: string } | undefined;
+  if (!row) return [];
+  const { before = [], ...answer } = JSON.parse(row.answer) as StoredAnswer;
+  return [...before, answer];
+}
 
 /** Each artifact in [answers] with its page as it is now, so the bank opens it without the chat. */
 function withPages(db: DatabaseSync, workspaceId: string, answers: Answer[]): Answer[] {
@@ -101,18 +124,21 @@ export type Versions = { kimono: string; sandbox: string | null };
 
 /** Rates the answer that ended at [seq], or takes the rating back (rating null). */
 export function rate(db: DatabaseSync, workspaceId: string, seq: number, username: string, rating: Rating | null, note = "", now = Date.now(), versions: Versions = { kimono: kimonoVersion(), sandbox: null }) {
+  const was = keptOf(storedRating(db, workspaceId, seq, username));
   if (rating === null) {
+    forgetKept(was);
     db.prepare("DELETE FROM ai_ratings WHERE workspace_id = ? AND seq = ? AND username = ?").run(workspaceId, seq, username);
     return;
   }
   const rated = answerAt(db, workspaceId, seq);
   if (!rated) throw new Error("no answer there");
   /* The rated answer with the chat before it alongside; ratings kept before this hold the answer alone. */
-  withPages(db, workspaceId, [...rated.before, rated.answer]);
-  const kept: StoredAnswer = { ...rated.answer, before: rated.before };
+  keepFiles(workspaceId, withPages(db, workspaceId, [...rated.before, rated.answer]));
+  const kept: StoredAnswer = { ...rated.answer, before: rated.before, filesKept: true };
   db.prepare(`INSERT INTO ai_ratings (workspace_id, seq, username, rating, note, answer, at, version, sandbox_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (workspace_id, seq, username) DO UPDATE SET rating = excluded.rating, note = excluded.note, answer = excluded.answer, at = excluded.at, version = excluded.version, sandbox_version = excluded.sandbox_version`)
     .run(workspaceId, seq, username, rating, clip(note.trim(), 2000), JSON.stringify(kept), now, versions.kimono, versions.sandbox);
+  forgetKept(was);
 }
 
 /**
@@ -141,6 +167,46 @@ export function backfillRatings(db: DatabaseSync): number {
   return filled;
 }
 
+/**
+ * Ratings kept before their files were get them now, from the chat as it is,
+ * where it still has the turn and the file: what was attached to a turn whose
+ * ask reads the same, and what was sent, in order, by the same names. Each is
+ * tried once. Reports can't be: nothing leads back to their chat.
+ */
+export function backfillRatingFiles(db: DatabaseSync): number {
+  const rows = db.prepare("SELECT workspace_id, seq, username, answer FROM ai_ratings WHERE json_extract(answer, '$.filesKept') IS NULL")
+    .all() as { workspace_id: string; seq: number; username: string; answer: string }[];
+  const save = db.prepare("UPDATE ai_ratings SET answer = ? WHERE workspace_id = ? AND seq = ? AND username = ?");
+  let filled = 0;
+  for (const row of rows) {
+    const { before = [], ...answer } = JSON.parse(row.answer) as StoredAnswer;
+    const stored = [...before, answer];
+    const now = answerAt(db, row.workspace_id, row.seq);
+    if (now && keptOf([...now.before, now.answer]).length) {
+      const turns = keepFiles(row.workspace_id, [...now.before, now.answer]);
+      stored.forEach((was, i) => {
+        const turn = turns[i];
+        if (!turn || turn.asked !== was.asked) return;
+        if (turn.attached) was.attached = turn.attached;
+        const sent = turn.steps.filter((step) => step.files);
+        let next = 0;
+        for (const step of was.steps) {
+          if (!step.sent) continue;
+          const found = sent.slice(next).findIndex((s) => s.sent?.join("\n") === step.sent!.join("\n"));
+          if (found < 0) continue;
+          step.files = sent[next + found].files;
+          next += found + 1;
+        }
+      });
+      if (keptOf(stored).length) filled++;
+      else forgetKept(keptOf(turns));
+    }
+    const kept: StoredAnswer = { ...stored.at(-1)!, before: stored.slice(0, -1), filesKept: true };
+    save.run(JSON.stringify(kept), row.workspace_id, row.seq, row.username);
+  }
+  return filled;
+}
+
 /** [username]'s ratings in a chat, by the seq of the answer each rates. */
 export function ratingsOf(db: DatabaseSync, workspaceId: string, username: string): Record<number, Rating> {
   const rows = db.prepare("SELECT seq, rating FROM ai_ratings WHERE workspace_id = ? AND username = ?").all(workspaceId, username) as { seq: number; rating: Rating }[];
@@ -150,7 +216,7 @@ export function ratingsOf(db: DatabaseSync, workspaceId: string, username: strin
 /** Sends a whole chat to the bank with no name and nothing that leads back to it. */
 export function report(db: DatabaseSync, workspaceId: string, reason: string, now = Date.now(), versions: Versions = { kimono: kimonoVersion(), sandbox: null }) {
   const events = eventsAfter(db, workspaceId, 0, 100_000);
-  const turns = withPages(db, workspaceId, turnsOf(withThinking(db, workspaceId, events, events.at(-1)?.seq ?? 0)));
+  const turns = keepFiles(workspaceId, withPages(db, workspaceId, turnsOf(withThinking(db, workspaceId, events, events.at(-1)?.seq ?? 0))));
   db.prepare("INSERT INTO ai_reports (id, reason, chat, at, version, sandbox_version) VALUES (?, ?, ?, ?, ?, ?)").run(randomUUID(), clip(reason.trim(), 4000), JSON.stringify(turns), now, versions.kimono, versions.sandbox);
 }
 

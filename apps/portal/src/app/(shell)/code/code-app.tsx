@@ -1712,7 +1712,8 @@ function keptEvents(chat: KeptAnswer[], at: number): StoredEvent[] {
   const push = (event: CodeEvent) => out.push({ seq: out.length + 1, turn: null, at, event });
   const file = (name: string): Attachment => ({ name, path: "", size: 0, type: "" });
   chat.forEach((answer, n) => {
-    push({ kind: "ask", by: "", text: answer.asked, attachments: answer.attachments.map(file) });
+    /* the files themselves where the bank kept them, else their names alone */
+    push({ kind: "ask", by: "", text: answer.asked, attachments: answer.attached ?? answer.attachments.map(file) });
     answer.steps.forEach((step, i) => {
       if (step.said !== undefined) push({ kind: "text", text: step.said });
       else if (step.tool) {
@@ -1720,7 +1721,7 @@ function keptEvents(chat: KeptAnswer[], at: number): StoredEvent[] {
         push({ kind: "tool", id, name: step.tool, label: step.tool, detail: step.detail });
         if (step.ok !== undefined || step.output) push({ kind: "tool-result", id, ok: step.ok !== false, output: step.output ?? "" });
       } else if (step.artifact) push({ kind: "artifact", id: `kept-${n}-${i}`, name: step.artifact, action: "wrote" });
-      else if (step.sent) push({ kind: "sent", files: step.sent.map(file) });
+      else if (step.sent) push({ kind: "sent", files: step.files ?? step.sent.map(file) });
     });
     push({ kind: "done", ok: answer.ok, ...(answer.error ? { error: answer.error } : {}), ...(answer.durationMs ? { durationMs: answer.durationMs } : {}), ...(answer.model ? { model: answer.model as "opus" } : {}) });
   });
@@ -2689,13 +2690,15 @@ function SentFile({ workspace, file }: { workspace: Workspace; file: Attachment 
   const [open, setOpen] = useState(false);
   const url = code.attachmentUrl(workspace.id, file);
   const shows = Boolean(file.path) && (previewable(file.name, file.type) || previewKind(file.name, file.type) === "audio");
+  /* A PDF opens in the browser's own viewer, which reads it better than any preview here. */
+  const pdf = Boolean(file.path) && isPdf(file);
   const download = () => saveAs(url, file.name);
   const face = <>
     <FileThumb name={file.name} picture={isPicture(file.type) ? url : null} video={previewKind(file.name, file.type) === "video" ? url : null} size={48} className="cd-sentfile-thumb" />
     <span className="cd-sentfile-name"><b title={file.name}>{file.name}</b><small>{file.path ? `${fileKind(file.name, file.type)} · ${readableSize(file.size)}` : fileKind(file.name, file.type)}</small></span>
   </>;
-  return <figure className={cx("cd-sentfile", shows && "is-open-able")}>
-    {shows ? <button type="button" className="cd-sentfile-face" aria-label={`Open ${file.name}`} title="Open" onClick={() => setOpen(true)}>{face}</button>
+  return <figure className={cx("cd-sentfile", (shows || pdf) && "is-open-able")}>
+    {shows || pdf ? <button type="button" className="cd-sentfile-face" aria-label={`Open ${file.name}`} title="Open" onClick={() => pdf ? openOutside(url) : setOpen(true)}>{face}</button>
       : <div className="cd-sentfile-face">{face}</div>}
     {file.path ? <Seal type="button" tone="quiet" compact onClick={download}><Icon name="download" />Download</Seal> : null}
     {open ? <FileOverlay name={file.name} mime={file.type} url={url} onClose={() => setOpen(false)}
@@ -2709,13 +2712,14 @@ function FileChips({ workspace, files }: { workspace: Workspace; files: Attachme
   const others = files.filter((a) => !isMedia(a));
   return <>
     {files.some(isMedia) ? <MediaGrid workspace={workspace} files={files.filter(isMedia)} /> : null}
-    {others.length ? <div className="cd-attached">{others.map((a) => <button type="button" key={a.path || a.name} className="cd-filechip" disabled={!a.path} onClick={() => setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span>{a.path ? <small>{readableSize(a.size)}</small> : null}</button>)}</div> : null}
+    {others.length ? <div className="cd-attached">{others.map((a) => <button type="button" key={a.path || a.name} className="cd-filechip" disabled={!a.path} onClick={() => isPdf(a) ? openOutside(code.attachmentUrl(workspace.id, a)) : setOpened(a)}><FileThumb name={a.name} size={30} /><span>{a.name}</span>{a.path ? <small>{readableSize(a.size)}</small> : null}</button>)}</div> : null}
     {opened ? <FileOverlay name={opened.name} mime={opened.type} url={code.attachmentUrl(workspace.id, opened)} onClose={() => setOpened(null)}
       actions={<Seal type="button" tone="quiet" compact onClick={() => saveAs(code.attachmentUrl(workspace.id, opened), opened.name)}><Icon name="download" />Download</Seal>} /> : null}
   </>;
 }
 
 const isVideo = (a: { name: string; type: string }) => previewKind(a.name, a.type) === "video";
+const isPdf = (a: { name: string; type: string }) => previewKind(a.name, a.type) === "pdf";
 /** A photo or a video: what shows as a square in the chat. */
 const isMedia = (a: { name: string; type: string }) => isPicture(a.type) || isVideo(a);
 
