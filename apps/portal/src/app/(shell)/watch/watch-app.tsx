@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, type TitleView } from "./api";
-import { AppLockup } from "@kimono/ui";
+import { AppLockup, KimonoBranch } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
 import { cx, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
@@ -271,7 +271,6 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
         </div>
       </section> : <div>
         <header className={cx("kw-topbar", (scrolled || page !== "home") && "kw-solid")}>
-          <Crossing kind="shoji" href="/" className="kw-tokimono" aria-label="Back to Kimono"><Icon name="left" /><span>Kimono</span></Crossing>
           <button className="kw-brand" onClick={() => go("home")} aria-label="Kimono Watch home"><AppLockup identity={{ id: watchId, name: "Watch", accent, glyph: "play" }} /></button>
           <nav className="kw-topnav" aria-label="Sections">
             <button aria-current={page === "home" ? "page" : undefined} onClick={() => go("home")}>Home</button>
@@ -282,6 +281,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
           <button className="kw-iconbtn" aria-label="Search" onClick={() => setSearching(true)}><Icon name="search" /></button>
           <button className="kw-iconbtn" aria-label="Settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => go("settings")}><Icon name="gear" /></button>
           <AccountMenu profile={profile} onSettings={() => go("settings")} onSwitch={switchProfile} />
+          <Crossing kind="shoji" href="/" className="kw-tokimono" aria-label="Back to Kimono" title="Back to Kimono"><KimonoBranch /></Crossing>
         </header>
         {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} more={moreLoading} onMore={loadMore} />
           : page === "settings" ? <SettingsPage me={me} onSwitch={switchProfile} signOut={signOut} />
