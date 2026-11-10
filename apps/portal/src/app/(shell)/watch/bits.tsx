@@ -23,6 +23,8 @@ export type Watch = {
   /** Every card seen so far, for More like this and what to watch after. */
   known: () => Card[];
   firstName: string;
+  /** Watch's own colour, for its loaders. */
+  accent: string;
 };
 export const WatchContext = createContext<Watch | null>(null);
 export function useWatch() {

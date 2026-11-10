@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
 import { airText, clock, deviceOf, languageName, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, TitleMark, useWatch } from "./bits";
-import { Icon, SeekIcon, Wavy } from "./icons";
+import { InkLoader, InkRing } from "@kimono/ui";
+import { Icon, SeekIcon } from "./icons";
 import { attach, attachThumb, type Attached } from "./source";
 
 /*
@@ -118,14 +119,16 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     Object.assign(live.current, { creditsDone: false, prepared: false, autoSkipped: false, loading: true });
     v.pause();
     setLoading(true); setProblem(null); setPost(null); setPostOut(false); setSkip(null); setCue(""); setPinfo(false); setSheet(null);
-    setTime(0); setDuration(0); setBuffered(0); setPct(0); setCtl(true); setEnded(false);
+    setTime(0); setDuration(0); setBuffered(0); setCtl(true); setEnded(false);
+    /* Real stages, not a timer: the title is known; the stream, opening it, then buffering fill the rest. */
+    setPct(10);
     clearInterval(pctTimer.current);
-    pctTimer.current = setInterval(() => setPct((p) => p + (90 - p) * 0.05), 60);
     try {
       const device = await deviceOf();
       const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), ...(oneOff.current ? { quality: oneOff.current } : {}), device });
       if (token !== live.current.token) return;
       setPlay(p); live.current.play = p;
+      setPct(30);
       setChoice(null);
       attached.current?.detach();
       thumbDetach.current?.(); thumbDetach.current = null;
@@ -140,9 +143,16 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
         v.addEventListener("error", bad, { once: true });
       });
       if (token !== live.current.token) return;
-      setPct(96);
+      setPct(50);
       if (startAt > 0 && startAt < v.duration - 5) v.currentTime = startAt;
       v.playbackRate = speed;
+      /* The second half: how much of the few seconds it needs to start are in. */
+      pctTimer.current = setInterval(() => {
+        const t = v.currentTime;
+        let ahead = 0;
+        for (let i = 0; i < v.buffered.length; i++) if (v.buffered.start(i) <= t + .5 && v.buffered.end(i) > t) ahead = v.buffered.end(i) - t;
+        setPct((now) => Math.max(now, Math.min(99, 50 + 50 * Math.min(1, ahead / 4))));
+      }, 150);
       await v.play().catch(() => { /* blocked: the big play button starts it */ });
       if (token !== live.current.token) return;
       clearInterval(pctTimer.current); setPct(100);
@@ -167,7 +177,6 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     live.current.tries = 0; live.current.changed = false; oneOff.current = null;
     setLoading(true); setProblem(null); setView(null); setEp(null); setPlay(null);
     setPct(0); clearInterval(pctTimer.current);
-    pctTimer.current = setInterval(() => setPct((p) => p + (60 - p) * 0.04), 60);
     try {
       let v = await watchApi.title(id, at?.season);
       watch.noteView(v);
@@ -525,13 +534,13 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     {(["l", "r"] as const).map((side) => <div key={`${side}${rip[side]}`} className={cx("kw-ripple", `kw-${side}`, rip[side] > 0 && "kw-go")}>
       <div><Icon name={side === "l" ? "rw" : "ff"} />10 seconds</div>
     </div>)}
-    <div className={cx("kw-spin", sk && "kw-on")}><Wavy r={30} amp={2.6} waves={10} width={5} /></div>
+    <div className={cx("kw-spin", sk && "kw-on")}>{sk ? <InkLoader ink={watch.accent} label="Buffering" /> : null}</div>
     <div className={cx("kw-pload", (loading || problem) && "kw-on")}>
       {problem ? <div className="kw-oops"><p>{problem}</p><div className="kw-btns" style={{ justifyContent: "center" }}>
         <button className="kw-btn kw-tonal" onClick={exit}>Back</button>
         {play && play.versions.length > play.version.index + 1 ? <button className="kw-btn kw-primary" onClick={() => { live.current.tries = 0; void loadEpisode(titleId!, ep, { version: play.version.index + 1 }); }}>Try another version</button> : null}
       </div></div> : <>
-        <div className="kw-ring"><Wavy r={30} amp={2.4} waves={10} width={4} /><span className="kw-pct">{Math.floor(pct)}%</span></div>
+        <InkRing className="kw-start" value={pct / 100} percent label="Starting" />
         <div className="kw-lbl"><b>{t?.name ?? ""}</b><span>{epLine}</span></div>
       </>}
     </div>

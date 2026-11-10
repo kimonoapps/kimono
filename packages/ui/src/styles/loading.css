@@ -27,3 +27,8 @@ button[aria-busy="true"] { cursor: progress; }
 .k-wave { display: block; width: 100%; height: 12px; color: var(--k-app-accent, var(--k-suo)); }
 
 @media (prefers-reduced-motion: reduce) { .k-busy-shape { animation: none; } }
+
+/* The wavy ring: the bar's wave round a circle, the percent in its middle. */
+.k-ring { position: relative; display: inline-grid; place-items: center; width: 96px; height: 96px; color: var(--k-app-accent, var(--k-suo)); }
+.k-ring > svg { grid-area: 1 / 1; display: block; width: 100%; height: 100%; overflow: visible; }
+.k-ring-percent { grid-area: 1 / 1; font: 700 18px/1 var(--k-sans, system-ui); font-variant-numeric: tabular-nums; color: var(--k-ring-text, currentColor); }

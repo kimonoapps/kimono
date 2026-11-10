@@ -5,7 +5,8 @@ import { qualities, saveQuality, savedQuality, watchApi, type Card, type Home, t
 import { AppLockup } from "@kimono/ui";
 import { cx, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
-import { Icon, Wavy } from "./icons";
+import { InkLoader } from "@kimono/ui";
+import { Icon } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
 import { Player, type PlayerHandle } from "./player";
 import { TitleSheet } from "./title";
@@ -115,6 +116,7 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
 
   const watch = useMemo<Watch>(() => ({
     firstName: (me.name.trim() || me.username).split(" ")[0],
+    accent,
     toast: say,
     openTitle: (id) => { setSheetId(id); writePlace(readPlace().page, id, true); },
     play: (id, at) => { setPlaying(true); player.current?.start(id, at); },
@@ -137,7 +139,7 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
       watchApi.mark(id, { reminding: on }).catch(() => { setMark(id, { reminding: !on }); say("That didn't work."); });
     },
     known: () => [...known.current.values()],
-  }), [me, say, listIds, setMark, loadHome, remember]);
+  }), [me, accent, say, listIds, setMark, loadHome, remember]);
 
   const exitPlayer = useCallback((changed: boolean) => {
     setPlaying(false);
@@ -162,10 +164,10 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
           <div className={cx("kw-who", picking && "kw-busy")}>
             {household.map((p) => <button key={p.username} className={cx(picking === p.username && "kw-loading", p.username !== me.username && "kw-other")} onClick={() => pick(p)}>
               <span className="kw-face" style={{ background: faceOf(p.username) }}>
-                <span className="kw-ring"><Wavy r={32} amp={2.2} waves={9} width={3} color="var(--paper)" /></span>
-                {p.picture
-                  // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
-                  ? <img src={p.picture} alt="" /> : initial(p)}
+                {picking === p.username ? <InkLoader tone="plain" label="Opening" className="kw-face-wait" />
+                  : p.picture
+                    // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
+                    ? <img src={p.picture} alt="" /> : initial(p)}
               </span>
               <span className="kw-name">{p.name.split(" ")[0] || p.username}</span>
             </button>)}

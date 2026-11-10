@@ -334,8 +334,7 @@
 @keyframes kw-rip{0%{opacity:1;background:rgba(255,255,255,.12)}100%{opacity:0;background:rgba(255,255,255,0)}}
 .kw .kw-spin{position:absolute;inset:0;margin:auto;width:72px;height:72px;display:none;pointer-events:none}
 .kw .kw-spin.kw-on{display:block}
-.kw .kw-spin svg{width:100%;height:100%;animation:kw-rot 1.6s linear infinite}
-@keyframes kw-rot{to{transform:rotate(360deg)}}
+.kw .kw-spin .k-morph{width:100%;height:100%}
 .kw .kw-pause-info{position:absolute;inset:0;display:flex;align-items:center;padding-left:max(8vw, env(safe-area-inset-left,0px));padding-right:max(8vw, env(safe-area-inset-right,0px));background:rgba(0,0,0,.6);opacity:0;transition:opacity .8s;pointer-events:none}
 .kw .kw-pause-info.kw-on{opacity:1}
 .kw .kw-pause-info div{max-width:560px;display:grid;gap:10px}
@@ -493,15 +492,9 @@
 .kw img.kw-fade.kw-ld{opacity:1}
 .kw .kw-card,.kw .kw-cw .kw-shot,.kw .kw-ep .kw-th,.kw .kw-mlt .kw-shot,.kw .kw-soon .kw-shot,.kw .kw-slist img,.kw .kw-pep .kw-th{background:var(--surface-2)}
 .kw .kw-face{position:relative}
-.kw .kw-face .kw-ring{position:absolute;inset:-14px;opacity:0;transition:opacity .2s}
-.kw .kw-face .kw-ring svg{width:100%;height:100%;animation:kw-rot 1.4s linear infinite}
-.kw .kw-who button.kw-loading .kw-face .kw-ring{opacity:1}
 .kw .kw-who.kw-busy button:not(.kw-loading){opacity:.35;pointer-events:none}
 .kw .kw-pload{position:absolute;inset:0;z-index:4;display:none;place-items:center;background:#000}
 .kw .kw-pload.kw-on{display:grid}
-.kw .kw-pload .kw-ring{position:relative;width:96px;height:96px}
-.kw .kw-pload .kw-ring svg{width:100%;height:100%;animation:kw-rot 1.5s linear infinite}
-.kw .kw-pload .kw-pct{position:absolute;inset:0;display:grid;place-items:center;font-weight:700;font-size:18px;font-variant-numeric:tabular-nums}
 .kw .kw-pload .kw-lbl{position:absolute;left:0;right:0;bottom:22%;text-align:center;display:grid;gap:6px;padding:0 20px}
 .kw .kw-pload .kw-lbl b{font-family:var(--display);font-size:clamp(22px,3vw,34px);font-weight:800}
 .kw .kw-pload .kw-lbl span{color:var(--fg-3);font-size:14px}
@@ -553,8 +546,6 @@
 .kw .kw-brand{gap:8px}
 .kw .kw-profiles{position:relative}
 .kw.kw-waiting{display:grid;place-items:center}
-.kw .kw-breathe{animation:kw-breathe 1.6s ease-in-out infinite;margin:0}
-@keyframes kw-breathe{50%{transform:scale(.92);opacity:.7}}
 .kw .kw-quality{margin-top:18px;display:grid}
 .kw .kw-quality h4{margin-bottom:6px}
 .kw .kw-account .kw-smenu{left:auto;right:0;transform-origin:top right;min-width:230px}
@@ -566,3 +557,8 @@
 .kw .kw-brand .k-app-lockup-name{color:var(--blush);font-size:23px}
 .kw .kw-brand .k-app-lockup-mark{width:34px;height:34px}
 @media (max-width:899px){.kw .kw-brand .k-app-lockup-word,.kw .kw-brand .k-app-lockup-name{font-size:20px}.kw .kw-brand .k-app-lockup-mark{width:30px;height:30px}}
+/* Kimono's own loaders (docs/design-system.md, "Waiting"), in Watch's colour. */
+.kw .kw-pload .kw-start{width:96px;height:96px;color:var(--suo);--k-ring-text:var(--fg)}
+.kw .kw-pload .kw-start .k-ring-percent{font-family:var(--ui)}
+.kw .kw-wait{width:56px;height:56px}
+.kw .kw-face .kw-face-wait{width:44%;height:44%}

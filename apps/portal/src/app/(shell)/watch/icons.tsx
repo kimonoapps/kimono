@@ -42,14 +42,3 @@ export function Icon({ name, className = "kw-ic" }: { name: IconName; className?
 export function SeekIcon({ name }: { name: "rw" | "ff" }) {
   return <span className="kw-seek-ic"><Icon name={name} /><small>10</small></span>;
 }
-
-/** Kimono's loading mark: an expressive wavy ring, three quarters round. */
-export function Wavy({ r = 30, amp = 2.4, waves = 10, width = 5, color = "var(--suo)" }: { r?: number; amp?: number; waves?: number; width?: number; color?: string }) {
-  let d = "";
-  for (let i = 0; i <= 240; i++) {
-    const a = (i / 240) * Math.PI * 2 * 0.78;
-    const rr = r + amp * Math.sin(a * waves);
-    d += `${i ? "L" : "M"}${(36 + rr * Math.cos(a)).toFixed(2)} ${(36 + rr * Math.sin(a)).toFixed(2)}`;
-  }
-  return <svg viewBox="0 0 72 72" aria-hidden="true"><path d={d} fill="none" stroke={color} strokeWidth={width} strokeLinecap="round" /></svg>;
-}

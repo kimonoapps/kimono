@@ -17,6 +17,8 @@ import { inkFilters, mixHex, washGradient } from "./ink";
  * - InkWave: the update's wavy bar, brushed, as on the phone (InkProgress.kt).
  *   Only for a real progress (an upload, a render with a percent): the wave
  *   fills as the value grows. Never for a wait without a measure.
+ * - InkRing: the same wave drawn round a circle, for a real progress that
+ *   sits in the middle of things (a stream starting, with its percent).
  */
 
 const SHAPES: ((t: number) => number)[] = [
@@ -183,4 +185,65 @@ export function BusyFace({ busy, label = "Working", children }: { busy: boolean;
 /** The wavy bar for a real progress. `value` 0–1 fills it; leave it out while how long is unknown. */
 export function InkWave({ value, label = "Loading", className }: { value?: number; label?: string; className?: string }) {
   return <Wave value={value} label={label} className={cx("k-wave", className)}/>;
+}
+
+/** One frame of the ring in a 100×100 box: the filled wave from the top, clockwise, then the track. */
+function ringFrame(t: number, value: number) {
+  const centre = 50, radius = 38, weight = 7, amp = 2.6, waves = 12;
+  const turn = Math.PI * 2, top = -Math.PI / 2;
+  const phase = (t / 1000) * 1.6;
+  /* Like the bar: flat at the very start and the very end, wavy between. */
+  const swing = amp * Math.min(1, value / .1) * Math.max(0, Math.min(1, (1 - value) / .05));
+  const at = (a: number, r: number) => `${(centre + r * Math.cos(a)).toFixed(2)} ${(centre + r * Math.sin(a)).toFixed(2)}`;
+  const reach = top + turn * value;
+  let wave = "";
+  if (value > 0) {
+    const steps = Math.max(2, Math.ceil(240 * value));
+    for (let k = 0; k <= steps; k++) {
+      const a = top + (reach - top) * (k / steps);
+      wave += `${k ? "L" : "M"}${at(a, radius + swing * Math.sin((a - top) * waves - phase))}`;
+    }
+  }
+  /* The track: the rest of the circle, a gap either side of the wave. */
+  const gap = value > 0 && value < 1 ? .2 : 0;
+  const from = value > 0 ? reach + gap : top, to = top + turn - (value > 0 ? gap : 0);
+  let track = "";
+  if (to - from > .05) {
+    const steps = Math.ceil(120 * (to - from) / turn) + 1;
+    for (let k = 0; k <= steps; k++) track += `${k ? "L" : "M"}${at(from + (to - from) * (k / steps), radius)}`;
+  }
+  return { wave, track, weight };
+}
+
+/**
+ * The wavy ring for a real progress: the bar's brushed wave and wash drawn
+ * round a circle, filling clockwise from the top as `value` (0–1) grows.
+ * `percent` writes the value in its middle. Never for a wait with no measure:
+ * that is InkLoader.
+ */
+export function InkRing({ value, label = "Loading", percent = false, className }: { value: number; label?: string; percent?: boolean; className?: string }) {
+  const unique = useId().replaceAll(":", "");
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setNow(500); return; }
+    const begun = performance.now();
+    let raf = 0;
+    const tick = (at: number) => { setNow(Math.max(0, at - begun)); raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const known = Math.min(1, Math.max(0, value || 0));
+  const f = ringFrame(now, known);
+  return <span className={cx("k-ring", className)} role="progressbar" aria-label={label || undefined} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(known * 100)}>
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <defs dangerouslySetInnerHTML={{ __html: `<filter id="ink-fine-${unique}" filterUnits="userSpaceOnUse" x="-6" y="-6" width="112" height="112"><feTurbulence type="fractalNoise" baseFrequency=".08" numOctaves="2" seed="16" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"></feDisplacementMap></filter>`
+        + `<filter id="ink-wash-${unique}" filterUnits="userSpaceOnUse" x="-6" y="-6" width="112" height="112"><feTurbulence type="fractalNoise" baseFrequency=".02 .06" numOctaves="3" seed="14" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="5" result="d"></feDisplacementMap><feGaussianBlur in="d" stdDeviation=".6"></feGaussianBlur></filter>` }}/>
+      {f.track ? <path d={f.track} fill="none" stroke="currentColor" strokeWidth={(f.weight * .8).toFixed(2)} strokeLinecap="round" strokeDasharray="90 5" opacity=".24" filter={`url(#ink-fine-${unique})`}/> : null}
+      {f.wave ? <>
+        <path d={f.wave} fill="none" stroke="currentColor" strokeWidth={(f.weight * 1.9).toFixed(2)} strokeLinecap="round" strokeLinejoin="round" opacity=".18" filter={`url(#ink-wash-${unique})`}/>
+        <path d={f.wave} fill="none" stroke="currentColor" strokeWidth={f.weight.toFixed(2)} strokeLinecap="round" strokeLinejoin="round" opacity=".9" filter={`url(#ink-fine-${unique})`}/>
+      </> : null}
+    </svg>
+    {percent ? <span className="k-ring-percent" aria-hidden="true">{Math.floor(known * 100)}%</span> : null}
+  </span>;
 }
