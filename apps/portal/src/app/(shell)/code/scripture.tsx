@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { InkCard, Seal } from "@kimono/ui";
 import { Scroller } from "@/components/scroller";
 import type { Hadith, Passage, Tafsir, Verse } from "@/lib/code/scripture";
@@ -22,8 +22,20 @@ type Lang = "en" | "fr";
 const translators: Record<Lang, string> = { en: "Saheeh International", fr: "Muhammad Hamidullah" };
 const sunnahSlug: Record<string, string> = { nawawi: "nawawi40", qudsi: "qudsi40" };
 
+/* A card that breaks shows its reference instead, never taking the chat down with it. */
+export class ScriptureBoundary extends Component<{ label: string; children: ReactNode }, { broken: boolean }> {
+  state = { broken: false };
+  static getDerivedStateFromError() { return { broken: true }; }
+  componentDidCatch(error: unknown) { console.warn("A Quran or hadith card failed:", error); }
+  render() {
+    if (!this.state.broken) return this.props.children;
+    return <div className="cd-scrip is-failed"><div className="cd-scrip-head"><span className="cd-scrip-title">{this.props.label}</span></div><p className="cd-scrip-note">This couldn&apos;t be shown.</p></div>;
+  }
+}
+
 /* Where a text was taken from, under it: the source's name, linking to it. */
-function SourceLine({ source, detail }: { source: { name: string; url: string }; detail?: string }) {
+function SourceLine({ source, detail }: { source?: { name: string; url: string } | null; detail?: string }) {
+  if (!source?.url) return null;
   return <button type="button" className="cd-scrip-source" title={source.url} onClick={() => window.open(source.url, "_blank", "noopener,noreferrer")}>
     From {source.name}{detail ? <> · {detail}</> : null}
   </button>;
@@ -136,7 +148,7 @@ const span = (keys: string[]) => keys.length > 1 ? `${keys[0]}–${keys[keys.len
 
 /* One tafsir on the verses it explains together (Ibn Kathir often takes two or three at once): those verses, then its words. */
 function TafsirSection({ id, verseKey, passage, cited, lang, first }: { id: number; verseKey: string; passage: Passage; cited: string[]; lang: Lang; first: boolean }) {
-  const { data, failed } = useLoad<Tafsir>(`/api/v1/code/scripture/tafsir?id=${id}&key=${encodeURIComponent(verseKey)}&v=2`);
+  const { data, failed } = useLoad<Tafsir>(`/api/v1/code/scripture/tafsir?id=${id}&key=${encodeURIComponent(verseKey)}&v=3`);
   if (failed) return <section className="cd-tafsir-part is-empty">The tafsir on {verseKey} couldn&apos;t be loaded.</section>;
   if (!data) return first ? <section className="cd-tafsir-part is-loading" aria-busy="true"><span /><span /><span /></section> : null;
   /* a group already shown under an earlier verse of the passage isn't shown again */
@@ -200,7 +212,7 @@ const options = (rest: string[]) => ({ lang: rest.find((o) => o === "en" || o ==
 export function QuranBlock({ source }: { source: string }) {
   const [ref, ...rest] = source.trim().split(/\s+/);
   const { lang: option } = options(rest);
-  const { data, failed } = useLoad<Passage>(ref ? `/api/v1/code/scripture/quran?ref=${encodeURIComponent(ref)}` : null);
+  const { data, failed } = useLoad<Passage>(ref ? `/api/v1/code/scripture/quran?ref=${encodeURIComponent(ref)}&v=3` : null);
   const [lang, setLang] = useState<Lang>(() => option === "en" || option === "fr" ? option : keptLang() ?? firstLang(undefined));
   const [inverted, setInverted] = useState(keptSwap);
   const [reading, setReading] = useState(false);
@@ -257,7 +269,7 @@ export function HadithBlock({ source }: { source: string }) {
   const [book, number, ...rest] = source.trim().split(/\s+/);
   const { lang: option } = options(rest);
   const n = Number(number);
-  const { data, failed } = useLoad<Hadith>(book && n ? `/api/v1/code/scripture/hadith?book=${encodeURIComponent(book)}&n=${n}` : null);
+  const { data, failed } = useLoad<Hadith>(book && n ? `/api/v1/code/scripture/hadith?book=${encodeURIComponent(book)}&n=${n}&v=3` : null);
   const [lang, setLang] = useState<Lang>(() => option === "en" || option === "fr" ? option : keptLang() ?? firstLang(undefined));
   const [inverted, setInverted] = useState(keptSwap);
   const tip = useTip();

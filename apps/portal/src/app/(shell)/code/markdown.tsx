@@ -2,7 +2,7 @@
 
 import { Fragment, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Scroller } from "@/components/scroller";
-import { HadithBlock, IslamNotice, QuranBlock } from "./scripture";
+import { HadithBlock, IslamNotice, QuranBlock, ScriptureBoundary } from "./scripture";
 
 /*
  * The little Markdown an agent writes: paragraphs, headings, lists, quotes,
@@ -194,10 +194,10 @@ export const Markdown = memo(function Markdown({ text, streaming = false }: { te
       case "math": return <Tex key={key} source={block.text} display />;
       case "code":
         /* Quran and hadith are cited by reference and shown from their sources; until the block is closed the reference may still be growing. */
-        if (block.lang === "islam-notice") return block.closed ? <IslamNotice key={key} /> : null;
+        if (block.lang === "islam-notice") return block.closed ? <ScriptureBoundary key={key} label="Notice"><IslamNotice /></ScriptureBoundary> : null;
         if (block.lang === "quran" || block.lang === "hadith") {
           if (!block.closed) return <div key={key} className="cd-scrip is-loading" aria-busy="true"><div className="cd-scrip-bars"><span /><span /></div></div>;
-          return block.lang === "quran" ? <QuranBlock key={key} source={block.text} /> : <HadithBlock key={key} source={block.text} />;
+          return <ScriptureBoundary key={key} label={`${block.lang === "quran" ? "Quran" : "Hadith"} ${block.text.trim()}`}>{block.lang === "quran" ? <QuranBlock source={block.text} /> : <HadithBlock source={block.text} />}</ScriptureBoundary>;
         }
         return <Scroller key={key} fit as="pre" tone="lift" viewClassName="cd-pre" data-lang={block.lang || undefined}><code>{block.text}</code></Scroller>;
       case "h": return block.level <= 2 ? <h3 key={key}>{inline(block.text, key, f)}</h3> : <h4 key={key}>{inline(block.text, key, f)}</h4>;
