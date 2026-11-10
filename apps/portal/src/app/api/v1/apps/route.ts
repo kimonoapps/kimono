@@ -8,6 +8,7 @@ import { scanAppDefinitions } from "@/lib/definitions";
 import { holdsMeshAccess } from "@/lib/directory";
 import { getPlatformSettings } from "@/lib/settings";
 import { categorize } from "@/lib/app-categories";
+import { withReleasedPhoneApp } from "@/lib/app-releases";
 import { myApps } from "@/lib/my-apps";
 
 /* Built into the Kimono apps themselves, or not wanted on a phone. */
@@ -25,7 +26,8 @@ export async function GET() {
   const [settings, catalog] = await Promise.all([getPlatformSettings(), scanAppDefinitions()]);
   /* The Portal's public address: behind the proxy, the request's own is the container's. */
   const origin = portalOrigin();
-  const opened = launcherApps(appRegistry(settings, catalog.definitions), { mesh: await holdsMeshAccess(user.username) });
+  /* Phone apps built with Kimono's release (Kimono Watch) take this release's package. */
+  const opened = await Promise.all(launcherApps(appRegistry(settings, catalog.definitions), { mesh: await holdsMeshAccess(user.username) }).map(withReleasedPhoneApp));
   const apps = opened
     .filter((app) => !notListed.has(app.id))
     .map((app) => ({

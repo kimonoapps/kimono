@@ -18,6 +18,29 @@
   },
   "spec": {
     "integration": "native",
+    "portalPath": "/watch",
+    "mobileApp": {
+      "name": "Kimono Watch",
+      "iosUrl": "/get-app?for=ios",
+      "androidPackage": "app.kimono.watch",
+      "kimonoRelease": "watch",
+      "steps": [
+        {
+          "id": "download",
+          "title": "Get Kimono Watch",
+          "description": "Install Kimono Watch on this phone or TV, then come back here.",
+          "kind": "download"
+        },
+        {
+          "id": "connect",
+          "title": "Open Kimono Watch",
+          "description": "Tap below. Kimono Watch opens and asks you to sign in with Kimono.",
+          "kind": "open",
+          "href": "kimono-watch://connect?server={{server}}",
+          "label": "Open Kimono Watch"
+        }
+      ]
+    },
     "services": [],
     "volumes": [],
     "configuration": [
@@ -149,7 +172,6 @@
       "internetAccess": true,
       "allowedApps": []
     },
-    "portalPath": "/watch",
     "setupReady": true
   }
 }

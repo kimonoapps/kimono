@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { withReleasedPhoneApp } from "@/lib/app-releases";
 import type { AppIdentity } from "@kimono/ui";
 import type { Palette } from "@/lib/settings";
 import { holdsMeshAccess } from "@/lib/directory";
@@ -30,7 +31,8 @@ type Props = {
 /* The layout and the home page both ask during one render; they share the answer. */
 export const railApps = cache(async (username: string): Promise<(RailApp & { mobileApp?: import("@/lib/apps").KimonoApp["mobileApp"] })[]> => {
   const [settings, catalog, mesh] = await Promise.all([getPlatformSettings(), scanAppDefinitions(), holdsMeshAccess(username)]);
-  return launcherApps(appRegistry(settings, catalog.definitions), { mesh })
+  const apps = await Promise.all(launcherApps(appRegistry(settings, catalog.definitions), { mesh }).map(withReleasedPhoneApp));
+  return apps
     .map((app) => ({ id: app.id, name: app.shortName, description: app.description, href: app.href, external: app.external, accent: app.accent, glyph: app.glyph, iconUrl: app.iconUrl, mobileApp: app.mobileApp }));
 });
 

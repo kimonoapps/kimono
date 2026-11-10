@@ -23,6 +23,12 @@ export type MobileApp = {
   androidPackage?: string;
   /** The SHA-256 (hex) of an `.apk` androidUrl. The Kimono phone app installs only a package that matches it. */
   androidSha256?: string;
+  /**
+   * A phone app built with Kimono's own release (Kimono Watch: "watch"): its
+   * Android package rides on the GitHub release as kimono-{name}-android.json
+   * and its .apk, so the address and hash come from there, not this file.
+   */
+  kimonoRelease?: string;
   steps: (MobileAppStep | string)[];
 };
 
