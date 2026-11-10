@@ -213,7 +213,7 @@ function Episodes({ view, loading, pickSeason, setLayout }: { view: TitleView; l
   const numberOf = (e: Episode) => (view.layout === "continuous" ? e.absolute ?? e.number : e.number);
   return <>
     <div className="kw-eps-head">
-      {picker ? <div className="kw-sdrop" ref={drop}>
+      <div className="kw-eps-pick">{picker ? <div className="kw-sdrop" ref={drop}>
         <button className="kw-sbtn" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setOpen(!open); setShown(false); }}>Season {season}<Icon name="more" /></button>
         {open ? <div className={cx("kw-smenu", shown && "kw-on")} role="listbox">
           {seasons.map((s) => <button key={s.number} role="option" aria-selected={s.number === season} onClick={() => { setOpen(false); setShown(false); if (s.number !== season) pickSeason(s.number); }}>
@@ -221,7 +221,7 @@ function Episodes({ view, loading, pickSeason, setLayout }: { view: TitleView; l
           </button>)}
         </div> : null}
       </div> : <h3>Episodes</h3>}
-      {view.title.shelf === "Anime" && view.layout && view.layout !== "single" ? <LayoutChoice view={view} onChange={setLayout} /> : null}
+      {view.title.shelf === "Anime" && view.layout && view.layout !== "single" ? <LayoutChoice view={view} onChange={setLayout} /> : null}</div>
       <span className="kw-eps-count">{episodes.length} episodes</span>
     </div>
     <div>{loading ? Array.from({ length: 4 }, (_, i) => <div key={i} className="kw-sk kw-sk-ep" />) : episodes.map((e, i) => {
@@ -289,15 +289,11 @@ function LanguageChoice({ view, open, onChange }: { view: TitleView; open: boole
   </div>;
 }
 
-/* An anime with seasons: by season or as one list, for this show; "Use my default" once it differs. */
+/* An anime with seasons: one icon beside the season, lit when it's one list; turning back to the default drops the override. */
 function LayoutChoice({ view, onChange }: { view: TitleView; onChange: (to: "seasons" | "continuous" | null) => void }) {
   const watch = useWatch();
   const fallback = watch.prefs?.animeEpisodes ?? "seasons";
   const now = view.showEpisodes ?? (view.layout === "continuous" ? "continuous" : "seasons");
-  return <div className="kw-eps-layout">
-    <div className="kw-joint kw-joint-sm" role="radiogroup" aria-label="Episodes">
-      {([["seasons", "By season"], ["continuous", "One list"]] as const).map(([value, label]) => <button key={value} role="radio" aria-checked={now === value} className={cx(now === value && "kw-sel")} onClick={() => { if (now !== value) onChange(value === fallback ? null : value); }}>{label}</button>)}
-    </div>
-    {view.showEpisodes && view.showEpisodes !== fallback ? <button className="kw-textbtn" onClick={() => onChange(null)}>Use my default</button> : null}
-  </div>;
+  const to = now === "continuous" ? "seasons" : "continuous";
+  return <button className="kw-eps-layout" aria-pressed={now === "continuous"} aria-label="One list" title={now === "continuous" ? "By season" : "One list"} onClick={() => onChange(to === fallback ? null : to)}><Icon name="list" /></button>;
 }

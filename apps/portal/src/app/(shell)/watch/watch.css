@@ -453,7 +453,7 @@
 @media (max-width:899px){.kw .kw-post .kw-nx{flex-wrap:wrap}.kw .kw-nx-note{width:100%;text-align:right}}
 
 /* season dropdown */
-.kw .kw-eps-head{padding-top:6px}
+.kw .kw-eps-head{padding-top:0;margin-bottom:12px}
 .kw .kw-eps-count{color:var(--fg-3);font-size:14px}
 .kw .kw-sdrop{position:relative}
 .kw .kw-sbtn{display:inline-flex;align-items:center;gap:6px;height:44px;padding:0 10px 0 16px;border-radius:8px;background:var(--surface-3);border:1px solid var(--line);font-weight:700;font-size:16px}
@@ -730,7 +730,11 @@
 .kw .kw-subs.kw-subs-static.kw-subs-large span{font-size:5.2cqw}
 .kw .kw-joint button{text-align:center}
 @media (max-width:640px){.kw .kw-set-row.kw-inline{flex-direction:row;align-items:center}.kw .kw-set-row:not(.kw-inline) .kw-tick{position:absolute;right:0;top:-26px}.kw .kw-set-row{position:relative}}
-.kw .kw-eps-layout{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.kw .kw-eps-pick{display:flex;align-items:center;gap:8px}
+.kw .kw-eps-layout{width:44px;height:44px;display:grid;place-items:center;border-radius:8px;background:var(--surface-3);border:1px solid var(--line);color:var(--fg-2)}
+.kw .kw-eps-layout:hover{border-color:var(--fg-3);color:var(--fg)}
+.kw .kw-eps-layout[aria-pressed="true"]{color:var(--blush);border-color:var(--blush)}
+.kw .kw-eps-layout .kw-ic{width:22px;height:22px}
 .kw .kw-joint-sm button{padding:7px 12px;font-size:13px}
 .kw .kw-textbtn{font-size:13px;font-weight:700;color:var(--fg-2);text-decoration:underline;text-underline-offset:3px}
 .kw .kw-textbtn:hover{color:var(--fg)}
