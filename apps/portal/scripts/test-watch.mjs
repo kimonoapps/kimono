@@ -325,3 +325,31 @@ test("a login in a stream's address moves into a header", () => {
   assert.deepEqual(streams.upstreamRequest('http://kimono:s%40cret@nzbdav:3000/content/a.mkv'), { url: 'http://nzbdav:3000/content/a.mkv', authorization: `Basic ${Buffer.from('kimono:s@cret').toString('base64')}` });
   assert.deepEqual(streams.upstreamRequest('https://rd.example/x'), { url: 'https://rd.example/x', authorization: null });
 });
+
+/* ───── Ahead of play ───── */
+
+import * as ahead from '../src/lib/watch/ahead.ts';
+
+test('a search already under way is joined, not started twice, and forgotten when done', async () => {
+  const running = new Map();
+  let searches = 0;
+  let finish;
+  const search = () => { searches++; return new Promise((resolve) => { finish = resolve; }); };
+  const first = ahead.shared(running, 'streams:tv-1:1:2', search);
+  const second = ahead.shared(running, 'streams:tv-1:1:2', search);
+  assert.equal(first, second);
+  assert.equal(searches, 1);
+  finish(['found']);
+  assert.deepEqual(await second, ['found']);
+  assert.equal(running.size, 0);
+  await assert.rejects(ahead.shared(running, 'k', async () => { throw new Error('down'); }), /down/);
+  assert.equal(running.size, 0, 'a failed search is forgotten too, so the next one tries again');
+  assert.equal(ahead.streamsKey('movie-603', 0, 0), 'streams:movie-603:0:0');
+});
+
+test('found streams wait in the same cache play reads, for twenty minutes', () => {
+  const db = fresh();
+  model.keep(db, ahead.streamsKey('tv-1', 1, 3), [{ url: 'https://up/x' }], ahead.streamTtl, 0);
+  assert.ok(model.cached(db, ahead.streamsKey('tv-1', 1, 3), ahead.streamTtl - 1));
+  assert.equal(model.cached(db, ahead.streamsKey('tv-1', 1, 3), ahead.streamTtl + 1), null);
+});

@@ -8,6 +8,7 @@ import { secretName } from "../secret-name";
 import { resolveSecrets } from "../secrets";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
+import { anyPlayable, notePlayable, shared, streamsKey, streamTtl } from "./ahead";
 import { animeEntriesFor, animeMap, anilistMedia, jikanFillers } from "./anime";
 import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { badge, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
@@ -16,9 +17,9 @@ import {
   prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem,
   type Episode, type Title,
 } from "./model";
-import { badges, cleanDevice, describe, rank } from "./releases";
+import { badges, cleanDevice, describe, rank, type Release } from "./releases";
 import { findStreams, stremioId, upstreamRequest } from "./streams";
-import { ensureProvisioned, type NzbdavAccess } from "./provision";
+import { ensureProvisioned, hasSources, type NzbdavAccess } from "./provision";
 import { fetchDetails, fetchSeason, imageUrl, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
 
@@ -165,10 +166,12 @@ export async function titleView(cfg: WatchConfig, username: string, id: string, 
   };
   if (title.kind === "movie") {
     const p = progress.find((x) => x.season === 0 && x.episode === 0);
+    findAhead(cfg, title, 0, 0);
     return { ...base, resume: p && !finished(p) ? { position: p.position, fraction: fraction(p) } : null };
   }
   const episodes = await allEpisodes(cfg, title);
   const resume = resumePoint(episodes, progress, prefs.fillers);
+  findAhead(cfg, title, resume.season, resume.episode);
   const season = seasonWanted ?? resume.season;
   const seen = new Map(progress.map((p) => [`${p.season}:${p.episode}`, p]));
   return {
@@ -262,6 +265,53 @@ async function nzbdavAccess(): Promise<NzbdavAccess> {
 
 
 /**
+ * One film's or episode's releases: from the cache, from a search already
+ * under way (a title page or /prepare started it), or a new search, kept for
+ * 20 minutes. Upstream addresses stay on the server.
+ */
+function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: number): Promise<Release[]> {
+  const db = watchDb();
+  const key = streamsKey(title.id, season, episode);
+  const known = cached<Release[]>(db, key);
+  if (known) return Promise.resolve(known);
+  return shared(searching, key, async () => {
+    if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
+    const manifest = await ensureProvisioned(db, cfg, await nzbdavAccess());
+    const found = await findStreams(manifest, title.kind, stremioId(title.imdbId, season || undefined, episode || undefined));
+    keep(db, key, found, streamTtl);
+    /* A first episode or a film with nothing to stream answers for the whole title; anything found does too. */
+    if (anyPlayable(found) || (season <= 1 && episode <= 1)) notePlayable(db, title.id, anyPlayable(found));
+    return found;
+  });
+}
+const searching = ((globalThis as unknown as { kimonoWatchSearching?: Map<string, Promise<Release[]>> }).kimonoWatchSearching ??= new Map());
+
+/** Starts finding an episode's streams without waiting; play reports any trouble when it comes to it. */
+function findAhead(cfg: WatchConfig, title: Title, season: number, episode: number) {
+  if (!title.imdbId || !hasSources(cfg)) return;
+  releasesFor(cfg, title, season, episode).catch(() => {});
+}
+
+/**
+ * Gets the next episode ready while this one plays: the apps send the one
+ * playing (`{ titleId, season, episode, device }`) most of the way through,
+ * and its streams are found now so the next play starts at once. Says which
+ * episode that is and whether something on it plays on this device.
+ */
+export async function prepare(cfg: WatchConfig, username: string, raw: Record<string, unknown>) {
+  const db = watchDb();
+  const title = await ensureTitle(cfg, String(raw.titleId ?? ""));
+  if (title.kind === "movie") return { next: null, ready: false };
+  const prefs = prefsOf(db, username);
+  const next = nextEpisode(await allEpisodes(cfg, title), { season: Number(raw.season) || 1, episode: Number(raw.episode) || 1 }, prefs.fillers);
+  if (!next || !title.imdbId) return { next, ready: false };
+  const found = await releasesFor(cfg, title, next.season, next.episode).catch(() => []);
+  const device = cleanDevice(raw.device);
+  const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
+  return { next, ready: rank(found, device, prefs.quality, minutes, prefs.audioLanguage || "en").length > 0 };
+}
+
+/**
  * Picks what to play on this device and hands back a Kimono address for it,
  * with the other versions, where to start, and what comes after.
  */
@@ -282,10 +332,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     minutes = e.runtime ?? minutes;
   }
 
-  const key = `streams:${title.id}:${season}:${episode}`;
-  const found = cached<ReturnType<typeof rank>>(db, key)
-    ?? await findStreams(await ensureProvisioned(db, cfg, await nzbdavAccess()), title.kind, stremioId(title.imdbId, season || undefined, episode || undefined));
-  keep(db, key, found, 20 * 60 * 1000);
+  const found = await releasesFor(cfg, title, season, episode);
   const ranked = rank(found, device, prefs.quality, minutes, prefs.audioLanguage || "en");
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
