@@ -20,7 +20,7 @@ export async function GET(request: Request, { params }: Context) {
   const id = cleanPartyId((await params).id);
   if (!id) return apiError(404, "This watch party has ended.");
   return watch(async () => {
-    if (!request.headers.get("accept")?.includes("text/event-stream")) return apiJson(partyNow(id));
+    if (!request.headers.get("accept")?.includes("text/event-stream")) return apiJson(partyNow(id, user.username));
     const client = cleanClient(new URL(request.url).searchParams.get("client"));
     if (!client) return apiError(400, "Say which screen this is.");
     const encoder = new TextEncoder();
@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: Context) {
           if (event.type === "ended") close();
         };
         write("retry: 1500\n\n");
-        const stop = listen(id, client, send);
+        const stop = listen(id, client, user.username, send);
         if (!stop) { write("event: ended\ndata: {}\n\n"); try { controller.close(); } catch { /* closed */ } return; }
         const beat = setInterval(() => write(`event: ping\ndata: {"now":${Date.now()}}\n\n`), 10_000);
         close = () => { clearInterval(beat); stop(); try { controller.close(); } catch { /* already closed */ } };

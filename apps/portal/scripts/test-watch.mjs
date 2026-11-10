@@ -1191,3 +1191,21 @@ test('with nobody ready, nobody is given up on', () => {
   p = live(party.report(p, { client: 'akram-tab1', username: 'akram' }, 'ready', 2_061_000), 2_061_000).party;
   assert.equal(p.hold, null, 'akram is ready, and sami has been stuck 60 s: carry on');
 });
+
+test('a party view names the episodes the way each person sees the show', () => {
+  let p = playing(1_000_000);
+  p = party.command(p, { username: 'akram' }, { type: 'countdown', to: { season: 1, episode: 4, skipped: 0 } }, p.seq, 1_001_000).party;
+  const view = party.viewOf(p, 1_001_000);
+  const single = party.labelView(view, (s, e) => labels.episodeLabel('single', s, e));
+  assert.equal(single.timeline.label, 'E3');
+  assert.equal(single.countdown.to.label, 'E4');
+  const seasons = party.labelView(view, (s, e) => labels.episodeLabel('seasons', s, e));
+  assert.equal(seasons.countdown.to.label, 'S1:E4', 'per person: the same party, their own layout');
+  const abs = new Map([['1:3', 27], ['1:4', 28]]);
+  assert.equal(party.labelView(view, (s, e) => labels.episodeLabel('continuous', s, e, abs.get(`${s}:${e}`))).countdown.to.label, 'E28');
+  assert.equal(view.timeline.label, undefined, 'the stored view is left alone');
+  assert.equal(party.labelView(view, null), view, 'no namer: as it was');
+  const film = party.viewOf(party.newParty('p-film00000', { username: 'a', client: 'a-tab0001' }, { titleId: 'movie-1', season: 0, episode: 0, position: 0 }, [], 1), 1);
+  assert.equal(party.labelView(film, () => 'E1').timeline.label, undefined, 'films have no episode label');
+  assert.equal(party.labelView(view, (s, e) => `E${e}`).countdown.to.skipped, 0);
+});

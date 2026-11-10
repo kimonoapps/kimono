@@ -54,7 +54,8 @@ export type Hold = {
   /** Whether to play again once nobody is waited for (a pause during the wait keeps it paused). */
   resume: boolean;
 };
-export type Countdown = { to: EpisodeRef & { skipped: number }; endsAt: number };
+/** `label` is how the episode is named on the screen it goes to ("E11", "S2:E3"); only views carry it. */
+export type Countdown = { to: EpisodeRef & { skipped: number; label?: string }; endsAt: number };
 export type ChatLine = { id: string; username: string; text: string; at: number };
 export type Party = {
   id: string;
@@ -383,7 +384,7 @@ export function addChat(party: Party, username: string, text: string, id: string
 
 export type PartyView = {
   id: string; host: string; hostOnly: boolean; invited: string[]; seq: number; moved: number;
-  timeline: Timeline; hold: Hold | null; countdown: Countdown | null; by: Party["by"];
+  timeline: Timeline & { label?: string }; hold: Hold | null; countdown: Countdown | null; by: Party["by"];
   members: { client: string; username: string; state: MemberState; present: boolean }[];
   ended: boolean;
   /** The server's clock when this was sent (ms). */
@@ -396,6 +397,20 @@ export function viewOf(party: Party, now: number): PartyView {
     timeline: party.timeline, hold: party.hold, countdown: party.countdown, by: party.by ?? null,
     members: party.members.map((m) => ({ client: m.client, username: m.username, state: m.state, present: present(m, now) })),
     ended: party.ended, now,
+  };
+}
+
+/**
+ * A view with the playing and next episodes named the way this person sees
+ * the show (their own episode layout); films and unknown titles stay as they are.
+ */
+export function labelView(view: PartyView, label: ((season: number, episode: number) => string) | null): PartyView {
+  const t = view.timeline;
+  if (!label || (t.season === 0 && t.episode === 0)) return view;
+  return {
+    ...view,
+    timeline: { ...t, label: label(t.season, t.episode) },
+    countdown: view.countdown ? { ...view.countdown, to: { ...view.countdown.to, label: label(view.countdown.to.season, view.countdown.to.episode) } } : null,
   };
 }
 

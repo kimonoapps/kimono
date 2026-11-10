@@ -242,7 +242,7 @@ async function tmdbList(cfg: WatchConfig, key: string, path: string, params: Rec
 }
 
 /** How this person sees a show's episodes (./labels.ts episodeLayout), and each episode's name on screen. */
-function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof prefsOf>) {
+export function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof prefsOf>) {
   const layout = episodeLayout(title.shelf, seasonsOf(db, title.id).filter((s) => s.number > 0).length, prefs.animeEpisodes);
   const absolute = absoluteNumbers(episodesOf(db, title.id));
   const label = (season: number, episode: number) => episodeLabel(layout, season, episode, absolute.get(`${season}:${episode}`));

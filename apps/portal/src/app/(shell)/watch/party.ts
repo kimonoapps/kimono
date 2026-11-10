@@ -11,7 +11,7 @@ import type { Card } from "./api";
 
 export type { ChatLine, PartyView };
 export type Reaction = { id: number; username: string; client: string; emoji: string };
-export type Invite = { id: string; host: string; hostName: string; invited: boolean; title: Card | null; season: number; episode: number; watching: string[]; seq: number };
+export type Invite = { id: string; host: string; hostName: string; invited: boolean; title: Card | null; season: number; episode: number; label?: string | null; watching: string[]; seq: number };
 export type Person = { username: string; name: string; picture: string | null };
 export const reactionSet = ["❤️", "😂", "😮", "😢", "👏", "🔥"];
 

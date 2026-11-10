@@ -5,9 +5,9 @@ import { portalOrigin } from "../account";
 import { listAccounts } from "../directory";
 import { picturePaths } from "../pictures";
 import type { WatchConfig } from "./config";
-import { cardOf, ensureTitle, getTitle, nextUp, watchDb, WatchProblem } from "./index";
+import { cardOf, ensureTitle, getTitle, namer, nextUp, prefsOf, watchDb, WatchProblem } from "./index";
 import {
-  addChat, cleanClient, command, decline, endForgotten, invite, leave, loadParty, newParty, parseCommand, partiesFor, reactions, report, saveParty, seen, tick, viewOf,
+  addChat, cleanClient, command, decline, endForgotten, invite, labelView, leave, loadParty, newParty, parseCommand, partiesFor, reactions, report, saveParty, seen, tick, viewOf,
   type ChatLine, type MemberState, type Party, type PartyView,
 } from "./together";
 
@@ -25,7 +25,7 @@ export type LiveEvent =
   | { type: "react"; username: string; client: string; emoji: string; at: number }
   | { type: "ended" };
 
-type Listener = { client: string; send: (event: LiveEvent) => void };
+type Listener = { client: string; username: string; send: (event: LiveEvent) => void };
 type Room = { party: Party; listeners: Set<Listener>; savedAt: number; reacted: Map<string, number[]> };
 
 /* Kept across hot reloads in development, as the database connection is. */
@@ -66,12 +66,31 @@ function must(id: string): Room {
 
 function tell(room: Room, event: LiveEvent) { for (const l of room.listeners) l.send(event); }
 
+/* How each person names a show's episodes (their layout setting), kept a minute per person and title. */
+const namers = new Map<string, { at: number; label: ((season: number, episode: number) => string) | null }>();
+function labelsFor(username: string, titleId: string) {
+  const key = `${username.toLowerCase()}|${titleId}`;
+  const known = namers.get(key);
+  if (known && Date.now() - known.at < 60_000) return known.label;
+  let label: ((season: number, episode: number) => string) | null = null;
+  try {
+    const db = watchDb();
+    const title = getTitle(db, titleId);
+    if (title && title.kind === "series") label = namer(db, title, prefsOf(db, username.toLowerCase())).label;
+  } catch { /* unnamed is still right, just less friendly */ }
+  if (namers.size > 500) namers.clear();
+  namers.set(key, { at: Date.now(), label });
+  return label;
+}
+/** The party as this person sees it: episodes named their way. */
+const viewFor = (party: Party, username: string, now = Date.now()) => labelView(viewOf(party, now), labelsFor(username, party.timeline.titleId));
+
 /** Takes the party's new state: kept, and sent to everyone when it's news. */
 function commit(room: Room, next: Party, now = Date.now()) {
   const before = room.party;
   room.party = next;
   if (next.seq !== before.seq || now - room.savedAt > 10_000) { saveParty(watchDb(), next); room.savedAt = now; }
-  if (next.seq !== before.seq) tell(room, { type: "state", state: viewOf(next, now) });
+  if (next.seq !== before.seq) for (const l of room.listeners) l.send({ type: "state", state: viewFor(next, l.username, now) });
   if (next.ended) { tell(room, { type: "ended" }); rooms.delete(next.id); }
 }
 
@@ -127,7 +146,7 @@ export async function createParty(cfg: WatchConfig, username: string, raw: Recor
   const room: Room = { party, listeners: new Set(), savedAt: Date.now(), reacted: new Map() };
   rooms.set(party.id, room);
   runClock();
-  return { state: viewOf(party, Date.now()) };
+  return { state: viewFor(party, username) };
 }
 
 /** The parties someone hosts, is in, or is asked to, with what's on; and the household to invite. */
@@ -144,6 +163,7 @@ export async function partiesOf(username: string, origin: string) {
       invited: p.invited.includes(u) && !p.members.some((m) => m.username === u),
       title: title ? cardOf(title, origin) : null,
       season: p.timeline.season, episode: p.timeline.episode,
+      label: p.timeline.season || p.timeline.episode ? labelsFor(u, p.timeline.titleId)?.(p.timeline.season, p.timeline.episode) ?? null : null,
       watching: [...new Set(p.members.filter((m) => now - m.seen < 15_000).map((m) => m.username))],
       seq: p.seq,
     };
@@ -152,22 +172,22 @@ export async function partiesOf(username: string, origin: string) {
 }
 
 /** The party now, and its chat: what a screen starts from. */
-export function partyNow(id: string) {
+export function partyNow(id: string, username: string) {
   const room = must(id);
   const title = getTitle(watchDb(), room.party.timeline.titleId);
-  return { state: viewOf(room.party, Date.now()), chat: room.party.chat, title: title ? { id: title.id, name: title.name } : null };
+  return { state: viewFor(room.party, username), chat: room.party.chat, title: title ? { id: title.id, name: title.name } : null };
 }
 
 /**
  * Listens to a party: its state and chat now, then every change, reaction
  * and line of chat as it comes. The screen counts as here while it listens.
  */
-export function listen(id: string, client: string, send: (event: LiveEvent) => void): (() => void) | null {
+export function listen(id: string, client: string, username: string, send: (event: LiveEvent) => void): (() => void) | null {
   const room = roomOf(id);
   if (!room) return null;
-  const listener: Listener = { client, send };
+  const listener: Listener = { client, username, send };
   room.listeners.add(listener);
-  send({ type: "state", state: viewOf(room.party, Date.now()) });
+  send({ type: "state", state: viewFor(room.party, username) });
   send({ type: "chat", lines: room.party.chat });
   return () => { room.listeners.delete(listener); };
 }
@@ -185,7 +205,7 @@ export async function act(cfg: WatchConfig, id: string, username: string, raw: R
   const u = username.toLowerCase();
   const client = cleanClient(raw.client);
   const type = String(raw.type ?? "");
-  const answer = (status = 200, extra: Record<string, unknown> = {}) => ({ status, body: { ok: status < 300, ...extra, state: viewOf(room.party, Date.now()) } });
+  const answer = (status = 200, extra: Record<string, unknown> = {}) => ({ status, body: { ok: status < 300, ...extra, state: viewFor(room.party, u) } });
 
   if (type === "decline") { commit(room, decline(room.party, u, now)); return answer(); }
   if (type === "invite") {
@@ -234,7 +254,8 @@ export async function act(cfg: WatchConfig, id: string, username: string, raw: R
     if (!to) return answer(200, { next: null });
     const out = command(room.party, { username: u, client }, { type: "countdown", to }, seenSeq, Date.now());
     if (out.ok) commit(room, out.party);
-    return out.ok ? answer(200, { next: to }) : answer(out.reason === "host-only" ? 403 : 409, { reason: out.reason });
+    const label = labelsFor(u, titleId)?.(to.season, to.episode);
+    return out.ok ? answer(200, { next: label ? { ...to, label } : to }) : answer(out.reason === "host-only" ? 403 : 409, { reason: out.reason });
   }
   const cmd = parseCommand(raw);
   if (!cmd) return { status: 400, body: { ok: false, error: "That isn't something a party does." } };
