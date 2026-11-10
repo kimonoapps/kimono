@@ -36,7 +36,7 @@ import { openStream, sealStream } from "./token";
 import { migrateTogether } from "./together";
 import { markDead, isDead } from "./dead";
 import { framingOf, noteShape } from "./shape";
-import { playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
+import { asked, endedBefore, endStreams, heard, streamLifeMs, playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
 import { anything, castOf, displayAspect, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, startSegment, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
@@ -559,7 +559,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage)));
 
   const sealKey = await streamKey();
-  const expiresAt = Date.now() + 6 * 60 * 60 * 1000;
+  const expiresAt = Date.now() + streamLifeMs;
   const sealed = (r: { url: string; service: string }) => sealStream(sealKey, { url: r.url, username, expiresAt, source: r.service, what });
   const address = (r: { url: string; service: string }) => `${origin}/api/v1/watch/stream/${sealed(r)}`;
   const tracks = playerTracks(withFallback(plan, prefs, wanted.languages, tracksOf(db, username, title.id)));
@@ -720,9 +720,15 @@ export async function relay(request: Request, token: string): Promise<Response> 
   if (!grant) return new Response("This link has run out. Press play again.", { status: 410 });
   const headers = new Headers();
   for (const name of ["range", "if-range", "accept"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
-  /* Counted per person (./flow.ts); the server's own reads (skip markers) carry no "what" and aren't. */
+  /* Counted per person (./flow.ts); the server's own reads (skip markers) carry no "what" and aren't. The packager's reads
+     don't keep a stream counted either: it can hold the file open long after the browser left. Its HLS parts' requests do. */
   const what = grant.what;
-  if (what && request.method !== "HEAD" && tooMany(grant.username, what)) return new Response(tooManyNote, { status: 429 });
+  const byPackager = new URL(request.url).searchParams.has("packager");
+  if (what && endedBefore(grant.username, grant.expiresAt)) return new Response("This was stopped from another screen.", { status: 410 });
+  if (what && request.method !== "HEAD" && !byPackager) {
+    if (tooMany(grant.username, what)) return new Response(tooManyNote, { status: 429 });
+    asked(grant.username, what);
+  }
   const startedAt = performance.now();
   const opened = what ? waitOn(grant.username, what) : () => {};
   const upstream = await fetchUpstream(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal }).finally(opened);
@@ -789,7 +795,7 @@ function hlsSession(cfg: WatchConfig, token: string, grant: HlsGrant): Promise<H
   const known = hlsSessions.get(id);
   if (known) { known.at = Date.now(); return Promise.resolve(known); }
   return shared(hlsStarting, id, async () => {
-    const input = `${cfg.packager.input}/api/v1/watch/stream/${grant.stream}`;
+    const input = `${cfg.packager.input}/api/v1/watch/stream/${grant.stream}?packager=1`;
     const ask = () => packagerFetch(cfg, "/probe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input }), signal: AbortSignal.timeout(160_000) }).catch(() => null);
     /* A slow source (Usenet's first byte, a debrid link still warming up) is asked again; only an unreadable one fails the play. */
     let answer: Response | null = null;
@@ -843,6 +849,14 @@ export async function hlsRelay(request: Request, token: string, path: string[]):
       const body = wanted.output[0] === "v" ? mediaPlaylist(session.plan, n) : subtitlePlaylist(session.plan, n);
       return new Response(body, { headers: hlsHeaders(playlist) });
     }
+    /* A part asked for: whoever plays it is still watching (./flow.ts). */
+    const stream = openStream(await streamKey(), grant.stream);
+    const what = stream?.what ?? null;
+    if (stream && what && endedBefore(grant.username, stream.expiresAt)) return new Response("This was stopped from another screen.", { status: 410, headers: hlsHeaders("text/plain") });
+    if (what && request.method !== "HEAD") {
+      if (tooMany(grant.username, what)) return new Response(tooManyNote, { status: 429, headers: hlsHeaders("text/plain") });
+      asked(grant.username, what);
+    }
     const headers = new Headers();
     const range = request.headers.get("range");
     if (range) headers.set("range", range);
@@ -864,4 +878,14 @@ export async function hlsRelay(request: Request, token: string, path: string[]):
     for (const name of ["content-length", "content-range"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
     return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers: out });
   });
+}
+
+/** Ends every stream this person has going, on any screen, so a new one can start. */
+export function endMyStreams(username: string): { ended: number } {
+  return { ended: endStreams(username) };
+}
+
+/** A player's progress report also says it's still watching (./flow.ts). */
+export function stillWatching(username: string, titleId: string, season: number, episode: number) {
+  heard(username, watchKey(titleId, season, episode));
 }

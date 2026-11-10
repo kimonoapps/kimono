@@ -11,11 +11,16 @@
  * when the relay has bytes ready and the player doesn't take them, the
  * person's own connection is. Players ask when they stall and say which.
  *
+ * A stream counts while a player is heard from on it: a request for the file
+ * or an HLS part, or a progress report. An open connection alone doesn't: the
+ * packager, or a player that went away without hanging up, can hold one for
+ * as long as it likes. A paused player goes quiet and gives its slot back.
+ *
  * In memory: a restart forgets, which only frees the slots.
  */
 
 export const streamsPerPerson = 2;
-/** A stream with nothing open and nothing read for this long has stopped (a paused player that let go counts as stopped). */
+/** A stream no player has been heard from on for this long has stopped. Players report progress every 10 seconds while playing. */
 const idleMs = 45_000;
 /** How far back "is the source keeping up" looks. */
 const windowMs = 15_000;
@@ -24,6 +29,10 @@ const bucketMs = 1000;
 type Flow = {
   started: number;
   open: number;
+  /* When a player last asked for this or reported on it. */
+  heard: number;
+  /* Ends each relay still open on it. */
+  cuts: Set<() => void>;
   seen: number;
   /* Reads waiting on the source right now, and since when one has been. */
   waiting: number;
@@ -34,6 +43,12 @@ type Flow = {
   sent: Map<number, number>;
 };
 
+/** How long a stream's address works (./token.ts): one made at t runs out at t + this. */
+export const streamLifeMs = 6 * 60 * 60 * 1000;
+
+/* When each person last ended their streams: addresses made before then no longer open. */
+const ended = ((globalThis as unknown as { kimonoWatchEnded?: Map<string, number> }).kimonoWatchEnded ??= new Map());
+
 const flows = ((globalThis as unknown as { kimonoWatchFlows?: Map<string, Map<string, Flow>> }).kimonoWatchFlows ??= new Map());
 
 /** What a play is counted as: a film, or one episode. */
@@ -43,11 +58,44 @@ function flowOf(username: string, what: string, now: number): Flow {
   let mine = flows.get(username);
   if (!mine) flows.set(username, (mine = new Map()));
   let flow = mine.get(what);
-  if (!flow) mine.set(what, (flow = { started: now, open: 0, seen: now, waiting: 0, since: 0, busy: new Map(), sent: new Map() }));
+  if (!flow) mine.set(what, (flow = { started: now, open: 0, heard: 0, cuts: new Set(), seen: now, waiting: 0, since: 0, busy: new Map(), sent: new Map() }));
   return flow;
 }
 
-const live = (flow: Flow, now: number) => flow.open > 0 || flow.waiting > 0 || now - flow.seen < idleMs;
+/** Whether a player is on it: what counts against the two. */
+const live = (flow: Flow, now: number) => now - flow.heard < idleMs;
+/** Whether the relay is moving bytes for it, player or packager: what the slowness checks look at. */
+const moving = (flow: Flow, now: number) => flow.open > 0 || flow.waiting > 0 || now - flow.seen < idleMs;
+
+/** A player asked for part of `what`, or said where it is: it's still watching. Only a stream already counted is kept going. */
+export function heard(username: string, what: string, now = Date.now()) {
+  const flow = flows.get(username)?.get(what);
+  if (flow) flow.heard = Math.max(flow.heard, now);
+}
+
+/** A player's request for the file: counts the stream from now. */
+export function asked(username: string, what: string, now = Date.now()) {
+  flowOf(username, what, now).heard = now;
+}
+
+/** Ends everything this person is streaming, wherever it plays: the slots free at once. */
+export function endStreams(username: string): number {
+  const mine = flows.get(username) ?? new Map<string, Flow>();
+  let count = 0;
+  for (const flow of mine.values()) {
+    if (live(flow, Date.now())) count++;
+    for (const cut of [...flow.cuts]) cut();
+  }
+  flows.delete(username);
+  ended.set(username, Date.now());
+  return count;
+}
+
+/** Whether a stream address running out at `expiresAt` was made before its person ended their streams. */
+export function endedBefore(username: string, expiresAt: number): boolean {
+  const at = ended.get(username);
+  return at !== undefined && expiresAt - streamLifeMs < at;
+}
 
 /** What this person is streaming now, besides `except`. */
 export function streamsOf(username: string, except?: string, now = Date.now()): string[] {
@@ -56,7 +104,7 @@ export function streamsOf(username: string, except?: string, now = Date.now()): 
   const out: string[] = [];
   for (const [what, flow] of mine) {
     if (live(flow, now)) { if (what !== except) out.push(what); }
-    else if (now - flow.seen > 6 * 60 * 60 * 1000) mine.delete(what);
+    else if (!moving(flow, now) && now - flow.seen > 6 * 60 * 60 * 1000) mine.delete(what);
   }
   return out;
 }
@@ -104,9 +152,14 @@ export function tracked(body: ReadableStream<Uint8Array>, username: string, what
   flow.open++;
   flow.seen = clock();
   let closed = false;
-  const close = () => { if (closed) return; closed = true; flow.open--; flow.seen = clock(); };
   const reader = body.getReader();
+  let cut: (() => void) | null = null;
+  const close = () => { if (closed) return; closed = true; flow.open--; flow.seen = clock(); if (cut) flow.cuts.delete(cut); };
   return new ReadableStream<Uint8Array>({
+    start(controller) {
+      cut = () => { close(); try { controller.error(new Error("ended")); } catch { /* already over */ } reader.cancel().catch(() => {}); };
+      flow.cuts.add(cut);
+    },
     async pull(controller) {
       const over = waitOn(username, what, clock);
       try {
@@ -128,7 +181,7 @@ export function tracked(body: ReadableStream<Uint8Array>, username: string, what
 /** Who's to blame for a stall: "server" when the source can't keep up, "connection" when it can, null when nothing's been streaming. */
 export function verdict(username: string, what: string, now = Date.now()): { slow: "server" | "connection" | null; busy: number; mbps: number } {
   const flow = flows.get(username)?.get(what);
-  if (!flow || !live(flow, now)) return { slow: null, busy: 0, mbps: 0 };
+  if (!flow || !moving(flow, now)) return { slow: null, busy: 0, mbps: 0 };
   /* A stream only seconds old is judged on those seconds. */
   const span = Math.max(2000, Math.min(windowMs, now - flow.started));
   const from = now - span;
@@ -154,7 +207,7 @@ const startingMs = 90_000;
 export function playbackNeedsSource(now = Date.now()): boolean {
   for (const [username, mine] of flows) {
     for (const [what, flow] of mine) {
-      if (!live(flow, now)) continue;
+      if (!moving(flow, now)) continue;
       if (now - flow.started < startingMs) return true;
       if (verdict(username, what, now).slow === "server") return true;
     }
@@ -162,4 +215,4 @@ export function playbackNeedsSource(now = Date.now()): boolean {
   return false;
 }
 
-export const forgetFlows = () => flows.clear();
+export const forgetFlows = () => { flows.clear(); ended.clear(); };

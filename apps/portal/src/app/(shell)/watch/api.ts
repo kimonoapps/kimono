@@ -131,6 +131,8 @@ export const watchApi = {
   play: (body: { titleId: string; season?: number; episode?: number; version?: number; avoid?: string[]; quality?: string; startAt?: number; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
   prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number; label?: string }) | null; ready: boolean }>("prepare", post({ ...body, deviceId: deviceId() })),
   /** Kept alive so it still lands when the page is closing. */
+  /** Ends every stream this person has going, on every screen. */
+  endStreams: () => call<{ ended: number }>("streams", { method: "DELETE" }),
   progress: (body: { titleId: string; season: number; episode: number; position: number; duration: number }) =>
     fetch("/api/v1/watch/progress", { method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" }, credentials: "same-origin", keepalive: true }).catch(() => null),
 };

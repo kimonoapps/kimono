@@ -792,7 +792,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const nextAir = future(t?.nextAirDate);
   const reminding = t ? watch.marksOf(t.id).reminding : false;
 
-  return <div ref={root} className={cx("kw-player", ctl && "kw-ctl", loading && "kw-loading", (post === "next" || post === "ask") && "kw-postnext", post === "end" && "kw-postplay")} hidden={!titleId}
+  return <div ref={root} className={cx("kw-player", ctl && "kw-ctl", (loading || problem) && "kw-loading", (post === "next" || post === "ask") && "kw-postnext", post === "end" && "kw-postplay")} hidden={!titleId}
     onMouseMove={() => { showCtl(); if (pinfo) setPinfo(false); }} onTouchStart={() => { if (pinfo) setPinfo(false); }} onPointerUp={onPointerUp}>
     <video ref={video} className="kw-pv" playsInline preload="auto" />
     <video ref={thumbVideo} muted playsInline preload="metadata" style={{ display: "none" }} />
@@ -806,6 +806,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     <div className={cx("kw-pload", (loading || problem) && "kw-on")}>
       {problem ? <div className="kw-oops"><p>{problem}</p><div className="kw-btns" style={{ justifyContent: "center" }}>
         <button className="kw-btn kw-tonal" onClick={exit}>Back</button>
+        {problem.startsWith("You're already watching") ? <button className="kw-btn kw-primary" onClick={() => { setProblem(null); setLoading(true); void watchApi.endStreams().then(() => loadEpisode(titleId!, ep), () => { setLoading(false); setProblem("Those didn't stop. Try again."); }); }}>Stop both</button> : null}
         {play && play.versions.some((x) => x.key !== play.version.key && !live.current.avoid.includes(x.key)) ? <button className="kw-btn kw-primary" onClick={() => { live.current.tries = 0; void loadEpisode(titleId!, ep, { avoid: [...live.current.avoid, play.version.key] }); }}>Try another version</button> : null}
       </div></div> : <>
         <InkRing className="kw-start" value={pct / 100} percent label="Starting" />

@@ -51,6 +51,8 @@ data class PlayerState(
     val finding: Boolean = true,
 ) {
     val isFilm get() = page?.title?.isFilm == true
+    /** Both of this person's streams are in use elsewhere (the server's 429). */
+    val tooMany get() = problem?.startsWith("You're already watching") == true
     val current: EpisodeInfo? get() = page?.episode(season, episode)
     /** "S2:E3", "E27" or "E3", as the title names its episodes. */
     val label: String get() = answer?.label ?: page?.label(season, episode) ?: answer?.layout?.let { app.kimono.watch.model.episodeLabel(it, season, episode) } ?: "S$season:E$episode"
@@ -137,6 +139,14 @@ class PlayerViewModel(
         val s = _state.value
         loadJob?.cancel()
         loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, at = lastPos.takeIf { it > 0 }) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "This didn't start. Try again.") } }
+    }
+
+    /** Both streams are taken: end them everywhere, then start here. */
+    fun endOthers() {
+        _state.value = _state.value.copy(loading = true, problem = null)
+        viewModelScope.launch {
+            if (runCatching { api.endStreams() }.isFailure) failed("Those didn't stop. Try again.") else retry()
+        }
     }
 
     /**

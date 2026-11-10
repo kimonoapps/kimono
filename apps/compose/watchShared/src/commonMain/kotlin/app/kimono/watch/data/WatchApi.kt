@@ -84,6 +84,9 @@ class WatchApi(
             put("device", json.encodeToJsonElement(device()))
         }))
 
+    /** Ends every stream this person has going, on every screen. */
+    suspend fun endStreams() { accounts.call("$base/streams", HttpMethod.Delete) }
+
     suspend fun progress(titleId: String, season: Int, episode: Int, position: Double, duration: Double) {
         send(HttpMethod.Put, "/progress", buildJsonObject {
             put("titleId", titleId); put("season", season); put("episode", episode); put("position", position); put("duration", duration)

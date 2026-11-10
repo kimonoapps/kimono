@@ -444,7 +444,7 @@ fun PlayerScreen(
         }
 
         /* Middle (phone): back ten, play, forward ten. Play stays up over "You're watching", one tap away. */
-        if (!tv && !state.loading && (chrome > 0.01f || pauseCard) && post == Post.None) Row(Modifier.align(Alignment.Center).zIndex(3f), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!tv && !state.loading && state.problem == null && (chrome > 0.01f || pauseCard) && post == Post.None) Row(Modifier.align(Alignment.Center).zIndex(3f), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.alpha(chrome)) { SeekBtn(false) { if (chrome > 0.5f) { seekBy(-10.0); rip(false); show() } } }
             Box(Modifier.alpha(if (pauseCard) 1f else chrome)) { PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true) }
             Box(Modifier.alpha(chrome)) { SeekBtn(true) { if (chrome > 0.5f) { seekBy(10.0); rip(true); show() } } }
@@ -726,7 +726,8 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
     val value = when (stage) { 0 -> 0f; 1 -> .35f; else -> .35f + .65f * fill.coerceIn(0f, 1f) }
     var waited by remember(state.loads, state.finding) { mutableIntStateOf(0) }
     LaunchedEffect(state.loads, state.finding) { while (true) { delay(1000); waited++ } }
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    /* Over the play button row and everything else on the player (zIndex 3–4), never under it. */
+    Box(Modifier.fillMaxSize().zIndex(4.5f).background(Color.Black)) {
         Img(ep?.still ?: page?.title?.backdropLarge ?: page?.title?.backdrop, Modifier.fillMaxSize().blur(24.dp).alpha(.35f))
         if (state.problem == null) {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -755,7 +756,8 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
                 val f = remember { FocusRequester() }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PaperButton("Back", null, onExit, tonal = true)
-                    PaperButton("Try again", null, { vm.retry() }, Modifier.focusRequester(f))
+                    if (state.tooMany) PaperButton("Stop both", null, { vm.endOthers() }, Modifier.focusRequester(f))
+                    else PaperButton("Try again", null, { vm.retry() }, Modifier.focusRequester(f))
                 }
                 LaunchedEffect(Unit) { runCatching { f.requestFocus() } }
             }

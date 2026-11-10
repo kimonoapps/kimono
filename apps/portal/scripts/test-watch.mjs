@@ -1302,6 +1302,7 @@ test('the encoder starts in the segment the player resumes from', () => {
 
 test('two streams per person; a third waits until one stops, and what plays carries on', async () => {
   flow.forgetFlows();
+  flow.asked('sami', 'tv-1:1:1'); flow.asked('sami', 'tv-1:1:2');
   const a = flow.tracked(bytesOf([new Uint8Array(10)]), 'sami', 'tv-1:1:1');
   const b = flow.tracked(bytesOf([new Uint8Array(10)]), 'sami', 'tv-1:1:2');
   assert.equal(flow.tooMany('sami', 'tv-1:1:3'), true);
@@ -1311,6 +1312,37 @@ test('two streams per person; a third waits until one stops, and what plays carr
   const later = Date.now() + 60_000;
   assert.equal(flow.tooMany('sami', 'tv-1:1:3', later), false, 'stopped streams free their slot');
   assert.deepEqual(flow.streamsOf('sami', undefined, later), []);
+});
+
+test('a connection held open with no player on it (the packager, a player gone) frees its slot', () => {
+  flow.forgetFlows();
+  let now = 0;
+  const clock = () => now;
+  flow.asked('sami', 'a', 0); flow.asked('sami', 'b', 0);
+  flow.tracked(bytesOf([]), 'sami', 'a', clock);
+  flow.tracked(bytesOf([]), 'sami', 'b', clock);
+  assert.equal(flow.tooMany('sami', 'c', 10_000), true);
+  flow.heard('sami', 'a', 40_000);
+  assert.deepEqual(flow.streamsOf('sami', undefined, 60_000), ['a'], 'a progress report keeps a counted; b went quiet');
+  assert.equal(flow.tooMany('sami', 'c', 60_000), false);
+  assert.deepEqual(flow.streamsOf('sami', undefined, 90_000), [], 'nothing heard from either');
+  flow.heard('sami', 'z', 90_000);
+  assert.deepEqual(flow.streamsOf('sami', undefined, 90_000), [], 'a report alone starts nothing');
+});
+
+test('ending my streams frees both slots and stops the addresses already handed out', async () => {
+  flow.forgetFlows();
+  const before = Date.now() + flow.streamLifeMs - 1;
+  flow.asked('sami', 'a'); flow.asked('sami', 'b');
+  const a = flow.tracked(bytesOf([new Uint8Array(10), new Uint8Array(10)], 50), 'sami', 'a');
+  assert.equal(flow.tooMany('sami', 'c'), true);
+  assert.equal(flow.endStreams('sami'), 2);
+  assert.equal(flow.tooMany('sami', 'c'), false);
+  await assert.rejects(a.getReader().read(), 'an open relay is cut');
+  assert.equal(flow.endedBefore('sami', before), true, 'an old address no longer opens');
+  await new Promise((r) => setTimeout(r, 2));
+  assert.equal(flow.endedBefore('sami', Date.now() + flow.streamLifeMs), false, 'a new play does');
+  assert.equal(flow.endedBefore('noor', before), false);
 });
 
 test('skip reads wait while a play is starting or its source lags, not while plays run smoothly', () => {
