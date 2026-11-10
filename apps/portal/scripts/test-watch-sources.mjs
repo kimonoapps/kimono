@@ -130,3 +130,15 @@ test("someone's taste comes from what they watch a lot, and their plan follows i
   const names = plan.filter((r) => r.title).map((r) => r.title.toLowerCase());
   assert.equal(new Set(names).size, names.length, 'no two rows share a name');
 });
+
+test("one show's episode layout overrides the anime default, and forgetting it goes back", () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  assert.equal(model.showLayoutOf(db, 'a', 'tv-1429'), null);
+  model.setShowLayout(db, 'a', 'tv-1429', 'continuous');
+  assert.equal(model.showLayoutOf(db, 'a', 'tv-1429'), 'continuous');
+  assert.equal(model.showLayoutOf(db, 'b', 'tv-1429'), null, 'per person');
+  assert.throws(() => model.setShowLayout(db, 'a', 'tv-1429', 'sideways'), /by season or one list/);
+  model.setShowLayout(db, 'a', 'tv-1429', null);
+  assert.equal(model.showLayoutOf(db, 'a', 'tv-1429'), null);
+});

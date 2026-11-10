@@ -140,6 +140,7 @@ export function migrate(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, body TEXT NOT NULL, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, body TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS show_layout (username TEXT NOT NULL, title_id TEXT NOT NULL, episodes TEXT NOT NULL, PRIMARY KEY (username, title_id));
     CREATE TABLE IF NOT EXISTS tracks (username TEXT NOT NULL, title_id TEXT NOT NULL, audio TEXT NOT NULL, subtitles TEXT NOT NULL, PRIMARY KEY (username, title_id));
     CREATE TABLE IF NOT EXISTS device_prefs (username TEXT NOT NULL, device_id TEXT NOT NULL, quality TEXT NOT NULL, PRIMARY KEY (username, device_id));
   `);
@@ -396,6 +397,17 @@ export function setTracks(db: DatabaseSync, username: string, titleId: string, r
   db.prepare("INSERT INTO tracks (username, title_id, audio, subtitles) VALUES (?,?,?,?) ON CONFLICT(username, title_id) DO UPDATE SET audio = excluded.audio, subtitles = excluded.subtitles")
     .run(username, titleId, audio, subtitles);
 }
+/** One show's episode layout for this person, over their default for anime ("seasons" or "continuous"); null follows the default. */
+export function setShowLayout(db: DatabaseSync, username: string, titleId: string, raw: unknown) {
+  if (raw === null) { db.prepare("DELETE FROM show_layout WHERE username = ? AND title_id = ?").run(username, titleId); return; }
+  if (raw !== "seasons" && raw !== "continuous") throw new WatchProblem("Episodes are by season or one list.");
+  db.prepare("INSERT INTO show_layout (username, title_id, episodes) VALUES (?,?,?) ON CONFLICT(username, title_id) DO UPDATE SET episodes = excluded.episodes").run(username, titleId, raw);
+}
+export function showLayoutOf(db: DatabaseSync, username: string, titleId: string): "seasons" | "continuous" | null {
+  const row = db.prepare("SELECT episodes FROM show_layout WHERE username = ? AND title_id = ?").get(username, titleId) as Row | undefined;
+  return row?.episodes === "seasons" || row?.episodes === "continuous" ? row.episodes : null;
+}
+
 export function tracksOf(db: DatabaseSync, username: string, titleId: string): TrackChoice | null {
   const row = db.prepare("SELECT audio, subtitles FROM tracks WHERE username = ? AND title_id = ?").get(username, titleId) as Row | undefined;
   return row ? { audio: String(row.audio), subtitles: String(row.subtitles) } : null;

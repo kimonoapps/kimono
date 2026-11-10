@@ -14,7 +14,7 @@ import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { absoluteNumbers, badge, episodeLabel, episodeLayout, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
   cached, episodesOf, finished, fraction, getTitle, getTitles, isStale, keep, listOf, markFillers, markSeasonFillers, migrate, parseTitleId,
-  cleanDeviceId, cleanQuality, deviceQualityOf, prefsOf, progressOf, qualityFor, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, tracksOf, WatchProblem, readState, writeState,
+  cleanDeviceId, cleanQuality, deviceQualityOf, prefsOf, progressOf, qualityFor, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, showLayoutOf, tracksOf, WatchProblem, readState, writeState,
   type Episode, type Title,
 } from "./model";
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
@@ -187,6 +187,8 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
     title: { ...cardOf(title, origin), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(origin, title.backdrop, "w1280") },
     inList: listOf(db, username).includes(id), rating: ratingOf(db, username, id), reminding: remindsOf(db, username).includes(id),
     tracks: tracksOf(db, username, id),
+    /* "seasons" or "continuous" when this show has its own episode layout; null follows the default. */
+    showEpisodes: showLayoutOf(db, username, id),
     /* Taken as playable until a search says otherwise. */
     playable: Boolean(title.imdbId) && playableOf(db, id) !== false,
   };
@@ -202,7 +204,9 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
   const seen = new Map(progress.map((p) => [`${p.season}:${p.episode}`, p]));
   const seasons = seasonsOf(db, id).filter((s) => s.number > 0);
   /* One season: no season anywhere. Anime counted in one run: every episode in one list, numbered from the first. */
-  const layout = episodeLayout(title.shelf, seasons.length, prefs.animeEpisodes);
+  /* This show's own choice, else the person's default for anime. */
+  const showLayout = showLayoutOf(db, username, id);
+  const layout = episodeLayout(title.shelf, seasons.length, showLayout ?? prefs.animeEpisodes);
   const absolute = absoluteNumbers(episodes);
   const shown = layout === "continuous" ? episodes.filter((e) => e.season > 0) : episodes.filter((e) => e.season === season);
   /* In one run, what's left counts to the end of the show, not the season. */
@@ -243,8 +247,8 @@ async function tmdbList(cfg: WatchConfig, key: string, path: string, params: Rec
 }
 
 /** How this person sees a show's episodes (./labels.ts episodeLayout), and each episode's name on screen. */
-export function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof prefsOf>) {
-  const layout = episodeLayout(title.shelf, seasonsOf(db, title.id).filter((s) => s.number > 0).length, prefs.animeEpisodes);
+export function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof prefsOf>, username?: string) {
+  const layout = episodeLayout(title.shelf, seasonsOf(db, title.id).filter((s) => s.number > 0).length, (username ? showLayoutOf(db, username, title.id) : null) ?? prefs.animeEpisodes);
   const absolute = absoluteNumbers(episodesOf(db, title.id));
   const label = (season: number, episode: number) => episodeLabel(layout, season, episode, absolute.get(`${season}:${episode}`));
   /* An episode reference with its label added, e.g. play's next. */
@@ -307,7 +311,7 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
     const t = recentTitlesList.find((x) => x.id === p.titleId);
     if (!t || !ok(t)) return [];
     if (t.kind === "movie" && finished(p)) return [];
-    const label = t.kind === "series" ? namer(db, t, prefs).label(p.season, p.episode) : null;
+    const label = t.kind === "series" ? namer(db, t, prefs, username).label(p.season, p.episode) : null;
     return [{ ...cardOf(t, origin), season: p.season, episode: p.episode, label, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
   }).slice(0, 12);
   const [trending, anime, films, series] = await Promise.all([
@@ -452,7 +456,7 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
     const pick = picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage));
     analyseLater(await skipDeps(cfg, username, pick), skipTarget(title, episodes, next.season, next.episode, ranked[0], minutes));
   }
-  return { next: namer(db, title, prefs).named(next), ready: ranked.length > 0 };
+  return { next: namer(db, title, prefs, username).named(next), ready: ranked.length > 0 };
 }
 
 /**
@@ -501,7 +505,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const tracks = playerTracks(plan);
   const p = progressOf(db, username, title.id).find((x) => x.season === season && x.episode === episode);
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
-  const names = namer(db, title, prefs);
+  const names = namer(db, title, prefs, username);
   const ahead = title.kind === "series" && prefs.fillers === "ask" ? fillerAhead(episodes, { season, episode }) : null;
   const hlsGrant: HlsGrant | null = hls ? {
     stream: sealed(wanted), username, expiresAt,
