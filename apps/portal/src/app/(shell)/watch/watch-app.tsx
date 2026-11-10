@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Crossing } from "@/components/crossing";
-import { watchApi, type Card, type Home, type Rating, type Shelf, type TitleView } from "./api";
+import { qualities, saveQuality, savedQuality, watchApi, type Card, type Home, type Rating, type Shelf, type TitleView } from "./api";
 import { cx, KimonoLogo, Toast, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
 import { Icon, Wavy } from "./icons";
@@ -182,11 +182,7 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
           </nav>
           <div className="kw-spacer" />
           <button className="kw-iconbtn" aria-label="Search" onClick={() => setSearching(true)}><Icon name="search" /></button>
-          <button className="kw-avatar" aria-label="Switch profile" style={{ background: faceOf(profile.username), overflow: "hidden", padding: 0 }} onClick={() => { setProfile(null); try { sessionStorage.removeItem(chosenKey); } catch { /* fine */ } }}>
-            {profile.picture
-              // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
-              ? <img src={profile.picture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initial(profile)}
-          </button>
+          <AccountMenu profile={profile} onSwitch={() => { setProfile(null); try { sessionStorage.removeItem(chosenKey); } catch { /* fine */ } }} />
         </header>
         {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} />
           : page === "hot" ? <HotPage ids={hotIds} />
@@ -203,4 +199,39 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
       <Toast message={toast} />
     </div>
   </WatchContext.Provider>;
+}
+
+/* ───── The avatar's menu: this device's quality, and switching profile ───── */
+function AccountMenu({ profile, onSwitch }: { profile: Person; onSwitch: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(false);
+  const [quality, setQuality] = useState(savedQuality);
+  const [say, setSay] = useState<{ text: string; at: number } | null>(null);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => setShown(true));
+    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) { setOpen(false); setShown(false); } };
+    document.addEventListener("pointerdown", away, true);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", away, true); };
+  }, [open]);
+  const pick = (value: string) => {
+    const before = quality;
+    setQuality(value); saveQuality(value);
+    watchApi.setDeviceQuality(value).then(() => setSay({ text: "Saved for this device", at: Date.now() }), () => { setQuality(before); saveQuality(before); setSay({ text: "That didn't work.", at: Date.now() }); });
+  };
+  return <div className="kw-sdrop kw-account" ref={box}>
+    <button className="kw-avatar" aria-label="Account" aria-haspopup="menu" aria-expanded={open} style={{ background: faceOf(profile.username), overflow: "hidden", padding: 0 }} onClick={() => { setOpen(!open); setShown(false); }}>
+      {profile.picture
+        // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
+        ? <img src={profile.picture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initial(profile)}
+    </button>
+    {open ? <div className={cx("kw-smenu", shown && "kw-on")} role="menu">
+      <p className="kw-menu-h">Quality on this device</p>
+      {qualities.map((q) => <button key={q.value} role="menuitemradio" aria-checked={quality === q.value} onClick={() => pick(q.value)}><Icon name="check" /><b>{q.label}</b><span /></button>)}
+      <div className="kw-menu-rule" />
+      <button role="menuitem" onClick={() => { setOpen(false); onSwitch(); }}><span /><b>Switch profile</b><span /></button>
+    </div> : null}
+    <Toast message={say} />
+  </div>;
 }

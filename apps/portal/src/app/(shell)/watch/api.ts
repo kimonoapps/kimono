@@ -50,6 +50,8 @@ export type Play = {
   skipIntros: boolean;
   tracks: { audio: { language: string; tags: string[] }; subtitles: { language: string; tags: string[]; kind: "full" | "signs"; signsTitles: string[] } | null };
   languages: { audio: string[]; subtitles: string[] };
+  /** The quality playing and the ones this release offers here; absent from older servers. */
+  quality?: { current: string; options: { value: string; label: string }[] };
 };
 export type Prefs = { fillers: FillerChoice; quality: string; audioLanguage: string; subtitleLanguage: string; animeAudio: string; filmAudio: string; subtitles: string; autoplayNext: boolean; skipIntros: boolean };
 export type Device = { client: "web"; maxHeight: number; codecs: string[]; hdr: string[] };
@@ -77,12 +79,42 @@ export const watchApi = {
   mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null }) => call<TitleView>(`titles/${encodeURIComponent(id)}`, put(change)),
   prefs: () => call<Prefs>("prefs"),
   setPrefs: (change: Partial<Prefs>) => call<Prefs>("prefs", put(change)),
-  play: (body: { titleId: string; season?: number; episode?: number; version?: number; device: Device }) => call<Play>("play", post(body)),
-  prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number }) | null; ready: boolean }>("prepare", post(body)),
+  /** This browser's own preferred quality. */
+  setDeviceQuality: (quality: string) => call<Prefs>("prefs", put({ device: deviceId(), quality })),
+  play: (body: { titleId: string; season?: number; episode?: number; version?: number; quality?: string; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
+  prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number }) | null; ready: boolean }>("prepare", post({ ...body, deviceId: deviceId() })),
   /** Kept alive so it still lands when the page is closing. */
   progress: (body: { titleId: string; season: number; episode: number; position: number; duration: number }) =>
     fetch("/api/v1/watch/progress", { method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" }, credentials: "same-origin", keepalive: true }).catch(() => null),
 };
+
+/* ───── This browser ───── */
+
+let memoryId: string | null = null;
+/** A stable id for this browser, kept in localStorage (or for the visit, where storage is off). */
+export function deviceId(): string {
+  try {
+    const known = localStorage.getItem("kw.device");
+    if (known) return known;
+    const made = `web-${crypto.randomUUID()}`;
+    localStorage.setItem("kw.device", made);
+    return made;
+  } catch {
+    memoryId ??= `web-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    return memoryId;
+  }
+}
+
+/** Qualities someone can ask this device for; the player shows only what a stream offers. */
+export const qualities = [
+  { value: "auto", label: "Auto" }, { value: "2160", label: "4K" }, { value: "1080", label: "1080p" }, { value: "720", label: "720p" }, { value: "saver", label: "Data saver" },
+];
+export function savedQuality(): string {
+  try { return localStorage.getItem("kw.quality") || "auto"; } catch { return "auto"; }
+}
+export function saveQuality(value: string) {
+  try { localStorage.setItem("kw.quality", value); } catch { /* the server keeps it too */ }
+}
 
 /* ───── What this browser can play ───── */
 

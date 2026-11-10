@@ -109,6 +109,8 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   /* ───── Loading an episode or a film ───── */
   const pctTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const retry = useRef<((id: string, at: Ref | null, opts?: { version?: number; startAt?: number }) => Promise<void>) | null>(null);
+  /* A quality picked in the player holds for the rest of this sitting, not beyond. */
+  const oneOff = useRef<string | null>(null);
   const loadEpisode = useCallback(async (id: string, at: Ref | null, opts: { version?: number; startAt?: number } = {}) => {
     const v = video.current;
     if (!v) return;
@@ -121,7 +123,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     pctTimer.current = setInterval(() => setPct((p) => p + (90 - p) * 0.05), 60);
     try {
       const device = await deviceOf();
-      const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), device });
+      const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), ...(oneOff.current ? { quality: oneOff.current } : {}), device });
       if (token !== live.current.token) return;
       setPlay(p); live.current.play = p;
       setChoice(null);
@@ -162,7 +164,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   useLayoutEffect(() => { retry.current = loadEpisode; }, [loadEpisode]);
 
   const open = useCallback(async (id: string, at?: Ref) => {
-    live.current.tries = 0; live.current.changed = false;
+    live.current.tries = 0; live.current.changed = false; oneOff.current = null;
     setLoading(true); setProblem(null); setView(null); setEp(null); setPlay(null);
     setPct(0); clearInterval(pctTimer.current);
     pctTimer.current = setInterval(() => setPct((p) => p + (60 - p) * 0.04), 60);
@@ -574,7 +576,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
           <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} aria-label="Volume" onChange={(event) => { const v = video.current; if (!v) return; v.volume = Number(event.target.value); v.muted = v.volume === 0; setVolume(v.volume); setMuted(v.muted); }} />
         </div>
         <div className="kw-name">{t ? <><b>{t.name}</b>{!movie && ep && episode ? <>&nbsp; S{ep.season}:E{ep.episode} “{episode.name}”</> : null}</> : null}</div>
-        <button className="kw-pbtn kw-lab" aria-label="Playback speed" onClick={() => openSheet("speed")}><Icon name="speed" /><span>Speed</span></button>
+        <button className="kw-pbtn kw-lab" aria-label="Speed and quality" onClick={() => openSheet("speed")}><Icon name="speed" /><span>Speed &amp; quality</span></button>
         {!movie ? <button className="kw-pbtn kw-lab" aria-label="Episodes" onClick={() => openSheet("eps")}><Icon name="eps" /><span>Episodes</span></button> : null}
         <button className="kw-pbtn kw-lab" aria-label="Audio and subtitles" onClick={() => openSheet("cc")}><Icon name="cc" /><span>Audio &amp; subtitles</span></button>
         {next ? <button className="kw-pbtn kw-lab" aria-label="Next episode" onClick={playNext}><Icon name="next" /><span>Next episode</span></button> : null}
@@ -598,7 +600,13 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
             </>}
         </div>
       </div> : null}
-      {sheet === "speed" ? <><h4>Playback speed</h4><div className="kw-speeds">{speeds.map((x) => <button key={x} className={cx(speed === x && "kw-sel")} onClick={() => { setSpeed(x); if (video.current) video.current.playbackRate = x; }}><i />{x}x{x === 1 ? " (Normal)" : ""}</button>)}</div></> : null}
+      {sheet === "speed" ? <><h4>Playback speed</h4><div className="kw-speeds">{speeds.map((x) => <button key={x} className={cx(speed === x && "kw-sel")} onClick={() => { setSpeed(x); if (video.current) video.current.playbackRate = x; }}><i />{x}x{x === 1 ? " (Normal)" : ""}</button>)}</div>
+        {play?.quality && play.quality.options.length > 1 ? <div className="kw-quality"><h4>Quality</h4>{play.quality.options.map((q) => <button key={q.value} className={cx("kw-opt", play.quality!.current === q.value && "kw-sel")} onClick={() => {
+          if (play.quality!.current === q.value || !titleId || !video.current) return;
+          oneOff.current = q.value;
+          void loadEpisode(titleId, live.current.ep, { startAt: video.current.currentTime });
+        }}><Icon name="check" />{q.label}</button>)}</div> : null}
+      </> : null}
       {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} progress={time / d} onPick={(n) => { setSheet(null); void goTo({ season: ep.season, episode: n }); }} /> : null}
     </div>
 

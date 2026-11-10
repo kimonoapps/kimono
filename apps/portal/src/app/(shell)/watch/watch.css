@@ -560,3 +560,9 @@
 .kw .kw-breathe{animation:kw-breathe 1.6s ease-in-out infinite;margin:0}
 @keyframes kw-breathe{50%{transform:scale(.92);opacity:.7}}
 @media (max-width:899px){.kw .kw-brand .kw-kimono{height:34px}.kw .kw-bloom{width:32px;height:32px}}
+.kw .kw-quality{margin-top:18px;display:grid}
+.kw .kw-quality h4{margin-bottom:6px}
+.kw .kw-account .kw-smenu{left:auto;right:0;transform-origin:top right;min-width:230px}
+.kw .kw-menu-h{margin:6px 12px 4px;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--fg-3)}
+.kw .kw-menu-rule{height:1px;background:var(--line);margin:6px 8px}
+.kw .kw-smenu button[aria-checked="true"] .kw-ic{opacity:1}
