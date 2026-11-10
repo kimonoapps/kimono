@@ -47,10 +47,18 @@ type Spec struct {
 }
 
 const (
-	idleAfter   = 60 * time.Second
-	waitFor     = 100 * time.Second
-	restartGap  = 24.0 // seconds past the encoder's progress worth waiting for
-	keepBehind  = 8    // segments kept behind the latest request
+	idleAfter  = 60 * time.Second
+	waitFor    = 100 * time.Second
+	restartGap = 24.0 // seconds past the encoder's progress worth waiting for
+	keepBehind = 8    // segments always kept behind the latest request
+	// Made segments are kept for the whole play, so seeking back is instant,
+	// until a session's take this much disk; then those farthest from the
+	// viewer go first.
+	keepBytes = 4 << 30
+	// How long a request that would move the encoder waits to see if a newer
+	// one follows: dragging across the timeline asks for one spot after
+	// another, and only where it stops is worth reading from the source.
+	settleFor   = 400 * time.Millisecond
 	maxFailures = 2
 )
 
@@ -84,6 +92,7 @@ type Session struct {
 	changed    chan struct{}
 	run        *run
 	ready      map[string]map[int]bool
+	sizes      map[string]map[int]int64
 	inits      map[string]bool
 	cues       map[string][]cue
 	covered    map[int]bool
@@ -116,11 +125,12 @@ func newSession(id string, spec Spec, root string) (*Session, error) {
 	}
 	s := &Session{
 		id: id, spec: spec, dir: dir, changed: make(chan struct{}),
-		ready: map[string]map[int]bool{}, inits: map[string]bool{}, cues: map[string][]cue{},
+		ready: map[string]map[int]bool{}, sizes: map[string]map[int]int64{}, inits: map[string]bool{}, cues: map[string][]cue{},
 		covered: map[int]bool{}, failures: map[int]int{}, lastAccess: time.Now(), prepared: len(spec.Prepare) == 0,
 	}
 	for _, o := range spec.Outputs {
 		s.ready[o.Name] = map[int]bool{}
+		s.sizes[o.Name] = map[int]int64{}
 	}
 	if spec.Start > 0 && spec.Start < len(spec.Segments) {
 		s.lastReq = spec.Start
@@ -316,6 +326,7 @@ func (s *Session) read(r *run, o Output, f *os.File) {
 		}
 		s.mu.Lock()
 		s.ready[o.Name][k] = true
+		s.sizes[o.Name][k] = int64(len(b))
 		r.progress[o.Name] = k
 		r.produced = true
 		s.coverLocked(r)
@@ -409,6 +420,7 @@ func (s *Session) wait(r *run) {
 			path := s.path(name, t.index)
 			if os.WriteFile(path+".part", t.data, 0o600) == nil && os.Rename(path+".part", path) == nil {
 				s.ready[name][t.index] = true
+				s.sizes[name][t.index] = int64(len(t.data))
 				r.progress[name] = t.index
 			}
 		}
@@ -455,6 +467,22 @@ func (s *Session) resumeLocked() {
 	}
 }
 
+// running says whether an encoder is at work that moving would stop.
+func (s *Session) running() bool { return s.run != nil && !s.run.done }
+
+// settleLocked waits settleFor before a request stops a running encoder, to
+// see whether the viewer is only passing through (dragging across the
+// timeline); the caller then looks again. An error when the player gave up.
+func (s *Session) settleLocked(ctx context.Context) error {
+	s.mu.Unlock()
+	defer s.mu.Lock()
+	select {
+	case <-time.After(settleFor):
+	case <-ctx.Done():
+	}
+	return ctx.Err()
+}
+
 // Init returns the init segment's path for a video output.
 func (s *Session) Init(ctx context.Context, name string) (string, error) {
 	s.mu.Lock()
@@ -490,9 +518,17 @@ func (s *Session) Segment(ctx context.Context, name string, k int) (string, erro
 	s.seq++
 	mine := s.seq
 	deadline := time.Now().Add(waitFor)
+	settled := false
 	for {
 		if s.ready[name][k] {
 			return s.path(name, k), nil
+		}
+		if mine == s.seq && s.needsRestart(k, true) && !settled && s.running() {
+			settled = true
+			if err := s.settleLocked(ctx); err != nil {
+				return "", err
+			}
+			continue
 		}
 		if mine == s.seq && s.needsRestart(k, true) {
 			if s.failures[k] >= maxFailures {
@@ -519,6 +555,7 @@ func (s *Session) Subtitles(ctx context.Context, name string, k int) ([]byte, er
 	s.seq++
 	mine := s.seq
 	deadline := time.Now().Add(waitFor)
+	settled := false
 	for {
 		if s.covered[k] {
 			return vttSegment(s.cues[name], s.spec.Segments[k], s.end(k)), nil
@@ -526,6 +563,13 @@ func (s *Session) Subtitles(ctx context.Context, name string, k int) ([]byte, er
 		if r := s.run; r != nil && k < r.start && !r.done {
 			/* Behind where the encoder started: the video there was asked for before, so nothing is missed. */
 			return vttSegment(nil, 0, 0), nil
+		}
+		if mine == s.seq && s.needsRestart(k, false) && !settled && s.running() {
+			settled = true
+			if err := s.settleLocked(ctx); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		if mine == s.seq && s.needsRestart(k, false) {
 			if s.failures[k] >= maxFailures {
@@ -566,18 +610,42 @@ func (s *Session) tick() {
 				s.resumeLocked()
 			}
 		}
-		for _, o := range s.spec.Outputs {
-			if o.Kind != "fmp4" {
-				continue
-			}
-			for k := range s.ready[o.Name] {
-				if k < s.lastReq-keepBehind {
-					_ = os.Remove(s.path(o.Name, k))
-					delete(s.ready[o.Name], k)
-				}
+		s.evictLocked()
+		s.mu.Unlock()
+	}
+}
+
+// evictLocked deletes made segments once the session's take more than
+// keepBytes: those farthest from the viewer first, never the few just behind
+// them or any ahead.
+func (s *Session) evictLocked() {
+	type made struct {
+		name string
+		k    int
+		size int64
+	}
+	var total int64
+	var behind []made
+	for name, sizes := range s.sizes {
+		for k, size := range sizes {
+			total += size
+			if k < s.lastReq-keepBehind {
+				behind = append(behind, made{name, k, size})
 			}
 		}
-		s.mu.Unlock()
+	}
+	if total <= keepBytes {
+		return
+	}
+	sort.Slice(behind, func(i, j int) bool { return behind[i].k < behind[j].k })
+	for _, m := range behind {
+		if total <= keepBytes {
+			return
+		}
+		_ = os.Remove(s.path(m.name, m.k))
+		delete(s.ready[m.name], m.k)
+		delete(s.sizes[m.name], m.k)
+		total -= m.size
 	}
 }
 

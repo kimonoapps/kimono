@@ -63,7 +63,7 @@ export function aiostreamsConfig(cfg: Pick<WatchConfig, "usenet" | "indexer" | "
 
 /** What the setup depends on: when this changes, set it up again. Secrets are hashed, never kept. */
 export function fingerprint(cfg: Pick<WatchConfig, "usenet" | "indexer" | "debrid">, nzbdavPublicUrl: string): string {
-  return createHash("sha256").update(JSON.stringify([cfg.usenet, cfg.indexer, cfg.debrid, nzbdavPublicUrl, 2])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([cfg.usenet, cfg.indexer, cfg.debrid, nzbdavPublicUrl, 3])).digest("hex");
 }
 
 export const hasSources = (cfg: Pick<WatchConfig, "usenet" | "indexer" | "debrid">) =>
@@ -85,8 +85,17 @@ function writeSetup(db: DatabaseSync, setup: Setup) {
 
 type Envelope = { success?: boolean; data?: { uuid?: string; encryptedPassword?: string }; error?: { message?: string } | null };
 
+/**
+ * nzbdav's settings as Watch wants them. It only streams here, so it may use
+ * every connection the provider allows: left to itself it keeps to 15 at most,
+ * shared by everyone watching.
+ */
+export function nzbdavSettings(usenet: WatchConfig["usenet"]): Record<string, string> {
+  return { "usenet.providers": nzbdavProviders(usenet), "usenet.max-download-connections": String(usenet.connections) };
+}
+
 async function nzbdavConfigure(base: string, key: string, usenet: WatchConfig["usenet"]) {
-  const body = new URLSearchParams({ "usenet.providers": nzbdavProviders(usenet) });
+  const body = new URLSearchParams(nzbdavSettings(usenet));
   const response = await fetch(`${base}/api/update-config`, { method: "POST", headers: { "x-api-key": key, "content-type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(15_000) }).catch(() => null);
   if (!response?.ok) throw new WatchProblem("Watch couldn't set up Usenet streaming. Check that nzbdav is running.", 502);
 }

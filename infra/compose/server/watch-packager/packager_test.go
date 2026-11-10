@@ -122,3 +122,37 @@ func TestProbeFailuresAreSlowOrUnreadable(t *testing.T) {
 		}
 	}
 }
+
+func TestEvictKeepsWhatsNearTheViewer(t *testing.T) {
+	dir := t.TempDir()
+	s := &Session{dir: dir, ready: map[string]map[int]bool{"v0": {}}, sizes: map[string]map[int]int64{"v0": {}}, lastReq: 100}
+	if err := os.MkdirAll(filepath.Join(dir, "v0"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for k := 0; k <= 110; k++ {
+		s.ready["v0"][k] = true
+		s.sizes["v0"][k] = 50 << 20
+	}
+	s.evictLocked() // 111 × 50 MB is over 4 GB: the oldest go until it fits
+	var total int64
+	for _, size := range s.sizes["v0"] {
+		total += size
+	}
+	if total > keepBytes {
+		t.Fatalf("still %d bytes", total)
+	}
+	if s.ready["v0"][0] {
+		t.Fatal("the farthest segment behind was kept")
+	}
+	for k := 100 - keepBehind; k <= 110; k++ {
+		if !s.ready["v0"][k] {
+			t.Fatalf("segment %d, near the viewer or ahead, was deleted", k)
+		}
+	}
+	s.lastReq = 50
+	before := len(s.ready["v0"])
+	s.evictLocked()
+	if len(s.ready["v0"]) != before {
+		t.Fatal("deleted more once under the budget")
+	}
+}

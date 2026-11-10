@@ -301,6 +301,7 @@ const access = { key: 'nzb-key', webdavPassword: 'dav' };
 test('nzbdav gets the provider as one pooled server; none when there is no provider', () => {
   assert.deepEqual(JSON.parse(provision.nzbdavProviders(accounts().usenet)), { Providers: [{ Type: 1, Host: 'news.example.com', Port: 563, UseSsl: true, User: 'u', Pass: 'p', MaxConnections: 30 }] });
   assert.deepEqual(JSON.parse(provision.nzbdavProviders({ ...accounts().usenet, host: '' })), { Providers: [] });
+  assert.equal(provision.nzbdavSettings(accounts().usenet)['usenet.max-download-connections'], '30', 'every connection the provider allows, not nzbdav\'s 15');
   assert.equal(provision.indexerApi('https://api.nzbgeek.info/'), 'https://api.nzbgeek.info/api');
   assert.equal(provision.indexerApi('https://x.example/api'), 'https://x.example/api');
 });
