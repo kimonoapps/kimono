@@ -1795,11 +1795,11 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-ask.is-dropped { opacity: .55; }
 .cd-ask-note { justify-self: end; margin: -8px 4px 0 0; font-size: 12px; color: var(--k-on-surface-variant); }
 
-/* Markdown: a rule is a hairline; a table sits on the page in hairlines, its head a shade darker, scrolling sideways when wide. */
+/* Markdown: a rule is a hairline; a table sits on the page in hairlines, its head a shade darker, its cells wrapping to fit the column rather than scrolling sideways. */
 .cd-md hr.cd-rule { height: 1.5px; margin: 18px 0; border: 0; border-radius: 2px; background: var(--k-outline-variant); }
 .cd-md .cd-table-wrap { margin: 10px 0; }
-.cd-table { width: max-content; min-width: 100%; border-collapse: separate; border-spacing: 0; font-size: .94em; border: 1px solid var(--k-outline-variant); border-radius: 12px; overflow: hidden; }
-.cd-table th, .cd-table td { padding: 8px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--k-container-highest); }
+.cd-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .94em; border: 1px solid var(--k-outline-variant); border-radius: 12px; overflow: hidden; }
+.cd-table th, .cd-table td { padding: 8px 12px; text-align: left; vertical-align: top; overflow-wrap: break-word; border-bottom: 1px solid var(--k-container-highest); }
 .cd-table th { font-weight: 700; background: var(--k-container); color: var(--k-on-surface); }
 .cd-table tr:last-child td { border-bottom: 0; }
 .cd-table td + td, .cd-table th + th { border-left: 1px solid var(--k-container-highest); }
@@ -1810,7 +1810,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* Replying to part of an answer: Reply floats over the chosen words; the part shows above the box, and above the message once sent. */
 .cd-reply-to { position: fixed; z-index: 30; transform: translate(-50%, calc(-100% - 8px)); display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 10px; border: 0; border-radius: var(--k-r-s); background: var(--k-inverse-surface, var(--k-ink)); color: var(--k-inverse-on-surface, var(--k-surface)); font: 500 13.5px/1 var(--k-sans); cursor: pointer; box-shadow: 0 6px 18px rgb(0 0 0 / .18); }
-.cd-reply-to svg { width: 16px; height: 16px; }
+.cd-reply-to svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .cd-reply-to:hover { background: color-mix(in oklch, var(--k-inverse-surface, var(--k-ink)) 88%, var(--k-app-accent)); }
 .cd-quote { display: flex; align-items: flex-start; gap: 8px; margin: 0 4px 6px; padding: 8px 6px 8px 12px; border-left: 3px solid var(--k-app-accent); background: color-mix(in oklch, var(--k-app-accent) 8%, transparent); border-radius: 0 var(--k-r-s) var(--k-r-s) 0; color: var(--k-on-surface-variant); font: 400 13.5px/1.45 var(--k-sans); }
 .cd-quote > svg { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--k-app-accent); }
