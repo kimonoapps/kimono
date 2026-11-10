@@ -136,6 +136,8 @@ data class TitlePage(
     val episodes: List<EpisodeInfo> = emptyList(),
     /** "single": one season, no season shown anywhere; "continuous": one list numbered from the first; "seasons": the picker. */
     val layout: String = "seasons",
+    /** This show's own choice ("seasons" | "continuous"), or null to follow Settings' anime default. */
+    val showEpisodes: String? = null,
 ) {
     val bySeason get() = layout == "seasons"
     /** The season an episode on this page belongs to. */

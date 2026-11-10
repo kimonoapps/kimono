@@ -354,6 +354,14 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
             }
             Text("${(if (page.bySeason) page.seasons.firstOrNull { it.number == season }?.episodeCount else null) ?: page.episodes.size} episodes", style = ui(14, color = Night.fg3))
         }
+        /* Anime with more than one season: this show by season or as one list, over the default in Settings. */
+        if (page.title.shelf == "Anime" && page.layout != "single") {
+            Row(Modifier.padding(horizontal = gutter).padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Joint(listOf("seasons" to "By season", "continuous" to "One list"), page.layout) { v -> if (v != page.layout) vm.episodes(v) }
+                if (page.showEpisodes != null) Text("Use default", style = ui(14, FontWeight.Bold, Night.fg2),
+                    modifier = Modifier.clickableScaleClipped(RoundedCornerShape(8.dp), { vm.episodes(null) }).padding(horizontal = 8.dp, vertical = 8.dp))
+            }
+        }
     }
     if (loading) items(4) { Skeleton(Modifier.padding(horizontal = gutter, vertical = 10.dp).fillMaxWidth().height(96.dp)) }
     else {

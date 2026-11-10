@@ -58,6 +58,10 @@ class WatchApi(
             tracks?.let { put("tracks", json.encodeToJsonElement(it)) }
         }))
 
+    /** This show's episodes by season or as one list; null goes back to the anime default. Answers the page again. */
+    suspend fun showEpisodes(id: String, value: String?): TitlePage =
+        json.decodeFromString(send(HttpMethod.Put, "/titles/$id", buildJsonObject { put("episodes", value?.let { JsonPrimitive(it) } ?: JsonNull) }))
+
     /** Starts a play; [quality] is a one-off choice from the player's Quality menu; [cast] ("airplay", "chromecast") asks for the HLS rendition too. */
     suspend fun play(titleId: String, season: Int = 0, episode: Int = 0, version: Int? = null, quality: String? = null, cast: String? = null): PlayAnswer =
         json.decodeFromString(send(HttpMethod.Post, "/play", buildJsonObject {

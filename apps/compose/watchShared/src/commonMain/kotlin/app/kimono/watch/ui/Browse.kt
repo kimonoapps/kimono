@@ -256,6 +256,20 @@ class TitleViewModel(private val api: WatchApi, private val toasts: Toasts, val 
         return if (fresh.season != shown.season) fresh.copy(season = shown.season, episodes = shown.episodes) else fresh
     }
 
+    /** This show by season or as one list ([value]), or back to the default (null): the episode list is laid out again. */
+    fun episodes(value: String?) {
+        val page = _state.value.page ?: return
+        _state.value = _state.value.copy(page = page.copy(showEpisodes = value), seasonLoading = true)
+        viewModelScope.launch {
+            try {
+                val fresh = api.showEpisodes(id, value)
+                _state.value = _state.value.copy(page = fresh, season = fresh.season ?: _state.value.season, seasonLoading = false)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(page = page, seasonLoading = false); toasts.show(problemOf(e))
+            }
+        }
+    }
+
     fun toggleList() {
         val page = _state.value.page ?: return
         val on = !page.inList
