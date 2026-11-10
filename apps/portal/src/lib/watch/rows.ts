@@ -84,6 +84,9 @@ export function orderRows(catalog: RowSpec[], taste: Map<string, number>, shelf?
   return scored.sort((a, b) => a.at - b.at).map(({ r }) => r);
 }
 
+/** How far a plan goes: far enough to feel endless. */
+const maxPlan = 300;
+
 /** A row needs this many titles that play, or it stays off Home. */
 export const rowMinimum = 6;
 
@@ -179,7 +182,7 @@ export function planRows(taste: Taste, recentCount: number, shelf?: Shelf, catal
       if (!id) continue;
       for (const page of [1, 2, 3]) {
         const q = discover(k, { with_genres: id }, page);
-        add({ id: `genre-${k}-${g}-${page}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"), title: `${page > 1 ? "More " : ""}${page > 1 ? genreName(g).toLowerCase() : genreName(g)} ${kindWord[k]}`, ...q, ttl: 24, shelves: [k === "film" ? "Film" : k === "anime" ? "Anime" : "Series"], genres: [g], score: (weight / top) * kindWeight(k) * (page === 1 ? 1 : page === 2 ? 0.55 : 0.3) });
+        add({ id: `genre-${k}-${g}-${page}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"), title: page === 1 ? `${genreName(g)} ${kindWord[k]}` : `${page === 2 ? "More" : "Even more"} ${genreName(g).toLowerCase()} ${kindWord[k]}`, ...q, ttl: 24, shelves: [k === "film" ? "Film" : k === "anime" ? "Anime" : "Series"], genres: [g], score: (weight / top) * kindWeight(k) * (page === 1 ? 1 : page === 2 ? 0.55 : 0.3) });
       }
     }
   }
@@ -190,6 +193,18 @@ export function planRows(taste: Taste, recentCount: number, shelf?: Shelf, catal
     }
   }
   for (let i = 0; i < Math.min(recentCount, 12); i++) add({ id: `similar-${i}`, title: "", similar: i, score: 1.1 - i * 0.12 });
+
+  /* Then on and on: deeper pages of what they like most, strongest first, so Home doesn't run out. */
+  const deep = [...taste.genres].sort((a, b) => b[1] - a[1]).slice(0, 8).flatMap(([g, weight]) => kinds.map((k) => ({ g, k, weight: (weight / top) * kindWeight(k) })))
+    .filter(({ g, k }) => (k === "film" ? filmGenre[g] : seriesGenre[g]));
+  const fallback: { g: string; k: Kind; weight: number }[] = deep.length ? deep : kinds.flatMap((k) => ["Drama", "Comedy", "Action & Adventure", "Mystery"].map((g) => ({ g, k, weight: 0.2 })));
+  for (let page = 4; out.length < maxPlan && page <= 40; page++) {
+    for (const { g, k, weight } of fallback) {
+      if (out.length >= maxPlan) break;
+      const q = discover(k, { with_genres: (k === "film" ? filmGenre[g] : seriesGenre[g])! }, page);
+      add({ id: `genre-${k}-${g}-${page}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"), title: `${genreName(g)} ${kindWord[k]}, part ${page}`, ...q, ttl: 48, shelves: [k === "film" ? "Film" : k === "anime" ? "Anime" : "Series"], genres: [g], score: weight * 0.25 / page });
+    }
+  }
 
   /* Sorted by how much each matters, then spread so two rows of the same thing don't sit together. */
   const sorted = out.sort((a, b) => b.score - a.score);

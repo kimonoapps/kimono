@@ -112,7 +112,9 @@ test("someone's taste comes from what they watch a lot, and their plan follows i
   assert.ok(taste.genres.get('Horror') > taste.genres.get('Fantasy'));
   assert.equal(taste.keywords.get(1).weight > taste.keywords.get(3).weight, true);
   const plan = rows.planRows(taste, 3);
-  assert.ok(plan.length > 40, `a long plan (${plan.length})`);
+  assert.ok(plan.length >= 250, `a long plan (${plan.length})`);
+  assert.ok(plan.some((r) => r.title === 'Even more horror films'));
+  assert.ok(rows.planRows(rows.tasteOf([]), 0).length >= 250, 'endless even before anything is watched');
   const firstHorror = plan.findIndex((r) => r.id === 'genre-film-horror-1');
   const firstComedy = plan.findIndex((r) => r.id === 'comedy-films');
   assert.ok(firstHorror >= 0 && firstHorror < firstComedy, 'horror films come before comedies for a horror fan');
