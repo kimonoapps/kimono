@@ -83,5 +83,29 @@ export function badge(title: Pick<Title, "kind" | "status">, episodes: Pick<Epis
   return recent.length > 1 ? "New episodes" : "New episode";
 }
 
+/**
+ * How a show's episodes are laid out. One season: no season anywhere ("Episode
+ * 4", no picker, no "Season 1"). Anime for someone who counts it in one run:
+ * every episode in a single list numbered from the first (One Piece 1–1100).
+ * Otherwise by season.
+ */
+export type EpisodeLayout = "single" | "continuous" | "seasons";
+export function episodeLayout(shelf: string, seasons: number, animeEpisodes: "seasons" | "continuous"): EpisodeLayout {
+  if (seasons <= 1) return "single";
+  return shelf === "Anime" && animeEpisodes === "continuous" ? "continuous" : "seasons";
+}
+
+/** Each episode's number counted from the very first, specials left out. */
+export function absoluteNumbers(episodes: Pick<Episode, "season" | "number">[]): Map<string, number> {
+  const order = episodes.filter((e) => e.season > 0).slice().sort((a, b) => a.season - b.season || a.number - b.number);
+  return new Map(order.map((e, i) => [`${e.season}:${e.number}`, i + 1]));
+}
+
+/** How an episode is named on screen for the layout: "S2:E3", "E27", or "E3". */
+export function episodeLabel(layout: EpisodeLayout, season: number, number: number, absolute?: number): string {
+  if (layout === "seasons") return `S${season}:E${number}`;
+  return `E${layout === "continuous" ? absolute ?? number : number}`;
+}
+
 /** A finished episode or film counts as finished; part-way is the fraction played. */
 export { finished, fraction };

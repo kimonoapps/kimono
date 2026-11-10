@@ -44,3 +44,32 @@ test('the same file listed twice by one service is offered once; Usenet and debr
   assert.equal(ranked.length, 2);
   assert.deepEqual(ranked.map((r) => r.service).sort(), ['debrid', 'usenet']);
 });
+
+import * as labels from '../src/lib/watch/labels.ts';
+import * as model from '../src/lib/watch/model.ts';
+import { DatabaseSync } from 'node:sqlite';
+
+test('one season shows no season; anime can be one numbered run; everything else by season', () => {
+  assert.equal(labels.episodeLayout('Series', 1, 'seasons'), 'single');
+  assert.equal(labels.episodeLayout('Anime', 1, 'continuous'), 'single');
+  assert.equal(labels.episodeLayout('Anime', 3, 'continuous'), 'continuous');
+  assert.equal(labels.episodeLayout('Anime', 3, 'seasons'), 'seasons');
+  assert.equal(labels.episodeLayout('Series', 3, 'continuous'), 'seasons', 'only anime is counted in one run');
+  const eps = [{ season: 2, number: 1 }, { season: 1, number: 1 }, { season: 0, number: 1 }, { season: 1, number: 2 }];
+  const abs = labels.absoluteNumbers(eps);
+  assert.equal(abs.get('2:1'), 3);
+  assert.equal(abs.has('0:1'), false, 'specials are left out');
+  assert.equal(labels.episodeLabel('seasons', 2, 1, 3), 'S2:E1');
+  assert.equal(labels.episodeLabel('continuous', 2, 1, 3), 'E3');
+  assert.equal(labels.episodeLabel('single', 1, 4), 'E4');
+});
+
+test('the anime episode layout is a setting, seasons until changed', () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  assert.equal(model.prefsOf(db, 'a').animeEpisodes, 'seasons');
+  model.savePrefs(db, 'a', { animeEpisodes: 'continuous' });
+  assert.equal(model.prefsOf(db, 'a').animeEpisodes, 'continuous');
+  model.savePrefs(db, 'a', { animeEpisodes: 'sideways' });
+  assert.equal(model.prefsOf(db, 'a').animeEpisodes, 'continuous');
+});

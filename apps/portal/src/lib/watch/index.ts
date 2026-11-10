@@ -11,7 +11,7 @@ import { stateDir } from "../state";
 import { anyPlayable, notePlayable, playableOf, pool, shared, streamsKey, streamTtl, toCheck, visible } from "./ahead";
 import { animeEntriesFor, animeMap, anilistMedia, jikanFillers } from "./anime";
 import { watchAppId, watchConfig, type WatchConfig } from "./config";
-import { badge, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
+import { absoluteNumbers, badge, episodeLabel, episodeLayout, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
   cached, episodesOf, finished, fraction, getTitle, getTitles, isStale, keep, listOf, markFillers, markSeasonFillers, migrate, parseTitleId,
   cleanDeviceId, cleanQuality, deviceQualityOf, prefsOf, progressOf, qualityFor, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, tracksOf, WatchProblem, readState, writeState,
@@ -197,17 +197,30 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
   findAhead(cfg, title, resume.season, resume.episode);
   const season = seasonWanted ?? resume.season;
   const seen = new Map(progress.map((p) => [`${p.season}:${p.episode}`, p]));
+  const seasons = seasonsOf(db, id).filter((s) => s.number > 0);
+  /* One season: no season anywhere. Anime counted in one run: every episode in one list, numbered from the first. */
+  const layout = episodeLayout(title.shelf, seasons.length, prefs.animeEpisodes);
+  const absolute = absoluteNumbers(episodes);
+  const shown = layout === "continuous" ? episodes.filter((e) => e.season > 0) : episodes.filter((e) => e.season === season);
+  /* In one run, what's left counts to the end of the show, not the season. */
+  const flat = (e: { season: number; number: number }) => ({ season: 1, number: absolute.get(`${e.season}:${e.number}`) ?? e.number });
+  const tracker = !resume.started ? null : layout === "continuous"
+    ? seasonTracker(episodes.filter((e) => e.season > 0).map((e) => ({ ...e, ...flat(e) })), progress.map((p) => ({ ...p, season: 1, episode: flat({ season: p.season, number: p.episode }).number })), { season: 1, episode: flat({ season: resume.season, number: resume.episode }).number }, prefs.fillers)
+    : seasonTracker(episodes, progress, resume, prefs.fillers);
   return {
     ...base,
-    seasons: seasonsOf(db, id).filter((s) => s.number > 0).map((s) => ({ number: s.number, name: s.name, episodeCount: s.episodeCount, airDate: s.airDate })),
-    resume,
-    tracker: resume.started ? seasonTracker(episodes, progress, resume, prefs.fillers) : null,
+    /* "single": hide the season picker and "Season 1"; "continuous": one list, no picker; "seasons": the picker. */
+    layout,
+    seasons: layout === "seasons" ? seasons.map((s) => ({ number: s.number, name: s.name, episodeCount: s.episodeCount, airDate: s.airDate })) : [],
+    resume: { ...resume, label: episodeLabel(layout, resume.season, resume.episode, absolute.get(`${resume.season}:${resume.episode}`)) },
+    tracker,
     badge: badge(title, episodes, progress.length > 0),
     hasFillers: episodes.some((e) => e.filler),
     fillers: prefs.fillers,
     season,
-    episodes: episodes.filter((e) => e.season === season).map((e) => ({
-      number: e.number, name: e.name, overview: e.overview, still: imageUrl(origin, e.still, "w500"), runtime: e.runtime, airDate: e.airDate,
+    episodes: shown.map((e) => ({
+      season: e.season, number: e.number, absolute: absolute.get(`${e.season}:${e.number}`) ?? e.number,
+      label: episodeLabel(layout, e.season, e.number, absolute.get(`${e.season}:${e.number}`)), name: e.name, overview: e.overview, still: imageUrl(origin, e.still, "w500"), runtime: e.runtime, airDate: e.airDate,
       filler: e.filler, recap: e.recap, fraction: fraction(seen.get(`${e.season}:${e.number}`)),
     })),
   };

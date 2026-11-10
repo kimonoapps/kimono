@@ -84,10 +84,12 @@ export type Prefs = {
   filmAudio: "original" | "mine";
   /** "auto": subtitles when the audio isn't the person's language (and signs-only when it is). */
   subtitles: "auto" | "always" | "off";
+  /** Anime episodes by season, or as one numbered run (One Piece 1–1100) the way fans count them. */
+  animeEpisodes: "seasons" | "continuous";
   autoplayNext: boolean;
   skipIntros: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", audioLanguage: "en", subtitleLanguage: "", animeAudio: "original", filmAudio: "original", subtitles: "auto", autoplayNext: true, skipIntros: false };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", audioLanguage: "en", subtitleLanguage: "", animeAudio: "original", filmAudio: "original", subtitles: "auto", animeEpisodes: "seasons", autoplayNext: true, skipIntros: false };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -322,6 +324,7 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
     animeAudio: pick(input.animeAudio, ["original", "dub"] as const, base.animeAudio),
     filmAudio: pick(input.filmAudio, ["original", "mine"] as const, base.filmAudio),
     subtitles: pick(input.subtitles, ["auto", "always", "off"] as const, base.subtitles),
+    animeEpisodes: pick(input.animeEpisodes, ["seasons", "continuous"] as const, base.animeEpisodes),
     autoplayNext: typeof input.autoplayNext === "boolean" ? input.autoplayNext : base.autoplayNext,
     skipIntros: typeof input.skipIntros === "boolean" ? input.skipIntros : base.skipIntros,
   };
