@@ -813,6 +813,8 @@ private fun NextUp(vm: PlayerViewModel, post: Post.Next, buffering: Boolean, ctl
     Box(Modifier.fillMaxSize()) {
         Row(Modifier.align(Alignment.BottomEnd).padding(end = 32.dp, bottom = bottom), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (post.skipped > 0) Text("Skipping ${post.skipped} filler episode${if (post.skipped > 1) "s" else ""}", style = ui(13, FontWeight.Bold, Night.fg2))
+            /* Which one's next, named as the title page names it. */
+            vm.state.value.answer?.next?.let { n -> Text(n.label ?: vm.state.value.page?.label(n.season, n.episode) ?: "", style = ui(14, FontWeight.Bold, Night.fg2)) }
             PaperButton("Watch credits", null, { party?.watchCredits(); vm.watchCredits() }, tonal = true, height = 52.dp)
             PaperButton("Next episode", Ic.next, { val to = countdown?.to; if (party != null && to != null) party.episode(to.season, to.episode) else if (party != null) party.next() else vm.playNext() }, Modifier.focusRequester(focus), height = 52.dp, fill = fill.value)
         }
@@ -827,7 +829,7 @@ private fun FillerAsk(vm: PlayerViewModel, post: Post.Ask, tv: Boolean) {
     LaunchedEffect(Unit) { vig.animateTo(1f, tween(1100)) }
     Box(Modifier.fillMaxSize().alpha(vig.value).drawBehind { drawRect(Brush.radialGradient(0f to Color(0xEB000000), 0.28f to Color(0xB3000000), 0.55f to Color(0x40000000), 0.75f to Color.Transparent, center = Offset(size.width, size.height), radius = size.width * 1.1f)) })
     val f = post.filler
-    val a = vm.state.value.page?.shownNumber(f.first.season, f.first.episode) ?: f.first.episode; val b = a + f.count - 1
+    val a = f.first.label?.substringAfterLast('E')?.toIntOrNull() ?: vm.state.value.page?.shownNumber(f.first.season, f.first.episode) ?: f.first.episode; val b = a + f.count - 1
     val focus = remember { FocusRequester() }
     Column(Modifier.fillMaxSize().padding(end = 32.dp, bottom = 52.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Bottom)) {
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {

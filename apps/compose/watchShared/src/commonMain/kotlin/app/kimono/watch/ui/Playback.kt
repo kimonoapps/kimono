@@ -53,7 +53,7 @@ data class PlayerState(
     val isFilm get() = page?.title?.isFilm == true
     val current: EpisodeInfo? get() = page?.episode(season, episode)
     /** "S2:E3", "E27" or "E3", as the title names its episodes. */
-    val label: String get() = page?.label(season, episode) ?: "S$season:E$episode"
+    val label: String get() = answer?.label ?: page?.label(season, episode) ?: answer?.layout?.let { app.kimono.watch.model.episodeLabel(it, season, episode) } ?: "S$season:E$episode"
     /** Seconds where the credits start: the marker, else the last 25 s. */
     fun creditsAt(duration: Double): Double = answer?.markers?.credits?.takeIf { it > 0 && it < duration } ?: (duration - 25).coerceAtLeast(duration * 0.9)
 }
@@ -237,7 +237,7 @@ class PlayerViewModel(
         viewModelScope.launch { runCatching { api.savePrefs(buildJsonObject { put("fillers", JsonPrimitive(if (skip) "skip" else "watch")) }) } }
         finishCurrent()
         val target = if (skip) ask.canon else ask.first
-        if (skip) toasts.show(target?.let { "Skipping to episode ${_state.value.page?.shownNumber(it.season, it.episode) ?: it.episode}" } ?: "Fillers will be skipped")
+        if (skip) toasts.show(target?.let { "Skipping to ${it.label ?: "episode " + (_state.value.page?.shownNumber(it.season, it.episode) ?: it.episode)}" } ?: "Fillers will be skipped")
         if (target != null) play(target.season, target.episode) else _state.value = _state.value.copy(post = Post.End)
     }
 

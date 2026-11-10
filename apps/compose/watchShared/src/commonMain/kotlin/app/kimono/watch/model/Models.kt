@@ -171,7 +171,7 @@ data class Device(
 )
 
 @Serializable
-data class EpisodeRef(val season: Int, val episode: Int, val skipped: Int = 0)
+data class EpisodeRef(val season: Int, val episode: Int, val skipped: Int = 0, val label: String? = null)
 
 @Serializable
 data class FillerAhead(val first: EpisodeRef, val count: Int, val canon: EpisodeRef? = null)
@@ -212,6 +212,9 @@ data class PlayAnswer(
     val versions: List<Version> = emptyList(),
     val startAt: Double = 0.0,
     val next: EpisodeRef? = null,
+    /** Series only: the person's layout and this episode's label ("S2:E3", "E27", "E3"). */
+    val layout: String? = null,
+    val label: String? = null,
     val fillerAhead: FillerAhead? = null,
     val autoplayNext: Boolean = true,
     val markers: Markers = Markers(),
