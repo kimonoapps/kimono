@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package app.kimono.watch.phone
 
 import androidx.compose.animation.AnimatedVisibility
@@ -66,7 +68,13 @@ import app.kimono.watch.ui.SettingsState
 import app.kimono.watch.ui.SettingsViewModel
 import app.kimono.watch.ui.clickableScale
 import app.kimono.watch.ui.clickableScaleClipped
+import app.kimono.watch.ui.reducedMotion
 import app.kimono.watch.ui.riseIn
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -87,12 +95,34 @@ private enum class Part(val title: String, val player: Boolean) {
     Home("Home", false), Downloads("Downloads", false), Account("Account", false),
 }
 
+private fun Part.icon() = when (this) {
+    Part.Languages -> Ic.chat; Part.Quality -> Ic.film; Part.Anime -> Ic.eps; Part.Look -> Ic.cc; Part.Playing -> Ic.play
+    Part.Home -> Ic.home; Part.Downloads -> Ic.dl; Part.Account -> Ic.people
+}
+
+/** What a group is set to now, in a few words, for its row on the settings page. */
+@Composable
+private fun Part.summary(p: Prefs, state: SettingsState, watch: WatchServices): String = when (this) {
+    Part.Languages -> languageName(p.audioLanguage) + " · Subtitles " + when (p.subtitles) { "auto" -> "automatic"; "always" -> "always"; else -> "off" }
+    Part.Quality -> qualityChoices.firstOrNull { it.first == (state.quality ?: "auto") }?.second ?: "Auto"
+    Part.Anime -> (if (p.animeAudio == "dub") "Dubbed" else "Subbed") + " · " + (if (p.animeEpisodes == "continuous") "One list" else "By season")
+    Part.Look -> p.subtitleSize.replaceFirstChar { it.uppercase() } + " · " + when (p.subtitleBackground) { "none" -> "Outline"; "box" -> "Box"; else -> "Shadow" }
+    Part.Playing -> listOfNotNull("Next episode".takeIf { p.autoplayNext }, "Skip intros".takeIf { p.skipIntros }).joinToString(" · ").ifEmpty { "All off" }
+    Part.Home -> if (p.previews) "Previews on" else "Previews off"
+    Part.Downloads -> {
+        val wifi by watch.downloads.wifiOnly.collectAsState()
+        (if (p.downloadQuality == "higher") "Higher" else "Standard") + if (wifi) " · Wi‑Fi only" else ""
+    }
+    Part.Account -> watch.accounts.active.collectAsState().value?.shown ?: ""
+}
+
 /**
  * Settings in two halves, the same everywhere. Player: Languages, Quality,
  * Anime, Subtitle look, Playing. App: Home, Downloads, Account. Every change
- * saves as it's made. A phone shows them as one list; a TV as two panes, the
- * groups on the left and the chosen one on the right. From the player
- * ([playerOnly]) only the player's half shows.
+ * saves as it's made. A phone shows a settings page, a row for each group
+ * with what it's set to, and each group opens as its own page; a TV shows two
+ * panes, the groups on the left and the chosen one on the right. From the
+ * player ([playerOnly]) only the player's half shows.
  */
 @Composable
 fun SettingsScreen(onClose: () -> Unit, onProfiles: (() -> Unit)? = null, tv: Boolean = false, wide: Boolean = tv, playerOnly: Boolean = false) {
@@ -106,23 +136,72 @@ fun SettingsScreen(onClose: () -> Unit, onProfiles: (() -> Unit)? = null, tv: Bo
     val prefs by watch.prefs.state.collectAsState()
     LaunchedEffect(Unit) { if (prefs == null) watch.prefs.load() }
     val p = prefs
+    var open by remember { mutableStateOf<Part?>(null) }
+    androidx.compose.ui.backhandler.BackHandler(!tv && open != null) { open = null }
     Box(Modifier.fillMaxSize().background(Night.bg)) {
         if (p == null || state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader(size = 40.dp) }
         else if (tv) TwoPanes(parts, watch, state, vm, p, onProfiles)
         else {
             val gutter = if (wide) 48.dp else 16.dp
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = statusTop + 64.dp, bottom = navBottom + 32.dp, start = gutter, end = gutter)) {
-                item { Text(if (playerOnly) "Player" else "Settings", style = display(if (wide) 40 else 28), modifier = Modifier.padding(bottom = 8.dp)) }
-                parts.forEachIndexed { i, part ->
-                    if (!playerOnly && (i == 0 || part.player != parts[i - 1].player)) item("half${part.player}") { Half(if (part.player) "Player" else "App", first = i == 0) }
-                    item("p${part.name}") {
-                        /* Each section rises in a beat after the one above. */
-                        Column(Modifier.widthIn(max = 620.dp).riseIn(i, opened)) { Group(part.title); PartBody(part, watch, state, vm, p, onProfiles, tv = false) }
+            val still = reducedMotion()
+            val rows = parts.filter { playerOnly || it != Part.Account }
+            androidx.compose.animation.AnimatedContent(open, Modifier.fillMaxSize(), transitionSpec = {
+                val forward = targetState != null
+                if (still) androidx.compose.animation.fadeIn(tween(1)) togetherWith androidx.compose.animation.fadeOut(tween(1))
+                else (slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { w -> if (forward) w / 5 else -w / 5 } + androidx.compose.animation.fadeIn(tween(220))) togetherWith
+                    (slideOutHorizontally(tween(320, easing = FastOutSlowInEasing)) { w -> if (forward) -w / 8 else w / 5 } + androidx.compose.animation.fadeOut(tween(160)))
+            }, label = "settings") { part ->
+                Column(Modifier.fillMaxSize()) {
+                    TopBar(part?.title ?: if (playerOnly) "Player" else "Settings", gutter) { if (part != null) open = null else onClose() }
+                    if (part == null) LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 4.dp, bottom = navBottom + 32.dp, start = gutter, end = gutter)) {
+                        if (!playerOnly) item("me") {
+                            watch.accounts.active.collectAsState().value?.let { pr ->
+                                Row(Modifier.widthIn(max = 620.dp).fillMaxWidth().riseIn(0, opened).clip(RoundedCornerShape(14.dp)).background(Night.surface)
+                                    .clickableScaleClipped(RoundedCornerShape(14.dp), { open = Part.Account }).padding(start = 14.dp, top = 14.dp, bottom = 14.dp, end = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                                    Face(pr, 52.dp)
+                                    Column(Modifier.weight(1f)) {
+                                        Text(pr.shown, style = ui(17, FontWeight.Bold))
+                                        Text(pr.server.removePrefix("https://").removePrefix("http://"), style = ui(13, color = Night.fg3))
+                                    }
+                                    I(Ic.right, 20.dp, Night.fg3)
+                                }
+                            }
+                        }
+                        rows.forEachIndexed { i, it ->
+                            if (!playerOnly && (i == 0 || it.player != rows[i - 1].player)) item("half${it.player}") { Half(if (it.player) "Player" else "App", first = false) }
+                            item("p${it.name}") { GroupRow(it, it.summary(p, state, watch), Modifier.widthIn(max = 620.dp).riseIn(i + 1, opened)) { open = it } }
+                        }
+                    }
+                    else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = gutter, end = gutter, bottom = navBottom + 32.dp)) {
+                        Column(Modifier.widthIn(max = 620.dp)) { PartBody(part, watch, state, vm, p, onProfiles, tv = false) }
                     }
                 }
             }
         }
-        if (!tv) Box(Modifier.align(Alignment.TopEnd).padding(top = statusTop + 12.dp, end = 12.dp).size(38.dp).clip(CircleShape).background(Color(0xBF110C0A)).clickableScale(onClose), contentAlignment = Alignment.Center) { I(Ic.close) }
+    }
+}
+
+/** The page's own bar: back, then its title. */
+@Composable
+private fun TopBar(title: String, gutter: Dp, onBack: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = statusTop + 6.dp, start = gutter - 10.dp, end = gutter, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(44.dp).clip(CircleShape).clickableScale(onBack), contentAlignment = Alignment.Center) { I(Ic.back) }
+        Text(title, style = display(26), modifier = Modifier.padding(start = 6.dp))
+    }
+}
+
+/** A group on the settings page: its mark, its name, and what it's set to. */
+@Composable
+private fun GroupRow(part: Part, summary: String, modifier: Modifier, onClick: () -> Unit) {
+    Row(modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(10.dp), onClick).padding(horizontal = 6.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(Night.surface2), contentAlignment = Alignment.Center) { I(part.icon(), 20.dp, Night.fg2) }
+        Column(Modifier.weight(1f)) {
+            Text(part.title, style = ui(16, FontWeight.Bold))
+            if (summary.isNotBlank()) Text(summary, style = ui(13, color = Night.fg3), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+        I(Ic.right, 20.dp, Night.fg3)
     }
 }
 
@@ -240,12 +319,7 @@ private fun sizeOf(bytes: Long): String = app.kimono.watch.bytesText(bytes)
 /** "Player" or "App": the two halves of Settings. */
 @Composable
 private fun Half(title: String, first: Boolean) {
-    Text(title, style = display(22), color = Night.fg2, modifier = Modifier.padding(top = if (first) 8.dp else 40.dp))
-}
-
-@Composable
-private fun Group(title: String) {
-    Text(title, style = ui(19, FontWeight.Bold), modifier = Modifier.padding(top = 26.dp, bottom = 6.dp))
+    Text(title, style = ui(14, FontWeight.Bold, Night.fg3), modifier = Modifier.padding(start = 6.dp, top = if (first) 8.dp else 26.dp, bottom = 4.dp))
 }
 
 /** A labelled control, with at most one quiet line under the label. */
