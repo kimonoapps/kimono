@@ -428,7 +428,9 @@
         this.held = this.playing && (!this.timeline || this.waiting(now));
         if (this.playing && this.timeline && !this.held) {
           const end = this.timeline.end;
-          this.t = Math.min(this.t + dt, end);
+          /* While a line is being spoken its clip keeps the time, so a slow frame only draws less often and the voice never jumps to catch up. */
+          const lead = this.speaking(), next = this.t + dt;
+          this.t = Math.min(lead && Math.abs(next - lead) > .05 ? lead : next, end);
           if (this.t >= end && this.complete) { this.playing = false; }
         }
         this.paint();
@@ -524,7 +526,7 @@
         this.applyVolume(a);
         a.addEventListener("loadedmetadata", () => this.learnLength(v.name, a.duration));
         /* the page stopped drawing (hidden, or put away): so does the voice */
-        a.addEventListener("timeupdate", () => { if (performance.now() - (this._ticked || 0) > 400) a.pause(); });
+        a.addEventListener("timeupdate", () => { if (performance.now() - (this._ticked || 0) > 1500) a.pause(); });
         this.audios.set(v.name, a);
       }
       const end = tl.end;
@@ -544,6 +546,15 @@
           if (error?.name === "NotAllowedError") { this.blocked = true; this.soundControls(); }
         });
       }
+    }
+    /* Where the scene is by the clip being spoken now, or null when none is playing smoothly. */
+    speaking() {
+      const voices = this.timeline?.voices;
+      if (!voices?.length || !this.audios || this.muted || this.blocked) return null;
+      const v = voices.find((x) => this.t >= x.t0 && this.t < x.t0 + x.d);
+      const a = v && this.audios.get(v.name);
+      if (!a || a.paused || a._starting || a.seeking || a.ended || a.readyState < 3) return null;
+      return v.t0 + a.currentTime;
     }
     silence() { for (const a of this.audios?.values() ?? []) if (!a.paused) a.pause(); }
     /*
