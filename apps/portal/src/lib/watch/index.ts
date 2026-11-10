@@ -25,7 +25,7 @@ import { badges, bitrate, cleanDevice, describe, heightCap, qualityOptions, rank
 /** One file's size: by bitrate and runtime when known (a pack lists the whole season), else what the listing says. */
 const sizeOf = (r: Release, minutes: number | null) => { const mbps = bitrate(r, minutes); return mbps && minutes ? Math.round((mbps * 1e6 / 8) * minutes * 60) : r.bytes; };
 import { fetchUpstream, searchStreams, stremioId, videoType } from "./streams";
-import { playerTracks, trackPlan, wantFor } from "./languages";
+import { playerTracks, trackPlan, wantFor, withFallback } from "./languages";
 import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
 import { fillParams, planRows, rowMinimum, tasteOf, type PlannedRow } from "./rows";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
@@ -210,6 +210,7 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
       return {
         audio: plan.audio, subtitles: !plan.subtitles ? "off" : plan.subtitles.kind === "signs" ? "signs" : plan.subtitles.language,
         original: title.originalLanguage || (title.shelf === "Anime" ? "ja" : mine), mine, subtitleLanguage: prefs.subtitleLanguage || mine,
+        preferred: prefs.preferredLanguage, fallback: prefs.fallbackLanguage,
       };
     })(),
     /* "seasons" or "continuous" when this show has its own episode layout; null follows the default. */
@@ -493,10 +494,10 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
   const quality = qualityFor(cleanQuality(raw.quality), deviceQualityOf(db, username, cleanDeviceId(raw.deviceId)), prefs);
-  const ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  const ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db));
   /* Work out the next episode's skips now, for the release it will most likely play. */
   if (ranked[0] && cfg.packager.key && !complete(fromAniskip)) {
-    const pick = picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage));
+    const pick = picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage));
     analyseLater(await skipDeps(cfg, username, pick), skipTarget(title, episodes, next.season, next.episode, ranked[0], minutes));
   }
   return { next: namer(db, title, prefs, username).named(next), ready: ranked.length > 0 };
@@ -540,20 +541,20 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const [found, fromAniskip] = await Promise.all([releasesFor(cfg, title, season, episode), aniskipFor(cfg, title, episodes, season, episode).catch(() => null)]);
   /* Sub or dub: the person's choice for this show, else their settings; the release is picked to carry it. */
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
-  let ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  let ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db));
   /* Nothing the screen plays as it is: with HLS the packager can transcode anything. */
-  if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : notFoundNote(title), 404);
 
   const markers = await markersFor(cfg, username, title, episodes, season, episode, wanted, minutes, fromAniskip,
-    picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage)));
+    picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage)));
 
   const sealKey = await streamKey();
   const expiresAt = Date.now() + 6 * 60 * 60 * 1000;
   const sealed = (r: { url: string; service: string }) => sealStream(sealKey, { url: r.url, username, expiresAt, source: r.service, what });
   const address = (r: { url: string; service: string }) => `${origin}/api/v1/watch/stream/${sealed(r)}`;
-  const tracks = playerTracks(plan);
+  const tracks = playerTracks(withFallback(plan, prefs, wanted.languages, tracksOf(db, username, title.id)));
   const p = progressOf(db, username, title.id).find((x) => x.season === season && x.episode === episode);
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
   const names = namer(db, title, prefs, username);

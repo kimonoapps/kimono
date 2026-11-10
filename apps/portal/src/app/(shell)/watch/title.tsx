@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { airText, labelOf, languageName, minutesText, watchApi, type Episode, type TitleView } from "./api";
+import { airText, labelOf, languageName, languages, minutesText, watchApi, type Episode, type TitleView } from "./api";
 import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
 
@@ -269,18 +269,20 @@ function MoreLikeThis({ id, shelf }: { id: string; shelf: TitleView["title"]["sh
  */
 function LanguageChoice({ view, open, onChange }: { view: TitleView; open: boolean; onChange: (tracks: { audio: string; subtitles: string } | null) => void }) {
   const l = view.language!;
-  const anime = view.title.shelf === "Anime";
-  const audios: [string, string][] = l.original === l.mine
-    ? [[l.original, languageName(l.original)]]
-    : [[l.original, anime ? "Subbed" : `${languageName(l.original)} (original)`], [l.mine, anime ? `Dubbed (${languageName(l.mine)})` : languageName(l.mine)]];
+  /* The original, the preferred language, the fallback and what plays now; any other from the list. */
+  const near = [...new Set([l.original, l.preferred && l.preferred !== "original" ? l.preferred : "", l.fallback ?? l.mine, l.audio].filter(Boolean))];
+  const others = languages.filter((v) => !near.includes(v));
   const subs: [string, string][] = [["off", "Off"], ["signs", "Signs only"], [l.subtitleLanguage, languageName(l.subtitleLanguage)]];
   /* Picking audio: subtitles follow, on in your language unless you listen in it. */
   const pickAudio = (audio: string) => onChange({ audio, subtitles: view.tracks ? l.subtitles : audio === l.subtitleLanguage ? "signs" : l.subtitleLanguage });
   return <div className={cx("kw-lang", open && "kw-open")} aria-hidden={!open}>
     <div className="kw-lang-in">
-      {audios.length > 1 ? <div className="kw-lang-row"><span>{anime ? "Sub or dub" : "Audio"}</span>
-        <div className="kw-joint kw-joint-sm" role="radiogroup" aria-label="Audio">{audios.map(([v, label]) => <button key={v} role="radio" tabIndex={open ? 0 : -1} aria-checked={l.audio === v} className={cx(l.audio === v && "kw-sel")} onClick={() => { if (l.audio !== v) pickAudio(v); }}>{label}</button>)}</div>
-      </div> : null}
+      <div className="kw-lang-row"><span>Audio</span>
+        <select className="kw-season kw-pick kw-pick-sm" aria-label="Audio" tabIndex={open ? 0 : -1} value={l.audio} onChange={(event) => pickAudio(event.target.value)}>
+          {near.map((v) => <option key={v} value={v}>{v === l.original ? `${languageName(v)} (original)` : languageName(v)}</option>)}
+          <optgroup label="Other languages">{others.map((v) => <option key={v} value={v}>{languageName(v)}</option>)}</optgroup>
+        </select>
+      </div>
       <div className="kw-lang-row"><span>Subtitles</span>
         <div className="kw-joint kw-joint-sm" role="radiogroup" aria-label="Subtitles">{subs.map(([v, label]) => <button key={v} role="radio" tabIndex={open ? 0 : -1} aria-checked={l.subtitles === v} className={cx(l.subtitles === v && "kw-sel")} onClick={() => { if (l.subtitles !== v) onChange({ audio: l.audio, subtitles: v }); }}>{label}</button>)}</div>
       </div>

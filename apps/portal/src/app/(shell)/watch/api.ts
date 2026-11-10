@@ -30,7 +30,7 @@ export type TitleView = {
   inList: boolean; rating: Rating | null; reminding: boolean;
   tracks: { audio: string; subtitles: string } | null;
   /** What it plays in now ([subtitles]: "off", "signs" or a language), and the languages to offer. */
-  language?: { audio: string; subtitles: string; original: string; mine: string; subtitleLanguage: string };
+  language?: { audio: string; subtitles: string; original: string; mine: string; subtitleLanguage: string; preferred?: string; fallback?: string };
   playable: boolean;
   /** Why it can't play, when it can't: not out yet, only in cinemas, or no copy found. */
   availability?: { state: "ready" | "upcoming" | "cinemas" | "missing"; note: string | null };
@@ -70,9 +70,13 @@ export type Play = {
   /** The quality playing and the ones this release offers here; absent from older servers. */
   quality?: { current: string; options: { value: string; label: string }[] };
 };
+/** Languages to pick from, by their ISO 639-1 code. */
+export const languages = ["en", "ja", "fr", "de", "es", "it", "pt", "nl", "sv", "no", "da", "fi", "pl", "ru", "uk", "tr", "ar", "hi", "ko", "zh"];
+
 export type Prefs = {
-  fillers: FillerChoice; quality: string; audioLanguage: string; subtitleLanguage: string;
-  animeAudio: "original" | "dub"; filmAudio: "original" | "mine"; subtitles: "auto" | "always" | "off";
+  fillers: FillerChoice; quality: string; subtitleLanguage: string;
+  /** "original" or a language; the fallback when no copy has it; audioLanguage is the server's: the language understood. */
+  preferredLanguage: string; fallbackLanguage: string; audioLanguage: string; subtitles: "auto" | "always" | "off";
   autoplayNext: boolean; skipIntros: boolean; animeEpisodes?: "seasons" | "continuous";
   subtitleSize?: "small" | "medium" | "large"; subtitleBackground?: "none" | "shadow" | "box";
   previews?: boolean; downloadQuality?: "standard" | "higher";

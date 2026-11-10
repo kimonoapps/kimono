@@ -119,7 +119,7 @@ data class TrackChoice(val audio: String, val subtitles: String)
 
 /** A title's language as it will play: [subtitles] is "off", "signs" or a language code. */
 @Serializable
-data class TitleLanguage(val audio: String, val subtitles: String, val original: String, val mine: String, val subtitleLanguage: String)
+data class TitleLanguage(val audio: String, val subtitles: String, val original: String, val mine: String, val subtitleLanguage: String, val preferred: String? = null, val fallback: String? = null)
 
 /** [state]: "ready", "upcoming", "cinemas" or "missing"; [note] says so in a few words. */
 @Serializable
@@ -249,10 +249,13 @@ data class PrepareAnswer(val next: EpisodeRef? = null, val ready: Boolean = fals
 data class Prefs(
     val fillers: String = "ask",
     val quality: String = "auto",
+    /** "original" (each title's own language) or a language; each show can have its own. */
+    val preferredLanguage: String = "original",
+    /** The audio when no copy has the preferred language. */
+    val fallbackLanguage: String = "en",
+    /** The server's: the language understood (the preferred one, or the fallback while that's "original"). */
     val audioLanguage: String = "en",
     val subtitleLanguage: String = "",
-    val animeAudio: String = "original",
-    val filmAudio: String = "original",
     val subtitles: String = "auto",
     /** Anime "seasons" or "continuous" (one numbered run). */
     val animeEpisodes: String = "seasons",

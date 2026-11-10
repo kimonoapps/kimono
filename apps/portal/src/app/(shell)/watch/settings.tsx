@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { deviceOf, languageName, qualities, saveQuality, savedQuality, watchApi, type Prefs } from "./api";
+import { deviceOf, languageName, languages, qualities, saveQuality, savedQuality, watchApi, type Prefs } from "./api";
 import { Crossing } from "@/components/crossing";
 import { cx, Img, useWatch } from "./bits";
 import { Icon, type IconName } from "./icons";
@@ -15,7 +15,6 @@ import { PROFILE_PICKER, type Person } from "./watch-app";
  * this screen or browser can't play it.
  */
 
-const languages = ["en", "ja", "fr", "de", "es", "it", "pt", "nl", "sv", "no", "da", "fi", "pl", "ru", "uk", "tr", "ar", "hi", "ko", "zh"];
 
 export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: () => void; signOut: () => Promise<void> }) {
   const watch = useWatch();
@@ -45,11 +44,11 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
   const lookName = { none: "Outline", shadow: "Shadow", box: "Box" }[prefs?.subtitleBackground ?? "shadow"];
   const on = (items: [boolean, string][]) => items.filter(([b]) => b).map(([, l]) => l).join(" · ") || "All off";
   const groups: { id: Group; title: string; icon: IconName; summary: string }[] = prefs ? [
-    { id: "languages", title: "Languages", icon: "chat", summary: `${languageName(mine)} · Subtitles ${({ auto: "automatic", always: "always", off: "off" } as Record<string, string>)[prefs.subtitles] ?? prefs.subtitles}` },
+    { id: "languages", title: "Languages", icon: "chat", summary: `${prefs.preferredLanguage === "original" ? "Original" : languageName(prefs.preferredLanguage)}, then ${languageName(prefs.fallbackLanguage)} · Subtitles ${({ auto: "automatic", always: "always", off: "off" } as Record<string, string>)[prefs.subtitles] ?? prefs.subtitles}` },
     { id: "look", title: "Subtitle look", icon: "cc", summary: `${sizeName} · ${lookName}` },
     { id: "playing", title: "Playing", icon: "play", summary: on([[prefs.autoplayNext, "Next episode"], [prefs.skipIntros, "Skip intros"], [prefs.previews !== false, "Previews"]]) },
     { id: "quality", title: "Quality", icon: "film", summary: qualities.find((q) => q.value === quality)?.label ?? "Auto" },
-    { id: "anime", title: "Anime", icon: "mood", summary: `${prefs.animeAudio === "dub" ? "Dubbed" : "Subbed"} · ${prefs.animeEpisodes === "continuous" ? "One list" : "By season"}` },
+    { id: "anime", title: "Anime", icon: "mood", summary: `${prefs.animeEpisodes === "continuous" ? "One list" : "By season"} · Fillers ${prefs.fillers === "ask" ? "ask" : prefs.fillers === "skip" ? "skipped" : "watched"}` },
     { id: "account", title: "Account", icon: "group", summary: me.name || me.username },
   ] : [];
   const [open, setOpen] = useGroup();
@@ -76,17 +75,17 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
         <button className="kw-set-back" onClick={() => setOpen(null)}><Icon name="back" />Settings</button>
         <h2>{current?.title}</h2>
         {shown === "languages" ? <>
-          <Row label="My language" done={ticked === "audioLanguage"}>
-            <Pick value={mine} onChange={(v) => save("audioLanguage", { audioLanguage: v })} options={languages.map((l) => [l, languageName(l)])} label="My language" />
+          <Row label="Preferred language" done={ticked === "preferredLanguage"}>
+            <Pick value={prefs.preferredLanguage} onChange={(v) => save("preferredLanguage", { preferredLanguage: v })} options={[["original", "Original language"], ...languages.map((l) => [l, languageName(l)] as [string, string])]} label="Preferred language" />
           </Row>
-          <Row label="Films and series" done={ticked === "filmAudio"}>
-            <Seg value={prefs.filmAudio} onChange={(v) => save("filmAudio", { filmAudio: v as Prefs["filmAudio"] })} options={[["original", "Original audio"], ["mine", languageName(mine)]]} />
+          <Row label="Fallback language" done={ticked === "fallbackLanguage"}>
+            <Pick value={prefs.fallbackLanguage} onChange={(v) => save("fallbackLanguage", { fallbackLanguage: v })} options={languages.map((l) => [l, languageName(l)])} label="Fallback language" />
           </Row>
           <Row label="Subtitles" done={ticked === "subtitles"} note={prefs.subtitles === "auto" ? "When the audio isn’t in your language." : undefined}>
             <Seg value={prefs.subtitles} onChange={(v) => save("subtitles", { subtitles: v as Prefs["subtitles"] })} options={[["auto", "Automatic"], ["always", "Always"], ["off", "Off"]]} />
           </Row>
           <Row label="Subtitle language" done={ticked === "subtitleLanguage"}>
-            <Pick value={prefs.subtitleLanguage} onChange={(v) => save("subtitleLanguage", { subtitleLanguage: v })} options={[["", "Same as my language"], ...languages.filter((l) => l !== mine).map((l) => [l, languageName(l)] as [string, string])]} label="Subtitle language" />
+            <Pick value={prefs.subtitleLanguage} onChange={(v) => save("subtitleLanguage", { subtitleLanguage: v })} options={[["", languageName(mine)], ...languages.filter((l) => l !== mine).map((l) => [l, languageName(l)] as [string, string])]} label="Subtitle language" />
           </Row>
         </> : shown === "look" ? <>
           <div className="kw-sub-preview">
@@ -108,9 +107,6 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
             <Seg value={quality} onChange={pickQuality} options={qualities.map((q) => [q.value, q.label])} disabled={no4k !== null ? { "2160": no4k ?? "" } : undefined} />
           </Row>
         </> : shown === "anime" ? <>
-          <Row label="Sub or dub" note="Each show can have its own, from its page." done={ticked === "animeAudio"}>
-            <Seg value={prefs.animeAudio} onChange={(v) => save("animeAudio", { animeAudio: v as Prefs["animeAudio"] })} options={[["original", "Subbed"], ["dub", `Dubbed (${languageName(mine)})`]]} />
-          </Row>
           <Row label="Episodes" done={ticked === "animeEpisodes"}>
             <Seg value={prefs.animeEpisodes ?? "seasons"} onChange={(v) => save("animeEpisodes", { animeEpisodes: v as Prefs["animeEpisodes"] })} options={[["seasons", "By season"], ["continuous", "One list"]]} />
           </Row>

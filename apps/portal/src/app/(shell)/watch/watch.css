@@ -788,6 +788,12 @@
 .kw .kw-lang-in{overflow:hidden;display:grid;gap:12px;min-height:0}
 .kw .kw-lang.kw-open .kw-lang-in{padding:14px 16px;border-radius:10px;background:var(--surface-2)}
 .kw .kw-lang-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:14px;color:var(--fg-2)}
+.kw .kw-lang-row .kw-joint{max-width:100%}
+@media (max-width:640px){
+  .kw .kw-lang-row .kw-joint button{flex:1 1 0;min-width:0;white-space:normal;line-height:1.25}
+  .kw .kw-lang-row select.kw-pick-sm{width:100%}
+}
+.kw select.kw-pick.kw-pick-sm{min-width:0;height:34px;padding-top:0;padding-bottom:0;font-size:13px}
 .kw .kw-lang small{font-size:13px;color:var(--fg-3)}
 
 /* watch together: a link, and anyone found by name */

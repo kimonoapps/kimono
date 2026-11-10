@@ -39,16 +39,30 @@ export type TrackPlan = {
 };
 
 /**
- * What to play: the person's choice for this show if they made one in the
- * player, else their settings. Anime defaults to the original with subtitles;
- * a dub gets signs-only subtitles so on-screen text is still translated.
+ * What to play: the person's choice for this show if they made one, else
+ * their preferred language (each title's original by default). Listening in
+ * your own language gets signs-only subtitles, so on-screen text is still
+ * translated.
  */
 export function trackPlan(title: { shelf: string; originalLanguage: string }, prefs: Prefs, choice?: TrackChoice | null): TrackPlan {
   const mine = prefs.audioLanguage || "en";
-  const subsLang = prefs.subtitleLanguage || mine;
   const original = title.originalLanguage || (title.shelf === "Anime" ? "ja" : mine);
-  const audio = choice?.audio
-    || (title.shelf === "Anime" ? (prefs.animeAudio === "dub" ? mine : original) : (prefs.filmAudio === "mine" ? mine : original));
+  const audio = choice?.audio || (prefs.preferredLanguage && prefs.preferredLanguage !== "original" ? prefs.preferredLanguage : original);
+  return planFor(audio, prefs, choice);
+}
+
+/**
+ * The copy picked has no track in the language planned but has the fallback
+ * (known from its listing): play the fallback, with subtitles worked out again.
+ */
+export function withFallback(plan: TrackPlan, prefs: Prefs, languages: string[], choice?: TrackChoice | null): TrackPlan {
+  const fallback = prefs.fallbackLanguage || "en";
+  if (!languages.length || languages.includes(plan.audio) || languages.includes("multi") || plan.audio === fallback || !languages.includes(fallback)) return plan;
+  return planFor(fallback, prefs, choice ? { ...choice, subtitles: choice.subtitles === plan.audio ? "off" : choice.subtitles } : null);
+}
+
+function planFor(audio: string, prefs: Prefs, choice?: TrackChoice | null): TrackPlan {
+  const subsLang = prefs.subtitleLanguage || prefs.audioLanguage || "en";
   if (choice) {
     if (choice.subtitles === "off") return { audio, subtitles: null };
     if (choice.subtitles === "signs") return { audio, subtitles: { language: subsLang, kind: "signs" } };
@@ -74,6 +88,6 @@ export function playerTracks(plan: TrackPlan) {
   };
 }
 
-/** For ranking releases: the audio wanted and the title's original, plus the subtitle language when the audio isn't the person's. */
-export const wantFor = (plan: TrackPlan, original: string) => ({ audio: plan.audio, original, subtitles: plan.subtitles?.kind === "full" ? plan.subtitles.language : null });
+/** For ranking releases: the audio wanted, the fallback and the title's original, plus the subtitle language when the audio isn't the person's. */
+export const wantFor = (plan: TrackPlan, original: string, fallback = "") => ({ audio: plan.audio, original, fallback, subtitles: plan.subtitles?.kind === "full" ? plan.subtitles.language : null });
 export type LanguageWant = ReturnType<typeof wantFor>;

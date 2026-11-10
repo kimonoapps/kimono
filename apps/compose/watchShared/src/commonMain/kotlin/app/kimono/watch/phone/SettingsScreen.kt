@@ -103,9 +103,9 @@ private fun Part.icon() = when (this) {
 /** What a group is set to now, in a few words, for its row on the settings page. */
 @Composable
 private fun Part.summary(p: Prefs, state: SettingsState, watch: WatchServices): String = when (this) {
-    Part.Languages -> languageName(p.audioLanguage) + " · Subtitles " + when (p.subtitles) { "auto" -> "automatic"; "always" -> "always"; else -> "off" }
+    Part.Languages -> (if (p.preferredLanguage == "original") "Original" else languageName(p.preferredLanguage)) + ", then " + languageName(p.fallbackLanguage) + " · Subtitles " + when (p.subtitles) { "auto" -> "automatic"; "always" -> "always"; else -> "off" }
     Part.Quality -> qualityChoices.firstOrNull { it.first == (state.quality ?: "auto") }?.second ?: "Auto"
-    Part.Anime -> (if (p.animeAudio == "dub") "Dubbed" else "Subbed") + " · " + (if (p.animeEpisodes == "continuous") "One list" else "By season")
+    Part.Anime -> (if (p.animeEpisodes == "continuous") "One list" else "By season") + " · Fillers " + when (p.fillers) { "skip" -> "skipped"; "watch" -> "watched"; else -> "ask" }
     Part.Look -> p.subtitleSize.replaceFirstChar { it.uppercase() } + " · " + when (p.subtitleBackground) { "none" -> "Outline"; "box" -> "Box"; else -> "Shadow" }
     Part.Playing -> listOfNotNull("Next episode".takeIf { p.autoplayNext }, "Skip intros".takeIf { p.skipIntros }).joinToString(" · ").ifEmpty { "All off" }
     Part.Home -> if (p.previews) "Previews on" else "Previews off"
@@ -259,13 +259,17 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
             Toggle("Previews", p.previews, key = "previews") { on -> store.set("previews", on) { it.copy(previews = on) } }
         }
         Part.Languages -> {
-            Picker("My language", languageName(p.audioLanguage), languages, p.audioLanguage, key = "audioLanguage") { v -> store.set("audioLanguage", v) { it.copy(audioLanguage = v) } }
-            Field("Films and series", key = "filmAudio") { Joint(if (tv) listOf("original" to "Original audio", "mine" to "My language when there is one") else listOf("original" to "Original", "mine" to "My language"), p.filmAudio) { v -> store.set("filmAudio", v) { it.copy(filmAudio = v) } } }
+            Picker("Preferred language", if (p.preferredLanguage == "original") "Original language" else languageName(p.preferredLanguage), listOf("original" to "Original language") + languages, p.preferredLanguage, key = "preferredLanguage") { v ->
+                store.set("preferredLanguage", v) { it.copy(preferredLanguage = v, audioLanguage = if (v == "original") it.fallbackLanguage else v) }
+            }
+            Picker("Fallback language", languageName(p.fallbackLanguage), languages, p.fallbackLanguage, key = "fallbackLanguage") { v ->
+                store.set("fallbackLanguage", v) { it.copy(fallbackLanguage = v, audioLanguage = if (it.preferredLanguage == "original") v else it.audioLanguage) }
+            }
             Field("Subtitles", if (p.subtitles == "auto") "Automatic: when the audio isn’t in your language." else null, key = "subtitles") {
                 Joint(listOf("auto" to "Automatic", "always" to "Always", "off" to "Off"), p.subtitles) { v -> store.set("subtitles", v) { it.copy(subtitles = v) } }
             }
-            Picker("Subtitle language", if (p.subtitleLanguage.isBlank()) "Same as my language" else languageName(p.subtitleLanguage),
-                listOf("" to "Same as my language") + languages, p.subtitleLanguage, key = "subtitleLanguage") { v -> store.set("subtitleLanguage", v) { it.copy(subtitleLanguage = v) } }
+            Picker("Subtitle language", languageName(p.subtitleLanguage.ifBlank { p.audioLanguage }),
+                listOf("" to languageName(p.audioLanguage)) + languages.filter { it.first != p.audioLanguage }, p.subtitleLanguage, key = "subtitleLanguage") { v -> store.set("subtitleLanguage", v) { it.copy(subtitleLanguage = v) } }
         }
         Part.Look -> {
             SubtitleSample(p.subtitleSize, p.subtitleBackground, watch.tv, Modifier.padding(top = 6.dp, bottom = 6.dp))
@@ -273,9 +277,6 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
             Field("Background", key = "subtitleBackground") { Joint(listOf("none" to "None", "shadow" to "Shadow", "box" to "Box"), p.subtitleBackground) { v -> store.set("subtitleBackground", v) { it.copy(subtitleBackground = v) } } }
         }
         Part.Anime -> {
-            Field("Sub or dub", "Each show can have its own, from its page.", key = "animeAudio") {
-                Joint(listOf("original" to "Subbed", "dub" to "Dubbed (${languageName(p.audioLanguage)})"), p.animeAudio) { v -> store.set("animeAudio", v) { it.copy(animeAudio = v) } }
-            }
             Field("Episodes", key = "animeEpisodes") { Joint(listOf("seasons" to "By season", "continuous" to "One list"), p.animeEpisodes) { v -> store.set("animeEpisodes", v) { it.copy(animeEpisodes = v) } } }
             Field("Filler episodes", key = "fillers") { Joint(listOf("ask" to "Ask", "skip" to "Skip", "watch" to "Watch"), p.fillers) { v -> store.set("fillers", v) { it.copy(fillers = v) } } }
         }

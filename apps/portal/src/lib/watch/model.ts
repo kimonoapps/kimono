@@ -82,14 +82,14 @@ export type Prefs = {
   fillers: FillerChoice;
   /** "auto" picks for the device and connection; the rest cap it. */
   quality: "auto" | "best" | "2160" | "1080" | "720" | "saver";
-  /** The person's own language (ISO 639-1): what "my language" and subtitles mean. */
+  /** The audio wanted: "original" (each title's own language) or a language (ISO 639-1). A show can have its own (tracks). */
+  preferredLanguage: string;
+  /** The audio when no copy has the preferred language. */
+  fallbackLanguage: string;
+  /** The language the person understands, worked out (never stored by a client): the preferred one, or the fallback while that's "original". What subtitles mean by "my language". */
   audioLanguage: string;
   /** Subtitles in this language; empty means the same as audioLanguage. */
   subtitleLanguage: string;
-  /** Anime in its original audio with subtitles, or dubbed into the person's language. */
-  animeAudio: "original" | "dub";
-  /** Everything else: its original audio, or the person's language when there is a dub. */
-  filmAudio: "original" | "mine";
   /** "auto": subtitles when the audio isn't the person's language (and signs-only when it is). */
   subtitles: "auto" | "always" | "off";
   /** Anime episodes by season, or as one numbered run (One Piece 1–1100) the way fans count them. */
@@ -104,7 +104,7 @@ export type Prefs = {
   autoplayNext: boolean;
   skipIntros: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", audioLanguage: "en", subtitleLanguage: "", animeAudio: "original", filmAudio: "original", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -339,20 +339,30 @@ export const remindsOf = (db: DatabaseSync, username: string) => (db.prepare("SE
 export function prefsOf(db: DatabaseSync, username: string): Prefs {
   const row = db.prepare("SELECT body FROM prefs WHERE username = ?").get(username) as Row | undefined;
   if (!row) return { ...defaultPrefs };
-  try { return cleanPrefs(JSON.parse(String(row.body)), defaultPrefs); } catch { return { ...defaultPrefs }; }
+  try { return cleanPrefs(fromSubDub(JSON.parse(String(row.body))), defaultPrefs); } catch { return { ...defaultPrefs }; }
+}
+
+/** Settings saved before preferred and fallback languages: the original unless films were set to "my language", falling back to that language. */
+function fromSubDub(stored: Record<string, unknown>): Record<string, unknown> {
+  if (!stored || typeof stored !== "object" || "preferredLanguage" in stored) return stored;
+  const mine = typeof stored.audioLanguage === "string" && stored.audioLanguage ? stored.audioLanguage : "en";
+  return { ...stored, preferredLanguage: stored.filmAudio === "mine" ? mine : "original", fallbackLanguage: mine };
 }
 
 export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
   const input = (raw && typeof raw === "object" ? raw : {}) as Partial<Record<keyof Prefs, unknown>>;
   const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => (allowed.includes(value as T) ? (value as T) : fallback);
   const lang = (value: unknown, fallback: string) => (typeof value === "string" && /^([a-z]{2,3})?$/.test(value) ? value : fallback);
+  const code = (value: unknown, fallback: string) => (typeof value === "string" && /^[a-z]{2,3}$/.test(value) ? value : fallback);
+  const preferred = input.preferredLanguage === "original" ? "original" : code(input.preferredLanguage, base.preferredLanguage);
+  const fallback = code(input.fallbackLanguage, base.fallbackLanguage);
   return {
     fillers: pick(input.fillers, ["ask", "skip", "watch"] as const, base.fillers),
     quality: pick(input.quality, ["auto", "best", "2160", "1080", "720", "saver"] as const, base.quality),
-    audioLanguage: lang(input.audioLanguage, base.audioLanguage),
+    preferredLanguage: preferred,
+    fallbackLanguage: fallback,
+    audioLanguage: preferred === "original" ? fallback : preferred,
     subtitleLanguage: lang(input.subtitleLanguage, base.subtitleLanguage),
-    animeAudio: pick(input.animeAudio, ["original", "dub"] as const, base.animeAudio),
-    filmAudio: pick(input.filmAudio, ["original", "mine"] as const, base.filmAudio),
     subtitles: pick(input.subtitles, ["auto", "always", "off"] as const, base.subtitles),
     animeEpisodes: pick(input.animeEpisodes, ["seasons", "continuous"] as const, base.animeEpisodes),
     subtitleSize: pick(input.subtitleSize, ["small", "medium", "large"] as const, base.subtitleSize),

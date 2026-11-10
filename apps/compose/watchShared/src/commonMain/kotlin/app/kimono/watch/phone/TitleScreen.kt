@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -332,18 +333,28 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
  */
 @Composable
 private fun LanguagePanel(page: TitlePage, l: app.kimono.watch.model.TitleLanguage, vm: TitleViewModel) {
-    val anime = page.title.shelf == "Anime"
     val what = if (page.title.isFilm) "film" else "show"
-    val audios = if (l.original == l.mine) emptyList() else listOf(
-        l.original to (if (anime) "Subbed" else "${languageName(l.original)} (original)"),
-        l.mine to (if (anime) "Dubbed (${languageName(l.mine)})" else languageName(l.mine)),
-    )
+    /* The original, the preferred language, the fallback and what plays now; any other from the list. */
+    val near = listOf(l.original, l.preferred?.takeIf { it != "original" } ?: "", l.fallback ?: l.mine, l.audio).filter { it.isNotBlank() }.distinct()
+    val audios = near.map { it to if (it == l.original) "${languageName(it)} (original)" else languageName(it) }
+    var more by remember { mutableStateOf(false) }
+    val pick = { a: String -> if (a != l.audio) vm.language(app.kimono.watch.model.TrackChoice(a, if (page.tracks != null) l.subtitles else if (a == l.subtitleLanguage) "signs" else l.subtitleLanguage)) }
     val subs = listOf("off" to "Off", "signs" to "Signs only", l.subtitleLanguage to languageName(l.subtitleLanguage))
     Column(Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Night.surface2).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (audios.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (anime) "Sub or dub" else "Audio", style = ui(14, FontWeight.Bold))
-            Joint(audios, l.audio) { a ->
-                if (a != l.audio) vm.language(app.kimono.watch.model.TrackChoice(a, if (page.tracks != null) l.subtitles else if (a == l.subtitleLanguage) "signs" else l.subtitleLanguage))
+        /* One dropdown: the original first, then the person's languages, a rule, then every other. */
+        Column {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Night.surface3).clickableScaleClipped(RoundedCornerShape(10.dp), { more = !more })
+                .padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Audio", style = ui(14, FontWeight.Bold), modifier = Modifier.weight(1f))
+                Text(audios.firstOrNull { it.first == l.audio }?.second ?: languageName(l.audio), style = ui(14, color = Night.fg2))
+                I(Ic.more, 20.dp, Night.fg3, Modifier.padding(start = 6.dp).rotate(if (more) 180f else 0f))
+            }
+            androidx.compose.animation.AnimatedVisibility(more) {
+                Column(Modifier.padding(top = 6.dp)) {
+                    audios.forEach { (v, name) -> Choice(name, v == l.audio) { more = false; pick(v) } }
+                    Box(Modifier.padding(vertical = 6.dp).fillMaxWidth().height(1.dp).background(Night.line))
+                    languages.filter { it.first !in near }.forEach { (v, name) -> Choice(name, false) { more = false; pick(v) } }
+                }
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

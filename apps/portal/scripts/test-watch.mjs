@@ -203,11 +203,11 @@ test('stubs from lists never overwrite a full title, and staleness follows airin
 test('settings are cleaned, keeping what was not sent', () => {
   const db = fresh();
   assert.equal(model.prefsOf(db, 'a').fillers, 'ask');
-  model.savePrefs(db, 'a', { fillers: 'skip', quality: '4k', audioLanguage: 'ja', autoplayNext: 'yes' });
+  model.savePrefs(db, 'a', { fillers: 'skip', quality: '4k', fallbackLanguage: 'ja', autoplayNext: 'yes' });
   const p = model.prefsOf(db, 'a');
   assert.equal(p.fillers, 'skip');
   assert.equal(p.quality, 'auto', 'unknown quality ignored');
-  assert.equal(p.audioLanguage, 'ja');
+  assert.equal(p.fallbackLanguage, 'ja');
   assert.equal(p.autoplayNext, true);
   model.savePrefs(db, 'a', { quality: '1080' });
   assert.equal(model.prefsOf(db, 'a').fillers, 'skip');
@@ -605,15 +605,18 @@ test("a season pack's listed bitrate is used, not its size; extras and shorts ar
   assert.equal(mini.junk, true, 'the mini anime');
 });
 
-test('anime defaults to the original with full subtitles; a dub gets signs only', () => {
+test('the original language by default with full subtitles; a preferred language gets signs only', () => {
   const anime = { shelf: 'Anime', originalLanguage: 'ja' };
   const prefs = { ...model.defaultPrefs };
+  const english = model.cleanPrefs({ preferredLanguage: 'en' }, prefs);
   assert.deepEqual(languages.trackPlan(anime, prefs), { audio: 'ja', subtitles: { language: 'en', kind: 'full' } });
-  assert.deepEqual(languages.trackPlan(anime, { ...prefs, animeAudio: 'dub' }), { audio: 'en', subtitles: { language: 'en', kind: 'signs' } });
+  assert.deepEqual(languages.trackPlan(anime, english), { audio: 'en', subtitles: { language: 'en', kind: 'signs' } });
+  const spanish = model.cleanPrefs({ preferredLanguage: 'es', fallbackLanguage: 'en' }, prefs);
+  assert.deepEqual(languages.trackPlan(anime, spanish), { audio: 'es', subtitles: { language: 'es', kind: 'signs' } }, 'subtitles follow the preferred language once it is one');
   assert.deepEqual(languages.trackPlan({ shelf: 'Anime', originalLanguage: '' }, prefs).audio, 'ja', 'anime with no language on record is Japanese');
   const french = { shelf: 'Film', originalLanguage: 'fr' };
   assert.deepEqual(languages.trackPlan(french, prefs), { audio: 'fr', subtitles: { language: 'en', kind: 'full' } });
-  assert.deepEqual(languages.trackPlan(french, { ...prefs, filmAudio: 'mine' }).audio, 'en');
+  assert.deepEqual(languages.trackPlan(french, english).audio, 'en');
   assert.equal(languages.trackPlan(french, { ...prefs, subtitles: 'off' }).subtitles, null);
   assert.deepEqual(languages.trackPlan(anime, prefs, { audio: 'en', subtitles: 'off' }), { audio: 'en', subtitles: null }, "the show's own choice wins");
   const told = languages.playerTracks(languages.trackPlan(anime, prefs));
@@ -624,7 +627,7 @@ test('anime defaults to the original with full subtitles; a dub gets signs only'
 test('someone who wants the dub never gets a Japanese-only release when a dubbed one exists', () => {
   const anime = { shelf: 'Anime', originalLanguage: 'ja' };
   const sub = languages.wantFor(languages.trackPlan(anime, model.defaultPrefs), 'ja');
-  const dub = languages.wantFor(languages.trackPlan(anime, { ...model.defaultPrefs, animeAudio: 'dub' }), 'ja');
+  const dub = languages.wantFor(languages.trackPlan(anime, model.cleanPrefs({ preferredLanguage: 'en' }, model.defaultPrefs)), 'ja');
   assert.ok(releases.languageScore(subsplease, dub) < -100);
   assert.ok(releases.languageScore(multi, dub) > 0);
   assert.ok(releases.languageScore(subsplease, sub) > 0);
@@ -644,11 +647,36 @@ test('a show remembers the tracks picked in the player; settings take the new ch
   assert.throws(() => model.setTracks(db, 'a', 'tv-1', { audio: 'english', subtitles: 'x' }), /audio language/);
   model.setTracks(db, 'a', 'tv-1', null);
   assert.equal(model.tracksOf(db, 'a', 'tv-1'), null);
-  model.savePrefs(db, 'a', { animeAudio: 'dub', filmAudio: 'nope', subtitles: 'always' });
+  model.savePrefs(db, 'a', { preferredLanguage: 'de', fallbackLanguage: 'english', subtitles: 'always', audioLanguage: 'fr' });
   const p = model.prefsOf(db, 'a');
-  assert.equal(p.animeAudio, 'dub');
-  assert.equal(p.filmAudio, 'original');
+  assert.equal(p.preferredLanguage, 'de');
+  assert.equal(p.fallbackLanguage, 'en', 'a bad fallback keeps the one before');
+  assert.equal(p.audioLanguage, 'de', 'the language understood is worked out, not taken');
   assert.equal(p.subtitles, 'always');
+  model.savePrefs(db, 'a', { preferredLanguage: 'original' });
+  assert.equal(model.prefsOf(db, 'a').audioLanguage, 'en', 'while it is the original, the fallback is the language understood');
+});
+
+test('settings from before keep their choice: films in my language become that language preferred', () => {
+  const db = fresh();
+  db.prepare('INSERT INTO prefs (username, body) VALUES (?,?)').run('old', JSON.stringify({ audioLanguage: 'fr', filmAudio: 'mine', animeAudio: 'original' }));
+  db.prepare('INSERT INTO prefs (username, body) VALUES (?,?)').run('sub', JSON.stringify({ audioLanguage: 'de', filmAudio: 'original' }));
+  assert.equal(model.prefsOf(db, 'old').preferredLanguage, 'fr');
+  assert.equal(model.prefsOf(db, 'sub').preferredLanguage, 'original');
+  assert.equal(model.prefsOf(db, 'sub').fallbackLanguage, 'de');
+});
+
+test('no copy in the preferred language: one with the fallback is next, and plays in it', () => {
+  const prefs = model.cleanPrefs({ preferredLanguage: 'es', fallbackLanguage: 'en' }, model.defaultPrefs);
+  const plan = languages.trackPlan({ shelf: 'Film', originalLanguage: 'ja' }, prefs);
+  const want = languages.wantFor(plan, 'ja', prefs.fallbackLanguage);
+  const english = { ...multi, languages: ['ja', 'en'] }, japanese = { ...multi, languages: ['ja'] }, spanish = { ...multi, languages: ['es'] };
+  assert.ok(releases.languageScore(spanish, want) > releases.languageScore(english, want));
+  assert.ok(releases.languageScore(english, want) > releases.languageScore(japanese, want));
+  assert.equal(languages.withFallback(plan, prefs, english.languages).audio, 'en');
+  assert.equal(languages.withFallback(plan, prefs, spanish.languages).audio, 'es');
+  assert.equal(languages.withFallback(plan, prefs, []).audio, 'es', 'a copy that lists nothing may have it');
+  assert.equal(languages.withFallback(plan, prefs, japanese.languages).audio, 'es', 'without the fallback either, nothing changes');
 });
 
 test("the relay follows AIOStreams' redirect to nzbdav, with the login as that hop's header only", async () => {
