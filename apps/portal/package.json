@@ -21,6 +21,7 @@
     "test:app-updates": "node --test scripts/test-app-updates.mjs",
     "test:testflight": "node --test scripts/test-testflight.mjs",
     "test:code": "node --import ./scripts/ts-resolve.mjs --test scripts/test-code.mjs",
+    "test:skills": "node --import ./scripts/ts-resolve.mjs --test scripts/test-skills.mjs",
     "test:artifacts": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-artifacts.mjs",
     "test:composio": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-composio.mjs",
     "test:history": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-history.mjs",

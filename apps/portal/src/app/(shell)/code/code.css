@@ -1659,6 +1659,21 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-skill { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--k-r-l); }
 .cd-skill .cd-page-words { flex: 1; }
 .cd-skill .cd-page-words small a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.cd-skill-open { all: unset; box-sizing: border-box; cursor: pointer; border-radius: var(--k-r-m, 12px); }
+.cd-skill-open:hover b, .cd-skill-open:focus-visible b { text-decoration: underline; text-underline-offset: 3px; }
+/* A skill's own page: name as the title, a line for what it's for, when it's used, then its instructions. */
+.cd-skill-form { display: grid; gap: 14px; }
+.cd-skill-form .cd-page-title { margin-bottom: 0; }
+.cd-skill-field { display: grid; gap: 4px; padding: 10px 14px; border-radius: var(--k-r-l); background: var(--k-container-low); }
+.cd-skill-field span { font: 600 12.5px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-skill-field input { all: unset; font: 400 15.5px/1.45 var(--k-sans); color: var(--k-on-surface); }
+.cd-skill-field input::placeholder { color: var(--k-faint); }
+.cd-skill-field:focus-within { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--k-app-accent) 70%, transparent); }
+.cd-skill-kind { max-width: 360px; }
+.cd-skill-body { min-height: 30vh; margin-top: 6px; }
+.cd-skill-publish { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--k-r-l); background: var(--k-container-low); }
+.cd-skill-publish .cd-page-words { flex: 1; }
+.cd-skill-actions { display: flex; justify-content: flex-end; padding-bottom: 24px; }
 
 /* ── the chat bar ──
    A sheet of paper lifted off the page: soft layered shadow, a hairline edge.

@@ -73,7 +73,9 @@ export type CodeEvent =
   | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string; doing?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };
-export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; command?: { name: string; hint?: string; does: string }; enabled: boolean };
+export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; command?: { name: string; hint?: string; does: string }; custom?: { mine: boolean; published: boolean; editable: boolean; body?: string }; enabled: boolean };
+export type SkillCatalog = { skills: SkillChoice[]; admin: boolean };
+export type SkillDraft = { name: string; description: string; kind: "always" | "on-demand"; body: string; published?: boolean };
 export type Profile = { instructions: string; memories: { id: string; title?: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };
@@ -206,6 +208,11 @@ export const code = {
   memory: () => call<Profile>("/memory"),
   skills: () => call<{ skills: SkillChoice[] }>("/skills").then((r) => r.skills),
   setSkill: (id: string, enabled: boolean) => call<{ skills: SkillChoice[] }>("/skills", json("POST", { id, enabled })).then((r) => r.skills),
+  /** The catalog with whether this person may publish: skills people here wrote are written, changed and published through it. */
+  skillCatalog: () => call<SkillCatalog>("/skills"),
+  createSkill: (draft: SkillDraft) => call<SkillCatalog>("/skills", json("POST", { create: draft })),
+  changeSkill: (id: string, draft: Partial<SkillDraft>) => call<SkillCatalog>(`/skills/${encodeURIComponent(id)}`, json("PATCH", draft)),
+  deleteSkill: (id: string) => call<SkillCatalog>(`/skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
   saveInstructions: (instructions: string) => call<Profile>("/memory", json("POST", { instructions })),
   remember: (text: string, title?: string) => call<Profile>("/memory", json("POST", { remember: text, ...(title !== undefined ? { title } : {}) })),
   forget: (id: string) => call<Profile>(`/memory/${encodeURIComponent(id)}`, { method: "DELETE" }),

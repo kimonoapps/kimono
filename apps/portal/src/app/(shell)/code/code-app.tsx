@@ -17,7 +17,7 @@ import { JointSwitch } from "@/components/joint-switch";
 import {
   code, drive, efforts, largestAttachment, modelChoices, modelKey, modelNow, smallAttachment, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   artifactLinkUrl, chatLinkUrl, setShareLink, type Access, type ArtifactSharing, type ChatSharing, type Person, type SharedArtifact,
-  type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type SkillChoice, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage, type Phase,
+  type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type SkillChoice, type SkillCatalog, type SkillDraft, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage, type Phase,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -630,6 +630,7 @@ function MemoryView({ now, page }: { now: number; page: string | null }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => { code.memory().then(setProfile, (error) => setProblem(problemText(error))); }, []);
+  if (page?.startsWith("skill:")) return <SkillPage key={page} id={page.slice(6)} />;
   if (page) return <MemoryPage key={page} page={page} profile={profile} now={now} onProfile={setProfile} />;
   const drop = (id: string) => {
     setProfile((p) => p && { ...p, memories: p.memories.filter((m) => m.id !== id) });
@@ -674,7 +675,7 @@ function MemoryView({ now, page }: { now: number; page: string | null }) {
   </section>;
 }
 
-/** The skills catalog: well-known published skills, each turned on or off for every chat. */
+/** The skills: the person's own (written here, opened to change), then the catalog (the well-known ones, and those an admin published), each on or off for every chat. */
 function SkillsList() {
   const [list, setList] = useState<SkillChoice[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -683,20 +684,98 @@ function SkillsList() {
     setList((l) => l && l.map((s) => s.id === id ? { ...s, enabled } : s));
     code.setSkill(id, enabled).then(setList, (error) => { setProblem(problemText(error)); void code.skills().then(setList); });
   };
-  return <section className="cd-skills" aria-labelledby="cd-skills-title">
-    <h2 id="cd-skills-title">Skills</h2>
-    {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
-    {list === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
-    {list ? <ul className="cd-pages">
-      {list.map((s) => <li key={s.id} className="cd-skill">
-        <InkBlot className="cd-page-mark" tint={s.enabled ? inkTint.live : inkTint.quiet} seed={s.id}><Icon name={s.icon as IconName} /></InkBlot>
-        <span className="cd-page-words">
-          <b>{s.name}</b>
-          <small>{s.description} <a href={s.source} target="_blank" rel="noreferrer">{s.author}</a></small>
-        </span>
-        <JointSwitch name={`skill-${s.id}`} defaultChecked={s.enabled} label={s.name} onChange={(on) => flip(s.id, on)} />
-      </li>)}
-    </ul> : null}
+  const mine = list?.filter((s) => s.custom?.mine) ?? [];
+  const catalog = list?.filter((s) => !s.custom?.mine) ?? [];
+  const row = (s: SkillChoice) => <li key={s.id} className="cd-skill">
+    <InkBlot className="cd-page-mark" tint={s.enabled ? inkTint.live : inkTint.quiet} seed={s.id}><Icon name={s.icon as IconName} /></InkBlot>
+    {s.custom?.editable ? <button type="button" className="cd-page-words cd-skill-open" onClick={() => goTo({ memory: "1", page: `skill:${s.id}` })}>
+      <b>{s.name}</b>
+      <small>{s.description}{s.custom.mine ? s.custom.published ? " · Published" : "" : ` · ${s.author}`}</small>
+    </button> : <span className="cd-page-words">
+      <b>{s.name}</b>
+      <small>{s.description} {s.source ? <a href={s.source} target="_blank" rel="noreferrer">{s.author}</a> : s.author}</small>
+    </span>}
+    <JointSwitch name={`skill-${s.id}`} defaultChecked={s.enabled} label={s.name} onChange={(on) => flip(s.id, on)} />
+  </li>;
+  return <>
+    {list ? <section className="cd-skills cd-for" aria-labelledby="cd-yours-title">
+      <div className="cd-for-head">
+        <h2 id="cd-yours-title">Your skills</h2>
+        <button type="button" className="cd-quietbutton" onClick={() => goTo({ memory: "1", page: "skill:new" })}><Icon name="plus" />Add</button>
+      </div>
+      {mine.length ? <ul className="cd-pages">{mine.map(row)}</ul>
+        : <p className="cd-for-empty">Write your own: what it&rsquo;s for, and what it should do.</p>}
+    </section> : null}
+    <section className="cd-skills" aria-labelledby="cd-skills-title">
+      <h2 id="cd-skills-title">Skills</h2>
+      {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+      {list === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
+      {list ? <ul className="cd-pages">{catalog.map(row)}</ul> : null}
+    </section>
+  </>;
+}
+
+const skillKinds = [
+  { value: "on-demand", label: "When it fits", detail: "Used when what you ask matches, or with its / command" },
+  { value: "always", label: "In every reply", detail: "Shapes everything it says to you" },
+];
+
+/** A skill someone here wrote: its name, when it's used, and its instructions. Admins can publish it to everyone. */
+function SkillPage({ id }: { id: string }) {
+  const creating = id === "new";
+  const [catalog, setCatalog] = useState<SkillCatalog | null>(null);
+  const [draft, setDraft] = useState<SkillDraft | null>(creating ? { name: "", description: "", kind: "on-demand", body: "", published: false } : null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const body = useRef<HTMLTextAreaElement>(null);
+  const skill = catalog?.skills.find((s) => s.id === id) ?? null;
+  useEffect(() => {
+    code.skillCatalog().then((next) => {
+      setCatalog(next);
+      const found = next.skills.find((s) => s.id === id);
+      if (!creating && found?.custom?.editable) setDraft({ name: found.name, description: found.description, kind: found.kind, body: found.custom.body ?? "", published: found.custom.published });
+    }, (error) => setProblem(problemText(error)));
+  }, [id, creating]);
+  useLayoutEffect(() => { const el = body.current; if (!el) return; el.style.height = "0px"; el.style.height = `${el.scrollHeight}px`; }, [draft?.body]);
+  const edit = (change: Partial<SkillDraft>) => setDraft((d) => d && { ...d, ...change });
+  const ready = !!draft && !!draft.name.trim() && !!draft.description.trim() && !!draft.body.trim();
+  const save = () => {
+    if (!draft || !ready) return;
+    setBusy(true); setProblem(null);
+    const sent = { ...draft, ...(catalog?.admin ? {} : { published: undefined }) };
+    (creating ? code.createSkill(sent) : code.changeSkill(id, sent)).then(() => goTo({ memory: "1" }), (error) => { setProblem(problemText(error)); setBusy(false); });
+  };
+  const remove = () => {
+    setBusy(true); setProblem(null);
+    code.deleteSkill(id).then(() => goTo({ memory: "1" }), (error) => { setProblem(problemText(error)); setBusy(false); });
+  };
+  const missing = catalog !== null && !creating && !skill?.custom?.editable;
+  return <section className="cd-sheet cd-conn cd-memory cd-page">
+    <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({ memory: "1" })} aria-label="For you" title="For you"><Icon name="back" /></button>
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+      <span className="cd-page-state" role="status">{problem ? <span className="cd-problem">{problem}</span> : skill?.custom && !skill.custom.mine ? `By ${skill.author}` : ""}</span>
+      <span className="cd-grow" />
+      {!creating && skill?.custom?.editable ? <button type="button" className="cd-roundbutton" aria-label="Delete this skill" title="Delete this skill" disabled={busy} onClick={remove}><Icon name="trash" /></button> : null}
+    </header>
+    <div className="cd-conn-body cd-page-body">
+      {catalog === null && !problem ? <SkeletonRows rows={3} mark={false} />
+        : missing ? <p className="cd-conn-empty">This skill isn&rsquo;t here any more.</p>
+        : draft ? <form className="cd-skill-form" onSubmit={(event) => { event.preventDefault(); save(); }}>
+          <input className="cd-page-title" value={draft.name} maxLength={60} placeholder="Name it" aria-label="Name" autoFocus={creating} onChange={(event) => edit({ name: event.target.value })} />
+          <label className="cd-skill-field"><span>What it&rsquo;s for</span>
+            <input value={draft.description} maxLength={300} placeholder="Helps plan meals for the week from what&rsquo;s in the fridge" onChange={(event) => edit({ description: event.target.value })} />
+          </label>
+          <Choice label="Used" aria-label="When it's used" className="cd-skill-kind" value={draft.kind} onChange={(next) => edit({ kind: next as SkillDraft["kind"] })} options={skillKinds} />
+          <textarea ref={body} className="cd-page-text cd-skill-body" value={draft.body} maxLength={20_000} aria-label="Instructions"
+            placeholder="What it should do, step by step, the way you'd explain it to a friend helping out." onChange={(event) => edit({ body: event.target.value })} />
+          {catalog?.admin ? <div className="cd-skill-publish">
+            <span className="cd-page-words"><b>Publish to everyone</b><small>It shows in everyone&rsquo;s Skills, off until they turn it on</small></span>
+            <JointSwitch name="skill-published" defaultChecked={!!draft.published} label="Publish to everyone" onChange={(on) => edit({ published: on })} />
+          </div> : null}
+          <div className="cd-skill-actions"><Seal type="submit" busy={busy} disabled={!ready}>{creating ? "Add skill" : "Save"}</Seal></div>
+        </form> : null}
+    </div>
   </section>;
 }
 

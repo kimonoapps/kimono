@@ -121,7 +121,15 @@ data class SkillCommand(val name: String, val hint: String? = null, val does: St
 
 /** A skill from For you, and whether it's on for this person. */
 @Serializable
-data class SkillChoice(val id: String, val name: String, val description: String = "", val enabled: Boolean = false, val command: SkillCommand? = null, val icon: String = "spark", val author: String = "", val source: String = "")
+data class SkillChoice(val id: String, val name: String, val description: String = "", val enabled: Boolean = false, val command: SkillCommand? = null, val icon: String = "spark", val author: String = "", val source: String = "", val kind: String = "on-demand", val custom: CustomSkill? = null)
+
+/** A skill someone here wrote: whether it's this person's, published to everyone, and (when they may change it) its instructions. */
+@Serializable
+data class CustomSkill(val mine: Boolean = false, val published: Boolean = false, val editable: Boolean = false, val body: String? = null)
+
+/** The skills, and whether this person may publish one to everyone (owners and admins). */
+@Serializable
+data class SkillCatalog(val skills: List<SkillChoice> = emptyList(), val admin: Boolean = false)
 
 @Serializable
 private data class SkillList(val skills: List<SkillChoice> = emptyList())
@@ -664,6 +672,13 @@ class Code(private val session: Session, private val platform: Platform? = null)
     /** Turns a skill on or off for every chat; answers with the whole list. */
     suspend fun setSkill(id: String, enabled: Boolean): List<SkillChoice> =
         json.decodeFromString<SkillList>(session.call("/api/v1/code/skills", HttpMethod.Post, jsonBody(JsonObject.of("id" to id, "enabled" to enabled)))).skills
+    suspend fun skillCatalog(): SkillCatalog = json.decodeFromString(session.call("/api/v1/code/skills"))
+    /** Writes a skill of this person's own; [published] only counts for an admin. */
+    suspend fun createSkill(name: String, description: String, kind: String, body: String, published: Boolean?): SkillCatalog =
+        json.decodeFromString(session.call("/api/v1/code/skills", HttpMethod.Post, jsonBody(JsonObject.of("create" to JsonObject.of("name" to name, "description" to description, "kind" to kind, "body" to body, *(if (published != null) arrayOf("published" to published) else emptyArray()))))))
+    suspend fun changeSkill(id: String, name: String, description: String, kind: String, body: String, published: Boolean?): SkillCatalog =
+        json.decodeFromString(session.call("/api/v1/code/skills/${id.encodeURLParameter()}", HttpMethod.Patch, jsonBody(JsonObject.of("name" to name, "description" to description, "kind" to kind, "body" to body, *(if (published != null) arrayOf("published" to published) else emptyArray())))))
+    suspend fun deleteSkill(id: String): SkillCatalog = json.decodeFromString(session.call("/api/v1/code/skills/${id.encodeURLParameter()}", HttpMethod.Delete))
     suspend fun saveInstructions(instructions: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory", HttpMethod.Post, jsonBody(JsonObject.of("instructions" to instructions))))
     suspend fun remember(text: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory", HttpMethod.Post, jsonBody(JsonObject.of("remember" to text))))
     suspend fun forget(id: String): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory/${id.encodeURLParameter()}", HttpMethod.Delete))

@@ -1,8 +1,9 @@
 package sandbox
 
 import (
-	"regexp"
+	"archive/tar"
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os/exec"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -42,7 +44,17 @@ type turnRequest struct {
 	// join the system prompt instead.
 	Skills []string `json:"skills"`
 	Always []string `json:"always"`
+	// Custom are skills people here wrote, among Skills and Always: each
+	// one's SKILL.md, written to ~/.kimono/custom-skills/<id> before the turn.
+	Custom []customSkill `json:"custom"`
 }
+
+type customSkill struct {
+	ID   string `json:"id"`
+	File string `json:"file"`
+}
+
+const maxCustomSkills, maxCustomSkill = 100, 32 * 1024
 
 const maxContext = 24 * 1024
 
@@ -89,6 +101,14 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 			return problem(400, "That isn't a skill Kimono has.")
 		}
 	}
+	if len(request.Custom) > maxCustomSkills {
+		return problem(400, "That's more skills than a turn can take.")
+	}
+	for _, skill := range request.Custom {
+		if !skillPattern.MatchString(skill.ID) || len(skill.File) > maxCustomSkill {
+			return problem(400, "That isn't a skill Kimono can use.")
+		}
+	}
 	prompt, err := withAttachments(request.Prompt, request.Attachments)
 	if err != nil {
 		return err
@@ -133,6 +153,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}()
 
 	s.primeOutbox(space)
+	if err := s.writeCustomSkills(r.Context(), space, request.Custom); err != nil {
+		return err
+	}
 	// What it has to work with, and whether it must make room first.
 	limits := s.limitsNow()
 	space.mu.Lock()
@@ -390,3 +413,31 @@ func (s *Server) hasSession(ctx context.Context, w *workspace, session string) b
 
 // skillPattern is a skill's folder name under /opt/kimono/skills.
 var skillPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+
+// writeCustomSkills replaces ~/.kimono/custom-skills with the skills people
+// here wrote that this turn uses, one folder each, for the agent to link in
+// beside the image's own. A turn with none leaves the folder as it was: the
+// agent only links what the turn names.
+func (s *Server) writeCustomSkills(ctx context.Context, w *workspace, custom []customSkill) error {
+	if len(custom) == 0 {
+		return nil
+	}
+	var archive bytes.Buffer
+	tw := tar.NewWriter(&archive)
+	for _, skill := range custom {
+		if err := tw.WriteHeader(&tar.Header{Name: skill.ID + "/", Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+			return err
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: skill.ID + "/SKILL.md", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(skill.File))}); err != nil {
+			return err
+		}
+		if _, err := tw.Write([]byte(skill.File)); err != nil {
+			return err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	_, err := s.exec(ctx, w, nil, &archive, "sh", "-c", `d="$HOME/.kimono/custom-skills"; rm -rf "$d" && mkdir -p "$d" && tar -x --no-same-owner -C "$d"`)
+	return err
+}

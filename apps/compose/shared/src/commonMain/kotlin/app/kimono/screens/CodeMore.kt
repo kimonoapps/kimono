@@ -341,7 +341,10 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
     var skills by remember { mutableStateOf<List<app.kimono.data.SkillChoice>?>(null) }
     val time = ticking(false)
     LaunchedEffect(Unit) { try { profile = code.memory() } catch (p: KimonoProblem) { problem = p.message } }
-    LaunchedEffect(Unit) { skills = runCatching { code.skills() }.getOrNull() }
+    var admin by remember { mutableStateOf(false) }
+    /* The skill being written or changed: a new one is an empty SkillChoice with no id. */
+    var writing by remember { mutableStateOf<app.kimono.data.SkillChoice?>(null) }
+    LaunchedEffect(Unit) { runCatching { code.skillCatalog() }.onSuccess { skills = it.skills; admin = it.admin } }
     fun flip(id: String, on: Boolean) {
         skills = skills?.map { if (it.id == id) it.copy(enabled = on) else it }
         scope.launch { try { skills = code.setSkill(id, on) } catch (e: KimonoProblem) { problem = e.message; skills = runCatching { code.skills() }.getOrNull() ?: skills } }
@@ -403,25 +406,26 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
                     ) { Text(m.text, style = MaterialTheme.typography.bodyLarge) }
                 }
             }
-            /* The skills catalog, as on the web: each one on or off for every chat. */
+            /* The skills, as on the web: the person's own (tap to change), then the catalog; each on or off for every chat. */
             val list = skills
-            if (!list.isNullOrEmpty()) {
-                item { Box(Modifier.padding(top = 16.dp)) { Heading("Skills") } }
-                itemsIndexed(list, key = { _, s -> "skill:${s.id}" }) { index, s ->
-                    SegmentedListItem(
-                        onClick = { flip(s.id, !s.enabled) },
-                        shapes = ListItemDefaults.segmentedShapes(index, list.size), colors = segmentColors(),
-                        leadingContent = {
-                            app.kimono.ui.InkBlot("skill-${s.id}", size = 36.dp, tint = if (s.enabled) app.kimono.ui.LocalInkTint.current ?: Kata.suo else MaterialTheme.colorScheme.outlineVariant) {
-                                Icon(kimonoIcon(s.icon.takeIf { it in setOf("spark", "chat", "notes", "code", "image", "file", "checklist") } ?: "spark"), null, modifier = Modifier.size(18.dp), tint = Kata.ink)
-                            }
-                        },
-                        supportingContent = { Text(if (s.author.isNotBlank()) "${s.description} · ${s.author}" else s.description) },
-                        trailingContent = { androidx.compose.material3.Switch(s.enabled, { on -> flip(s.id, on) }) },
-                    ) { Text(s.name, style = MaterialTheme.typography.bodyLarge) }
+            if (list != null) {
+                val mine = list.filter { it.custom?.mine == true }
+                val others = list.filter { it.custom?.mine != true }
+                item {
+                    Row(Modifier.padding(top = 16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { Heading("Your skills") }
+                        TextButton(onClick = { writing = app.kimono.data.SkillChoice(id = "", name = "") }) { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)); Spacer(Modifier.size(4.dp)); Text("Add") }
+                    }
                 }
+                if (mine.isEmpty()) item { Text("Write your own: what it's for, and what it should do.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
+                itemsIndexed(mine, key = { _, s -> "mine:${s.id}" }) { index, s -> SkillRow(s, index, mine.size, onOpen = { writing = s }, onFlip = { on -> flip(s.id, on) }) }
+                if (others.isNotEmpty()) item { Box(Modifier.padding(top = 16.dp)) { Heading("Skills") } }
+                itemsIndexed(others, key = { _, s -> "skill:${s.id}" }) { index, s -> SkillRow(s, index, others.size, onOpen = if (s.custom?.editable == true) ({ writing = s }) else null, onFlip = { on -> flip(s.id, on) }) }
             }
         }
+    }
+    writing?.let { s ->
+        SkillSheet(code, s, admin, onDismiss = { writing = null }) { next -> skills = next.skills; admin = next.admin; writing = null }
     }
     editing?.let { m ->
         NameDialog(title = "Memory", action = "Save", initial = m.text, onDismiss = { editing = null }) { text ->
@@ -431,3 +435,77 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
     }
 }
 
+
+/** One skill in For you: tapping opens one this person may change, or else turns it on or off. */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun SkillRow(s: app.kimono.data.SkillChoice, index: Int, count: Int, onOpen: (() -> Unit)?, onFlip: (Boolean) -> Unit) {
+    val note = when {
+        s.custom?.mine == true -> if (s.custom.published) "${s.description} · Published" else s.description
+        s.author.isNotBlank() -> "${s.description} · ${s.author}"
+        else -> s.description
+    }
+    SegmentedListItem(
+        onClick = { if (onOpen != null) onOpen() else onFlip(!s.enabled) },
+        shapes = ListItemDefaults.segmentedShapes(index, count), colors = segmentColors(),
+        leadingContent = {
+            app.kimono.ui.InkBlot("skill-${s.id}", size = 36.dp, tint = if (s.enabled) app.kimono.ui.LocalInkTint.current ?: Kata.suo else MaterialTheme.colorScheme.outlineVariant) {
+                Icon(kimonoIcon(s.icon.takeIf { it in setOf("spark", "chat", "notes", "code", "image", "file", "checklist") } ?: "spark"), null, modifier = Modifier.size(18.dp), tint = Kata.ink)
+            }
+        },
+        supportingContent = { Text(note) },
+        trailingContent = { androidx.compose.material3.Switch(s.enabled, { on -> onFlip(on) }) },
+    ) { Text(s.name, style = MaterialTheme.typography.bodyLarge) }
+}
+
+/** Writing a skill, or changing one: its name, what it's for, whether it shapes every reply, its instructions; admins can publish it to everyone. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SkillSheet(code: Code, skill: app.kimono.data.SkillChoice, admin: Boolean, onDismiss: () -> Unit, done: (app.kimono.data.SkillCatalog) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val creating = skill.id.isEmpty()
+    var name by remember { mutableStateOf(skill.name) }
+    var description by remember { mutableStateOf(skill.description) }
+    var always by remember { mutableStateOf(skill.kind == "always") }
+    var body by remember { mutableStateOf(skill.custom?.body.orEmpty()) }
+    var published by remember { mutableStateOf(skill.custom?.published == true) }
+    var busy by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val ready = name.isNotBlank() && description.isNotBlank() && body.isNotBlank()
+    fun run(work: suspend () -> app.kimono.data.SkillCatalog) {
+        busy = true; problem = null
+        scope.launch { try { done(work()) } catch (e: KimonoProblem) { problem = e.message }; busy = false }
+    }
+    app.kimono.ui.InkSheet(onDismissRequest = onDismiss, seed = "skill-${skill.id}") {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).imePadding(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            app.kimono.ui.InkTitle(if (creating) "New skill" else "Skill", icon = if (creating) "plus" else "edit")
+            OutlinedTextField(name, { name = it.take(60); problem = null }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(description, { description = it.take(300); problem = null }, label = { Text("What it's for") }, maxLines = 3, modifier = Modifier.fillMaxWidth())
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("In every reply", style = MaterialTheme.typography.bodyLarge)
+                    Text(if (always) "Shapes everything it says to you" else "Used when what you ask matches", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.Switch(always, { always = it })
+            }
+            OutlinedTextField(body, { body = it.take(20_000); problem = null }, label = { Text("Instructions") }, minLines = 5, maxLines = 12, modifier = Modifier.fillMaxWidth())
+            if (admin) Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Publish to everyone", style = MaterialTheme.typography.bodyLarge)
+                    Text("In everyone's Skills, off until they turn it on", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.Switch(published, { published = it })
+            }
+            Problem(problem)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!creating) Seal("Delete", compact = true, tone = SealTone.Quiet, enabled = !busy, onClick = { run { code.deleteSkill(skill.id) } })
+                Spacer(Modifier.weight(1f))
+                Seal(if (creating) "Add skill" else "Save", busy = busy, enabled = ready, onClick = {
+                    val kind = if (always) "always" else "on-demand"
+                    val publish = if (admin) published else null
+                    run { if (creating) code.createSkill(name.trim(), description.trim(), kind, body.trim(), publish) else code.changeSkill(skill.id, name.trim(), description.trim(), kind, body.trim(), publish) }
+                })
+            }
+        }
+    }
+}

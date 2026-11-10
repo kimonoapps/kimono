@@ -24,14 +24,15 @@ const DefaultImage = "ghcr.io/kimonoapps/kimono-sandbox:0.9.10"
 // A sandbox rebuilt after a long sleep has lost Claude's transcripts, so a
 // session that can't be found starts fresh instead of failing the turn.
 // DefaultAgent first links the skills the person turned on into
-// ~/.claude/skills (and takes away links to ones they turned off; folders it
+// ~/.claude/skills (from the image, or from ~/.kimono/custom-skills for ones
+// people here wrote) (and takes away links to ones they turned off; folders it
 // didn't link are left alone), and adds the words of each always-on skill to
 // the system prompt. It asks for summaries of the agent's thinking (--thinking-display;
 // headless Claude Code leaves them out otherwise): Kimono keeps them with
 // feedback and never shows them in the chat. A chat's system prompt is
 // Kimono's alone, and it goes without the tools for coding and scheduling;
 // a project keeps Claude Code's prompt, with Kimono's added.
-const DefaultAgent = `skills="$HOME/.claude/skills"; mkdir -p "$skills"; for d in "$skills"/*; do [ -L "$d" ] || continue; case " $KIMONO_SKILLS " in *" ${d##*/} "*) ;; *) rm -f "$d";; esac; done; for s in $KIMONO_SKILLS; do [ -d "/opt/kimono/skills/$s" ] && ln -sfn "/opt/kimono/skills/$s" "$skills/$s"; done; for s in $KIMONO_ALWAYS; do f="/opt/kimono/skills/$s/SKILL.md"; [ -f "$f" ] && KIMONO_SYSTEM="$KIMONO_SYSTEM
+const DefaultAgent = `skills="$HOME/.claude/skills"; mkdir -p "$skills"; for d in "$skills"/*; do [ -L "$d" ] || continue; case " $KIMONO_SKILLS " in *" ${d##*/} "*) ;; *) rm -f "$d";; esac; done; custom="$HOME/.kimono/custom-skills"; for s in $KIMONO_SKILLS; do if [ -d "/opt/kimono/skills/$s" ]; then ln -sfn "/opt/kimono/skills/$s" "$skills/$s"; elif [ -d "$custom/$s" ]; then ln -sfn "$custom/$s" "$skills/$s"; fi; done; for s in $KIMONO_ALWAYS; do f="/opt/kimono/skills/$s/SKILL.md"; [ -f "$f" ] || f="$custom/$s/SKILL.md"; [ -f "$f" ] && KIMONO_SYSTEM="$KIMONO_SYSTEM
 
 A skill the person turned on, to follow in every reply ($s):
 
