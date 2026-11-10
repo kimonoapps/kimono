@@ -148,6 +148,17 @@ fun PlayerScreen(
     var ctl by remember { mutableStateOf(true) }
     var poke by remember { mutableIntStateOf(0) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
+    /* The party's chat, down the side; a dot on its button for what came in while it was shut. */
+    var chatOpen by remember { mutableStateOf(false) }
+    val chatLines = party?.chat?.collectAsState()?.value.orEmpty()
+    var seenChat by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(chatLines.lastOrNull()?.id, chatOpen) {
+        val last = chatLines.lastOrNull() ?: return@LaunchedEffect
+        if (chatOpen || seenChat == null || last.username.equals(party?.me, true)) seenChat = last.id
+    }
+    val unread = chatLines.lastOrNull()?.id.let { it != null && it != seenChat }
+    val chatFocus = remember { FocusRequester() }
+    LaunchedEffect(chatOpen) { if (chatOpen && tv) repeat(10) { delay(60); if (runCatching { chatFocus.requestFocus() }.isSuccess) return@LaunchedEffect } }
     /* Settings over the picture, from the sheet's "Your defaults". */
     var settings by remember { mutableStateOf(false) }
     androidx.compose.ui.backhandler.BackHandler(settings) { settings = false }
@@ -289,6 +300,11 @@ fun PlayerScreen(
             }
             val down = e.type == KeyEventType.KeyDown
             if (!down && e.type != KeyEventType.KeyUp) return@onPreviewKeyEvent false
+            /* The chat is open: Back shuts it, and the rest is its own (typing, or the D-pad between reactions). */
+            if (chatOpen) {
+                if (code == Key.Back || code == Key.Escape) { if (down) { chatOpen = false; show() }; return@onPreviewKeyEvent true }
+                if (code != Key.MediaPlayPause && code != Key.MediaPlay && code != Key.MediaPause) return@onPreviewKeyEvent false
+            }
             val repeat = down && held.containsKey(code)
             if (down && !repeat) held[code] = nowMs() else if (!down) held.remove(code)
             when (code) {
@@ -349,7 +365,7 @@ fun PlayerScreen(
                         else -> toggle()
                     }
                 },
-                onTap = { if (pauseCard) { pauseCard = false; show() } else if (ctl && sheet == null) ctl = false else { sheet = null; show() } },
+                onTap = { if (chatOpen) { chatOpen = false; show() } else if (pauseCard) { pauseCard = false; show() } else if (ctl && sheet == null) ctl = false else { sheet = null; show() } },
             )
         }) {
 
@@ -399,7 +415,7 @@ fun PlayerScreen(
         PauseCard(pauseCard && post == Post.None, state, Modifier.fillMaxSize())
 
         /* The party's faces, notes and reactions sit under the controls and sheets. */
-        if (party != null) PartyLayer(party, chrome > 0.5f, tv)
+        if (party != null) PartyLayer(party, chrome > 0.5f, tv, endInset = if (chatOpen) 360.dp else 0.dp)
 
         /* Top: back and what's on. */
         val name = state.page?.title?.name ?: ""
@@ -410,6 +426,7 @@ fun PlayerScreen(
                 pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg, fontWeight = FontWeight.Bold)); append(name); pop()
                 if (!state.isFilm && ep != null) append("  ${state.label} · ${ep.name}")
             }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (party != null && !state.loading) Box(Modifier.alpha(chrome)) { PartyFaces(party) { if (chrome > 0.5f) { chatOpen = false; sheet = if (sheet == Sheet.Party) null else Sheet.Party; show() } } }
             if (rotate != null && !tv && !state.loading && chrome > 0.5f) PBtn(Ic.rotate, { rotate(); show() }, iconSize = 24.dp)
             if (corner != null && !state.loading && chrome > 0.5f) corner() else if (rotate == null || tv) Spacer(Modifier.size(48.dp))
         }
@@ -440,7 +457,7 @@ fun PlayerScreen(
                     if (!state.isFilm) LabBtn(Ic.eps, "Episodes", tv) { sheet = if (sheet == Sheet.Episodes) null else Sheet.Episodes; show() }
                     LabBtn(Ic.cc, "Audio & subtitles", tv) { sheet = if (sheet == Sheet.Tracks) null else Sheet.Tracks; show() }
                     LabBtn(Ic.gear, "Settings", tv) { sheet = if (sheet == Sheet.Settings) null else Sheet.Settings; show() }
-                    if (party != null) LabBtn(Ic.people, "Together", tv) { sheet = if (sheet == Sheet.Party) null else Sheet.Party; show() }
+                    if (party != null) LabBtn(Ic.chat, "Chat", tv, dot = unread && !chatOpen) { chatOpen = !chatOpen; sheet = null; show() }
                     if (state.answer?.next != null) LabBtn(Ic.next, "Next episode", tv) { vm.playNext() }
                 }
             }
@@ -458,8 +475,10 @@ fun PlayerScreen(
 
         AnimatedVisibility(sheet != null, Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 90.dp),
             enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.7f)) { it / 10 }, exit = fadeOut(tween(200))) {
-            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party, onDefaults = { sheet = null; settings = true })
+            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party, onDefaults = { sheet = null; settings = true }, onLeave = onExit)
         }
+
+        if (party != null) PartyChat(party, chatOpen, tv, { chatOpen = false; show() }, chatFocus)
 
         when (post) {
             is Post.Next -> NextUp(vm, post, buffering || !playing, ctl, tv, party)
@@ -530,12 +549,15 @@ private fun SeekBtn(forward: Boolean, small: Boolean = false, onClick: () -> Uni
 
 /** A labelled control (phone), or an icon (TV, as on wide screens in the demo). */
 @Composable
-private fun LabBtn(icon: ImageVector, label: String, tv: Boolean, onClick: () -> Unit) {
+private fun LabBtn(icon: ImageVector, label: String, tv: Boolean, dot: Boolean = false, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     Box {
         Row(Modifier.height(48.dp).clickableScaleClipped(RoundedCornerShape(10.dp), onClick, focusScale = 1.08f).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            I(icon, if (tv) 28.dp else 22.dp, Color.White)
+            Box {
+                I(icon, if (tv) 28.dp else 22.dp, Color.White)
+                if (dot) Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-2).dp).size(9.dp).clip(CircleShape).background(Night.suo).border(2.dp, Color.Black, CircleShape))
+            }
             if (!tv) Text(label, style = ui(13, color = Color.White))
         }
     }
@@ -729,7 +751,7 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
 }
 
 @Composable
-private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit, party: TogetherViewModel?, onDefaults: () -> Unit) {
+private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit, party: TogetherViewModel?, onDefaults: () -> Unit, onLeave: () -> Unit) {
     val state by vm.state.collectAsState()
     val first = remember { FocusRequester() }
     /* Fit the space above the controls: a phone held sideways is short. */
@@ -801,7 +823,7 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                 }
                 LaunchedEffect(page) { repeat(10) { delay(60); if (runCatching { first.requestFocus() }.isSuccess) return@LaunchedEffect } }
             }
-            Sheet.Party -> if (party != null) PartySheet(party, app.kimono.watch.LocalWatch.current.tv, first)
+            Sheet.Party -> if (party != null) PartySheet(party, app.kimono.watch.LocalWatch.current.tv, first, onLeave)
             Sheet.Episodes -> {
                 val pg = state.page
                 Text(if (pg == null || pg.bySeason) "Season ${state.season}" else "Episodes", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(bottom = 10.dp))

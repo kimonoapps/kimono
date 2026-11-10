@@ -46,6 +46,7 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Watch.Player" />
         <service
             android:name=".player.WatchDownloadService"
