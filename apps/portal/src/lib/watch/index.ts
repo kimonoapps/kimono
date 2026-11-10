@@ -20,7 +20,7 @@ import {
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
 import { badges, cleanDevice, describe, rank, type Release } from "./releases";
-import { findStreams, stremioId, upstreamRequest } from "./streams";
+import { fetchUpstream, findStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
 import { lastError, noteError, probe, type Probe } from "./status";
@@ -394,8 +394,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
   return {
     url: address(wanted.url),
-    version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted) },
-    versions: ranked.slice(0, 8).map((r, index) => ({ index, label: describe(r) })),
+    version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service },
+    versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
     startAt: p && !finished(p) ? p.position : 0,
     next,
     /* Ask once when filler is up next and the person hasn't chosen. */
@@ -473,11 +473,11 @@ export async function relay(request: Request, token: string): Promise<Response> 
   if (!grant) return new Response("This link has run out. Press play again.", { status: 410 });
   const headers = new Headers();
   for (const name of ["range", "if-range", "accept"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
-  const target = upstreamRequest(grant.url);
-  if (target.authorization) headers.set("authorization", target.authorization);
-  const upstream = await fetch(target.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, redirect: "follow", signal: request.signal }).catch(() => null);
+  const upstream = await fetchUpstream(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal });
   if (!upstream || (!upstream.ok && upstream.status !== 206)) return new Response("The stream stopped answering. Try another version.", { status: 502 });
   const out = new Headers({ "cache-control": "private, no-store", "accept-ranges": "bytes" });
-  for (const name of ["content-type", "content-length", "content-range", "last-modified", "etag"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
+  for (const name of ["content-length", "content-range", "last-modified", "etag"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
+  const type = videoType(upstream.headers.get("content-type"), upstream.url || grant.url);
+  if (type) out.set("content-type", type);
   return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers: out });
 }

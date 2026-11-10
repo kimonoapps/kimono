@@ -48,3 +48,36 @@ export function upstreamRequest(url: string): { url: string; authorization: stri
   parsed.username = ""; parsed.password = "";
   return { url: parsed.toString(), authorization };
 }
+
+/**
+ * Fetches an upstream stream, following redirects itself: AIOStreams sends
+ * Usenet playback on to nzbdav with its WebDAV login in the address, which
+ * fetch refuses to follow. Each hop's login goes into a header for that hop
+ * only, so it never travels to another host.
+ */
+export async function fetchUpstream(url: string, init: { method: string; headers: Headers; signal?: AbortSignal }, get: typeof fetch = fetch): Promise<Response | null> {
+  let next = url;
+  for (let hop = 0; hop < 6; hop++) {
+    const target = upstreamRequest(next);
+    const headers = new Headers(init.headers);
+    headers.delete("authorization");
+    if (target.authorization) headers.set("authorization", target.authorization);
+    const response = await get(target.url, { method: init.method, headers, redirect: "manual", signal: init.signal }).catch(() => null);
+    if (!response) return null;
+    const location = response.headers.get("location");
+    if (response.status >= 300 && response.status < 400 && location) {
+      await response.body?.cancel().catch(() => {});
+      next = new URL(location, next).toString();
+      continue;
+    }
+    return response;
+  }
+  return null;
+}
+
+/** What a file is, when the upstream only says "download this" (debrid links often do); players and browsers want the real type. */
+export function videoType(contentType: string | null, url: string): string | null {
+  if (contentType && !/octet-stream|force-download|binary/i.test(contentType)) return contentType;
+  const ext = /\.([a-z0-9]{2,4})(?:$|[?#])/i.exec(new URL(url).pathname)?.[1]?.toLowerCase();
+  return ({ mkv: "video/x-matroska", mp4: "video/mp4", m4v: "video/mp4", webm: "video/webm", avi: "video/x-msvideo", ts: "video/mp2t", mov: "video/quicktime" } as Record<string, string>)[ext ?? ""] ?? contentType;
+}

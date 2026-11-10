@@ -539,3 +539,26 @@ test('a show remembers the tracks picked in the player; settings take the new ch
   assert.equal(p.filmAudio, 'original');
   assert.equal(p.subtitles, 'always');
 });
+
+test("the relay follows AIOStreams' redirect to nzbdav, with the login as that hop's header only", async () => {
+  const seen = [];
+  const fake = async (url, init) => {
+    seen.push([url, init.headers.get('authorization'), init.redirect]);
+    if (url.startsWith('http://aiostreams')) return new Response(null, { status: 307, headers: { location: 'http://kimono:s3cret@nzbdav:3000/content/a.mkv' } });
+    return new Response('bytes', { status: 206, headers: { 'content-range': 'bytes 0-4/10' } });
+  };
+  const r = await streams.fetchUpstream('http://aiostreams:3000/api/v1/debrid/playback/x', { method: 'GET', headers: new Headers({ range: 'bytes=0-4', authorization: 'Bearer leak' }) }, fake);
+  assert.equal(r.status, 206);
+  assert.deepEqual(seen, [
+    ['http://aiostreams:3000/api/v1/debrid/playback/x', null, 'manual'],
+    ['http://nzbdav:3000/content/a.mkv', `Basic ${Buffer.from('kimono:s3cret').toString('base64')}`, 'manual'],
+  ]);
+  const loop = async () => new Response(null, { status: 302, headers: { location: '/again' } });
+  assert.equal(await streams.fetchUpstream('http://x/a', { method: 'GET', headers: new Headers() }, loop), null, 'gives up on a redirect loop');
+});
+
+test('a "download this" type becomes the video type from the file name', () => {
+  assert.equal(streams.videoType('application/force-download', 'https://rd.example/d/abc/Show.S01E01.mkv'), 'video/x-matroska');
+  assert.equal(streams.videoType('application/octet-stream', 'http://nzbdav/content/x.mp4'), 'video/mp4');
+  assert.equal(streams.videoType('video/webm', 'http://x/y.mkv'), 'video/webm');
+});
