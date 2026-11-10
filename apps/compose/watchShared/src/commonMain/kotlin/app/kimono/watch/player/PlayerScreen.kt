@@ -473,12 +473,13 @@ fun PlayerScreen(
             LaunchedEffect(Unit) { if (tv && !ctl) runCatching { focus.requestFocus() } }
         }
 
-        AnimatedVisibility(sheet != null, Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 90.dp),
+        /* Sheets, the chat and Settings sit over the play button row (zIndex 3), never under it. */
+        AnimatedVisibility(sheet != null, Modifier.align(Alignment.BottomEnd).zIndex(4f).padding(end = 20.dp, bottom = 90.dp),
             enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.7f)) { it / 10 }, exit = fadeOut(tween(200))) {
             PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party, onDefaults = { sheet = null; settings = true }, onLeave = onExit)
         }
 
-        if (party != null) PartyChat(party, chatOpen, tv, { chatOpen = false; show() }, chatFocus)
+        if (party != null) Box(Modifier.matchParentSize().zIndex(4f)) { PartyChat(party, chatOpen, tv, { chatOpen = false; show() }, chatFocus) }
 
         when (post) {
             is Post.Next -> NextUp(vm, post, buffering || !playing, ctl, tv, party)
@@ -489,7 +490,7 @@ fun PlayerScreen(
 
         Loading(state, vm, startFill, onExit)
 
-        androidx.compose.animation.AnimatedVisibility(settings, enter = app.kimono.watch.ui.pageEnter(), exit = fadeOut(tween(200))) {
+        androidx.compose.animation.AnimatedVisibility(settings, Modifier.zIndex(5f), enter = app.kimono.watch.ui.pageEnter(), exit = fadeOut(tween(200))) {
             app.kimono.watch.phone.SettingsScreen(onClose = { settings = false }, tv = tv, playerOnly = true)
         }
     }
