@@ -33,6 +33,12 @@ export function watchConfig(settings: PlatformSettings) {
     nzbdavUrl,
     /* Where nzbdav's streams are fetched from: the Portal relays them, so its own way in. */
     nzbdavStreamUrl: nzbdavUrl,
+    /* The HLS packager beside the Portal (./hls.ts), and the Portal's own address as it reads streams from it. */
+    packager: {
+      url: (process.env.KIMONO_WATCH_PACKAGER_URL || "http://watch-packager:8080").replace(/\/+$/, ""),
+      key: process.env.KIMONO_WATCH_PACKAGER_KEY?.trim() || "",
+      input: (process.env.KIMONO_WATCH_PACKAGER_INPUT_URL || "http://portal:3000").replace(/\/+$/, ""),
+    },
     /* Age ratings and release dates are read for this country first. */
     region: (value("region") || "US").toUpperCase().slice(0, 2),
     jikanUrl: (value("jikan_url") || "https://api.jikan.moe/v4").replace(/\/+$/, ""),

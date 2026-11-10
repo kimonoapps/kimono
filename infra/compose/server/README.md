@@ -222,6 +222,19 @@ state (`KIMONO_WATCH_IMAGE_CACHE_MB`, 1 GB by default), so phones never call
 TMDB. Owners and admins can read `GET /api/v1/watch/status` to see whether
 TMDB, AIOStreams and nzbdav answer, how setup went, and the last error.
 
+Browsers, AirPlay and Chromecast's built-in player can't open MKV or draw ASS
+subtitles, so `watch-packager` (jellyfin-ffmpeg behind a small Go front end)
+turns a stream into HLS for them; the native apps play the file itself. `play`
+answers with an `hls` address beside `url` for the web player and when casting
+(`cast: "chromecast" | "airplay"`). The packager reads through the Portal's own
+relay, so it never holds a debrid link or nzbdav's login, and only answers the
+Portal (`WATCH_PACKAGER_KEY`, minted by `kimono server update`). The video is
+copied when the screen decodes it and transcoded to H.264 when it can't
+(tone-mapped from HDR, with a ladder of sizes), on the GPU it finds (NVIDIA
+through Docker's nvidia runtime, Intel and AMD through `/dev/dri`) or in
+software. Segments are made around wherever the viewer is, up to about 45
+seconds ahead, and a session nobody asks anything of for a minute is stopped.
+
 ## Publishing without a tunnel
 
 An app can be published on the server's own address instead of through a

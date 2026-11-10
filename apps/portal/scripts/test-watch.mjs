@@ -9,6 +9,7 @@ import * as token from '../src/lib/watch/token.ts';
 import * as tmdb from '../src/lib/watch/tmdb.ts';
 import * as anime from '../src/lib/watch/anime.ts';
 import * as streams from '../src/lib/watch/streams.ts';
+import * as hls from '../src/lib/watch/hls.ts';
 
 const day = 24 * 60 * 60 * 1000;
 function fresh() {
@@ -609,4 +610,136 @@ test('the meter passes every byte through and reports the opening burst once', a
 test('stream tokens carry their source', () => {
   const key = randomBytes(32);
   assert.equal(token.openStream(key, token.sealStream(key, { url: 'u', username: 'a', expiresAt: Date.now() + 1000, source: 'usenet' })).source, 'usenet');
+});
+
+/* ───── HLS ───── */
+
+const vstream = (over = {}) => ({ index: 0, codec_type: 'video', codec_name: 'h264', profile: 'High', level: 41, width: 1920, height: 1080, pix_fmt: 'yuv420p', avg_frame_rate: '24000/1001', ...over });
+const astream = (index, language, over = {}) => ({ index, codec_type: 'audio', codec_name: 'aac', channels: 2, tags: { language }, ...over });
+const sstream = (index, language, title, codec = 'ass') => ({ index, codec_type: 'subtitle', codec_name: codec, tags: { language, title } });
+const probeOf = (streams, over = {}) => ({ format: { duration: '1440.5', bit_rate: '4000000' }, streams, keyframes: Array.from({ length: 300 }, (_, i) => i * 4.8), hardware: { kind: 'software', tonemapx: true }, ...over });
+const browser = { codecs: ['h264'], hdr: [], dvProfiles: [], maxHeight: 1080, passthrough: [] };
+const appleTv = hls.screenFor(releases.cleanDevice({ client: 'ios' }), 'airplay');
+const grantFor = (screen, over = {}) => ({ screen, audio: ['ja', 'jpn'], subtitles: { tags: ['en', 'eng'], kind: 'full', signsTitles: ['signs', 'songs', 'forced'] }, burn: false, ...over });
+const dualAudio = () => probeOf([vstream(), astream(1, 'jpn'), astream(2, 'eng', { codec_name: 'eac3', channels: 6 }), sstream(3, 'eng', 'Signs & Songs'), sstream(4, 'eng', 'Full Subtitles'), sstream(5, 'eng', 'PGS', 'hdmv_pgs_subtitle')]);
+
+test('casting picks for the receiver, and the web keeps what it says it can do', () => {
+  assert.equal(hls.castOf('chromecast'), 'chromecast');
+  assert.equal(hls.castOf('roku'), null);
+  const cc = hls.screenFor(phone, 'chromecast');
+  assert.deepEqual([cc.codecs, cc.maxHeight, cc.hdr, cc.passthrough], [['h264'], 1080, [], []]);
+  assert.ok(appleTv.codecs.includes('hevc') && appleTv.hdr.includes('hdr10') && appleTv.passthrough.includes('eac3'));
+  assert.equal(hls.screenFor(phone, null), phone);
+  assert.ok(hls.anything(cc).codecs.includes('av1'));
+});
+
+test('HLS copies what the screen decodes and transcodes only what it cannot', () => {
+  const copied = hls.planHls(dualAudio(), grantFor(browser));
+  assert.equal(copied.video.mode, 'copy');
+  assert.equal(copied.video.codecs, 'avc1.640029');
+  assert.equal(copied.audio.index, 1, 'the Japanese audio, as wanted');
+  assert.equal(copied.audio.mode, 'copy', 'AAC stays as it is');
+  assert.deepEqual(copied.subtitles.map((s) => [s.index, s.default, s.forced]), [[3, false, true], [4, true, false]], 'text subtitles only; full dialogue on');
+  assert.equal(copied.burn, null);
+
+  const dub = hls.planHls(dualAudio(), grantFor(appleTv, { audio: ['en', 'eng'], subtitles: { tags: ['en', 'eng'], kind: 'signs', signsTitles: ['signs'] } }));
+  assert.equal(dub.audio.index, 2);
+  assert.equal(dub.audio.mode, 'copy', 'E-AC3 passes through to an Apple TV');
+  assert.equal(dub.subtitles.find((s) => s.default).index, 3, 'signs only with a dub');
+  assert.equal(hls.planHls(dualAudio(), grantFor(browser, { audio: ['en', 'eng'] })).audio.mode, 'aac', 'E-AC3 becomes AAC for a browser');
+
+  const hevc = probeOf([vstream({ codec_name: 'hevc', profile: 'Main 10', level: 150, pix_fmt: 'yuv420p10le', height: 2160, width: 3840, color_transfer: 'smpte2084' }), astream(1, 'eng')]);
+  const toBrowser = hls.planHls(hevc, grantFor(browser));
+  assert.equal(toBrowser.video.mode, 'transcode');
+  assert.equal(toBrowser.video.tonemap, true, 'HDR is tone-mapped for an SDR screen');
+  assert.deepEqual(toBrowser.video.rungs.map((r) => r.height), [1080, 720], 'software keeps to two sizes');
+  const apple = hls.planHls(hevc, grantFor(appleTv));
+  assert.equal(apple.video.mode, 'copy', 'HDR10 HEVC plays as it is on an Apple TV');
+  assert.equal(apple.video.range, 'PQ');
+  assert.equal(apple.video.codecs, 'hvc1.2.4.L150.B0');
+  const gpu = hls.planHls({ ...hevc, hardware: { kind: 'vaapi', tonemapx: true } }, grantFor({ ...appleTv, codecs: ['h264'] }));
+  assert.deepEqual(gpu.video.rungs.map((r) => [r.width, r.height]), [[3840, 2160], [1920, 1080], [1280, 720], [854, 480]], 'a GPU does the whole ladder');
+
+  assert.equal(hls.planHls(probeOf([vstream({ pix_fmt: 'yuv420p10le' })]), grantFor(browser)).video.mode, 'transcode', '10-bit H.264 never plays in a browser');
+  assert.equal(hls.planHls(probeOf([vstream({ color_transfer: 'smpte2084', codec_name: 'hevc', side_data_list: [{ side_data_type: 'DOVI configuration record', dv_profile: 5 }] })]), grantFor(appleTv)).video.mode, 'transcode', 'profile 5 is tone-mapped');
+  assert.equal(hls.planHls(probeOf([vstream()], { keyframes: null }), grantFor(browser)).video.mode, 'transcode', 'without an index there is nowhere to cut a copy');
+  assert.equal(hls.planHls(probeOf([vstream({ height: 2160, width: 3840 })]), grantFor(browser)).video.mode, 'transcode', 'too tall is scaled down');
+
+  const pgsOnly = probeOf([vstream(), astream(1, 'jpn'), sstream(2, 'eng', 'Full', 'hdmv_pgs_subtitle')]);
+  assert.deepEqual(hls.planHls(pgsOnly, grantFor(browser)).burn, { index: 2, bitmap: true }, 'PGS that is wanted is burned in');
+  const burned = hls.planHls(dualAudio(), grantFor(browser, { burn: true }));
+  assert.deepEqual([burned.video.mode, burned.burn.index, burned.burn.bitmap], ['transcode', 4, false]);
+});
+
+test('segments start on keyframes when copying and every six seconds when transcoding', () => {
+  assert.deepEqual(hls.segmentTimes(20, null), [0, 6, 12, 18]);
+  assert.deepEqual(hls.segmentTimes(30, [0, 2, 4, 6.006, 8, 10, 13, 15, 20, 26, 29.5]), [0, 6.006, 13, 20, 26]);
+  const plan = hls.planHls(dualAudio(), grantFor(browser));
+  assert.equal(plan.segments[1], 9.6);
+});
+
+test('ffmpeg arguments: copy keeps the picture, transcoding forces keyframes on the segment grid', () => {
+  const copy = hls.ffmpegArgs(hls.planHls(dualAudio(), grantFor(browser)), { kind: 'software' });
+  assert.deepEqual(copy.outputs, [{ name: 'v0', kind: 'fmp4' }, { name: 's0', kind: 'vtt' }, { name: 's1', kind: 'vtt' }]);
+  assert.equal(copy.seekPad, 0.25);
+  const a = copy.args.join(' ');
+  assert.match(a, /-ss \{start\} -i \{input\} -copyts/);
+  assert.match(a, /-map 0:0 -c:v copy -map 0:1 -c:a copy -f mp4 -movflags \S*frag_discont\S* -use_editlist 0 pipe:3/);
+  assert.match(a, /-map 0:3 -c:s webvtt -f webvtt pipe:4 -map 0:4 -c:s webvtt -f webvtt pipe:5$/);
+  assert.equal(copy.fallback, undefined);
+
+  const hdr = probeOf([vstream({ codec_name: 'hevc', profile: 'Main 10', pix_fmt: 'yuv420p10le', color_transfer: 'smpte2084', height: 2160, width: 3840 }), astream(1, 'eng', { codec_name: 'truehd' })]);
+  const soft = hls.ffmpegArgs(hls.planHls(hdr, grantFor(browser)), { kind: 'software', tonemapx: true });
+  const s = soft.args.join(' ');
+  assert.match(s, /-filter_complex \[0:0\]tonemapx=\S+,split=2\[s0\]\[s1\];\[s0\]scale=1920:1080:flags=bicubic\[v0\];\[s1\]scale=1280:720/);
+  assert.match(s, /-map \[v0\] -c:v libx264 .* -force_key_frames:v expr:gte\(t,n_forced\*6\) -map 0:1 -c:a aac -ac 2/);
+  assert.equal(soft.seekPad, 0);
+
+  const vaapi = hls.ffmpegArgs(hls.planHls({ ...hdr, hardware: { kind: 'vaapi', device: '/dev/dri/renderD128' } }, grantFor(browser)), { kind: 'vaapi', device: '/dev/dri/renderD128', tonemapx: true });
+  const v = vaapi.args.join(' ');
+  assert.match(v, /-init_hw_device vaapi=va:\/dev\/dri\/renderD128 -filter_hw_device va -hwaccel vaapi/);
+  assert.match(v, /hwdownload,format=p010le,tonemapx=\S+format=nv12,hwupload,split=3/);
+  assert.match(v, /scale_vaapi=w=1920:h=1080:format=nv12\[v0\]/);
+  assert.ok(vaapi.fallback.join(' ').includes('libx264'), 'software to fall back on');
+
+  const pgs = hls.ffmpegArgs(hls.planHls(probeOf([vstream(), astream(1, 'jpn'), sstream(2, 'eng', 'Full', 'hdmv_pgs_subtitle')]), grantFor(browser)), { kind: 'nvenc' });
+  assert.match(pgs.args.join(' '), /\[0:0\]format=yuv420p\[pic\];\[pic\]\[0:2\]overlay,split=2/, 'burning is done in software');
+  const ass = hls.ffmpegArgs(hls.planHls(dualAudio(), grantFor(browser, { burn: true })), { kind: 'software' });
+  assert.match(ass.args.join(' '), /subtitles=filename=\{dir\}\/burn\.ass:fontsdir=\{dir\}/);
+  assert.ok(ass.prepare[0].includes('-dump_attachment:t'));
+});
+
+test('playlists list every segment, relative to the sealed address, and nothing else is served', () => {
+  const plan = hls.planHls(dualAudio(), grantFor(browser));
+  const master = hls.masterPlaylist(plan);
+  assert.match(master, /#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Full Subtitles",LANGUAGE="eng",DEFAULT=YES,AUTOSELECT=YES,FORCED=NO,URI="s1.m3u8"/);
+  assert.match(master, /#EXT-X-STREAM-INF:BANDWIDTH=5000000,CODECS="avc1.640029,mp4a.40.2",RESOLUTION=1920x1080,FRAME-RATE=23.976,VIDEO-RANGE=SDR,SUBTITLES="subs",CLOSED-CAPTIONS=NONE\nv0.m3u8\n/);
+  const media = hls.mediaPlaylist(plan, 0);
+  assert.match(media, /#EXT-X-TARGETDURATION:11\n/);
+  assert.match(media, /#EXT-X-PLAYLIST-TYPE:VOD/);
+  assert.match(media, /#EXT-X-MAP:URI="v0\/init.mp4"\n#EXTINF:9.600,\nv0\/0.m4s\n/);
+  assert.ok(media.trimEnd().endsWith('#EXT-X-ENDLIST'));
+  assert.equal(media.match(/#EXTINF/g).length, plan.segments.length);
+  assert.match(hls.subtitlePlaylist(plan, 1), /\ns1\/0.vtt\n/);
+
+  assert.deepEqual(hls.hlsPath(['main.m3u8'], plan), { kind: 'master' });
+  assert.deepEqual(hls.hlsPath(['v0.m3u8'], plan), { kind: 'playlist', output: 'v0' });
+  assert.deepEqual(hls.hlsPath(['v0', '12.m4s'], plan), { kind: 'file', output: 'v0', file: '12.m4s' });
+  assert.deepEqual(hls.hlsPath(['s1', '3.vtt'], plan), { kind: 'file', output: 's1', file: '3.vtt' });
+  for (const bad of [['v1.m3u8'], ['s2', '0.vtt'], ['v0', '0.vtt'], ['s0', 'init.mp4'], ['v0', '..', 'x'], ['v0', `${plan.segments.length}.m4s`], ['v0', '-1.m4s']]) {
+    assert.equal(hls.hlsPath(bad, plan), null, bad.join('/'));
+  }
+});
+
+test('HLS addresses are sealed like stream addresses, and the two never open as each other', () => {
+  const key = randomBytes(32);
+  const grant = { stream: 'abc.def.ghi', username: 'akram', expiresAt: Date.now() + 60_000, ...grantFor(browser) };
+  const sealed = hls.sealHls(key, grant);
+  assert.deepEqual(hls.openHls(key, sealed), grant);
+  assert.equal(hls.openHls(randomBytes(32), sealed), null);
+  assert.equal(hls.openHls(key, sealed, Date.now() + 120_000), null, 'runs out');
+  assert.equal(token.openStream(key, sealed), null, 'not a stream token');
+  assert.equal(hls.openHls(key, token.sealStream(key, { url: 'u', username: 'a', expiresAt: Date.now() + 1000 })), null, 'nor the other way');
+  assert.equal(hls.sessionOf(sealed), hls.sessionOf(sealed));
+  assert.match(hls.sessionOf(sealed), /^[a-f0-9]{32}$/);
 });

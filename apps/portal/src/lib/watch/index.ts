@@ -19,7 +19,7 @@ import {
 } from "./model";
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
-import { badges, cleanDevice, describe, rank, type Release } from "./releases";
+import { badges, cleanDevice, describe, heightCap, rank, type Release } from "./releases";
 import { fetchUpstream, findStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
 import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
@@ -27,6 +27,7 @@ import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from
 import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
+import { anything, castOf, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
 
@@ -368,7 +369,11 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const db = watchDb();
   const title = await ensureTitle(cfg, String(raw.titleId ?? ""));
   if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
-  const device = cleanDevice(raw.device);
+  /* Casting picks for the receiver; the web player and receivers get HLS as well as the file (./hls.ts). */
+  const cast = castOf(raw.cast);
+  const asked = cleanDevice(raw.device);
+  const device = screenFor(asked, cast);
+  const hls = Boolean(cfg.packager.key) && (cast !== null || asked.client === "web");
   const prefs = prefsOf(db, username);
   const season = title.kind === "series" ? Number(raw.season) || 1 : 0;
   const episode = title.kind === "series" ? Number(raw.episode) || 1 : 0;
@@ -384,17 +389,30 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const [found, markers] = await Promise.all([releasesFor(cfg, title, season, episode), markersFor(cfg, title, episodes, season, episode)]);
   /* Sub or dub: the person's choice for this show, else their settings; the release is picked to carry it. */
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
-  const ranked = rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  let ranked = rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
+  /* Nothing the screen plays as it is: with HLS the packager can transcode anything. */
+  if (!ranked.length && hls) ranked = rank(found, anything(device), prefs.quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
 
   const sealKey = await streamKey();
   const expiresAt = Date.now() + 6 * 60 * 60 * 1000;
-  const address = (r: { url: string; service: string }) => `${origin}/api/v1/watch/stream/${sealStream(sealKey, { url: r.url, username, expiresAt, source: r.service })}`;
+  const sealed = (r: { url: string; service: string }) => sealStream(sealKey, { url: r.url, username, expiresAt, source: r.service });
+  const address = (r: { url: string; service: string }) => `${origin}/api/v1/watch/stream/${sealed(r)}`;
+  const tracks = playerTracks(plan);
   const p = progressOf(db, username, title.id).find((x) => x.season === season && x.episode === episode);
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
+  const hlsGrant: HlsGrant | null = hls ? {
+    stream: sealed(wanted), username, expiresAt,
+    screen: { codecs: device.codecs, hdr: device.hdr, dvProfiles: device.dvProfiles, maxHeight: heightCap(device, prefs.quality), passthrough: device.passthrough },
+    audio: tracks.audio.tags,
+    subtitles: tracks.subtitles ? { tags: tracks.subtitles.tags, kind: tracks.subtitles.kind, signsTitles: tracks.subtitles.signsTitles } : null,
+    burn: raw.burnSubtitles === true,
+  } : null;
   return {
     url: address(wanted),
+    /* The same stream as HLS, for browsers, AirPlay and Chromecast; null for the native apps, which play the file. */
+    hls: hlsGrant ? `${origin}/api/v1/watch/hls/${sealHls(sealKey, hlsGrant)}/main.m3u8` : null,
     version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service },
     versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
     startAt: p && !finished(p) ? p.position : 0,
@@ -406,7 +424,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     markers: markers ?? {},
     skipIntros: prefs.skipIntros,
     /* Which audio and subtitle tracks to switch on, by the tags containers use. */
-    tracks: playerTracks(plan),
+    tracks,
     languages: { audio: wanted.languages, subtitles: wanted.subtitles },
   };
 }
@@ -491,4 +509,87 @@ export async function relay(request: Request, token: string): Promise<Response> 
     if (sample) try { recordSpeed(watchDb(), source, sample); } catch { /* a figure missed is no reason to break playback */ }
   }) : upstream.body;
   return new Response(body, { status: upstream.status, headers: out });
+}
+
+/* ───── HLS (./hls.ts) ───── */
+
+type HlsSession = { id: string; plan: HlsPlan; spec: PackagerJob & { input: string; segments: number[]; duration: number; ahead: number }; at: number };
+const hlsSessions = ((globalThis as unknown as { kimonoWatchHls?: Map<string, HlsSession> }).kimonoWatchHls ??= new Map());
+const hlsStarting = ((globalThis as unknown as { kimonoWatchHlsStarting?: Map<string, Promise<HlsSession>> }).kimonoWatchHlsStarting ??= new Map());
+
+function packagerFetch(cfg: WatchConfig, path: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set("authorization", `Bearer ${cfg.packager.key}`);
+  return fetch(`${cfg.packager.url}${path}`, { ...init, headers });
+}
+
+async function putSession(cfg: WatchConfig, session: HlsSession) {
+  const put = await packagerFetch(cfg, `/sessions/${session.id}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(session.spec), signal: AbortSignal.timeout(10_000) }).catch(() => null);
+  if (!put?.ok) throw new WatchProblem("The packager isn't answering. Try again in a moment.", 502);
+}
+
+/** The packager's session for an HLS address: probed and planned once, then kept while it plays. */
+function hlsSession(cfg: WatchConfig, token: string, grant: HlsGrant): Promise<HlsSession> {
+  const id = sessionOf(token);
+  const known = hlsSessions.get(id);
+  if (known) { known.at = Date.now(); return Promise.resolve(known); }
+  return shared(hlsStarting, id, async () => {
+    const input = `${cfg.packager.input}/api/v1/watch/stream/${grant.stream}`;
+    const ask = () => packagerFetch(cfg, "/probe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input }), signal: AbortSignal.timeout(75_000) }).catch(() => null);
+    /* Once more when the packager isn't answering yet (it restarts with the server). */
+    const answer = (await ask()) ?? (await new Promise((done) => setTimeout(done, 2000)), await ask());
+    if (!answer?.ok) throw new WatchProblem("This stream couldn't be read. Try another version.", 502);
+    const probe = (await answer.json()) as HlsProbe;
+    const plan = planHls(probe, grant);
+    const job = ffmpegArgs(plan, probe.hardware);
+    const session: HlsSession = { id, plan, spec: { ...job, input, segments: plan.segments, duration: plan.duration, ahead: 45 }, at: Date.now() };
+    await putSession(cfg, session);
+    for (const [key, s] of hlsSessions) if (Date.now() - s.at > 6 * 60 * 60 * 1000) hlsSessions.delete(key);
+    hlsSessions.set(id, session);
+    return session;
+  });
+}
+
+const hlsHeaders = (type: string) => new Headers({
+  "content-type": type, "cache-control": "private, no-store", "access-control-allow-origin": "*",
+  "access-control-expose-headers": "content-length, content-range, accept-ranges",
+});
+
+/** An HLS address's playlists (made here) and segments (from the packager, with Range kept). Receivers fetch from other origins, so it answers any. */
+export async function hlsRelay(request: Request, token: string, path: string[]): Promise<Response> {
+  const grant = openHls(await streamKey(), token);
+  if (!grant) return new Response("This link has run out. Press play again.", { status: 410, headers: hlsHeaders("text/plain") });
+  return watch(async (cfg) => {
+    if (!cfg.packager.key) return new Response("HLS isn't set up on this server.", { status: 404 });
+    const session = await hlsSession(cfg, token, grant);
+    const wanted = hlsPath(path, session.plan);
+    if (!wanted) return new Response("That isn't part of this stream.", { status: 404, headers: hlsHeaders("text/plain") });
+    const playlist = "application/vnd.apple.mpegurl";
+    if (wanted.kind === "master") return new Response(masterPlaylist(session.plan), { headers: hlsHeaders(playlist) });
+    if (wanted.kind === "playlist") {
+      const n = Number(wanted.output.slice(1));
+      const body = wanted.output[0] === "v" ? mediaPlaylist(session.plan, n) : subtitlePlaylist(session.plan, n);
+      return new Response(body, { headers: hlsHeaders(playlist) });
+    }
+    const headers = new Headers();
+    const range = request.headers.get("range");
+    if (range) headers.set("range", range);
+    const fetchFile = () => packagerFetch(cfg, `/sessions/${session.id}/${wanted.output}/${wanted.file}`, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal }).catch(() => null);
+    let upstream = await fetchFile();
+    /* The packager restarted or let the session go idle: describe it again. */
+    if (upstream?.status === 404 && upstream.headers.get("x-kimono-packager") === "no-session") {
+      await upstream.body?.cancel().catch(() => {});
+      await putSession(cfg, session);
+      upstream = await fetchFile();
+    }
+    if (!upstream || (!upstream.ok && upstream.status !== 206)) {
+      await upstream?.body?.cancel().catch(() => {});
+      return new Response("This part of the stream isn't ready.", { status: upstream?.status === 404 ? 404 : 503, headers: hlsHeaders("text/plain") });
+    }
+    const out = hlsHeaders(wanted.file.endsWith(".vtt") ? "text/vtt; charset=utf-8" : "video/mp4");
+    out.set("cache-control", "private, max-age=3600");
+    out.set("accept-ranges", "bytes");
+    for (const name of ["content-length", "content-range"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
+    return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers: out });
+  });
 }

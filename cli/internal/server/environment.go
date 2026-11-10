@@ -20,6 +20,7 @@ var requiredEnvironment = []string{
 	"KIMONO_PORTAL_DOMAIN", "KIMONO_PORTAL_OIDC_CLIENT_SECRET", "KIMONO_PORTAL_OIDC_REDIRECT_URI",
 	"KIMONO_PORTAL_SESSION_SECRET", "MAGIC_DNS_DOMAIN", "MESH_DOMAIN", "PG_PASS",
 	"KIMONO_BRAND_ASSET_PATH", "KIMONO_PORTAL_API_TOKEN", "AIOSTREAMS_SECRET_KEY", "NZBDAV_API_KEY", "NZBDAV_WEBDAV_PASSWORD",
+	"WATCH_PACKAGER_KEY", "WATCH_PACKAGER_RUNTIME",
 }
 
 // baseDomainOf drops the leftmost label, turning kimono.example.com into
@@ -59,10 +60,26 @@ func (m *Manager) derivedEnvironmentValue(key string, values map[string]string) 
 		}
 	case "KIMONO_PORTAL_SESSION_SECRET":
 		return system.RandomBase64(48)
-	case "AUTHENTIK_SECRET_KEY", "PG_PASS", "KIMONO_HEADSCALE_OIDC_CLIENT_SECRET", "KIMONO_PORTAL_OIDC_CLIENT_SECRET", "KIMONO_PORTAL_API_TOKEN", "AIOSTREAMS_SECRET_KEY", "NZBDAV_API_KEY", "NZBDAV_WEBDAV_PASSWORD":
+	case "AUTHENTIK_SECRET_KEY", "PG_PASS", "KIMONO_HEADSCALE_OIDC_CLIENT_SECRET", "KIMONO_PORTAL_OIDC_CLIENT_SECRET", "KIMONO_PORTAL_API_TOKEN", "AIOSTREAMS_SECRET_KEY", "NZBDAV_API_KEY", "NZBDAV_WEBDAV_PASSWORD", "WATCH_PACKAGER_KEY":
 		return system.RandomHex(32)
+	case "WATCH_PACKAGER_RUNTIME":
+		// Watch's packager encodes on an NVIDIA GPU only through Docker's nvidia
+		// runtime; Intel and AMD GPUs need nothing beyond /dev/dri.
+		return m.watchPackagerRuntime(), nil
 	}
 	return "", fmt.Errorf("%s is required and cannot be derived", key)
+}
+
+// watchPackagerRuntime is "nvidia" when Docker has the NVIDIA runtime, else Docker's default.
+func (m *Manager) watchPackagerRuntime() string {
+	if m.Runner == nil {
+		return "runc"
+	}
+	out, err := m.Runner.Output("docker", "info", "--format", "{{json .Runtimes}}")
+	if err == nil && strings.Contains(string(out), `"nvidia"`) {
+		return "nvidia"
+	}
+	return "runc"
 }
 
 // ensureServerEnvironment adds any key the current appliance definition needs

@@ -74,6 +74,11 @@ jobs:
           docker build -f Dockerfile.reconciler -t "ghcr.io/kimonoapps/kimono-reconciler:$TAG" -t ghcr.io/kimonoapps/kimono-reconciler:latest .
           docker push "ghcr.io/kimonoapps/kimono-reconciler:$TAG"
           docker push ghcr.io/kimonoapps/kimono-reconciler:latest
+      - name: Publish Kimono Watch packager image
+        run: |
+          docker build -f infra/compose/server/watch-packager/Dockerfile -t "ghcr.io/kimonoapps/kimono-watch-packager:$TAG" -t ghcr.io/kimonoapps/kimono-watch-packager:latest .
+          docker push "ghcr.io/kimonoapps/kimono-watch-packager:$TAG"
+          docker push ghcr.io/kimonoapps/kimono-watch-packager:latest
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

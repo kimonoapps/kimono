@@ -25,6 +25,30 @@ export function sealStream(key: Buffer, grant: StreamGrant): string {
   return `${b64(iv)}.${b64(body)}.${b64(cipher.getAuthTag())}`;
 }
 
+/** Any small record sealed the same way, readable until expiresAt (./hls.ts seals its addresses with it). */
+export function sealJson(key: Buffer, value: Record<string, unknown>, expiresAt: number): string {
+  if (key.length !== 32) throw new Error("A stream key is 32 bytes.");
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const body = Buffer.concat([cipher.update(JSON.stringify({ ...value, x: expiresAt }), "utf8"), cipher.final()]);
+  return `${b64(iv)}.${b64(body)}.${b64(cipher.getAuthTag())}`;
+}
+
+export function openJson(key: Buffer, token: string, now = Date.now()): Record<string, unknown> | null {
+  const [iv, body, tag] = token.split(".");
+  if (!iv || !body || !tag || token.length > 16384) return null;
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64url"));
+    decipher.setAuthTag(Buffer.from(tag, "base64url"));
+    const raw = JSON.parse(Buffer.concat([decipher.update(Buffer.from(body, "base64url")), decipher.final()]).toString("utf8")) as Record<string, unknown>;
+    if (typeof raw.x !== "number" || raw.x < now) return null;
+    const { x: _expires, ...value } = raw; // eslint-disable-line @typescript-eslint/no-unused-vars
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 /** The grant, or null when the token was altered, made with another key, or has run out. */
 export function openStream(key: Buffer, token: string, now = Date.now()): StreamGrant | null {
   const [iv, body, tag] = token.split(".");
