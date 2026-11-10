@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { airText, minutesText, watchApi, type Episode, type TitleView } from "./api";
-import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useWatch } from "./bits";
+import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
 
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
@@ -54,6 +54,7 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
   };
 
   const t = view?.title;
+  useTabTitle(t?.name);
   const series = view ? Boolean(view.seasons) : false;
   return <div ref={sheet} className={cx("kw-sheet", on && "kw-on")} onClick={(event) => { if (event.target === sheet.current) close(); }}>
     <div className="kw-panel" role="dialog" aria-label={t?.name ?? "Title"}>
@@ -135,6 +136,7 @@ function Resume({ view }: { view: TitleView }) {
     const left = r && t.runtime ? Math.max(1, Math.round(t.runtime - r.position / 60)) : null;
     return <div className="kw-resume">
       <button className="kw-btn kw-primary" onClick={() => watch.play(t.id)}><Icon name="play" />{r ? "Resume" : "Play"}</button>
+      <button className="kw-btn kw-tonal" onClick={() => watch.together(t.id, { season: 0, episode: 0, position: r?.position ?? 0 })}><Icon name="group" />Watch together</button>
       {r ? <small><span className="kw-bar"><i style={{ width: `${r.fraction * 100}%` }} /></span>{left ? `${left}m left` : null}</small> : null}
     </div>;
   }
@@ -144,6 +146,7 @@ function Resume({ view }: { view: TitleView }) {
   const at = r ? { season: r.season, episode: r.episode } : undefined;
   return <div className="kw-resume">
     <button className="kw-btn kw-primary" onClick={() => watch.play(t.id, at)}><Icon name="play" />{r?.started ? "Resume" : `Play S${r?.season ?? 1}:E${r?.episode ?? 1}`}</button>
+    <button className="kw-btn kw-tonal" onClick={() => watch.together(t.id, { season: r?.season ?? 1, episode: r?.episode ?? 1, position: r?.started ? r.position : 0 })}><Icon name="group" />Watch together</button>
     {r?.started && ep ? <small>S{r.season}:E{r.episode} “{ep.name}” {fraction > 0 ? <span className="kw-bar"><i style={{ width: `${fraction * 100}%` }} /></span> : null}{ep.runtime ? ` ${Math.max(1, Math.round(ep.runtime * (1 - fraction)))}m left` : ""}</small> : null}
   </div>;
 }

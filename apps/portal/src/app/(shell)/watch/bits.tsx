@@ -13,6 +13,8 @@ export type Marks = { inList: boolean; rating: Rating | null; reminding: boolean
 export type Watch = {
   openTitle: (id: string) => void;
   play: (id: string, at?: { season: number; episode: number }) => void;
+  /** Watch together: asks who to invite, then starts a party for this title (and episode). */
+  together: (id: string, at?: { season: number; episode: number; position?: number }) => void;
   toast: (message: string) => void;
   marksOf: (id: string) => Marks;
   /** A title page answered: what it says about this person's marks wins. */
@@ -154,4 +156,20 @@ export const watchId = "kimono-watch";
 /** Watch's app bloom: Kimono's flower with the play glyph, in Watch's colours, as the rail draws it. */
 export function WatchBloom({ accent, className }: { accent: string; className?: string }) {
   return <span className={cx("kw-bloom", className)} aria-hidden="true"><AppIcon app={{ id: watchId, icon: "play", accent }} /></span>;
+}
+
+/* ───── The tab's title: "Kimono Watch", or what's open in front ───── */
+
+const titles: { key: number; name: string }[] = [];
+let titleKey = 0;
+const showTitle = () => { const top = titles[titles.length - 1]; document.title = top ? `${top.name} · Kimono Watch` : "Kimono Watch"; };
+/** While mounted with a name, the tab reads "{name} · Kimono Watch"; the latest one shown wins, and leaving puts back the one before. */
+export function useTabTitle(name: string | null | undefined) {
+  useEffect(() => {
+    if (!name) return;
+    const key = ++titleKey;
+    titles.push({ key, name });
+    showTitle();
+    return () => { const at = titles.findIndex((t) => t.key === key); if (at >= 0) titles.splice(at, 1); showTitle(); };
+  }, [name]);
 }

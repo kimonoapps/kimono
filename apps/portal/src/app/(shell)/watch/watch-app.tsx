@@ -10,9 +10,10 @@ import { Icon } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
 import { Player, type PlayerHandle } from "./player";
 import { TitleSheet } from "./title";
+import { screenId, together, type Invite } from "./party";
 
 /*
- * 観 Kimono Watch on the web (design/mockups/watch is the reference): who's
+ * Kimono Watch on the web (design/mockups/watch is the reference): who's
  * watching, then Home, New & hot and My list, with a title's page, search and
  * the player over them. Which page and which title are in the address, so a
  * reload or a link opens the same place.
@@ -26,6 +27,10 @@ const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 3
 const initial = (p: Person) => (p.name.trim() || p.username).charAt(0).toUpperCase();
 const chosenKey = "kw.profile";
 
+/** The watch party in the address while this screen is in one, so a reload or the link rejoins it. */
+let partyInUrl: string | null = null;
+const readParty = () => { try { return new URLSearchParams(window.location.search).get("party"); } catch { return null; } };
+
 function readPlace(): { page: Page; title: string | null } {
   const q = new URLSearchParams(window.location.search);
   const page = q.get("p");
@@ -35,13 +40,20 @@ function writePlace(page: Page, title: string | null, push: boolean) {
   const q = new URLSearchParams();
   if (page !== "home") q.set("p", page);
   if (title) q.set("t", title);
+  if (partyInUrl) q.set("party", partyInUrl);
   const url = `/watch${q.size ? `?${q}` : ""}`;
   if (`${window.location.pathname}${window.location.search}` === url) return;
   if (push) window.history.pushState(null, "", url); else window.history.replaceState(null, "", url);
 }
 
 export function WatchApp({ me, household, accent }: { me: Person; household: Person[]; accent: string }) {
-  const [profile, setProfile] = useState<Person | null>(() => { try { return sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
+  /* Arriving by a party's link goes straight in: it can only be you. */
+  const [profile, setProfile] = useState<Person | null>(() => { try { return readParty() || sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
+  const [people, setPeople] = useState<Person[]>(household);
+  const [invites, setInvites] = useState<Invite[]>([]);
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const [asking, setAsking] = useState<{ titleId: string; season: number; episode: number; position: number } | null>(null);
+  const [arriving, setArriving] = useState<string | null>(() => readParty());
   const [picking, setPicking] = useState<string | null>(null);
   const [page, setPage] = useState<Page>(() => readPlace().page);
   const [filter, setFilter] = useState<Shelf | null>(null);
@@ -139,7 +151,42 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
       watchApi.mark(id, { reminding: on }).catch(() => { setMark(id, { reminding: !on }); say("That didn't work."); });
     },
     known: () => [...known.current.values()],
+    together: (id, at) => setAsking({ titleId: id, season: at?.season ?? 0, episode: at?.episode ?? 0, position: at?.position ?? 0 }),
   }), [me, accent, say, listIds, setMark, loadHome, remember]);
+
+  /* ───── Watch together: who's asked you, and starting one ───── */
+  useEffect(() => {
+    if (!profile) return;
+    let stop = false;
+    const look = () => together.list().then((l) => { if (stop) return; setPeople(l.people.length ? l.people : household); setInvites(l.parties.filter((p) => p.invited)); }, () => {});
+    look();
+    const timer = setInterval(() => { if (!document.hidden) look(); }, 15_000);
+    return () => { stop = true; clearInterval(timer); };
+  }, [profile, household]);
+  const joinParty = useCallback((id: string) => {
+    setArriving(null); setSheetId(null); setPlaying(true);
+    player.current?.join(id);
+  }, []);
+  const onParty = useCallback((id: string | null) => {
+    partyInUrl = id;
+    /* In a party the player is the page: no title sheet under it. */
+    writePlace(readPlace().page, id ? null : readPlace().title, false);
+  }, []);
+  const startParty = async (invite: string[]) => {
+    const what = asking;
+    if (!what) return;
+    setAsking(null);
+    try {
+      const state = await together.create({ ...what, client: screenId(), invite });
+      if (invite.length) say(invite.length === 1 ? `Invited ${(people.find((p) => p.username.toLowerCase() === invite[0])?.name ?? invite[0]).split(" ")[0]}` : `Invited ${invite.length} people`);
+      joinParty(state.id);
+    } catch (error) { say(error instanceof Error ? error.message : "That didn't work."); }
+  };
+  const fromPlayer = useCallback(() => {
+    const here = player.current?.where();
+    if (here) setAsking(here);
+  }, []);
+  const invite = invites.find((p) => !dismissed.includes(p.id));
 
   const exitPlayer = useCallback((changed: boolean) => {
     setPlaying(false);
@@ -196,7 +243,15 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
       </div>}
       {searching ? <SearchPage onClose={() => setSearching(false)} /> : null}
       {sheetId && profile ? <TitleSheet key={sheetId} id={sheetId} onClose={closeSheet} refreshKey={refreshKey} /> : null}
-      <Player ref={player} onExit={exitPlayer} />
+      <Player ref={player} onExit={exitPlayer} me={me.username} people={people} onTogether={fromPlayer} onParty={onParty} />
+      {asking ? <TogetherDialog people={people.filter((p) => p.username.toLowerCase() !== me.username.toLowerCase())} onStart={(list) => void startParty(list)} onClose={() => setAsking(null)} /> : null}
+      {arriving && profile && !playing ? <Arriving id={arriving} people={people} onJoin={() => joinParty(arriving)} onClose={() => { setArriving(null); partyInUrl = null; writePlace(readPlace().page, readPlace().title, false); }} /> : null}
+      {invite && profile && !playing && !arriving ? <div className="kw-invite" role="status">
+        <InviteFace person={people.find((x) => x.username.toLowerCase() === invite.host) ?? { username: invite.host, name: invite.hostName, picture: null }} />
+        <div><b>{invite.hostName.split(" ")[0]} is watching {invite.title?.name ?? "something"}</b><span>{invite.season ? `S${invite.season}:E${invite.episode} · ` : ""}Watch together?</span></div>
+        <button className="kw-btn kw-tonal" onClick={() => { setDismissed((d) => [...d, invite.id]); void together.decline(invite.id); }}>Not now</button>
+        <button className="kw-btn kw-primary" onClick={() => joinParty(invite.id)}><Icon name="play" />Join</button>
+      </div> : null}
       <Toast message={toast} />
     </div>
   </WatchContext.Provider>;
@@ -240,5 +295,65 @@ function AccountMenu({ profile, onSwitch }: { profile: Person; onSwitch: () => v
       <button role="menuitem" onClick={() => { setOpen(false); onSwitch(); }}><span /><b>Switch profile</b><span /></button>
     </div> : null}
     <Toast message={say} />
+  </div>;
+}
+
+/* ───── Watch together: who to ask, and arriving by a link ───── */
+function InviteFace({ person }: { person: Person }) {
+  return <span className="kw-face-s" style={{ background: faceOf(person.username) }}>
+    {person.picture
+      // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
+      ? <img src={person.picture} alt="" /> : initial(person)}
+  </span>;
+}
+
+function TogetherDialog({ people, onStart, onClose }: { people: Person[]; onStart: (usernames: string[]) => void; onClose: () => void }) {
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(true));
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
+    document.addEventListener("keydown", key, true);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener("keydown", key, true); };
+  }, [onClose]);
+  const flip = (u: string) => setChosen((c) => (c.includes(u) ? c.filter((x) => x !== u) : [...c, u]));
+  return <div className={cx("kw-dialog", shown && "kw-on")} role="dialog" aria-modal="true" aria-label="Watch together" onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="kw-dialog-box">
+      <h3>Watch together</h3>
+      {people.length ? <div className="kw-who kw-who-s">
+        {people.map((p) => <button key={p.username} aria-pressed={chosen.includes(p.username.toLowerCase())} onClick={() => flip(p.username.toLowerCase())}>
+          <span className="kw-face" style={{ background: faceOf(p.username) }}>
+            {p.picture
+              // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
+              ? <img src={p.picture} alt="" /> : initial(p)}
+            <span className="kw-tick"><Icon name="check" /></span>
+          </span>
+          <span className="kw-name">{p.name.split(" ")[0] || p.username}</span>
+        </button>)}
+      </div> : <p>Share the link from the player once it starts.</p>}
+      <div className="kw-btns">
+        <button className="kw-btn kw-tonal" onClick={onClose}>Cancel</button>
+        <button className="kw-btn kw-primary" onClick={() => onStart(chosen)}><Icon name="play" />{chosen.length ? "Start and invite" : "Start"}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function Arriving({ id, people, onJoin, onClose }: { id: string; people: Person[]; onJoin: () => void; onClose: () => void }) {
+  const [what, setWhat] = useState<{ text: string; ok: boolean } | null>(null);
+  useEffect(() => {
+    together.peek(id).then(({ state }) => {
+      const host = people.find((p) => p.username.toLowerCase() === state.host)?.name.split(" ")[0] ?? state.host;
+      setWhat({ text: `${host} is watching`, ok: true });
+    }, (error) => setWhat({ text: error instanceof Error ? error.message : "That didn't work.", ok: false }));
+  }, [id, people]);
+  return <div className="kw-dialog kw-on" role="dialog" aria-modal="true" aria-label="Join the watch party">
+    <div className="kw-dialog-box">
+      <h3>{what ? what.text : "Watch together"}</h3>
+      <div className="kw-btns">
+        <button className="kw-btn kw-tonal" onClick={onClose}>{what?.ok === false ? "Close" : "Not now"}</button>
+        {what?.ok !== false ? <button className="kw-btn kw-primary" disabled={!what} onClick={onJoin}><Icon name="play" />Join</button> : null}
+      </div>
+    </div>
   </div>;
 }

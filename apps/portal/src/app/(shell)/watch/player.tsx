@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
 import { airText, clock, deviceOf, languageName, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
-import { alike, cx, Img, TitleMark, useWatch } from "./bits";
+import { alike, cx, Img, TitleMark, useTabTitle, useWatch } from "./bits";
 import { InkLoader, InkRing } from "@kimono/ui";
 import { Icon, SeekIcon } from "./icons";
 import { attach, attachThumb, type Attached } from "./source";
+import { correction, PartyLink, positionAt, reactionSet, screenId, together, type ChatLine, type PartyView, type Person, type Reaction } from "./party";
 
 /*
  * The player: the stream fills the screen, the controls come and go, and the
@@ -13,9 +14,15 @@ import { attach, attachThumb, type Attached } from "./source";
  * the server every ten seconds and whenever they pause or leave.
  */
 
-export type PlayerHandle = { start: (id: string, at?: Ref) => void };
+export type PlayerHandle = {
+  start: (id: string, at?: Ref) => void;
+  /** Joins a watch party: this screen loads what the party plays and keeps to its timeline. */
+  join: (partyId: string) => void;
+  /** Where this screen is, to start a party from here. */
+  where: () => { titleId: string; season: number; episode: number; position: number } | null;
+};
 type Post = "next" | "ask" | "end" | null;
-type Sheet = "cc" | "speed" | "eps" | null;
+type Sheet = "cc" | "speed" | "eps" | "party" | "react" | null;
 type Skip = { label: string; to: number; left: number } | null;
 type LocalTrack = { key: string; label: string; language: string };
 
@@ -32,7 +39,17 @@ const two = (code: string) => (/^[a-z]{2}$/.test(code) ? code : null);
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
 const future = (date: string | null | undefined) => (date && Date.parse(date) > Date.now() ? date : null);
 
-export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (changed: boolean) => void }) {
+type PlayerProps = {
+  ref: ReactRef<PlayerHandle>; onExit: (changed: boolean) => void;
+  /** Who's signed in, and everyone in the household, for the party's faces. */
+  me: string; people: Person[];
+  /** "Watch together" from the player: the app asks who to invite. */
+  onTogether: () => void;
+  /** The party this screen is in, or none, for the address. */
+  onParty: (id: string | null) => void;
+};
+
+export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerProps) {
   const watch = useWatch();
   const root = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -75,7 +92,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   const [choice, setChoice] = useState<{ audio: string; subtitles: string } | null>(null);
 
   /* What timers and listeners read: the latest, without waiting for a render. */
-  const live = useRef({ titleId: null as string | null, ep: null as Ref | null, play: null as Play | null, view: null as TitleView | null, post: null as Post, sheet: null as Sheet, drag: false, buffering: false, loading: false, creditsDone: false, prepared: false, autoSkipped: false, savedAt: 0, token: 0, tries: 0, changed: false });
+  const live = useRef({ titleId: null as string | null, ep: null as Ref | null, play: null as Play | null, view: null as TitleView | null, post: null as Post, sheet: null as Sheet, drag: false, buffering: false, loading: false, creditsDone: false, prepared: false, autoSkipped: false, savedAt: 0, token: 0, tries: 0, changed: false, link: null as PartyLink | null, correcting: false, startTimer: undefined as ReturnType<typeof setTimeout> | undefined });
   useLayoutEffect(() => {
     Object.assign(live.current, { titleId, ep, play, view, post, sheet, drag: drag !== null, buffering, loading });
   });
@@ -83,6 +100,28 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   const [trackW, setTrackW] = useState(0);
   const [textOn, setTextOn] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
+
+  /* ───── Watching together ───── */
+  const [party, setParty] = useState<PartyView | null>(null);
+  const [chat, setChat] = useState<ChatLine[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const [floats, setFloats] = useState<Reaction[]>([]);
+  const [online, setOnline] = useState(true);
+  const [note, setNote] = useState<{ text: string; at: number } | null>(null);
+  const [noteGone, setNoteGone] = useState<number | null>(null);
+  useEffect(() => {
+    if (!note) return;
+    const t = setTimeout(() => setNoteGone(note.at), 2400);
+    return () => clearTimeout(t);
+  }, [note]);
+  const [myClient] = useState(screenId);
+  const chatOpenRef = useRef(false);
+  useLayoutEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
+  const personOf = useCallback((username: string): Person => people.find((p) => p.username.toLowerCase() === username.toLowerCase()) ?? { username, name: username, picture: null }, [people]);
+  const firstOf = useCallback((username: string) => (personOf(username).name.trim() || username).split(" ")[0], [personOf]);
+  const isHost = Boolean(party && party.host === me.toLowerCase());
+  const canSteer = !party || !party.hostOnly || isHost;
 
   const movie = view ? !view.seasons : false;
   const episodes: Episode[] = view?.episodes ?? [];
@@ -134,7 +173,9 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
       thumbDetach.current?.(); thumbDetach.current = null;
       attached.current = await attach(v, p, () => { if (token === live.current.token) setProblem("The stream stopped. Try again in a moment."); });
       if (token !== live.current.token) return;
-      const startAt = opts.startAt ?? p.startAt;
+      const link = live.current.link;
+      const sameAsParty = link?.state && link.state.timeline.titleId === id && link.state.timeline.season === (at?.season ?? 0) && link.state.timeline.episode === (at?.episode ?? 0);
+      const startAt = sameAsParty ? link!.position() : opts.startAt ?? p.startAt;
       await new Promise<void>((resolve, reject) => {
         const ok = () => { cleanup(); resolve(); };
         const bad = () => { cleanup(); reject(new Error("media")); };
@@ -153,7 +194,13 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
         for (let i = 0; i < v.buffered.length; i++) if (v.buffered.start(i) <= t + .5 && v.buffered.end(i) > t) ahead = v.buffered.end(i) - t;
         setPct((now) => Math.max(now, Math.min(99, 50 + 50 * Math.min(1, ahead / 4))));
       }, 150);
-      await v.play().catch(() => { /* blocked: the big play button starts it */ });
+      /* In a party the timeline says when to play (the follow loop): here it's ready once it can play. */
+      if (!live.current.link) await v.play().catch(() => { /* blocked: the big play button starts it */ });
+      else await new Promise<void>((done) => {
+        if (v.readyState >= 3) { done(); return; }
+        const t = setTimeout(done, 20_000);
+        v.addEventListener("canplay", () => { clearTimeout(t); done(); }, { once: true });
+      });
       if (token !== live.current.token) return;
       clearInterval(pctTimer.current); setPct(100);
       setTimeout(() => { if (token === live.current.token) { setLoading(false); live.current.loading = false; showCtl(); } }, 180);
@@ -196,21 +243,78 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     }
   }, [loadEpisode, watch]);
 
+  const begin = useCallback((id: string, at?: Ref) => {
+    const v = video.current;
+    /* Unlock sound inside the tap, so the stream can start with it once it arrives. */
+    if (v && v.src) { const m = v.muted; v.muted = true; v.play().then(() => { v.pause(); v.muted = m; }).catch(() => { v.muted = m; }); }
+    if (!wide() && root.current?.requestFullscreen) {
+      root.current.requestFullscreen().then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape")).catch(() => {});
+    }
+    setTitleId(id); live.current.titleId = id;
+    void open(id, at);
+  }, [open]);
+
+  /* ───── Joining a party, and leaving it ───── */
+  const chatIds = useRef(new Set<string>());
+  const prevParty = useRef<PartyView | null>(null);
+  const leaveParty = useCallback((tellServer: boolean) => {
+    const link = live.current.link;
+    if (!link) return;
+    if (tellServer) link.leave(); else link.close();
+    live.current.link = null; prevParty.current = null; clearTimeout(live.current.startTimer);
+    setParty(null); setChat([]); chatIds.current = new Set(); setChatOpen(false); setUnread(0); setFloats([]); setOnline(true);
+    if (video.current) video.current.playbackRate = speed;
+    onParty(null);
+  }, [onParty, speed]);
+
+  const say = useCallback((text: string) => setNote({ text, at: Date.now() }), []);
+  const join = useCallback(async (partyId: string) => {
+    if (live.current.link?.id === partyId) return;
+    leaveParty(true);
+    let first: Awaited<ReturnType<typeof together.peek>>;
+    try { first = await together.peek(partyId); } catch (error) { watch.toast(error instanceof Error ? error.message : "That didn't work."); return; }
+    const link = new PartyLink(partyId, {
+      state: (state) => setParty(state),
+      chat: (lines) => {
+        const fresh = lines.filter((line) => !chatIds.current.has(line.id));
+        if (!fresh.length) return;
+        for (const line of fresh) chatIds.current.add(line.id);
+        setChat((now) => [...now, ...fresh].slice(-50));
+        if (!chatOpenRef.current) setUnread((n) => n + fresh.filter((line) => line.username !== me.toLowerCase()).length);
+      },
+      react: (r) => {
+        setFloats((now) => [...now.slice(-14), r]);
+        setTimeout(() => setFloats((now) => now.filter((x) => x.id !== r.id)), 2800);
+      },
+      ended: () => { say("The watch party has ended"); leaveParty(false); },
+      online: setOnline,
+    });
+    link.seed(first.state);
+    live.current.link = link;
+    for (const line of first.chat) chatIds.current.add(line.id);
+    setChat(first.chat);
+    onParty(partyId);
+    const t = first.state.timeline;
+    const at = t.season || t.episode ? { season: t.season, episode: t.episode } : undefined;
+    const l = live.current;
+    /* Already on what the party plays (it was started from here): just keep to it. */
+    if (l.titleId === t.titleId && (!at || (l.ep?.season === at.season && l.ep?.episode === at.episode))) return;
+    begin(t.titleId, at);
+  }, [begin, leaveParty, me, onParty, say, watch]);
+
   useImperativeHandle(ref, () => ({
-    start: (id, at) => {
-      const v = video.current;
-      /* Unlock sound inside the tap, so the stream can start with it once it arrives. */
-      if (v && v.src) { const m = v.muted; v.muted = true; v.play().then(() => { v.pause(); v.muted = m; }).catch(() => { v.muted = m; }); }
-      if (!wide() && root.current?.requestFullscreen) {
-        root.current.requestFullscreen().then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape")).catch(() => {});
-      }
-      setTitleId(id); live.current.titleId = id;
-      void open(id, at);
+    start: (id, at) => { leaveParty(true); begin(id, at); },
+    join: (partyId) => { void join(partyId); },
+    where: () => {
+      const l = live.current, v = video.current;
+      if (!l.titleId || !v) return null;
+      return { titleId: l.titleId, season: l.ep?.season ?? 0, episode: l.ep?.episode ?? 0, position: v.currentTime || 0 };
     },
-  }), [open]);
+  }), [begin, join, leaveParty]);
 
   const exit = useCallback(() => {
     save();
+    leaveParty(true);
     live.current.token++;
     clearInterval(pctTimer.current); clearInterval(countTimer.current);
     const v = video.current;
@@ -222,7 +326,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     setTitleId(null); live.current.titleId = null;
     setPlay(null); setView(null); setEp(null); setPost(null); setSheet(null); setLoading(false); setProblem(null); setPinfo(false);
     onExit(changed);
-  }, [onExit, save]);
+  }, [leaveParty, onExit, save]);
 
   /* Leaving the page still saves where they were. */
   useEffect(() => {
@@ -245,10 +349,28 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     }
     void loadEpisode(id, to, { startAt });
   }, [loadEpisode, save]);
+  /* ───── In a party, what this screen does goes to everyone ───── */
+  /** The party's line, when this screen may steer it; a note says why not otherwise. */
+  const steering = useCallback((): PartyLink | null => {
+    const link = live.current.link;
+    if (!link?.state) return null;
+    if (link.state.hostOnly && link.state.host !== me.toLowerCase()) { say(`Only ${firstOf(link.state.host)} can do that`); return null; }
+    return link;
+  }, [firstOf, me, say]);
+  const inParty = () => Boolean(live.current.link?.state);
+  /** An episode chosen here: alone it plays; in a party everyone moves to it. */
+  const pickEpisode = useCallback((to: Ref) => {
+    if (inParty()) {
+      const link = steering();
+      if (!link) return;
+      void link.command("episode", { season: to.season, episode: to.episode });
+    }
+    void goTo(to, 0);
+  }, [goTo, steering]);
   const playNext = useCallback(() => {
-    const next = live.current.play?.next;
-    if (next) void goTo({ season: next.season, episode: next.episode }, 0);
-  }, [goTo]);
+    const next = live.current.link?.state?.countdown?.to ?? live.current.play?.next;
+    if (next) pickEpisode({ season: next.season, episode: next.episode });
+  }, [pickEpisode]);
 
   /* ───── After the episode: next one, the filler question, or the end card ───── */
   const endNextUp = useCallback(() => {
@@ -260,6 +382,13 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   const startPost = useCallback(() => {
     const p = live.current.play;
     if (!p) return;
+    /* In a party the countdown is everyone's: the server starts it with what the host would play next. */
+    const link = live.current.link;
+    if (link?.state) {
+      live.current.creditsDone = true;
+      void link.command("next").then((a) => { if (a?.ok && a.next === null && !live.current.view?.seasons) return; if (a?.ok && a.next === null) { setPost("end"); live.current.post = "end"; } });
+      return;
+    }
     setSheet(null); setPinfo(false); setPostOut(false);
     if (p.fillerAhead) { setPost("ask"); live.current.post = "ask"; return; }
     if (p.next) {
@@ -279,6 +408,20 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     setPost("end"); live.current.post = "end";
   }, [playNext]);
 
+  /** Jumps to a moment: alone, here; in a party, for everyone (a seek someone else beat is undone by the state that won). */
+  const seekTo = useCallback((to: number) => {
+    const v = video.current;
+    if (!v || !v.duration) return;
+    const at = Math.min(Math.max(0, to), v.duration);
+    const link = live.current.link;
+    if (link?.state) {
+      if (!steering()) return;
+      link.assume({ position: at, at: link.now() });
+      void link.command("seek", { position: at }).then((a) => { if (a?.reason === "stale") say("Someone else moved it first"); });
+    }
+    v.currentTime = at;
+  }, [say, steering]);
+
   /* ───── The video's own events ───── */
   useEffect(() => {
     const v = video.current;
@@ -289,7 +432,9 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
       if (!p || l.loading || !d) return;
       /* Skip intro, skip recap; skipped by itself for people who asked. */
       const { intro, recap, credits } = p.markers;
-      if (intro && p.skipIntros && !l.autoSkipped && t >= intro[0] && t < intro[1] - 1) { l.autoSkipped = true; v.currentTime = intro[1]; return; }
+      /* In a party only the host's screen skips by itself, and it skips for everyone. */
+      const mine = !l.link?.state || l.link.state.host === me.toLowerCase();
+      if (intro && p.skipIntros && mine && !l.autoSkipped && t >= intro[0] && t < intro[1] - 1) { l.autoSkipped = true; seekTo(intro[1]); return; }
       const span = recap && t >= recap[0] && t < recap[1] ? { label: "Skip recap", s: recap } : intro && t >= intro[0] && t < intro[1] ? { label: "Skip intro", s: intro } : null;
       setSkip(span && !l.post ? { label: span.label, to: span.s[1], left: (t - span.s[0]) / (span.s[1] - span.s[0]) } : null);
       /* Credits: the corner vignette for what's next, or the end card. */
@@ -349,6 +494,12 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     };
     const onEnded = () => {
       const l = live.current;
+      if (l.link?.state) {
+        if (l.post === "next") return;
+        setEnded(true); save();
+        if (l.play?.next) { l.creditsDone = true; void l.link.command("next"); } else { setPost("end"); l.post = "end"; }
+        return;
+      }
       if (l.post === "next") { playNext(); return; }
       if (l.post === "ask") return;
       setEnded(true);
@@ -379,7 +530,85 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
       v.textTracks?.removeEventListener("change", onCue);
       clearInterval(cueTimer);
     };
-  }, [endNextUp, playNext, save, showCtl, startPost]);
+  }, [endNextUp, playNext, save, showCtl, startPost, me, seekTo]);
+
+  /* ───── Keeping to the party's timeline ───── */
+  useLayoutEffect(() => {
+    follow.current = () => {
+      const l = live.current, link = l.link, s = link?.state, v = video.current;
+      if (!link || !s || !v || !l.titleId) return;
+      const t = s.timeline, now = link.now(), d = v.duration || 0;
+      const atEnd = Boolean(d) && v.currentTime >= d - 0.5;
+      link.report(l.loading ? "loading" : atEnd ? "ready" : v.seeking || v.readyState < 3 || (l.buffering && !v.paused) ? "buffering" : "ready");
+      if (l.loading) return;
+      /* The party moved on to another episode (or title): follow it, landing where it is. */
+      if (t.titleId !== l.titleId) { begin(t.titleId, t.season || t.episode ? { season: t.season, episode: t.episode } : undefined); return; }
+      if (l.view?.seasons && l.ep && (t.season !== l.ep.season || t.episode !== l.ep.episode)) { void goTo({ season: t.season, episode: t.episode }, positionAt(t, now)); return; }
+      const expected = positionAt(t, now);
+      const go = t.playing && !s.hold && now >= t.at;
+      if (!go) {
+        if (!v.paused) v.pause();
+        v.playbackRate = t.rate;
+        l.correcting = false;
+        if (!v.seeking && d && expected < d - 0.5 && Math.abs(v.currentTime - expected) > 0.25) v.currentTime = expected;
+        /* A start set a moment ahead: be there on the dot. */
+        clearTimeout(l.startTimer);
+        if (t.playing && !s.hold && now < t.at) l.startTimer = setTimeout(() => follow.current(), Math.max(0, t.at - now));
+        return;
+      }
+      if (d && expected >= d - 0.5) return;
+      if (v.paused && !v.ended) void v.play().catch(() => say("Press play to join in"));
+      const c = correction(v.currentTime, expected, l.correcting, t.rate);
+      l.correcting = c.correcting;
+      /* A seek lands a little after it's asked for: aim that much ahead. */
+      if (c.seek !== null && !v.seeking) v.currentTime = c.seek + 0.2;
+      if (Math.abs(v.playbackRate - c.rate) > 0.001) v.playbackRate = c.rate;
+    };
+  });
+  const partyId = party?.id ?? null;
+  useEffect(() => {
+    if (!partyId || !titleId) return;
+    const timer = setInterval(() => follow.current(), 200);
+    return () => clearInterval(timer);
+  }, [partyId, titleId]);
+
+  /* Each new state: kept to at once, and what someone else did is said. */
+  useEffect(() => {
+    if (!party) return;
+    follow.current();
+    const before = prevParty.current;
+    prevParty.current = party;
+    const link = live.current.link;
+    if (!before || !link) return;
+    const name = (u: string) => firstOf(u);
+    const here = (p: PartyView) => new Set(p.members.filter((m) => m.present).map((m) => m.username));
+    const was = here(before), now = here(party);
+    for (const u of now) if (!was.has(u) && u !== me.toLowerCase()) say(`${name(u)} joined`);
+    for (const u of was) if (!now.has(u) && u !== me.toLowerCase()) say(`${name(u)} left`);
+    const by = party.by;
+    if (party.moved !== before.moved && by && by.client !== link.client) {
+      const at = clock(party.timeline.position);
+      const text = { play: `${name(by.username)} pressed play`, pause: `${name(by.username)} paused`, seek: `${name(by.username)} jumped to ${at}`, rate: `${name(by.username)} set the speed to ${party.timeline.rate}x`, episode: `${name(by.username)} put on episode ${party.timeline.episode}`, "cancel-countdown": `${name(by.username)} is watching the credits`, "skip-wait": `${name(by.username)} started without waiting`, countdown: "", "host-only": "" }[by.type];
+      if (text) say(text);
+    }
+    if (party.hostOnly !== before.hostOnly) say(party.hostOnly ? `Only ${name(party.host)} can steer now` : "Everyone can steer now");
+  }, [party, firstOf, me, say]);
+
+  /* The next-episode countdown is the party's: the same on every screen. */
+  const countdownEnds = party?.countdown?.endsAt ?? null;
+  useEffect(() => {
+    const link = live.current.link;
+    if (!link) return;
+    if (countdownEnds === null) { if (live.current.post === "next") endNextUp(); return; }
+    clearInterval(countTimer.current);
+    countTimer.current = setInterval(() => {
+      if (live.current.post !== "next") { setSheet(null); setPinfo(false); setPostOut(false); setPost("next"); live.current.post = "next"; }
+      const left = countdownEnds - link.now();
+      setCountdown(Math.min(1, Math.max(0, 1 - left / 10_000)));
+      if (left <= 0) clearInterval(countTimer.current);
+    }, 50);
+    return () => clearInterval(countTimer.current);
+  }, [countdownEnds, endNextUp]);
 
   /* "You're watching": a long pause shows what this is. */
   const [pausedAt, setPausedAt] = useState(0);
@@ -397,8 +626,21 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   }, []);
 
   /* ───── Actions ───── */
-  const togglePlay = useCallback(() => { const v = video.current; if (!v) return; if (v.paused) void v.play().catch(() => {}); else v.pause(); }, []);
-  const seek = useCallback((by: number) => { const v = video.current; if (!v || !v.duration) return; v.currentTime = Math.min(Math.max(0, v.currentTime + by), v.duration); }, []);
+  const follow = useRef<() => void>(() => {});
+  const togglePlay = useCallback(() => {
+    const v = video.current;
+    if (!v) return;
+    const link = live.current.link;
+    if (!link?.state) { if (v.paused) void v.play().catch(() => {}); else v.pause(); return; }
+    if (!steering()) return;
+    const s = link.state, now = link.now();
+    const wants = s.hold ? s.hold.resume : s.timeline.playing;
+    if (!s.hold) link.assume({ playing: !wants, position: v.currentTime, at: now });
+    void link.command(wants ? "pause" : "play", { position: v.currentTime });
+    if (wants) v.pause();
+    follow.current();
+  }, [steering]);
+  const seek = useCallback((by: number) => { const v = video.current; if (!v || !v.duration) return; seekTo(v.currentTime + by); }, [seekTo]);
   const ripple = (side: "l" | "r") => setRip((r) => ({ ...r, [side]: r[side] + 1 }));
   const toggleFs = useCallback(() => {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
@@ -406,7 +648,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     else watch.toast("Full screen isn’t available here");
   }, [watch]);
   const toggleMute = useCallback(() => { const v = video.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); }, []);
-  const doSkip = () => { const v = video.current; if (v && skip) { v.currentTime = skip.to; setSkip(null); } };
+  const doSkip = () => { if (skip) { seekTo(skip.to); setSkip(null); } };
   const openSheet = (kind: Sheet) => { setSheet((s) => (s === kind ? null : kind)); showCtl(true); };
   const closeSheet = useCallback(() => { setSheet(null); showCtl(); }, [showCtl]);
 
@@ -423,7 +665,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
       else if (k === "m") toggleMute();
       else if (k === "s" && skip) doSkip();
       else if (k === "n" && live.current.play?.next) playNext();
-      else if (k === "escape") { event.stopPropagation(); if (live.current.sheet) closeSheet(); else if (!document.fullscreenElement) exit(); }
+      else if (k === "escape") { event.stopPropagation(); if (chatOpenRef.current) setChatOpen(false); else if (live.current.sheet) closeSheet(); else if (!document.fullscreenElement) exit(); }
       else return;
       showCtl();
     };
@@ -435,7 +677,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   const lastTap = useRef(0);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const onPointerUp = (event: React.PointerEvent) => {
-    if ((event.target as HTMLElement).closest("button, .kw-scrub, .kw-psheet, input, .kw-post, .kw-pload")) return;
+    if ((event.target as HTMLElement).closest("button, .kw-scrub, .kw-psheet, input, .kw-post, .kw-pload, .kw-chat, .kw-wait")) return;
     if (event.pointerType === "mouse") { if (sheet) { closeSheet(); return; } togglePlay(); showCtl(); return; }
     const now = Date.now(), side = event.clientX < innerWidth * 0.38 ? "l" : event.clientX > innerWidth * 0.62 ? "r" : null;
     if (now - lastTap.current < 300 && side) { clearTimeout(tapTimer.current); seek(side === "l" ? -10 : 10); ripple(side); lastTap.current = 0; return; }
@@ -517,8 +759,9 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
 
   /* ───── What the screen says ───── */
   const t = view?.title;
+  useTabTitle(titleId ? t?.name : null);
   const epLine = ep && episode ? `S${ep.season}:E${ep.episode} · ${episode.name}` : "";
-  const next = play?.next ?? null;
+  const next = party?.countdown?.to ?? play?.next ?? null;
   const fill = play?.fillerAhead ?? null;
   const recs = t ? alike(watch.known(), t.id, t.shelf, 3) : [];
   const nextAir = future(t?.nextAirDate);
@@ -550,6 +793,10 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     <div className="kw-p-top">
       <button className="kw-pbtn" aria-label="Back to browse" onClick={exit}><Icon name="back" /></button>
       <div className="kw-ttl">{t ? <><b>{t.name}</b>{!movie && ep && episode ? <>&nbsp; E{ep.episode} · {episode.name}</> : null}</> : null}</div>
+      {party ? <button className="kw-faces" aria-label="Who's watching" onClick={() => openSheet("party")}>
+        {!online ? <em>Reconnecting…</em> : null}
+        {party.members.filter((m) => m.present).slice(0, 5).map((m) => <Face key={m.client} person={personOf(m.username)} state={m.state} />)}
+      </button> : null}
       <button className="kw-pbtn" aria-label="Full screen" onClick={toggleFs}><Icon name={fs ? "fsx" : "fs"} /></button>
     </div>
     <div className="kw-p-mid">
@@ -562,7 +809,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
         onPointerMove={(event) => { if (drag !== null) { const f = atX(event.clientX); setDrag(f); peek(f); } else if (event.pointerType === "mouse") peek(atX(event.clientX)); }}
         onPointerLeave={() => setPeekAt(null)}
         onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); const f = atX(event.clientX); setDrag(f); peek(f); showCtl(true); }}
-        onPointerUp={(event) => { if (drag === null) return; const v = video.current; const f = atX(event.clientX); setDrag(null); setPeekAt(null); if (v && v.duration) { v.currentTime = f * v.duration; setTime(v.currentTime); } showCtl(); }}>
+        onPointerUp={(event) => { if (drag === null) return; const v = video.current; const f = atX(event.clientX); setDrag(null); setPeekAt(null); if (v && v.duration) { seekTo(f * v.duration); setTime(v.currentTime); } showCtl(); }}>
         <div className="kw-track" ref={track}>
           <div className="kw-buf" style={{ width: `${buffered * 100}%` }} />
           <div className="kw-fill" style={{ width: `${(shownT / d) * 100}%` }} />
@@ -588,10 +835,18 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
         <button className="kw-pbtn kw-lab" aria-label="Speed and quality" onClick={() => openSheet("speed")}><Icon name="speed" /><span>Speed &amp; quality</span></button>
         {!movie ? <button className="kw-pbtn kw-lab" aria-label="Episodes" onClick={() => openSheet("eps")}><Icon name="eps" /><span>Episodes</span></button> : null}
         <button className="kw-pbtn kw-lab" aria-label="Audio and subtitles" onClick={() => openSheet("cc")}><Icon name="cc" /><span>Audio &amp; subtitles</span></button>
+        {party ? <>
+          <button className="kw-pbtn kw-lab" aria-label="React" onClick={() => openSheet("react")}><Icon name="mood" /><span>React</span></button>
+          <button className={cx("kw-pbtn kw-lab", unread > 0 && "kw-dot")} aria-label="Chat" onClick={() => { setChatOpen(!chatOpen); setUnread(0); setSheet(null); showCtl(true); }}><Icon name="chat" /><span>Chat</span></button>
+        </> : <button className="kw-pbtn kw-lab" aria-label="Watch together" onClick={() => { if (play) onTogether(); }}><Icon name="group" /><span>Watch together</span></button>}
         {next ? <button className="kw-pbtn kw-lab" aria-label="Next episode" onClick={playNext}><Icon name="next" /><span>Next episode</span></button> : null}
         <button className="kw-pbtn kw-dsk" aria-label="Full screen" onClick={toggleFs}><Icon name={fs ? "fsx" : "fs"} /></button>
       </div>
     </div>
+    {party ? <Waiting party={party} client={myClient} loading={loading} firstOf={firstOf} canSteer={canSteer} onSkip={() => void live.current.link?.command("skip-wait")} /> : null}
+    <div className="kw-floats" aria-hidden="true">{floats.map((f) => <span key={f.id} style={{ "--x": `${(f.id * 37) % 60}px` } as React.CSSProperties}>{f.emoji}<small>{firstOf(f.username)}</small></span>)}</div>
+    {party ? <Chat open={chatOpen} lines={chat} me={me} personOf={personOf} onClose={() => { setChatOpen(false); showCtl(); }} onSend={(text) => void live.current.link?.chat(text)} /> : null}
+    <div className={cx("kw-pnote", note && noteGone !== note.at && "kw-on")} role="status" aria-live="polite">{note?.text}</div>
     <button className={cx("kw-skip", skip && "kw-on")} style={{ "--left": `${(skip?.left ?? 0) * 100}%` } as React.CSSProperties} onClick={doSkip}><span>{skip?.label ?? "Skip intro"}</span><Icon name="next" /></button>
 
     <div className={cx("kw-psheet", sheet && "kw-on")} role="dialog">
@@ -609,14 +864,24 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
             </>}
         </div>
       </div> : null}
-      {sheet === "speed" ? <><h4>Playback speed</h4><div className="kw-speeds">{speeds.map((x) => <button key={x} className={cx(speed === x && "kw-sel")} onClick={() => { setSpeed(x); if (video.current) video.current.playbackRate = x; }}><i />{x}x{x === 1 ? " (Normal)" : ""}</button>)}</div>
+      {sheet === "speed" ? <><h4>Playback speed</h4><div className="kw-speeds">{speeds.map((x) => <button key={x} className={cx((party ? party.timeline.rate : speed) === x && "kw-sel")} onClick={() => {
+        const link = live.current.link;
+        if (link?.state) { if (!steering()) return; const v = video.current; link.assume({ rate: x, position: v?.currentTime ?? link.position(), at: link.now() }); void link.command("rate", { rate: x }); return; }
+        setSpeed(x); if (video.current) video.current.playbackRate = x;
+      }}><i />{x}x{x === 1 ? " (Normal)" : ""}</button>)}</div>
         {play?.quality && play.quality.options.length > 1 ? <div className="kw-quality"><h4>Quality</h4>{play.quality.options.map((q) => <button key={q.value} className={cx("kw-opt", play.quality!.current === q.value && "kw-sel")} onClick={() => {
           if (play.quality!.current === q.value || !titleId || !video.current) return;
           oneOff.current = q.value;
           void loadEpisode(titleId, live.current.ep, { startAt: video.current.currentTime });
         }}><Icon name="check" />{q.label}</button>)}</div> : null}
       </> : null}
-      {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} progress={time / d} onPick={(n) => { setSheet(null); void goTo({ season: ep.season, episode: n }); }} /> : null}
+      {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} progress={time / d} onPick={(n) => { setSheet(null); pickEpisode({ season: ep.season, episode: n }); }} /> : null}
+      {sheet === "react" && party ? <div className="kw-reacts">{reactionSet.map((e) => <button key={e} aria-label={`React ${e}`} onClick={() => void live.current.link?.react(e)}>{e}</button>)}</div> : null}
+      {sheet === "party" && party ? <PartySheet party={party} me={me} client={myClient} people={people} personOf={personOf}
+        onInvite={(u) => { void live.current.link?.invite([u]); say(`Invited ${firstOf(u)}`); }}
+        onHostOnly={(on) => void live.current.link?.command("host-only", { on })}
+        onCopy={() => { const url = `${location.origin}/watch?party=${party.id}`; navigator.clipboard?.writeText(url).then(() => say("Link copied"), () => say(url)); }}
+        onLeave={() => { setSheet(null); leaveParty(true); say("You left the watch party"); }} /> : null}
     </div>
 
     <div className={cx("kw-post", postOut && "kw-out")}>
@@ -638,7 +903,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
         <div className="kw-vig" />
         <div className="kw-nx">
           {next.skipped ? <span className="kw-nx-note">Skipping {next.skipped} filler episode{next.skipped > 1 ? "s" : ""}</span> : null}
-          <button className="kw-btn kw-tonal" onClick={() => { live.current.creditsDone = true; endNextUp(); showCtl(); }}>Watch credits</button>
+          <button className="kw-btn kw-tonal" onClick={() => { live.current.creditsDone = true; if (live.current.link?.state) { if (!steering()) return; void live.current.link.command("cancel-countdown"); } endNextUp(); showCtl(); }}>Watch credits</button>
           <button className="kw-btn kw-primary kw-countdown" title={`S${next.season}:E${next.episode}`} onClick={() => { clearInterval(countTimer.current); playNext(); }}><i style={{ width: `${countdown * 100}%` }} /><Icon name="next" /><span>Next episode</span></button>
         </div>
       </> : null}
@@ -655,7 +920,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
               <button className="kw-btn kw-primary" onClick={() => watch.remind(t.id, !reminding, t.name)}><Icon name={reminding ? "check" : "bell"} /><span>{reminding ? "Reminding you" : "Remind me"}</span></button>
             </div>
           </> : null}
-          {recs.length ? <div className="kw-recs">{recs.map((c) => <button key={c.id} aria-label={`Play ${c.name}`} onClick={() => { save(); setTitleId(c.id); live.current.titleId = c.id; void open(c.id); }}><Img src={c.backdrop ?? c.poster} /><span>{c.name}</span></button>)}</div> : null}
+          {recs.length && !party ? <div className="kw-recs">{recs.map((c) => <button key={c.id} aria-label={`Play ${c.name}`} onClick={() => { save(); setTitleId(c.id); live.current.titleId = c.id; void open(c.id); }}><Img src={c.backdrop ?? c.poster} /><span>{c.name}</span></button>)}</div> : null}
         </div>
       </> : null}
     </div>
@@ -675,4 +940,81 @@ function EpisodeList({ episodes, ep, progress, onPick }: { episodes: Episode[]; 
       </button>;
     })}
   </div>;
+}
+
+/* ───── Watching together: faces, the wait, the party's sheet, and chat ───── */
+
+const faces = ["#7E3448", "#3E5236", "#5B3F45", "#8A5A2B", "#3F4A5B", "#5A4A2B"];
+const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % faces.length];
+
+function Face({ person, state }: { person: Person; state?: "loading" | "ready" | "buffering" }) {
+  const label = `${person.name}${state === "buffering" ? " (buffering)" : state === "loading" ? " (getting ready)" : ""}`;
+  return <span className={cx("kw-face-s", state && state !== "ready" && "kw-wait-ring")} style={{ background: faceOf(person.username) }} title={label}>
+    {person.picture
+      // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
+      ? <img src={person.picture} alt="" /> : (person.name.trim() || person.username).charAt(0).toUpperCase()}
+  </span>;
+}
+
+/** "Waiting for Sami…": who the party is holding for, and a way to go on without them. */
+function Waiting({ party, client, loading, firstOf, canSteer, onSkip }: { party: PartyView; client: string; loading: boolean; firstOf: (u: string) => string; canSteer: boolean; onSkip: () => void }) {
+  const hold = party.hold;
+  const others = hold ? hold.waitingFor.filter((c) => c !== client).map((c) => party.members.find((m) => m.client === c)?.username).filter((u): u is string => Boolean(u)) : [];
+  const names = [...new Set(others.map(firstOf))];
+  const on = Boolean(hold && names.length && !loading);
+  const text = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names.length} people`;
+  return <div className={cx("kw-wait", on && "kw-on")} role="status" aria-live="polite">
+    {on ? <>
+      <b>Waiting for {text}…</b>
+      {canSteer ? <button className="kw-btn kw-tonal" onClick={onSkip}>Start without {names.length === 1 ? "them" : "everyone"}</button> : null}
+    </> : null}
+  </div>;
+}
+
+function PartySheet({ party, me, client, people, personOf, onInvite, onHostOnly, onCopy, onLeave }: {
+  party: PartyView; me: string; client: string; people: Person[]; personOf: (u: string) => Person;
+  onInvite: (username: string) => void; onHostOnly: (on: boolean) => void; onCopy: () => void; onLeave: () => void;
+}) {
+  const here = party.members.filter((m) => m.present);
+  const watching = new Set(here.map((m) => m.username));
+  const others = people.filter((p) => p.username.toLowerCase() !== me.toLowerCase() && !watching.has(p.username.toLowerCase()));
+  const host = party.host === me.toLowerCase();
+  return <div className="kw-party">
+    <h4>Watching together</h4>
+    {here.map((m) => {
+      const p = personOf(m.username);
+      return <div key={m.client} className="kw-member"><Face person={p} state={m.state} /><b>{p.name}{m.client === client ? " (you)" : ""}</b>
+        <span>{m.username === party.host ? "Host" : m.state === "buffering" ? "Buffering" : m.state === "loading" ? "Getting ready" : ""}</span></div>;
+    })}
+    {others.length ? <><h4>Invite</h4>{others.map((p) => {
+      const asked = party.invited.includes(p.username.toLowerCase());
+      return <button key={p.username} className="kw-member" disabled={asked} onClick={() => onInvite(p.username)}><Face person={p} /><b>{p.name}</b><span>{asked ? "Invited" : <Icon name="add" />}</span></button>;
+    })}</> : null}
+    <div className="kw-party-acts">
+      <button className="kw-opt" onClick={onCopy}><Icon name="link" />Copy link</button>
+      {host ? <button className={cx("kw-opt", party.hostOnly && "kw-sel")} role="switch" aria-checked={party.hostOnly} onClick={() => onHostOnly(!party.hostOnly)}><Icon name="check" />Only I can steer</button> : null}
+      <button className="kw-opt" onClick={onLeave}><Icon name="close" />Leave the party</button>
+    </div>
+  </div>;
+}
+
+function Chat({ open, lines, me, personOf, onClose, onSend }: { open: boolean; lines: ChatLine[]; me: string; personOf: (u: string) => Person; onClose: () => void; onSend: (text: string) => void }) {
+  const [text, setText] = useState("");
+  const list = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { list.current?.scrollTo({ top: list.current.scrollHeight }); }, [lines, open]);
+  useEffect(() => { if (open) input.current?.focus({ preventScroll: true }); }, [open]);
+  return <aside className={cx("kw-chat", open && "kw-on")} aria-label="Chat" aria-hidden={!open}>
+    <header><b>Chat</b><button className="kw-pbtn" aria-label="Close chat" onClick={onClose}><Icon name="close" /></button></header>
+    <div className="kw-lines" ref={list}>
+      {lines.length ? lines.map((line) => {
+        const p = personOf(line.username);
+        return <div key={line.id} className={cx("kw-line", line.username === me.toLowerCase() && "kw-mine")}><Face person={p} /><div><b>{(p.name.trim() || p.username).split(" ")[0]}</b><p>{line.text}</p></div></div>;
+      }) : <p className="kw-empty">Say hello.</p>}
+    </div>
+    <form onSubmit={(event) => { event.preventDefault(); const t = text.trim(); if (!t) return; onSend(t); setText(""); }}>
+      <input ref={input} value={text} maxLength={300} placeholder="Message" aria-label="Message" tabIndex={open ? 0 : -1} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }} />
+      <button className="kw-pbtn" aria-label="Send" tabIndex={open ? 0 : -1}><Icon name="send" /></button>
+    </form>
+  </aside>;
 }

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/app-shell";
@@ -9,7 +10,19 @@ import type { Person } from "./watch-app";
 import { WatchEntry, WatchOff } from "./watch-entry";
 import "./watch.css";
 
-export const metadata = { title: "Kimono Watch" };
+/* Watch's own tab: its name once (not "· Kimono" again), and its bloom (./icon/[file]/route.ts). */
+export const metadata: Metadata = {
+  title: { absolute: "Kimono Watch" },
+  icons: {
+    icon: [
+      { url: "/watch/icon/icon.svg", type: "image/svg+xml" },
+      { url: "/watch/icon/48.png", sizes: "48x48", type: "image/png" },
+      { url: "/watch/icon/32.png", sizes: "32x32", type: "image/png" },
+      { url: "/watch/icon/16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: { url: "/watch/icon/180.png", sizes: "180x180" },
+  },
+};
 
 /** Kimono Watch on the web: the household's films, series and anime, played in the browser. */
 export default async function WatchPage() {
