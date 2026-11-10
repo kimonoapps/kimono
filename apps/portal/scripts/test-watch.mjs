@@ -1209,3 +1209,10 @@ test('a party view names the episodes the way each person sees the show', () => 
   assert.equal(party.labelView(film, () => 'E1').timeline.label, undefined, 'films have no episode label');
   assert.equal(party.labelView(view, (s, e) => `E${e}`).countdown.to.skipped, 0);
 });
+
+test('a slow probe is asked again; only an unreadable copy fails the play', () => {
+  assert.equal(hls.probeOutcome(200), 'ok');
+  assert.equal(hls.probeOutcome(422), 'unreadable');
+  for (const status of [504, 502, 503, 500, 401, null]) assert.equal(hls.probeOutcome(status), 'slow', String(status));
+  assert.ok(hls.probeAttempts >= 2);
+});

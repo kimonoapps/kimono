@@ -279,4 +279,3 @@ func matroskaKeyframes(fetch fetcher) ([]float64, error) {
 	}
 	return times, nil
 }
-

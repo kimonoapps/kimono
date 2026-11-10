@@ -264,8 +264,14 @@ func handleProbe(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := probe(r.Context(), body.Input)
 	if err != nil {
-		log.Printf("probe failed: %v", err)
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		/* The Portal retries a slow source and passes over an unreadable one. */
+		kind := classify(err)
+		log.Printf("probe failed (%s): %v", kind, err)
+		status := http.StatusGatewayTimeout
+		if kind == "unreadable" {
+			status = http.StatusUnprocessableEntity
+		}
+		writeJSON(w, status, map[string]string{"kind": kind, "error": err.Error()})
 		return
 	}
 	probes.Lock()
@@ -274,10 +280,41 @@ func handleProbe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// unreadableError is a stream that answered, but with something that isn't a video.
+type unreadableError struct{ reason string }
+
+func (e *unreadableError) Error() string { return e.reason }
+
+// classify says whether a failed probe is worth trying again ("slow": no
+// answer in time, a server error, a read cut short) or not ("unreadable": the
+// source refused it, or what came back isn't a video).
+func classify(err error) string {
+	var status *statusError
+	var unreadable *unreadableError
+	switch {
+	case errors.As(err, &unreadable):
+		return "unreadable"
+	case errors.As(err, &status):
+		if status.status >= 400 && status.status < 500 && status.status != 408 && status.status != 429 {
+			return "unreadable"
+		}
+	}
+	return "slow"
+}
+
 func probe(ctx context.Context, remote string) (*probeResult, error) {
 	input := localInput(remote)
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	/* Usenet through nzbdav can take ten seconds to a first byte, and a few more for each end of the file. */
+	ctx, cancel := context.WithTimeout(ctx, 150*time.Second)
 	defer cancel()
+	if in := inputOf(input); in != nil {
+		if err := in.load(); err != nil {
+			return nil, err
+		}
+		if in.size < 1<<20 {
+			return nil, &unreadableError{fmt.Sprintf("the stream is only %d bytes", in.size)}
+		}
+	}
 	type answer struct {
 		frames []float64
 		err    error
@@ -288,12 +325,16 @@ func probe(ctx context.Context, remote string) (*probeResult, error) {
 		keyframes <- answer{frames, err}
 	}()
 	cmd := exec.CommandContext(ctx, ffprobePath, "-v", "error", "-print_format", "json", "-show_format", "-show_streams",
-		"-analyzeduration", "10M", "-probesize", "10M", input)
+		"-analyzeduration", "5M", "-probesize", "5M", input)
 	errs := &tail{}
 	cmd.Stderr = errs
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("ffprobe couldn't read it: %v %s", err, lastLine(errs.String()))
+		complaint := lastLine(errs.String())
+		if ctx.Err() == nil && strings.Contains(complaint, "Invalid data found") {
+			return nil, &unreadableError{"ffprobe couldn't read it: " + complaint}
+		}
+		return nil, fmt.Errorf("ffprobe couldn't read it: %v %s", err, complaint)
 	}
 	var parsed struct {
 		Format  json.RawMessage `json:"format"`
@@ -310,7 +351,7 @@ func probe(ctx context.Context, remote string) (*probeResult, error) {
 }
 
 func rangeFetcher(ctx context.Context, url string) fetcher {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	return func(off, n int64) ([]byte, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {

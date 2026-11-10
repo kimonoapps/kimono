@@ -18,13 +18,14 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	headBytes = 4 << 20
-	tailBytes = 4 << 20
+	headBytes = 1 << 20
+	tailBytes = 2 << 20
 	maxInputs = 16
 )
 
@@ -35,8 +36,8 @@ type region struct {
 
 type cachedInput struct {
 	url     string
-	once    sync.Once
-	err     error
+	mu      sync.Mutex
+	loaded  bool
 	size    int64
 	regions []region
 	used    time.Time
@@ -48,7 +49,7 @@ var inputs = struct {
 	addr string
 }{all: map[string]*cachedInput{}}
 
-var upstream = &http.Client{Timeout: 0, Transport: &http.Transport{ResponseHeaderTimeout: 30 * time.Second, MaxIdleConnsPerHost: 8}}
+var upstream = &http.Client{Timeout: 0, Transport: &http.Transport{ResponseHeaderTimeout: 45 * time.Second, MaxIdleConnsPerHost: 8}}
 
 // localInput is the loopback address ffmpeg reads url through.
 func localInput(url string) string {
@@ -85,7 +86,7 @@ func fetchRange(url string, from, to int64) ([]byte, int64, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent {
-		return nil, 0, fmt.Errorf("range request answered %d", resp.StatusCode)
+		return nil, 0, &statusError{resp.StatusCode}
 	}
 	size := totalOf(resp.Header.Get("content-range"))
 	data, err := io.ReadAll(io.LimitReader(resp.Body, to-from+1))
@@ -103,27 +104,55 @@ func totalOf(header string) int64 {
 	return n
 }
 
+// load fetches the file's two ends, head then tail. A failure isn't
+// kept: a source slow to answer the first time is asked again next time.
 func (in *cachedInput) load() error {
-	in.once.Do(func() {
-		head, size, err := fetchRange(in.url, 0, headBytes-1)
-		if err != nil {
-			in.err = err
-			return
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if in.loaded {
+		return nil
+	}
+	type part struct {
+		data []byte
+		size int64
+		err  error
+	}
+	head := make(chan part, 1)
+	go func() {
+		data, size, err := fetchRange(in.url, 0, headBytes-1)
+		head <- part{data, size, err}
+	}()
+	/* The tail needs the size; a guess from the first answer's would cost a round trip, so it waits for the head. */
+	h := <-head
+	if h.err != nil {
+		return h.err
+	}
+	if h.size <= 0 {
+		return errors.New("the stream didn't say how big it is")
+	}
+	in.size = h.size
+	in.regions = []region{{0, h.data}}
+	if start := max(int64(len(h.data)), h.size-tailBytes); start < h.size {
+		if tail, _, err := fetchRange(in.url, start, h.size-1); err == nil {
+			in.regions = append(in.regions, region{start, tail})
 		}
-		if size <= 0 {
-			in.err = errors.New("the stream didn't say how big it is")
-			return
-		}
-		in.size = size
-		in.regions = []region{{0, head}}
-		if start := max(int64(len(head)), size-tailBytes); start < size {
-			if tail, _, err := fetchRange(in.url, start, size-1); err == nil {
-				in.regions = append(in.regions, region{start, tail})
-			}
-		}
-	})
-	return in.err
+	}
+	in.loaded = true
+	return nil
 }
+
+// inputOf is the cached input behind a loopback address, if any.
+func inputOf(local string) *cachedInput {
+	id := local[strings.LastIndex(local, "/")+1:]
+	inputs.Lock()
+	defer inputs.Unlock()
+	return inputs.all[id]
+}
+
+// statusError is an upstream answer that wasn't the bytes asked for.
+type statusError struct{ status int }
+
+func (e *statusError) Error() string { return fmt.Sprintf("the stream answered %d", e.status) }
 
 func (in *cachedInput) cached(at int64) []byte {
 	for _, r := range in.regions {
@@ -170,6 +199,7 @@ func serveInput(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	at := from
+	tries := 0
 	for at <= to {
 		if data := in.cached(at); data != nil {
 			n := min(int64(len(data)), to-at+1)
@@ -192,17 +222,27 @@ func serveInput(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Header.Set("range", fmt.Sprintf("bytes=%d-%d", at, stop))
 		resp, err := upstream.Do(req)
-		if err != nil {
-			return
-		}
-		if resp.StatusCode != http.StatusPartialContent {
+		if err == nil && resp.StatusCode != http.StatusPartialContent {
 			resp.Body.Close()
-			return
+			err = &statusError{resp.StatusCode}
+		}
+		if err != nil {
+			/* A dropped or refused read is asked again, twice, before ffmpeg sees the stream end. */
+			if tries++; tries > 2 || r.Context().Err() != nil {
+				return
+			}
+			time.Sleep(time.Duration(tries) * time.Second)
+			continue
 		}
 		n, err := io.Copy(w, io.LimitReader(resp.Body, stop-at+1))
 		resp.Body.Close()
 		at += n
-		if err != nil || n == 0 {
+		if err != nil && r.Context().Err() != nil {
+			return
+		}
+		if n > 0 {
+			tries = 0
+		} else if tries++; tries > 2 {
 			return
 		}
 	}

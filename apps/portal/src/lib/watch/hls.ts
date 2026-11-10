@@ -70,6 +70,19 @@ export function openHls(key: Buffer, token: string, now = Date.now()): HlsGrant 
   return grant;
 }
 
+/** How often a probe is asked before a slow source counts as failing. */
+export const probeAttempts = 3;
+
+/**
+ * What the packager's answer to a probe means: read, worth asking again
+ * (504: no answer in time, a server error; or no answer at all), or a copy
+ * that will never play (422: refused, or not a video).
+ */
+export function probeOutcome(status: number | null): "ok" | "slow" | "unreadable" {
+  if (status !== null && status >= 200 && status < 300) return "ok";
+  return status === 422 ? "unreadable" : "slow";
+}
+
 /** One packager session per address. */
 export const sessionOf = (token: string) => createHash("sha256").update(token).digest("hex").slice(0, 32);
 

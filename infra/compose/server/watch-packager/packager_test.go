@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -99,5 +102,23 @@ func TestCues(t *testing.T) {
 	got := string(vttSegment(cues, 0, 6))
 	if !strings.Contains(got, "00:00:01.000 --> 00:00:03.500 line:90%\nHello\nthere") || strings.Contains(got, "Bye") {
 		t.Fatalf("segment: %q", got)
+	}
+}
+
+func TestProbeFailuresAreSlowOrUnreadable(t *testing.T) {
+	cases := map[error]string{
+		&statusError{404}:                            "unreadable",
+		&statusError{410}:                            "unreadable",
+		&statusError{429}:                            "slow",
+		&statusError{502}:                            "slow",
+		&unreadableError{"tiny"}:                     "unreadable",
+		context.DeadlineExceeded:                     "slow",
+		fmt.Errorf("wrapped: %w", &statusError{403}): "unreadable",
+		errors.New("connection refused"):             "slow",
+	}
+	for err, want := range cases {
+		if got := classify(err); got != want {
+			t.Errorf("%v: %s, want %s", err, got, want)
+		}
 	}
 }

@@ -30,7 +30,8 @@ import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
 import { migrateTogether } from "./together";
-import { anything, castOf, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
+import { markDead, isDead } from "./dead";
+import { anything, castOf, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
 
@@ -651,7 +652,13 @@ export async function relay(request: Request, token: string): Promise<Response> 
   for (const name of ["range", "if-range", "accept"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
   const startedAt = performance.now();
   const upstream = await fetchUpstream(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal });
-  if (!upstream || (!upstream.ok && upstream.status !== 206)) return new Response("The stream stopped answering. Try another version.", { status: 502 });
+  /* 404 when the copy is gone (refused, or a stand-in clip): the packager passes over it; 502 when it may only be slow. */
+  if (!upstream) return new Response("The stream stopped answering. Try another version.", { status: isDead(grant.url) ? 404 : 502 });
+  if (!upstream.ok && upstream.status !== 206) {
+    await upstream.body?.cancel().catch(() => {});
+    const gone = upstream.status >= 400 && upstream.status < 500 && ![408, 416, 429].includes(upstream.status);
+    return new Response("The stream stopped answering. Try another version.", { status: gone ? 404 : 502 });
+  }
   const out = new Headers({ "cache-control": "private, no-store", "accept-ranges": "bytes" });
   for (const name of ["content-length", "content-range", "last-modified", "etag"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
   const type = videoType(upstream.headers.get("content-type"), upstream.url || grant.url);
@@ -690,10 +697,23 @@ function hlsSession(cfg: WatchConfig, token: string, grant: HlsGrant): Promise<H
   if (known) { known.at = Date.now(); return Promise.resolve(known); }
   return shared(hlsStarting, id, async () => {
     const input = `${cfg.packager.input}/api/v1/watch/stream/${grant.stream}`;
-    const ask = () => packagerFetch(cfg, "/probe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input }), signal: AbortSignal.timeout(75_000) }).catch(() => null);
-    /* Once more when the packager isn't answering yet (it restarts with the server). */
-    const answer = (await ask()) ?? (await new Promise((done) => setTimeout(done, 2000)), await ask());
-    if (!answer?.ok) throw new WatchProblem("This stream couldn't be read. Try another version.", 502);
+    const ask = () => packagerFetch(cfg, "/probe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ input }), signal: AbortSignal.timeout(160_000) }).catch(() => null);
+    /* A slow source (Usenet's first byte, a debrid link still warming up) is asked again; only an unreadable one fails the play. */
+    let answer: Response | null = null;
+    for (let attempt = 0; attempt < probeAttempts; attempt++) {
+      if (attempt) await new Promise((done) => setTimeout(done, 2000 * attempt));
+      answer = await ask();
+      const outcome = probeOutcome(answer?.status ?? null);
+      if (outcome === "ok") break;
+      await answer?.body?.cancel().catch(() => {});
+      if (outcome === "unreadable") {
+        const stream = openStream(await streamKey(), grant.stream);
+        if (stream) markDead(stream.url);
+        throw new WatchProblem("This copy can't be played. Press play again for another.", 502);
+      }
+      answer = null;
+    }
+    if (!answer) throw new WatchProblem("This stream is slow to start. Try again in a moment.", 503);
     const probe = (await answer.json()) as HlsProbe;
     const plan = planHls(probe, grant);
     const job = ffmpegArgs(plan, probe.hardware);
