@@ -73,3 +73,31 @@ test('the anime episode layout is a setting, seasons until changed', () => {
   model.savePrefs(db, 'a', { animeEpisodes: 'sideways' });
   assert.equal(model.prefsOf(db, 'a').animeEpisodes, 'continuous');
 });
+
+import * as rows from '../src/lib/watch/rows.ts';
+
+test("Home's rows follow taste without losing what's new, and a shelf keeps only its own", () => {
+  const plain = rows.orderRows(rows.rowCatalog, new Map());
+  assert.equal(plain[0].id, 'new-episodes');
+  const horrorFan = rows.orderRows(rows.rowCatalog, rows.genreTaste([{ genres: ['Horror'] }, { genres: ['Horror', 'Thriller'] }]));
+  assert.ok(horrorFan.findIndex((r) => r.id === 'horror') < plain.findIndex((r) => r.id === 'horror') - 5, 'Horror moves well up');
+  assert.deepEqual(horrorFan.slice(0, 2).map((r) => r.id), plain.slice(0, 2).map((r) => r.id), 'the first two stay');
+  assert.ok(rows.orderRows(rows.rowCatalog, new Map(), 'Anime').every((r) => r.shelves.includes('Anime')));
+  assert.ok(rows.rowCatalog.length >= 20);
+  assert.equal(new Set(rows.rowCatalog.map((r) => r.id)).size, rows.rowCatalog.length, 'ids are unique');
+});
+
+test("a row's dates are filled in for today", () => {
+  const now = Date.parse('2026-11-10T12:00:00Z');
+  assert.deepEqual(rows.fillParams({ a: '{today}', b: '{daysAgo:10}', c: '16' }, now), { a: '2026-11-10', b: '2026-10-31', c: '16' });
+});
+
+test('settings keep subtitle look, previews and download quality, refusing nonsense', () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  const d = model.prefsOf(db, 'a');
+  assert.deepEqual([d.subtitleSize, d.subtitleBackground, d.previews, d.downloadQuality], ['medium', 'shadow', true, 'standard']);
+  model.savePrefs(db, 'a', { subtitleSize: 'large', subtitleBackground: 'box', previews: false, downloadQuality: 'huge' });
+  const p = model.prefsOf(db, 'a');
+  assert.deepEqual([p.subtitleSize, p.subtitleBackground, p.previews, p.downloadQuality], ['large', 'box', false, 'standard']);
+});

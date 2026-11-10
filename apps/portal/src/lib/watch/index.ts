@@ -21,9 +21,10 @@ import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, chooseMarkers, type Markers } from "./markers";
 import { analyseLater, skipsFor, type SkipDeps, type SkipTarget } from "./skips";
 import { badges, cleanDevice, describe, heightCap, qualityOptions, rank, type Release } from "./releases";
-import { fetchUpstream, findStreams, stremioId, videoType } from "./streams";
+import { fetchUpstream, searchStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
 import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
+import { fillParams, genreTaste, orderRows, rowCatalog, rowMinimum } from "./rows";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
 import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
@@ -80,7 +81,8 @@ export async function watch(work: (config: WatchConfig) => Promise<Response> | R
 function seed(stub: Title | null): Title | null {
   if (!stub) return null;
   const known = getTitle(watchDb(), stub.id);
-  if (known) return known;
+  /* A full title keeps what it has; one still known only from a list takes the newer list's facts. */
+  if (known && known.fetchedAt > 0) return known;
   putTitle(watchDb(), stub);
   return stub;
 }
@@ -264,27 +266,44 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
     return [{ ...cardOf(t, origin), season: p.season, episode: p.episode, label, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
   }).slice(0, 12);
 
-  const trending = await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6));
-  const anime = await tmdbList(cfg, "discover:anime", "/discover/tv", { with_genres: "16", with_origin_country: "JP", sort_by: "popularity.desc" }, hours(12));
-  const films = await tmdbList(cfg, "trending:movie:week", "/trending/movie/week", {}, hours(6));
-  const series = await tmdbList(cfg, "trending:tv:week", "/trending/tv/week", {}, hours(6));
-  const last = recentTitlesList[0];
-  const similar = last ? await tmdbList(cfg, `similar:${last.id}`, `/${last.kind === "movie" ? "movie" : "tv"}/${last.tmdbId}/recommendations`, {}, hours(24)) : [];
   const mine = getTitles(db, listOf(db, username));
+  /* The house rows, nudged by what this person watches (./rows.ts), fetched together and kept for hours. */
+  const ordered = orderRows(rowCatalog, genreTaste([...recentTitlesList, ...mine]), shelf).slice(0, 16);
+  const recentShows = [...new Map(recentTitlesList.map((t) => [t.id, t])).values()].filter(ok).slice(0, 3);
+  const [trending, anime, films, series, catalog, similar] = await Promise.all([
+    tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6)),
+    tmdbList(cfg, "discover:anime", "/discover/tv", { with_genres: "16", with_origin_country: "JP", sort_by: "popularity.desc" }, hours(12)),
+    tmdbList(cfg, "trending:movie:week", "/trending/movie/week", {}, hours(6)),
+    /* Popular series without talk, news, reality and soap shows (TMDB's trending TV is mostly those), which have nothing to stream. */
+    tmdbList(cfg, "discover:popular-series", "/discover/tv", { sort_by: "popularity.desc", "vote_count.gte": "200", without_genres: "10763,10764,10766,10767,16" }, hours(12)),
+    Promise.all(ordered.map((r) => tmdbList(cfg, `row:${r.id}:${new Date().toISOString().slice(0, 10)}`, r.path, fillParams(r.params), hours(r.ttl)))),
+    Promise.all(recentShows.map((t) => tmdbList(cfg, `similar:${t.id}`, `/${t.kind === "movie" ? "movie" : "tv"}/${t.tmdbId}/recommendations`, {}, hours(24)))),
+  ]);
   /* Rows from TMDB leave out what is known not to play; someone's own rows show everything they chose. */
-  checkPlayable(cfg, [...trending, ...series, ...similar, ...anime, ...films].filter(ok).map((t) => t.id));
+  checkPlayable(cfg, [...trending, ...series, ...similar.flat(), ...anime, ...films, ...catalog.flat()].filter(ok).map((t) => t.id));
   const plays = (titles: Title[]) => visible(titles.filter(ok), (id) => playableOf(db, id));
   const top = plays(trending).slice(0, 10);
-
+  type Row = { id: string; title: string; kind: string; items: Card[] };
+  const cards = (id: string, title: string, titles: Title[]): Row | null => {
+    const items = plays(titles).map((t) => cardOf(t, origin));
+    return items.length >= rowMinimum ? { id, title, kind: "cards", items } : null;
+  };
+  const because = recentShows.map((t, i) => cards(`similar-${i}`, `Because you watched ${t.name}`, similar[i] ?? []));
+  const house = ordered.map((r, i) => cards(r.id, r.title, catalog[i] ?? []));
+  /* Personal rows first, then a mix: something new, the popular rows, more of what they like, and "because" rows spaced out. */
   const rows = [
-    continuing.length && { id: "continue", title: "Continue watching", kind: "continue", items: continuing },
-    top.length && { id: "top", title: "Top 10 today", kind: "top", items: top.map((t, i) => cardOf(t, origin, { top: i + 1 })) },
-    { id: "series", title: "Popular series", kind: "cards", items: plays(series).map((t) => cardOf(t, origin)) },
-    last && similar.length && { id: "similar", title: `Because you watched ${last.name}`, kind: "cards", items: plays(similar).map((t) => cardOf(t, origin)) },
-    { id: "anime", title: "Anime", kind: "cards", items: plays(anime).map((t) => cardOf(t, origin)) },
-    { id: "films", title: "Films for tonight", kind: "cards", items: plays(films).map((t) => cardOf(t, origin)) },
-    mine.length && { id: "list", title: "My list", kind: "cards", items: mine.filter(ok).map((t) => cardOf(t, origin)) },
-  ].filter((row): row is { id: string; title: string; kind: string; items: Card[] } => Boolean(row) && (row as { items: unknown[] }).items.length > 0);
+    continuing.length ? { id: "continue", title: "Continue watching", kind: "continue", items: continuing } : null,
+    top.length ? { id: "top", title: "Top 10 today", kind: "top", items: top.map((t, i) => cardOf(t, origin, { top: i + 1 })) } : null,
+    because[0], house[0],
+    !shelf || shelf === "Series" ? cards("series", "Popular series", series) : null,
+    house[1], house[2],
+    !shelf || shelf === "Anime" ? cards("anime", "Popular anime", anime) : null,
+    because[1], house[3],
+    !shelf || shelf === "Film" ? cards("films", "Popular films", films) : null,
+    house[4],
+    mine.length ? { id: "list", title: "My list", kind: "cards", items: mine.filter(ok).map((t) => cardOf(t, origin)) } : null,
+    ...house.slice(5, 9), because[2], ...house.slice(9),
+  ].filter((row): row is Row => Boolean(row) && row!.items.length > 0);
 
   const featured = top.find((t) => t.backdrop) ?? null;
   return { featured: featured ? { ...cardOf(featured, origin), backdropLarge: imageUrl(origin, featured.backdrop, "w1280"), overview: featured.overview } : null, rows };
@@ -351,10 +370,11 @@ function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: nu
   return shared(searching, key, async () => {
     if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
     const manifest = await ensureProvisioned(db, cfg, await nzbdavAccess());
-    const found = await findStreams(manifest, title.kind, stremioId(title.imdbId, season || undefined, episode || undefined));
+    const { releases: found, complete } = await searchStreams(manifest, title.kind, stremioId(title.imdbId, season || undefined, episode || undefined));
     keep(db, key, found, streamTtl);
-    /* A first episode or a film with nothing to stream answers for the whole title; anything found does too. */
-    if (anyPlayable(found) || (season <= 1 && episode <= 1)) notePlayable(db, title.id, anyPlayable(found));
+    /* Anything found says the title plays. Nothing found says it doesn't, but only for a first episode or a film, and only when no source failed: a timeout is not an answer. */
+    if (anyPlayable(found)) notePlayable(db, title.id, true);
+    else if (season <= 1 && episode <= 1 && complete) notePlayable(db, title.id, false);
     return found;
   });
 }

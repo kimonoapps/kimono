@@ -86,10 +86,17 @@ export type Prefs = {
   subtitles: "auto" | "always" | "off";
   /** Anime episodes by season, or as one numbered run (One Piece 1–1100) the way fans count them. */
   animeEpisodes: "seasons" | "continuous";
+  /** How subtitles look (text subtitles; styled anime ones keep their own look). */
+  subtitleSize: "small" | "medium" | "large";
+  subtitleBackground: "none" | "shadow" | "box";
+  /** Silent previews on Home and title pages. */
+  previews: boolean;
+  /** Downloads: smaller, or closer to streaming quality. */
+  downloadQuality: "standard" | "higher";
   autoplayNext: boolean;
   skipIntros: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", audioLanguage: "en", subtitleLanguage: "", animeAudio: "original", filmAudio: "original", subtitles: "auto", animeEpisodes: "seasons", autoplayNext: true, skipIntros: false };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", audioLanguage: "en", subtitleLanguage: "", animeAudio: "original", filmAudio: "original", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -325,6 +332,10 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
     filmAudio: pick(input.filmAudio, ["original", "mine"] as const, base.filmAudio),
     subtitles: pick(input.subtitles, ["auto", "always", "off"] as const, base.subtitles),
     animeEpisodes: pick(input.animeEpisodes, ["seasons", "continuous"] as const, base.animeEpisodes),
+    subtitleSize: pick(input.subtitleSize, ["small", "medium", "large"] as const, base.subtitleSize),
+    subtitleBackground: pick(input.subtitleBackground, ["none", "shadow", "box"] as const, base.subtitleBackground),
+    previews: typeof input.previews === "boolean" ? input.previews : base.previews,
+    downloadQuality: pick(input.downloadQuality, ["standard", "higher"] as const, base.downloadQuality),
     autoplayNext: typeof input.autoplayNext === "boolean" ? input.autoplayNext : base.autoplayNext,
     skipIntros: typeof input.skipIntros === "boolean" ? input.skipIntros : base.skipIntros,
   };

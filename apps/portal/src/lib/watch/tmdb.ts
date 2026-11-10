@@ -89,7 +89,8 @@ export function stubFromTmdb(item: Json): Title | null {
     id: titleId(kind, Number(item.id)), kind, tmdbId: Number(item.id), imdbId: null, anilistId: null, malId: null,
     name: String(item.title ?? item.name ?? ""), overview: String(item.overview ?? ""), year: date ? Number(date.slice(0, 4)) || null : null,
     age: item.adult ? "18+" : "", genres: [], moods: [],
-    shelf: (item.genre_ids ?? []).includes(16) && (item.origin_country ?? []).includes("JP") ? "Anime" : kind === "movie" ? "Film" : "Series",
+    /* Films carry no country in lists: Japanese-language animation counts as anime too. */
+    shelf: (item.genre_ids ?? []).includes(16) && ((item.origin_country ?? []).includes("JP") || item.original_language === "ja") ? "Anime" : kind === "movie" ? "Film" : "Series",
     poster: item.poster_path ?? null, backdrop: item.backdrop_path ?? null, logo: null, runtime: null,
     popularity: Number(item.popularity ?? 0), status: "", nextAirDate: null, seasonCount: 0, cast: [], originalLanguage: String(item.original_language ?? ""), fetchedAt: 0,
   };

@@ -33,6 +33,22 @@ export function releasesFrom(body: Json): Release[] {
   });
 }
 
+/** Error entries a search answers with when one of its sources failed or timed out: the answer is then incomplete. */
+export function searchErrors(body: Json): number {
+  const streams: Json[] = Array.isArray(body.streams) ? body.streams : [];
+  return streams.filter((s) => typeof s.url !== "string" && /❌|⚠|error|timed? ?out|failed|unavailable/i.test(`${s.name ?? ""} ${s.description ?? ""} ${s.title ?? ""}`)).length;
+}
+
+/** Streams found, and whether the search was complete (no source failed), so an empty answer can be trusted or not. */
+export async function searchStreams(manifest: string, kind: "movie" | "series", id: string): Promise<{ releases: Release[]; complete: boolean }> {
+  if (!manifest) throw new WatchProblem("Watch has nowhere to stream from yet.", 503);
+  const url = `${addonBase(manifest)}/stream/${kind}/${encodeURIComponent(id)}.json`;
+  const response = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(25_000) }).catch(() => null);
+  if (!response?.ok) throw new WatchProblem("The stream search didn't answer. Try again in a moment.", 502);
+  const body = (await response.json()) as Json;
+  return { releases: releasesFrom(body), complete: searchErrors(body) === 0 };
+}
+
 export async function findStreams(manifest: string, kind: "movie" | "series", id: string): Promise<Release[]> {
   if (!manifest) throw new WatchProblem("Watch has nowhere to stream from yet.", 503);
   const url = `${addonBase(manifest)}/stream/${kind}/${encodeURIComponent(id)}.json`;
