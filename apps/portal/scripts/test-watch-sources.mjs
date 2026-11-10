@@ -182,3 +182,16 @@ test('sources that find nothing for anything stop branding titles "no copy", and
   assert.equal(ahead.noteSearch(db, false), 0, 'one answer with something in it ends the streak');
   assert.equal(ahead.sourcesQuiet(db), false);
 });
+
+test('a lean encode beats a heavy one of the same size picture, and a known slow connection steers to a smaller copy without ruling any out', () => {
+  const tv = releases.cleanDevice({ client: 'android-tv', maxHeight: 1080, codecs: ['h264', 'hevc'] });
+  const web = R('Film.2021.1080p.WEB-DL.DDP5.1.H.265-GRP ⚡', { bytes: 9 * 1024 ** 3 });
+  const remux = R('Film.2021.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-GRP ⚡', { bytes: 32 * 1024 ** 3 });
+  const small = R('Film.2021.720p.WEBRip.x265-GRP ⚡', { bytes: 1.2 * 1024 ** 3 });
+  assert.equal(releases.rank([remux, web, small], tv, 'auto', 120)[0], web, '9 GB HEVC over a 32 GB disc copy');
+  const slow = { ...tv, link: 3 };
+  assert.equal(releases.rank([remux, web, small], slow, 'auto', 120)[0], small, 'a 3 Mbps connection gets the 720p');
+  assert.equal(releases.rank([web, small], { ...tv, link: 0.3 }, 'auto', 120).length, 2, 'nothing is ruled out for a slow link');
+  const guess = R('Film 2021 ⚡', { bytes: 0.5 * 1024 ** 3 });
+  assert.notEqual(releases.rank([guess, small], slow, 'auto', 120)[0], guess, 'a copy that says nothing about itself comes after one that does');
+});

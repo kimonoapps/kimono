@@ -58,6 +58,8 @@ export type Device = {
   passthrough: AudioFormat[];
   /** Measured at the start of playback, in megabits a second; missing when unknown. */
   mbps?: number;
+  /** The person's connection as last measured (a stall): steers the pick, never rules a version out. */
+  link?: number;
   /** On the same network as the server: full-size remuxes are fine. */
   lan?: boolean;
   /** Decodes 10-bit HEVC/AV1 in hardware; false on older phones and boxes. Missing means yes. */
@@ -169,7 +171,28 @@ export function unplayable(r: Release, device: Device, minutes: number | null): 
   return null;
 }
 
-const sourceRank: Record<Source, number> = { remux: 5, bluray: 4, "web-dl": 3, webrip: 2, hdtv: 1, dvd: 0, unknown: 1 };
+/* How a copy was made, for picture per megabit. A remux is the disc untouched:
+   no better on a phone or across town than a good encode at a quarter of the
+   size, so it ranks with a WEB-DL, and its size is weighed below. */
+const sourceRank: Record<Source, number> = { remux: 3, bluray: 4, "web-dl": 4, webrip: 3, hdtv: 1, dvd: 0, unknown: 1 };
+
+/** The tallest picture a connection carries smoothly (Mbps, as measured). */
+export function linkCap(mbps: number | undefined): number {
+  if (!mbps) return Infinity;
+  return mbps >= 22 ? Infinity : mbps >= 6 ? 1080 : mbps >= 2.5 ? 720 : 480;
+}
+
+/**
+ * Megabits a second worth spending on a picture this tall here: what such a
+ * picture needs to look its best on this kind of screen, never more than
+ * three quarters of the connection when it's known.
+ */
+export function budget(height: number, device: Pick<Device, "client" | "mbps" | "link">, quality: Quality): number {
+  const phone = device.client === "android" || device.client === "ios";
+  const best = quality === "saver" ? 3 : height >= 2160 ? 25 : height >= 1080 ? (phone ? 8 : 14) : height >= 720 ? 5 : 2.5;
+  const known = device.mbps ?? device.link;
+  return known ? Math.min(best, known * 0.75) : best;
+}
 
 /** Higher is better. Close to the cap, then picture, then sound, then a sensible size. */
 /**
@@ -190,7 +213,7 @@ export function languageScore(r: Pick<Release, "languages" | "subtitles">, want:
 }
 
 export function score(r: Release, device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}): number {
-  const cap = heightCap(device, quality);
+  const cap = Math.min(heightCap(device, quality), linkCap(device.mbps ?? device.link));
   let s = 0;
   const h = r.height || 720;
   s += h > cap ? -400 - (h - cap) / 10 : (h / cap) * 400;
@@ -206,12 +229,18 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
   s += languageScore(r, language);
   /* What each source has really managed lately: a version its source can't keep up with drops below one that will play smoothly. */
   if (r.service === "usenet" || r.service === "debrid") s += speedScore(speeds[r.service], needed(r, bitrate(r, minutes)));
+  /* Size for what it buys: up to the budget, more bits look better; past it,
+     every megabit is waiting and data, so a copy twice the budget drops far. */
   const mbps = bitrate(r, minutes);
   if (mbps !== null) {
-    const phone = device.client === "android" || device.client === "ios";
-    const ideal = quality === "saver" ? 3 : h >= 2160 ? 22 : h >= 1080 ? (phone ? 6 : 10) : 4;
-    s -= Math.max(0, mbps - ideal * 2) * (phone || quality === "saver" ? 3 : 1);
+    const spend = budget(h, device, quality);
+    s += mbps > spend ? -(mbps / spend - 1) * 220 : (mbps / spend) * 30;
   }
+  /* A copy that doesn't say its size or codec is a guess: below one that does. */
+  if (!r.height) s -= 60;
+  if (r.codec === "other") s -= 40;
+  /* HEVC and AV1 carry the same picture in about half the bits, where they decode. */
+  if ((r.codec === "hevc" || r.codec === "av1") && device.codecs.includes(r.codec)) s += 25;
   return s;
 }
 

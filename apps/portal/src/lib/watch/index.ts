@@ -505,7 +505,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   /* Casting picks for the receiver; the web player and receivers get HLS as well as the file (./hls.ts). */
   const cast = castOf(raw.cast);
   const asked = cleanDevice(raw.device);
-  const device = screenFor(asked, cast);
+  /* A connection known to be slow lowers what's picked, unless a cast receiver (its own network) plays it. */
+  const link = cast === null ? linkOf(username) : undefined;
+  const device = { ...screenFor(asked, cast), ...(link ? { link } : {}) };
   const hls = Boolean(cfg.packager.key) && (cast !== null || asked.client === "web");
   const prefs = prefsOf(db, username);
   /* Quality: picked in the player just now, else this device's own, else the person's. */
@@ -726,7 +728,16 @@ export async function relay(request: Request, token: string): Promise<Response> 
  */
 export function health(username: string, raw: { titleId?: string | null; season?: string | null; episode?: string | null }) {
   const what = watchKey(String(raw.titleId ?? ""), Number(raw.season) || 0, Number(raw.episode) || 0);
-  return verdict(username, what);
+  const found = verdict(username, what);
+  /* Stalled on their own connection: what it carried is how fast it is. The next pick fits it. */
+  if (found.slow === "connection" && found.mbps > 0) try { writeState(watchDb(), `link:${username.toLowerCase()}`, { mbps: found.mbps, at: Date.now() }); } catch { /* only a hint */ }
+  return found;
+}
+
+/** This person's connection as last measured in a stall, for a few hours: a stall says what it carries. */
+function linkOf(username: string): number | undefined {
+  const link = readState<{ mbps: number; at: number }>(watchDb(), `link:${username.toLowerCase()}`);
+  return link && Date.now() - link.at < 3 * 60 * 60 * 1000 && link.mbps > 0 ? link.mbps : undefined;
 }
 
 /* ───── HLS (./hls.ts) ───── */
