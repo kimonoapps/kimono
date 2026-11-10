@@ -413,3 +413,33 @@ test('a title checked within the day is not checked again; Home hides only what 
   assert.equal(ahead.anyPlayable([{ junk: true }]), false);
   assert.equal(ahead.anyPlayable([{ junk: true }, { junk: false }]), true);
 });
+
+/* ───── Images ───── */
+
+import * as images from '../src/lib/watch/images.ts';
+
+test("images are Kimono's addresses, and only TMDB-shaped requests are fetched", () => {
+  assert.equal(images.imageUrl('https://home.example', '/abc.jpg', 'w500'), 'https://home.example/api/v1/watch/image/w500/abc.jpg');
+  assert.equal(images.imageUrl('https://home.example', null), null);
+  assert.deepEqual(images.imageRequest('w500', ['abc_D-1.jpg']), { size: 'w500', file: 'abc_D-1.jpg', type: 'image/jpeg' });
+  assert.equal(images.imageRequest('original', ['logo.svg']).type, 'image/svg+xml');
+  assert.equal(images.imageRequest('w9999', ['abc.jpg']), null, 'unknown size');
+  assert.equal(images.imageRequest('w500', ['..', 'etc.jpg']), null, 'one file only');
+  assert.equal(images.imageRequest('w500', ['abc.html']), null);
+  assert.equal(images.imageRequest('w500', ['a b.jpg']), null);
+  const h = images.imageHeaders('image/svg+xml', 10);
+  assert.match(h.get('cache-control'), /immutable/);
+  assert.match(h.get('content-security-policy'), /sandbox/);
+});
+
+test('the image cache forgets the least recently used once past its cap, down to 90%', () => {
+  const files = [
+    { path: 'a', bytes: 40, usedAt: 3 },
+    { path: 'b', bytes: 40, usedAt: 1 },
+    { path: 'c', bytes: 40, usedAt: 2 },
+  ];
+  assert.deepEqual(images.evictions(files, 200), []);
+  assert.deepEqual(images.evictions(files, 100).map((f) => f.path), ['b'], '120 → 80, under 90');
+  assert.deepEqual(images.evictions(files, 50).map((f) => f.path), ['b', 'c'], '120 → 40, under 45');
+  assert.equal(images.evictions(files, 10).length, 3);
+});

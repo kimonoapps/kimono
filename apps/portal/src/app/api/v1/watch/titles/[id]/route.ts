@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { ensureTitle, setListed, setRating, setReminder, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
+import { ensureTitle, portalOrigin, setListed, setRating, setReminder, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -9,7 +9,7 @@ export async function GET(request: Request, { params }: Context) {
   if (!user) return unauthorized();
   const { id } = await params;
   const season = Number(new URL(request.url).searchParams.get("season")) || undefined;
-  return watch(async (cfg) => apiJson(await titleView(cfg, user.username, id, season)));
+  return watch(async (cfg) => apiJson(await titleView(cfg, user.username, portalOrigin(request), id, season)));
 }
 
 /** This person's marks on it: `{ inList?, rating?, reminding? }`. */
@@ -31,6 +31,6 @@ export async function PUT(request: Request, { params }: Context) {
       if (body.rating !== null && typeof body.rating !== "string") throw new WatchProblem("Rate it down, up or love.");
       setRating(db, user.username, id, body.rating as Rating | null);
     }
-    return apiJson(await titleView(cfg, user.username, id));
+    return apiJson(await titleView(cfg, user.username, portalOrigin(request), id));
   });
 }

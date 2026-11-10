@@ -1,5 +1,6 @@
 /**
  * TMDB: titles, seasons, episodes, images, age ratings, trending and search.
+ * Images reach the apps through Kimono (./images.ts), never from TMDB.
  * One request per title brings everything a title page needs
  * (append_to_response); episodes come a season at a time, when opened.
  *
@@ -92,9 +93,6 @@ export function stubFromTmdb(item: Json): Title | null {
     popularity: Number(item.popularity ?? 0), status: "", nextAirDate: null, seasonCount: 0, cast: [], fetchedAt: 0,
   };
 }
-
-/** TMDB's images, sized: "w780" for cards, "w1280" or "original" for backdrops. */
-export const imageUrl = (path: string | null, size = "w780") => (path ? `https://image.tmdb.org/t/p/${size}${path}` : null);
 
 /* ───── Requests ───── */
 

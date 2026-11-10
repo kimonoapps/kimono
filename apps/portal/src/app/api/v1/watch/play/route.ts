@@ -1,8 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { play, watch } from "@/lib/watch";
-
-const origin = (request: Request) =>
-  (process.env.KIMONO_PORTAL_URL || process.env.AUTH_URL?.replace(/\/api\/auth\/?$/, "") || new URL(request.url).origin).replace(/\/+$/, "");
+import { play, portalOrigin, watch } from "@/lib/watch";
 
 /**
  * Starts playback: `{ titleId, season?, episode?, version?, device }`, device
@@ -16,5 +13,5 @@ export async function POST(request: Request) {
   if (!user) return unauthorized();
   const read = await readJson(request);
   if ("response" in read) return read.response;
-  return watch(async (cfg) => apiJson(await play(cfg, user.username, origin(request), (read.body ?? {}) as Record<string, unknown>)));
+  return watch(async (cfg) => apiJson(await play(cfg, user.username, portalOrigin(request), (read.body ?? {}) as Record<string, unknown>)));
 }

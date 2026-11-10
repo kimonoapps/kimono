@@ -17,11 +17,12 @@ import {
   prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem, writeState,
   type Episode, type Title,
 } from "./model";
+import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
 import { badges, cleanDevice, describe, rank, type Release } from "./releases";
 import { findStreams, stremioId, upstreamRequest } from "./streams";
 import { ensureProvisioned, hasSources, type NzbdavAccess } from "./provision";
-import { fetchDetails, fetchSeason, imageUrl, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
+import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
 
 export * from "./model";
@@ -149,20 +150,25 @@ async function allEpisodes(cfg: WatchConfig, title: Title): Promise<Episode[]> {
 
 export type Card = { id: string; name: string; kind: Title["kind"]; shelf: Title["shelf"]; year: number | null; age: string; poster: string | null; backdrop: string | null; logo: string | null; badge?: string | null; top?: number };
 
-export function cardOf(t: Title, extra: Partial<Card> = {}): Card {
+/** The Portal's address as the apps reach it: stream and image addresses are built on it. */
+export const portalOrigin = (request: Request) =>
+  (process.env.KIMONO_PORTAL_URL || process.env.AUTH_URL?.replace(/\/api\/auth\/?$/, "") || new URL(request.url).origin).replace(/\/+$/, "");
+
+/** A poster card; images are Kimono's addresses on `origin` (./images.ts). */
+export function cardOf(t: Title, origin: string, extra: Partial<Card> = {}): Card {
   return {
     id: t.id, name: t.name, kind: t.kind, shelf: t.shelf, year: t.year, age: t.age,
-    poster: imageUrl(t.poster, "w500"), backdrop: imageUrl(t.backdrop, "w780"), logo: imageUrl(t.logo, "w500"), ...extra,
+    poster: imageUrl(origin, t.poster, "w500"), backdrop: imageUrl(origin, t.backdrop, "w780"), logo: imageUrl(origin, t.logo, "w500"), ...extra,
   };
 }
 
-export async function titleView(cfg: WatchConfig, username: string, id: string, seasonWanted?: number) {
+export async function titleView(cfg: WatchConfig, username: string, origin: string, id: string, seasonWanted?: number) {
   const db = watchDb();
   const title = await ensureTitle(cfg, id);
   const prefs = prefsOf(db, username);
   const progress = progressOf(db, username, id);
   const base = {
-    title: { ...cardOf(title), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(title.backdrop, "w1280") },
+    title: { ...cardOf(title, origin), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(origin, title.backdrop, "w1280") },
     inList: listOf(db, username).includes(id), rating: ratingOf(db, username, id), reminding: remindsOf(db, username).includes(id),
     /* Taken as playable until a search says otherwise. */
     playable: Boolean(title.imdbId) && playableOf(db, id) !== false,
@@ -187,7 +193,7 @@ export async function titleView(cfg: WatchConfig, username: string, id: string, 
     fillers: prefs.fillers,
     season,
     episodes: episodes.filter((e) => e.season === season).map((e) => ({
-      number: e.number, name: e.name, overview: e.overview, still: imageUrl(e.still, "w500"), runtime: e.runtime, airDate: e.airDate,
+      number: e.number, name: e.name, overview: e.overview, still: imageUrl(origin, e.still, "w500"), runtime: e.runtime, airDate: e.airDate,
       filler: e.filler, recap: e.recap, fraction: fraction(seen.get(`${e.season}:${e.number}`)),
     })),
   };
@@ -207,7 +213,7 @@ async function tmdbList(cfg: WatchConfig, key: string, path: string, params: Rec
 }
 
 /** Home: the rows, each a query over the catalog. */
-export async function home(cfg: WatchConfig, username: string, shelf?: Title["shelf"]) {
+export async function home(cfg: WatchConfig, username: string, origin: string, shelf?: Title["shelf"]) {
   const db = watchDb();
   const ok = (t: Title) => !shelf || t.shelf === shelf;
   const recent = recentTitles(db, username, 30);
@@ -216,7 +222,7 @@ export async function home(cfg: WatchConfig, username: string, shelf?: Title["sh
     const t = recentTitlesList.find((x) => x.id === p.titleId);
     if (!t || !ok(t)) return [];
     if (t.kind === "movie" && finished(p)) return [];
-    return [{ ...cardOf(t), season: p.season, episode: p.episode, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
+    return [{ ...cardOf(t, origin), season: p.season, episode: p.episode, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
   }).slice(0, 12);
 
   const trending = await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6));
@@ -233,16 +239,16 @@ export async function home(cfg: WatchConfig, username: string, shelf?: Title["sh
 
   const rows = [
     continuing.length && { id: "continue", title: "Continue watching", kind: "continue", items: continuing },
-    top.length && { id: "top", title: "Top 10 today", kind: "top", items: top.map((t, i) => cardOf(t, { top: i + 1 })) },
-    { id: "series", title: "Popular series", kind: "cards", items: plays(series).map((t) => cardOf(t)) },
-    last && similar.length && { id: "similar", title: `Because you watched ${last.name}`, kind: "cards", items: plays(similar).map((t) => cardOf(t)) },
-    { id: "anime", title: "Anime", kind: "cards", items: plays(anime).map((t) => cardOf(t)) },
-    { id: "films", title: "Films for tonight", kind: "cards", items: plays(films).map((t) => cardOf(t)) },
-    mine.length && { id: "list", title: "My list", kind: "cards", items: mine.filter(ok).map((t) => cardOf(t)) },
+    top.length && { id: "top", title: "Top 10 today", kind: "top", items: top.map((t, i) => cardOf(t, origin, { top: i + 1 })) },
+    { id: "series", title: "Popular series", kind: "cards", items: plays(series).map((t) => cardOf(t, origin)) },
+    last && similar.length && { id: "similar", title: `Because you watched ${last.name}`, kind: "cards", items: plays(similar).map((t) => cardOf(t, origin)) },
+    { id: "anime", title: "Anime", kind: "cards", items: plays(anime).map((t) => cardOf(t, origin)) },
+    { id: "films", title: "Films for tonight", kind: "cards", items: plays(films).map((t) => cardOf(t, origin)) },
+    mine.length && { id: "list", title: "My list", kind: "cards", items: mine.filter(ok).map((t) => cardOf(t, origin)) },
   ].filter((row): row is { id: string; title: string; kind: string; items: Card[] } => Boolean(row) && (row as { items: unknown[] }).items.length > 0);
 
   const featured = top.find((t) => t.backdrop) ?? null;
-  return { featured: featured ? { ...cardOf(featured), backdropLarge: imageUrl(featured.backdrop, "w1280"), overview: featured.overview } : null, rows };
+  return { featured: featured ? { ...cardOf(featured, origin), backdropLarge: imageUrl(origin, featured.backdrop, "w1280"), overview: featured.overview } : null, rows };
 }
 
 /**
@@ -268,12 +274,12 @@ function checkPlayable(cfg: WatchConfig, ids: string[]) {
     .catch(() => {});
 }
 
-export async function search(cfg: WatchConfig, query: string) {
+export async function search(cfg: WatchConfig, origin: string, query: string) {
   const q = query.trim().slice(0, 100);
-  if (!q) return { results: (await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6))).slice(0, 12).map((t) => cardOf(t)) };
+  if (!q) return { results: (await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6))).slice(0, 12).map((t) => cardOf(t, origin)) };
   const body = await tmdb(cfg.tmdbToken, "/search/multi", { query: q, include_adult: "false" });
   const titles = ((body.results ?? []) as Record<string, unknown>[]).map((item) => seed(stubFromTmdb(item))).filter((t): t is Title => Boolean(t));
-  return { results: titles.slice(0, 30).map((t) => cardOf(t)) };
+  return { results: titles.slice(0, 30).map((t) => cardOf(t, origin)) };
 }
 
 /* ───── Playing ───── */
@@ -407,6 +413,15 @@ async function markersFor(cfg: WatchConfig, title: Title, episodes: Episode[], s
   if (markers === undefined) return null;
   keep(db, key, { markers }, markers ? 7 * 24 * hours(1) : 24 * hours(1));
   return markers;
+}
+
+/** An image from TMDB, by way of Kimono's disk: `/watch/image/w500/abc.jpg`. */
+export async function image(size: string, path: string[]): Promise<Response> {
+  const wanted = imageRequest(size, path);
+  if (!wanted) return new Response("That isn't an image.", { status: 404 });
+  const body = await cachedImage(join(root, "images"), wanted.size, wanted.file);
+  if (!body) return new Response("That image isn't there.", { status: 404 });
+  return new Response(new Uint8Array(body), { headers: imageHeaders(wanted.type, body.length) });
 }
 
 /** The stream itself: the sealed address opened, and the upstream bytes relayed with Range intact so seeking works. */
