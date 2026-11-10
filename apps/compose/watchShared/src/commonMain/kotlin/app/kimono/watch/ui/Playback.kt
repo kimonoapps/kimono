@@ -1,0 +1,244 @@
+package app.kimono.watch.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import app.kimono.watch.data.WatchApi
+import app.kimono.watch.model.Card
+import app.kimono.watch.model.EpisodeInfo
+import app.kimono.watch.model.FillerAhead
+import app.kimono.watch.model.PlayAnswer
+import app.kimono.watch.model.TitlePage
+import app.kimono.watch.model.TrackChoice
+import app.kimono.watch.model.WatchProblem
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+
+/** What covers the picture once the credits roll. */
+sealed interface Post {
+    data object None : Post
+    /** The corner vignette: Watch credits, and Next episode filling itself. */
+    data class Next(val skipped: Int) : Post
+    /** The first time filler is up next: skip it from now on, or watch it. */
+    data class Ask(val filler: FillerAhead) : Post
+    /** No next episode: the end-of-season (or film) card. */
+    data object End : Post
+}
+
+data class SkipOffer(val label: String, val to: Double, val progress: Float)
+
+data class PlayerState(
+    val titleId: String,
+    val page: TitlePage? = null,
+    val season: Int = 0,
+    val episode: Int = 0,
+    val answer: PlayAnswer? = null,
+    /** Goes up each time a new stream should be loaded. */
+    val loads: Int = 0,
+    /** Where to start the stream just loaded, in seconds. */
+    val startAt: Double = 0.0,
+    val loading: Boolean = true,
+    val problem: String? = null,
+    val skip: SkipOffer? = null,
+    val post: Post = Post.None,
+    val recs: List<Card> = emptyList(),
+) {
+    val isFilm get() = page?.title?.isFilm == true
+    val current: EpisodeInfo? get() = page?.episodes?.firstOrNull { it.number == episode && page.season == season }
+    /** Seconds where the credits start: the marker, else the last 25 s. */
+    fun creditsAt(duration: Double): Double = answer?.markers?.credits?.takeIf { it > 0 && it < duration } ?: (duration - 25).coerceAtLeast(duration * 0.9)
+}
+
+/**
+ * The player's mind, apart from the decoder: which episode, skip intro and
+ * recap, the next-up corner, the filler question, and telling the Portal where
+ * playback is (every 10 s, on pause, on leaving) and to get the next episode
+ * ready at 70%.
+ */
+class PlayerViewModel(
+    private val api: WatchApi,
+    private val toasts: Toasts,
+    val titleId: String,
+    /** A downloaded episode's kept play answer, played with no connection. */
+    private val offline: (String, Int, Int) -> PlayAnswer? = { _, _, _ -> null },
+) : ViewModel() {
+    private val _state = MutableStateFlow(PlayerState(titleId))
+    val state: StateFlow<PlayerState> = _state
+    private var loadJob: Job? = null
+    private var lastSaved = -100.0
+    private var prepared = false
+    private var autoSkipped = false
+    private var creditsDone = false
+    private var lastPos = 0.0
+    private var lastDur = 0.0
+
+    /** Starts at [season]/[episode], or wherever Resume points when they're null. */
+    fun start(season: Int?, episode: Int?) {
+        loadJob?.cancel()
+        _state.value = _state.value.copy(loading = true, problem = null)
+        loadJob = viewModelScope.launch {
+            try {
+                val page = api.title(titleId, season?.takeIf { it > 0 })
+                val film = page.title.isFilm
+                val s = if (film) 0 else season ?: page.resume?.season ?: 1
+                val e = if (film) 0 else episode ?: page.resume?.episode ?: 1
+                val shown = if (!film && page.season != s) api.title(titleId, s) else page
+                _state.value = _state.value.copy(page = shown)
+                load(s, e)
+                if (_state.value.recs.isEmpty()) runCatching {
+                    val home = api.home(shown.title.shelf)
+                    _state.value = _state.value.copy(recs = listOf("similar", "anime", "series", "films", "top").flatMap { id -> home.rows.firstOrNull { it.id == id }?.items.orEmpty() }
+                        .filter { it.id != titleId }.distinctBy { it.id }.take(3))
+                }
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                _state.value = _state.value.copy(loading = false, problem = (e as? WatchProblem)?.message ?: "This didn't start. Try again.")
+            }
+        }
+    }
+
+    private suspend fun load(season: Int, episode: Int, version: Int? = null, at: Double? = null) {
+        _state.value = _state.value.copy(season = season, episode = episode, loading = true, problem = null, skip = null, post = Post.None)
+        prepared = false; autoSkipped = false; creditsDone = false; lastSaved = -100.0
+        val page = _state.value.page
+        if (page != null && !page.title.isFilm && page.season != season) {
+            runCatching { api.title(titleId, season) }.getOrNull()?.let { _state.value = _state.value.copy(page = it) }
+        }
+        val answer = (if (version == null) offline(titleId, season, episode) else null) ?: api.play(titleId, season, episode, version)
+        _state.value = _state.value.copy(answer = answer, startAt = at ?: answer.startAt, loads = _state.value.loads + 1)
+    }
+
+    /** The decoder has the first frames: the loading ring goes. */
+    fun started() { _state.value = _state.value.copy(loading = false) }
+
+    fun failed(message: String) { _state.value = _state.value.copy(loading = false, problem = message) }
+
+    fun retry() {
+        val s = _state.value
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, at = lastPos.takeIf { it > 0 }) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "This didn't start. Try again.") } }
+    }
+
+    /**
+     * Called a few times a second with where playback is. Returns a position to
+     * seek to when an intro should be skipped by itself (the person's setting).
+     */
+    fun tick(position: Double, duration: Double, playing: Boolean): Double? {
+        val s = _state.value
+        val answer = s.answer ?: return null
+        if (duration <= 0) return null
+        lastPos = position; lastDur = duration
+        val markers = answer.markers
+        val intro = markers.intro?.takeIf { it.size == 2 }
+        val recap = markers.recap?.takeIf { it.size == 2 }
+        var autoSeek: Double? = null
+        val skip = when {
+            s.post !is Post.None -> null
+            recap != null && position >= recap[0] && position < recap[1] -> SkipOffer("Skip recap", recap[1], ((position - recap[0]) / (recap[1] - recap[0])).toFloat())
+            intro != null && position >= intro[0] && position < intro[1] -> {
+                if (answer.skipIntros && !autoSkipped) { autoSkipped = true; autoSeek = intro[1]; null }
+                else SkipOffer("Skip intro", intro[1], ((position - intro[0]) / (intro[1] - intro[0])).toFloat())
+            }
+            else -> null
+        }
+        val credits = s.creditsAt(duration)
+        var post = s.post
+        if (position < credits - 1) {
+            creditsDone = false
+            if (post is Post.Next || post is Post.Ask) post = Post.None
+        } else if (!creditsDone && post is Post.None) {
+            post = when {
+                answer.fillerAhead != null -> Post.Ask(answer.fillerAhead)
+                answer.next != null -> Post.Next(answer.next.skipped)
+                else -> Post.End
+            }
+        }
+        if (skip != s.skip || post != s.post) _state.value = s.copy(skip = skip, post = post)
+        /* The next one gets ready while this one is still on. */
+        if (!prepared && !s.isFilm && position / duration > 0.7) {
+            prepared = true
+            viewModelScope.launch { runCatching { api.prepare(titleId, s.season, s.episode) } }
+        }
+        if (playing && (position - lastSaved > 10 || position < lastSaved)) save(position, duration)
+        return autoSeek
+    }
+
+    /** Tells the Portal where playback is. */
+    fun save(position: Double, duration: Double) {
+        if (duration <= 0) return
+        lastSaved = position
+        val s = _state.value
+        viewModelScope.launch { runCatching { api.progress(titleId, s.season, s.episode, position, duration) } }
+    }
+
+    /** Leaving the player: the last position is sent even as the screen goes. */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    fun leave(position: Double, duration: Double) {
+        if (duration <= 0) return
+        val s = _state.value
+        kotlinx.coroutines.GlobalScope.launch { withContext(NonCancellable) { runCatching { api.progress(titleId, s.season, s.episode, position, duration) } } }
+    }
+
+    fun watchCredits() {
+        creditsDone = true
+        _state.value = _state.value.copy(post = Post.None)
+    }
+
+    fun playNext() {
+        val next = _state.value.answer?.next ?: return
+        finishCurrent()
+        play(next.season, next.episode)
+    }
+
+    fun play(season: Int, episode: Int) {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch { runCatching { load(season, episode) }.onFailure { e -> if (e !is kotlinx.coroutines.CancellationException) failed((e as? WatchProblem)?.message ?: "This didn't start. Try again.") } }
+    }
+
+    /** Another version (4K, a smaller file, another source), from the same moment. */
+    fun version(index: Int, at: Double) {
+        val s = _state.value
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, index, at) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "That version didn't start.") } }
+    }
+
+    /** This device couldn't decode the version picked: the next one down, from the same moment. False when there's none left. */
+    fun fallback(at: Double): Boolean {
+        val answer = _state.value.answer ?: return false
+        val next = (answer.version?.index ?: 0) + 1
+        if (next >= answer.versions.size) return false
+        version(next, at)
+        return true
+    }
+
+    private fun finishCurrent() {
+        if (lastDur > 0) save(lastDur, lastDur)
+    }
+
+    /** The filler question, answered once for good. */
+    fun fillers(skip: Boolean) {
+        val ask = (_state.value.post as? Post.Ask)?.filler ?: return
+        viewModelScope.launch { runCatching { api.savePrefs(buildJsonObject { put("fillers", JsonPrimitive(if (skip) "skip" else "watch")) }) } }
+        finishCurrent()
+        val target = if (skip) ask.canon else ask.first
+        if (skip) toasts.show(target?.let { "Skipping to episode ${it.episode}" } ?: "Fillers will be skipped")
+        if (target != null) play(target.season, target.episode) else _state.value = _state.value.copy(post = Post.End)
+    }
+
+    /** Audio and subtitles picked in the player, kept for this show so the next episode starts the same way. */
+    fun tracks(audio: String, subtitles: String) {
+        viewModelScope.launch { runCatching { api.mark(titleId, tracks = TrackChoice(audio, subtitles)) } }
+    }
+
+    fun remind() {
+        val page = _state.value.page ?: return
+        _state.value = _state.value.copy(page = page.copy(reminding = true))
+        toasts.show("We'll let you know when it arrives")
+        viewModelScope.launch { runCatching { api.mark(titleId, reminding = true) } }
+    }
+}

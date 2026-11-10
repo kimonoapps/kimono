@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 }
 
 include(":shared", ":androidApp")
+/* Kimono Watch: its own app, so the main one gains nothing from the player. */
+include(":watchShared", ":watchAndroid")
