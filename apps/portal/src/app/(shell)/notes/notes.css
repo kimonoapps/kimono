@@ -28,8 +28,13 @@
 .nt-rail { display: none; }
 @media (min-width: 760px) {
   .nt.is-railed { grid-template-columns: 56px 300px minmax(0, 1fr); }
-  .nt.is-railed .nt-rail { order: -1; min-height: 0; animation: nt-rail-in var(--k-t-seat) var(--k-ease-settle, ease) both; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; overflow-y: auto; overflow-x: hidden; background: var(--k-container); }
-  .nt.is-railed .nt-side { left: 0; }
+  .nt.is-railed .nt-rail { order: -1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; overflow-y: auto; overflow-x: hidden; background: var(--k-container); }
+  /* Narrowing to the rail, the panel stays put under the list and the note as they slide left over it, then goes; the rail fades in on top. */
+  .nt.is-railed .nt-side { left: 0; z-index: 1; transform: none; transition: visibility 0s linear var(--k-t-seat); }
+  .nt.is-railed.is-placing .nt-side { z-index: 30; }
+  .nt.is-railed .nt-rail { position: relative; z-index: 2; }
+  .nt.is-railed .nt-rail > * { animation: nt-rail-in var(--k-t-seat) var(--k-ease-settle, ease) both; }
+  .nt.is-railed .nt-listcol, .nt.is-railed .nt-notecol { position: relative; z-index: 3; }
 }
 .nt-rail-new { width: 36px; height: 34px; display: grid; place-items: center; flex: none; padding: 0; border: 0; border-radius: 8px; background: var(--k-primary-container); color: var(--k-on-primary-container); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--k-on-primary-container) 20%, transparent); cursor: pointer; }
 .nt-rail-new:hover { background: color-mix(in srgb, var(--k-on-primary-container) 8%, var(--k-primary-container)); }
@@ -41,7 +46,7 @@
 .nt-rail :focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
 @media (min-width: 760px) {
   .nt.is-docked { grid-template-columns: 248px 300px minmax(0, 1fr); }
-  /* Docking, the panel stays put and its column opens over it: the list and the note sit above it and slide right to show it. Narrowing to the rail, it slides away as the rail fades in. */
+  /* Docking, the panel stays put and its column opens over it: the list and the note sit above it and slide right to show it. Narrowing to the rail, the reverse. */
   .nt.is-docked .nt-side { position: relative; order: -1; z-index: 2; width: 248px; min-height: 0; transform: none; visibility: visible; box-shadow: none; transition: none; }
   .nt.is-docked .nt-listcol { position: relative; z-index: 3; }
   .nt.is-docked .nt-notecol { z-index: 3; }
@@ -310,7 +315,7 @@
 @keyframes nt-rail-in { from { opacity: 0; translate: -10px 0; } }
 @media (prefers-reduced-motion: reduce) {
   .nt, .nt.is-docked .nt-side { transition: none; }
-  .nt.is-railed .nt-rail { animation: none; }
+  .nt.is-railed .nt-rail > * { animation: none; }
   .nt-side, .nt-chev svg.i, .nt-title-wrap::after { transition: none; }
   .nt-notebook.is-arriving, .nt-menu, .nt-sheet, .nt-shade, .nt-snack, .nt-side-shade, .nt-confirm, .nt-tick.is-fresh .tick, .nt-tick.is-fresh .ring { animation: none; }
 }
