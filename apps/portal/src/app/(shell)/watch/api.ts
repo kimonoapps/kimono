@@ -8,14 +8,19 @@ export type Card = {
   id: string; name: string; kind: "movie" | "series"; shelf: Shelf; year: number | null; age: string;
   poster: string | null; backdrop: string | null; logo: string | null; badge?: string | null; top?: number;
 };
-export type ContinueCard = Card & { season: number; episode: number; fraction: number; left: number };
+export type ContinueCard = Card & { season: number; episode: number; fraction: number; left: number; label?: string };
 export type Row = { id: string; title: string; kind: "continue" | "top" | "cards" | string; items: (Card | ContinueCard)[] };
 export type Home = { featured: (Card & { backdropLarge: string | null; overview: string }) | null; rows: Row[] };
 
+export type Layout = "single" | "continuous" | "seasons";
 export type Rating = "down" | "up" | "love";
 export type FillerChoice = "ask" | "skip" | "watch";
 export type Mark = { episode: number; state: "done" | "skip" | "upcoming" | "open"; fraction: number };
 export type Episode = {
+  /** Which season it sits in, its number there, and its number counted from the first episode. */
+  season?: number; absolute?: number;
+  /** How to name it: "S2:E3", "E27" or "E3", as the title's layout says. */
+  label?: string;
   number: number; name: string; overview: string; still: string | null; runtime: number | null; airDate: string | null;
   filler: boolean; recap: boolean; fraction: number;
 };
@@ -24,7 +29,9 @@ export type TitleView = {
   inList: boolean; rating: Rating | null; reminding: boolean;
   tracks: { audio: string; subtitles: string } | null;
   playable: boolean;
-  resume: ({ season: number; episode: number; position: number; started: boolean }) | ({ position: number; fraction: number }) | null;
+  resume: ({ season: number; episode: number; position: number; started: boolean; label?: string }) | ({ position: number; fraction: number }) | null;
+  /** "single": one season, so no season anywhere; "continuous": one list numbered from the first; "seasons": the picker. */
+  layout?: Layout;
   seasons?: { number: number; name: string; episodeCount: number; airDate: string | null }[];
   tracker?: { season: number; left: number; marks: Mark[]; nextAirDate: string | null } | null;
   badge?: string | null;
@@ -43,7 +50,7 @@ export type Play = {
   version: { index: number; label: string; badges: string[]; source: string };
   versions: { index: number; label: string; source: string }[];
   startAt: number;
-  next: (Ref & { skipped: number }) | null;
+  next: (Ref & { skipped: number; label?: string }) | null;
   fillerAhead: { first: Ref; count: number; canon: Ref | null } | null;
   autoplayNext: boolean;
   markers: Markers;
@@ -53,7 +60,7 @@ export type Play = {
   /** The quality playing and the ones this release offers here; absent from older servers. */
   quality?: { current: string; options: { value: string; label: string }[] };
 };
-export type Prefs = { fillers: FillerChoice; quality: string; audioLanguage: string; subtitleLanguage: string; animeAudio: string; filmAudio: string; subtitles: string; autoplayNext: boolean; skipIntros: boolean };
+export type Prefs = { fillers: FillerChoice; quality: string; audioLanguage: string; subtitleLanguage: string; animeAudio: string; filmAudio: string; subtitles: string; autoplayNext: boolean; skipIntros: boolean; animeEpisodes?: "seasons" | "continuous" };
 export type Device = { client: "web"; maxHeight: number; codecs: string[]; hdr: string[] };
 
 export class WatchError extends Error {
@@ -167,4 +174,21 @@ export const languageName = (code: string) => { try { return languageNames?.of(c
 export function airText(date: string) {
   const d = new Date(`${date}T12:00:00`);
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+}
+
+/* ───── Naming episodes ───── */
+
+/** An episode's label from the title page, else built the way the layout would: "E4" without seasons, "S2:E3" with. */
+export function labelOf(view: Pick<TitleView, "layout" | "episodes" | "season"> | null | undefined, season: number, episode: number): string {
+  const found = view?.episodes?.find((e) => (e.season ?? view.season) === season && e.number === episode);
+  if (found?.label) return found.label;
+  if (view?.layout === "continuous" && found?.absolute) return `E${found.absolute}`;
+  return view?.layout && view.layout !== "seasons" ? `E${episode}` : `S${season}:E${episode}`;
+}
+/** "S2:E3" said in full ("Season 2, Episode 3"); "E27" is "Episode 27". */
+export function longLabel(label: string) {
+  const m = /^S(\d+):E(\d+)$/.exec(label);
+  if (m) return `Season ${m[1]}, Episode ${m[2]}`;
+  const e = /^E(\d+)$/.exec(label);
+  return e ? `Episode ${e[1]}` : label;
 }

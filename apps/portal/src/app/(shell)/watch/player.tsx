@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
-import { airText, clock, deviceOf, languageName, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
+import { airText, clock, deviceOf, labelOf, languageName, longLabel, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, TitleMark, useTabTitle, useWatch } from "./bits";
 import { InkLoader, InkRing } from "@kimono/ui";
 import { Icon, SeekIcon } from "./icons";
@@ -125,7 +125,9 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
 
   const movie = view ? !view.seasons : false;
   const episodes: Episode[] = view?.episodes ?? [];
-  const episode = ep ? episodes.find((e) => e.number === ep.episode) ?? null : null;
+  const episode = ep ? episodes.find((e) => (e.season ?? view?.season) === ep.season && e.number === ep.episode) ?? null : null;
+  /* "S2:E3", "E27" or "E3": however the title's layout names it. */
+  const epLabel = ep ? episode?.label ?? labelOf(view, ep.season, ep.episode) : "";
 
   /* ───── Controls that come and go ───── */
   const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -344,7 +346,9 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     save();
     live.current.tries = 0;
     setEp(to); live.current.ep = to;
-    if (live.current.view && live.current.view.season !== to.season) {
+    const shown = live.current.view;
+    /* Only a show laid out by season loads its episodes a season at a time. */
+    if (shown && (!shown.layout || shown.layout === "seasons") && shown.season !== to.season) {
       try { const v = await watchApi.title(id, to.season); setView(v); live.current.view = v; } catch { /* the old list will do */ }
     }
     void loadEpisode(id, to, { startAt });
@@ -760,7 +764,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   /* ───── What the screen says ───── */
   const t = view?.title;
   useTabTitle(titleId ? t?.name : null);
-  const epLine = ep && episode ? `S${ep.season}:E${ep.episode} · ${episode.name}` : "";
+  const epLine = ep && episode ? `${epLabel} · ${episode.name}` : "";
   const next = party?.countdown?.to ?? play?.next ?? null;
   const fill = play?.fillerAhead ?? null;
   const recs = t ? alike(watch.known(), t.id, t.shelf, 3) : [];
@@ -788,11 +792,11 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       </>}
     </div>
     <div className={cx("kw-pause-info", pauseCard && "kw-on")}>
-      {t ? <div><small>You’re watching</small><TitleMark name={t.name} logo={t.logo} />{!movie && ep && episode ? <p><b>Season {ep.season}: Episode {ep.episode} “{episode.name}”</b></p> : null}<p>{(movie ? t.overview : episode?.overview) || t.overview}</p></div> : null}
+      {t ? <div><small>You’re watching</small><TitleMark name={t.name} logo={t.logo} />{!movie && ep && episode ? <p><b>{longLabel(epLabel)} “{episode.name}”</b></p> : null}<p>{(movie ? t.overview : episode?.overview) || t.overview}</p></div> : null}
     </div>
     <div className="kw-p-top">
       <button className="kw-pbtn" aria-label="Back to browse" onClick={exit}><Icon name="back" /></button>
-      <div className="kw-ttl">{t ? <><b>{t.name}</b>{!movie && ep && episode ? <>&nbsp; E{ep.episode} · {episode.name}</> : null}</> : null}</div>
+      <div className="kw-ttl">{t ? <><b>{t.name}</b>{!movie && ep && episode ? <>&nbsp; {epLabel} · {episode.name}</> : null}</> : null}</div>
       {party ? <button className="kw-faces" aria-label="Who's watching" onClick={() => openSheet("party")}>
         {!online ? <em>Reconnecting…</em> : null}
         {party.members.filter((m) => m.present).slice(0, 5).map((m) => <Face key={m.client} person={personOf(m.username)} state={m.state} />)}
@@ -831,7 +835,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
           <button className="kw-pbtn" aria-label="Mute" onClick={toggleMute}><Icon name={muted || volume === 0 ? "mute" : "vol"} /></button>
           <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} aria-label="Volume" onChange={(event) => { const v = video.current; if (!v) return; v.volume = Number(event.target.value); v.muted = v.volume === 0; setVolume(v.volume); setMuted(v.muted); }} />
         </div>
-        <div className="kw-name">{t ? <><b>{t.name}</b>{!movie && ep && episode ? <>&nbsp; S{ep.season}:E{ep.episode} “{episode.name}”</> : null}</> : null}</div>
+        <div className="kw-name">{t ? <><b>{t.name}</b>{!movie && ep && episode ? <>&nbsp; {epLabel} “{episode.name}”</> : null}</> : null}</div>
         <button className="kw-pbtn kw-lab" aria-label="Speed and quality" onClick={() => openSheet("speed")}><Icon name="speed" /><span>Speed &amp; quality</span></button>
         {!movie ? <button className="kw-pbtn kw-lab" aria-label="Episodes" onClick={() => openSheet("eps")}><Icon name="eps" /><span>Episodes</span></button> : null}
         <button className="kw-pbtn kw-lab" aria-label="Audio and subtitles" onClick={() => openSheet("cc")}><Icon name="cc" /><span>Audio &amp; subtitles</span></button>
@@ -875,7 +879,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
           void loadEpisode(titleId, live.current.ep, { startAt: video.current.currentTime });
         }}><Icon name="check" />{q.label}</button>)}</div> : null}
       </> : null}
-      {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} progress={time / d} onPick={(n) => { setSheet(null); pickEpisode({ season: ep.season, episode: n }); }} /> : null}
+      {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} bySeason={!view?.layout || view.layout === "seasons"} season={view?.season ?? ep.season} continuous={view?.layout === "continuous"} progress={time / d} onPick={(to) => { setSheet(null); pickEpisode(to); }} /> : null}
       {sheet === "react" && party ? <div className="kw-reacts">{reactionSet.map((e) => <button key={e} aria-label={`React ${e}`} onClick={() => void live.current.link?.react(e)}>{e}</button>)}</div> : null}
       {sheet === "party" && party ? <PartySheet party={party} me={me} client={myClient} people={people} personOf={personOf}
         onInvite={(u) => { void live.current.link?.invite([u]); say(`Invited ${firstOf(u)}`); }}
@@ -904,7 +908,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
         <div className="kw-nx">
           {next.skipped ? <span className="kw-nx-note">Skipping {next.skipped} filler episode{next.skipped > 1 ? "s" : ""}</span> : null}
           <button className="kw-btn kw-tonal" onClick={() => { live.current.creditsDone = true; if (live.current.link?.state) { if (!steering()) return; void live.current.link.command("cancel-countdown"); } endNextUp(); showCtl(); }}>Watch credits</button>
-          <button className="kw-btn kw-primary kw-countdown" title={`S${next.season}:E${next.episode}`} onClick={() => { clearInterval(countTimer.current); playNext(); }}><i style={{ width: `${countdown * 100}%` }} /><Icon name="next" /><span>Next episode</span></button>
+          <button className="kw-btn kw-primary kw-countdown" title={labelOf(view, next.season, next.episode)} onClick={() => { clearInterval(countTimer.current); playNext(); }}><i style={{ width: `${countdown * 100}%` }} /><Icon name="next" /><span>Next episode</span></button>
         </div>
       </> : null}
       {post === "end" && t ? <>
@@ -912,7 +916,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
         {!ended ? <button className="kw-credits-btn" aria-label="Watch credits" onClick={() => { live.current.creditsDone = true; setPost(null); live.current.post = null; showCtl(); }}><span>Watch credits</span></button> : null}
         <button className="kw-pbtn kw-back" aria-label="Back to browse" onClick={exit}><Icon name="close" /></button>
         <div className="kw-card-n">
-          <small>{movie ? "Up next for you" : `You finished Season ${ep?.season ?? 1}`}</small>
+          <small>{movie ? "Up next for you" : !view?.layout || view.layout === "seasons" ? `You finished Season ${ep?.season ?? 1}` : "You’re up to date"}</small>
           <h2>{movie ? "More like this" : nextAir ? `Next episode ${airText(nextAir)}` : "You’re all caught up"}</h2>
           {!movie && nextAir ? <>
             <p>We’ll tell you the moment it lands.</p>
@@ -927,16 +931,19 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   </div>;
 }
 
-function EpisodeList({ episodes, ep, progress, onPick }: { episodes: Episode[]; ep: Ref; progress: number; onPick: (n: number) => void }) {
+function EpisodeList({ episodes, ep, bySeason, season, continuous, progress, onPick }: {
+  episodes: Episode[]; ep: Ref; bySeason: boolean; season: number; continuous: boolean; progress: number; onPick: (to: Ref) => void;
+}) {
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => { list.current?.querySelector(".kw-now")?.scrollIntoView({ block: "center" }); }, []);
-  return <div ref={list}><h4>Season {ep.season}</h4>
+  return <div ref={list}><h4>{bySeason ? `Season ${ep.season}` : "Episodes"}</h4>
     {episodes.filter(aired).map((e) => {
-      const now = e.number === ep.episode;
+      const at = e.season ?? season;
+      const now = at === ep.season && e.number === ep.episode;
       const f = now ? progress : e.fraction;
-      return <button key={e.number} className={cx("kw-pep", now && "kw-now")} onClick={() => { if (!now) onPick(e.number); }}>
+      return <button key={`${at}:${e.number}`} className={cx("kw-pep", now && "kw-now")} onClick={() => { if (!now) onPick({ season: at, episode: e.number }); }}>
         <div className="kw-th"><Img src={e.still} />{f > 0 ? <div className="kw-bar"><i style={{ width: `${f * 100}%` }} /></div> : null}</div>
-        <div><b>{e.number}. {e.name}</b><span>{e.runtime ? `${e.runtime}m` : ""}{e.filler ? " · Filler" : e.recap ? " · Recap" : ""}</span></div>
+        <div><b>{continuous ? e.absolute ?? e.number : e.number}. {e.name}</b><span>{e.runtime ? `${e.runtime}m` : ""}{e.filler ? " · Filler" : e.recap ? " · Recap" : ""}</span></div>
       </button>;
     })}
   </div>;

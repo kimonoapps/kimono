@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { watchApi, minutesText, type Card, type ContinueCard, type Home, type Shelf, type TitleView } from "./api";
+import { labelOf, watchApi, minutesText, type Card, type ContinueCard, type Home, type Shelf, type TitleView } from "./api";
 import { CardArt, cx, Img, ListButton, RateButton, Rail, SkeletonRows, tagClass, TitleMark, Top10, useWatch } from "./bits";
 import { Icon } from "./icons";
 
@@ -70,7 +70,7 @@ export function PosterCard({ card, plain, poster }: { card: Card; plain?: boolea
 function ContinueTile({ card }: { card: ContinueCard }) {
   const watch = useWatch();
   const series = card.kind === "series";
-  const label = series ? `S${card.season}:E${card.episode} · ${card.left}m left` : `${card.left}m left`;
+  const label = series ? `${card.label ?? `S${card.season}:E${card.episode}`} · ${card.left}m left` : `${card.left}m left`;
   return <div className="kw-cw">
     <button className="kw-shot" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}>
       <Img src={card.backdrop ?? card.poster} />
@@ -131,9 +131,12 @@ function HoverCard() {
 
   const card = at?.card;
   const v = view && card && view.title.id === card.id ? view : null;
-  const meta = v ? (v.seasons ? (v.seasons.length > 1 ? `${v.seasons.length} seasons` : `${v.seasons[0]?.episodeCount ?? 0} episodes`) : minutesText(v.title.runtime)) : "";
+  const count = v?.episodes?.length ?? 0;
+  const meta = !v ? "" : !v.seasons ? minutesText(v.title.runtime)
+    : v.layout && v.layout !== "seasons" ? `${count} episode${count === 1 ? "" : "s"}`
+      : v.seasons.length > 1 ? `${v.seasons.length} seasons` : `${v.seasons[0]?.episodeCount ?? count} episodes`;
   const resume = v && v.tracker && v.resume && "season" in v.resume ? v.resume : null;
-  const resumeEp = resume && v?.episodes?.find((e) => e.number === resume.episode && v.season === resume.season);
+  const resumeEp = resume && v?.episodes?.find((e) => e.number === resume.episode && (e.season ?? v.season) === resume.season);
   return <div ref={box} className={cx("kw-hover", on && "kw-on")} style={at?.style} role="dialog" aria-label="Preview" onMouseLeave={() => setOn(false)}>
     {card ? <>
       <div className="kw-shot"><Img src={card.backdrop ?? card.poster} /><span className="kw-t">{card.name}</span></div>
@@ -147,7 +150,7 @@ function HoverCard() {
         </div>
         <div className="kw-info">{card.badge ? <span className="kw-hi">{card.badge}</span> : null}{card.age ? <span className="kw-box">{card.age}</span> : null}{meta ? <span>{meta}</span> : card.year ? <span>{card.year}</span> : null}</div>
         {resume && resumeEp ? <>
-          <div className="kw-info"><span>S{resume.season}:E{resume.episode} “{resumeEp.name}”</span></div>
+          <div className="kw-info"><span>{resume.label ?? labelOf(v, resume.season, resume.episode)} “{resumeEp.name}”</span></div>
           <div className="kw-bar"><i style={{ width: `${resumeEp.fraction * 100}%` }} /></div>
         </> : null}
         {v ? <div className="kw-dots">{[...v.title.genres, ...v.title.moods].slice(0, 3).map((g) => <span key={g}>{g}</span>)}</div> : <div className="kw-sk kw-sk-line" style={{ width: "60%" }} />}

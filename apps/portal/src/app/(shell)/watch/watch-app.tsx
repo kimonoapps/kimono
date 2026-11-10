@@ -230,7 +230,7 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
           </nav>
           <div className="kw-spacer" />
           <button className="kw-iconbtn" aria-label="Search" onClick={() => setSearching(true)}><Icon name="search" /></button>
-          <AccountMenu profile={profile} onSwitch={() => { setProfile(null); try { sessionStorage.removeItem(chosenKey); } catch { /* fine */ } }} />
+          <AccountMenu profile={profile} onLayout={() => setRefreshKey(Date.now())} onSwitch={() => { setProfile(null); try { sessionStorage.removeItem(chosenKey); } catch { /* fine */ } }} />
         </header>
         {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} />
           : page === "hot" ? <HotPage ids={hotIds} />
@@ -258,15 +258,17 @@ export function WatchApp({ me, household, accent }: { me: Person; household: Per
 }
 
 /* ───── The avatar's menu: this device's quality, and switching profile ───── */
-function AccountMenu({ profile, onSwitch }: { profile: Person; onSwitch: () => void }) {
+function AccountMenu({ profile, onSwitch, onLayout }: { profile: Person; onSwitch: () => void; onLayout: () => void }) {
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(false);
   const [quality, setQuality] = useState(savedQuality);
+  const [anime, setAnime] = useState<"seasons" | "continuous">("seasons");
   const [say, setSay] = useState<{ text: string; at: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   /* The server keeps this device's choice; the copy here only saves a flash of the old one. */
   useEffect(() => {
     watchApi.deviceQuality().then((q) => { const v = q ?? "auto"; setQuality(v); saveQuality(v); }, () => {});
+    watchApi.prefs().then((p) => setAnime(p.animeEpisodes === "continuous" ? "continuous" : "seasons"), () => {});
   }, []);
   useEffect(() => {
     if (!open) return;
@@ -291,6 +293,14 @@ function AccountMenu({ profile, onSwitch }: { profile: Person; onSwitch: () => v
     {open ? <div className={cx("kw-smenu", shown && "kw-on")} role="menu">
       <p className="kw-menu-h">Quality on this device</p>
       {qualities.map((q) => <button key={q.value} role="menuitemradio" aria-checked={quality === q.value} onClick={() => pick(q.value)}><Icon name="check" /><b>{q.label}</b><span /></button>)}
+      <div className="kw-menu-rule" />
+      <p className="kw-menu-h">Anime episodes</p>
+      {([["seasons", "By season"], ["continuous", "One list"]] as const).map(([value, label]) => <button key={value} role="menuitemradio" aria-checked={anime === value} onClick={() => {
+        if (anime === value) return;
+        const before = anime;
+        setAnime(value);
+        watchApi.setPrefs({ animeEpisodes: value }).then(() => { setSay({ text: "Saved", at: Date.now() }); onLayout(); }, () => { setAnime(before); setSay({ text: "That didn't work.", at: Date.now() }); });
+      }}><Icon name="check" /><b>{label}</b><span /></button>)}
       <div className="kw-menu-rule" />
       <button role="menuitem" onClick={() => { setOpen(false); onSwitch(); }}><span /><b>Switch profile</b><span /></button>
     </div> : null}

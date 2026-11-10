@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { airText, minutesText, watchApi, type Episode, type TitleView } from "./api";
+import { airText, labelOf, minutesText, watchApi, type Episode, type TitleView } from "./api";
 import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
 
@@ -111,7 +111,10 @@ function SheetSkeleton() {
 
 function Meta({ view }: { view: TitleView }) {
   const t = view.title;
-  const length = view.seasons ? (view.seasons.length > 1 ? `${view.seasons.length} seasons` : `${view.seasons[0]?.episodeCount ?? 0} episodes`) : minutesText(t.runtime);
+  const count = view.episodes?.length ?? 0;
+  const length = !view.seasons ? minutesText(t.runtime)
+    : view.layout && view.layout !== "seasons" ? `${count} episode${count === 1 ? "" : "s"}`
+      : view.seasons.length > 1 ? `${view.seasons.length} seasons` : `${view.seasons[0]?.episodeCount ?? count} episodes`;
   return <div className="kw-meta">
     {view.badge ? <span className="kw-hi">{view.badge}</span> : null}
     {t.year ? <span>{t.year}</span> : null}
@@ -141,13 +144,14 @@ function Resume({ view }: { view: TitleView }) {
     </div>;
   }
   const r = view.resume && "season" in view.resume ? view.resume : null;
-  const ep = r && view.season === r.season ? view.episodes?.find((e) => e.number === r.episode) : null;
+  const ep = r ? view.episodes?.find((e) => (e.season ?? view.season) === r.season && e.number === r.episode) : null;
+  const label = r ? r.label ?? labelOf(view, r.season, r.episode) : "E1";
   const fraction = ep && r && ep.runtime ? Math.min(1, r.position / (ep.runtime * 60)) : 0;
   const at = r ? { season: r.season, episode: r.episode } : undefined;
   return <div className="kw-resume">
-    <button className="kw-btn kw-primary" onClick={() => watch.play(t.id, at)}><Icon name="play" />{r?.started ? "Resume" : `Play S${r?.season ?? 1}:E${r?.episode ?? 1}`}</button>
+    <button className="kw-btn kw-primary" onClick={() => watch.play(t.id, at)}><Icon name="play" />{r?.started ? "Resume" : `Play ${label}`}</button>
     <button className="kw-btn kw-tonal" onClick={() => watch.together(t.id, { season: r?.season ?? 1, episode: r?.episode ?? 1, position: r?.started ? r.position : 0 })}><Icon name="group" />Watch together</button>
-    {r?.started && ep ? <small>S{r.season}:E{r.episode} “{ep.name}” {fraction > 0 ? <span className="kw-bar"><i style={{ width: `${fraction * 100}%` }} /></span> : null}{ep.runtime ? ` ${Math.max(1, Math.round(ep.runtime * (1 - fraction)))}m left` : ""}</small> : null}
+    {r?.started && ep ? <small>{label} “{ep.name}” {fraction > 0 ? <span className="kw-bar"><i style={{ width: `${fraction * 100}%` }} /></span> : null}{ep.runtime ? ` ${Math.max(1, Math.round(ep.runtime * (1 - fraction)))}m left` : ""}</small> : null}
   </div>;
 }
 
@@ -160,7 +164,7 @@ function Tracker({ view }: { view: TitleView }) {
       : nextAir ? `Next episode ${airText(nextAir)}`
         : "That’s the end of the series so far";
   return <div className="kw-tracker">
-    <div className="kw-lab"><b>{tr.left === 1 ? "Last episode" : tr.left === 0 ? "All caught up" : `${tr.left} episodes left`} in Season {tr.season}</b><span>{after}</span></div>
+    <div className="kw-lab"><b>{tr.left === 1 ? "Last episode" : tr.left === 0 ? "All caught up" : `${tr.left} episodes left`}{!view.layout || view.layout === "seasons" ? ` in Season ${tr.season}` : ""}</b><span>{after}</span></div>
     <div className="kw-segs">{tr.marks.map((m) => <i key={m.episode} className={cx(m.state === "done" && "kw-fin", m.state === "skip" && "kw-skip", m.state === "upcoming" && "kw-upcoming")}>
       {m.state === "open" && m.fraction > 0 ? <b style={{ width: `${m.fraction * 100}%` }} /> : null}
     </i>)}</div>
@@ -186,33 +190,40 @@ function Episodes({ view, loading, pickSeason }: { view: TitleView; loading: boo
   const last = seasons[seasons.length - 1]?.number;
   const ended = /ended|canceled/i.test(view.title.status);
   const wide = typeof window !== "undefined" && matchMedia("(min-width: 900px)").matches;
+  /* Only a show laid out by season has a picker; one season, or one long list, has none. */
+  const picker = (!view.layout || view.layout === "seasons") && seasons.length > 0;
+  const numberOf = (e: Episode) => (view.layout === "continuous" ? e.absolute ?? e.number : e.number);
   return <>
     <div className="kw-eps-head">
-      <div className="kw-sdrop" ref={drop}>
+      {picker ? <div className="kw-sdrop" ref={drop}>
         <button className="kw-sbtn" aria-haspopup="listbox" aria-expanded={open} onClick={() => { setOpen(!open); setShown(false); }}>Season {season}<Icon name="more" /></button>
         {open ? <div className={cx("kw-smenu", shown && "kw-on")} role="listbox">
           {seasons.map((s) => <button key={s.number} role="option" aria-selected={s.number === season} onClick={() => { setOpen(false); setShown(false); if (s.number !== season) pickSeason(s.number); }}>
             <Icon name="check" /><b>Season {s.number}</b><span>{s.episodeCount} episodes</span>
           </button>)}
         </div> : null}
-      </div>
+      </div> : <h3>Episodes</h3>}
       <span className="kw-eps-count">{episodes.length} episodes</span>
     </div>
     <div>{loading ? Array.from({ length: 4 }, (_, i) => <div key={i} className="kw-sk kw-sk-ep" />) : episodes.map((e, i) => {
-      const now = r?.season === season && r.episode === e.number;
+      const at = e.season ?? season;
+      const now = r?.season === at && r.episode === e.number;
       const skipped = view.fillers === "skip" && e.filler;
       const out = aired(e);
-      const finale = i === episodes.length - 1 && out && episodes.length > 1 ? (season === last && ended ? "FINALE" : "SEASON FINALE") : null;
-      const go = () => { if (out) watch.play(view.title.id, { season, episode: e.number }); };
-      return <div key={e.number} className={cx("kw-ep", now && "kw-now", skipped && "kw-skipped")} role="button" tabIndex={out ? 0 : -1} aria-disabled={!out} onClick={go} onKeyDown={(event) => { if (event.key === "Enter") go(); }}>
-        <span className="kw-no">{e.number}</span>
+      /* The last of a season; in one list, wherever a season ends. */
+      const closes = i === episodes.length - 1 || (episodes[i + 1].season ?? season) !== at;
+      const final = i === episodes.length - 1 && (picker ? at === last : true);
+      const finale = closes && out && episodes.length > 1 ? (final && ended ? "FINALE" : "SEASON FINALE") : null;
+      const go = () => { if (out) watch.play(view.title.id, { season: at, episode: e.number }); };
+      return <div key={`${at}:${e.number}`} className={cx("kw-ep", now && "kw-now", skipped && "kw-skipped")} role="button" tabIndex={out ? 0 : -1} aria-disabled={!out} onClick={go} onKeyDown={(event) => { if (event.key === "Enter") go(); }}>
+        <span className="kw-no">{numberOf(e)}</span>
         <div className="kw-th">
           <Img src={e.still ?? view.title.backdrop} />
           {e.fraction > 0 ? <div className="kw-bar"><i style={{ width: `${e.fraction * 100}%` }} /></div> : null}
           {out ? <span className="kw-pl"><Icon name="play" /></span> : null}
         </div>
         <div className="kw-tx">
-          <b><em className="kw-et">{wide ? "" : `${e.number}. `}{e.name}{e.filler ? <span className="kw-ftag">Filler</span> : e.recap ? <span className="kw-ftag kw-mixed">Recap</span> : null}</em>
+          <b><em className="kw-et">{wide ? "" : `${numberOf(e)}. `}{e.name}{e.filler ? <span className="kw-ftag">Filler</span> : e.recap ? <span className="kw-ftag kw-mixed">Recap</span> : null}</em>
             <span>{skipped ? "Skipped" : !out && e.airDate ? airText(e.airDate) : e.runtime ? `${e.runtime}m` : ""}</span></b>
           {finale ? <span className="kw-flag">{finale}</span> : null}
           {e.overview ? <p>{e.overview}</p> : null}

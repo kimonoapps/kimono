@@ -650,3 +650,4 @@
 @keyframes kw-rise{from{transform:translate(-50%,20px);opacity:0}}
 @media (min-width:900px){.kw .kw-invite{bottom:28px}}
 @media (max-width:520px){.kw .kw-invite{flex-wrap:wrap}.kw .kw-invite > div{flex-basis:calc(100% - 60px)}.kw .kw-invite .kw-btn{flex:1;justify-content:center}}
+.kw .kw-ep .kw-no{width:auto;min-width:22px}
