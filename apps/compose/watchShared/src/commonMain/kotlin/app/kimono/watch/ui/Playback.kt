@@ -81,6 +81,13 @@ class PlayerViewModel(
     private var lastPos = 0.0
     private var lastDur = 0.0
 
+    /** While stalling: "server" or "connection", whichever is holding the stream up; null for a download played from the device. */
+    suspend fun slowSide(): String? {
+        val s = _state.value
+        if (s.answer?.url?.startsWith("http") != true) return null
+        return runCatching { api.health(s.titleId, s.season, s.episode).slow }.getOrNull() ?: "connection"
+    }
+
     /** Starts at [season]/[episode], or wherever Resume points when they're null. */
     fun start(season: Int?, episode: Int?) {
         loadJob?.cancel()

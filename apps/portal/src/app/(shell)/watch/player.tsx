@@ -73,6 +73,17 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const [postOut, setPostOut] = useState(false);
   const [pinfo, setPinfo] = useState(false);
   const [skip, setSkip] = useState<Skip>(null);
+  /* After a few seconds of stalling: whose side is slow, the server's or this connection's. */
+  const [slow, setSlow] = useState<"server" | "connection" | null>(null);
+  const sk = buffering && !loading && !paused;
+  useEffect(() => {
+    if (!sk || !titleId) return;
+    let gone = false;
+    const ask = () => void watchApi.health(titleId, ep?.season ?? 0, ep?.episode ?? 0).then((h) => { if (!gone) setSlow(h.slow ?? "connection"); }, () => { if (!gone) setSlow("connection"); });
+    const first = setTimeout(ask, 3000);
+    const again = setInterval(ask, 6000);
+    return () => { gone = true; clearTimeout(first); clearInterval(again); setSlow(null); };
+  }, [sk, titleId, ep?.season, ep?.episode]);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -777,7 +788,6 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const recs = t ? alike(watch.known(), t.id, t.shelf, 3) : [];
   const nextAir = future(t?.nextAirDate);
   const reminding = t ? watch.marksOf(t.id).reminding : false;
-  const sk = buffering && !loading && !paused;
 
   return <div ref={root} className={cx("kw-player", ctl && "kw-ctl", loading && "kw-loading", (post === "next" || post === "ask") && "kw-postnext", post === "end" && "kw-postplay")} hidden={!titleId}
     onMouseMove={() => { showCtl(); if (pinfo) setPinfo(false); }} onTouchStart={() => { if (pinfo) setPinfo(false); }} onPointerUp={onPointerUp}>
@@ -789,6 +799,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       <div><Icon name={side === "l" ? "rw" : "ff"} />10 seconds</div>
     </div>)}
     <div className={cx("kw-spin", sk && "kw-on")}>{sk ? <InkLoader ink={watch.accent} label="Buffering" /> : null}</div>
+    <div className={cx("kw-slow", sk && slow && "kw-on")} role="status">{slow === "server" ? "The server is slow right now" : slow ? "Your connection is slow" : ""}</div>
     <div className={cx("kw-pload", (loading || problem) && "kw-on")}>
       {problem ? <div className="kw-oops"><p>{problem}</p><div className="kw-btns" style={{ justifyContent: "center" }}>
         <button className="kw-btn kw-tonal" onClick={exit}>Back</button>

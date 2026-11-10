@@ -1,0 +1,145 @@
+/**
+ * What each person is streaming right now, and whether the source keeps up.
+ *
+ * Every relayed stream (./index.ts relay) is counted under its person and
+ * what it plays (a title, or one episode of it). Two at once per person: a
+ * third play is turned away until one stops, so nobody's account carries the
+ * household's bandwidth.
+ *
+ * The relay reads ahead of the player. When the player is waiting and the
+ * relay is waiting on the source nearly all the time, the server side is slow;
+ * when the relay has bytes ready and the player doesn't take them, the
+ * person's own connection is. Players ask when they stall and say which.
+ *
+ * In memory: a restart forgets, which only frees the slots.
+ */
+
+export const streamsPerPerson = 2;
+/** A stream with nothing open and nothing read for this long has stopped (a paused player that let go counts as stopped). */
+const idleMs = 45_000;
+/** How far back "is the source keeping up" looks. */
+const windowMs = 15_000;
+const bucketMs = 1000;
+
+type Flow = {
+  started: number;
+  open: number;
+  seen: number;
+  /* Reads waiting on the source right now, and since when one has been. */
+  waiting: number;
+  since: number;
+  /* Milliseconds spent waiting on the source, per second of the clock. */
+  busy: Map<number, number>;
+  /* Bytes handed to the player, per second of the clock. */
+  sent: Map<number, number>;
+};
+
+const flows = ((globalThis as unknown as { kimonoWatchFlows?: Map<string, Map<string, Flow>> }).kimonoWatchFlows ??= new Map());
+
+/** What a play is counted as: a film, or one episode. */
+export const watchKey = (titleId: string, season: number, episode: number) => `${titleId}:${season}:${episode}`;
+
+function flowOf(username: string, what: string, now: number): Flow {
+  let mine = flows.get(username);
+  if (!mine) flows.set(username, (mine = new Map()));
+  let flow = mine.get(what);
+  if (!flow) mine.set(what, (flow = { started: now, open: 0, seen: now, waiting: 0, since: 0, busy: new Map(), sent: new Map() }));
+  return flow;
+}
+
+const live = (flow: Flow, now: number) => flow.open > 0 || flow.waiting > 0 || now - flow.seen < idleMs;
+
+/** What this person is streaming now, besides `except`. */
+export function streamsOf(username: string, except?: string, now = Date.now()): string[] {
+  const mine = flows.get(username);
+  if (!mine) return [];
+  const out: string[] = [];
+  for (const [what, flow] of mine) {
+    if (live(flow, now)) { if (what !== except) out.push(what); }
+    else if (now - flow.seen > 6 * 60 * 60 * 1000) mine.delete(what);
+  }
+  return out;
+}
+
+/** Whether starting `what` would be one stream too many. Something already playing always carries on. */
+export function tooMany(username: string, what: string, now = Date.now()): boolean {
+  const flow = flows.get(username)?.get(what);
+  if (flow && live(flow, now)) return false;
+  return streamsOf(username, what, now).length >= streamsPerPerson;
+}
+
+export const tooManyNote = "You're already watching on two screens. Stop one to watch here.";
+
+function add(map: Map<number, number>, from: number, to: number) {
+  for (let t = from; t < to;) {
+    const bucket = Math.floor(t / bucketMs);
+    const end = Math.min(to, (bucket + 1) * bucketMs);
+    map.set(bucket, (map.get(bucket) ?? 0) + end - t);
+    t = end;
+  }
+  const oldest = Math.floor((to - windowMs * 2) / bucketMs);
+  for (const key of map.keys()) if (key < oldest) map.delete(key);
+}
+
+/** The relay starts waiting on the source (opening it, or a read). Returns the call that marks the wait over. */
+export function waitOn(username: string, what: string, clock: () => number = Date.now): () => void {
+  const flow = flowOf(username, what, clock());
+  if (flow.waiting++ === 0) flow.since = clock();
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    const now = clock();
+    flow.seen = now;
+    if (--flow.waiting === 0) add(flow.busy, flow.since, now);
+  };
+}
+
+/**
+ * The source's bytes, passed on to the player with a few megabytes read ahead,
+ * counted while it's open and timed while it waits on the source.
+ */
+export function tracked(body: ReadableStream<Uint8Array>, username: string, what: string, clock: () => number = Date.now): ReadableStream<Uint8Array> {
+  const flow = flowOf(username, what, clock());
+  flow.open++;
+  flow.seen = clock();
+  let closed = false;
+  const close = () => { if (closed) return; closed = true; flow.open--; flow.seen = clock(); };
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const over = waitOn(username, what, clock);
+      try {
+        const { value, done } = await reader.read();
+        over();
+        if (done) { close(); controller.close(); return; }
+        const now = clock();
+        flow.seen = now;
+        flow.sent.set(Math.floor(now / bucketMs), (flow.sent.get(Math.floor(now / bucketMs)) ?? 0) + value.byteLength);
+        controller.enqueue(value);
+      } catch (error) {
+        over(); close(); controller.error(error);
+      }
+    },
+    cancel(reason) { close(); return reader.cancel(reason).catch(() => {}); },
+  }, new ByteLengthQueuingStrategy({ highWaterMark: 4 * 1024 * 1024 }));
+}
+
+/** Who's to blame for a stall: "server" when the source can't keep up, "connection" when it can, null when nothing's been streaming. */
+export function verdict(username: string, what: string, now = Date.now()): { slow: "server" | "connection" | null; busy: number; mbps: number } {
+  const flow = flows.get(username)?.get(what);
+  if (!flow || !live(flow, now)) return { slow: null, busy: 0, mbps: 0 };
+  /* A stream only seconds old is judged on those seconds. */
+  const span = Math.max(2000, Math.min(windowMs, now - flow.started));
+  const from = now - span;
+  let busy = 0, bytes = 0;
+  for (const [bucket, ms] of flow.busy) if (bucket * bucketMs >= from) busy += ms;
+  for (const [bucket, n] of flow.sent) if (bucket * bucketMs >= from) bytes += n;
+  /* A wait still going on counts too: a source that hasn't answered in seconds is the slow one. */
+  if (flow.waiting > 0) busy += now - Math.max(flow.since, from);
+  const share = Math.min(1, busy / span);
+  const mbps = Math.round((bytes * 8) / (span / 1000) / 1e5) / 10;
+  return { slow: share >= 0.7 ? "server" : "connection", busy: Math.round(share * 100) / 100, mbps };
+}
+
+export const forgetFlows = () => flows.clear();

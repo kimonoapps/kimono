@@ -299,3 +299,7 @@ data class ApiFailure(val error: String)
 
 /** A sentence a person can read, for the screen to show as it is. */
 class WatchProblem(message: String, val status: Int = 0) : Exception(message)
+
+/** While a stream stalls: "server" when the server's side can't keep up, "connection" when this screen's connection is the slow part. */
+@Serializable
+data class Health(val slow: String? = null)

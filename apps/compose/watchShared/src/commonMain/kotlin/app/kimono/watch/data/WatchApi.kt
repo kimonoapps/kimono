@@ -1,6 +1,7 @@
 package app.kimono.watch.data
 
 import app.kimono.watch.model.Device
+import app.kimono.watch.model.Health
 import app.kimono.watch.model.Home
 import app.kimono.watch.model.PlayAnswer
 import app.kimono.watch.model.Prefs
@@ -87,6 +88,10 @@ class WatchApi(
             put("titleId", titleId); put("season", season); put("episode", episode); put("position", position); put("duration", duration)
         })
     }
+
+    /** Whose side is slow while what's playing stalls. */
+    suspend fun health(titleId: String, season: Int, episode: Int): Health =
+        json.decodeFromString(get("/health?titleId=${titleId.encodeURLParameter()}&season=$season&episode=$episode"))
 
     suspend fun prefs(device: String? = null): Prefs = json.decodeFromString(get("/prefs" + (device?.let { "?device=${it.encodeURLParameter()}" } ?: "")))
 

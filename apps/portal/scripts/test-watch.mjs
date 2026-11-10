@@ -11,6 +11,7 @@ import * as anime from '../src/lib/watch/anime.ts';
 import * as streams from '../src/lib/watch/streams.ts';
 import * as hls from '../src/lib/watch/hls.ts';
 import * as party from '../src/lib/watch/together.ts';
+import * as flow from '../src/lib/watch/flow.ts';
 
 const day = 24 * 60 * 60 * 1000;
 function fresh() {
@@ -1215,4 +1216,41 @@ test('a slow probe is asked again; only an unreadable copy fails the play', () =
   assert.equal(hls.probeOutcome(422), 'unreadable');
   for (const status of [504, 502, 503, 500, 401, null]) assert.equal(hls.probeOutcome(status), 'slow', String(status));
   assert.ok(hls.probeAttempts >= 2);
+});
+
+/* ───── Streams per person, and who's slow (flow.ts) ───── */
+
+const bytesOf = (chunks, delayMs = 0) => new ReadableStream({
+  async pull(c) { if (!chunks.length) return c.close(); if (delayMs) await new Promise((r) => setTimeout(r, delayMs)); c.enqueue(chunks.shift()); },
+});
+
+test('two streams per person; a third waits until one stops, and what plays carries on', async () => {
+  flow.forgetFlows();
+  const a = flow.tracked(bytesOf([new Uint8Array(10)]), 'sami', 'tv-1:1:1');
+  const b = flow.tracked(bytesOf([new Uint8Array(10)]), 'sami', 'tv-1:1:2');
+  assert.equal(flow.tooMany('sami', 'tv-1:1:3'), true);
+  assert.equal(flow.tooMany('sami', 'tv-1:1:1'), false, 'a quality switch or another range of the same episode');
+  assert.equal(flow.tooMany('noor', 'tv-1:1:3'), false, 'per person');
+  await a.cancel(); await b.cancel();
+  const later = Date.now() + 60_000;
+  assert.equal(flow.tooMany('sami', 'tv-1:1:3', later), false, 'stopped streams free their slot');
+  assert.deepEqual(flow.streamsOf('sami', undefined, later), []);
+});
+
+test('a stall is the server when the relay waits on the source, else the connection', async () => {
+  flow.forgetFlows();
+  let now = 0;
+  const clock = () => now;
+  flow.tracked(bytesOf([]), 'sami', 'slow', clock);
+  const over = flow.waitOn('sami', 'slow', clock);
+  now = 5000;
+  assert.equal(flow.verdict('sami', 'slow', now).slow, 'server', 'a read still waiting');
+  over();
+  now = 5500;
+  assert.equal(flow.verdict('sami', 'slow', now).slow, 'server');
+  flow.tracked(bytesOf([]), 'sami', 'fast', clock);
+  flow.waitOn('sami', 'fast', clock)();
+  now = 12_000;
+  assert.equal(flow.verdict('sami', 'fast', now).slow, 'connection');
+  assert.equal(flow.verdict('sami', 'nothing', now).slow, null);
 });

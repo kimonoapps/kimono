@@ -367,6 +367,19 @@ fun PlayerScreen(
         var stalled by remember { mutableStateOf(false) }
         LaunchedEffect(buffering) { stalled = false; if (buffering) { delay(600); stalled = true } }
         if (stalled && buffering && !state.loading && post == Post.None) InkLoader(Modifier.align(Alignment.Center), size = 48.dp)
+        /* A few seconds into a stall: whose side is slow. */
+        var slow by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(buffering, state.loading) {
+            slow = null
+            if (!buffering || state.loading) return@LaunchedEffect
+            delay(3000)
+            while (true) { slow = vm.slowSide(); delay(6000) }
+        }
+        if (slow != null && buffering && !state.loading && post == Post.None) Text(
+            if (slow == "server") "The server is slow right now" else "Your connection is slow",
+            style = ui(14, FontWeight.SemiBold),
+            modifier = Modifier.align(Alignment.Center).offset(y = 52.dp).background(Color(0xB80A0A0C), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
+        )
 
         PauseCard(pauseCard && post == Post.None, state, Modifier.fillMaxSize())
 

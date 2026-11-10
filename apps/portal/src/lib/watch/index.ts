@@ -31,6 +31,7 @@ import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb
 import { openStream, sealStream } from "./token";
 import { migrateTogether } from "./together";
 import { markDead, isDead } from "./dead";
+import { tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
 import { anything, castOf, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
@@ -511,6 +512,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const quality = qualityFor(cleanQuality(raw.quality), deviceQualityOf(db, username, cleanDeviceId(raw.deviceId)), prefs);
   const season = title.kind === "series" ? Number(raw.season) || 1 : 0;
   const episode = title.kind === "series" ? Number(raw.episode) || 1 : 0;
+  /* Two streams at once per person; what's already playing (a quality switch, another version) carries on. */
+  const what = watchKey(title.id, season, episode);
+  if (tooMany(username, what)) throw new WatchProblem(tooManyNote, 429);
   let minutes = title.runtime;
   let episodes: Episode[] = [];
   if (title.kind === "series") {
@@ -534,7 +538,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
 
   const sealKey = await streamKey();
   const expiresAt = Date.now() + 6 * 60 * 60 * 1000;
-  const sealed = (r: { url: string; service: string }) => sealStream(sealKey, { url: r.url, username, expiresAt, source: r.service });
+  const sealed = (r: { url: string; service: string }) => sealStream(sealKey, { url: r.url, username, expiresAt, source: r.service, what });
   const address = (r: { url: string; service: string }) => `${origin}/api/v1/watch/stream/${sealed(r)}`;
   const tracks = playerTracks(plan);
   const p = progressOf(db, username, title.id).find((x) => x.season === season && x.episode === episode);
@@ -688,8 +692,12 @@ export async function relay(request: Request, token: string): Promise<Response> 
   if (!grant) return new Response("This link has run out. Press play again.", { status: 410 });
   const headers = new Headers();
   for (const name of ["range", "if-range", "accept"]) { const value = request.headers.get(name); if (value) headers.set(name, value); }
+  /* Counted per person (./flow.ts); the server's own reads (skip markers) carry no "what" and aren't. */
+  const what = grant.what;
+  if (what && request.method !== "HEAD" && tooMany(grant.username, what)) return new Response(tooManyNote, { status: 429 });
   const startedAt = performance.now();
-  const upstream = await fetchUpstream(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal });
+  const opened = what ? waitOn(grant.username, what) : () => {};
+  const upstream = await fetchUpstream(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal }).finally(opened);
   /* 404 when the copy is gone (refused, or a stand-in clip): the packager passes over it; 502 when it may only be slow. */
   if (!upstream) return new Response("The stream stopped answering. Try another version.", { status: isDead(grant.url) ? 404 : 502 });
   if (!upstream.ok && upstream.status !== 206) {
@@ -708,7 +716,17 @@ export async function relay(request: Request, token: string): Promise<Response> 
     const sample = sampleOf(bytes, firstByteMs, burstMs);
     if (sample) try { recordSpeed(watchDb(), source, sample); } catch { /* a figure missed is no reason to break playback */ }
   }) : upstream.body;
-  return new Response(body, { status: upstream.status, headers: out });
+  return new Response(what ? tracked(body, grant.username, what) : body, { status: upstream.status, headers: out });
+}
+
+/**
+ * Whether a stall is the server's or the connection's, for the film or
+ * episode this person is playing: the player asks when it has been
+ * buffering a few seconds and says which.
+ */
+export function health(username: string, raw: { titleId?: string | null; season?: string | null; episode?: string | null }) {
+  const what = watchKey(String(raw.titleId ?? ""), Number(raw.season) || 0, Number(raw.episode) || 0);
+  return verdict(username, what);
 }
 
 /* ───── HLS (./hls.ts) ───── */

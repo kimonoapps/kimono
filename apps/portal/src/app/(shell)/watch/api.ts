@@ -117,6 +117,8 @@ export const watchApi = {
   title: (id: string, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`),
   mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null; episodes?: "seasons" | "continuous" | null }) => call<TitleView>(`titles/${encodeURIComponent(id)}`, put(change)),
   prefs: () => call<Prefs>("prefs"),
+  /** While a stream stalls: whether the server's side or this connection is holding it up. */
+  health: (titleId: string, season: number, episode: number) => call<{ slow: "server" | "connection" | null }>(`health?titleId=${encodeURIComponent(titleId)}&season=${season}&episode=${episode}`),
   /** This browser's own quality, or null when it follows the person's. */
   deviceQuality: () => call<Prefs & { device?: { id: string; quality: string | null } }>(`prefs?device=${encodeURIComponent(deviceId())}`).then((p) => p.device?.quality ?? null),
   setPrefs: (change: Partial<Prefs>) => call<Prefs>("prefs", put(change)),
