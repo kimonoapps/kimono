@@ -1855,7 +1855,12 @@ button.cd-scrip-title:hover { text-decoration: underline; text-decoration-color:
 .cd-scrip-title span { font: 500 12px/1 var(--k-mono); color: var(--k-on-surface-variant); margin-left: 4px; }
 .cd-scrip-name { font: 400 20px/1 var(--cd-ar); color: var(--k-on-surface-variant); }
 .cd-scrip-chapter { flex-basis: 100%; font-weight: 500; font-size: 12.5px; }
-.cd-scrip-lang { display: inline-flex; margin-left: auto; padding: 2px; gap: 2px; border-radius: var(--k-r-s); background: var(--k-container-high); }
+.cd-scrip-controls { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.cd-scrip-swap { width: 32px; height: 30px; display: grid; place-items: center; border: 0; border-radius: var(--k-r-s); background: var(--k-container-high); color: var(--k-on-surface-variant); cursor: pointer; }
+.cd-scrip-swap:hover { color: var(--k-on-surface); }
+.cd-scrip-swap[aria-pressed="true"] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-scrip-swap svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.cd-scrip-lang { display: inline-flex; padding: 2px; gap: 2px; border-radius: var(--k-r-s); background: var(--k-container-high); }
 .cd-scrip-lang button { min-width: 34px; min-height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--k-on-surface-variant); font: 700 11.5px/1 var(--k-sans); letter-spacing: .04em; cursor: pointer; }
 .cd-scrip-lang button[aria-checked="true"] { background: var(--k-container-lowest); color: var(--k-on-surface); box-shadow: 0 1px 2px rgba(78, 43, 55, .14); }
 

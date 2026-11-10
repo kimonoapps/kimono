@@ -130,7 +130,7 @@ private fun Loading(title: String?, failed: Boolean = false) = Card {
 }
 
 @Composable
-private fun Head(title: String, detail: String, arabic: String?, lang: String, langs: List<String>, setLang: (String) -> Unit) {
+private fun Head(title: String, detail: String, arabic: String?, lang: String, langs: List<String>, swapped: Boolean = false, swap: (() -> Unit)? = null, setLang: (String) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(buildAnnotatedString {
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(title) }
@@ -139,6 +139,10 @@ private fun Head(title: String, detail: String, arabic: String?, lang: String, l
         }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
         if (arabic != null) Text(arabic, fontFamily = arabicFont(), fontSize = 19.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.weight(1f))
+        /* the swap: the Arabic first (translation on a tap) or the translation first (Arabic on a tap) */
+        if (swap != null) Box(Modifier.clip(RoundedCornerShape(8.dp)).background(if (swapped) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = swap).padding(horizontal = 9.dp, vertical = 5.dp)) {
+            Text("⇄", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = if (swapped) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (langs.size > 1) Row(Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             langs.forEach { l ->
                 val on = l == lang
@@ -167,7 +171,7 @@ private fun Translation(text: String?, source: String?) {
 private fun QuranCard(code: Code, body: String) {
     val parts = body.trim().split(Regex("\\s+"))
     val ref = parts.firstOrNull().orEmpty()
-    var inverted by remember { mutableStateOf("translation" in parts.drop(1)) }
+    var inverted by remember { mutableStateOf(keptSwap) }
     val passage by produceState<Result<QuranPassage>?>(null, ref) { value = runCatching { code.quran(ref) } }
     var lang by remember { mutableStateOf(parts.drop(1).firstOrNull { it == "en" || it == "fr" } ?: keptLang ?: firstLang(null)) }
     var open by remember { mutableStateOf<String?>(null) }
@@ -177,7 +181,7 @@ private fun QuranCard(code: Code, body: String) {
     val label = p.ref.replace("-", "–")
     Card {
         /* AR, EN or FR: what you read; a tap shows the other (the translation under AR, the Arabic under EN or FR) */
-        Head(p.chapter.name, label, p.chapter.arabic, if (inverted) lang else "ar", listOf("ar", "en", "fr")) { v -> if (v == "ar") inverted = false else { inverted = true; lang = v; keptLang = v } }
+        Head(p.chapter.name, label, p.chapter.arabic, lang, listOf("en", "fr"), swapped = inverted, swap = { inverted = !inverted; keptSwap = inverted }) { lang = it; keptLang = it }
         Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             p.before.forEach { VerseLine(it, context = true, open = open == it.key, lang = lang, inverted = inverted) { open = if (open == it.key) null else it.key } }
             p.verses.forEach { VerseLine(it, context = false, open = open == it.key, lang = lang, inverted = inverted) { open = if (open == it.key) null else it.key } }
@@ -279,6 +283,8 @@ private fun TafsirSheet(code: Code, p: QuranPassage, lang: String, close: () -> 
 
 /* The translation language last picked, for every card while the app runs. */
 private var keptLang: String? = null
+/* Whether the reader swapped to the translation first, for every card while the app runs. */
+private var keptSwap = false
 
 /* Kept for the screen's life: the tafsir last read opens first. */
 private var lastTafsir: Int? = null
@@ -330,7 +336,7 @@ private fun HadithCard(code: Code, body: String) {
     val number = parts.getOrNull(1)?.toIntOrNull() ?: 0
     val loaded by produceState<Result<Hadith>?>(null, book, number) { value = runCatching { code.hadith(book, number) } }
     var lang by remember { mutableStateOf(parts.drop(2).firstOrNull { it == "en" || it == "fr" } ?: keptLang ?: firstLang(null)) }
-    var inverted by remember { mutableStateOf("translation" in parts.drop(2)) }
+    var inverted by remember { mutableStateOf(keptSwap) }
     var open by remember { mutableStateOf(false) }
     val h = loaded?.getOrNull()
     if (h == null) { Loading("$book $number", failed = loaded?.isFailure == true); return }
@@ -338,7 +344,7 @@ private fun HadithCard(code: Code, body: String) {
     val shown = if (h.translation[lang].isNullOrBlank()) "en" else lang
     val translation = h.translation[shown].orEmpty()
     Card {
-        Head(h.bookName, h.number.toString(), null, if (inverted && h.arabic.isNotBlank()) shown else if (h.arabic.isNotBlank()) "ar" else shown, if (h.arabic.isNotBlank()) listOf("ar") + langs else langs) { v -> if (v == "ar") inverted = false else { inverted = true; lang = v; keptLang = v } }
+        Head(h.bookName, h.number.toString(), null, shown, langs, swapped = inverted, swap = if (h.arabic.isNotBlank()) ({ inverted = !inverted; keptSwap = inverted }) else null) { lang = it; keptLang = it }
         if (h.chapter != null) Text(h.chapter, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
         if (inverted && h.arabic.isNotBlank()) {
             Text(translation, style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 26.sp), color = MaterialTheme.colorScheme.onSurface,

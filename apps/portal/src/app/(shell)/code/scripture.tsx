@@ -108,21 +108,23 @@ function TipCard({ tip, onEnter, onLeave }: { tip: Tip; onEnter: () => void; onL
     style={{ left: place?.left ?? -9999, top: place?.top ?? -9999, visibility: place ? "visible" : "hidden" }}>{tip.body}</div>;
 }
 
-/*
- * What you read: AR, or a translation. Hover (or a tap) shows the other one:
- * the translation under AR (in whichever of EN and FR was picked last), the
- * Arabic under EN or FR.
- */
-type View = "ar" | Lang;
-function ViewSwitch({ view, set, has = ["en", "fr"] }: { view: View; set: (v: View) => void; has?: Lang[] }) {
-  return <div className="cd-scrip-lang" role="radiogroup" aria-label="Read in">
-    {(["ar", ...has] as View[]).map((v) => <button key={v} type="button" role="radio" aria-checked={view === v} onClick={() => set(v)}>{v.toUpperCase()}</button>)}
+/* Which translation (EN or FR), and a swap between the Arabic first (the translation on hover) and the translation first (the Arabic on hover). */
+function ReadSwitch({ lang, set, has = ["en", "fr"], swapped, swap }: { lang: Lang; set: (l: Lang) => void; has?: Lang[]; swapped: boolean; swap: (() => void) | null }) {
+  return <div className="cd-scrip-controls">
+    {swap ? <button type="button" className="cd-scrip-swap" aria-pressed={swapped} title={swapped ? "Show the Arabic first" : "Show the translation first"} aria-label={swapped ? "Show the Arabic first" : "Show the translation first"} onClick={swap}>
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 7h11l-3-3M16 13H5l3 3" /></svg>
+    </button> : null}
+    {has.length > 1 ? <div className="cd-scrip-lang" role="radiogroup" aria-label="Translation">
+      {has.map((l) => <button key={l} type="button" role="radio" aria-checked={lang === l} onClick={() => set(l)}>{l.toUpperCase()}</button>)}
+    </div> : null}
   </div>;
 }
 
-/* The translation language last picked, for every card: someone who reads French keeps French. */
+/* What the reader picked, for every card: their translation, and whether they read it first. */
 const keptLang = (): Lang | null => { try { const l = localStorage.getItem("kimono:scripture-lang"); return l === "en" || l === "fr" ? l : null; } catch { return null; } };
 const keepLang = (l: Lang) => { try { localStorage.setItem("kimono:scripture-lang", l); } catch {} };
+const keptSwap = () => { try { return localStorage.getItem("kimono:scripture-first") === "translation"; } catch { return false; } };
+const keepSwap = (on: boolean) => { try { localStorage.setItem("kimono:scripture-first", on ? "translation" : "arabic"); } catch {} };
 
 /* The tafsir last read, opened first next time. */
 const lastTafsir = (ids: number[]) => { try { const n = Number(localStorage.getItem("kimono:tafsir")); if (ids.includes(n)) return n; } catch {} return ids[0]; };
@@ -192,17 +194,15 @@ function TafsirDialog({ passage, lang, onClose }: { passage: Passage; lang: Lang
   </dialog>;
 }
 
-/* A block's reference, then its options in any order: en or fr, and translation (the translation as the text, the Arabic on hover). */
-const options = (rest: string[]) => ({ lang: rest.find((o) => o === "en" || o === "fr"), translation: rest.includes("translation") });
+/* A block's reference, then en or fr. */
+const options = (rest: string[]) => ({ lang: rest.find((o) => o === "en" || o === "fr") });
 
 export function QuranBlock({ source }: { source: string }) {
   const [ref, ...rest] = source.trim().split(/\s+/);
-  const { lang: option, translation } = options(rest);
+  const { lang: option } = options(rest);
   const { data, failed } = useLoad<Passage>(ref ? `/api/v1/code/scripture/quran?ref=${encodeURIComponent(ref)}` : null);
   const [lang, setLang] = useState<Lang>(() => option === "en" || option === "fr" ? option : keptLang() ?? firstLang(undefined));
-  const [inverted, setInverted] = useState(translation);
-  const view: View = inverted ? lang : "ar";
-  const setView = (v: View) => { if (v === "ar") setInverted(false); else { setInverted(true); setLang(v); keepLang(v); } };
+  const [inverted, setInverted] = useState(keptSwap);
   const [reading, setReading] = useState(false);
   const tip = useTip();
   const label = data ? data.ref.replace("-", "–") : ref;
@@ -233,7 +233,7 @@ export function QuranBlock({ source }: { source: string }) {
     <figcaption className="cd-scrip-head" lang={lang}>
       <button type="button" className="cd-scrip-title" title="Open on quran.com" onClick={() => window.open(`https://quran.com/${s}/${a}`, "_blank", "noopener,noreferrer")}>{data.chapter.name} <span>{label}</span></button>
       <span className="cd-scrip-name" lang="ar">{data.chapter.arabic}</span>
-      <ViewSwitch view={view} set={setView} />
+      <ReadSwitch lang={lang} set={(l) => { setLang(l); keepLang(l); }} swapped={inverted} swap={() => { setInverted(!inverted); keepSwap(!inverted); }} />
     </figcaption>
     <div className={inverted ? "cd-quran is-translation" : "cd-ar cd-quran"} dir={inverted ? "ltr" : "rtl"}>
       {data.before.map((v) => verse(v, true))}
@@ -255,11 +255,11 @@ export function QuranBlock({ source }: { source: string }) {
 
 export function HadithBlock({ source }: { source: string }) {
   const [book, number, ...rest] = source.trim().split(/\s+/);
-  const { lang: option, translation: startInverted } = options(rest);
+  const { lang: option } = options(rest);
   const n = Number(number);
   const { data, failed } = useLoad<Hadith>(book && n ? `/api/v1/code/scripture/hadith?book=${encodeURIComponent(book)}&n=${n}` : null);
   const [lang, setLang] = useState<Lang>(() => option === "en" || option === "fr" ? option : keptLang() ?? firstLang(undefined));
-  const [inverted, setInverted] = useState(startInverted);
+  const [inverted, setInverted] = useState(keptSwap);
   const tip = useTip();
   const title = data ? `${data.bookName} ${data.number}` : `${book ?? ""} ${number ?? ""}`;
 
@@ -278,7 +278,7 @@ export function HadithBlock({ source }: { source: string }) {
   return <figure className="cd-scrip is-hadith">
     <figcaption className="cd-scrip-head">
       <button type="button" className="cd-scrip-title" title="Open on sunnah.com" onClick={() => window.open(`https://sunnah.com/${sunnahSlug[data.book] ?? data.book}:${data.number}`, "_blank", "noopener,noreferrer")}>{data.bookName} <span>{data.number}</span></button>
-      {data.arabic ? <ViewSwitch view={inverted ? shown : "ar"} has={has} set={(v) => { if (v === "ar") setInverted(false); else { setInverted(true); setLang(v); keepLang(v); } }} /> : null}
+      <ReadSwitch lang={shown} has={has} set={(l) => { setLang(l); keepLang(l); }} swapped={inverted} swap={data.arabic ? () => { setInverted(!inverted); keepSwap(!inverted); } : null} />
       {data.chapter ? <span className="cd-scrip-chapter">{data.chapter}</span> : null}
     </figcaption>
     {inverted && data.arabic
