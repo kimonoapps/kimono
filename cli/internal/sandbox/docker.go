@@ -51,6 +51,24 @@ func (d docker) run(ctx context.Context, stdin io.Reader, args ...string) ([]byt
 	return stdout.Bytes(), nil
 }
 
+// stream is run with stdout written as it comes rather than held: for files
+// too big to keep in memory. stderr is still kept, for the error.
+func (d docker) stream(ctx context.Context, stdin io.Reader, stdout io.Writer, args ...string) error {
+	cmd := exec.CommandContext(ctx, d.bin, args...)
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return &execError{code: exit.ExitCode(), stderr: strings.TrimSpace(stderr.String())}
+		}
+		return err
+	}
+	return nil
+}
+
 func containerName(id string) string { return "kimono-sbx-" + id }
 
 // containerState is "running", "paused", "exited", "created", … or "" when

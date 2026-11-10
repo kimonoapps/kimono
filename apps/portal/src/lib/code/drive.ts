@@ -2,8 +2,11 @@ import "server-only";
 
 import { bounded } from "./bounded";
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type { DatabaseSync } from "node:sqlite";
 import {
   addFile, blobPath, childrenOf, moveNode, createFolder, createSpace, db as driveDb, driveOn, DriveProblem, finishUpload,
@@ -15,7 +18,7 @@ import {
   CodeProblem, driveSpaceOf, noteDriveNews, recordSynced, setDriveFolder, setDriveSpace, syncedRows, workspaceFor,
   type Workspace,
 } from "./model";
-import { sandbox } from "./node";
+import { NoRoom, sandbox } from "./node";
 import { agentCopyName, planSync, type DriveFile, type SyncAction } from "./sync";
 
 /*
@@ -182,20 +185,80 @@ export async function driveBytes(nodeId: string, owner: string) {
   return { node, bytes: new Uint8Array(await readFile(blobPath(driveRoot, node.blob))) };
 }
 
-/** New bytes for a Drive file, as a new version of the same file, the way Drive takes an edit. */
-export async function replaceInDrive(nodeId: string, owner: string, name: string, bytes: Uint8Array): Promise<DriveNode> {
-  const db = driveDb();
-  const node = nodeFor(db, nodeId, owner, "editor");
-  const upload = startReplace(db, nodeId, owner, node.contentVersion, { size: bytes.byteLength, mime: typeOf(name) }, maxFileBytes);
-  const blob = await storeBlob(bytes);
-  const { node: done } = finishUpload(db, upload, blob);
-  return done;
+/** Bytes kept as a Drive blob, not yet any file's. */
+export type Stored = { blob: string; size: number; sha1: string };
+
+/** Passes bytes on as they go, keeping their sha1 and count. */
+function hashing() {
+  const hash = createHash("sha1");
+  let size = 0;
+  const pass = new Transform({ transform(chunk: Buffer, _encoding, done) { hash.update(chunk); size += chunk.length; done(null, chunk); } });
+  return { pass, done: () => ({ sha1: hash.digest("hex"), size }) };
 }
 
-export async function addToDrive(folderId: string, owner: string, path: string, bytes: Uint8Array): Promise<DriveNode> {
+/** A sandbox file streamed into a new Drive blob: never all in memory, however big. */
+export async function blobFromSandbox(config: CodeConfig, workspace: Workspace, path: string, sizeHint = 0): Promise<Stored> {
+  const { body, size } = await sandbox.pull(config, workspace, path, sizeHint);
+  const blob = driveId();
+  const target = blobPath(driveRoot, blob);
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  const { pass, done } = hashing();
+  try {
+    await pipeline(Readable.fromWeb(body as import("node:stream/web").ReadableStream), pass, createWriteStream(target, { mode: 0o600 }));
+  } catch (error) {
+    await rm(target, { force: true });
+    throw error;
+  }
+  const kept = done();
+  if (Number.isFinite(size) && kept.size !== size) {
+    await rm(target, { force: true });
+    throw new CodeProblem("The file didn't arrive whole.", 502);
+  }
+  return { blob, ...kept };
+}
+
+/** A Drive file streamed into the sandbox at `path`. Returns it and the sha1 of what went in. Throws NoRoom. */
+export async function driveToSandbox(config: CodeConfig, workspace: Workspace, nodeId: string, owner: string, path: string): Promise<{ node: DriveNode; sha1: string }> {
+  const node = nodeFor(driveDb(), nodeId, owner, "viewer");
+  if (node.kind !== "file" || !node.blob) throw new CodeProblem("That isn't a file.");
+  const { pass, done } = hashing();
+  const source = createReadStream(blobPath(driveRoot, node.blob)).pipe(pass);
+  await sandbox.push(config, workspace, path, Readable.toWeb(source) as ReadableStream<Uint8Array>, node.size);
+  return { node, sha1: done().sha1 };
+}
+
+/** A sandbox file copied to another path in it, through Portal (for keeping the agent's copy in a conflict). */
+export async function copyInSandbox(config: CodeConfig, workspace: Workspace, from: string, to: string) {
+  const stored = await blobFromSandbox(config, workspace, from);
+  const path = blobPath(driveRoot, stored.blob);
+  try {
+    await sandbox.push(config, workspace, to, Readable.toWeb(createReadStream(path)) as ReadableStream<Uint8Array>, stored.size);
+  } finally {
+    await rm(path, { force: true });
+  }
+}
+
+/** New bytes for a Drive file, as a new version of the same file, the way Drive takes an edit. */
+export async function replaceInDrive(nodeId: string, owner: string, name: string, stored: Stored): Promise<DriveNode> {
+  return orDrop(stored, () => {
+    const db = driveDb();
+    const node = nodeFor(db, nodeId, owner, "editor");
+    const upload = startReplace(db, nodeId, owner, node.contentVersion, { size: stored.size, mime: typeOf(name) }, maxFileBytes);
+    return finishUpload(db, upload, stored.blob).node;
+  });
+}
+
+export async function addToDrive(folderId: string, owner: string, path: string, stored: Stored): Promise<DriveNode> {
   const name = path.split("/").pop()!;
-  const blob = await storeBlob(bytes);
-  return addFile(driveDb(), parentFor(folderId, owner, path), owner, { name, size: bytes.byteLength, mime: typeOf(name), blob });
+  return orDrop(stored, () => addFile(driveDb(), parentFor(folderId, owner, path), owner, { name, size: stored.size, mime: typeOf(name), blob: stored.blob }));
+}
+
+/* A blob Drive wouldn't take (out of space, a stale version) isn't left lying about. */
+async function orDrop<T>(stored: Stored, take: () => T): Promise<T> {
+  try { return take(); } catch (error) {
+    await rm(blobPath(driveRoot, stored.blob), { force: true });
+    throw error;
+  }
 }
 
 /* One sync at a time per workspace; a second waits for the first. */
@@ -213,6 +276,34 @@ export function syncDrive(db: DatabaseSync, config: CodeConfig, workspace: Works
   return next;
 }
 
+const megabytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
+
+/* Each file left out is said once a version, not at every turn. */
+const toldLeftOut = new Map<string, string>();
+
+/**
+ * What the agent is told about a Drive file that stayed out of the sandbox, in
+ * place of its path in the news; null once it was told about this version.
+ */
+export function leftOutNote(workspaceId: string, shown: string, version: string, why: string): string | null {
+  const key = `${workspaceId}\0${shown}`;
+  if (toldLeftOut.get(key) === version) return null;
+  toldLeftOut.set(key, version);
+  if (toldLeftOut.size > 5000) toldLeftOut.delete(toldLeftOut.keys().next().value!);
+  return `${shown}${leftOutMark}${why})`;
+}
+
+const leftOutMark = " (in their Drive but not here: ";
+/** The left-out notes among what a sync returned, as one sentence to add, or "". */
+export function leftOutSentence(news: string[]) {
+  const left = news.filter((n) => n.includes(leftOutMark));
+  return left.length ? ` Some of it isn't here: ${left.join("; ")}.` : "";
+}
+
+export function noRoomNote(workspaceId: string, shown: string, error: NoRoom, version = String(error.size)) {
+  return leftOutNote(workspaceId, shown, version, `it's ${megabytes(error.size)} and the sandbox has ${megabytes(error.room)} free. Free space and it comes in on the next message`);
+}
+
 async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<string[]> {
   const place = await taskFolder(db, workspace);
   if (!place) return [];
@@ -221,11 +312,13 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
   const actions = planSync(syncedRows(db, workspace.id), tree, driveFiles(place.folderId, owner));
   const fromDrive: string[] = [];
   const shaOf = new Map(tree.map((f) => [f.path, f.sha1]));
+  const sizeOf = new Map(tree.map((f) => [f.path, f.size]));
   /* A few files at a time: each is a round trip to the sandbox, and each touches only its own path. */
   await bounded(actions, 6, async (action) => {
     try {
-      fromDrive.push(...(await apply(db, config, workspace, place.folderId, action, shaOf.get(action.path))));
+      fromDrive.push(...(await apply(db, config, workspace, place.folderId, action, shaOf.get(action.path), sizeOf)));
     } catch (error) {
+      if (error instanceof NoRoom) { const note = noRoomNote(workspace.id, action.path, error); if (note) fromDrive.push(note); return; }
       /* One file that won't go doesn't stop the rest; it is tried again next time. */
       console.warn(`Code couldn't sync ${action.path}:`, error instanceof Error ? error.message : error);
     }
@@ -234,18 +327,18 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
   return fromDrive;
 }
 
-async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace, folderId: string, action: SyncAction, sandboxSha?: string): Promise<string[]> {
+async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace, folderId: string, action: SyncAction, sandboxSha: string | undefined, sizeOf: Map<string, number>): Promise<string[]> {
   const owner = workspace.owner;
   const record = (path: string, node: DriveNode, sha: string) => recordSynced(db, workspace.id, path, { nodeId: node.id, sha1: sha, contentVersion: node.contentVersion });
   switch (action.kind) {
     case "upload": {
-      const bytes = await sandbox.readFull(config, workspace, action.path);
-      record(action.path, await addToDrive(folderId, owner, action.path, bytes), sha1(bytes));
+      const stored = await blobFromSandbox(config, workspace, action.path, sizeOf.get(action.path));
+      record(action.path, await addToDrive(folderId, owner, action.path, stored), stored.sha1);
       return [];
     }
     case "update": {
-      const bytes = await sandbox.readFull(config, workspace, action.path);
-      record(action.path, await replaceInDrive(action.nodeId, owner, action.path.split("/").pop()!, bytes), sha1(bytes));
+      const stored = await blobFromSandbox(config, workspace, action.path, sizeOf.get(action.path));
+      record(action.path, await replaceInDrive(action.nodeId, owner, action.path.split("/").pop()!, stored), stored.sha1);
       return [];
     }
     case "trash":
@@ -253,9 +346,8 @@ async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace,
       recordSynced(db, workspace.id, action.path, null);
       return [];
     case "put": {
-      const { node, bytes } = await driveBytes(action.nodeId, owner);
-      await sandbox.write(config, workspace, action.path, bytes);
-      record(action.path, node, sha1(bytes));
+      const { node, sha1: sha } = await driveToSandbox(config, workspace, action.nodeId, owner, action.path);
+      record(action.path, node, sha);
       return [action.path];
     }
     case "delete":
@@ -264,14 +356,10 @@ async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace,
       return [action.path];
     case "conflict": {
       /* Drive wins; the agent's version is kept beside it, and reaches Drive on the next sync as a file of its own. */
-      if (sandboxSha) {
-        const mine = await sandbox.readFull(config, workspace, action.path);
-        await sandbox.write(config, workspace, agentCopyName(action.path), mine);
-      }
+      if (sandboxSha) await copyInSandbox(config, workspace, action.path, agentCopyName(action.path));
       if (action.nodeId) {
-        const { node, bytes } = await driveBytes(action.nodeId, owner);
-        await sandbox.write(config, workspace, action.path, bytes);
-        record(action.path, node, sha1(bytes));
+        const { node, sha1: sha } = await driveToSandbox(config, workspace, action.nodeId, owner, action.path);
+        record(action.path, node, sha);
       } else {
         await sandbox.removeFile(config, workspace, action.path);
         recordSynced(db, workspace.id, action.path, null);

@@ -199,6 +199,11 @@ see nothing inside a space until it is allowed.
 - Allowed files are copied into the sandbox at `/workspace/.kimono/files/<space>/…`,
   which `/files` points to. Git ignores the folder (the checkout adds it to
   `.git/info/exclude`) and Code's own Drive mirror never sees it.
+- Files go both ways streamed, never whole in memory, up to 4 GB each. One
+  into the sandbox over 50 MB is first checked against the sandbox's disk
+  (keeping 256 MB free); one that won't fit, or is over 4 GB, stays in Drive
+  and the agent is told its name and why, once per version, so it never
+  guesses the file is missing.
 - Before each turn the open files follow Drive (the agent is told what changed);
   after each turn, with change, its edits become new versions, new files are
   added, and deleted ones go to Drive's trash, through Drive's own model. With

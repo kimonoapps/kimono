@@ -423,6 +423,11 @@ func (s *Server) exec(ctx context.Context, w *workspace, extra []string, stdin i
 	return s.docker.run(ctx, stdin, s.execArgs(w, extra, stdin != nil, command...)...)
 }
 
+// execStream is exec with stdout streamed to out.
+func (s *Server) execStream(ctx context.Context, w *workspace, stdin io.Reader, out io.Writer, command ...string) error {
+	return s.docker.stream(ctx, stdin, out, s.execArgs(w, nil, stdin != nil, command...)...)
+}
+
 func (s *Server) execArgs(w *workspace, extra []string, interactive bool, command ...string) []string {
 	args := []string{"exec"}
 	if interactive {

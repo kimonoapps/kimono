@@ -21,6 +21,9 @@ const access = await import('../src/lib/code/access.ts');
 
 /* The node: a sandbox's files, by path under /workspace. */
 const sandboxFiles = new Map();
+/* What each PUT said its length was, and how much room the stand-in sandbox has (Infinity: plenty). */
+const putLengths = new Map();
+let sandboxRoom = Infinity;
 const sha1 = (b) => createHash('sha1').update(b).digest('hex');
 const node = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://node');
@@ -33,7 +36,10 @@ const node = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ files, truncated: false }));
     }
     if (url.pathname.endsWith('/file')) {
-      if (req.method === 'PUT') { sandboxFiles.set(path, Buffer.concat(chunks)); res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('{}'); }
+      if (req.method === 'PUT' && Number(req.headers['content-length']) > sandboxRoom) {
+        res.writeHead(507, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: 'no room', room: sandboxRoom }));
+      }
+      if (req.method === 'PUT') { putLengths.set(path, req.headers['content-length']); sandboxFiles.set(path, Buffer.concat(chunks)); res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('{}'); }
       if (req.method === 'DELETE') { sandboxFiles.delete(path); res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end('{}'); }
       if (sandboxFiles.has(path)) { res.writeHead(200); return res.end(sandboxFiles.get(path)); }
       res.writeHead(404, { 'Content-Type': 'application/json' }); return res.end('{"error":"no"}');
@@ -182,4 +188,61 @@ test("a chat opens another of the person's chats' files without asking", async (
   const asked = await access.onRequest(db, config, ws5, null, { id: '1-00000008', space: 'AI', path: 'Chats/Plan the trip', need: 'change', why: 'To build on the plan.' });
   assert.equal(asked.event.state, 'auto');
   assert.equal(text('.kimono/files/AI/Chats/Plan the trip/itinerary.md'), 'day one');
+});
+
+test('a video over the old 50 MB cap streams in whole, with its length said', async () => {
+  const school = drive.createSpace(ddb, 'mina', { name: 'School' });
+  const big = Buffer.alloc(60 * 1024 * 1024, 7);
+  const blob = drive.newId();
+  const path = drive.blobPath(drive.root, blob);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, big);
+  drive.addFile(ddb, school.rootId, 'mina', { name: '1108.mp4', size: big.length, mime: 'video/mp4', blob });
+  const ws6 = model.createWorkspace(db, 'mina', { prompt: 'Make my video smaller' });
+  sandboxFiles.clear();
+  const asked = await access.onRequest(db, config, ws6, null, { id: '1-00000009', space: 'School', path: '', need: 'change', why: 'To shrink it.' });
+  await access.answer(db, config, ws6, 'mina', asked.event.id, 'chat');
+  const got = sandboxFiles.get('.kimono/files/School/1108.mp4');
+  assert.ok(got, 'the video is in the sandbox');
+  assert.equal(sha1(got), sha1(big));
+  assert.equal(putLengths.get('.kimono/files/School/1108.mp4'), String(big.length), 'the node is told how long it is');
+
+  /* What the agent makes goes back to Drive, streamed the other way. */
+  const small = Buffer.alloc(45 * 1024 * 1024, 3);
+  sandboxFiles.set('.kimono/files/School/1108 (720p).mp4', small);
+  await access.syncOpened(db, config, ws6);
+  const made = drive.childrenOf(ddb, school.rootId, 'mina').children.find((c) => c.name === '1108 (720p).mp4');
+  assert.ok(made, 'the smaller copy is in Drive');
+  assert.equal(made.size, small.length);
+  assert.equal(sha1((await import('node:fs')).readFileSync(drive.blobPath(drive.root, drive.nodeFor(ddb, made.id, 'mina').blob))), sha1(small));
+});
+
+test("a file the sandbox hasn't room for is named to the agent, once", async () => {
+  const space = drive.createSpace(ddb, 'mina', { name: 'Clips' });
+  await put(space.rootId, 'mina', 'long.mp4', 'x'.repeat(5000));
+  const ws7 = model.createWorkspace(db, 'mina', { prompt: 'Clips' });
+  sandboxFiles.clear();
+  sandboxRoom = 1000;
+  try {
+    const asked = await access.onRequest(db, config, ws7, null, { id: '1-0000000a', space: 'Clips', path: '', need: 'read', why: 'Look.' });
+    const answered = await access.answer(db, config, ws7, 'mina', asked.event.id, 'chat');
+    assert.equal(sandboxFiles.has('.kimono/files/Clips/long.mp4'), false);
+    assert.match(answered.carryOn, /Some of it isn't here: \/files\/Clips\/long\.mp4 \(in their Drive but not here: it's 1 MB and the sandbox has 1 MB free/);
+    assert.equal((await access.syncOpened(db, config, ws7)).length, 0, 'not said again');
+    sandboxRoom = Infinity;
+    const later = await access.syncOpened(db, config, ws7);
+    assert.ok(sandboxFiles.has('.kimono/files/Clips/long.mp4'), 'with room, it comes in');
+    assert.deepEqual(later, ['/files/Clips/long.mp4']);
+  } finally { sandboxRoom = Infinity; }
+});
+
+test('a file over 4 GB stays in Drive, and the agent hears why', async () => {
+  const space = drive.createSpace(ddb, 'mina', { name: 'Raw' });
+  drive.addFile(ddb, space.rootId, 'mina', { name: 'huge.mov', size: 5 * 1024 ** 3, mime: 'video/quicktime', blob: drive.newId() });
+  const ws8 = model.createWorkspace(db, 'mina', { prompt: 'Raw' });
+  sandboxFiles.clear();
+  const asked = await access.onRequest(db, config, ws8, null, { id: '1-0000000b', space: 'Raw', path: '', need: 'read', why: 'Look.' });
+  const answered = await access.answer(db, config, ws8, 'mina', asked.event.id, 'chat');
+  assert.match(answered.carryOn, /huge\.mov \(in their Drive but not here: it's 5\.0 GB, and files over 4 GB stay in Drive\)/);
+  assert.equal((await access.syncOpened(db, config, ws8)).length, 0, 'not said again');
 });

@@ -1,7 +1,6 @@
 import "server-only";
 
 import { bounded } from "./bounded";
-import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { notebookPlace, notebooksOf } from "../notes/model";
 import { childrenOf, db as driveDb, DriveProblem, nodeFor, roleIn, spacesOf, trashNode, type DriveNode } from "../drive";
@@ -10,9 +9,9 @@ import {
   type Grant, type Need,
 } from "./access-plan";
 import type { CodeConfig } from "./config";
-import { addToDrive, codeSpaceOf, driveBytes, replaceInDrive } from "./drive";
+import { addToDrive, blobFromSandbox, codeSpaceOf, copyInSandbox, driveToSandbox, leftOutNote, leftOutSentence, noRoomNote, replaceInDrive } from "./drive";
 import { CodeProblem, newId, turnsByOwner, type Workspace } from "./model";
-import { sandbox } from "./node";
+import { NoRoom, sandbox } from "./node";
 import { planSync, type SyncAction } from "./sync";
 
 /*
@@ -23,9 +22,9 @@ import { planSync, type SyncAction } from "./sync";
  * and the change feed all apply.
  */
 
-const sha1 = (bytes: Uint8Array) => createHash("sha1").update(bytes).digest("hex");
 const maxFiles = 5000;
-const maxBytes = 50 * 1024 * 1024;
+/* What the node takes (its maxSyncBytes): bigger stays in Drive, and the agent is told. */
+const maxBytes = 4 * 1024 ** 3;
 
 /* ── reading Drive ── */
 
@@ -66,16 +65,21 @@ export function resolve(username: string, spaceName: string, path: string): { sp
   return { spaceId: space.id, spaceName: space.name, node };
 }
 
-/** Every file in an opened node, by its path below it (a file is its own one entry). */
-function filesUnder(node: DriveNode, owner: string): { path: string; nodeId: string; contentVersion: number }[] {
-  if (node.kind === "file") return node.size <= maxBytes ? [{ path: node.name, nodeId: node.id, contentVersion: node.contentVersion }] : [];
+/** Every file in an opened node, by its path below it (a file is its own one entry). Ones too big go in `tooBig`. */
+function filesUnder(node: DriveNode, owner: string, tooBig: DriveNode[] = []): { path: string; nodeId: string; contentVersion: number }[] {
+  if (node.kind === "file") {
+    if (node.size <= maxBytes) return [{ path: node.name, nodeId: node.id, contentVersion: node.contentVersion }];
+    tooBig.push(node);
+    return [];
+  }
   const out: { path: string; nodeId: string; contentVersion: number }[] = [];
   const walk = (id: string, prefix: string, depth: number) => {
     if (depth > 32 || out.length >= maxFiles) return;
     for (const child of childrenOf(driveDb(), id, owner).children) {
       const path = `${prefix}${child.name}`;
       if (child.kind === "folder") walk(child.id, `${path}/`, depth + 1);
-      else if (child.size <= maxBytes && out.length < maxFiles) out.push({ path, nodeId: child.id, contentVersion: child.contentVersion });
+      else if (child.size > maxBytes) tooBig.push({ ...child, name: path });
+      else if (out.length < maxFiles) out.push({ path, nodeId: child.id, contentVersion: child.contentVersion });
     }
   };
   walk(node.id, "", 0);
@@ -181,17 +185,28 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
     }
     const prefix = `${o.dir.slice(filesRoot.length + 1)}/`;
     const here = tree.filter((f) => f.path.startsWith(prefix)).map((f) => ({ ...f, path: f.path.slice(prefix.length) })).filter((f) => only === undefined || f.path === only);
-    let actions: SyncAction[] = planSync(rowsIn(db, workspace.id, o.dir, only), here, filesUnder(node, owner));
+    const tooBig: DriveNode[] = [];
+    let actions: SyncAction[] = planSync(rowsIn(db, workspace.id, o.dir, only), here, filesUnder(node, owner, tooBig));
+    for (const big of tooBig) {
+      const note = leftOutNote(workspace.id, `/files/${prefix}${big.name}`, `${big.id}:${big.contentVersion}`, `it's ${(big.size / 1024 ** 3).toFixed(1)} GB, and files over 4 GB stay in Drive`);
+      if (note) news.push(note);
+    }
     /* New files from someone else's turn go too, or the owner's next turn would add them to Drive as the owner's. */
     if (othersTurn) actions = actions.map((a): SyncAction => a.kind === "upload" ? { kind: "delete", path: a.path } : a);
     if (need === "read" || othersTurn) actions = readOnly(actions);
     if (only !== undefined) actions = actions.filter((a) => a.kind !== "upload");
     const opened = node;
+    const sizeOf = new Map(here.map((f) => [f.path, f.size]));
     /* A few files at a time; each touches only its own path. */
     await bounded(actions, 6, async (action) => {
       try {
-        if (await apply(db, config, workspace, o, opened, action)) news.push(`/files/${prefix}${action.path}`);
+        if (await apply(db, config, workspace, o, opened, action, sizeOf)) news.push(`/files/${prefix}${action.path}`);
       } catch (error) {
+        if (error instanceof NoRoom) {
+          const note = noRoomNote(workspace.id, `/files/${prefix}${action.path}`, error, "nodeId" in action && action.nodeId ? `${action.nodeId}:${error.size}` : String(error.size));
+          if (note) news.push(note);
+          return;
+        }
         console.warn(`Kimono AI couldn't sync ${o.dir}/${action.path}:`, error instanceof Error ? error.message : error);
       }
     });
@@ -200,20 +215,20 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
 }
 
 /** One file's move. Returns whether it came from Drive (the agent is told). */
-async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace, o: Opened, node: DriveNode, action: SyncAction): Promise<boolean> {
+async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace, o: Opened, node: DriveNode, action: SyncAction, sizeOf: Map<string, number>): Promise<boolean> {
   const owner = workspace.owner;
   const full = `${o.dir}/${action.path}`;
   const keep = (n: DriveNode, sha: string) => remember(db, workspace.id, full, { nodeId: n.id, sha1: sha, contentVersion: n.contentVersion });
   switch (action.kind) {
     case "upload": {
       if (node.kind !== "folder") return false;
-      const bytes = await sandbox.readFull(config, workspace, full);
-      keep(await addToDrive(node.id, owner, action.path, bytes), sha1(bytes));
+      const stored = await blobFromSandbox(config, workspace, full, sizeOf.get(action.path));
+      keep(await addToDrive(node.id, owner, action.path, stored), stored.sha1);
       return false;
     }
     case "update": {
-      const bytes = await sandbox.readFull(config, workspace, full);
-      keep(await replaceInDrive(action.nodeId, owner, action.path.split("/").pop()!, bytes), sha1(bytes));
+      const stored = await blobFromSandbox(config, workspace, full, sizeOf.get(action.path));
+      keep(await replaceInDrive(action.nodeId, owner, action.path.split("/").pop()!, stored), stored.sha1);
       return false;
     }
     case "trash":
@@ -221,9 +236,8 @@ async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace,
       remember(db, workspace.id, full, null);
       return false;
     case "put": {
-      const { node: file, bytes } = await driveBytes(action.nodeId, owner);
-      await sandbox.write(config, workspace, full, bytes);
-      keep(file, sha1(bytes));
+      const { node: file, sha1: sha } = await driveToSandbox(config, workspace, action.nodeId, owner, full);
+      keep(file, sha);
       return true;
     }
     case "delete":
@@ -232,15 +246,11 @@ async function apply(db: DatabaseSync, config: CodeConfig, workspace: Workspace,
       return true;
     case "conflict": {
       /* The person's copy wins; the agent's is kept beside it and goes to Drive next time as its own file. */
-      const mine = await sandbox.readFull(config, workspace, full).catch(() => null);
-      if (mine) {
-        const dot = full.lastIndexOf("."), slash = full.lastIndexOf("/");
-        await sandbox.write(config, workspace, dot > slash + 1 ? `${full.slice(0, dot)} (agent)${full.slice(dot)}` : `${full} (agent)`, mine);
-      }
+      const dot = full.lastIndexOf("."), slash = full.lastIndexOf("/");
+      await copyInSandbox(config, workspace, full, dot > slash + 1 ? `${full.slice(0, dot)} (agent)${full.slice(dot)}` : `${full} (agent)`).catch(() => {});
       if (action.nodeId) {
-        const { node: file, bytes } = await driveBytes(action.nodeId, owner);
-        await sandbox.write(config, workspace, full, bytes);
-        keep(file, sha1(bytes));
+        const { node: file, sha1: sha } = await driveToSandbox(config, workspace, action.nodeId, owner, full);
+        keep(file, sha);
       } else {
         await sandbox.removeFile(config, workspace, full);
         remember(db, workspace.id, full, null);
@@ -280,8 +290,8 @@ export async function onRequest(db: DatabaseSync, config: CodeConfig, workspace:
   const ceil = ceiling(found.spaceId, owner);
   if (byOwner && grant && ceil && (line.need === "read" || ceil === "change")) {
     db.prepare("UPDATE access_requests SET state = 'auto', answered_at = ? WHERE id = ?").run(Date.now(), id);
-    await open(db, config, workspace, found.spaceName, found.node);
-    return { event: { kind: "access" as const, ...base, state: "auto" as const }, carryOn: `That was already allowed. The files are in ${where(found.spaceName, found.node)}.` };
+    const left = leftOutSentence(await open(db, config, workspace, found.spaceName, found.node));
+    return { event: { kind: "access" as const, ...base, state: "auto" as const }, carryOn: `That was already allowed. The files are in ${where(found.spaceName, found.node)}.${left}` };
   }
   return { event: { kind: "access" as const, ...base, state: "pending" as const }, carryOn: null };
 }
@@ -320,12 +330,12 @@ export async function answer(db: DatabaseSync, config: CodeConfig, workspace: Wo
   addGrant(db, username, choice === "always" ? null : workspace.id, request.space_id, node.id, need);
   db.prepare("UPDATE access_requests SET state = 'allowed', answered_at = ? WHERE id = ?").run(Date.now(), request.id);
   const spaceName = spacesOf(driveDb(), username).find((s) => s.id === request.space_id)?.name ?? request.space_name;
-  await open(db, config, workspace, spaceName, node);
+  const left = leftOutSentence(await open(db, config, workspace, spaceName, node));
   const scope = choice === "always" ? "from now on, in every chat" : "for this chat";
   const downgraded = need !== request.need ? " They can only view that space, so it's read only." : "";
   return {
     event: { kind: "access-answer" as const, id: request.id, state: "allowed" as const, scope: choice, need },
-    carryOn: `They allowed you to ${need === "change" ? "read and change" : "read"} ${node.kind === "file" ? node.name : describe(request)}, ${scope}. It's in ${where(spaceName, node)}.${downgraded} Carry on with what they asked.`,
+    carryOn: `They allowed you to ${need === "change" ? "read and change" : "read"} ${node.kind === "file" ? node.name : describe(request)}, ${scope}. It's in ${where(spaceName, node)}.${downgraded}${left} Carry on with what they asked.`,
   };
 }
 

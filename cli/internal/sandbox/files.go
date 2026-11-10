@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"path"
@@ -12,8 +13,14 @@ import (
 )
 
 const (
-	maxFileBytes       = 2 << 20
-	maxSyncBytes       = 50 << 20
+	maxFileBytes = 2 << 20
+	// maxSyncBytes is the largest file that goes between Drive and a sandbox.
+	// Both ways stream, so the real bound is the sandbox's disk.
+	maxSyncBytes = 4 << 30 // the tree scripts below say it as 4294967296
+	// bigFileBytes is where a file into a sandbox is first checked against its disk.
+	bigFileBytes = 50 << 20
+	// keepFreeBytes is left over after a big file goes in, for the agent to work.
+	keepFreeBytes      = 256 << 20
 	maxTreeFiles       = 5000
 	maxAttachmentBytes = 20 << 20
 	maxDiffBytes       = 1 << 20
@@ -116,57 +123,98 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request, id string) e
 	if err != nil {
 		return err
 	}
-	/* Viewing caps at 2 MB; copying a file out to Drive (?full=1) at 50 MB. */
-	limit := maxFileBytes
+	/* Viewing caps at 2 MB; copying a file out to Drive (?full=1) at the sync limit, streamed. */
+	limit := int64(maxFileBytes)
 	if r.URL.Query().Get("full") == "1" {
 		limit = maxSyncBytes
 	}
-	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c",
-		`[ -f "$1" ] || exit 3; [ "$(stat -c %s -- "$1")" -le `+strconv.Itoa(limit)+` ] || exit 4; cat -- "$1"`, "file", "./"+file)
-	switch exitCode(err) {
-	case 3:
+	out, err := s.exec(r.Context(), space, nil, nil, "sh", "-c", `[ -f "$1" ] || exit 3; stat -c %s -- "$1"`, "size", "./"+file)
+	if exitCode(err) == 3 {
 		return problem(404, "That file isn't in this workspace.")
-	case 4:
-		return problem(413, "That file is too large to show.")
 	}
 	if err != nil {
 		return err
 	}
+	size, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64)
+	if err != nil {
+		return err
+	}
+	if size > limit {
+		return problem(413, "That file is too large to show.")
+	}
+	/* head -c keeps the length promised even if the file grows while it goes. */
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Length", strconv.Itoa(len(out)))
+	w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(200)
-	_, _ = w.Write(out)
+	if err := s.execStream(r.Context(), space, nil, w, "head", "-c", strconv.FormatInt(size, 10), "--", "./"+file); err != nil {
+		/* The status is sent: cutting the body short is how the Portal learns it failed. */
+		panic(http.ErrAbortHandler)
+	}
 	return nil
 }
 
 // handlePutFile writes a file into the repository, as Drive hands it back:
-// parents made as needed, owned by the agent.
+// parents made as needed, owned by the agent. It streams, so a big file never
+// sits in memory, and goes in under a temporary name so nothing sees half of it.
 func (s *Server) handlePutFile(w http.ResponseWriter, r *http.Request, id string) error {
 	file, ok := cleanPath(r.URL.Query().Get("path"))
 	if !ok || file == "" {
 		return problem(400, "That path isn't in this workspace.")
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxSyncBytes+1))
-	if err != nil {
-		return problem(400, "The file couldn't be read.")
+	if r.ContentLength < 0 {
+		return problem(411, "Say how long the file is.")
 	}
-	if len(body) > maxSyncBytes {
-		return problem(413, "Files can be at most 50 MB.")
+	if r.ContentLength > maxSyncBytes {
+		return problem(413, "Files can be at most "+gigabytes(maxSyncBytes)+".")
 	}
 	space, err := s.running(r.Context(), id)
 	if err != nil {
 		return err
 	}
-	_, err = s.exec(r.Context(), space, nil, bytes.NewReader(body), "sh", "-c",
-		`[ ! -d "$1" ] || exit 3; mkdir -p -- "$(dirname -- "$1")" && cat > "$1"`, "put", "./"+file)
+	if r.ContentLength > bigFileBytes {
+		if room, ok := s.diskRoom(r.Context(), id); ok && r.ContentLength > room-keepFreeBytes {
+			writeJSON(w, http.StatusInsufficientStorage, map[string]any{"error": "That file doesn't fit in the sandbox.", "size": r.ContentLength, "room": max(room-keepFreeBytes, 0)})
+			return nil
+		}
+	}
+	body := &countingReader{r: io.LimitReader(r.Body, maxSyncBytes+1)}
+	err = s.execStream(r.Context(), space, body, io.Discard, "sh", "-c",
+		`[ ! -d "$1" ] || exit 3; mkdir -p -- "$(dirname -- "$1")" && part="$1.kimono-part" && cat > "$part" && [ "$(stat -c %s -- "$part")" = "$2" ] && mv -f -- "$part" "$1" || { rm -f -- "$part"; exit 4; }`,
+		"put", "./"+file, strconv.FormatInt(r.ContentLength, 10))
 	if exitCode(err) == 3 {
 		return problem(409, "A folder already has that name.")
+	}
+	if body.n > maxSyncBytes {
+		return problem(413, "Files can be at most "+gigabytes(maxSyncBytes)+".")
+	}
+	if exitCode(err) == 4 {
+		return problem(400, "The file didn't arrive whole.")
 	}
 	if err != nil {
 		return err
 	}
 	w.WriteHeader(204)
 	return nil
+}
+
+// diskRoom is how much more a sandbox may keep, measured now.
+func (s *Server) diskRoom(ctx context.Context, id string) (int64, bool) {
+	used, err := s.measureDisk(ctx, id)
+	if err != nil {
+		return 0, false
+	}
+	return s.limitsNow().diskQuota() - used, true
+}
+
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
 }
 
 // handleDeleteFile removes one file. Folders are left alone; an empty one is harmless.
@@ -229,7 +277,7 @@ const treeScript = `git ls-files -z -co --exclude-standard | xargs -0 -r sh -c '
 for f; do
   [ -f "$f" ] && [ ! -L "$f" ] || continue
   n=$(stat -c %s -- "$f")
-  if [ "$n" -gt ` + "52428800" + ` ]; then printf "%s\t%s\t%s\0" "$n" x "$f"; continue; fi
+  if [ "$n" -gt ` + "4294967296" + ` ]; then printf "%s\t%s\t%s\0" "$n" x "$f"; continue; fi
   printf "%s\t%s\t%s\0" "$n" "$(sha1sum -- "$f" | cut -c1-40)" "$f"
 done' tree | head -c 4000000`
 
@@ -240,7 +288,7 @@ find . -type f -print0 | sed -z 's|^\./||' | xargs -0 -r sh -c '
 for f; do
   [ ! -L "$f" ] || continue
   n=$(stat -c %s -- "$f")
-  if [ "$n" -gt ` + "52428800" + ` ]; then printf "%s\t%s\t%s\0" "$n" x "$f"; continue; fi
+  if [ "$n" -gt ` + "4294967296" + ` ]; then printf "%s\t%s\t%s\0" "$n" x "$f"; continue; fi
   printf "%s\t%s\t%s\0" "$n" "$(sha1sum -- "$f" | cut -c1-40)" "$f"
 done' tree | head -c 4000000`
 
