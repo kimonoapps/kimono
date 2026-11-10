@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""kimono-quran REF                 a passage, e.g. 2:255 or 7:80-81
+kimono-quran REF --tafsir NAME    what a tafsir says on it
+
+Reads a passage of the Quran exactly as the chat shows it when you cite it in
+a ```quran block: the Arabic, Saheeh International (English) and Muhammad
+Hamidullah (French), with the verse either side that the chat shows in grey.
+Read a passage before you cite it, and say only what it says.
+
+Tafsirs: ibn-kathir (English), saadi, muyassar, tabari, qurtubi (Arabic).
+"""
+import json, os, re, sys, urllib.error, urllib.parse, urllib.request
+
+TAFSIRS = {"ibn-kathir": (169, "Ibn Kathir"), "saadi": (91, "Al-Sa'di"), "muyassar": (16, "Al-Muyassar"), "tabari": (15, "Al-Tabari"), "qurtubi": (90, "Al-Qurtubi")}
+TRANSLATIONS = {20: "EN", 31: "FR"}
+
+
+def get(path):
+    base = os.environ.get("ANTHROPIC_BASE_URL", "")
+    token = os.environ.get("ANTHROPIC_API_KEY", "")
+    if os.environ.get("KIMONO_SCRIPTURE_URL"):  # the evals' stand-in for the gateway
+        base, token = os.environ["KIMONO_SCRIPTURE_URL"].rstrip("/") + "/anthropic", "eval"
+    if not base.endswith("/anthropic") or not token:
+        sys.exit("kimono-quran: this computer can't reach Kimono")
+    request = urllib.request.Request(base[: -len("/anthropic")] + "/scripture/" + path, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=40) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        found = re.search(r'"error"\s*:\s*"([^"]+)"', error.read().decode(errors="replace"))
+        sys.exit(f"kimono-quran: {found.group(1) if found else error.reason}")
+    except OSError as error:
+        sys.exit(f"kimono-quran: couldn't reach the Quran ({error})")
+
+
+def text(html):
+    html = re.sub(r"<sup[^>]*>.*?</sup>", "", html or "", flags=re.S)
+    html = re.sub(r"</(p|h\d|div)>|<br\s*/?>", "\n", html)
+    html = re.sub(r"<[^>]+>", "", html)
+    for a, b in (("&amp;", "&"), ("&quot;", '"'), ("&#39;", "'"), ("&nbsp;", " "), ("&lt;", "<"), ("&gt;", ">")):
+        html = html.replace(a, b)
+    return re.sub(r"[ \t]+", " ", re.sub(r"\n\s*\n+", "\n\n", html)).strip()
+
+
+args = sys.argv[1:]
+if not args or args[0] in ("-h", "--help"):
+    sys.exit(__doc__.strip())
+m = re.fullmatch(r"(\d{1,3}):(\d{1,3})(?:-(?:\d{1,3}:)?(\d{1,3}))?", args[0].replace("–", "-").replace(" ", ""))
+if not m:
+    sys.exit("kimono-quran: give a reference like 2:255 or 7:80-81")
+surah, start = int(m[1]), int(m[2])
+end = int(m[3] or start)
+if not 1 <= surah <= 114 or end < start or end - start > 40:
+    sys.exit("kimono-quran: that's not a passage (surah 1-114, up to 40 verses)")
+chapter = get(f"quran/chapters/{surah}?language=en")["chapter"]
+if start > chapter["verses_count"]:
+    sys.exit(f"kimono-quran: {chapter['name_simple']} has {chapter['verses_count']} verses")
+end = min(end, chapter["verses_count"])
+
+if len(args) >= 3 and args[1] == "--tafsir":
+    name = args[2].lower().replace("_", "-")
+    if name not in TAFSIRS:
+        sys.exit("kimono-quran: tafsirs are " + ", ".join(TAFSIRS))
+    tid, label = TAFSIRS[name]
+    t = get(f"quran/tafsirs/{tid}/by_ayah/{surah}:{start}")["tafsir"]
+    covers = list((t.get("verses") or {}).keys())
+    body = text(t.get("text", ""))
+    print(f"{label} on {covers[0] + '-' + covers[-1].split(':')[1] if len(covers) > 1 else covers[0] if covers else f'{surah}:{start}'}\n")
+    print(body[:12000] + ("\n\n[… cut short]" if len(body) > 12000 else "") if body else "(nothing on this verse)")
+    sys.exit(0)
+
+print(f"{chapter['name_simple']} ({chapter['name_arabic']}, \"{chapter['translated_name']['name']}\"), {surah}:{start}{'-' + str(end) if end > start else ''}")
+print("The chat shows the verses marked >, with the others in grey for context.\n")
+for n in range(max(1, start - 1), min(chapter["verses_count"], end + 1) + 1):
+    v = get(f"quran/verses/by_key/{surah}:{n}?fields=text_uthmani&translations=20,31")["verse"]
+    mark = ">" if start <= n <= end else " "
+    print(f"{mark} {surah}:{n}  {v['text_uthmani']}")
+    for t in v.get("translations", []):
+        print(f"    {TRANSLATIONS.get(t['resource_id'], '?')}: {text(t['text'])}")
+    print()

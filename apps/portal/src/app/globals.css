@@ -36,12 +36,21 @@
   font-display: swap;
 }
 
-/* Quranic text and hadith in the chat (SIL Open Font Licence, public/fonts/amiri-quran-LICENSE.txt). */
+/* Quranic text and hadith in the chat (SIL Open Font Licence, public/fonts/scheherazade-new-LICENSE.txt). */
 @font-face {
-  font-family: "Amiri Quran Kimono";
-  src: url("/fonts/amiri-quran-arabic-400-normal.woff2") format("woff2");
+  font-family: "Scheherazade New Kimono";
+  src: url("/fonts/scheherazade-new-arabic-400-normal.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F, U+25CC;
+}
+
+@font-face {
+  font-family: "Scheherazade New Kimono";
+  src: url("/fonts/scheherazade-new-arabic-600-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 600;
   font-display: swap;
   unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F, U+25CC;
 }

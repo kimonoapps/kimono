@@ -398,6 +398,16 @@ private fun storedOf(o: JsonObject) = StoredCodeEvent(o.long("seq") ?: 0, o.long
  * web page. A chat's timeline streams while it's on screen, with what it is
  * writing as it writes; if the stream can't be held, it is asked for instead.
  */
+@Serializable data class QuranChapter(val name: String, val arabic: String, val meaning: String = "", val verses: Int = 0)
+@Serializable data class QuranVerse(val key: String, val number: Int, val arabic: String, val translation: Map<String, String> = emptyMap())
+@Serializable data class TafsirSource(val id: Int, val name: String, val lang: String)
+@Serializable data class QuranPassage(val ref: String, val surah: Int, val chapter: QuranChapter, val before: List<QuranVerse> = emptyList(), val verses: List<QuranVerse>, val after: List<QuranVerse> = emptyList(), val tafsirs: List<TafsirSource> = emptyList())
+@Serializable data class TafsirPart(val kind: String, val text: String, val ar: String? = null)
+@Serializable data class Tafsir(val id: Int, val name: String, val lang: String, val covers: List<String> = emptyList(), val parts: List<TafsirPart> = emptyList())
+@Serializable data class HadithGrade(val name: String, val grade: String)
+@Serializable data class Hadith(val book: String, val bookName: String, val number: Int, val chapter: String? = null, val arabic: String = "", val translation: Map<String, String> = emptyMap(), val grades: List<HadithGrade> = emptyList())
+@Serializable private data class NoticeSeen(val seen: Boolean)
+
 class Code(private val session: Session, private val platform: Platform? = null) {
     private fun ws(id: String) = "/api/v1/code/workspaces/${id.encodeURLParameter()}"
     private fun jsonBody(body: JsonObject): io.ktor.client.request.HttpRequestBuilder.() -> Unit = {
@@ -638,6 +648,17 @@ class Code(private val session: Session, private val platform: Platform? = null)
     /* ── memory ── */
 
     suspend fun memory(): CodeProfile = json.decodeFromString(session.call("/api/v1/code/memory"))
+    /* ── Quran and hadith, cited by reference (the website's scripture.tsx) ── */
+
+    private val scripture = mutableMapOf<String, String>()
+    private suspend fun scriptureCall(path: String): String = scripture[path] ?: session.call(path).also { scripture[path] = it }
+    suspend fun quran(ref: String): QuranPassage = json.decodeFromString(scriptureCall("/api/v1/code/scripture/quran?ref=${ref.encodeURLParameter()}"))
+    suspend fun tafsir(id: Int, key: String): Tafsir = json.decodeFromString(scriptureCall("/api/v1/code/scripture/tafsir?id=$id&key=${key.encodeURLParameter()}"))
+    suspend fun hadith(book: String, number: Int): Hadith = json.decodeFromString(scriptureCall("/api/v1/code/scripture/hadith?book=${book.encodeURLParameter()}&n=$number"))
+    /** Whether the person accepted the notice before Kimono AI's first answer on Islam. */
+    suspend fun noticeSeen(notice: String): Boolean = json.decodeFromString<NoticeSeen>(session.call("/api/v1/code/notices?notice=${notice.encodeURLParameter()}")).seen
+    suspend fun seeNotice(notice: String) { session.call("/api/v1/code/notices", HttpMethod.Post, jsonBody(JsonObject.of("notice" to notice))) }
+
     suspend fun skills(): List<SkillChoice> = json.decodeFromString<SkillList>(session.call("/api/v1/code/skills")).skills
     /** Turns a skill on or off for every chat; answers with the whole list. */
     suspend fun setSkill(id: String, enabled: Boolean): List<SkillChoice> =

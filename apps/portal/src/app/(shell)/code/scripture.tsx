@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Seal } from "@kimono/ui";
+import { InkCard, Seal } from "@kimono/ui";
+import { Scroller } from "@/components/scroller";
 import type { Hadith, Passage, Tafsir, Verse } from "@/lib/code/scripture";
 
 /*
@@ -96,7 +97,7 @@ function TipCard({ tip, onEnter, onLeave }: { tip: Tip; onEnter: () => void; onL
     const below = tip.rect.top - h - 10 < 8;
     setPlace({ left, top: below ? tip.rect.bottom + 10 : tip.rect.top - h - 10, below });
   }, [tip]);
-  return <div ref={ref} role="tooltip" className="cd-verse-tip" data-below={place?.below || undefined} onMouseEnter={onEnter} onMouseLeave={onLeave}
+  return <div ref={ref} role="tooltip" className="cd-verse-tip k-inkbar" data-below={place?.below || undefined} onMouseEnter={onEnter} onMouseLeave={onLeave}
     style={{ left: place?.left ?? -9999, top: place?.top ?? -9999, visibility: place ? "visible" : "hidden" }}>{tip.body}</div>;
 }
 
@@ -107,36 +108,96 @@ function LangSwitch({ lang, set, has = ["en", "fr"] }: { lang: Lang; set: (l: La
   </div>;
 }
 
+/* The tafsir last read, opened first next time. */
+const lastTafsir = (ids: number[]) => { try { const n = Number(localStorage.getItem("kimono:tafsir")); if (ids.includes(n)) return n; } catch {} return ids[0]; };
+const keepTafsir = (id: number) => { try { localStorage.setItem("kimono:tafsir", String(id)); } catch {} };
+
 /* ── Quran ──────────────────────────────────────────────────────────────── */
 
-function TafsirPanel({ id, verseKey, label }: { id: number; verseKey: string; label: string }) {
-  const { data, failed } = useLoad<Tafsir>(`/api/v1/code/scripture/tafsir?id=${id}&key=${encodeURIComponent(verseKey)}`);
-  if (failed) return <div className="cd-tafsir is-empty">The tafsir couldn&apos;t be loaded.</div>;
-  if (!data) return <div className="cd-tafsir is-loading" aria-busy="true"><span /><span /><span /></div>;
-  const covers = data.covers.length > 1 ? `${data.covers[0]}–${data.covers[data.covers.length - 1].split(":")[1]}` : data.covers[0] ?? label;
-  if (!data.parts.length) return <div className="cd-tafsir is-empty">{data.name} has nothing on {covers}.</div>;
+const span = (keys: string[]) => keys.length > 1 ? `${keys[0]}–${keys[keys.length - 1].split(":")[1]}` : keys[0] ?? "";
+
+/* One tafsir on the verses it explains together (Ibn Kathir often takes two or three at once): those verses, then its words. */
+function TafsirSection({ id, verseKey, passage, cited, lang, first }: { id: number; verseKey: string; passage: Passage; cited: string[]; lang: Lang; first: boolean }) {
+  const { data, failed } = useLoad<Tafsir>(`/api/v1/code/scripture/tafsir?id=${id}&key=${encodeURIComponent(verseKey)}&v=2`);
+  if (failed) return <section className="cd-tafsir-part is-empty">The tafsir on {verseKey} couldn&apos;t be loaded.</section>;
+  if (!data) return first ? <section className="cd-tafsir-part is-loading" aria-busy="true"><span /><span /><span /></section> : null;
+  /* a group already shown under an earlier verse of the passage isn't shown again */
+  const opener = data.covers.find((k) => cited.includes(k));
+  if (opener && opener !== verseKey) return null;
+  const all = [...passage.before, ...passage.verses, ...passage.after];
+  const shown = (data.covers.length ? data.covers : [verseKey]).map((k) => all.find((v) => v.key === k)).filter((v): v is Verse => !!v);
   const rtl = data.lang === "ar";
-  return <div className="cd-tafsir" dir={rtl ? "rtl" : "ltr"} lang={data.lang}>
-    <div className="cd-tafsir-head" dir="ltr">{data.name} on {covers}</div>
-    {data.parts.map((part, n) => part.kind === "h" ? <h5 key={n}>{part.text}</h5>
-      : part.kind === "ar" ? <p key={n} className="cd-ar" dir="rtl" lang="ar">{part.text}</p>
-      : <p key={n} className={rtl ? "cd-ar is-prose" : undefined}>{part.text}</p>)}
-  </div>;
+  return <section className="cd-tafsir-part">
+    <div className="cd-tafsir-verses" lang="ar">
+      <span className="cd-tafsir-on">{span(data.covers.length ? data.covers : [verseKey])}</span>
+      {shown.map((v) => <div key={v.key} className="cd-tafsir-verse">
+        <p className="cd-ar" dir="rtl">{v.arabic} <span className="cd-ayah">{arabicDigits(v.number)}</span></p>
+        <p className="cd-tafsir-meaning" lang={lang}>{v.translation[lang]}</p>
+      </div>)}
+    </div>
+    {!data.parts.length ? <p className="cd-tafsir-none">{data.name} has nothing on {span(data.covers.length ? data.covers : [verseKey])}.</p>
+      : <div className="cd-tafsir-text" dir={rtl ? "rtl" : "ltr"} lang={data.lang}>
+        {data.parts.map((part, n) => part.kind === "h" ? <h4 key={n}>{part.text}</h4>
+          : part.kind === "gloss" ? <p key={n} className="cd-gloss"><span className="cd-ar" dir="rtl" lang="ar">{part.ar}</span> {part.text}</p>
+          : part.kind === "ar" ? <p key={n} className="cd-ar is-quote" dir="rtl" lang="ar">{part.text}</p>
+          : <p key={n} className={rtl ? "cd-ar is-prose" : undefined}>{part.text}</p>)}
+      </div>}
+  </section>;
 }
 
+/* The tafsirs on a passage, in a dialog of their own: they run long. Which tafsir, and all the verses or one. */
+function TafsirDialog({ passage, lang, onClose }: { passage: Passage; lang: Lang; onClose: () => void }) {
+  const box = useRef<HTMLDialogElement>(null);
+  const body = useRef<HTMLElement | null>(null);
+  const cited = passage.verses.map((v) => v.key);
+  const [id, setId] = useState(() => lastTafsir(passage.tafsirs.map((t) => t.id)));
+  const [only, setOnly] = useState<string | null>(null);
+  useEffect(() => { box.current?.showModal(); }, []);
+  useEffect(() => { body.current?.scrollTo({ top: 0 }); }, [id, only]);
+  const label = passage.ref.replace("-", "–");
+  return <dialog ref={box} className="cd-tafsir-dialog" aria-labelledby="cd-tafsir-title" lang="en" onClose={onClose} onClick={(e) => { if (e.target === box.current) box.current?.close(); }}>
+    <InkCard seed={`tafsir-${passage.ref}`} className="cd-tafsir-sheet">
+      <header>
+        <h2 id="cd-tafsir-title">Tafsir <span>{passage.chapter.name} {label}</span></h2>
+        <button type="button" className="cd-tafsir-close" aria-label="Close" onClick={() => box.current?.close()}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg></button>
+        <div className="cd-tafsir-tabs" role="tablist" aria-label="Tafsir">
+          {passage.tafsirs.map((t) => <button key={t.id} type="button" role="tab" aria-selected={id === t.id} onClick={() => { setId(t.id); keepTafsir(t.id); }}>{t.name}{t.lang === "ar" ? <small lang="ar">عربي</small> : null}</button>)}
+        </div>
+        {cited.length > 1 ? <div className="cd-tafsir-pick" role="radiogroup" aria-label="Verses">
+          <button type="button" role="radio" aria-checked={only === null} onClick={() => setOnly(null)}>All</button>
+          {passage.verses.map((v) => <button key={v.key} type="button" role="radio" aria-checked={only === v.key} onClick={() => setOnly(v.key)}>{v.number}</button>)}
+        </div> : null}
+      </header>
+      <Scroller viewRef={body} className="cd-tafsir-scroll" viewClassName="cd-tafsir-body">
+        {(only ? [only] : cited).map((k, n) => <TafsirSection key={`${id}-${k}`} id={id} verseKey={k} passage={passage} cited={only ? [only] : cited} lang={lang} first={n === 0} />)}
+      </Scroller>
+    </InkCard>
+  </dialog>;
+}
+
+/* A block's reference, then its options in any order: en or fr, and translation (the translation as the text, the Arabic on hover). */
+const options = (rest: string[]) => ({ lang: rest.find((o) => o === "en" || o === "fr"), translation: rest.includes("translation") });
+
 export function QuranBlock({ source }: { source: string }) {
-  const [ref, option] = source.trim().split(/\s+/);
+  const [ref, ...rest] = source.trim().split(/\s+/);
+  const { lang: option, translation: inverted } = options(rest);
   const { data, failed } = useLoad<Passage>(ref ? `/api/v1/code/scripture/quran?ref=${encodeURIComponent(ref)}` : null);
   const [lang, setLang] = useState<Lang>(() => firstLang(option));
-  const [open, setOpen] = useState<number | null>(null);
+  const [reading, setReading] = useState(false);
   const tip = useTip();
   const label = data ? data.ref.replace("-", "–") : ref;
 
-  const verse = useCallback((v: Verse, context: boolean) => <span key={v.key}
-    className={`cd-verse${context ? " is-context" : ""}${tip.open === v.key ? " is-open" : ""}`}
-    {...tip.bind(v.key, () => <><p lang={lang}>{v.translation[lang]}</p><small>{v.key} · {translators[lang]}</small></>)}>
-    {v.arabic} <span className="cd-ayah" aria-label={`verse ${v.number}`}>{"۝"}{arabicDigits(v.number)}</span>{" "}
-  </span>, [lang, tip]);
+  const verse = useCallback((v: Verse, context: boolean) => inverted
+    ? <p key={v.key} className={`cd-verse-line is-translation${context ? " is-context" : ""}`} lang={lang}>
+        <span className="cd-ayah-num">{v.number}</span>
+        <span className={`cd-verse${tip.open === v.key ? " is-open" : ""}`}
+          {...tip.bind(v.key, () => <><p className="cd-ar cd-tip-ar" dir="rtl" lang="ar">{v.arabic}</p><small>{v.key}</small></>)}>{v.translation[lang]}</span>
+      </p>
+    : <p key={v.key} className={`cd-verse-line${context ? " is-context" : ""}`}>
+        <span className={`cd-verse${tip.open === v.key ? " is-open" : ""}`}
+          {...tip.bind(v.key, () => <><p lang={lang}>{v.translation[lang]}</p><small>{v.key} · {translators[lang]}</small></>)}>{v.arabic}</span>
+        <span className="cd-ayah" aria-label={`verse ${v.number}`}>{arabicDigits(v.number)}</span>
+      </p>, [lang, tip, inverted]);
 
   if (failed) return <div className="cd-scrip is-failed">
     <div className="cd-scrip-head"><span className="cd-scrip-title">Quran {label}</span></div>
@@ -148,22 +209,24 @@ export function QuranBlock({ source }: { source: string }) {
   </div>;
 
   const [s, a] = data.ref.split(":");
-  return <figure className="cd-scrip" lang="ar">
+  return <figure className="cd-scrip" lang={inverted ? lang : "ar"}>
     <figcaption className="cd-scrip-head" lang={lang}>
       <button type="button" className="cd-scrip-title" title="Open on quran.com" onClick={() => window.open(`https://quran.com/${s}/${a}`, "_blank", "noopener,noreferrer")}>{data.chapter.name} <span>{label}</span></button>
       <span className="cd-scrip-name" lang="ar">{data.chapter.arabic}</span>
       <LangSwitch lang={lang} set={setLang} />
+      {inverted ? <span className="cd-scrip-chapter">{translators[lang]}</span> : null}
     </figcaption>
-    <blockquote className="cd-ar cd-quran" dir="rtl">
+    <div className={inverted ? "cd-quran is-translation" : "cd-ar cd-quran"} dir={inverted ? "ltr" : "rtl"}>
       {data.before.map((v) => verse(v, true))}
       {data.verses.map((v) => verse(v, false))}
       {data.after.map((v) => verse(v, true))}
-    </blockquote>
-    <div className="cd-scrip-tafsirs" lang="en">
-      <span>Tafsir</span>
-      {data.tafsirs.map((t) => <button key={t.id} type="button" aria-pressed={open === t.id} onClick={() => setOpen(open === t.id ? null : t.id)}>{t.name}</button>)}
     </div>
-    {open !== null ? <TafsirPanel id={open} verseKey={data.verses[0].key} label={label} /> : null}
+    <div className="cd-scrip-foot" lang="en">
+      <button type="button" className="cd-scrip-tafsir-toggle" aria-haspopup="dialog" onClick={() => setReading(true)}>
+        Tafsir<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4" /></svg>
+      </button>
+    </div>
+    {reading ? <TafsirDialog passage={data} lang={lang} onClose={() => setReading(false)} /> : null}
     {tip.node}
   </figure>;
 }
@@ -171,7 +234,8 @@ export function QuranBlock({ source }: { source: string }) {
 /* ── Hadith ─────────────────────────────────────────────────────────────── */
 
 export function HadithBlock({ source }: { source: string }) {
-  const [book, number, option] = source.trim().split(/\s+/);
+  const [book, number, ...rest] = source.trim().split(/\s+/);
+  const { lang: option, translation: inverted } = options(rest);
   const n = Number(number);
   const { data, failed } = useLoad<Hadith>(book && n ? `/api/v1/code/scripture/hadith?book=${encodeURIComponent(book)}&n=${n}` : null);
   const [lang, setLang] = useState<Lang>(() => firstLang(option));
@@ -196,7 +260,11 @@ export function HadithBlock({ source }: { source: string }) {
       <LangSwitch lang={shown} set={setLang} has={has} />
       {data.chapter ? <span className="cd-scrip-chapter">{data.chapter}</span> : null}
     </figcaption>
-    {data.arabic
+    {inverted && data.arabic
+      ? <blockquote className="cd-hadith-text" lang={shown}>
+          <span className={`cd-verse${tip.open === "h" ? " is-open" : ""}`} {...tip.bind("h", () => <p className="cd-ar cd-tip-ar" dir="rtl" lang="ar">{data.arabic}</p>)}>{translation}</span>
+        </blockquote>
+      : data.arabic
       ? <blockquote className="cd-ar cd-hadith" dir="rtl" lang="ar">
           <span className={`cd-verse${tip.open === "h" ? " is-open" : ""}`} {...tip.bind("h", () => <p lang={shown}>{translation}</p>)}>{data.arabic}</span>
         </blockquote>

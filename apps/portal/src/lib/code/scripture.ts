@@ -107,7 +107,8 @@ export async function quranPassage(ref: string): Promise<Passage | null> {
   return { ref: from === to ? `${surah}:${from}` : `${surah}:${from}-${to}`, surah, chapter: ch, before, verses, after, tafsirs };
 }
 
-export type TafsirPart = { kind: "h" | "p" | "ar"; text: string };
+/** A heading, a paragraph, an Arabic quotation, or (gloss) a short Arabic phrase with its translation beside it. */
+export type TafsirPart = { kind: "h" | "p" | "ar" | "gloss"; text: string; ar?: string };
 export type Tafsir = { id: number; name: string; lang: string; covers: string[]; parts: TafsirPart[] };
 
 /* Tafsir text arrives as HTML: headings, paragraphs and Arabic quotations. It's turned into plain parts, never shown as HTML. */
@@ -122,7 +123,14 @@ function tafsirParts(html: string): TafsirPart[] {
     last = m.index + m[0].length;
   }
   loose(html.slice(last));
-  return parts;
+  /* Ibn Kathir quotes a verse a phrase at a time, each followed by its meaning in brackets: keep them together as one line. */
+  const joined: TafsirPart[] = [];
+  for (let n = 0; n < parts.length; n++) {
+    const part = parts[n], next = parts[n + 1];
+    if (part.kind === "ar" && part.text.length < 160 && next?.kind === "p" && next.text.startsWith("(")) { joined.push({ kind: "gloss", ar: part.text, text: next.text }); n++; }
+    else joined.push(part);
+  }
+  return joined;
 }
 
 export async function tafsir(id: number, key: string): Promise<Tafsir | null> {

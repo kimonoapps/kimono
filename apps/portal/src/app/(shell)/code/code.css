@@ -1848,7 +1848,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* ── Quran and hadith, cited by reference and shown from their sources (scripture.tsx) ── */
 .cd-md > .cd-scrip { margin: 14px 0; }
-.cd-scrip { --cd-ar: "Amiri Quran Kimono", "Amiri Quran", "Amiri", "Geeza Pro", "Noto Naskh Arabic", serif; max-width: 80ch; padding: 16px 18px 14px; border-radius: var(--k-r-l); background: var(--k-container-low); color: var(--k-on-surface); }
+.cd-scrip { --cd-ar: "Scheherazade New Kimono", "Scheherazade New", "Geeza Pro", "Noto Naskh Arabic", serif; max-width: 80ch; padding: 16px 18px 14px; border-radius: var(--k-r-l); background: var(--k-container-low); color: var(--k-on-surface); }
 .cd-scrip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 6px; font: 600 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
 .cd-scrip-title { padding: 0; border: 0; background: none; color: var(--k-on-surface); font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
 button.cd-scrip-title:hover { text-decoration: underline; text-decoration-color: var(--k-hair-deep); text-underline-offset: 3px; }
@@ -1861,34 +1861,85 @@ button.cd-scrip-title:hover { text-decoration: underline; text-decoration-color:
 
 .cd-ar { font-family: var(--cd-ar); }
 .cd-md blockquote.cd-ar { margin: 0; padding: 0; border: 0; color: var(--k-on-surface); }
-.cd-quran { font-size: 27px; line-height: 2.15; text-align: justify; text-align-last: right; }
-.cd-hadith { font-size: 21px; line-height: 2; }
-.cd-verse { border-radius: 6px; cursor: help; transition: background-color .15s, color .15s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-.cd-verse:hover, .cd-verse.is-open { background: color-mix(in srgb, var(--k-secondary-container) 70%, transparent); }
+.cd-quran { display: grid; gap: 6px; margin: 4px 0 2px; }
+.cd-verse-line { margin: 0; font-size: 30px; line-height: 2; text-align: right; color: var(--k-on-surface); }
+.cd-verse-line.is-context { font-size: 21px; line-height: 1.85; color: var(--k-on-surface-variant); opacity: .62; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; transition: opacity .15s; }
+.cd-verse-line.is-context:hover, .cd-verse-line.is-context:has(.is-open) { opacity: 1; -webkit-line-clamp: unset; line-clamp: none; }
+.cd-hadith { font-size: 23px; line-height: 2; }
+/* translation first: the meaning is the text, the Arabic on hover */
+.cd-quran.is-translation { gap: 10px; }
+.cd-verse-line.is-translation { display: grid; grid-template-columns: auto 1fr; gap: 10px; font: 400 17px/1.65 var(--k-sans); text-align: left; }
+.cd-verse-line.is-translation.is-context { display: -webkit-box; font-size: 15px; }
+.cd-verse-line.is-translation.is-context .cd-ayah-num { margin-right: 8px; }
+.cd-ayah-num { min-width: 26px; height: 26px; margin-top: 1px; display: inline-grid; place-items: center; border: 1.5px solid currentColor; border-radius: 999px; color: var(--k-suo, #a84d63); font: 700 11.5px/1 var(--k-sans); }
+.cd-verse-line.is-context .cd-ayah-num { color: inherit; }
+.cd-verse-tip .cd-tip-ar { font-size: 23px; line-height: 1.9; text-align: right; }
+.cd-verse { padding: 0 2px; border-radius: 6px; cursor: help; transition: background-color .15s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.cd-verse:hover, .cd-verse.is-open { background: color-mix(in srgb, var(--k-secondary-container) 75%, transparent); }
 .cd-verse:focus-visible { outline: 2px solid var(--k-suo, #8f3d4f); outline-offset: 2px; }
-.cd-verse.is-context { color: color-mix(in srgb, var(--k-on-surface) 38%, transparent); }
-.cd-verse.is-context:hover, .cd-verse.is-context.is-open { color: var(--k-on-surface-variant); }
-.cd-ayah { color: var(--k-suo, #8f3d4f); font-size: .9em; }
-.cd-verse.is-context .cd-ayah { color: inherit; }
+.cd-ayah { display: inline-grid; place-items: center; min-width: 1.5em; height: 1.5em; margin-inline: .3em 0; padding: 0 .2em; border: 1.5px solid currentColor; border-radius: 999px; color: var(--k-suo, #8f3d4f); font-size: .5em; line-height: 1; vertical-align: .35em; }
+.cd-verse-line.is-context .cd-ayah { color: inherit; }
 .cd-md blockquote.cd-hadith-text { margin: 4px 0 0; padding: 0; border: 0; color: var(--k-on-surface); }
 
-.cd-scrip-tafsirs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--k-outline-variant); }
-.cd-scrip-tafsirs > span { margin-right: 4px; font: 700 11.5px/1 var(--k-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--k-on-surface-variant); }
-.cd-scrip-tafsirs button { min-height: 32px; padding: 0 12px; border: 1px solid var(--k-outline-variant); border-radius: var(--k-r-s); background: transparent; color: var(--k-on-surface); font: 600 13px/1 var(--k-sans); cursor: pointer; transition: background-color .15s, border-color .15s; }
-.cd-scrip-tafsirs button:hover { background: var(--k-container-high); }
-.cd-scrip-tafsirs button[aria-pressed="true"] { border-color: transparent; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-scrip-foot { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--k-outline-variant); }
+.cd-scrip-tafsir-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px 0 14px; border: 0; border-radius: var(--k-r-s); background: var(--k-container-high); color: var(--k-on-surface); font: 700 13.5px/1 var(--k-sans); cursor: pointer; }
+.cd-scrip-tafsir-toggle:hover { background: var(--k-container-highest); }
+.cd-scrip-tafsir-toggle svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: rotate .2s var(--k-spring, ease-out); }
+.cd-scrip-tafsir-toggle[aria-expanded="true"] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-scrip-tafsir-toggle[aria-expanded="true"] svg { rotate: 180deg; }
 
-.cd-tafsir { max-height: 360px; margin-top: 10px; padding: 12px 14px; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--k-r-m); background: var(--k-container-lowest); font-size: 14.5px; line-height: 1.65; animation: cd-tip-in .2s var(--k-spring, ease-out); }
-.cd-tafsir-head { margin-bottom: 6px; font: 700 12px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
-.cd-tafsir h5 { margin: 12px 0 4px; font: 700 14.5px/1.4 var(--k-sans); }
-.cd-tafsir p { margin: 0 0 8px; }
-.cd-tafsir p.cd-ar { font-size: 20px; line-height: 1.9; color: var(--k-on-surface); }
-.cd-tafsir p.cd-ar.is-prose { font-size: 18.5px; }
-.cd-tafsir.is-empty { color: var(--k-on-surface-variant); }
-.cd-tafsir.is-loading, .cd-scrip-bars { display: grid; gap: 10px; }
-.cd-tafsir.is-loading span, .cd-scrip-bars span { height: 14px; border-radius: 7px; background: var(--k-container-high); animation: cd-scrip-pulse 1.2s ease-in-out infinite alternate; }
-.cd-scrip-bars span { height: 22px; }
-.cd-scrip-bars span + span, .cd-tafsir.is-loading span:last-child { width: 62%; justify-self: end; }
+/* The tafsir dialog: a reading room. Tafsirs on top, verses beneath, the commentary in a column that scrolls. */
+.cd-tafsir-dialog { width: min(760px, calc(100vw - 32px)); height: min(860px, calc(100dvh - 48px)); max-width: none; max-height: none; padding: 4px; border: 0; background: transparent; color: var(--k-on-surface); overflow: visible; }
+.cd-tafsir-dialog::backdrop { background: color-mix(in srgb, var(--k-on-surface) 32%, transparent); }
+.cd-tafsir-dialog[open] { animation: cd-dialog-in var(--k-t-seat) var(--k-spring); }
+.cd-tafsir-dialog[open]::backdrop { animation: cd-scrim-in var(--k-t-fold) var(--k-ease-settle); }
+.cd-tafsir-sheet { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; border-radius: var(--k-r-xl); background: var(--k-container-high); box-shadow: var(--k-shadow-raised); overflow: hidden; }
+.cd-tafsir-sheet > .k-ink-card-line { z-index: 2; }
+.cd-tafsir-sheet header { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 22px 20px 0 24px; border-bottom: 1px solid var(--k-outline-variant); }
+.cd-tafsir-sheet h2 { margin: 0; align-self: center; font: 600 24px/32px var(--k-display); }
+.cd-tafsir-sheet h2 span { margin-left: 8px; font: 600 14px/1 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-tafsir-close { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 999px; background: transparent; color: var(--k-on-surface-variant); cursor: pointer; }
+.cd-tafsir-close:hover { background: var(--k-container-highest); color: var(--k-on-surface); }
+.cd-tafsir-close svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.cd-tafsir-tabs { grid-column: 1 / -1; display: flex; gap: 2px; margin: 0 -8px; overflow-x: auto; scrollbar-width: none; }
+.cd-tafsir-tabs button { flex: none; display: inline-flex; align-items: baseline; gap: 6px; padding: 12px 12px 11px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--k-on-surface-variant); font: 700 14px/1 var(--k-sans); cursor: pointer; }
+.cd-tafsir-tabs button small { font: 400 13px/1 var(--cd-ar, serif); opacity: .7; }
+.cd-tafsir-tabs button:hover { color: var(--k-on-surface); }
+.cd-tafsir-tabs button[aria-selected="true"] { border-bottom-color: var(--k-suo, #a84d63); color: var(--k-on-surface); }
+.cd-tafsir-pick { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 0 14px; border-top: 1px solid var(--k-outline-variant); margin-top: -1px; }
+.cd-tafsir-pick button { min-width: 40px; min-height: 32px; padding: 0 12px; border: 0; border-radius: var(--k-r-s); background: var(--k-container-highest); color: var(--k-on-surface-variant); font: 700 13px/1 var(--k-sans); cursor: pointer; }
+.cd-tafsir-pick button[aria-checked="true"] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-tafsir-scroll { min-height: 0; }
+.cd-tafsir-body { --cd-ar: "Scheherazade New Kimono", "Scheherazade New", "Geeza Pro", serif; overscroll-behavior: contain; padding: 8px 24px 32px; }
+.cd-tafsir-part { max-width: 66ch; margin: 0 auto; padding: 18px 0 8px; }
+.cd-tafsir-part + .cd-tafsir-part { border-top: 1px solid var(--k-outline-variant); margin-top: 18px; }
+.cd-tafsir-verses { display: grid; gap: 10px; margin-bottom: 18px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container-low); }
+.cd-tafsir-on { justify-self: start; font: 700 12px/1 var(--k-mono); color: var(--k-on-surface-variant); }
+.cd-tafsir-verse .cd-ar { margin: 0; font-family: var(--cd-ar); font-size: 25px; line-height: 1.9; text-align: right; }
+.cd-tafsir-meaning { margin: 2px 0 0; font-size: 14.5px; line-height: 1.6; color: var(--k-on-surface-variant); }
+.cd-tafsir-text { font-size: 16px; line-height: 1.75; }
+.cd-tafsir-text h4 { margin: 20px 0 6px; font: 700 16.5px/1.4 var(--k-sans); }
+.cd-tafsir-text p { margin: 0 0 12px; }
+.cd-tafsir-text .cd-ar { font-family: var(--cd-ar); }
+.cd-tafsir-text p.cd-ar.is-quote { font-size: 23px; line-height: 1.9; text-align: right; }
+.cd-tafsir-text p.cd-ar.is-prose { font-size: 21px; line-height: 2; }
+.cd-tafsir-text .cd-gloss { color: var(--k-on-surface-variant); }
+.cd-tafsir-text .cd-gloss .cd-ar { font-size: 1.45em; line-height: 1.4; color: var(--k-on-surface); }
+.cd-tafsir-none, .cd-tafsir-part.is-empty { color: var(--k-on-surface-variant); }
+.cd-tafsir-part.is-loading { display: grid; gap: 12px; }
+.cd-tafsir-part.is-loading span { height: 16px; border-radius: 8px; background: var(--k-container-highest); animation: cd-scrip-pulse 1.2s ease-in-out infinite alternate; }
+.cd-tafsir-part.is-loading span:first-child { height: 90px; border-radius: var(--k-r-l); }
+.cd-tafsir-part.is-loading span:last-child { width: 70%; }
+@media (max-width: 600px) {
+  .cd-tafsir-dialog { width: 100vw; height: 100dvh; margin: 0; padding: 0; }
+  .cd-tafsir-sheet { border-radius: 0; }
+  .cd-tafsir-sheet > .k-ink-card-line { display: none; }
+  .cd-tafsir-sheet header { padding: max(16px, env(safe-area-inset-top)) 12px 0 18px; }
+  .cd-tafsir-body { padding: 4px 18px max(28px, env(safe-area-inset-bottom)); }
+}
+.cd-scrip-bars { display: grid; gap: 10px; }
+.cd-scrip-bars span { height: 22px; border-radius: 11px; background: var(--k-container-high); animation: cd-scrip-pulse 1.2s ease-in-out infinite alternate; }
+.cd-scrip-bars span + span { width: 62%; justify-self: end; }
 @keyframes cd-scrip-pulse { to { opacity: .45; } }
 .cd-scrip-note { margin: 0; color: var(--k-on-surface-variant); font-size: 14px; }
 
@@ -1896,14 +1947,15 @@ button.cd-scrip-title:hover { text-decoration: underline; text-decoration-color:
 .cd-scrip-grades li { margin: 0; padding: 5px 10px; border-radius: var(--k-r-s); background: var(--k-container-high); font-size: 12.5px; color: var(--k-on-surface-variant); }
 .cd-scrip-grades b { color: var(--k-on-surface); }
 
-.cd-verse-tip { position: fixed; z-index: 60; width: max-content; max-width: min(380px, calc(100vw - 24px)); max-height: 46vh; overflow-y: auto; padding: 10px 14px; border-radius: var(--k-r-m); background: var(--k-container-highest); color: var(--k-on-surface); box-shadow: var(--k-shadow-raised); font: 400 14.5px/1.55 var(--k-sans); text-align: left; animation: cd-tip-in .16s var(--k-spring, ease-out); }
+.cd-verse-tip { --cd-ar: "Scheherazade New Kimono", "Scheherazade New", "Geeza Pro", serif; position: fixed; z-index: 60; width: max-content; max-width: min(380px, calc(100vw - 24px)); max-height: 46vh; overflow-y: auto; padding: 10px 14px; border-radius: var(--k-r-m); background: var(--k-container-highest); color: var(--k-on-surface); box-shadow: var(--k-shadow-raised); font: 400 14.5px/1.55 var(--k-sans); text-align: left; animation: cd-tip-in .16s var(--k-spring, ease-out); }
 .cd-verse-tip p { margin: 0; }
 .cd-verse-tip small { display: block; margin-top: 6px; font: 600 11.5px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
 @keyframes cd-tip-in { from { opacity: 0; translate: 0 4px; } }
 @media (max-width: 600px) {
   .cd-scrip { padding: 14px 14px 12px; border-radius: var(--k-r-m); }
-  .cd-quran { font-size: 24px; text-align: right; }
-  .cd-hadith { font-size: 19px; }
+  .cd-verse-line { font-size: 26px; }
+  .cd-verse-line.is-context { font-size: 19px; }
+  .cd-hadith { font-size: 21px; }
 }
 .cd-md > .cd-notice { margin: 0 0 14px; }
 .cd-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; max-width: 80ch; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-secondary-container); color: var(--k-on-secondary-container); }

@@ -459,6 +459,12 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
 
 @Composable
 private fun Chat(code: Code, drive: Drive, platform: Platform, marks: AiMarks, artifacts: Artifacts, people: Map<String, app.kimono.data.Person>, w: CodeWorkspace, events: List<StoredCodeEvent>, drafts: Drafts, open: (String) -> Unit, usageTop: UsageTop) {
+    /* the replies' Quran and hadith cards fetch through the chat, and the notice before an answer on Islam asks in it */
+    androidx.compose.runtime.CompositionLocalProvider(LocalChatScope provides remember(w.id) { ChatScope(code, w.id) }) { ChatBody(code, drive, platform, marks, artifacts, people, w, events, drafts, open, usageTop) }
+}
+
+@Composable
+private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMarks, artifacts: Artifacts, people: Map<String, app.kimono.data.Person>, w: CodeWorkspace, events: List<StoredCodeEvent>, drafts: Drafts, open: (String) -> Unit, usageTop: UsageTop) {
     val items = remember(events.size) { itemsOf(events) }
     /* Where you were in it: the end (following along), or a place you scrolled back to. */
     val savedScroll = remember(w.id) { code.recall("scroll:${w.id}")?.split(',')?.mapNotNull { it.toIntOrNull() }?.takeIf { it.size == 2 } }
@@ -2297,8 +2303,11 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
                         val body = mutableListOf<String>()
                         i++
                         while (i < lines.size && !lines[i].trimStart().startsWith(fence.groupValues[1])) body += lines[i++]
+                        val closed = i < lines.size
                         i++
-                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Urushi).padding(vertical = 10.dp)) { app.kimono.ui.CodeLines(body.joinToString("\n"), "x.${lang.ifEmpty { "txt" }}") }
+                        /* Quran and hadith are cited by reference and shown from their sources (Scripture.kt) */
+                        if (lang == "quran" || lang == "hadith" || lang == "islam-notice") ScriptureBlock(lang, body.joinToString("\n"), closed)
+                        else Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Urushi).padding(vertical = 10.dp)) { app.kimono.ui.CodeLines(body.joinToString("\n"), "x.${lang.ifEmpty { "txt" }}") }
                     }
                     line.isBlank() -> i++
                     Regex("^#{1,4}\\s+").containsMatchIn(line) -> { MdText(line.replace(Regex("^#{1,4}\\s+"), ""), MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurface), codeBg, link); i++ }
@@ -2312,8 +2321,15 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
                     }
                     Regex("^\\s*([-*+]|\\d+[.)])\\s+").containsMatchIn(line) -> {
                         val ordered = Regex("^\\s*\\d+[.)]\\s+").containsMatchIn(line)
-                        var n = 1
-                        while (i < lines.size && Regex("^\\s*([-*+]|\\d+[.)])\\s+").containsMatchIn(lines[i])) {
+                        var n = Regex("^\\s*(\\d+)").find(line)?.groupValues?.get(1)?.toIntOrNull() ?: 1
+                        while (i < lines.size) {
+                            /* a loose list (a blank line between items) is still one list: it keeps counting */
+                            if (lines[i].isBlank()) {
+                                var j = i
+                                while (j < lines.size && lines[j].isBlank()) j++
+                                if (j < lines.size && Regex("^\\s*([-*+]|\\d+[.)])\\s+").containsMatchIn(lines[j])) { i = j; continue } else break
+                            }
+                            if (!Regex("^\\s*([-*+]|\\d+[.)])\\s+").containsMatchIn(lines[i])) break
                             val depth = (lines[i].length - lines[i].trimStart().length) / 2
                             val item = lines[i].replace(Regex("^\\s*([-*+]|\\d+[.)])\\s+"), "")
                             val endsIt = fadeTail && lines.drop(i + 1).all { it.isBlank() }
