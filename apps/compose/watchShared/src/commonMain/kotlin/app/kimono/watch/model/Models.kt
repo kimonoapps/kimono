@@ -134,6 +134,10 @@ data class Device(
     val codecs: List<String> = listOf("h264"),
     val passthrough: List<String> = emptyList(),
     val mbps: Double? = null,
+    /** false: no 10-bit HEVC/AV1 decoding here. Left out when it can. */
+    val tenBit: Boolean? = null,
+    /** true only where 10-bit H.264 ("Hi10P") decodes. Left out otherwise. */
+    val hi10p: Boolean? = null,
 )
 
 @Serializable

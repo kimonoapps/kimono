@@ -177,7 +177,9 @@ fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: 
             override fun error(decoder: Boolean, network: Boolean) {
                 /* A version this device can't decode: quietly try the next one. */
                 if (decoder && vm.fallback(engine.position)) return
-                if (network && party != null && retries < 3) { retries++; vm.retry(); return }
+                /* A dead copy answers 502 and is passed over for hours: asking play again gets another one.
+                   Once at the start (a few times in a party, which waits meanwhile). */
+                if (network && retries < (if (party != null) 3 else 1) && (party != null || vm.state.value.loading)) { retries++; vm.retry(); return }
                 vm.failed(if (network) "The stream stopped answering. Try again." else "This version won’t play here. Try another.")
             }
             override fun tracks() {

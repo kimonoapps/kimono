@@ -104,7 +104,15 @@ fun capabilities(context: Context, tv: Boolean): Device {
     fun decodes(mime: String) = codecs.any { info -> info.supportedTypes.any { it.equals(mime, ignoreCase = true) } }
     /* AV1 only with a hardware decoder: software AV1 drains a phone, and some devices garble its 10-bit output. */
     fun hardwareAv1() = Build.VERSION.SDK_INT >= 29 && codecs.any { info -> info.isHardwareAccelerated && info.supportedTypes.any { it.equals("video/av01", true) } }
-    fun main10() = codecs.any { info -> info.supportedTypes.any { t -> t.equals("video/hevc", true) && runCatching { info.getCapabilitiesForType(t).profileLevels.any { it.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10 } }.getOrDefault(false) } }
+    fun profile(mime: String, hardware: Boolean, vararg profiles: Int) = codecs.any { info ->
+        (!hardware || Build.VERSION.SDK_INT < 29 || info.isHardwareAccelerated) && info.supportedTypes.any { t ->
+            t.equals(mime, true) && runCatching { info.getCapabilitiesForType(t).profileLevels.any { it.profile in profiles } }.getOrDefault(false)
+        }
+    }
+    fun main10() = profile("video/hevc", false, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
+    fun av1Main10() = Build.VERSION.SDK_INT >= 29 && profile("video/av01", true, MediaCodecInfo.CodecProfileLevel.AV1ProfileMain10)
+    /* 10-bit H.264 only counts with a hardware decoder that says so; ExoPlayer has no software one here. */
+    fun hi10p() = profile("video/avc", true, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh10)
     val dv = codecs.flatMap { info ->
         info.supportedTypes.filter { it.equals("video/dolby-vision", true) }.flatMap { type -> info.getCapabilitiesForType(type).profileLevels.map { it.profile } }
     }.mapNotNull {
@@ -128,9 +136,11 @@ fun capabilities(context: Context, tv: Boolean): Device {
         maxHeight = maxHeight.coerceIn(360, 4320),
         hdr = if (dv.isEmpty()) hdr - "dv" else hdr,
         dvProfiles = if ("dv" in hdr) dv else emptyList(),
-        /* Nearly every HEVC release is 10-bit: only claim HEVC where a decoder takes Main 10. */
-        codecs = listOfNotNull("h264", "hevc".takeIf { main10() }, "av1".takeIf { hardwareAv1() }),
+        /* 8-bit HEVC plays on any HEVC decoder; tenBit tells the server whether the 10-bit ones do. */
+        codecs = listOfNotNull("h264", "hevc".takeIf { decodes("video/hevc") }, "av1".takeIf { hardwareAv1() }),
         passthrough = passthrough,
+        tenBit = false.takeUnless { main10() && (!hardwareAv1() || av1Main10()) },
+        hi10p = true.takeIf { hi10p() },
     )
 }
 
