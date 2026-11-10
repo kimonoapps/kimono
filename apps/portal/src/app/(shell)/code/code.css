@@ -1845,3 +1845,68 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 @keyframes cd-dict-tick { to { stroke-dashoffset: 0; } }
 .cd .cd-mic.is-on { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
 @media (prefers-reduced-motion: reduce) { .cd .cd-entry .cd-dictating, .cd .cd-dict-time i { animation: none; } .cd .cd-dict-done svg path { animation: none; stroke-dashoffset: 0; } }
+
+/* ── Quran and hadith, cited by reference and shown from their sources (scripture.tsx) ── */
+.cd-md > .cd-scrip { margin: 14px 0; }
+.cd-scrip { --cd-ar: "Amiri Quran Kimono", "Amiri Quran", "Amiri", "Geeza Pro", "Noto Naskh Arabic", serif; max-width: 80ch; padding: 16px 18px 14px; border-radius: var(--k-r-l); background: var(--k-container-low); color: var(--k-on-surface); }
+.cd-scrip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 6px; font: 600 13px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-scrip-title { padding: 0; border: 0; background: none; color: var(--k-on-surface); font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+button.cd-scrip-title:hover { text-decoration: underline; text-decoration-color: var(--k-hair-deep); text-underline-offset: 3px; }
+.cd-scrip-title span { font: 500 12px/1 var(--k-mono); color: var(--k-on-surface-variant); margin-left: 4px; }
+.cd-scrip-name { font: 400 20px/1 var(--cd-ar); color: var(--k-on-surface-variant); }
+.cd-scrip-chapter { flex-basis: 100%; font-weight: 500; font-size: 12.5px; }
+.cd-scrip-lang { display: inline-flex; margin-left: auto; padding: 2px; gap: 2px; border-radius: var(--k-r-s); background: var(--k-container-high); }
+.cd-scrip-lang button { min-width: 34px; min-height: 26px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--k-on-surface-variant); font: 700 11.5px/1 var(--k-sans); letter-spacing: .04em; cursor: pointer; }
+.cd-scrip-lang button[aria-checked="true"] { background: var(--k-container-lowest); color: var(--k-on-surface); box-shadow: 0 1px 2px rgba(78, 43, 55, .14); }
+
+.cd-ar { font-family: var(--cd-ar); }
+.cd-md blockquote.cd-ar { margin: 0; padding: 0; border: 0; color: var(--k-on-surface); }
+.cd-quran { font-size: 27px; line-height: 2.15; text-align: justify; text-align-last: right; }
+.cd-hadith { font-size: 21px; line-height: 2; }
+.cd-verse { border-radius: 6px; cursor: help; transition: background-color .15s, color .15s; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.cd-verse:hover, .cd-verse.is-open { background: color-mix(in srgb, var(--k-secondary-container) 70%, transparent); }
+.cd-verse:focus-visible { outline: 2px solid var(--k-suo, #8f3d4f); outline-offset: 2px; }
+.cd-verse.is-context { color: color-mix(in srgb, var(--k-on-surface) 38%, transparent); }
+.cd-verse.is-context:hover, .cd-verse.is-context.is-open { color: var(--k-on-surface-variant); }
+.cd-ayah { color: var(--k-suo, #8f3d4f); font-size: .9em; }
+.cd-verse.is-context .cd-ayah { color: inherit; }
+.cd-md blockquote.cd-hadith-text { margin: 4px 0 0; padding: 0; border: 0; color: var(--k-on-surface); }
+
+.cd-scrip-tafsirs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--k-outline-variant); }
+.cd-scrip-tafsirs > span { margin-right: 4px; font: 700 11.5px/1 var(--k-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--k-on-surface-variant); }
+.cd-scrip-tafsirs button { min-height: 32px; padding: 0 12px; border: 1px solid var(--k-outline-variant); border-radius: var(--k-r-s); background: transparent; color: var(--k-on-surface); font: 600 13px/1 var(--k-sans); cursor: pointer; transition: background-color .15s, border-color .15s; }
+.cd-scrip-tafsirs button:hover { background: var(--k-container-high); }
+.cd-scrip-tafsirs button[aria-pressed="true"] { border-color: transparent; background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+
+.cd-tafsir { max-height: 360px; margin-top: 10px; padding: 12px 14px; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--k-r-m); background: var(--k-container-lowest); font-size: 14.5px; line-height: 1.65; animation: cd-tip-in .2s var(--k-spring, ease-out); }
+.cd-tafsir-head { margin-bottom: 6px; font: 700 12px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-tafsir h5 { margin: 12px 0 4px; font: 700 14.5px/1.4 var(--k-sans); }
+.cd-tafsir p { margin: 0 0 8px; }
+.cd-tafsir p.cd-ar { font-size: 20px; line-height: 1.9; color: var(--k-on-surface); }
+.cd-tafsir p.cd-ar.is-prose { font-size: 18.5px; }
+.cd-tafsir.is-empty { color: var(--k-on-surface-variant); }
+.cd-tafsir.is-loading, .cd-scrip-bars { display: grid; gap: 10px; }
+.cd-tafsir.is-loading span, .cd-scrip-bars span { height: 14px; border-radius: 7px; background: var(--k-container-high); animation: cd-scrip-pulse 1.2s ease-in-out infinite alternate; }
+.cd-scrip-bars span { height: 22px; }
+.cd-scrip-bars span + span, .cd-tafsir.is-loading span:last-child { width: 62%; justify-self: end; }
+@keyframes cd-scrip-pulse { to { opacity: .45; } }
+.cd-scrip-note { margin: 0; color: var(--k-on-surface-variant); font-size: 14px; }
+
+.cd-scrip-grades { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid var(--k-outline-variant); list-style: none; }
+.cd-scrip-grades li { margin: 0; padding: 5px 10px; border-radius: var(--k-r-s); background: var(--k-container-high); font-size: 12.5px; color: var(--k-on-surface-variant); }
+.cd-scrip-grades b { color: var(--k-on-surface); }
+
+.cd-verse-tip { position: fixed; z-index: 60; width: max-content; max-width: min(380px, calc(100vw - 24px)); max-height: 46vh; overflow-y: auto; padding: 10px 14px; border-radius: var(--k-r-m); background: var(--k-container-highest); color: var(--k-on-surface); box-shadow: var(--k-shadow-raised); font: 400 14.5px/1.55 var(--k-sans); text-align: left; animation: cd-tip-in .16s var(--k-spring, ease-out); }
+.cd-verse-tip p { margin: 0; }
+.cd-verse-tip small { display: block; margin-top: 6px; font: 600 11.5px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+@keyframes cd-tip-in { from { opacity: 0; translate: 0 4px; } }
+@media (max-width: 600px) {
+  .cd-scrip { padding: 14px 14px 12px; border-radius: var(--k-r-m); }
+  .cd-quran { font-size: 24px; text-align: right; }
+  .cd-hadith { font-size: 19px; }
+}
+.cd-md > .cd-notice { margin: 0 0 14px; }
+.cd-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; max-width: 80ch; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+.cd-notice > div { flex: 1 1 320px; display: grid; gap: 6px; }
+.cd-notice p { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.cd-notice .k-seal { flex: none; }

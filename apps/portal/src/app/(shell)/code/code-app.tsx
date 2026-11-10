@@ -3216,6 +3216,13 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     }
   }, [workspace.id, setPending, owns]);
 
+  /* Accepting the notice before Kimono AI's first answer on Islam sends the question on: the reply waited for it. */
+  useEffect(() => {
+    const go = () => { code.ask(workspace.id, "I understand. Please answer my question now.", [], effortNow()).catch((error) => setProblem(problemText(error))); };
+    window.addEventListener("kimono:notice-accepted", go);
+    return () => window.removeEventListener("kimono:notice-accepted", go);
+  }, [workspace.id]);
+
   const usage = useUsage(workspace.id, running);
   const uploading = pending.some((p) => !p.attachment && !p.failed);
   const ready = pending.filter((p) => p.attachment).map((p) => p.attachment!);

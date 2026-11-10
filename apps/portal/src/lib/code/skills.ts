@@ -40,6 +40,19 @@ const known = new Set(skills.map((s) => s.id));
 
 export function migrateSkills(db: DatabaseSync) {
   db.exec("CREATE TABLE IF NOT EXISTS skill_choices (username TEXT NOT NULL, skill_id TEXT NOT NULL, enabled INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (username, skill_id))");
+  db.exec("CREATE TABLE IF NOT EXISTS notices_seen (username TEXT NOT NULL, notice TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (username, notice))");
+}
+
+/* Notices a person has to acknowledge once (the one before Kimono AI's first answer on Islam), and who has. */
+export const notices = new Set(["islam"]);
+
+/** Joins a turn's context until the person has accepted the notice: on Islam, the reply waits for it. */
+export const islamNoticeNote = "This person hasn't yet accepted Kimono's notice about asking AI about Islam. If their message is about Islam (its rulings, worship, beliefs, the Quran, hadith or its history), reply with only the islam-notice block, nothing before or after it, and end your turn: Kimono shows them the notice, and once they accept it their question comes back to you to answer. Otherwise answer as usual.";
+export function noticeSeen(db: DatabaseSync, username: string, notice: string): boolean {
+  return !!db.prepare("SELECT 1 FROM notices_seen WHERE username = ? AND notice = ?").get(username, notice);
+}
+export function seeNotice(db: DatabaseSync, username: string, notice: string, now = Date.now()) {
+  db.prepare("INSERT OR IGNORE INTO notices_seen (username, notice, at) VALUES (?, ?, ?)").run(username, notice, now);
 }
 
 /** The catalog as this person has it: each skill, and whether it's on for them. */

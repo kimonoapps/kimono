@@ -2,6 +2,7 @@
 
 import { Fragment, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Scroller } from "@/components/scroller";
+import { HadithBlock, IslamNotice, QuranBlock } from "./scripture";
 
 /*
  * The little Markdown an agent writes: paragraphs, headings, lists, quotes,
@@ -85,9 +86,9 @@ function inline(text: string, key = "i", fade = false): ReactNode[] {
 type Block =
   | { type: "p"; text: string }
   | { type: "h"; level: number; text: string }
-  | { type: "ul" | "ol"; items: string[] }
+  | { type: "ul" | "ol"; items: string[]; start: number }
   | { type: "quote"; text: string }
-  | { type: "code"; lang: string; text: string }
+  | { type: "code"; lang: string; text: string; closed: boolean }
   | { type: "math"; text: string }
   | { type: "hr" }
   | { type: "table"; head: string[]; align: ("left" | "center" | "right" | undefined)[]; rows: string[][] };
@@ -107,8 +108,9 @@ function blocks(source: string): Block[] {
       const body: string[] = [];
       i++;
       while (i < lines.length && !lines[i].trimStart().startsWith(fence[1])) body.push(lines[i++]);
+      const closed = i < lines.length;
       i++;
-      out.push({ type: "code", lang: fence[2], text: body.join("\n") });
+      out.push({ type: "code", lang: fence[2], text: body.join("\n"), closed });
       continue;
     }
     /* Display maths: $$…$$ or \[…\], on lines of their own (or one line). */
@@ -147,13 +149,25 @@ function blocks(source: string): Block[] {
     if (heading) { out.push({ type: "h", level: heading[1].length, text: heading[2] }); i++; continue; }
     if (/^\s*[-*+]\s+/.test(line) || /^\s*\d+[.)]\s+/.test(line)) {
       const ordered = /^\s*\d+[.)]\s+/.test(line);
+      const marker = ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/;
+      const start = ordered ? Number(/\d+/.exec(line)![0]) : 1;
       const items: string[] = [];
-      while (i < lines.length && (ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/).test(lines[i])) {
-        items.push(lines[i].replace(ordered ? /^\s*\d+[.)]\s+/ : /^\s*[-*+]\s+/, ""));
-        i++;
-        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) items[items.length - 1] += ` ${lines[i++].trim()}`;
+      while (i < lines.length) {
+        if (marker.test(lines[i])) {
+          items.push(lines[i].replace(marker, ""));
+          i++;
+          while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) items[items.length - 1] += ` ${lines[i++].trim()}`;
+          continue;
+        }
+        /* A loose list (a blank line between items) is still one list: "1." … "2." keep counting. */
+        let j = i;
+        while (j < lines.length && !lines[j].trim()) j++;
+        if (j === i || j >= lines.length) break;
+        if (marker.test(lines[j])) { i = j; continue; }
+        if (/^\s{2,}\S/.test(lines[j]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[j])) { i = j; while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) items[items.length - 1] += ` ${lines[i++].trim()}`; continue; }
+        break;
       }
-      out.push({ type: ordered ? "ol" : "ul", items });
+      out.push({ type: ordered ? "ol" : "ul", items, start });
       continue;
     }
     if (line.startsWith(">")) {
@@ -178,10 +192,17 @@ export const Markdown = memo(function Markdown({ text, streaming = false }: { te
     const key = `b${n}`;
     switch (block.type) {
       case "math": return <Tex key={key} source={block.text} display />;
-      case "code": return <Scroller key={key} fit as="pre" tone="lift" viewClassName="cd-pre" data-lang={block.lang || undefined}><code>{block.text}</code></Scroller>;
+      case "code":
+        /* Quran and hadith are cited by reference and shown from their sources; until the block is closed the reference may still be growing. */
+        if (block.lang === "islam-notice") return block.closed ? <IslamNotice key={key} /> : null;
+        if (block.lang === "quran" || block.lang === "hadith") {
+          if (!block.closed) return <div key={key} className="cd-scrip is-loading" aria-busy="true"><div className="cd-scrip-bars"><span /><span /></div></div>;
+          return block.lang === "quran" ? <QuranBlock key={key} source={block.text} /> : <HadithBlock key={key} source={block.text} />;
+        }
+        return <Scroller key={key} fit as="pre" tone="lift" viewClassName="cd-pre" data-lang={block.lang || undefined}><code>{block.text}</code></Scroller>;
       case "h": return block.level <= 2 ? <h3 key={key}>{inline(block.text, key, f)}</h3> : <h4 key={key}>{inline(block.text, key, f)}</h4>;
       case "ul": return <ul key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`, f)}</li>)}</ul>;
-      case "ol": return <ol key={key}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`, f)}</li>)}</ol>;
+      case "ol": return <ol key={key} start={block.start === 1 ? undefined : block.start}>{block.items.map((item, m) => <li key={m}>{inline(item, `${key}-${m}`, f)}</li>)}</ol>;
       case "quote": return <blockquote key={key}>{inline(block.text, key, f)}</blockquote>;
       case "hr": return <hr key={key} className="cd-rule" />;
       case "table": return <Scroller key={key} fit tone="lift" viewClassName="cd-table-wrap"><table className="cd-table">
