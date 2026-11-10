@@ -239,17 +239,29 @@ async function tmdbList(cfg: WatchConfig, key: string, path: string, params: Rec
   return titles;
 }
 
+/** How this person sees a show's episodes (./labels.ts episodeLayout), and each episode's name on screen. */
+function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof prefsOf>) {
+  const layout = episodeLayout(title.shelf, seasonsOf(db, title.id).filter((s) => s.number > 0).length, prefs.animeEpisodes);
+  const absolute = absoluteNumbers(episodesOf(db, title.id));
+  const label = (season: number, episode: number) => episodeLabel(layout, season, episode, absolute.get(`${season}:${episode}`));
+  /* An episode reference with its label added, e.g. play's next. */
+  const named = <T extends { season: number; episode: number }>(ref: T | null) => (ref ? { ...ref, label: label(ref.season, ref.episode) } : null);
+  return { layout, label, named };
+}
+
 /** Home: the rows, each a query over the catalog. */
 export async function home(cfg: WatchConfig, username: string, origin: string, shelf?: Title["shelf"]) {
   const db = watchDb();
   const ok = (t: Title) => !shelf || t.shelf === shelf;
+  const prefs = prefsOf(db, username);
   const recent = recentTitles(db, username, 30);
   const recentTitlesList = getTitles(db, recent.map((p) => p.titleId));
   const continuing = recent.flatMap((p) => {
     const t = recentTitlesList.find((x) => x.id === p.titleId);
     if (!t || !ok(t)) return [];
     if (t.kind === "movie" && finished(p)) return [];
-    return [{ ...cardOf(t, origin), season: p.season, episode: p.episode, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
+    const label = t.kind === "series" ? namer(db, t, prefs).label(p.season, p.episode) : null;
+    return [{ ...cardOf(t, origin), season: p.season, episode: p.episode, label, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
   }).slice(0, 12);
 
   const trending = await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6));
@@ -393,7 +405,7 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
     const pick = picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage));
     analyseLater(await skipDeps(cfg, username, pick), skipTarget(title, episodes, next.season, next.episode, ranked[0], minutes));
   }
-  return { next, ready: ranked.length > 0 };
+  return { next: namer(db, title, prefs).named(next), ready: ranked.length > 0 };
 }
 
 /**
@@ -442,6 +454,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const tracks = playerTracks(plan);
   const p = progressOf(db, username, title.id).find((x) => x.season === season && x.episode === episode);
   const next = title.kind === "series" ? nextEpisode(episodes, { season, episode }, prefs.fillers) : null;
+  const names = namer(db, title, prefs);
+  const ahead = title.kind === "series" && prefs.fillers === "ask" ? fillerAhead(episodes, { season, episode }) : null;
   const hlsGrant: HlsGrant | null = hls ? {
     stream: sealed(wanted), username, expiresAt,
     screen: { codecs: device.codecs, hdr: device.hdr, dvProfiles: device.dvProfiles, maxHeight: heightCap(device, quality), passthrough: device.passthrough },
@@ -458,9 +472,11 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service },
     versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
     startAt: p && !finished(p) ? p.position : 0,
-    next,
+    /* Episodes as this person sees them: layout, and labels like "S2:E3", "E27" or "E3". */
+    ...(title.kind === "series" ? { layout: names.layout, label: names.label(season, episode) } : {}),
+    next: names.named(next),
     /* Ask once when filler is up next and the person hasn't chosen. */
-    fillerAhead: title.kind === "series" && prefs.fillers === "ask" ? fillerAhead(episodes, { season, episode }) : null,
+    fillerAhead: ahead ? { ...ahead, first: names.named(ahead.first), canon: names.named(ahead.canon) } : null,
     autoplayNext: prefs.autoplayNext,
     /* Seconds: intro and recap as [start, end], credits as where they start. */
     markers,
