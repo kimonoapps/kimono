@@ -104,7 +104,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const [choice, setChoice] = useState<{ audio: string; subtitles: string } | null>(null);
 
   /* What timers and listeners read: the latest, without waiting for a render. */
-  const live = useRef({ titleId: null as string | null, ep: null as Ref | null, play: null as Play | null, view: null as TitleView | null, post: null as Post, sheet: null as Sheet, drag: false, buffering: false, loading: false, creditsDone: false, prepared: false, autoSkipped: false, savedAt: 0, token: 0, tries: 0, changed: false, link: null as PartyLink | null, correcting: false, startTimer: undefined as ReturnType<typeof setTimeout> | undefined });
+  const live = useRef({ titleId: null as string | null, ep: null as Ref | null, play: null as Play | null, view: null as TitleView | null, post: null as Post, sheet: null as Sheet, drag: false, buffering: false, loading: false, creditsDone: false, prepared: false, autoSkipped: false, savedAt: 0, token: 0, tries: 0, avoid: [] as string[], changed: false, link: null as PartyLink | null, correcting: false, startTimer: undefined as ReturnType<typeof setTimeout> | undefined });
   useLayoutEffect(() => {
     Object.assign(live.current, { titleId, ep, play, view, post, sheet, drag: drag !== null, buffering, loading });
   });
@@ -162,14 +162,14 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
 
   /* ───── Loading an episode or a film ───── */
   const pctTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const retry = useRef<((id: string, at: Ref | null, opts?: { version?: number; startAt?: number }) => Promise<void>) | null>(null);
+  const retry = useRef<((id: string, at: Ref | null, opts?: { version?: number; avoid?: string[]; startAt?: number }) => Promise<void>) | null>(null);
   /* A quality picked in the player holds for the rest of this sitting, not beyond. */
   const oneOff = useRef<string | null>(null);
-  const loadEpisode = useCallback(async (id: string, at: Ref | null, opts: { version?: number; startAt?: number } = {}) => {
+  const loadEpisode = useCallback(async (id: string, at: Ref | null, opts: { version?: number; avoid?: string[]; startAt?: number } = {}) => {
     const v = video.current;
     if (!v) return;
     const token = ++live.current.token;
-    Object.assign(live.current, { creditsDone: false, prepared: false, autoSkipped: false, loading: true });
+    Object.assign(live.current, { creditsDone: false, prepared: false, autoSkipped: false, loading: true, avoid: opts.avoid ?? [] });
     v.pause();
     setLoading(true); setProblem(null); setPost(null); setPostOut(false); setSkip(null); setCue(""); setPinfo(false); setSheet(null);
     setTime(0); setDuration(0); setBuffered(0); setCtl(true); setEnded(false);
@@ -178,7 +178,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     clearInterval(pctTimer.current);
     try {
       const device = await deviceOf();
-      const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), ...(oneOff.current ? { quality: oneOff.current } : {}), ...(opts.startAt !== undefined ? { startAt: opts.startAt } : {}), device });
+      const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), ...(opts.avoid?.length ? { avoid: opts.avoid } : {}), ...(oneOff.current ? { quality: oneOff.current } : {}), ...(opts.startAt !== undefined ? { startAt: opts.startAt } : {}), device });
       if (token !== live.current.token) return;
       setPlay(p); live.current.play = p;
       setPct(30);
@@ -229,9 +229,10 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       clearInterval(pctTimer.current);
       const p = live.current.play;
       /* A file the browser can't open: try the next version once or twice before giving up. */
-      if (error instanceof Error && error.message === "media" && p && p.versions.length > p.version.index + 1 && live.current.tries < 2) {
+      const avoid = p ? [...(opts.avoid ?? []), p.version.key] : [];
+      if (error instanceof Error && error.message === "media" && p && p.versions.some((x) => !avoid.includes(x.key)) && live.current.tries < 2) {
         live.current.tries++;
-        void retry.current?.(id, at, { version: p.version.index + 1, startAt: opts.startAt });
+        void retry.current?.(id, at, { avoid, startAt: opts.startAt });
         return;
       }
       setProblem(error instanceof Error && error.message !== "media" ? error.message : "This one doesn't play in a browser yet.");
@@ -805,7 +806,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     <div className={cx("kw-pload", (loading || problem) && "kw-on")}>
       {problem ? <div className="kw-oops"><p>{problem}</p><div className="kw-btns" style={{ justifyContent: "center" }}>
         <button className="kw-btn kw-tonal" onClick={exit}>Back</button>
-        {play && play.versions.length > play.version.index + 1 ? <button className="kw-btn kw-primary" onClick={() => { live.current.tries = 0; void loadEpisode(titleId!, ep, { version: play.version.index + 1 }); }}>Try another version</button> : null}
+        {play && play.versions.some((x) => x.key !== play.version.key && !live.current.avoid.includes(x.key)) ? <button className="kw-btn kw-primary" onClick={() => { live.current.tries = 0; void loadEpisode(titleId!, ep, { avoid: [...live.current.avoid, play.version.key] }); }}>Try another version</button> : null}
       </div></div> : <>
         <InkRing className="kw-start" value={pct / 100} percent label="Starting" />
         <div className="kw-lbl"><b>{t?.name ?? ""}</b><span>{epLine}</span></div>

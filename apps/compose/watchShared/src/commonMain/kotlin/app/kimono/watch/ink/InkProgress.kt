@@ -1,5 +1,8 @@
 package app.kimono.watch.ink
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
@@ -69,7 +72,10 @@ internal fun InkWaveBar(progress: (() -> Float)?, modifier: Modifier, color: Col
         val start = withFrameMillis { it }
         while (true) withFrameMillis { now = it - start }
     }
-    val known = progress?.invoke()?.coerceIn(0f, 1f)
+    val target = progress?.invoke()?.coerceIn(0f, 1f)
+    /* A known value glides to each new one rather than jumping there. */
+    val glide by animateFloatAsState(target ?: 0f, spring(stiffness = Spring.StiffnessVeryLow), label = "bar")
+    val known = target?.let { glide }
     val described = if (known == null) Modifier.semantics { contentDescription = "Loading"; progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate }
     else Modifier.semantics { progressBarRangeInfo = ProgressBarRangeInfo(known, 0f..1f) }
     Canvas(modifier.then(described)) {

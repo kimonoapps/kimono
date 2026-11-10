@@ -501,7 +501,7 @@ fun PlayerScreen(
             Post.None -> {}
         }
 
-        Loading(state, vm, startFill, onExit)
+        Loading(state, vm, startFill, tv, onExit)
 
         androidx.compose.animation.AnimatedVisibility(settings, Modifier.zIndex(5f), enter = app.kimono.watch.ui.pageEnter(), exit = fadeOut(tween(200))) {
             app.kimono.watch.phone.SettingsScreen(onClose = { settings = false }, tv = tv, playerOnly = true)
@@ -718,7 +718,7 @@ private fun PauseCard(on: Boolean, state: app.kimono.watch.ui.PlayerState, modif
  * under it, and after a while a way to try another copy.
  */
 @Composable
-private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel, fill: Float, onExit: () -> Unit) {
+private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel, fill: Float, tv: Boolean, onExit: () -> Unit) {
     if (!state.loading && state.problem == null) return
     val page = state.page
     val ep = state.current
@@ -735,7 +735,7 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
                     if (!state.isFilm) Text(state.label + (ep?.let { " · ${it.name}" } ?: ""), style = ui(15, color = Night.fg2))
                 }
                 Spacer(Modifier.size(8.dp))
-                InkRing({ value }, size = 96.dp, percent = true, percentStyle = ui(18, FontWeight.Bold))
+                InkRing({ value }, size = 96.dp, percent = tv, percentStyle = ui(18, FontWeight.Bold))
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     listOf("Find", "Choose", "Buffer").forEachIndexed { i, word ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -745,9 +745,9 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
                     }
                 }
                 val picked = state.answer?.version?.let { v -> (listOf(v.label.substringBefore(" · ")) + v.badges.filter { it != "HD" && it != "4K" }).joinToString(" · ") }
-                Text(when (stage) { 0 -> "Finding the best copy…"; 1 -> "Picked ${picked ?: "a copy"}"; else -> "Buffering · ${(fill * 100).toInt()}%" }, style = ui(16, color = Night.fg))
+                Text(when (stage) { 0 -> "Finding the best copy…"; 1 -> "Picked ${picked ?: "a copy"}"; else -> if (tv) "Buffering · ${(fill * 100).toInt()}%" else "Buffering…" }, style = ui(16, color = Night.fg))
                 if (waited >= 12) Text("This one’s taking a while.", style = ui(14, color = Night.fg3))
-                if (waited >= 25 && !state.finding) PaperButton("Try another copy", null, { vm.fallback(state.startAt) }, tonal = true)
+                if (waited >= 25 && !state.finding && vm.hasAnother()) PaperButton("Try another copy", null, { vm.fallback(state.startAt) }, tonal = true)
             }
         } else {
             Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {

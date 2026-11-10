@@ -113,14 +113,18 @@ class PlayerViewModel(
         }
     }
 
-    private suspend fun load(season: Int, episode: Int, version: Int? = null, at: Double? = null, quality: String? = null) {
+    /** Copies already tried for what's loading, by key: "another copy" skips them however the server ranks next time. */
+    private var tried = emptyList<String>()
+
+    private suspend fun load(season: Int, episode: Int, version: Int? = null, at: Double? = null, quality: String? = null, avoid: List<String> = emptyList()) {
+        tried = avoid
         _state.value = _state.value.copy(season = season, episode = episode, loading = true, finding = true, problem = null, skip = null, post = Post.None)
         prepared = false; autoSkipped = false; creditsDone = false; lastSaved = -100.0
         val page = _state.value.page
         if (page != null && !page.title.isFilm && page.bySeason && page.season != season) {
             runCatching { api.title(titleId, season) }.getOrNull()?.let { _state.value = _state.value.copy(page = it) }
         }
-        val answer = (if (version == null && quality == null) offline(titleId, season, episode) else null) ?: api.play(titleId, season, episode, version, quality)
+        val answer = (if (version == null && quality == null && avoid.isEmpty()) offline(titleId, season, episode) else null) ?: api.play(titleId, season, episode, version, quality, avoid = avoid)
         _state.value = _state.value.copy(answer = answer, finding = false, startAt = at ?: answer.startAt, loads = _state.value.loads + 1)
     }
 
@@ -225,12 +229,28 @@ class PlayerViewModel(
         loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, at = at, quality = value) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "That quality didn't start.") } }
     }
 
+    /** Whether there's a copy left to try. */
+    fun hasAnother(): Boolean {
+        val answer = _state.value.answer ?: return false
+        val avoid = tried + listOfNotNull(answer.version?.key?.takeIf { it.isNotEmpty() })
+        return if (avoid.isEmpty()) (answer.version?.index ?: 0) + 1 < answer.versions.size else answer.versions.any { it.key !in avoid }
+    }
+
     /** This device couldn't decode the version picked: the next one down, from the same moment. False when there's none left. */
     fun fallback(at: Double): Boolean {
-        val answer = _state.value.answer ?: return false
-        val next = (answer.version?.index ?: 0) + 1
-        if (next >= answer.versions.size) return false
-        version(next, at)
+        val s = _state.value
+        val answer = s.answer ?: return false
+        val avoid = tried + listOfNotNull(answer.version?.key?.takeIf { it.isNotEmpty() })
+        if (avoid.isEmpty()) {
+            /* An older server without keys: the next place in its list. */
+            val next = (answer.version?.index ?: 0) + 1
+            if (next >= answer.versions.size) return false
+            version(next, at)
+            return true
+        }
+        if (answer.versions.none { it.key !in avoid }) return false
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, at = at, avoid = avoid) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "That copy didn't start.") } }
         return true
     }
 

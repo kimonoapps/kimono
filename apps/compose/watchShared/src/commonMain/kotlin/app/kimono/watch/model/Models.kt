@@ -196,7 +196,7 @@ data class FillerAhead(val first: EpisodeRef, val count: Int, val canon: Episode
 
 @Serializable
 /** [bytes]: about how big the file is, when the listing says. */
-data class Version(val index: Int, val label: String, val badges: List<String> = emptyList(), val source: String = "", val bytes: Long? = null)
+data class Version(val index: Int, val label: String, val key: String = "", val badges: List<String> = emptyList(), val source: String = "", val bytes: Long? = null)
 
 /** Seconds: intro and recap as [start, end], credits as where they start. */
 @Serializable

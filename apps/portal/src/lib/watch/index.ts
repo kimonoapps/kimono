@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -504,6 +505,9 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   return { next: namer(db, title, prefs, username).named(next), ready: ranked.length > 0 };
 }
 
+/** A copy's name that holds across calls, for "try another copy" (the address itself never leaves the Portal). */
+const copyKey = (r: { url: string }) => createHash("sha1").update(r.url).digest("base64url").slice(0, 12);
+
 /**
  * Picks what to play on this device and hands back a Kimono address for it,
  * with the other versions, where to start, and what comes after.
@@ -545,7 +549,10 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   let ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db), framingOf(db, title));
   /* Nothing the screen plays as it is: with HLS the packager can transcode anything. */
   if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db), framingOf(db, title));
-  const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
+  /* The ranking moves between calls (speeds are measured as things play), so "another copy" names the ones tried, not a place in the list. */
+  const avoid = new Set(Array.isArray(raw.avoid) ? raw.avoid.filter((x): x is string => typeof x === "string") : []);
+  const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked.find((r) => !avoid.has(copyKey(r)));
+  if (!wanted && avoid.size && ranked.length) throw new WatchProblem("There's no other copy to try.", 404);
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : notFoundNote(title), 404);
 
   const markers = await markersFor(cfg, username, title, episodes, season, episode, wanted, minutes, fromAniskip,
@@ -577,8 +584,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     /* The Quality menu: what's in effect and what else plays here. Switching calls play again with quality and the position. */
     quality: { current: quality, options: qualityOptions(ranked, device, hls) },
     /* bytes: about how big this episode's file is (a season pack's share, by its bitrate), for download sizes and progress. */
-    version: { index: ranked.indexOf(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service, bytes: sizeOf(wanted, minutes) },
-    versions: ranked.slice(0, 12).map((r, index) => ({ index, label: describe(r), source: r.service })),
+    version: { index: ranked.indexOf(wanted), key: copyKey(wanted), label: describe(wanted), badges: badges(wanted), source: wanted.service, bytes: sizeOf(wanted, minutes) },
+    versions: ranked.slice(0, 12).map((r, index) => ({ index, key: copyKey(r), label: describe(r), source: r.service })),
     startAt,
     /* Episodes as this person sees them: layout, and labels like "S2:E3", "E27" or "E3". */
     ...(title.kind === "series" ? { layout: names.layout, label: names.label(season, episode) } : {}),

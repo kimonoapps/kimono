@@ -54,8 +54,8 @@ export type Play = {
   url: string;
   /** An HLS address, once the server packages streams for browsers. */
   hls?: string | null;
-  version: { index: number; label: string; badges: string[]; source: string; bytes?: number | null };
-  versions: { index: number; label: string; source: string }[];
+  version: { index: number; key: string; label: string; badges: string[]; source: string; bytes?: number | null };
+  versions: { index: number; key: string; label: string; source: string }[];
   startAt: number;
   next: (Ref & { skipped: number; label?: string }) | null;
   fillerAhead: { first: Ref & { label?: string }; count: number; canon: (Ref & { label?: string }) | null } | null;
@@ -128,7 +128,7 @@ export const watchApi = {
   setPrefs: (change: Partial<Prefs>) => call<Prefs>("prefs", put(change)),
   /** This browser's own preferred quality. */
   setDeviceQuality: (quality: string) => call<Prefs>("prefs", put({ device: deviceId(), quality })),
-  play: (body: { titleId: string; season?: number; episode?: number; version?: number; quality?: string; startAt?: number; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
+  play: (body: { titleId: string; season?: number; episode?: number; version?: number; avoid?: string[]; quality?: string; startAt?: number; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
   prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number; label?: string }) | null; ready: boolean }>("prepare", post({ ...body, deviceId: deviceId() })),
   /** Kept alive so it still lands when the page is closing. */
   progress: (body: { titleId: string; season: number; episode: number; position: number; duration: number }) =>

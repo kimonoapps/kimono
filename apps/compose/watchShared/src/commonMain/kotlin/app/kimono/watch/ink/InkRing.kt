@@ -1,5 +1,8 @@
 package app.kimono.watch.ink
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -69,7 +72,8 @@ fun InkRing(progress: () -> Float, modifier: Modifier = Modifier, size: Dp = 96.
         val start = withFrameMillis { it }
         while (true) withFrameMillis { now = it - start }
     }
-    val known = progress().coerceIn(0f, 1f)
+    /* It glides to each new value rather than jumping there. */
+    val known by animateFloatAsState(progress().coerceIn(0f, 1f), spring(stiffness = Spring.StiffnessVeryLow), label = "ring")
     Box(modifier.size(size).semantics { progressBarRangeInfo = ProgressBarRangeInfo(known, 0f..1f) }, contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(size)) {
             val (wave, track) = ringPaths(now.toDouble(), known)
