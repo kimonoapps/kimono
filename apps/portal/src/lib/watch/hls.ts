@@ -133,6 +133,12 @@ export function videoOf(s: ProbeStream): { codec: Codec; hdr: Hdr | null; dvProf
   return { codec, hdr, dvProfile, tenBit: /10|12/.test(s.pix_fmt ?? "") };
 }
 
+/** The picture's shape as shown (width over height, pixels widened), or null when the probe doesn't say. */
+export function displayAspect(probe: Pick<Probe, "streams">): number | null {
+  const v = probe.streams.find((s) => s.codec_type === "video" && !s.disposition?.attached_pic);
+  return v?.width && v.height ? (v.width * pixelAspect(v)) / v.height : null;
+}
+
 /* ───── The plan ───── */
 
 export type Rung = { height: number; width: number; kbps: number };

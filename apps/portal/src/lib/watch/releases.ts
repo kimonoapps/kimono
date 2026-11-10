@@ -45,7 +45,7 @@ export type Release = {
   service: "usenet" | "debrid" | "p2p" | "unknown";
   /** Cam rips and the like, never offered. */
   junk: boolean;
-  /** Not the film's own framing: cropped to fill a 4:3 or 16:9 screen ("fullscreen", "pan and scan"), opened up past it ("open matte"), or stretched. */
+  /** Not the film's own framing: cropped to fill a screen ("pan and scan", "16x9 crop"), opened up past it ("open matte"), or stretched. "4x3" and "fullscreen" are left alone: older TV and anime are 4:3 as made. */
   reframed: boolean;
 };
 
@@ -144,7 +144,7 @@ export function parseRelease(input: { url: string; name?: string; title?: string
   return {
     url: input.url, name: (input.name || "").trim(), filename, height, source, codec, tenBit: has(t, /\b10 ?bit\b/) || hdr.length > 0,
     hdr, dvProfile, audio, atmos: has(t, /\batmos\b/), channels, languages, subtitles, mbps, bytes, cached, service, junk,
-    reframed: has(t, /\b(full ?screen|pan ?(and|&|n) ?scan|p ?& ?s|open ?matte|4 ?(x|:) ?3|stretched|zoomed|(16 ?(x|:) ?9|wide ?screen) ?(crop|cropped))\b/),
+    reframed: has(t, /\b(pan ?(and|&|n) ?scan|p ?& ?s|open ?matte|stretch(ed)?|zoomed|(16 ?(x|:) ?9|wide ?screen) ?(crop|cropped|edit))\b/) || has(t, /\bcropped\b.{0,12}\b(16 ?(x|:) ?9|wide ?screen)\b/),
   };
 }
 
@@ -228,7 +228,26 @@ export function languageScore(r: Pick<Release, "languages" | "subtitles">, want:
   return s;
 }
 
-export function score(r: Release, device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}): number {
+/**
+ * The picture's shape a title is made in, when it can be told: TV from before
+ * 2006 is 4:3, and a 16:9 copy of it is a crop (or a stretch). Null when any
+ * shape may be the real one.
+ */
+export function expectedShape(kind: string, year: number | null): number | null {
+  return kind !== "movie" && year !== null && year < 2006 ? 4 / 3 : null;
+}
+
+/** What Watch knows of a title's copies' shapes: what it's made in, and each copy's as measured when it played. */
+export type Framing = { expected: number | null; shapeOf: (url: string) => number | null };
+
+/** Whether a copy is cut or opened up from the title as made: by its name, or by the shape it measured. */
+export function offShape(r: Pick<Release, "url" | "reframed">, framing?: Framing): boolean {
+  if (r.reframed) return true;
+  const shape = framing?.expected ? framing.shapeOf(r.url) : null;
+  return shape !== null && Math.abs(shape / framing!.expected! - 1) > 0.15;
+}
+
+export function score(r: Release, device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}, framing?: Framing): number {
   const cap = Math.min(heightCap(device, quality), linkCap(device.mbps ?? device.link));
   let s = 0;
   const h = r.height || 720;
@@ -258,17 +277,17 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
   if (!r.height) s -= 60;
   if (r.codec === "other") s -= 40;
   /* Someone else's framing: below the film as shot, even a size smaller. */
-  if (r.reframed) s -= 300;
+  if (offShape(r, framing)) s -= 300;
   /* HEVC and AV1 carry the same picture in about half the bits, where they decode. */
   if ((r.codec === "hevc" || r.codec === "av1") && device.codecs.includes(r.codec)) s += 25;
   return s;
 }
 
 /** Everything that plays here, best first. */
-export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}): Release[] {
+export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}, framing?: Framing): Release[] {
   return releases
     .filter((r) => unplayable(r, device, minutes, quality) === null)
-    .map((r) => ({ r, s: score(r, device, quality, minutes, language, speeds) }))
+    .map((r) => ({ r, s: score(r, device, quality, minutes, language, speeds, framing) }))
     .sort((a, b) => b.s - a.s)
     .map(({ r }) => r)
     .filter(unique());

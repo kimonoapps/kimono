@@ -34,8 +34,9 @@ import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb
 import { openStream, sealStream } from "./token";
 import { migrateTogether } from "./together";
 import { markDead, isDead } from "./dead";
+import { framingOf, noteShape } from "./shape";
 import { playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
-import { anything, castOf, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, startSegment, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
+import { anything, castOf, displayAspect, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, startSegment, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
 
@@ -494,7 +495,7 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
   const quality = qualityFor(cleanQuality(raw.quality), deviceQualityOf(db, username, cleanDeviceId(raw.deviceId)), prefs);
-  const ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db));
+  const ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db), framingOf(db, title));
   /* Work out the next episode's skips now, for the release it will most likely play. */
   if (ranked[0] && cfg.packager.key && !complete(fromAniskip)) {
     const pick = picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage));
@@ -541,9 +542,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const [found, fromAniskip] = await Promise.all([releasesFor(cfg, title, season, episode), aniskipFor(cfg, title, episodes, season, episode).catch(() => null)]);
   /* Sub or dub: the person's choice for this show, else their settings; the release is picked to carry it. */
   const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
-  let ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db));
+  let ranked = rank(found, device, quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db), framingOf(db, title));
   /* Nothing the screen plays as it is: with HLS the packager can transcode anything. */
-  if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db));
+  if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage, prefs.fallbackLanguage), speedsOf(db), framingOf(db, title));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : notFoundNote(title), 404);
 
@@ -626,7 +627,7 @@ function skipTarget(title: Title, episodes: Episode[], season: number, episode: 
 function picker(cfg: WatchConfig, title: Title, episodes: Episode[], device: ReturnType<typeof cleanDevice>, quality: ReturnType<typeof qualityFor>, want: ReturnType<typeof wantFor>) {
   return async (season: number, episode: number) => {
     const minutes = episodes.find((e) => e.season === season && e.number === episode)?.runtime ?? title.runtime;
-    return rank(await releasesFor(cfg, title, season, episode), device, quality, minutes, want, speedsOf(watchDb()));
+    return rank(await releasesFor(cfg, title, season, episode), device, quality, minutes, want, speedsOf(watchDb()), framingOf(watchDb(), title));
   };
 }
 
@@ -802,6 +803,9 @@ function hlsSession(cfg: WatchConfig, token: string, grant: HlsGrant): Promise<H
     if (!answer) throw new WatchProblem("This stream is slow to start. Try again in a moment.", 503);
     const probe = (await answer.json()) as HlsProbe;
     const plan = planHls(probe, grant);
+    /* Its shape, so a cropped copy of a 4:3 show ranks below the real one next time. */
+    const played = openStream(await streamKey(), grant.stream);
+    if (played) noteShape(watchDb(), played.url, displayAspect(probe));
     const job = ffmpegArgs(plan, probe.hardware);
     const session: HlsSession = { id, plan, spec: { ...job, input, segments: plan.segments, duration: plan.duration, ahead: 45, start: startSegment(plan.segments, grant.from) }, at: Date.now() };
     await putSession(cfg, session);

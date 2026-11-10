@@ -60,13 +60,26 @@ test('release names are read the way people write them', () => {
 });
 
 test('a version reframed from the film as shot ranks below it, even a size smaller', () => {
-  for (const n of ['Film.1999.1080p.Open.Matte.WEB-DL.H.264', 'Film 1999 FullScreen DVDRip', 'Film.1999.Pan.and.Scan.720p', 'Film 1999 4x3 1080p'])
+  for (const n of ['Film.1999.1080p.Open.Matte.WEB-DL.H.264', 'Film.1999.Pan.and.Scan.720p', 'Naruto 001 1080p 16x9 Crop', 'Naruto.S01E01.1080p.Stretched.x265'])
     assert.equal(R(n).reframed, true, n);
-  for (const n of ['Film.1999.1080p.BluRay.x264', 'Film.1999.IMAX.2160p.WEB-DL', 'Film 1999 DTS-HD MA 5.1'])
+  for (const n of ['Film.1999.1080p.BluRay.x264', 'Film.1999.IMAX.2160p.WEB-DL', 'Film 1999 DTS-HD MA 5.1', 'Naruto 001 4x3 DVD', 'Show 1995 FullScreen DVDRip'])
     assert.equal(R(n).reframed, false, n);
   const tv = releases.cleanDevice({ client: 'android-tv', codecs: ['h264', 'hevc'] });
   const [first] = releases.rank([R('Film.1999.2160p.Open.Matte.WEB-DL.H.265'), R('Film.1999.1080p.BluRay.x264')], tv, 'auto', 120);
   assert.equal(first.reframed, false);
+});
+
+test("a 16:9 copy of a 4:3 show, as measured when it played, ranks below the show as made", () => {
+  assert.equal(releases.expectedShape('series', 2002), 4 / 3, 'TV from before 2006 is 4:3');
+  assert.equal(releases.expectedShape('series', 2012), null);
+  assert.equal(releases.expectedShape('movie', 1960), null, 'films come in any shape');
+  const crop = R('[Judas] Naruto - S01E01 (001).mkv 1080p x265'), made = R('[Anime Time] Naruto - 001 1080p x265');
+  crop.url = 'https://x/crop'; made.url = 'https://x/made';
+  const shapes = { 'https://x/crop': 16 / 9, 'https://x/made': 1432 / 1080 };
+  const framing = { expected: 4 / 3, shapeOf: (url) => shapes[url] ?? null };
+  const phone = releases.cleanDevice({ client: 'android' });
+  assert.equal(releases.rank([crop, made], phone, 'auto', 23, 'ja', {}, framing)[0], made);
+  assert.equal(hls.displayAspect(probeOf([vstream({ width: 720, height: 480, sample_aspect_ratio: '8:9' })])), 4 / 3);
 });
 
 test('profile 5 never reaches a screen that would show it purple and green', () => {
