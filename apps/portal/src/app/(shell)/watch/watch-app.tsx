@@ -271,6 +271,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
         </div>
       </section> : <div>
         <header className={cx("kw-topbar", (scrolled || page !== "home") && "kw-solid")}>
+          <Crossing kind="shoji" href="/" className="kw-tokimono" aria-label="Back to Kimono"><Icon name="left" /><span>Kimono</span></Crossing>
           <button className="kw-brand" onClick={() => go("home")} aria-label="Kimono Watch home"><AppLockup identity={{ id: watchId, name: "Watch", accent, glyph: "play" }} /></button>
           <nav className="kw-topnav" aria-label="Sections">
             <button aria-current={page === "home" ? "page" : undefined} onClick={() => go("home")}>Home</button>

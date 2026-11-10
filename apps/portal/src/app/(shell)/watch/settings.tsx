@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { languageName, qualities, saveQuality, savedQuality, watchApi, type Prefs } from "./api";
+import { deviceOf, languageName, qualities, saveQuality, savedQuality, watchApi, type Prefs } from "./api";
 import { Crossing } from "@/components/crossing";
 import { cx, Img, useWatch } from "./bits";
 import { Icon } from "./icons";
@@ -10,7 +10,8 @@ import { PROFILE_PICKER, type Person } from "./watch-app";
 /*
  * Watch's settings (design/mockups/watch/review/spec.md §2): one page, every
  * change saved at once and ticked beside its control. Downloads belong to the
- * phone app, and the web never offers 4K, so neither appears here.
+ * phone app, so they don't appear here. 4K shows greyed out, with why, where
+ * this screen or browser can't play it.
  */
 
 const languages = ["en", "ja", "fr", "de", "es", "it", "pt", "nl", "sv", "no", "da", "fi", "pl", "ru", "uk", "tr", "ar", "hi", "ko", "zh"];
@@ -19,6 +20,11 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
   const watch = useWatch();
   const prefs = watch.prefs;
   const [quality, setQuality] = useState(savedQuality);
+  /* Why 4K can't play here, or null when it can (undefined while asking the browser). */
+  const [no4k, setNo4k] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    deviceOf().then((d) => setNo4k(d.maxHeight < 2160 ? "This screen isn't 4K" : !d.codecs.some((c) => c === "hevc" || c === "av1") ? "This browser can't play 4K" : null), () => setNo4k("This browser can't play 4K"));
+  }, []);
   const [ticked, setTicked] = useState<string | null>(null);
   const tickTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
@@ -38,8 +44,8 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
     <h1>Settings</h1>
     {!prefs ? <div className="kw-set-wait">{Array.from({ length: 6 }, (_, i) => <div key={i} className="kw-sk kw-sk-line" style={{ height: 44 }} />)}</div> : <>
       <Section title="Playback">
-        <Row label="Quality on this device" done={ticked === "quality"}>
-          <Seg value={quality} onChange={pickQuality} options={qualities.filter((q) => q.value !== "2160").map((q) => [q.value, q.label])} />
+        <Row label="Quality on this device" note={no4k ? `No 4K: ${no4k.charAt(0).toLowerCase()}${no4k.slice(1)}` : undefined} done={ticked === "quality"}>
+          <Seg value={quality} onChange={pickQuality} options={qualities.map((q) => [q.value, q.label])} disabled={no4k !== null ? { "2160": no4k ?? "" } : undefined} />
         </Row>
         <Row label="Autoplay next episode" done={ticked === "autoplayNext"} inline><Toggle checked={prefs.autoplayNext} onChange={(on) => save("autoplayNext", { autoplayNext: on })} /></Row>
         <Row label="Skip intros and recaps" done={ticked === "skipIntros"} inline><Toggle checked={prefs.skipIntros} onChange={(on) => save("skipIntros", { skipIntros: on })} /></Row>
@@ -119,10 +125,10 @@ function Row({ label, note, done, inline, children }: { label: string; note?: st
   </div>;
 }
 
-/** A segmented joint: up to four choices side by side. */
-function Seg({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (value: string) => void }) {
+/** A segmented joint: a few choices side by side. [disabled]: ones that can't be picked here, with why (on hover). */
+function Seg({ value, options, onChange, disabled }: { value: string; options: [string, string][]; onChange: (value: string) => void; disabled?: Record<string, string> }) {
   return <div className="kw-joint" role="radiogroup">
-    {options.map(([v, label]) => <button key={v} role="radio" aria-checked={value === v} className={cx(value === v && "kw-sel")} onClick={() => { if (value !== v) onChange(v); }}>{label}</button>)}
+    {options.map(([v, label]) => <button key={v} role="radio" aria-checked={value === v} disabled={v in (disabled ?? {})} title={disabled?.[v] || undefined} className={cx(value === v && "kw-sel")} onClick={() => { if (value !== v) onChange(v); }}>{label}</button>)}
   </div>;
 }
 
