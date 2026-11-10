@@ -1,0 +1,36 @@
+import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
+import { ensureTitle, setListed, setRating, setReminder, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
+
+type Context = { params: Promise<{ id: string }> };
+
+/** A title page: the title, where this person is in it, and a season's episodes (`?season=`, else the one they're on). */
+export async function GET(request: Request, { params }: Context) {
+  const user = await apiUser();
+  if (!user) return unauthorized();
+  const { id } = await params;
+  const season = Number(new URL(request.url).searchParams.get("season")) || undefined;
+  return watch(async (cfg) => apiJson(await titleView(cfg, user.username, id, season)));
+}
+
+/** This person's marks on it: `{ inList?, rating?, reminding? }`. */
+export async function PUT(request: Request, { params }: Context) {
+  const refused = crossSite(request);
+  if (refused) return refused;
+  const user = await apiUser();
+  if (!user) return unauthorized();
+  const read = await readJson(request);
+  if ("response" in read) return read.response;
+  const { id } = await params;
+  const body = (read.body ?? {}) as { inList?: unknown; rating?: unknown; reminding?: unknown };
+  return watch(async (cfg) => {
+    await ensureTitle(cfg, id);
+    const db = watchDb();
+    if (typeof body.inList === "boolean") setListed(db, user.username, id, body.inList);
+    if (typeof body.reminding === "boolean") setReminder(db, user.username, id, body.reminding);
+    if (body.rating !== undefined) {
+      if (body.rating !== null && typeof body.rating !== "string") throw new WatchProblem("Rate it down, up or love.");
+      setRating(db, user.username, id, body.rating as Rating | null);
+    }
+    return apiJson(await titleView(cfg, user.username, id));
+  });
+}

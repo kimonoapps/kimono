@@ -10,7 +10,7 @@ export type AppCategory = { id: string; label: string; apps: string[] };
 
 export const appCategories: AppCategory[] = [
   { id: "productivity", label: "Productivity", apps: ["kimono-drive", "kimono-notes"] },
-  { id: "for-you", label: "For you", apps: ["kimono-code", "immich"] },
+  { id: "for-you", label: "For you", apps: ["kimono-code", "immich", "kimono-watch"] },
   { id: "technical", label: "Technical", apps: ["pelican", "forgejo", "kimono-vpn", "kimono-tools"] },
 ];
 

@@ -199,6 +199,36 @@ exists: create the admin account first at
 `https://<photos hostname>/auth/register`, then sign in with Kimono. A server
 that already has an admin is unaffected.
 
+## Kimono Watch
+
+Kimono Watch is Kimono's own: films, series and anime, found and streamed when
+someone presses play. Nothing is downloaded or kept as a library. The Portal
+holds the catalog (from TMDB, with AniList and MyAnimeList for anime) and asks
+AIOStreams for streams, which searches the debrid services and Usenet at once;
+Usenet streams through nzbdav. The Portal relays every stream, so debrid
+services only ever see this server's address.
+
+AIOStreams and nzbdav run here, beside the Portal, under the `watch` profile.
+Add to `.env`:
+
+```bash
+COMPOSE_PROFILES=watch
+AIOSTREAMS_SECRET_KEY=   # openssl rand -hex 32; keep it, it encrypts AIOStreams' settings
+```
+
+Both setup pages are bound to this machine only. Reach them from yours with
+`ssh -L 7610:127.0.0.1:7610 -L 7611:127.0.0.1:7611 <server>`, then:
+
+1. **nzbdav** at `http://localhost:7611`: add the Usenet provider (host, port,
+   username, password, connections; streams use several connections each, so
+   20 or more for a household) and note its API key.
+2. **AIOStreams** at `http://localhost:7610`: add the debrid service's key, the
+   nzbdav service (`http://nzbdav:3000` and its API key) and a Newznab addon for
+   the indexer, set its search to Forced Query, then save. Copy the manifest
+   address it gives and change its start to `http://aiostreams:3000`.
+3. In **Admin → Applications → Watch**, paste that manifest address as the
+   stream source, add a TMDB key, and switch Watch on.
+
 ## Publishing without a tunnel
 
 An app can be published on the server's own address instead of through a

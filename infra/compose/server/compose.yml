@@ -228,6 +228,39 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  # Kimono Watch's stream search (AIOStreams) and Usenet streaming (nzbdav).
+  # Off unless the watch profile is on: COMPOSE_PROFILES=watch. Only the
+  # Portal talks to them, on this network; their setup pages are bound to
+  # this machine alone (reach them over SSH, see README "Kimono Watch").
+  aiostreams:
+    image: ghcr.io/viren070/aiostreams:${AIOSTREAMS_TAG:-latest}
+    profiles: [watch]
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${AIOSTREAMS_SECRET_KEY:-}
+      BASE_URL: ${AIOSTREAMS_BASE_URL:-http://127.0.0.1:7610}
+      ADDON_PASSWORD: ${AIOSTREAMS_ADDON_PASSWORD:-}
+    ports:
+      - "127.0.0.1:7610:3000"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - aiostreams_data:/app/data
+
+  nzbdav:
+    image: docker.io/nzbdav/nzbdav:${NZBDAV_TAG:-latest}
+    profiles: [watch]
+    restart: unless-stopped
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+    ports:
+      - "127.0.0.1:7611:3000"
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - nzbdav_config:/config
+
 # Both subnets are fixed so the proxies' trust can name them. Containers draw
 # from the upper half (ip_range) only, which keeps the gateway (.1) and Caddy's
 # fixed address out of the ranges the trust is given. `kimono server update`
@@ -263,6 +296,8 @@ networks:
           gateway: 10.89.2.1
 
 volumes:
+  aiostreams_data:
+  nzbdav_config:
   authentik_database:
   authentik_data:
   caddy_config:

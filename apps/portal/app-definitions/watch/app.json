@@ -1,0 +1,78 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "kimono-watch",
+    "name": "Kimono Watch",
+    "shortName": "Watch",
+    "description": "Films, series and anime for the household, streamed on demand.",
+    "category": "Media",
+    "version": "0.1.0",
+    "icon": "icon.svg",
+    "colors": [
+      "#a84d63",
+      "#2a1d22",
+      "#e2a0a8"
+    ],
+    "glyph": "play"
+  },
+  "spec": {
+    "integration": "native",
+    "services": [],
+    "volumes": [],
+    "configuration": [
+      {
+        "key": "tmdb_token",
+        "label": "TMDB key",
+        "kind": "secret",
+        "group": "sources",
+        "target": "settings",
+        "description": "An API read access token or API key from themoviedb.org. Titles, artwork and episodes come from TMDB."
+      },
+      {
+        "key": "streams_manifest",
+        "label": "Stream source",
+        "kind": "secret",
+        "group": "sources",
+        "target": "settings",
+        "description": "The manifest address of Kimono's AIOStreams configuration, such as http://aiostreams:3000/stremio/…/manifest.json."
+      },
+      {
+        "key": "region",
+        "label": "Country",
+        "kind": "text",
+        "group": "sources",
+        "target": "settings",
+        "default": "US",
+        "description": "Age ratings and release dates follow this country first. Two letters, such as US or GB."
+      },
+      {
+        "key": "jikan_url",
+        "label": "Jikan address",
+        "kind": "text",
+        "group": "anime",
+        "target": "settings",
+        "default": "https://api.jikan.moe/v4",
+        "description": "Where filler and recap episodes are looked up.",
+        "advanced": true
+      },
+      {
+        "key": "anime_map_url",
+        "label": "Anime map",
+        "kind": "text",
+        "group": "anime",
+        "target": "settings",
+        "default": "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json",
+        "description": "The list that connects TMDB to AniList and MyAnimeList.",
+        "advanced": true
+      }
+    ],
+    "managedEnvironment": [],
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    },
+    "portalPath": "/watch",
+    "setupReady": true
+  }
+}
