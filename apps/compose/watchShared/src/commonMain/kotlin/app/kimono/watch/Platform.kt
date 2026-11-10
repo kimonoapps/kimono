@@ -69,7 +69,8 @@ interface PlaybackEngine {
     val ended: Boolean
     /** How full the buffer is for starting, 0–1: the last stage of the start-of-playback ring. */
     val startFill: Float
-    fun load(url: String, key: String, startAt: Double)
+    /** [play]: start by itself (not in a party, where the timeline says when). */
+    fun load(url: String, key: String, startAt: Double, play: Boolean)
     fun play()
     fun pause()
     fun seekTo(seconds: Double)

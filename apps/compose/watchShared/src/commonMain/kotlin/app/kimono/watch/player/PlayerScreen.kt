@@ -106,6 +106,7 @@ import app.kimono.watch.ui.Img
 import app.kimono.watch.ui.Logo
 import app.kimono.watch.ui.PaperButton
 import app.kimono.watch.ui.PlayerViewModel
+import app.kimono.watch.ui.TogetherViewModel
 import app.kimono.watch.ui.Post
 import app.kimono.watch.ui.clickableScale
 import app.kimono.watch.ui.clickableScaleClipped
@@ -115,7 +116,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-private enum class Sheet { Tracks, Speed, Episodes }
+private enum class Sheet { Tracks, Speed, Episodes, Party }
 
 /**
  * The player's chrome over the picture, from the demo: auto-hiding
@@ -125,7 +126,7 @@ private enum class Sheet { Tracks, Speed, Episodes }
  * TV the D-pad drives it: left/right seek, hold to scrub, OK pauses.
  */
 @Composable
-fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: Boolean, onExit: () -> Unit, onRec: (String) -> Unit) {
+fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: Boolean, onExit: () -> Unit, onRec: (String) -> Unit, party: TogetherViewModel? = null) {
     val state by vm.state.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -151,25 +152,32 @@ fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: 
     val held = remember { mutableMapOf<Key, Long>() }
 
     fun show(hold: Boolean = false) { ctl = true; poke++; if (hold) poke = -kotlin.math.abs(poke) - 1 }
-    fun seekBy(d: Double) { engine.seekTo((position + d).coerceIn(0.0, duration.coerceAtLeast(0.0))); position = (position + d).coerceIn(0.0, duration) }
-    fun seekTo(s: Double) { engine.seekTo(s); position = s }
-    fun toggle() { if (engine.playing || engine.playWhenReady) engine.pause() else engine.play() }
+    /* In a party every move is the party's: applied here at once, and sent so every screen follows. */
+    fun seekTo(s: Double) { engine.seekTo(s); position = s; party?.seek(s) }
+    fun seekBy(d: Double) = seekTo((position + d).coerceIn(0.0, duration.coerceAtLeast(0.0)))
+    fun toggle() {
+        if (engine.playing || engine.playWhenReady) { engine.pause(); party?.pause(engine.position) }
+        else { engine.play(); party?.play(engine.position) }
+    }
     fun rip(right: Boolean) { ripple = right to ((ripple?.second ?: 0) + 1) }
 
     /* A new stream to load. */
     LaunchedEffect(state.loads) {
         val answer = state.answer ?: return@LaunchedEffect
         if (state.loads == 0) return@LaunchedEffect
-        engine.load(answer.url, dlKey(vm.titleId, state.season, state.episode), state.startAt)
+        engine.load(answer.url, dlKey(vm.titleId, state.season, state.episode), state.startAt, play = party == null)
         engine.setSpeed(speed)
         sheet = null
     }
     DisposableEffect(engine) {
+        /* In a party a dropped stream is asked again, quietly, a few times: the party waits meanwhile. */
+        var retries = 0
         val stop = engine.listen(object : EngineListener {
-            override fun firstFrame() { vm.started() }
+            override fun firstFrame() { retries = 0; vm.started() }
             override fun error(decoder: Boolean, network: Boolean) {
                 /* A version this device can't decode: quietly try the next one. */
                 if (decoder && vm.fallback(engine.position)) return
+                if (network && party != null && retries < 3) { retries++; vm.retry(); return }
                 vm.failed(if (network) "The stream stopped answering. Try again." else "This version won’t play here. Try another.")
             }
             override fun tracks() {
@@ -198,15 +206,30 @@ fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: 
             buffered = engine.buffered
             buffering = engine.buffering
             startFill = engine.startFill
-            vm.tick(position, duration, engine.playing)?.let { seekTo(it) }
-            if (engine.ended) {
+            /* Skipping intros by themselves is the host's to do in a party. */
+            vm.tick(position, duration, engine.playing)?.let { if (party == null || party.isHost) seekTo(it) }
+            if (party != null) {
+                val ps = party.state.value
+                val s = vm.state.value
+                if (ps != null && ps.timeline.titleId == vm.titleId) {
+                    val t = ps.timeline
+                    val sameEpisode = s.isFilm || (t.season == s.season && t.episode == s.episode)
+                    /* The party moved to another episode: load it here too. */
+                    if (!sameEpisode && !s.finding) vm.play(t.season, t.episode)
+                    else if (!s.loading && s.problem == null) party.sync(engine)
+                    party.report(when { s.loading || !sameEpisode -> "loading"; engine.buffering -> "buffering"; else -> "ready" })
+                    /* At the credits: the shared countdown. */
+                    if (s.post is Post.Next && ps.countdown == null && ps.hold == null) party.next()
+                }
+            } else if (engine.ended) {
                 when (vm.state.value.post) {
                     is Post.Next -> if (vm.state.value.answer?.autoplayNext != false) vm.playNext()
                     else -> {}
                 }
             }
-            /* "You're watching" after five seconds paused. */
-            if (pausedAt > 0 && !engine.playWhenReady && nowMs() - pausedAt > 5000 && sheet == null && vm.state.value.post == Post.None && !state.loading) { pauseCard = true; ctl = false }
+            /* "You're watching" after five seconds paused; in a party only when someone paused it, not while it waits for a screen. */
+            val partyPaused = party?.state?.value?.let { !it.timeline.playing && it.hold == null } ?: true
+            if (pausedAt > 0 && partyPaused && !engine.playWhenReady && nowMs() - pausedAt > 5000 && sheet == null && vm.state.value.post == Post.None && !state.loading) { pauseCard = true; ctl = false }
             delay(250)
         }
     }
@@ -324,6 +347,9 @@ fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: 
 
         PauseCard(pauseCard && post == Post.None, state, Modifier.fillMaxSize())
 
+        /* The party's faces, notes and reactions sit under the controls and sheets. */
+        if (party != null) PartyLayer(party, chrome > 0.5f, tv)
+
         /* Top: back and what's on. */
         val name = state.page?.title?.name ?: ""
         val ep = state.current
@@ -361,6 +387,7 @@ fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: 
                     LabBtn(Ic.speed, "Speed", tv) { sheet = if (sheet == Sheet.Speed) null else Sheet.Speed; show() }
                     if (!state.isFilm) LabBtn(Ic.eps, "Episodes", tv) { sheet = if (sheet == Sheet.Episodes) null else Sheet.Episodes; show() }
                     LabBtn(Ic.cc, "Audio & subtitles", tv) { sheet = if (sheet == Sheet.Tracks) null else Sheet.Tracks; show() }
+                    if (party != null) LabBtn(Ic.people, "Together", tv) { sheet = if (sheet == Sheet.Party) null else Sheet.Party; show() }
                     if (state.answer?.next != null) LabBtn(Ic.next, "Next episode", tv) { vm.playNext() }
                 }
             }
@@ -378,11 +405,11 @@ fun PlayerScreen(vm: PlayerViewModel, engine: PlaybackEngine, tv: Boolean, pip: 
 
         AnimatedVisibility(sheet != null, Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 90.dp),
             enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.7f)) { it / 10 }, exit = fadeOut(tween(200))) {
-            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it) }, position, { sheet = null; show() })
+            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party)
         }
 
         when (post) {
-            is Post.Next -> NextUp(vm, post, buffering || !playing, ctl, tv)
+            is Post.Next -> NextUp(vm, post, buffering || !playing, ctl, tv, party)
             is Post.Ask -> FillerAsk(vm, post, tv)
             Post.End -> EndCard(vm, state, onExit, onRec, tv)
             Post.None -> {}
@@ -607,7 +634,7 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
 }
 
 @Composable
-private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit) {
+private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngine, tracksVersion: Int, speed: Float, setSpeed: (Float) -> Unit, position: Double, close: () -> Unit, party: TogetherViewModel?) {
     val state by vm.state.collectAsState()
     val first = remember { FocusRequester() }
     Column(Modifier.widthIn(max = 460.dp).heightIn(max = 620.dp).clip(RoundedCornerShape(14.dp)).background(Color(0xF51B1412)).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(18.dp)) {
@@ -674,6 +701,7 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                     }
                 }
             }
+            Sheet.Party -> if (party != null) PartySheet(party, app.kimono.watch.LocalWatch.current.tv, first)
             Sheet.Episodes -> {
                 Text("Season ${state.season}", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(bottom = 10.dp))
                 val eps = state.page?.episodes.orEmpty()
@@ -683,7 +711,7 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                     items(eps) { e ->
                         val now = e.number == state.episode
                         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (now) Color(0x24D06A82) else Color.Transparent)
-                            .clickableScale({ close(); vm.play(state.season, e.number) }).then(if (now) Modifier.focusRequester(first) else Modifier).padding(8.dp),
+                            .clickableScale({ close(); if (party != null) party.episode(state.season, e.number) else vm.play(state.season, e.number) }).then(if (now) Modifier.focusRequester(first) else Modifier).padding(8.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(Modifier.width(120.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp))) {
                                 Img(e.still, Modifier.fillMaxSize())
@@ -715,11 +743,17 @@ private fun Opt(label: String, selected: Boolean, focus: FocusRequester? = null,
 
 /** The corner vignette over the rolling credits: Watch credits, and Next episode filling itself. */
 @Composable
-private fun NextUp(vm: PlayerViewModel, post: Post.Next, buffering: Boolean, ctl: Boolean, tv: Boolean) {
+private fun NextUp(vm: PlayerViewModel, post: Post.Next, buffering: Boolean, ctl: Boolean, tv: Boolean, party: TogetherViewModel?) {
     val fill = remember { Animatable(0f) }
     val auto = vm.state.collectAsState().value.answer?.autoplayNext != false
+    /* In a party the countdown is the server's, ten seconds shared by every screen. */
+    val countdown = party?.state?.collectAsState()?.value?.countdown
+    LaunchedEffect(countdown?.endsAt) {
+        if (party == null || countdown == null) return@LaunchedEffect
+        while (true) { fill.snapTo((1f - (countdown.endsAt - party.serverNow()) / 10_000f).coerceIn(0f, 1f)); delay(50) }
+    }
     LaunchedEffect(buffering) {
-        if (buffering) return@LaunchedEffect
+        if (party != null || buffering) return@LaunchedEffect
         fill.animateTo(1f, tween(((1f - fill.value) * 8000).toInt(), easing = androidx.compose.animation.core.LinearEasing))
         if (auto) vm.playNext()
     }
@@ -731,8 +765,8 @@ private fun NextUp(vm: PlayerViewModel, post: Post.Next, buffering: Boolean, ctl
     Box(Modifier.fillMaxSize()) {
         Row(Modifier.align(Alignment.BottomEnd).padding(end = 32.dp, bottom = bottom), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (post.skipped > 0) Text("Skipping ${post.skipped} filler episode${if (post.skipped > 1) "s" else ""}", style = ui(13, FontWeight.Bold, Night.fg2))
-            PaperButton("Watch credits", null, { vm.watchCredits() }, tonal = true, height = 52.dp)
-            PaperButton("Next episode", Ic.next, { vm.playNext() }, Modifier.focusRequester(focus), height = 52.dp, fill = fill.value)
+            PaperButton("Watch credits", null, { party?.watchCredits(); vm.watchCredits() }, tonal = true, height = 52.dp)
+            PaperButton("Next episode", Ic.next, { val to = countdown?.to; if (party != null && to != null) party.episode(to.season, to.episode) else if (party != null) party.next() else vm.playNext() }, Modifier.focusRequester(focus), height = 52.dp, fill = fill.value)
         }
     }
     LaunchedEffect(Unit) { delay(400); runCatching { focus.requestFocus() } }

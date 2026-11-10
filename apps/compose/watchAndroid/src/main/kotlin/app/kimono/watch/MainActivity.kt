@@ -24,9 +24,7 @@ class MainActivity : ComponentActivity() {
         connect.value = connectServer(intent)
         setContent {
             WatchTheme {
-                WatchRoot(watch.services, resumed.intValue, connect.value, if (watch.tv) AndroidTvShell else null) { id, season, episode ->
-                    startActivity(Intent(this, PlayerActivity::class.java).putExtra("titleId", id).putExtra("season", season ?: -1).putExtra("episode", episode ?: -1))
-                }
+                WatchRoot(watch.services, resumed.intValue, connect.value, if (watch.tv) AndroidTvShell else null, launcher)
             }
         }
     }
@@ -42,6 +40,15 @@ class MainActivity : ComponentActivity() {
         val server = data.getQueryParameter("server")?.trim()?.trimEnd('/') ?: return null
         return server.takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: "https://$server"
     }
+
+    private val launcher = object : PlayerLauncher {
+        override fun play(titleId: String, season: Int?, episode: Int?) = open(titleId, season, episode)
+        override fun together(titleId: String, season: Int?, episode: Int?, at: Double) = open(titleId, season, episode) { putExtra("together", true).putExtra("at", at) }
+        override fun join(partyId: String) = startActivity(Intent(this@MainActivity, PlayerActivity::class.java).putExtra("party", partyId))
+    }
+
+    private fun open(titleId: String, season: Int?, episode: Int?, extra: Intent.() -> Unit = {}) =
+        startActivity(Intent(this, PlayerActivity::class.java).putExtra("titleId", titleId).putExtra("season", season ?: -1).putExtra("episode", episode ?: -1).apply(extra))
 
     private var paused = false
     override fun onPause() { super.onPause(); paused = true }

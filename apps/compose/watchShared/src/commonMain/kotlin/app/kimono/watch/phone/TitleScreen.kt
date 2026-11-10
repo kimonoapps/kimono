@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -173,7 +174,7 @@ private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map
             }
             page.tracker?.let { Tracker(page) }
             Text(t.overview, style = ui(15).copy(lineHeight = 24.sp))
-            Actions(page, vm, dl, downloads)
+            Actions(page, vm, go, dl, downloads)
         }
     }
     val side: @Composable () -> Unit = {
@@ -251,10 +252,10 @@ private fun Tracker(page: TitlePage) {
 }
 
 @Composable
-private fun Actions(page: TitlePage, vm: TitleViewModel, dl: Map<String, DlState>, downloads: WatchDownloads) {
+private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String, DlState>, downloads: WatchDownloads) {
     var rating by remember { mutableStateOf(false) }
     val t = page.title
-    Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+    Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
         Act(if (page.inList) Ic.check else Ic.add, "My list", page.inList) { vm.toggleList() }
         Box {
             Act(when (page.rating) { "down" -> Ic.down; "love" -> Ic.love; else -> Ic.up }, "Rate", page.rating != null) { rating = true }
@@ -279,6 +280,10 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, dl: Map<String, DlState
             }
         }
         if (page.hasFillers) SwitchAct("Skip fillers", page.fillers == "skip") { vm.skipFillers(it) }
+        if (page.playable) Act(Ic.people, "Watch together", false) {
+            val r = page.resume
+            go.together(t.id, r?.season?.takeIf { it > 0 }, r?.episode?.takeIf { it > 0 }, r?.position ?: 0.0)
+        }
     }
 }
 

@@ -95,6 +95,9 @@ import app.kimono.watch.ui.clickableScaleClipped
 class Go(
     val open: (Card) -> Unit,
     val play: (id: String, season: Int?, episode: Int?) -> Unit,
+    /** Watch Together: start a party on this title (from [at] seconds), or join one. */
+    val together: (id: String, season: Int?, episode: Int?, at: Double) -> Unit = { _, _, _, _ -> },
+    val join: (partyId: String) -> Unit = {},
 )
 
 val statusTop @Composable get() = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -165,6 +168,7 @@ private fun HomePage(profile: Profile, vm: HomeViewModel, go: Go, scroll: androi
     val home = state.home
     LazyColumn(Modifier.fillMaxSize(), state = scroll, contentPadding = PaddingValues(bottom = navBottom + 96.dp)) {
         item("hero") { Hero(home?.featured, home?.rows.orEmpty(), go, previewing && scroll.firstVisibleItemIndex == 0) }
+        item("party") { PartyInvites(go, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 22.dp)) }
         if (home == null) {
             if (state.problem != null) item { Text(state.problem!!, style = ui(15, color = Night.fg3), modifier = Modifier.padding(16.dp)) }
             else items(4) { SkeletonRow() }
@@ -384,4 +388,41 @@ fun AvatarMenu(profile: Profile, onProfiles: () -> Unit, onSettings: () -> Unit,
 @Composable
 fun MenuRow(label: String, onClick: () -> Unit) {
     Text(label, style = ui(15, FontWeight.Medium), modifier = Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), onClick).padding(horizontal = 14.dp, vertical = 12.dp))
+}
+
+/**
+ * "Sami is watching Frieren · Join": parties someone in the household asked
+ * this person to, or is watching right now, asked of the server every 15 s
+ * while Home is open (there's no push for it yet).
+ */
+@Composable
+fun PartyInvites(go: Go, modifier: Modifier = Modifier) {
+    val watch = LocalWatch.current
+    val me = watch.accounts.active.collectAsState().value?.username.orEmpty()
+    var parties by remember { mutableStateOf<List<app.kimono.watch.model.PartySummary>>(emptyList()) }
+    var people by remember { mutableStateOf<List<app.kimono.watch.model.Person>>(emptyList()) }
+    var dismissed by remember { mutableStateOf(setOf<String>()) }
+    androidx.compose.runtime.LaunchedEffect(me) {
+        while (true) {
+            runCatching { watch.api.parties() }.onSuccess { a -> people = a.people; parties = a.parties.filter { p -> p.invited || p.watching.isNotEmpty() } }
+            kotlinx.coroutines.delay(15_000)
+        }
+    }
+    val shown = parties.filter { it.id !in dismissed }
+    if (shown.isEmpty()) return
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        shown.take(2).forEach { p ->
+            val host = people.firstOrNull { it.username.equals(p.host, true) }
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Night.surface2).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                app.kimono.watch.player.PersonFace(host, p.host, 40.dp)
+                Column(Modifier.weight(1f)) {
+                    val mine = p.host.equals(me, true)
+                    Text(if (mine) "You’re watching ${p.title?.name ?: "something"} on another screen" else "${p.hostName.ifBlank { p.host }} is watching ${p.title?.name ?: "something"}", style = ui(15, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (p.season > 0) Text("S${p.season}:E${p.episode} · together", style = ui(13, color = Night.fg2))
+                }
+                PaperButton("Join", Ic.people, { go.join(p.id) }, height = 40.dp)
+                Box(Modifier.size(36.dp).clickableScaleClipped(CircleShape, { dismissed = dismissed + p.id }), contentAlignment = Alignment.Center) { I(Ic.close, 18.dp, Night.fg2) }
+            }
+        }
+    }
 }

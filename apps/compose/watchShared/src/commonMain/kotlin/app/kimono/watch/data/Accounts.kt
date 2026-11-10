@@ -15,7 +15,9 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.prepareRequest
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
+import io.ktor.utils.io.readUTF8Line
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.Parameters
@@ -232,6 +234,51 @@ class Accounts(private val keeper: Keeper, val http: HttpClient) {
     suspend fun ready(profile: Profile) { token(profile) }
 
     val server: String? get() = _active.value?.server
+
+    /**
+     * Listens to a server-sent event stream on /api/v1 as whoever is
+     * watching, handing each event's name and data to [onEvent] until the
+     * stream ends. Throws when it can't connect.
+     */
+    suspend fun stream(path: String, onEvent: suspend (event: String, data: String) -> Unit) {
+        val profile = _active.value ?: throw WatchProblem("Choose who's watching first.", 401)
+        suspend fun attempt(bearer: String): Boolean = http.prepareRequest("${profile.server}$path") {
+            method = HttpMethod.Get
+            header(HttpHeaders.Accept, "text/event-stream")
+            header(HttpHeaders.Authorization, "Bearer $bearer")
+        }.execute { response ->
+            if (response.status.value == 401) return@execute false
+            if (!response.status.isSuccess()) throw WatchProblem(failureOf(response, "The party isn't answering."), response.status.value)
+            val channel = response.bodyAsChannel()
+            var event = "message"; val data = StringBuilder()
+            while (true) {
+                val line = channel.readUTF8Line() ?: break
+                when {
+                    line.isEmpty() -> { if (data.isNotEmpty()) onEvent(event, data.toString()); event = "message"; data.clear() }
+                    line.startsWith("event:") -> event = line.removePrefix("event:").trim()
+                    line.startsWith("data:") -> { if (data.isNotEmpty()) data.append('\n'); data.append(line.removePrefix("data:").trimStart()) }
+                }
+            }
+            true
+        }
+        if (!attempt(token(profile))) { access.remove(profile.key); attempt(renew(profile)) }
+    }
+
+    /** Like [call], but answers with the body whatever the status (bar a sign-in that has ended), and the status. */
+    suspend fun callAny(path: String, method: HttpMethod, configure: HttpRequestBuilder.() -> Unit = {}): Pair<Int, String> {
+        val profile = _active.value ?: throw WatchProblem("Choose who's watching first.", 401)
+        suspend fun attempt(bearer: String): Pair<Int, String>? = http.prepareRequest("${profile.server}$path") {
+            this.method = method
+            header(HttpHeaders.Accept, "application/json")
+            header(HttpHeaders.Authorization, "Bearer $bearer")
+            configure()
+        }.execute { response -> if (response.status.value == 401) null else response.status.value to response.bodyAsText() }
+        fun wrap(e: Exception): Nothing = when (e) { is WatchProblem, is CancellationException -> throw e; else -> throw WatchProblem(OFFLINE) }
+        val first = try { attempt(token(profile)) } catch (e: Exception) { wrap(e) }
+        if (first != null) return first
+        access.remove(profile.key)
+        return (try { attempt(renew(profile)) } catch (e: Exception) { wrap(e) }) ?: throw WatchProblem("${profile.shown} was signed out. Sign in again.", 401)
+    }
 
     /** Calls /api/v1 as whoever is watching. [path] starts with a slash. */
     suspend fun call(path: String, method: HttpMethod = HttpMethod.Get, configure: HttpRequestBuilder.() -> Unit = {}): String {

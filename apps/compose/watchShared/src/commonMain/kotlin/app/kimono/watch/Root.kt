@@ -68,6 +68,13 @@ class Entry(val screen: Screen) {
     })[T::class]
 }
 
+/** Opens the player: on its own, starting a party, or joining one. */
+interface PlayerLauncher {
+    fun play(titleId: String, season: Int?, episode: Int?)
+    fun together(titleId: String, season: Int?, episode: Int?, at: Double)
+    fun join(partyId: String)
+}
+
 /** What the TV draws instead of the phone's shell; the Android app passes its androidx.tv screens. */
 fun interface TvShellSlot {
     @Composable fun Show(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: ListViewModel, top: Entry?, go: Go, onSearch: () -> Unit, onProfiles: () -> Unit, onSettings: () -> Unit, onBack: () -> Unit)
@@ -80,7 +87,7 @@ fun interface TvShellSlot {
  * is a Kimono address from a kimono-watch://connect link.
  */
 @Composable
-fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: TvShellSlot?, play: (titleId: String, season: Int?, episode: Int?) -> Unit) {
+fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: TvShellSlot?, play: PlayerLauncher) {
     CompositionLocalProvider(LocalWatch provides services) {
         val accounts = services.accounts
         var phase by remember { mutableStateOf<Phase>(Phase.Loading) }
@@ -129,7 +136,7 @@ private fun Starting() {
 }
 
 @Composable
-private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvShell: TvShellSlot?, play: (String, Int?, Int?) -> Unit, onProfiles: () -> Unit) {
+private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvShell: TvShellSlot?, play: PlayerLauncher, onProfiles: () -> Unit) {
     val root = remember(profile.key) { Entry(Screen.Search) }
     val home = root.vm { HomeViewModel(services.api) }
     val hot = root.vm { HotViewModel(services.api, services.toasts) }
@@ -137,7 +144,7 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
     val stack = remember(profile.key) { mutableStateListOf<Entry>() }
     fun push(s: Screen) { stack.add(Entry(s)) }
     fun pop() { stack.removeLastOrNull()?.store?.clear() }
-    val go = remember(profile.key) { Go(open = { c: Card -> push(Screen.Title(c.id, c.top)) }, play = play) }
+    val go = remember(profile.key) { Go(open = { c: Card -> push(Screen.Title(c.id, c.top)) }, play = play::play, together = play::together, join = play::join) }
     LaunchedEffect(resumed) {
         if (resumed > 0) {
             home.refresh(); list.refresh()

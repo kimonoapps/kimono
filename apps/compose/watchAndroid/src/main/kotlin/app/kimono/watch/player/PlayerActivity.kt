@@ -25,6 +25,16 @@ import androidx.media3.ui.SubtitleView
 import app.kimono.watch.LocalWatch
 import app.kimono.watch.theme.WatchTheme
 import app.kimono.watch.ui.PlayerViewModel
+import app.kimono.watch.ui.TogetherViewModel
+import app.kimono.watch.ink.InkLoader
+import app.kimono.watch.model.WatchProblem
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import app.kimono.watch.watch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -49,21 +59,56 @@ class PlayerActivity : ComponentActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
         val app = watch
-        val titleId = intent.getStringExtra("titleId") ?: return finish()
-        val season = intent.getIntExtra("season", -1).takeIf { it >= 0 }
-        val episode = intent.getIntExtra("episode", -1).takeIf { it >= 0 }
         engine = Engine(this, app.tv, SubtitleView(this))
         session = runCatching { MediaSession.Builder(this, engine.player).build() }.getOrNull()
-        vm = ViewModelProvider(this, object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T = PlayerViewModel(app.api, app.toasts, titleId) { t, s, e -> app.downloads.offline(t, s, e) } as T
-        })[PlayerViewModel::class.java]
-        if (savedInstanceState == null) vm.start(season, episode)
         if (app.tv) engine.player.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format, decoderReuseEvaluation: androidx.media3.exoplayer.DecoderReuseEvaluation?) { matchFrameRate(format) }
         })
+        /* Kimono's loader while a party is started or joined. */
+        setContent { WatchTheme { androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black), contentAlignment = androidx.compose.ui.Alignment.Center) { InkLoader(size = 56.dp) } } }
+        lifecycleScope.launch {
+            val partyId = intent.getStringExtra("party")
+            var titleId = intent.getStringExtra("titleId")
+            var season = intent.getIntExtra("season", -1).takeIf { it >= 0 }
+            var episode = intent.getIntExtra("episode", -1).takeIf { it >= 0 }
+            var party: String? = partyId
+            try {
+                if (partyId != null) {
+                    val now = app.api.party(partyId)
+                    titleId = now.state.timeline.titleId; season = now.state.timeline.season; episode = now.state.timeline.episode
+                } else if (intent.getBooleanExtra("together", false) && titleId != null) {
+                    val state = app.api.startParty(titleId, season ?: 0, episode ?: 0, intent.getDoubleExtra("at", 0.0), app.deviceId)
+                    party = state.id; season = state.timeline.season; episode = state.timeline.episode
+                }
+            } catch (e: Exception) {
+                app.toasts.show((e as? WatchProblem)?.message ?: "The party didn't start. Try again.")
+                if (titleId == null || partyId != null) { finish(); return@launch }
+                party = null
+            }
+            begin(titleId ?: return@launch finish(), season?.takeIf { it > 0 }, episode?.takeIf { it > 0 }, party, savedInstanceState == null)
+        }
+    }
+
+    private var together: TogetherViewModel? = null
+
+    private fun begin(titleId: String, season: Int?, episode: Int?, partyId: String?, fresh: Boolean) {
+        val app = watch
+        val provider = ViewModelProvider(this, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
+                TogetherViewModel::class.java -> TogetherViewModel(app.api, app.deviceId, partyId!!, app.accounts.active.value?.username.orEmpty())
+                else -> PlayerViewModel(app.api, app.toasts, titleId) { t, s, e -> app.downloads.offline(t, s, e) }
+            } as T
+        })
+        vm = provider[PlayerViewModel::class.java]
+        together = partyId?.let { provider[TogetherViewModel::class.java] }
+        if (fresh) vm.start(season, episode)
         val rec = { id: String -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("titleId", id)); finish() }
-        setContent { WatchTheme { androidx.compose.runtime.CompositionLocalProvider(LocalWatch provides app.services) { PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish, onRec = rec) } } }
+        setContent { WatchTheme { androidx.compose.runtime.CompositionLocalProvider(LocalWatch provides app.services) {
+            val ended by (together?.ended ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
+            androidx.compose.runtime.LaunchedEffect(ended) { if (ended) { app.toasts.show("The party has ended."); finish() } }
+            PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish, onRec = rec, party = together)
+        } } }
     }
 
     /** Switches the TV to a refresh rate the film's frame rate divides into, at the same resolution. */
@@ -102,13 +147,14 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         val p = engine.player
-        if (p.duration > 0) vm.save(p.currentPosition / 1000.0, p.duration / 1000.0)
+        if (::vm.isInitialized && p.duration > 0) vm.save(p.currentPosition / 1000.0, p.duration / 1000.0)
         if (!pip.value) p.pause()
     }
 
     override fun onDestroy() {
         val p = engine.player
-        if (p.duration > 0) vm.leave(p.currentPosition / 1000.0, p.duration / 1000.0)
+        if (::vm.isInitialized && p.duration > 0) vm.leave(p.currentPosition / 1000.0, p.duration / 1000.0)
+        if (isFinishing) together?.leave()
         session?.release()
         engine.release()
         super.onDestroy()

@@ -52,7 +52,8 @@ class WatchApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        accounts = Accounts(AndroidKeeper(this), HttpClient(OkHttp))
+        /* A party's live channel pings every 10 s: reads may wait up to 40 s. */
+        accounts = Accounts(AndroidKeeper(this), HttpClient(OkHttp) { engine { config { readTimeout(40, java.util.concurrent.TimeUnit.SECONDS) } } })
         /* On mobile data a phone counts as a device of its own, with its own quality (Settings). */
         api = WatchApi(accounts, { device }) { if (!tv && onMobileData()) "$deviceId.cell" else deviceId }
         downloads = app.kimono.watch.player.Downloads(this)

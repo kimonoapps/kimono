@@ -166,6 +166,7 @@ private fun TvHome(profile: Profile, vm: HomeViewModel, go: Go, active: Boolean,
     val playFocus = remember { FocusRequester() }
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 64.dp)) {
         item("hero") { TvHero(home?.featured, home?.rows.orEmpty(), go, active && list.firstVisibleItemIndex == 0, playFocus, nav, state.shelf) { vm.shelf(it) } }
+        item("party") { app.kimono.watch.phone.PartyInvites(go, Modifier.padding(start = gutter, end = gutter, bottom = 24.dp).widthIn(max = 760.dp)) }
         if (home == null) items(3) { TvSkeletonRow() }
         else items(home.rows, key = { it.id + state.shelf }) { row -> TvRail(row, profile, go) }
     }

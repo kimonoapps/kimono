@@ -89,4 +89,33 @@ class WatchApi(
         json.decodeFromString(send(HttpMethod.Put, "/prefs", buildJsonObject { put("device", device); put("quality", quality?.let { JsonPrimitive(it) } ?: JsonNull) }))
 
     suspend fun savePrefs(change: JsonObject): Prefs = json.decodeFromString(send(HttpMethod.Put, "/prefs", change))
+
+    /* ───── Watch Together (/watch/together) ───── */
+
+    suspend fun parties(): app.kimono.watch.model.Parties = json.decodeFromString(get("/together"))
+
+    /** Starts a party on this title; [client] is this screen. */
+    suspend fun startParty(titleId: String, season: Int, episode: Int, position: Double, client: String, invite: List<String> = emptyList()): app.kimono.watch.model.PartyView =
+        json.decodeFromString<app.kimono.watch.model.PartyAnswer>(send(HttpMethod.Post, "/together", buildJsonObject {
+            put("titleId", titleId)
+            if (season > 0) { put("season", season); put("episode", episode) }
+            put("position", position); put("client", client)
+            if (invite.isNotEmpty()) put("invite", kotlinx.serialization.json.JsonArray(invite.map { JsonPrimitive(it) }))
+        })).state ?: throw app.kimono.watch.model.WatchProblem("The party didn't start. Try again.")
+
+    suspend fun party(id: String): app.kimono.watch.model.PartyNow = json.decodeFromString(get("/together/$id"))
+
+    /** The server's clock, for the offset. */
+    suspend fun serverClock(): Long = json.decodeFromString<app.kimono.watch.model.ClockAnswer>(get("/together/clock")).now
+
+    /** A command to the party; the answer carries its state (take it if newer, or always when not ok). */
+    suspend fun partyCommand(id: String, body: JsonObject): app.kimono.watch.model.PartyAnswer {
+        val (status, text) = accounts.callAny("$base/together/$id", HttpMethod.Post) { contentType(ContentType.Application.Json); setBody(body.toString()) }
+        return runCatching { json.decodeFromString<app.kimono.watch.model.PartyAnswer>(text) }.getOrNull()?.let { if (status >= 400) it.copy(ok = false) else it }
+            ?: app.kimono.watch.model.PartyAnswer(ok = false, reason = "offline")
+    }
+
+    /** The party's live channel: `state`, `chat`, `react`, `ping`, `ended` events. */
+    suspend fun partyEvents(id: String, client: String, onEvent: suspend (String, String) -> Unit) =
+        accounts.stream("$base/together/$id?client=${client.encodeURLParameter()}", onEvent)
 }

@@ -83,11 +83,11 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
         subtitles.setApplyEmbeddedStyles(true)
     }
 
-    override fun load(url: String, key: String, startAt: Double) {
+    override fun load(url: String, key: String, startAt: Double, play: Boolean) {
         val item = MediaItem.Builder().setUri(url).setCustomCacheKey(key).build()
         player.setMediaItem(item, (startAt * 1000).toLong().coerceAtLeast(0))
         player.prepare()
-        player.playWhenReady = true
+        player.playWhenReady = play
     }
 
     /** Switches on the audio and subtitles the server asked for, by the tags containers use. */
