@@ -60,6 +60,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -366,7 +367,8 @@ fun PlayerScreen(
 
         var stalled by remember { mutableStateOf(false) }
         LaunchedEffect(buffering) { stalled = false; if (buffering) { delay(600); stalled = true } }
-        if (stalled && buffering && !state.loading && post == Post.None) InkLoader(Modifier.align(Alignment.Center), size = 48.dp)
+        if (stalled && buffering && !state.loading && post == Post.None) InkLoader(Modifier.align(Alignment.Center).zIndex(2f), size = 48.dp)
+        /* Over the play button and the rest of the controls (zIndex), not under them. */
         /* A few seconds into a stall: whose side is slow. */
         var slow by remember { mutableStateOf<String?>(null) }
         LaunchedEffect(buffering, state.loading) {
@@ -378,7 +380,7 @@ fun PlayerScreen(
         if (slow != null && buffering && !state.loading && post == Post.None) Text(
             if (slow == "server") "The server is slow right now" else "Your connection is slow",
             style = ui(14, FontWeight.SemiBold),
-            modifier = Modifier.align(Alignment.Center).offset(y = 52.dp).background(Color(0xB80A0A0C), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
+            modifier = Modifier.align(Alignment.Center).zIndex(2f).offset(y = 52.dp).background(Color(0xB80A0A0C), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp),
         )
 
         PauseCard(pauseCard && post == Post.None, state, Modifier.fillMaxSize())
