@@ -88,6 +88,22 @@ test('old trash is emptied with everything inside it, and its blobs handed back'
   assert.equal(drive.trashOf(db, 'akram').length, 0);
 });
 
+test('emptying the trash now removes what the person can edit, and nothing else', () => {
+  const db = fresh();
+  const mine = drive.createSpace(db, 'akram', { name: 'Mine' });
+  const theirs = drive.createSpace(db, 'mina', { name: 'Theirs', members: [{ username: 'akram', role: 'viewer' }] });
+  const folder = drive.createFolder(db, mine.rootId, 'akram', 'Old');
+  drive.addFile(db, folder.id, 'akram', file('a.png', 'b-a'));
+  const kept = drive.addFile(db, mine.rootId, 'akram', file('kept.png', 'b-kept'));
+  const viewed = drive.addFile(db, theirs.rootId, 'mina', file('v.png', 'b-v'));
+  drive.trashNode(db, folder.id, 'akram');
+  drive.trashNode(db, viewed.id, 'mina');
+  assert.deepEqual(drive.emptyTrash(db, 'akram'), ['b-a']);
+  assert.equal(drive.trashOf(db, 'akram').length, 1, 'a viewer leaves the owner\'s trash alone');
+  assert.equal(drive.nodeFor(db, kept.id, 'akram').name, 'kept.png');
+  assert.deepEqual(drive.emptyTrash(db, 'mina'), ['b-v']);
+});
+
 test('a space always keeps an owner; anyone may leave', () => {
   const db = fresh();
   const space = drive.createSpace(db, 'akram', { name: 'S', members: [{ username: 'mina', role: 'viewer' }] });

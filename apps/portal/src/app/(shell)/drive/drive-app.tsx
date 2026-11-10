@@ -1196,20 +1196,30 @@ function SettingsView({ space, me, people, onChanged, onLeft, back }: { space: S
 /* ── trash and recent ── */
 
 function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toast) => void }) {
+  const spaceOf = (id: string) => spaces.find((s) => s.id === id);
   const [items, setItems] = useState<DriveNode[] | null>(null);
   /* Days left are counted from when the list arrived. */
   const [now, setNow] = useState(0);
   const load = useCallback(() => drive.trashed().then((list) => { setNow(Date.now()); setItems(list); }).catch(() => setItems([])), []);
   /* What's being put back: a second press waits for the first. */
   const [restoring, setRestoring] = useState<Set<string>>(new Set());
+  const [emptying, setEmptying] = useState<"ask" | "busy" | null>(null);
+  /* Only what you could put back is yours to delete. */
+  const removable = (items ?? []).filter((node) => { const role = spaceOf(node.spaceId)?.role; return role === "owner" || role === "editor"; });
+  const empty = async () => {
+    setEmptying("busy");
+    try { await drive.emptyTrash(); onToast({ text: "Trash emptied." }); await load(); } catch (error) { onToast({ text: problemText(error) }); }
+    finally { setEmptying(null); }
+  };
   useEffect(() => {
     let live = true;
     drive.trashed().then((list) => { if (live) { setNow(Date.now()); setItems(list); } }, () => { if (live) setItems([]); });
     return () => { live = false; };
   }, []);
-  const spaceOf = (id: string) => spaces.find((s) => s.id === id);
   return <section className="dv-sheet">
-    <div className="dv-mast"><div className="dv-mast-id"><Wash icon="trash" seed="trash" tint={FOLDER_TINT} tone="folder" size="lg" /><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Kept for 30 days.</p></div></div></div>
+    <div className="dv-mast"><div className="dv-mast-id"><Wash icon="trash" seed="trash" tint={FOLDER_TINT} tone="folder" size="lg" /><div><div className="dv-kicker">Across your spaces</div><h1>Trash</h1><p>Kept for 30 days.</p></div></div>
+      {removable.length ? <Seal type="button" tone="danger" compact busy={emptying === "busy"} disabled={emptying === "busy"} onClick={() => setEmptying("ask")}><Icon name="trash" />Empty Trash</Seal> : null}
+    </div>
     <div className="dv-list">
       {!items ? <SkeletonRows rows={5} /> : !items.length ? <div className="dv-empty"><h3>Nothing in the Trash</h3></div>
         : items.map((node) => {
@@ -1228,6 +1238,11 @@ function TrashView({ spaces, onToast }: { spaces: Space[]; onToast: (toast: Toas
           </div>;
         })}
     </div>
+    {emptying === "ask" ? <Dialog title="Empty Trash?" onClose={() => setEmptying(null)} footer={<>
+      <span className="left" />
+      <Seal type="button" tone="quiet" onClick={() => setEmptying(null)}>Keep</Seal>
+      <Seal type="button" tone="danger" onClick={() => void empty()}>Delete {removable.length === 1 ? "1 item" : `${removable.length} items`} forever</Seal>
+    </>} /> : null}
   </section>;
 }
 

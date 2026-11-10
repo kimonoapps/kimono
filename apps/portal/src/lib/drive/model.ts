@@ -761,7 +761,16 @@ export function restoreNode(db: DatabaseSync, id: string, username: string, now 
 /** Blobs of things trashed longer than [trashDays], removed from the database; the caller deletes the bytes. */
 export function emptyOldTrash(db: DatabaseSync, now = Date.now()): string[] {
   const cutoff = now - trashDays * 24 * 60 * 60 * 1000;
-  const roots = db.prepare("SELECT id FROM nodes WHERE trashed_at IS NOT NULL AND trashed_at < ?").all(cutoff) as { id: string }[];
+  return purge(db, db.prepare("SELECT id FROM nodes WHERE trashed_at IS NOT NULL AND trashed_at < ?").all(cutoff) as { id: string }[]);
+}
+
+/** Empties the trash now, of every space where the person can edit; the caller deletes the bytes. */
+export function emptyTrash(db: DatabaseSync, username: string): string[] {
+  return purge(db, db.prepare("SELECT n.id FROM nodes n JOIN members m ON m.space_id = n.space_id AND m.username = ? WHERE n.trashed_at IS NOT NULL AND m.role IN ('owner', 'editor')").all(username.toLowerCase()) as { id: string }[]);
+}
+
+/** Trashed things and everything inside them, gone from the database; returns their blobs. */
+function purge(db: DatabaseSync, roots: { id: string }[]): string[] {
   const blobs: string[] = [];
   const remove = (id: string) => {
     for (const child of db.prepare("SELECT id FROM nodes WHERE parent_id = ?").all(id) as { id: string }[]) remove(child.id);
