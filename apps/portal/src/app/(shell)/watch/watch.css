@@ -533,3 +533,16 @@
 .kw .kw-tracker .kw-segs i.kw-upcoming{opacity:.4}
 .kw .kw-brand{color:var(--fg)}
 .kw .kw-ep[aria-disabled="true"]{cursor:default}
+.kw .kw-hero .kw-logo img.kw-logo-img,.kw .kw-sh-top .kw-logo img.kw-logo-img,.kw .kw-pause-info .kw-logo img.kw-logo-img{position:static;inset:auto;width:auto;height:auto;z-index:auto;opacity:1}
+@media (min-width:900px){.kw .kw-hero .kw-tagline{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;max-height:none}}
+.kw .kw-hero.kw-playing .kw-tagline{display:none}
+.kw{scrollbar-color:var(--surface-3) transparent}
+.kw .kw-subs span{white-space:pre-line}
+.kw .kw-pause-info.kw-on~.kw-skip{opacity:0;pointer-events:none}
+/* Posters carry their own title: the overlay name is for wide art only. */
+@media (max-width:899px){.kw .kw-card .kw-t{display:none}.kw .kw-card::after{display:none}}
+.kw .kw-grid .kw-card{aspect-ratio:2/3}.kw .kw-grid .kw-card .kw-t,.kw .kw-grid .kw-card::after{display:none}
+.kw input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.kw .kw-noart{display:grid;place-items:center;aspect-ratio:16/9;background:var(--surface-2);font-family:var(--display);font-weight:800;font-size:28px;color:var(--fg-3)}
+.kw .kw-p-bot{grid-template-columns:minmax(0,1fr)}
+@media (max-width:560px){.kw .kw-pbtn.kw-lab span{display:none}.kw .kw-pbtn.kw-lab{padding:0 8px}}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, u
 import { airText, clock, deviceOf, languageName, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, TitleMark, useWatch } from "./bits";
 import { Icon, SeekIcon, Wavy } from "./icons";
-import { attach, thumbSource } from "./source";
+import { attach, attachThumb, type Attached } from "./source";
 
 /*
  * The player: the stream fills the screen, the controls come and go, and the
@@ -20,6 +20,13 @@ type LocalTrack = { key: string; label: string; language: string };
 
 const speeds = [0.5, 0.75, 1, 1.25, 1.5];
 const wide = () => matchMedia("(min-width: 900px)").matches;
+/** "[9volt] English (Full) ASS" reads "English (Full)"; a bare group name gets its language in front. */
+function trackLabel(label: string, language: string) {
+  const name = languageName(language.length === 3 ? ({ eng: "en", jpn: "ja", por: "pt", spa: "es", fre: "fr", fra: "fr", ger: "de", deu: "de", ita: "it", rus: "ru", ara: "ar", chi: "zh", zho: "zh", kor: "ko" } as Record<string, string>)[language] ?? language : language);
+  const clean = label.replace(/\[[^\]]*\]/g, "").replace(/\b(ASS|SSA|SRT|PGS|VTT|WEBVTT|SUP)\b/gi, "").replace(/\s+/g, " ").trim();
+  if (!clean) return name || label;
+  return clean.toLowerCase().includes(name.toLowerCase()) || !name ? clean : `${name} (${clean.replace(/^\((.*)\)$/, "$1")})`;
+}
 const two = (code: string) => (/^[a-z]{2}$/.test(code) ? code : null);
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
 const future = (date: string | null | undefined) => (date && Date.parse(date) > Date.now() ? date : null);
@@ -60,6 +67,9 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   const [rip, setRip] = useState<{ l: number; r: number }>({ l: 0, r: 0 });
   const [countdown, setCountdown] = useState(0);
   const [audioTracks, setAudioTracks] = useState<LocalTrack[]>([]);
+  const [audioOn, setAudioOn] = useState<string | null>(null);
+  const attached = useRef<Attached | null>(null);
+  const thumbDetach = useRef<(() => void) | null>(null);
   const [textTracks, setTextTracks] = useState<LocalTrack[]>([]);
   const [choice, setChoice] = useState<{ audio: string; subtitles: string } | null>(null);
 
@@ -115,8 +125,10 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
       if (token !== live.current.token) return;
       setPlay(p); live.current.play = p;
       setChoice(null);
-      attach(v, p);
-      if (thumbVideo.current) { thumbVideo.current.removeAttribute("src"); thumbVideo.current.dataset.src = ""; }
+      attached.current?.detach();
+      thumbDetach.current?.(); thumbDetach.current = null;
+      attached.current = await attach(v, p, () => { if (token === live.current.token) setProblem("The stream stopped. Try again in a moment."); });
+      if (token !== live.current.token) return;
       const startAt = opts.startAt ?? p.startAt;
       await new Promise<void>((resolve, reject) => {
         const ok = () => { cleanup(); resolve(); };
@@ -191,7 +203,9 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     live.current.token++;
     clearInterval(pctTimer.current); clearInterval(countTimer.current);
     const v = video.current;
-    if (v) { v.pause(); v.removeAttribute("src"); v.load(); }
+    if (v) v.pause();
+    attached.current?.detach(); attached.current = null;
+    thumbDetach.current?.(); thumbDetach.current = null;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     const changed = live.current.changed;
     setTitleId(null); live.current.titleId = null;
@@ -286,13 +300,29 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     const onProgress = () => { if (v.buffered.length && v.duration) setBuffered(v.buffered.end(v.buffered.length - 1) / v.duration); };
     const onMeta = () => {
       setDuration(v.duration || 0);
-      /* Tracks the file carries itself: pick the ones the server planned. */
-      const p = live.current.play;
+      /* Pick the tracks the server planned, from the stream's own lists. */
+      const p = live.current.play, a = attached.current;
+      const want = p?.tracks.subtitles;
+      const tags = p?.tracks.audio.tags ?? [];
+      const isSigns = (label: string) => (want?.signsTitles ?? []).some((x) => label.toLowerCase().includes(x));
+      const choose = <T extends { label: string; language: string }>(list: T[]) => (want
+        ? list.find((t) => want.tags.includes(t.language) && (want.kind === "signs" ? isSigns(t.label) : !isSigns(t.label))) ?? list.find((t) => want.tags.includes(t.language)) ?? null
+        : null);
+      if (a?.kind === "hls-js") {
+        const subs = a.subtitles(), auds = a.audio();
+        setTextTracks(subs.map((t) => ({ key: String(t.id), label: trackLabel(t.label, t.language), language: t.language })));
+        setAudioTracks(auds.length > 1 ? auds.map((t) => ({ key: String(t.id), label: trackLabel(t.label, t.language), language: t.language })) : []);
+        const sub = choose(subs);
+        a.setSubtitles(sub ? sub.id : -1);
+        setTextOn(sub ? String(sub.id) : null);
+        const aud = auds.find((t) => tags.includes(t.language));
+        if (aud) a.setAudio(aud.id);
+        setAudioOn(String(aud?.id ?? a.audioNow()));
+        return;
+      }
       const texts = Array.from(v.textTracks ?? []).filter((t) => t.kind === "subtitles" || t.kind === "captions");
       setTextTracks(texts.map((t, i) => ({ key: String(i), label: t.label || languageName(t.language) || `Track ${i + 1}`, language: t.language })));
-      const want = p?.tracks.subtitles;
-      const signs = (t: TextTrack) => (want?.signsTitles ?? []).some((s) => t.label.toLowerCase().includes(s));
-      const pick = want ? texts.find((t) => want.tags.includes(t.language) && (want.kind === "signs" ? signs(t) : !signs(t))) ?? texts.find((t) => want.tags.includes(t.language)) : null;
+      const pick = choose(texts);
       texts.forEach((t) => { t.mode = t === pick ? "hidden" : "disabled"; });
       setTextOn(pick ? String(texts.indexOf(pick)) : null);
       const audios = (v as HTMLVideoElement & { audioTracks?: { length: number; [i: number]: { language: string; label: string; enabled: boolean } } }).audioTracks;
@@ -300,10 +330,10 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
         const list: LocalTrack[] = [];
         for (let i = 0; i < audios.length; i++) list.push({ key: String(i), label: audios[i].label || languageName(audios[i].language), language: audios[i].language });
         setAudioTracks(list);
-        const tags = p?.tracks.audio.tags ?? [];
-        let found = false;
-        for (let i = 0; i < audios.length; i++) { const hit: boolean = !found && tags.includes(audios[i].language); audios[i].enabled = hit; found ||= hit; }
-        if (!found) audios[0].enabled = true;
+        let found = -1;
+        for (let i = 0; i < audios.length; i++) { const hit = found < 0 && tags.includes(audios[i].language); audios[i].enabled = hit; if (hit) found = i; }
+        if (found < 0) { audios[0].enabled = true; found = 0; }
+        setAudioOn(String(found));
       } else setAudioTracks([]);
     };
     const onEnded = () => {
@@ -317,7 +347,12 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     const onCue = () => {
       const shown = Array.from(v.textTracks ?? []).find((t) => t.mode === "hidden");
       const cues = shown?.activeCues ? Array.from(shown.activeCues) as VTTCue[] : [];
-      setCue(cues.map((c) => c.text.replace(/<[^>]+>/g, "")).join("\n"));
+      /* Fansub karaoke splits a line into syllables, each its own cue: keep whole lines, once each. */
+      const texts = cues.map((c) => c.text.replace(/<[^>]+>/g, "").trim()).filter(Boolean);
+      const karaoke = texts.length > 3 && texts.filter((x) => !/\s/.test(x) && x.length <= 5).length > texts.length / 2;
+      const lines = [...new Set(karaoke ? texts.filter((x) => /\s/.test(x)) : texts)];
+      const text = lines.join("\n");
+      setCue((now) => (now === text ? now : text));
     };
     v.addEventListener("timeupdate", onTime);
     v.addEventListener("play", onPlay); v.addEventListener("pause", onPause);
@@ -403,8 +438,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   const drawAt = useCallback((t: number) => {
     const tv = thumbVideo.current, p = live.current.play, v = video.current;
     if (!tv || !p || !v) return;
-    const src = thumbSource(v, p);
-    if (tv.dataset.src !== src) { tv.src = src; tv.dataset.src = src; }
+    if (!thumbDetach.current) thumbDetach.current = attachThumb(tv, p);
     if (tv.seeking || tv.readyState < 1) { pending.current = t; return; }
     pending.current = null;
     tv.currentTime = t;
@@ -450,23 +484,24 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     if (reload) { setSheet(null); void loadEpisode(id, live.current.ep, { startAt: v.currentTime }); }
   };
   const pickText = (key: string) => {
-    const v = video.current;
+    const v = video.current, a = attached.current;
     if (!v) return;
-    const texts = Array.from(v.textTracks).filter((t) => t.kind === "subtitles" || t.kind === "captions");
-    texts.forEach((t, i) => { t.mode = String(i) === key ? "hidden" : "disabled"; });
+    const chosen = textTracks.find((x) => x.key === key);
+    if (a?.kind === "hls-js") a.setSubtitles(key === "off" ? -1 : Number(key));
+    else Array.from(v.textTracks).filter((t) => t.kind === "subtitles" || t.kind === "captions").forEach((t, i) => { t.mode = String(i) === key ? "hidden" : "disabled"; });
     setTextOn(key === "off" ? null : key);
-    const chosen = texts[Number(key)];
-    void setTracks(audioNow, key === "off" ? "off" : two(chosen?.language ?? "") ?? "off", false);
-    setChoice({ audio: audioNow, subtitles: key === "off" ? "off" : `t:${key}` });
     setCue("");
+    const sub = key === "off" ? "off" : chosen && (play?.tracks.subtitles?.signsTitles ?? ["signs", "songs", "forced"]).some((x) => chosen.label.toLowerCase().includes(x)) ? "signs" : two(chosen?.language ?? "") ?? "off";
+    void setTracks(audioNow, sub, false);
   };
   const pickAudio = (key: string) => {
-    const v = video.current as HTMLVideoElement & { audioTracks?: { length: number; [i: number]: { enabled: boolean; language: string } } };
-    if (!v?.audioTracks) return;
-    for (let i = 0; i < v.audioTracks.length; i++) v.audioTracks[i].enabled = String(i) === key;
-    const lang = v.audioTracks[Number(key)]?.language ?? "";
-    void setTracks(lang, subsNow.startsWith("t:") ? "off" : subsNow, false);
-    setChoice((c) => ({ audio: `a:${key}`, subtitles: c?.subtitles ?? subsNow }));
+    const v = video.current as HTMLVideoElement & { audioTracks?: { length: number; [i: number]: { enabled: boolean; language: string } } }, a = attached.current;
+    if (!v) return;
+    if (a?.kind === "hls-js") a.setAudio(Number(key));
+    else if (v.audioTracks) for (let i = 0; i < v.audioTracks.length; i++) v.audioTracks[i].enabled = String(i) === key;
+    setAudioOn(key);
+    const lang = audioTracks.find((x) => x.key === key)?.language ?? "";
+    void setTracks(lang, subsNow, false);
   };
 
   /* ───── What the screen says ───── */
@@ -477,7 +512,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
   const recs = t ? alike(watch.known(), t.id, t.shelf, 3) : [];
   const nextAir = future(t?.nextAirDate);
   const reminding = t ? watch.marksOf(t.id).reminding : false;
-  const sk = buffering && !loading;
+  const sk = buffering && !loading && !paused;
 
   return <div ref={root} className={cx("kw-player", ctl && "kw-ctl", loading && "kw-loading", (post === "next" || post === "ask") && "kw-postnext", post === "end" && "kw-postplay")} hidden={!titleId}
     onMouseMove={() => { showCtl(); if (pinfo) setPinfo(false); }} onTouchStart={() => { if (pinfo) setPinfo(false); }} onPointerUp={onPointerUp}>
@@ -551,7 +586,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
     <div className={cx("kw-psheet", sheet && "kw-on")} role="dialog">
       {sheet === "cc" && play ? <div className="kw-cols">
         <div><h4>Audio</h4>
-          {audioTracks.length ? audioTracks.map((a) => <button key={a.key} className={cx("kw-opt", audioNow === `a:${a.key}` || (!audioNow.startsWith("a:") && play.tracks.audio.tags.includes(a.language)) ? "kw-sel" : null)} onClick={() => pickAudio(a.key)}><Icon name="check" />{a.label}</button>)
+          {audioTracks.length ? audioTracks.map((a) => <button key={a.key} className={cx("kw-opt", audioOn === a.key && "kw-sel")} onClick={() => pickAudio(a.key)}><Icon name="check" />{a.label}</button>)
             : (play.languages.audio.filter(two).length ? play.languages.audio.filter(two) : [audioNow]).map((lang) => <button key={lang} className={cx("kw-opt", lang === audioNow && "kw-sel")} onClick={() => { if (lang !== audioNow) void setTracks(lang, subsNow, true); }}><Icon name="check" />{languageName(lang)}</button>)}
         </div>
         <div><h4>Subtitles</h4>

@@ -39,7 +39,7 @@ export type Markers = { intro?: [number, number]; recap?: [number, number]; cred
 export type Play = {
   url: string;
   /** An HLS address, once the server packages streams for browsers. */
-  hls?: string;
+  hls?: string | null;
   version: { index: number; label: string; badges: string[]; source: string };
   versions: { index: number; label: string; source: string }[];
   startAt: number;

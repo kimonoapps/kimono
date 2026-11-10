@@ -101,7 +101,11 @@ export function WatchApp({ me, household }: { me: Person; household: Person[] })
     el.addEventListener("scroll", on, { passive: true });
     return () => el.removeEventListener("scroll", on);
   }, [profile]);
-  const go = (to: Page) => { setPage(to); setSheetId(null); writePlace(to, null, true); root.current?.scrollTo(0, 0); };
+  const go = (to: Page) => {
+    setPage(to); setSheetId(null); writePlace(to, null, true); root.current?.scrollTo(0, 0);
+    /* Lists and what's coming change from other devices too: ask again. */
+    if (to !== "home") watchApi.home(null).then((h) => { remember(h); setAll(h); }, () => {});
+  };
 
   /* ───── What every part can ask for ───── */
   const marksRef = useRef(marks);

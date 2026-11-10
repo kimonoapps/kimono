@@ -112,7 +112,7 @@ export function SearchPage({ onClose }: { onClose: () => void }) {
     </> : <>
       <h3>{asked ? (results.length ? "Results" : "Nothing matches that yet") : "Popular searches"}</h3>
       <div className="kw-slist">{results.slice(0, asked ? 30 : 8).map((c) => <button key={c.id} onClick={() => watch.openTitle(c.id)}>
-        <Img src={c.backdrop ?? c.poster} />
+        {c.backdrop ?? c.poster ? <Img src={c.backdrop ?? c.poster} /> : <span className="kw-noart" aria-hidden="true">{c.name.charAt(0)}</span>}
         <span>{c.name}</span>
         <span className="kw-pl" role="button" aria-label={`Play ${c.name}`} onClick={(event) => { event.stopPropagation(); watch.play(c.id); }}><Icon name="play" /></span>
       </button>)}</div>

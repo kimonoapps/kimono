@@ -122,9 +122,11 @@ function HoverCard() {
       }, 520);
     };
     const root = document.querySelector(".kw");
+    const away = (event: MouseEvent) => { if (!box.current?.contains(event.target as Node)) hide(); };
     document.addEventListener("mouseover", over);
+    document.addEventListener("click", away);
     root?.addEventListener("scroll", hide, { passive: true });
-    return () => { document.removeEventListener("mouseover", over); root?.removeEventListener("scroll", hide); clearTimeout(timer.current); };
+    return () => { document.removeEventListener("mouseover", over); document.removeEventListener("click", away); root?.removeEventListener("scroll", hide); clearTimeout(timer.current); };
   }, [watch]);
 
   const card = at?.card;
