@@ -28,6 +28,8 @@ const faces = ["#7E3448", "#3E5236", "#5B3F45", "#8A5A2B", "#3F4A5B", "#5A4A2B"]
 const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % faces.length];
 const initial = (p: Person) => (p.name.trim() || p.username).charAt(0).toUpperCase();
 const chosenKey = "kw.profile";
+/** The "who's watching" picker. Off for now: Watch opens on whoever is signed in. The picker stays for when it comes back. */
+export const PROFILE_PICKER = false;
 
 /** The watch party in the address while this screen is in one, so a reload or the link rejoins it. */
 let partyInUrl: string | null = null;
@@ -50,7 +52,7 @@ function writePlace(page: Page, title: string | null, push: boolean) {
 
 export function WatchApp({ me, household, accent, signOut }: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void> }) {
   /* Arriving by a party's link goes straight in: it can only be you. */
-  const [profile, setProfile] = useState<Person | null>(() => { try { return readParty() || sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
+  const [profile, setProfile] = useState<Person | null>(() => { try { return !PROFILE_PICKER || readParty() || sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
   const [people, setPeople] = useState<Person[]>(household);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -330,7 +332,7 @@ function AccountMenu({ profile, onSwitch, onSettings }: { profile: Person; onSwi
     </button>
     {open ? <div className={cx("kw-smenu", shown && "kw-on")} role="menu">
       <p className="kw-menu-h">{profile.name}</p>
-      <button role="menuitem" onClick={() => { close(); onSwitch(); }}><span /><b>Switch profile</b><span /></button>
+      {PROFILE_PICKER ? <button role="menuitem" onClick={() => { close(); onSwitch(); }}><span /><b>Switch profile</b><span /></button> : null}
       <button role="menuitem" onClick={() => { close(); onSettings(); }}><span /><b>Settings</b><span /></button>
       <Crossing kind="shoji" role="menuitem" className="kw-menu-link" href="/account" onClick={close}><span /><b>Kimono account</b><span /></Crossing>
     </div> : null}

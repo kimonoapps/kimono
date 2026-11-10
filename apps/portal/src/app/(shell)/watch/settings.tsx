@@ -5,7 +5,7 @@ import { languageName, qualities, saveQuality, savedQuality, watchApi, type Pref
 import { Crossing } from "@/components/crossing";
 import { cx, Img, useWatch } from "./bits";
 import { Icon } from "./icons";
-import type { Person } from "./watch-app";
+import { PROFILE_PICKER, type Person } from "./watch-app";
 
 /*
  * Watch's settings (design/mockups/watch/review/spec.md §2): one page, every
@@ -94,7 +94,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
           <div><b>{me.name}</b><span>{me.username}</span></div>
         </div>
         <div className="kw-set-actions">
-          <button className="kw-btn kw-tonal" onClick={onSwitch}>Switch profile</button>
+          {PROFILE_PICKER ? <button className="kw-btn kw-tonal" onClick={onSwitch}>Switch profile</button> : null}
           <Crossing kind="shoji" className="kw-btn kw-tonal" href="/account">Kimono account</Crossing>
           <form action={signOut}><button className="kw-btn kw-tonal" type="submit">Sign out</button></form>
         </div>
