@@ -145,7 +145,7 @@ function HoverCard() {
   const resumeEp = resume && v?.episodes?.find((e) => e.number === resume.episode && (e.season ?? v.season) === resume.season);
   return <div ref={box} className={cx("kw-hover", on && "kw-on")} style={at?.style} role="dialog" aria-label="Preview" onMouseLeave={() => setOn(false)}>
     {card ? <>
-      <div className="kw-shot"><Img src={card.backdrop ?? card.poster} /><span className="kw-t">{card.name}</span></div>
+      <button className="kw-shot" aria-label={card.name} onClick={() => { setOn(false); watch.openTitle(card.id); }}><Img src={card.backdrop ?? card.poster} /><span className="kw-t">{card.name}</span></button>
       <div className="kw-body">
         <div className="kw-acts">
           <button className="kw-ringbtn kw-go" aria-label="Play" onClick={() => { setOn(false); watch.play(card.id); }}><Icon name="play" /></button>

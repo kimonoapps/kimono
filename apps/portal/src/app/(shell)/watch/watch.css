@@ -120,11 +120,11 @@
 @media (min-width:900px){.kw .kw-hero-card{display:contents}.kw .kw-backdrop-bleed{display:none}.kw .kw-hero{min-height:600px}.kw .kw-hero-body,.kw .kw-hero-side{bottom:calc(clamp(28px,6vh,70px) + 90px)}}
 
 /* ───── Rows ───── */
-.kw .kw-rows{position:relative;z-index:2;display:grid;gap:clamp(22px,3vw,40px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 96px)}
+.kw .kw-rows{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(22px,3vw,40px);padding-bottom:calc(env(safe-area-inset-bottom,0px) + 96px)}
 @media (min-width:900px){.kw .kw-rows{margin-top:-90px;padding-bottom:64px}}
 .kw .kw-row h2{font-size:clamp(17px,1.6vw,21px);font-weight:700;margin:0 0 10px;padding-left:var(--gutter-l);padding-right:var(--gutter-r)}
 .kw .kw-rail-wrap{position:relative}
-.kw .kw-rail{display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-left:var(--gutter-l);padding-left:var(--gutter-l);padding-right:var(--gutter-r);padding-block:4px;scrollbar-width:none}
+.kw .kw-rail{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scroll-padding-left:var(--gutter-l);padding-left:var(--gutter-l);padding-right:var(--gutter-r);padding-block:4px;scrollbar-width:none}
 .kw .kw-rail::-webkit-scrollbar{display:none}
 .kw .kw-rail>*{scroll-snap-align:start;flex:none}
 .kw .kw-arrow{position:absolute;top:0;bottom:0;width:var(--gutter-l);min-width:40px;display:none;place-items:center;background:rgba(17,12,10,.55);opacity:0;transition:opacity .2s;z-index:3}
@@ -154,6 +154,8 @@
 @media (max-width:899px){.kw .kw-cw{width:clamp(150px,42vw,220px)}}
 
 .kw .kw-t10{display:flex;align-items:flex-end;width:auto}
+/* Room for the numerals, which reach past their line box: the rail never scrolls up and down. */
+.kw .kw-rail:has(.kw-t10){padding-block:24px}
 .kw .kw-t10 .kw-n{font-family:var(--display);font-weight:800;font-size:clamp(120px,13vw,190px);line-height:.72;color:var(--bg);-webkit-text-stroke:3px var(--fg-3);letter-spacing:-.08em;margin-right:-.12em;user-select:none}
 .kw .kw-t10 .kw-card{aspect-ratio:2/3;width:clamp(96px,9vw,140px)}
 .kw .kw-t10 .kw-card .kw-t{display:none}
@@ -161,7 +163,7 @@
 /* hover card */
 .kw .kw-hover{position:fixed;z-index:40;width:340px;border-radius:10px;overflow:hidden;background:var(--surface);box-shadow:0 22px 50px rgba(0,0,0,.65);transform-origin:center;opacity:0;transform:scale(.7);pointer-events:none;transition:opacity .22s var(--ease),transform .3s var(--spring)}
 .kw .kw-hover.kw-on{opacity:1;transform:scale(1);pointer-events:auto}
-.kw .kw-hover .kw-shot{position:relative;aspect-ratio:16/9}
+.kw .kw-hover .kw-shot{position:relative;aspect-ratio:16/9;display:block;width:100%;padding:0;border:0;background:none;color:inherit;text-align:left;cursor:pointer}
 .kw .kw-hover .kw-shot img{width:100%;height:100%;object-fit:cover}
 .kw .kw-hover .kw-shot .kw-t{position:absolute;left:14px;bottom:10px;font-family:var(--display);font-weight:800;font-size:24px;text-shadow:0 1px 12px rgba(0,0,0,.8)}
 .kw .kw-hover .kw-body{padding:14px;display:grid;gap:10px;font-size:14px}
