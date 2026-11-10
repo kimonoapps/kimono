@@ -41,8 +41,10 @@
 .nt-rail :focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
 @media (min-width: 760px) {
   .nt.is-docked { grid-template-columns: 248px 300px minmax(0, 1fr); }
-  /* Docking slides the panel back in as its column opens; narrowing to the rail, it slides away as the rail fades in. */
-  .nt.is-docked .nt-side { position: relative; order: -1; z-index: 2; width: 248px; min-height: 0; transform: none; visibility: visible; box-shadow: none; transition: transform var(--k-t-seat) var(--k-spring); }
+  /* Docking, the panel stays put and its column opens over it: the list and the note sit above it and slide right to show it. Narrowing to the rail, it slides away as the rail fades in. */
+  .nt.is-docked .nt-side { position: relative; order: -1; z-index: 2; width: 248px; min-height: 0; transform: none; visibility: visible; box-shadow: none; transition: none; }
+  .nt.is-docked .nt-listcol { position: relative; z-index: 3; }
+  .nt.is-docked .nt-notecol { z-index: 3; }
 }
 .nt-side-head { display: flex; align-items: center; min-height: 36px; padding: 0 2px 0 10px; }
 .nt-side-head > span { flex: 1; font: 600 18px/1 var(--k-display); color: var(--k-plum); }
@@ -282,15 +284,17 @@
 /* under 1200px the list steps aside while a note is open, with a back arrow */
 @media (max-width: 1199px) {
   .nt.has-note { grid-template-columns: minmax(0, 1fr); }
-  .nt.has-note.is-railed { grid-template-columns: 56px minmax(0, 1fr); }
-  .nt.has-note.is-docked { grid-template-columns: 248px minmax(0, 1fr); }
-  .nt.has-note .nt-listcol { display: none; }
+  /* three columns still, the list's at nothing, so the panel's eases open and closed like the list's */
+  .nt.has-note.is-railed { grid-template-columns: 56px 0px minmax(0, 1fr); }
+  .nt.has-note.is-docked { grid-template-columns: 248px 0px minmax(0, 1fr); }
+  .nt.has-note .nt-listcol { visibility: hidden; overflow: hidden; padding-inline: 0; transition: visibility 0s linear var(--k-t-seat); }
   .nt.has-note .nt-back { display: inline-grid !important; }
 }
 /* under 760px list and note are separate screens, and the panel is a drawer */
 @media (max-width: 759px) {
   .nt { grid-template-columns: minmax(0, 1fr); margin: 0; border-radius: 0; height: calc(100dvh - 76px); }
   .nt:not(.has-note) .nt-notecol { display: none; }
+  .nt.has-note .nt-listcol { display: none; }
   .nt-side { position: fixed; z-index: 66; width: min(300px, calc(100vw - 56px)); padding: 12px 8px; border-radius: 0 16px 16px 0; }
   .nt.is-placing .nt-side-shade { display: block; position: fixed; inset: 0; z-index: 65; background: rgba(28, 18, 20, .32); animation: nt-fade var(--k-t-fold) var(--k-ease-settle); }
   .nt-page { padding: 4px 6px 0; }
