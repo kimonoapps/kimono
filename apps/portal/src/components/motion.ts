@@ -79,7 +79,8 @@ export function whenPageStands(ready: (page: HTMLElement) => void) {
     const page = document.querySelector<HTMLElement>(".main-content");
     // The route's own loading page stands outside the shell; a skeleton inside
     // the page is the page's business, and its pieces rise when it gives way.
-    return page && !document.querySelector(".skel-page") ? page : null;
+    // (A still copy left over a crossing is inert and doesn't count.)
+    return page && !document.querySelector(".skel-page:not([inert] *)") ? page : null;
   };
   const now = standing();
   if (now) { ready(now); return () => {}; }

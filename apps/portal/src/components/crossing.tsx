@@ -4,7 +4,7 @@ import { CrossingProvider as CrossingLayer, useCrossing, accentRamp, cx, type Se
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type MouseEvent, type ReactNode } from "react";
 import { InkLoader } from "@/components/ink-loader";
-import { closeIris, foldRail, immersiveAt, immersiveLayer, openIris, surface } from "@/components/immersive";
+import { closeIris, foldRail, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
 import { afterPaint, riseWhenReady, whenPageStands } from "@/components/motion";
 
 /**
@@ -37,19 +37,23 @@ function Arrivals({ children }: { children: ReactNode }) {
   /* Set when the move crosses into or out of a full-screen place (Watch),
      which arrives its own way (components/immersive). */
   const crossing = useRef<"in" | "out" | null>(null);
+  /* Going in, a still copy of the page you left stands under the opening circle. */
+  const under = useRef<HTMLElement | null>(null);
   const settle = useCallback((slideIn: boolean) => {
     landing.current();
     let settling = () => {};
     const across = crossing.current;
+    const copy = under.current;
     crossing.current = null;
+    under.current = null;
     const stop = whenPageStands((page) => {
       page.getAnimations().forEach((animation) => animation.cancel());
+      page.style.opacity = "";
       const layer = immersiveLayer(page);
       foldRail(!!layer);
-      if (still()) return;
-      if (layer) { if (across === "in") openIris(layer); return; }
-      if (across === "out") surface(page);
-      else if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
+      if (copy) { if (layer) void openIris(layer).then(() => copy.remove()); else copy.remove(); }
+      if (still() || layer || across === "out") return;
+      if (slideIn) afterPaint([page.animate([{ opacity: 0, transform: "translateX(40px)" }, { opacity: 1, transform: "none" }], { duration: 300, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" })]);
       settling = riseWhenReady(page);
     });
     landing.current = () => { stop(); settling(); };
@@ -128,19 +132,24 @@ function Arrivals({ children }: { children: ReactNode }) {
     const from = immersiveAt(location.pathname), to = immersiveAt(target);
     crossing.current = from === to ? null : to ? "in" : "out";
     if (crossing.current) foldRail(to);
-    const layer = from ? immersiveLayer(leaving) : null;
-    if (layer) {
-      if (to) { handOver(); return; }
-      void closeIris(layer).then(handOver);
+    if (from && to) { handOver(); return; }
+    /* Going in, the page you leave holds still as a copy while Watch is
+       fetched and opens over it. */
+    if (to) {
+      if (leaving && !still()) { under.current = stillCopy(leaving); leaving.style.opacity = "0"; }
+      handOver();
       return;
     }
+    /* Coming out, a copy of Watch closes over Kimono arriving beneath it. */
+    const layer = from ? immersiveLayer(leaving) : null;
+    if (layer && !still()) {
+      const copy = stillCopy(layer);
+      layer.style.visibility = "hidden";
+      void closeIris(copy).then(() => copy.remove());
+    }
+    if (from) { handOver(); return; }
     if (!leaving || still()) { handOver(); return; }
-    /* Into the cinema the softening is left out: the rail is moving too, and
-       a blur over the whole page is the costliest thing to draw. */
-    const dissolve = leaving.animate(to ? [
-      { opacity: 1, transform: "none" },
-      { opacity: 0, transform: "translateX(-24px) scale(.985)" },
-    ] : [
+    const dissolve = leaving.animate([
       { opacity: 1, transform: "none", filter: "blur(0)" },
       { opacity: 0, transform: "translateX(-24px) scale(.985)", filter: "blur(6px)" },
     ], { duration: 240, easing: "cubic-bezier(.4, 0, .9, .7)", fill: "forwards" });

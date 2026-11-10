@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { closeIris, immersiveAt, immersiveLayer, openIris, surface } from "@/components/immersive";
+import { closeIris, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
 
 /*
  * 移 Moving between pages, as Material's shared x-axis and as the phone app
@@ -26,31 +26,33 @@ export function PageTransition({ children }: { children: ReactNode }) {
       const layer = immersiveLayer(main);
       const into = immersiveAt(to);
       if (layer && into) return;
-      const box = main.getBoundingClientRect();
-      const ghost = (layer ?? main).cloneNode(true) as HTMLElement;
-      ghost.setAttribute("aria-hidden", "true");
-      ghost.inert = true;
-      if (layer) {
-        Object.assign(ghost.style, { pointerEvents: "none", viewTransitionName: "none" });
-        document.body.appendChild(ghost);
-        void closeIris(ghost).finally(() => ghost.remove());
-      } else {
-        Object.assign(ghost.style, { position: "fixed", left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: "0", pointerEvents: "none", zIndex: "5", viewTransitionName: "none" });
-        document.body.appendChild(ghost);
-        ghost.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateX(${back ? 32 : -32}px)` }], { duration: 120, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }).finished.finally(() => ghost.remove());
+      /* Into Watch, the page you leave holds still while Watch opens over it;
+         out of Watch, a copy of it closes over Kimono arriving beneath. */
+      const ghost = layer || into ? stillCopy(layer ?? main) : null;
+      if (ghost && layer) void closeIris(ghost).then(() => ghost.remove());
+      let slide: HTMLElement | null = null;
+      if (!ghost) {
+        const box = main.getBoundingClientRect();
+        slide = main.cloneNode(true) as HTMLElement;
+        slide.setAttribute("aria-hidden", "true");
+        slide.inert = true;
+        Object.assign(slide.style, { position: "fixed", left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: "0", pointerEvents: "none", zIndex: "5", viewTransitionName: "none" });
+        document.body.appendChild(slide);
+        slide.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: `translateX(${back ? 32 : -32}px)` }], { duration: 120, easing: "cubic-bezier(.4, 0, 1, 1)", fill: "forwards" }).finished.finally(() => slide?.remove());
       }
       /* The page arrives once Next has put it in place, often as a new element. */
       const arrive = () => {
         const next = document.querySelector<HTMLElement>(".main-content:not([aria-hidden])");
         if (!next) return;
         const opening = immersiveLayer(next);
-        if (opening) { openIris(opening); return; }
-        if (layer) { surface(next); return; }
+        if (into) { if (opening) void openIris(opening).then(() => ghost?.remove()); else ghost?.remove(); return; }
+        if (layer) return;
         next.animate([{ opacity: 0, transform: `translateX(${back ? -48 : 48}px)` }, { opacity: 1, transform: "none" }], { duration: 380, delay: 40, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" });
       };
       main.style.opacity = "0";
       const watch = new MutationObserver((changes) => {
-        if (changes.every((change) => ghost.contains(change.target))) return;
+        const copy = ghost ?? slide;
+        if (copy && changes.every((change) => copy.contains(change.target))) return;
         watch.disconnect(); clearTimeout(late); main.style.opacity = ""; arrive();
       });
       watch.observe(document.body, { childList: true, subtree: true, characterData: true });

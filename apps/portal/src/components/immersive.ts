@@ -2,12 +2,12 @@
  * 観 Crossing into a place that takes the whole screen (Kimono Watch), and
  * back. It is not a page beside the rail, so it doesn't move like one:
  *
- *   going in   the rail folds away while the page you leave dissolves, and
- *              its column closes once that page is gone; the cinema then opens as a dark iris from
- *              where you pressed.
- *   coming out the iris closes on the button you pressed while the rail
- *              unfolds; Kimono surfaces in place, no sideways slide.
+ *   going in   the rail folds away and the page you leave stays still;
+ *              Watch opens on top of it as a circle from where you pressed.
+ *   coming out Watch closes as a circle onto the button you pressed, over
+ *              Kimono already standing beneath, while the rail unfolds.
  *
+ * The circle is the only thing that moves: nothing fades or slides.
  * The full-screen layer is position:fixed inside .main-content, so nothing
  * here ever transforms .main-content while that layer is in it: a transform
  * would pin the layer to the page's box beside the rail.
@@ -47,21 +47,40 @@ export function foldRail(away: boolean) {
   if (away) frame.dataset.railAway = ""; else delete frame.dataset.railAway;
 }
 
-/** The cinema opening as an iris from where you pressed. */
-export function openIris(layer: HTMLElement) {
-  if (still()) return;
+/**
+ * A still copy of what's on screen, standing where it stands, so the page
+ * underneath can change hands unseen while the iris moves over or off it.
+ */
+export function stillCopy(element: HTMLElement) {
+  const copy = element.cloneNode(true) as HTMLElement;
+  copy.setAttribute("aria-hidden", "true");
+  copy.inert = true;
+  copy.classList.remove("main-content");
+  if (getComputedStyle(element).position !== "fixed") {
+    const box = element.getBoundingClientRect();
+    Object.assign(copy.style, { position: "fixed", left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: "0", zIndex: "5", overflow: "hidden" });
+  }
+  Object.assign(copy.style, { pointerEvents: "none", viewTransitionName: "none" });
+  document.body.appendChild(copy);
+  /* A copy starts scrolled to the top; put it where the original was. */
+  const from = [element, ...element.querySelectorAll("*")], to = [copy, ...copy.querySelectorAll("*")];
+  from.forEach((node, index) => { if (node.scrollTop || node.scrollLeft) to[index]?.scrollTo(node.scrollLeft, node.scrollTop); });
+  return copy;
+}
+
+/** The cinema opening as an iris from where you pressed, and nothing else moving. Resolves once it's open. */
+export function openIris(layer: HTMLElement): Promise<void> {
+  if (still()) return Promise.resolve();
   const at = origin();
   const r = reach(at);
   const opening = layer.animate([
-    { clipPath: `circle(24px at ${at.x}px ${at.y}px)`, opacity: .6 },
-    { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)`, opacity: 1 },
+    { clipPath: `circle(0px at ${at.x}px ${at.y}px)` },
+    { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)` },
   ], { duration: 560, easing: IN, fill: "backwards" });
   quiet(layer, opening);
   opening.pause();
   requestAnimationFrame(() => opening.play());
-  /* What's on it arrives a beat after the dark, as a room's lights settling.
-     Opacity only: a transform here would pin its fixed bars to the child. */
-  [...layer.children].forEach((child) => child.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 420, delay: 160, easing: IN, fill: "backwards" }));
+  return opening.finished.then(() => {}, () => {});
 }
 
 /** The cinema closing on the button you pressed. Resolves once it's shut. */
@@ -70,17 +89,9 @@ export function closeIris(layer: HTMLElement): Promise<void> {
   const at = origin();
   const r = reach(at);
   const closing = layer.animate([
-    { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)`, opacity: 1 },
-    { clipPath: `circle(20px at ${at.x}px ${at.y}px)`, opacity: 0 },
-  ], { duration: 340, easing: OUT, fill: "forwards" });
+    { clipPath: `circle(${r}px at ${at.x}px ${at.y}px)` },
+    { clipPath: `circle(0px at ${at.x}px ${at.y}px)` },
+  ], { duration: 380, easing: OUT, fill: "forwards" });
   quiet(layer, closing);
   return closing.finished.then(() => {}, () => {});
-}
-
-/** Kimono surfacing where it stands: a fade and a slight settle, no sideways slide. */
-export function surface(page: HTMLElement) {
-  if (still()) return;
-  const arriving = page.animate([{ opacity: 0, scale: ".97" }, { opacity: 1, scale: "1" }], { duration: 420, delay: 60, easing: IN, fill: "backwards" });
-  arriving.pause();
-  requestAnimationFrame(() => arriving.play());
 }
