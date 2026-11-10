@@ -68,7 +68,8 @@ export type Device = {
   hi10p?: boolean;
 };
 
-export type Quality = "auto" | "2160" | "1080" | "720" | "saver";
+/** "best": the finest picture the screen shows and the connection carries, size no object. */
+export type Quality = "auto" | "best" | "2160" | "1080" | "720" | "saver";
 
 const has = (text: string, pattern: RegExp) => pattern.test(text);
 
@@ -147,7 +148,7 @@ export function parseRelease(input: { url: string; name?: string; title?: string
 /** The tallest picture a person's setting allows on this device. Phones top out at 1080p unless asked: 4K is wasted there. */
 export function heightCap(device: Device, quality: Quality): number {
   const screen = device.maxHeight || 1080;
-  const byQuality = quality === "2160" ? 2160 : quality === "1080" ? 1080 : quality === "720" || quality === "saver" ? 720 : device.client === "android" || device.client === "ios" ? 1080 : 2160;
+  const byQuality = quality === "best" ? screen : quality === "2160" ? 2160 : quality === "1080" ? 1080 : quality === "720" || quality === "saver" ? 720 : device.client === "android" || device.client === "ios" ? 1080 : 2160;
   return Math.min(screen, byQuality);
 }
 
@@ -155,7 +156,7 @@ export function heightCap(device: Device, quality: Quality): number {
 export const bitrate = (r: Pick<Release, "bytes"> & { mbps?: number | null }, minutes: number | null) => (r.mbps ? r.mbps : r.bytes && minutes ? (r.bytes * 8) / (minutes * 60) / 1e6 : null);
 
 /** Why a release won't do on this device, or null when it plays. */
-export function unplayable(r: Release, device: Device, minutes: number | null): string | null {
+export function unplayable(r: Release, device: Device, minutes: number | null, quality: Quality = "auto"): string | null {
   if (r.junk) return "not the film or episode itself";
   if (isDead(r.url)) return "failed to play a moment ago";
   /* 10-bit H.264 plays only in software; 10-bit HEVC needs a decoder that does it. */
@@ -167,7 +168,9 @@ export function unplayable(r: Release, device: Device, minutes: number | null): 
   if (r.dvProfile === 5 && !device.dvProfiles.includes(5)) return "Dolby Vision this screen can't show";
   const mbps = bitrate(r, minutes);
   if (mbps !== null && device.mbps && mbps * 1.3 > device.mbps) return "too big for this connection";
-  if (r.source === "remux" && !device.lan && (mbps ?? 60) > 35) return "full size only at home";
+  /* Best picture takes a disc copy anywhere the connection is known to carry it (or isn't known yet). */
+  const carries = quality === "best" && (!device.link || (mbps !== null && mbps * 1.3 <= device.link));
+  if (r.source === "remux" && !device.lan && !carries && (mbps ?? 60) > 35) return "full size only at home";
   return null;
 }
 
@@ -175,6 +178,8 @@ export function unplayable(r: Release, device: Device, minutes: number | null): 
    no better on a phone or across town than a good encode at a quarter of the
    size, so it ranks with a WEB-DL, and its size is weighed below. */
 const sourceRank: Record<Source, number> = { remux: 3, bluray: 4, "web-dl": 4, webrip: 3, hdtv: 1, dvd: 0, unknown: 1 };
+
+const bestRank: Record<Source, number> = { remux: 5, bluray: 4, "web-dl": 3, webrip: 2, hdtv: 1, dvd: 0, unknown: 1 };
 
 /** The tallest picture a connection carries smoothly (Mbps, as measured). */
 export function linkCap(mbps: number | undefined): number {
@@ -191,6 +196,8 @@ export function budget(height: number, device: Pick<Device, "client" | "mbps" | 
   const phone = device.client === "android" || device.client === "ios";
   const best = quality === "saver" ? 3 : height >= 2160 ? 25 : height >= 1080 ? (phone ? 8 : 14) : height >= 720 ? 5 : 2.5;
   const known = device.mbps ?? device.link;
+  /* Best picture: no budget but the connection. */
+  if (quality === "best") return known ? known * 0.75 : Infinity;
   return known ? Math.min(best, known * 0.75) : best;
 }
 
@@ -221,7 +228,9 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
   if (showsHdr && r.hdr.includes("dv") && r.dvProfile !== null && device.dvProfiles.includes(r.dvProfile)) s += 60;
   if (showsHdr && r.hdr.some((x) => x !== "dv" && device.hdr.includes(x))) s += 50;
   if (!showsHdr && r.hdr.length) s -= 30; /* plays, tone-mapped: fine, but SDR is truer */
-  s += sourceRank[r.source] * 12;
+  /* Best picture: the disc copy first, then the best encodes, and HDR wherever the screen shows it. */
+  s += (quality === "best" ? bestRank[r.source] * 30 : sourceRank[r.source] * 12);
+  if (quality === "best" && showsHdr && r.hdr.length) s += 80;
   if (r.atmos && device.passthrough.some((a) => a === "eac3" || a === "truehd")) s += 25;
   if ((r.audio === "truehd" || r.audio.startsWith("dts")) && !device.passthrough.includes(r.audio)) s -= 10;
   if (r.cached) s += 80;
@@ -234,7 +243,7 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
   const mbps = bitrate(r, minutes);
   if (mbps !== null) {
     const spend = budget(h, device, quality);
-    s += mbps > spend ? -(mbps / spend - 1) * 220 : (mbps / spend) * 30;
+    s += mbps > spend ? -(mbps / spend - 1) * 220 : spend === Infinity ? Math.min(mbps, 80) * 1.5 : (mbps / spend) * 30;
   }
   /* A copy that doesn't say its size or codec is a guess: below one that does. */
   if (!r.height) s -= 60;
@@ -247,7 +256,7 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
 /** Everything that plays here, best first. */
 export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}): Release[] {
   return releases
-    .filter((r) => unplayable(r, device, minutes) === null)
+    .filter((r) => unplayable(r, device, minutes, quality) === null)
     .map((r) => ({ r, s: score(r, device, quality, minutes, language, speeds) }))
     .sort((a, b) => b.s - a.s)
     .map(({ r }) => r)
@@ -315,7 +324,7 @@ export function cleanDevice(raw: unknown): Device {
 
 /* ───── The Quality menu ───── */
 
-export const qualityLabels: Record<Quality, string> = { auto: "Auto", "2160": "4K", "1080": "1080p", "720": "720p", saver: "Data saver" };
+export const qualityLabels: Record<Quality, string> = { auto: "Auto", best: "Best picture", "2160": "4K", "1080": "1080p", "720": "720p", saver: "Data saver" };
 
 /**
  * The qualities worth offering: Auto, then each size a version that plays
@@ -327,6 +336,7 @@ export function qualityOptions(playable: Pick<Release, "height">[], device: Devi
   const top = Math.max(0, ...tiers);
   const has = (h: number) => tiers.includes(h) || (scalable && top > h);
   const options: Quality[] = ["auto"];
+  if (playable.length) options.push("best");
   if (has(2160) && device.maxHeight >= 2160) options.push("2160");
   if (has(1080) && device.maxHeight >= 1080) options.push("1080");
   if (has(720)) options.push("720");

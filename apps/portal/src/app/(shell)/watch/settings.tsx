@@ -44,7 +44,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
     <h1>Settings</h1>
     {!prefs ? <div className="kw-set-wait">{Array.from({ length: 6 }, (_, i) => <div key={i} className="kw-sk kw-sk-line" style={{ height: 44 }} />)}</div> : <>
       <Section title="Playback">
-        <Row label="Quality on this device" note={no4k ? `No 4K: ${no4k.charAt(0).toLowerCase()}${no4k.slice(1)}` : undefined} done={ticked === "quality"}>
+        <Row label="Quality on this device" note={[quality === "best" ? "The biggest copies, disc quality and HDR, as far as your connection carries them." : "", no4k ? `No 4K: ${no4k.charAt(0).toLowerCase()}${no4k.slice(1)}` : ""].filter(Boolean).join(" ") || undefined} done={ticked === "quality"}>
           <Seg value={quality} onChange={pickQuality} options={qualities.map((q) => [q.value, q.label])} disabled={no4k !== null ? { "2160": no4k ?? "" } : undefined} />
         </Row>
         <Row label="Autoplay next episode" done={ticked === "autoplayNext"} inline><Toggle checked={prefs.autoplayNext} onChange={(on) => save("autoplayNext", { autoplayNext: on })} /></Row>

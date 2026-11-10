@@ -150,7 +150,7 @@ export function deviceId(): string {
 
 /** Qualities someone can ask this device for; the player shows only what a stream offers. */
 export const qualities = [
-  { value: "auto", label: "Auto" }, { value: "2160", label: "4K" }, { value: "1080", label: "1080p" }, { value: "720", label: "720p" }, { value: "saver", label: "Data saver" },
+  { value: "auto", label: "Auto" }, { value: "best", label: "Best picture" }, { value: "2160", label: "4K" }, { value: "1080", label: "1080p" }, { value: "720", label: "720p" }, { value: "saver", label: "Data saver" },
 ];
 export function savedQuality(): string {
   try { return localStorage.getItem("kw.quality") || "auto"; } catch { return "auto"; }

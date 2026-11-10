@@ -95,7 +95,7 @@ class WatchApi(
 
     suspend fun prefs(device: String? = null): Prefs = json.decodeFromString(get("/prefs" + (device?.let { "?device=${it.encodeURLParameter()}" } ?: "")))
 
-    /** A device's own quality ("auto", "2160", "1080", "720", "saver"), or null to follow the person's. */
+    /** A device's own quality ("auto", "best", "2160", "1080", "720", "saver"), or null to follow the person's. */
     suspend fun deviceQuality(device: String, quality: String?): Prefs =
         json.decodeFromString(send(HttpMethod.Put, "/prefs", buildJsonObject { put("device", device); put("quality", quality?.let { JsonPrimitive(it) } ?: JsonNull) }))
 

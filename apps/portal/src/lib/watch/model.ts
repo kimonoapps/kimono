@@ -81,7 +81,7 @@ export type FillerChoice = "ask" | "skip" | "watch";
 export type Prefs = {
   fillers: FillerChoice;
   /** "auto" picks for the device and connection; the rest cap it. */
-  quality: "auto" | "2160" | "1080" | "720" | "saver";
+  quality: "auto" | "best" | "2160" | "1080" | "720" | "saver";
   /** The person's own language (ISO 639-1): what "my language" and subtitles mean. */
   audioLanguage: string;
   /** Subtitles in this language; empty means the same as audioLanguage. */
@@ -348,7 +348,7 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
   const lang = (value: unknown, fallback: string) => (typeof value === "string" && /^([a-z]{2,3})?$/.test(value) ? value : fallback);
   return {
     fillers: pick(input.fillers, ["ask", "skip", "watch"] as const, base.fillers),
-    quality: pick(input.quality, ["auto", "2160", "1080", "720", "saver"] as const, base.quality),
+    quality: pick(input.quality, ["auto", "best", "2160", "1080", "720", "saver"] as const, base.quality),
     audioLanguage: lang(input.audioLanguage, base.audioLanguage),
     subtitleLanguage: lang(input.subtitleLanguage, base.subtitleLanguage),
     animeAudio: pick(input.animeAudio, ["original", "dub"] as const, base.animeAudio),
@@ -373,7 +373,7 @@ export function savePrefs(db: DatabaseSync, username: string, raw: unknown): Pre
 /* ───── Quality per device ───── */
 
 export type Quality = Prefs["quality"];
-const qualities = ["auto", "2160", "1080", "720", "saver"] as const;
+const qualities = ["auto", "best", "2160", "1080", "720", "saver"] as const;
 export const cleanQuality = (value: unknown): Quality | null => (qualities.includes(value as Quality) ? (value as Quality) : null);
 /** An app's or browser's own id for itself: what quality is remembered by. */
 export const cleanDeviceId = (value: unknown): string | null => (typeof value === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(value) ? value : null);

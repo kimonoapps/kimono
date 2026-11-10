@@ -871,12 +871,12 @@ test('quality: chosen just now, else the device, else the person', () => {
 test('the Quality menu offers only sizes that play here', () => {
   const sizes = (...hs) => hs.map((height) => ({ height }));
   const values = (o) => o.map((x) => x.value);
-  assert.deepEqual(values(releases.qualityOptions(sizes(2160, 1080), tv)), ['auto', '2160', '1080', 'saver']);
-  assert.deepEqual(values(releases.qualityOptions(sizes(2160, 1080), { ...tv, maxHeight: 1080 })), ['auto', '1080', 'saver'], '4K only on a screen that shows it');
-  assert.deepEqual(values(releases.qualityOptions(sizes(1080), tv)), ['auto', '1080', 'saver']);
-  assert.deepEqual(values(releases.qualityOptions(sizes(1080), tv, true)), ['auto', '1080', '720', 'saver'], 'HLS scales down');
+  assert.deepEqual(values(releases.qualityOptions(sizes(2160, 1080), tv)), ['auto', 'best', '2160', '1080', 'saver']);
+  assert.deepEqual(values(releases.qualityOptions(sizes(2160, 1080), { ...tv, maxHeight: 1080 })), ['auto', 'best', '1080', 'saver'], '4K only on a screen that shows it');
+  assert.deepEqual(values(releases.qualityOptions(sizes(1080), tv)), ['auto', 'best', '1080', 'saver']);
+  assert.deepEqual(values(releases.qualityOptions(sizes(1080), tv, true)), ['auto', 'best', '1080', '720', 'saver'], 'HLS scales down');
   assert.deepEqual(values(releases.qualityOptions([], tv)), ['auto']);
-  assert.deepEqual(releases.qualityOptions(sizes(2160), tv, true).map((x) => x.label), ['Auto', '4K', '1080p', '720p', 'Data saver']);
+  assert.deepEqual(releases.qualityOptions(sizes(2160), tv, true).map((x) => x.label), ['Auto', 'Best picture', '4K', '1080p', '720p', 'Data saver']);
 });
 
 /* ───── Watch Together ───── */

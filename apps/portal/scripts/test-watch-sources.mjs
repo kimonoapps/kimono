@@ -195,3 +195,14 @@ test('a lean encode beats a heavy one of the same size picture, and a known slow
   const guess = R('Film 2021 ⚡', { bytes: 0.5 * 1024 ** 3 });
   assert.notEqual(releases.rank([guess, small], slow, 'auto', 120)[0], guess, 'a copy that says nothing about itself comes after one that does');
 });
+
+test('Best picture takes the disc copy and HDR, but only as far as a known connection carries', () => {
+  const tv = releases.cleanDevice({ client: 'android-tv', maxHeight: 2160, hdr: ['hdr10'], codecs: ['h264', 'hevc'] });
+  const remux = R('Film.2021.2160p.BluRay.REMUX.HDR.HEVC.TrueHD.7.1.Atmos-GRP ⚡', { bytes: 60 * 1024 ** 3 });
+  const web = R('Film.2021.2160p.WEB-DL.DDP5.1.HDR.H.265-GRP ⚡', { bytes: 18 * 1024 ** 3 });
+  assert.equal(releases.rank([web, remux], tv, 'auto', 120)[0], web, 'Auto: the lean one');
+  assert.equal(releases.rank([web, remux], tv, 'best', 120)[0], remux, 'Best picture: the disc');
+  assert.equal(releases.rank([web, remux], { ...tv, link: 30 }, 'best', 120)[0], web, 'not more than a measured 30 Mbps carries');
+  assert.ok(releases.qualityOptions([web], tv).some((q) => q.value === 'best' && q.label === 'Best picture'));
+  assert.equal(model.cleanQuality('best'), 'best');
+});

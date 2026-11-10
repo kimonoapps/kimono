@@ -71,7 +71,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** The qualities a device can keep, as the server names them (lib/watch/releases.ts qualityLabels). */
-val qualityChoices = listOf("auto" to "Auto", "2160" to "4K", "1080" to "1080p", "720" to "720p", "saver" to "Data saver")
+val qualityChoices = listOf("auto" to "Auto", "best" to "Best picture", "2160" to "4K", "1080" to "1080p", "720" to "720p", "saver" to "Data saver")
 
 /** Languages to pick from, by their ISO 639-1 code. */
 val languages = listOf(
@@ -163,7 +163,7 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
     when (part) {
         Part.Quality -> {
             val device = remember { runCatching { watch.api.device() }.getOrNull() }
-            val tiers = qualityChoices.filter { it.first != "2160" || (device?.maxHeight ?: 0) >= 2160 }.map { (v, l) -> v to if (v == "saver") "Saver" else l }
+            val tiers = qualityChoices.filter { it.first != "2160" || (device?.maxHeight ?: 0) >= 2160 }.map { (v, l) -> v to when (v) { "saver" -> "Saver"; "best" -> "Best"; else -> l } }
             val thing = if (watch.tv) "TV" else "phone"
             Field("On this $thing", key = "quality") {
                 Joint(tiers, state.quality ?: "auto") { vm.quality(it, cell = false); store.flash("quality") }
