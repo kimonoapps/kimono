@@ -903,7 +903,7 @@ export async function forgetAttachments(workspaceId: string) {
 }
 
 export { who };
-export { fromDrive, syncDrive, taskFolder } from "./drive";
+export { driveAttachment, fromDrive, syncDrive, taskFolder, uploadFolder } from "./drive";
 
 /**
  * A file the agent linked for a tool with kimono-link, for whoever has the link: the

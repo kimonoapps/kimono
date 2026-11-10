@@ -25,6 +25,7 @@
     "test:history": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-history.mjs",
     "test:mesh-policy": "node --experimental-transform-types --test scripts/test-mesh-policy.mjs",
     "test:sharing": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-sharing.mjs",
+    "test:attachments": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-big-attachments.mjs",
     "test:access": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-access.mjs && node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-access-flow.mjs",
     "test:git-owners": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-git-owners.mjs"
   },

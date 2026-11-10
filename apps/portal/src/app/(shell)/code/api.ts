@@ -3,6 +3,8 @@
  * phone app calls, signed in by the browser's own session.
  */
 
+import { upload as driveUpload } from "../drive/api";
+
 export type TurnState = "running" | "done" | "failed" | "cancelled";
 /** What someone may do in a chat: it's theirs, or it was shared with them to write in or to read. */
 export type Access = "owner" | "edit" | "read";
@@ -28,7 +30,12 @@ export type Workspace = {
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
 };
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };
-export type Attachment = { name: string; path: string; size: number; type: string };
+/** A file sent with a message. One over 20 MB is a file in the chat's Drive folder (`node`). */
+export type Attachment = { name: string; path: string; size: number; type: string; node?: string };
+
+/** Up to this a file is attached as it is; past it (up to 4 GB) it goes through the chat's Drive folder. */
+export const smallAttachment = 20 * 1024 * 1024;
+export const largestAttachment = 4 * 1024 ** 3;
 export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; queued?: boolean }
   | { kind: "started" }
@@ -240,8 +247,22 @@ export const code = {
     method: "POST", body: file, headers: { "Content-Type": file.type || "application/octet-stream" },
   }),
 
+  /** The chat's Drive folder, for a file over 20 MB to be uploaded into. */
+  uploadFolder: (id: string) => call<{ folder: string }>(`${ws(id)}/upload-folder`, { method: "POST" }).then((r) => r.folder),
+
+  /** A file over 20 MB: uploaded (resumably, in pieces) into the chat's Drive folder, then attached from there. */
+  attachBig: async (id: string, file: File, progress: (sent: number) => void, signal = new AbortController().signal) => {
+    const folder = await code.uploadFolder(id);
+    const node = await driveUpload(file, folder, progress, signal);
+    const [attachment] = await code.fromDrive(id, [node]);
+    return attachment;
+  },
+
   /** Where an attachment can be seen again, from its path in the sandbox. */
-  attachmentUrl: (id: string, a: Attachment) => a.path.startsWith("/kept/")
+  attachmentUrl: (id: string, a: Attachment) => a.node
+    /* over 20 MB: the file in the chat's Drive folder */
+    ? at(`${ws(id)}/attachments/drive/${encodeURIComponent(a.node)}?type=${encodeURIComponent(a.type)}`)
+    : a.path.startsWith("/kept/")
     /* one a chat in the feedback bank keeps, for an administrator */
     ? at(`/feedback/files/${a.path.slice(6).split("/").map(encodeURIComponent).join("/")}?type=${encodeURIComponent(a.type)}`)
     : at(`${ws(id)}/attachments/${encodeURIComponent(a.path.replace(/^\/attachments\//, ""))}?type=${encodeURIComponent(a.type)}`),

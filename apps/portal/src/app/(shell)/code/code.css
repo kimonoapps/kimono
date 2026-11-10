@@ -131,6 +131,7 @@ button.cd-media-tile:focus-visible { outline: 2px solid var(--k-primary); outlin
 .cd-media-remove { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: rgba(20, 16, 14, .62); color: #fff; cursor: pointer; }
 .cd-media-remove svg.i { width: 12px; height: 12px; }
 .cd-media-state { position: absolute; inset: 0; display: grid; place-items: center; padding: 4px; background: color-mix(in srgb, var(--k-surface) 55%, transparent); text-align: center; font: 600 10.5px/1.2 var(--k-sans); }
+.cd-media-share { font: 600 12px/1 var(--k-sans); font-variant-numeric: tabular-nums; color: var(--k-ink); }
 .cd-media-state.is-failed { background: color-mix(in srgb, var(--k-surface) 78%, transparent); color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
 .cd-filechip { display: inline-flex; align-items: center; gap: 8px; max-width: 280px; min-height: 40px; padding: 4px 6px 4px 8px; border: 1px solid var(--k-hair); border-radius: var(--k-r-s); background: var(--k-lift); color: var(--k-ink); font-size: 13px; font-weight: 600; text-decoration: none; }
 .cd-filechip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

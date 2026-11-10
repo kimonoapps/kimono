@@ -291,7 +291,8 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request, id string)
 }
 
 // withAttachments names the uploaded files in the prompt, after checking they
-// are ones the attachments call could have made.
+// are ones the attachments call could have made, or (a file over 20 MB, which
+// stays a Drive file) one at the top of the repository, where Drive put it.
 func withAttachments(prompt string, attachments []string) (string, error) {
 	if len(attachments) == 0 {
 		return prompt, nil
@@ -300,7 +301,12 @@ func withAttachments(prompt string, attachments []string) (string, error) {
 		return "", problem(400, "Attach at most 20 files to one message.")
 	}
 	for _, attachment := range attachments {
-		if path.Dir(attachment) != "/attachments" || !validAttachmentName(path.Base(attachment)) {
+		inRepo := false
+		if rest, ok := strings.CutPrefix(attachment, "/workspace/"); ok {
+			clean, fine := cleanPath(rest)
+			inRepo = fine && rest != "" && clean == rest && !strings.Contains(rest, "/") && !strings.HasPrefix(rest, ".")
+		}
+		if !inRepo && (path.Dir(attachment) != "/attachments" || !validAttachmentName(path.Base(attachment))) {
 			return "", problem(400, "That attachment isn't one this workspace has.")
 		}
 	}

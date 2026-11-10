@@ -14,7 +14,7 @@ import { swap } from "@/components/motion";
 import { Portrait } from "@/components/portrait";
 import { JointSwitch } from "@/components/joint-switch";
 import {
-  code, drive, efforts, modelChoices, modelKey, modelNow, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
+  code, drive, efforts, largestAttachment, modelChoices, modelKey, modelNow, smallAttachment, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   artifactLinkUrl, chatLinkUrl, setShareLink, type Access, type ArtifactSharing, type ChatSharing, type Person, type SharedArtifact,
   type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type SkillChoice, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage, type Phase,
 } from "./api";
@@ -1477,7 +1477,7 @@ const noPending: Pending[] = [];
 /* ── a new task: which repository, which branch, and what to do ── */
 
 /** A file chosen for a chat that doesn't exist yet: from this device, or a Drive file by its id. */
-type Held = { id: string; name: string; size: number; preview: string | null; video?: boolean; file?: File; node?: string; failed?: string };
+type Held = { id: string; name: string; size: number; preview: string | null; video?: boolean; file?: File; node?: string; failed?: string; /** Bytes uploaded so far, for one over 20 MB going to the new chat's Drive folder. */ sent?: number };
 
 function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: string | null; admin: boolean; folder: Project | null; repoAsked: string | null; onStarted: (w: Workspace) => Promise<void> }) {
   /* A new chat is just what you ask. Administrators can instead work on a project (a Kimono Git repository).
@@ -1504,7 +1504,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   const hasDrive = marks.spaces.size > 0;
   /* Drive is known from the start; its spaces arrive later, and an early click shouldn't skip the menu. */
   const drivePresent = marks.drive !== null;
-  const hold = (picked: File[]) => setFiles((list) => [...list, ...picked.map((file): Held => ({ id: crypto.randomUUID(), name: file.name, size: file.size, file, ...localPreview(file), failed: file.size > 20 * 1024 * 1024 ? "Over 20 MB" : undefined }))].slice(0, 10));
+  const hold = (picked: File[]) => setFiles((list) => [...list, ...picked.map((file): Held => ({ id: crypto.randomUUID(), name: file.name, size: file.size, file, ...localPreview(file), failed: file.size > largestAttachment ? "Over 4 GB" : undefined }))].slice(0, 10));
   useFileDrop(blocked ? null : { label: "Drop to attach", onDrop: (data) => hold(filesIn(data)) });
   const project = (on: boolean) => { setOnProject(on); try { localStorage.setItem("kimono-ai-project", on ? "1" : "0"); } catch { /* not remembered */ } };
 
@@ -1568,7 +1568,10 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
         : { prompt, effort: effortNow(), ...(folder ? { folder: folder.id } : {}) }), hold: toSend.length > 0 });
       if (toSend.length) {
         /* The chat exists now: its files go to it, then the message, as any turn would. */
-        const uploads = await Promise.all(toSend.filter((f) => f.file).map((f) => code.attach(made.id, f.file!).catch(() => null)));
+        /* Over 20 MB a file goes into the new chat's Drive folder in resumable pieces, showing how far it got. */
+        const uploads = await Promise.all(toSend.filter((f) => f.file).map((f) => (f.file!.size > smallAttachment
+          ? code.attachBig(made.id, f.file!, (sent) => setFiles((list) => list.map((h) => h.id === f.id ? { ...h, sent } : h)))
+          : code.attach(made.id, f.file!)).catch(() => null)));
         const nodes = toSend.filter((f) => f.node).map((f) => f.node!);
         const copied = nodes.length ? await code.fromDrive(made.id, nodes).catch(() => [] as Attachment[]) : [];
         await code.ask(made.id, prompt, [...uploads.filter((a): a is Attachment => a !== null), ...copied], effortNow());
@@ -1609,11 +1612,11 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
       </div> : null}
       <div className="cd-hello-box">
         {files.length ? <div className="cd-pending">{files.map((f) => f.preview
-          ? <PendingMedia key={f.id} name={f.name} url={f.preview} video={f.video} failed={f.failed} onRemove={() => { forget([f.preview]); setFiles((list) => list.filter((x) => x.id !== f.id)); }} />
+          ? <PendingMedia key={f.id} name={f.name} url={f.preview} video={f.video} sending={sending && f.sent !== undefined} share={sentShare(f.sent, f.size)} failed={f.failed} onRemove={() => { forget([f.preview]); setFiles((list) => list.filter((x) => x.id !== f.id)); }} />
           : <span key={f.id} className={cx("cd-filechip", f.failed && "is-failed")}>
           <FileThumb name={f.name} size={30} />
           <span>{f.name}</span>
-          <small>{f.failed ?? readableSize(f.size)}</small>
+          <small>{f.failed ?? (sending ? sentShare(f.sent, f.size) : null) ?? readableSize(f.size)}</small>
           <button type="button" aria-label={`Remove ${f.name}`} onClick={() => { forget([f.preview]); setFiles((list) => list.filter((x) => x.id !== f.id)); }}><Icon name="close" /></button>
         </span>)}</div> : null}
         <div className="cd-entry">
@@ -2766,10 +2769,10 @@ function MediaGrid({ workspace, files }: { workspace: Workspace; files: Attachme
 }
 
 /** A photo or video waiting in the message box: its square, a mark while it uploads, and a way to take it out. */
-function PendingMedia({ name, url, video, sending, failed, onRemove }: { name: string; url: string; video?: boolean; sending?: boolean; failed?: string; onRemove: () => void }) {
+function PendingMedia({ name, url, video, sending, share, failed, onRemove }: { name: string; url: string; video?: boolean; sending?: boolean; share?: string | null; failed?: string; onRemove: () => void }) {
   return <span className={cx("cd-media-tile", "is-pending", sending && "is-sending", failed && "is-failed")} title={failed ? `${name}: ${failed}` : name}>
     <MediaFace name={name} url={url} video={video} />
-    {sending ? <span className="cd-media-state"><InkLoader tone="plain" label="Attaching" className="cd-morph" /></span> : null}
+    {sending ? <span className="cd-media-state">{share ? <span className="cd-media-share">{share}</span> : <InkLoader tone="plain" label="Attaching" className="cd-morph" />}</span> : null}
     {failed ? <span className="cd-media-state is-failed">{failed}</span> : null}
     <button type="button" className="cd-media-remove" aria-label={`Remove ${name}`} onClick={onRemove}><Icon name="close" /></button>
   </span>;
@@ -3149,7 +3152,10 @@ function OneFilePicker({ root, onPick }: { root: string; onPick: (file: string) 
 
 /* ── the composer: what to say next, and what to show it ── */
 
-type Pending = { id: string; name: string; size: number; preview: string | null; video?: boolean; attachment?: Attachment; failed?: string };
+type Pending = { id: string; name: string; size: number; preview: string | null; video?: boolean; attachment?: Attachment; failed?: string; /** Bytes uploaded so far, for a file over 20 MB on its way to the chat's Drive folder. */ sent?: number };
+
+/** "42%" of a big file on its way, or null for one that attaches in one go. */
+const sentShare = (sent: number | undefined, size: number) => sent === undefined || !size ? null : `${Math.min(99, Math.floor((sent / size) * 100))}%`;
 
 function Composer({ workspace, running, blocked, context }: { workspace: Workspace; running: boolean; blocked: string | null; context: { used: number; window?: number } | null }) {
   const owns = useOwns();
@@ -3196,13 +3202,19 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
     const fresh = files.slice(0, 10).map((file) => ({ file, item: { id: crypto.randomUUID(), name: file.name, size: file.size, ...localPreview(file) } as Pending }));
     setPending((list) => [...list, ...fresh.map((f) => f.item)].slice(0, 10));
     for (const { file, item } of fresh) {
-      if (file.size > 20 * 1024 * 1024) { setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: "Over 20 MB" } : p)); continue; }
-      code.attach(workspace.id, file).then(
+      const big = file.size > smallAttachment;
+      const refused = file.size > largestAttachment ? "Over 4 GB" : big && !owns ? "Over 20 MB" : null;
+      if (refused) { setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: refused } : p)); continue; }
+      /* Over 20 MB it goes into the chat's Drive folder in resumable pieces, showing how far it got. */
+      const attaching = big
+        ? code.attachBig(workspace.id, file, (sent) => setPending((list) => list.map((p) => p.id === item.id ? { ...p, sent } : p)))
+        : code.attach(workspace.id, file);
+      attaching.then(
         (attachment) => setPending((list) => list.map((p) => p.id === item.id ? { ...p, attachment } : p)),
         (error) => setPending((list) => list.map((p) => p.id === item.id ? { ...p, failed: problemText(error, "Didn't attach") } : p)),
       );
     }
-  }, [workspace.id, setPending]);
+  }, [workspace.id, setPending, owns]);
 
   const usage = useUsage(workspace.id, running);
   const uploading = pending.some((p) => !p.attachment && !p.failed);
@@ -3232,11 +3244,11 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
 
   return <div className="cd-composer">
     {pending.length ? <div className="cd-pending">{pending.map((p) => p.preview
-      ? <PendingMedia key={p.id} name={p.name} url={p.preview} video={p.video} sending={!p.attachment && !p.failed} failed={p.failed} onRemove={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }} />
+      ? <PendingMedia key={p.id} name={p.name} url={p.preview} video={p.video} sending={!p.attachment && !p.failed} share={sentShare(p.sent, p.size)} failed={p.failed} onRemove={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }} />
       : <span key={p.id} className={cx("cd-filechip", !p.attachment && !p.failed && "is-sending", p.failed && "is-failed")}>
       <FileThumb name={p.name} size={30} />
       <span>{p.name}</span>
-      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : <InkLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
+      <small>{p.failed ?? (p.attachment ? readableSize(p.size) : sentShare(p.sent, p.size) ?? <InkLoader tone="plain" label="Attaching" className="cd-morph" />)}</small>
       <button type="button" aria-label={`Remove ${p.name}`} onClick={() => { forget([p.preview]); setPending((list) => list.filter((x) => x.id !== p.id)); }}><Icon name="close" /></button>
     </span>)}</div> : null}
     {switching && workspace.lastModel ? <p className="cd-switching" role="status">This chat has been on {modelWords[workspace.lastModel].label}. Switching to {modelWords[switching].label} uses more of your plan.</p> : null}

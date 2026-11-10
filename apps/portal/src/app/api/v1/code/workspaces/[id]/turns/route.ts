@@ -5,7 +5,10 @@ type Context = { params: Promise<{ id: string }> };
 
 const isAttachment = (value: unknown): value is Attachment => {
   const a = value as Attachment;
-  return Boolean(a) && typeof a.name === "string" && typeof a.path === "string" && /^\/attachments\/[^/]+$/.test(a.path) && typeof a.size === "number" && typeof a.type === "string";
+  if (!a || typeof a.name !== "string" || typeof a.path !== "string" || typeof a.size !== "number" || typeof a.type !== "string") return false;
+  /* One Portal keeps, or (over 20 MB) a file of the chat's Drive folder, in the sandbox where Drive has it. */
+  if (/^\/attachments\/[^/]+$/.test(a.path)) return a.node == null;
+  return typeof a.node === "string" && /^\/workspace\/[^/]+$/.test(a.path) && !a.path.includes("\0");
 };
 
 /** Sends the agent a message: `{ text, attachments?, effort? }`, attachments as the attachments call returned them. */

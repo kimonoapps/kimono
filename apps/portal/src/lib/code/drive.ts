@@ -2,7 +2,7 @@ import "server-only";
 
 import { bounded } from "./bounded";
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
+import { constants, createReadStream, createWriteStream } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Readable, Transform } from "node:stream";
@@ -19,6 +19,7 @@ import {
   type Workspace,
 } from "./model";
 import { NoRoom, sandbox } from "./node";
+import type { Attachment } from "./events";
 import { agentCopyName, planSync, type DriveFile, type SyncAction } from "./sync";
 
 /*
@@ -381,12 +382,23 @@ export async function shotToDrive(db: DatabaseSync, workspace: Workspace, name: 
   addFile(driveDb(), folder.id, workspace.owner, { name, size: bytes.byteLength, mime: typeOf(name), blob });
 }
 
+/** Past this a file isn't an attachment Portal keeps: it stays a Drive file in the chat's folder. */
+export const smallAttachmentBytes = 20 * 1024 * 1024;
+/** What the sandbox takes from Drive (the node's maxSyncBytes). */
+const largestAttachmentBytes = 4 * 1024 ** 3;
+
+/** A picked file: bytes to attach as any upload, or one already in the sandbox from the chat's Drive folder. */
+export type Picked = { name: string; type: string; bytes: Uint8Array } | { attachment: Attachment };
+
 /**
  * Files someone picked in Drive, for the agent: copied into the task folder
- * (so they become the project's) and into the sandbox. The caller hands the
- * bytes on as attachments too, so the message can point at them.
+ * (so they become the project's) and into the sandbox. Small ones come back
+ * as bytes for the caller to hand on as attachments; big ones (a video) are
+ * left as the Drive file, streamed into the sandbox where Drive has it, and
+ * come back as an attachment that points at it. One already in the folder
+ * (uploaded there for this message) isn't copied again.
  */
-export async function fromDrive(db: DatabaseSync, config: CodeConfig, workspace: Workspace, username: string, ids: unknown): Promise<{ name: string; type: string; bytes: Uint8Array }[]> {
+export async function fromDrive(db: DatabaseSync, config: CodeConfig, workspace: Workspace, username: string, ids: unknown): Promise<Picked[]> {
   if (!Array.isArray(ids) || !ids.length || ids.length > 10 || !ids.every((id) => typeof id === "string")) throw new CodeProblem("Choose up to ten files.");
   const place = await taskFolder(db, workspace);
   if (!place) throw new CodeProblem("Drive isn't switched on.", 409);
@@ -398,21 +410,53 @@ export async function fromDrive(db: DatabaseSync, config: CodeConfig, workspace:
       throw error;
     }
     if (node.kind !== "file" || !node.blob) throw new CodeProblem(`“${node.name}” is a folder. Choose files.`);
-    if (node.size > 20 * 1024 * 1024) throw new CodeProblem(`“${node.name}” is over 20 MB.`);
+    if (node.size > largestAttachmentBytes) throw new CodeProblem(`“${node.name}” is over 4 GB.`);
     picked.push(node);
   }
-  const out: { name: string; type: string; bytes: Uint8Array }[] = [];
+  const out: Picked[] = [];
   for (const node of picked) {
-    const blob = driveId();
-    const target = blobPath(driveRoot, blob);
-    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-    await copyFile(blobPath(driveRoot, node.blob!), target);
-    const copy = addFile(driveDb(), place.folderId, workspace.owner, { name: node.name, size: node.size, mime: node.mime, blob });
-    const bytes = new Uint8Array(await readFile(target));
-    /* Into the repository where Drive has it, recorded as agreed so the next sync leaves it be. */
+    const type = node.mime || typeOf(node.name) || "application/octet-stream";
+    const big = node.size > smallAttachmentBytes;
+    const { copy, blob: copyBlob } = big && node.parentId === place.folderId ? { copy: node as DriveNode, blob: node.blob! } : await (async () => {
+      const blob = driveId();
+      const target = blobPath(driveRoot, blob);
+      await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+      /* A clone where the disk can (APFS, btrfs, XFS), so a video isn't written twice. */
+      await copyFile(blobPath(driveRoot, node.blob!), target, constants.COPYFILE_FICLONE);
+      return { copy: addFile(driveDb(), place.folderId, workspace.owner, { name: node.name, size: node.size, mime: node.mime, blob }), blob };
+    })();
+    if (big) {
+      /* Into the repository where Drive has it, recorded as agreed so the next sync leaves it be. */
+      let sent: { sha1: string };
+      try { sent = await driveToSandbox(config, workspace, copy.id, workspace.owner, copy.name); } catch (error) {
+        if (error instanceof NoRoom) throw new CodeProblem(`“${node.name}” doesn't fit: this chat has ${megabytes(error.room)} free.`, 507);
+        throw error;
+      }
+      recordSynced(db, workspace.id, copy.name, { nodeId: copy.id, sha1: sent.sha1, contentVersion: copy.contentVersion });
+      out.push({ attachment: { name: copy.name, path: `/workspace/${copy.name}`, size: copy.size, type, node: copy.id } });
+      continue;
+    }
+    const bytes = new Uint8Array(await readFile(blobPath(driveRoot, copyBlob)));
     await sandbox.write(config, workspace, copy.name, bytes);
     recordSynced(db, workspace.id, copy.name, { nodeId: copy.id, sha1: sha1(bytes), contentVersion: copy.contentVersion });
-    out.push({ name: copy.name, type: node.mime || typeOf(node.name) || "application/octet-stream", bytes });
+    out.push({ name: copy.name, type, bytes });
   }
   return out;
+}
+
+/** Where a big attachment's bytes are, for the chat to show it: only a file in the chat's own Drive folder. */
+export function driveAttachment(workspace: Workspace, nodeId: string): { path: string; name: string; size: number } {
+  const folder = workspace.drive?.folderId;
+  let node: DriveNode & { blob: string | null };
+  try { node = nodeFor(driveDb(), nodeId, workspace.owner, "viewer"); } catch { throw new CodeProblem("That file isn't here.", 404); }
+  if (!folder || node.kind !== "file" || !node.blob || node.parentId !== folder) throw new CodeProblem("That file isn't here.", 404);
+  return { path: blobPath(driveRoot, node.blob), name: node.name, size: node.size };
+}
+
+/** The chat's Drive folder, for a big file to be uploaded into before it's attached. Only its owner's. */
+export async function uploadFolder(db: DatabaseSync, workspace: Workspace, username: string): Promise<string> {
+  if (username !== workspace.owner) throw new CodeProblem("Only the person this chat belongs to can attach files over 20 MB.", 403);
+  const place = await taskFolder(db, workspace);
+  if (!place) throw new CodeProblem("Drive isn't switched on.", 409);
+  return place.folderId;
 }

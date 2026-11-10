@@ -1370,7 +1370,12 @@ private class Pending(val name: String, val size: Long, val type: String? = null
     val key = "pending:${kotlin.random.Random.nextLong()}"
     var attachment by mutableStateOf<CodeAttachment?>(null)
     var failed by mutableStateOf<String?>(null)
+    /** Bytes uploaded so far, for one over 20 MB on its way to the chat's Drive folder. */
+    var sent by mutableStateOf<Long?>(null)
 }
+
+/** "42%" of a big file on its way, or null for one that attaches in one go. */
+internal fun sentShare(sent: Long?, size: Long): String? = if (sent == null || size <= 0) null else "${minOf(99L, sent * 100 / size)}%"
 
 /**
  * A name edited where it sits: the same words in the same type, selected, an ink line drawn under them.
@@ -1507,11 +1512,15 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                             else -> null
                         }
                         when {
-                            p.failed == null && file != null && (isPictureFile(p.name, p.type) || isVideoFile(p.name, p.type)) ->
+                            p.failed == null && file != null && file.size <= Code.MAX_ATTACHMENT && (isPictureFile(p.name, p.type) || isVideoFile(p.name, p.type)) ->
                                 PendingMedia(platform, p.key, p.name, isVideoFile(p.name, p.type), busy = done == null, onRemove = { pending.remove(p) }, onOpen = open) { readAll(file) }
                             p.failed == null && done != null && done.isMedia ->
                                 PendingMedia(platform, "${w.id}:${done.path}", p.name, done.isVideo, busy = false, onRemove = { pending.remove(p) }, onOpen = open) { code.attachment(w.id, done) }
-                            else -> FileChip(p.name, p.failed ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null, onOpen = open) { pending.remove(p) }
+                            else -> {
+                                /* A big file shows how far its upload got instead of the spinner. */
+                                val share = if (p.attachment == null && p.failed == null) sentShare(p.sent, p.size) else null
+                                FileChip(p.name, p.failed ?: share ?: readableSize(p.size), failed = p.failed != null, busy = p.attachment == null && p.failed == null && share == null, onOpen = open) { pending.remove(p) }
+                            }
                         }
                     }
                 }
@@ -1526,7 +1535,11 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                             for (file in picked) {
                                 val item = Pending(file.name, file.size, file.mimeType, file)
                                 pending += item
-                                launch { try { item.attachment = code.attach(w.id, file) } catch (p: KimonoProblem) { item.failed = p.message ?: "Didn't attach" } }
+                                when {
+                                    file.size > Code.LARGEST_ATTACHMENT -> item.failed = "Over 4 GB"
+                                    file.size > Code.MAX_ATTACHMENT && !w.isOwner -> item.failed = "Over 20 MB"
+                                    else -> launch { try { item.attachment = code.attach(w.id, file) { item.sent = it } } catch (p: KimonoProblem) { item.failed = p.message ?: "Didn't attach" } }
+                                }
                             }
                         }
                     }

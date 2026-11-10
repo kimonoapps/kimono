@@ -203,7 +203,12 @@ func TestAttachments(t *testing.T) {
 	if err != nil || !strings.HasSuffix(prompt, "Attached files: /attachments/screen shot.png") {
 		t.Fatalf("%q %v", prompt, err)
 	}
-	for _, bad := range []string{"/etc/passwd", "/attachments/../etc/passwd", "/attachments/.env", "attachments/a"} {
+	/* Over 20 MB it's a Drive file, at the top of the repository. */
+	if prompt, err := withAttachments("shrink it", []string{"/workspace/1108.mp4"}); err != nil || !strings.HasSuffix(prompt, "Attached files: /workspace/1108.mp4") {
+		t.Fatalf("%q %v", prompt, err)
+	}
+	for _, bad := range []string{"/etc/passwd", "/attachments/../etc/passwd", "/attachments/.env", "attachments/a",
+		"/workspace/../etc/passwd", "/workspace/.git", "/workspace/a/b.mp4", "/workspace/", "/workspace/.kimono"} {
 		if _, err := withAttachments("x", []string{bad}); err == nil {
 			t.Errorf("%s accepted", bad)
 		}

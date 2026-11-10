@@ -7,7 +7,8 @@ import { artifactName, editsOf, shownName, type Edit } from "./artifacts";
  * neither has to know Claude Code's format.
  */
 
-export type Attachment = { name: string; path: string; size: number; type: string };
+/** A file sent with a message. One over 20 MB is a file in the chat's Drive folder (`node`), in the sandbox at its `/workspace` path. */
+export type Attachment = { name: string; path: string; size: number; type: string; node?: string };
 
 export type CodeEvent =
   | { kind: "ask"; by: string; text: string; attachments: Attachment[]; /** Sent while the agent was working: it reads it as soon as the current step ends. */ queued?: boolean }

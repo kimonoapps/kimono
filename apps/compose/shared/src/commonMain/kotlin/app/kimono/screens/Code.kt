@@ -467,6 +467,8 @@ internal fun Quiet(text: String) {
 /** A file chosen for a chat that doesn't exist yet: from the phone, or a Drive file by its id. */
 private class Held(val name: String, val size: Long, val file: PickedFile? = null, val node: String? = null, val failed: String? = null) {
     val key = "held:${kotlin.random.Random.nextLong()}"
+    /** Bytes uploaded so far, for one over 20 MB going to the new chat's Drive folder. */
+    var sent by mutableStateOf<Long?>(null)
 }
 
 /**
@@ -535,7 +537,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     else code.start(prompt, folder = folderId, hold = toSend.isNotEmpty())
                 if (toSend.isNotEmpty()) {
                     /* The chat exists now: its files go to it, then the message, as any turn would. */
-                    val uploads = toSend.mapNotNull { h -> h.file?.let { runCatching { code.attach(made.id, it) }.getOrNull() } }
+                    val uploads = toSend.mapNotNull { h -> h.file?.let { runCatching { code.attach(made.id, it) { sent -> h.sent = sent } }.getOrNull() } }
                     val nodes = toSend.mapNotNull { it.node }
                     val copied = if (nodes.isNotEmpty()) runCatching { code.fromDrive(made.id, nodes) }.getOrDefault(emptyList()) else emptyList()
                     code.ask(made.id, prompt, uploads + copied)
@@ -595,9 +597,9 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                         items(held.toList()) { h ->
                             val file = h.file
                             val open: (() -> Unit)? = if (file != null && h.failed == null) ({ scope.launch { previewPending(platform, h.name, file.mimeType) { readAll(file) } } }) else null
-                            if (file != null && h.failed == null && (isPictureFile(h.name, file.mimeType) || isVideoFile(h.name, file.mimeType)))
+                            if (file != null && h.failed == null && file.size <= Code.MAX_ATTACHMENT && (isPictureFile(h.name, file.mimeType) || isVideoFile(h.name, file.mimeType)))
                                 PendingMedia(platform, h.key, h.name, isVideoFile(h.name, file.mimeType), busy = false, onRemove = { held.remove(h) }, onOpen = open) { readAll(file) }
-                            else FileChip(h.name, h.failed ?: readableSize(h.size), failed = h.failed != null, onOpen = open) { held.remove(h) }
+                            else FileChip(h.name, h.failed ?: (if (sending) sentShare(h.sent, h.size) else null) ?: readableSize(h.size), failed = h.failed != null, onOpen = open) { held.remove(h) }
                         }
                     }
                     /* attach, the words, Send: one line, as in the chat; the buttons keep to the last line as the words grow */
@@ -606,7 +608,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                     Row(verticalAlignment = Alignment.Bottom) {
                         val hold: (suspend () -> List<app.kimono.data.PickedFile>) -> Unit = { pick ->
                             scope.launch {
-                                pick().take(10 - held.size).forEach { f -> held += Held(f.name, f.size, file = f, failed = if (f.size > Code.MAX_ATTACHMENT) "Over 20 MB" else null) }
+                                pick().take(10 - held.size).forEach { f -> held += Held(f.name, f.size, file = f, failed = if (f.size > Code.LARGEST_ATTACHMENT) "Over 4 GB" else null) }
                             }
                         }
                         AttachMenu(

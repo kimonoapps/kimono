@@ -1,12 +1,10 @@
 import { apiUser, unauthorized } from "@/lib/api-v1";
 import { sendFile } from "@/lib/drive/storage";
 import { attachmentPath, codeOpen, db, shareOf, workspaceAs } from "@/lib/code";
+import { inline } from "../inline";
 
 type Context = { params: Promise<{ id: string; file: string }> };
 
-/* Shown as themselves: pictures, video and sound so they play, and PDFs in the browser's viewer (the sandbox below still lets it). Anything else downloads, so a page or an SVG never runs as Kimono. */
-const inline = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif",
-  "video/mp4", "video/webm", "video/quicktime", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/wav", "audio/flac", "application/pdf"]);
 
 /** A file someone attached or Kimono AI sent, as the timeline shows it: pictures, video, sound and PDFs inline, anything else downloaded. */
 export async function GET(request: Request, { params }: Context) {

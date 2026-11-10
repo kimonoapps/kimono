@@ -107,7 +107,8 @@ data class CodeProject(val id: String, val name: String, val createdAt: Long = 0
 data class CodeRepository(val owner: String, val name: String, val description: String = "", val defaultBranch: String = "main", val updatedAt: Long = 0, val private: Boolean = false)
 
 @Serializable
-data class CodeAttachment(val name: String, val path: String, val size: Long, val type: String) {
+/** A file sent with a message. One over 20 MB is a file in the chat's Drive folder ([node]), in the sandbox at its /workspace path. */
+data class CodeAttachment(val name: String, val path: String, val size: Long, val type: String, val node: String? = null) {
     val isPicture get() = type in setOf("image/png", "image/jpeg", "image/gif", "image/webp")
 }
 
@@ -701,7 +702,8 @@ class Code(private val session: Session, private val platform: Platform? = null)
     suspend fun file(id: String, path: String): ByteArray = bytes("${ws(id)}/file?path=${path.encodeURLParameter()}")
 
     suspend fun attachment(id: String, a: CodeAttachment): ByteArray =
-        bytes("${ws(id)}/attachments/${a.path.removePrefix("/attachments/").encodeURLParameter()}?type=${a.type.encodeURLParameter()}")
+        if (a.node != null) bytes("${ws(id)}/attachments/drive/${a.node.encodeURLParameter()}?type=${a.type.encodeURLParameter()}")
+        else bytes("${ws(id)}/attachments/${a.path.removePrefix("/attachments/").encodeURLParameter()}?type=${a.type.encodeURLParameter()}")
 
     /** Copies Drive files into the chat, for the next message. Each comes back as an attachment. */
     suspend fun fromDrive(id: String, nodes: List<String>): List<CodeAttachment> =
@@ -709,9 +711,22 @@ class Code(private val session: Session, private val platform: Platform? = null)
             put("nodes", JsonArray(nodes.map { JsonPrimitive(it) }))
         }))).attachments
 
-    /** Puts a picked file in the sandbox for the next message. Up to 20 MB. */
-    suspend fun attach(id: String, file: PickedFile): CodeAttachment {
-        if (file.size > MAX_ATTACHMENT) throw KimonoProblem("Over 20 MB")
+    /** The chat's Drive folder, for a file over 20 MB to be uploaded into. Only the chat's owner gets it. */
+    suspend fun uploadFolder(id: String): String =
+        ((json.parseToJsonElement(session.call("${ws(id)}/upload-folder", HttpMethod.Post)) as? JsonObject)?.get("folder") as? JsonPrimitive)?.content
+            ?: throw KimonoProblem("Didn't attach")
+
+    /**
+     * Puts a picked file in the sandbox for the next message. Up to 20 MB it goes
+     * as it is; past that (up to 4 GB) it's uploaded resumably into the chat's
+     * Drive folder, with [progress] in bytes, and attached from there.
+     */
+    suspend fun attach(id: String, file: PickedFile, progress: (Long) -> Unit = {}): CodeAttachment {
+        if (file.size > LARGEST_ATTACHMENT) throw KimonoProblem("Over 4 GB")
+        if (file.size > MAX_ATTACHMENT) {
+            val node = Drive(session).upload(file, uploadFolder(id), progress = progress)
+            return fromDrive(id, listOf(node)).firstOrNull() ?: throw KimonoProblem("Didn't attach")
+        }
         val bytes = ByteArray(file.size.toInt())
         var at = 0
         while (at < bytes.size) {
@@ -747,7 +762,9 @@ class Code(private val session: Session, private val platform: Platform? = null)
         private const val WORKSPACES = "/api/v1/code/workspaces"
         private const val STATE = "kimono.ai.state"
         private const val PEOPLE = "/api/v1/drive/people"
+        /** Up to this a file is attached as it is; past it, through the chat's Drive folder. */
         const val MAX_ATTACHMENT = 20L * 1024 * 1024
+        const val LARGEST_ATTACHMENT = 4L * 1024 * 1024 * 1024
         const val APP_ID = "kimono-code"
     }
 }
