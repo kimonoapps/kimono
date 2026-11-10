@@ -302,7 +302,7 @@ export function Player({ ref, onExit }: { ref: ReactRef<PlayerHandle>; onExit: (
         setAudioTracks(list);
         const tags = p?.tracks.audio.tags ?? [];
         let found = false;
-        for (let i = 0; i < audios.length; i++) { const hit = !found && tags.includes(audios[i].language); audios[i].enabled = hit; found ||= hit; }
+        for (let i = 0; i < audios.length; i++) { const hit: boolean = !found && tags.includes(audios[i].language); audios[i].enabled = hit; found ||= hit; }
         if (!found) audios[0].enabled = true;
       } else setAudioTracks([]);
     };
