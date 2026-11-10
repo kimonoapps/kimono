@@ -702,7 +702,9 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     if ((event.target as HTMLElement).closest("button, .kw-scrub, .kw-psheet, input, .kw-post, .kw-pload, .kw-chat, .kw-hold")) return;
     if (event.pointerType === "mouse") { if (sheet) { closeSheet(); return; } togglePlay(); showCtl(); return; }
     const now = Date.now(), side = event.clientX < innerWidth * 0.38 ? "l" : event.clientX > innerWidth * 0.62 ? "r" : null;
-    if (now - lastTap.current < 300 && side) { clearTimeout(tapTimer.current); seek(side === "l" ? -10 : 10); ripple(side); lastTap.current = 0; return; }
+    /* The middle plays and pauses at once; the sides wait a moment for a double tap. */
+    if (!side) { if (sheet) closeSheet(); else { setPinfo(false); togglePlay(); showCtl(); } lastTap.current = 0; return; }
+    if (now - lastTap.current < 300) { clearTimeout(tapTimer.current); seek(side === "l" ? -10 : 10); ripple(side); lastTap.current = 0; return; }
     lastTap.current = now; clearTimeout(tapTimer.current);
     tapTimer.current = setTimeout(() => { if (ctl && !sheet) setCtl(false); else showCtl(); }, 260);
   };

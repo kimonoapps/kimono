@@ -18,7 +18,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -135,6 +137,8 @@ fun PlayerScreen(
     corner: (@Composable () -> Unit)? = null,
     /** Phone: turns the player upright, or back on its side; it starts on its side. */
     rotate: (() -> Unit)? = null,
+    /** Starts a party on what's playing, from here: the platform reopens the player in it. */
+    onTogether: ((season: Int?, episode: Int?, at: Double) -> Unit)? = null,
 ) {
     val state by vm.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -180,7 +184,8 @@ fun PlayerScreen(
     /* Keys held down, for telling a tap from a hold (D-pad scrubbing). */
     val held = remember { mutableMapOf<Key, Long>() }
 
-    fun show(hold: Boolean = false) { ctl = true; poke++; if (hold) poke = -kotlin.math.abs(poke) - 1 }
+    /* Any touch restarts the paused clock, so "You're watching" waits another five seconds instead of coming straight back. */
+    fun show(hold: Boolean = false) { ctl = true; poke++; if (hold) poke = -kotlin.math.abs(poke) - 1; if (pausedAt > 0) pausedAt = nowMs() }
     /* In a party every move is the party's: applied here at once, and sent so every screen follows. */
     fun seekTo(s: Double) { engine.seekTo(s); position = s; party?.seek(s) }
     fun seekBy(d: Double) = seekTo((position + d).coerceIn(0.0, duration.coerceAtLeast(0.0)))
@@ -356,17 +361,24 @@ fun PlayerScreen(
         }
         .pointerInput(tv) {
             if (tv) return@pointerInput
-            detectTapGestures(
-                onDoubleTap = { o ->
-                    val third = size.width / 3f
-                    when {
-                        o.x < third * 1.14f -> { seekBy(-10.0); rip(false) }
-                        o.x > third * 1.86f -> { seekBy(10.0); rip(true) }
-                        else -> toggle()
-                    }
-                },
-                onTap = { if (chatOpen) { chatOpen = false; show() } else if (pauseCard) { pauseCard = false; show() } else if (ctl && sheet == null) ctl = false else { sheet = null; show() } },
-            )
+            /* The middle plays and pauses at once; the sides wait a moment for a double tap (back or forward ten). */
+            awaitEachGesture {
+                awaitFirstDown()
+                val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+                up.consume()
+                val third = size.width / 3f
+                val x = up.position.x
+                val right = x > third * 1.86f
+                fun single() { if (chatOpen) { chatOpen = false; show() } else if (pauseCard) { pauseCard = false; show() } else if (ctl && sheet == null) ctl = false else { sheet = null; show() } }
+                if (x >= third * 1.14f && !right) {
+                    if (chatOpen || sheet != null) single() else { toggle(); show() }
+                    return@awaitEachGesture
+                }
+                val again = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) { awaitFirstDown() }
+                if (again == null) { single(); return@awaitEachGesture }
+                waitForUpOrCancellation()?.consume()
+                seekBy(if (right) 10.0 else -10.0); rip(right)
+            }
         }) {
 
         /* The picture, fitted; at the end card it moves to the top corner. */
@@ -458,6 +470,7 @@ fun PlayerScreen(
                     LabBtn(Ic.cc, "Audio & subtitles", tv) { sheet = if (sheet == Sheet.Tracks) null else Sheet.Tracks; show() }
                     LabBtn(Ic.gear, "Settings", tv) { sheet = if (sheet == Sheet.Settings) null else Sheet.Settings; show() }
                     if (party != null) LabBtn(Ic.chat, "Chat", tv, dot = unread && !chatOpen) { chatOpen = !chatOpen; sheet = null; show() }
+                    else if (onTogether != null) LabBtn(Ic.people, "Watch together", tv) { engine.pause(); onTogether(state.season.takeIf { !state.isFilm }, state.episode.takeIf { !state.isFilm }, engine.position) }
                     if (state.answer?.next != null) LabBtn(Ic.next, "Next episode", tv) { vm.playNext() }
                 }
             }
