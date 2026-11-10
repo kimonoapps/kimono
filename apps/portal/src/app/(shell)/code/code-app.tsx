@@ -4,6 +4,7 @@ import { createContext, Fragment, memo, useCallback, useContext, useEffect, useL
 import { createPortal } from "react-dom";
 import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, InkLoader, Seal } from "@kimono/ui";
 import { cardOf, cardWords } from "@/lib/code/progress-card";
+import { kimonoCommand } from "@/lib/code/kimono-commands";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { Scroller } from "@/components/scroller";
 import { filesIn, useFileDrop } from "@/components/file-drop";
@@ -2572,7 +2573,7 @@ function WorkingWords({ phase, doing }: { phase: Phase; doing: Now | null }) {
     : phase === "tools" ? doing?.app ? `Using ${app.name}`
       : doing?.space ? `Looking in ${doing.space}`
       : doing?.tool === "web" ? "Searching the web"
-      : doing?.tool === "command" ? "Running a command"
+      : doing?.tool === "command" ? doing.doing ?? "Running a command"
       : doing?.tool === "files" ? "Going through files"
       : doing?.tool === "helper" ? "Asking a helper"
       : "Using tools"
@@ -2778,7 +2779,7 @@ function PendingMedia({ name, url, video, sending, share, failed, onRemove }: { 
   </span>;
 }
 
-/** Tool calls as one pill — "Used 5 tools" — open while the agent is still in them, unless you closed it. Each call opens to show what it did. */
+/** Tool calls as one pill — "Used 5 tools" — closed until you open it. Each call opens to show what it did. */
 function ToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
   /* Long work the agent said it's doing (kimono-progress): one card with a bar, the steps folded under it. */
   if (tools.some((t) => t.progress?.label)) return <ProgressGroup tools={tools} live={live} />;
@@ -2813,12 +2814,11 @@ function ProgressGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
 }
 
 function PlainToolGroup({ tools, live }: { tools: Tool[]; live: boolean }) {
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const open = chosen ?? live;
+  const [open, setOpen] = useState(false);
   const failed = tools.filter((t) => t.result && !t.result.ok).length;
   const pending = tools.some((t) => !t.result);
   const touched = [...new Set(tools.filter((t) => t.label === "Edited" || t.label === "Wrote").map((t) => t.detail).filter(Boolean))];
-  return <details className="calls" open={open} onToggle={(event) => { const next = (event.currentTarget as HTMLDetailsElement).open; if (next !== open) setChosen(next); }}>
+  return <details className="calls" open={open} onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}>
     <summary className="tools-used">
       {live && pending ? <InkLoader tone="plain" label="Using tools" className="cd-morph" /> : <GroupMarks tools={tools} />}
       <span>{live && pending ? "Using tools" : `Used ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`}</span>
@@ -2866,7 +2866,10 @@ function toolMeta(tool: Tool): string {
   }
 }
 
-function ToolRow({ tool }: { tool: Tool }) {
+function ToolRow({ tool: given }: { tool: Tool }) {
+  /* A chat from before kimono-* commands were said in words: say them now. */
+  const said = given.label === "Ran" ? kimonoCommand(given.detail?.replace(/\n…$/, "")) : undefined;
+  const tool = said ? { ...given, label: said.label, detail: said.detail } : given;
   const state = !tool.result ? "running" : tool.result.ok ? "ok" : "failed";
   const command = tool.label === "Ran" && tool.detail;
   const output = tool.result?.output.trim();

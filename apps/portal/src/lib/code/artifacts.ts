@@ -144,7 +144,7 @@ export function artifactsOf(db: DatabaseSync, workspaceId: string): Omit<Artifac
  * here is stored; it goes to whoever is watching, a few times a second.
  */
 export type Phase = "working" | "thinking" | "writing" | "tools" | "artifact";
-export type ToolHint = { tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string };
+export type ToolHint = { tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string; doing?: string };
 export type Draft =
   | { kind: "draft"; text: string }
   | { kind: "artifact-draft"; id: string; name: string; content: string }

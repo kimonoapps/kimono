@@ -70,7 +70,7 @@ export type CodeEvent =
   | { kind: "rewound"; seq: number }
   | { kind: "sent"; files: Attachment[] }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
-  | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
+  | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string; doing?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 export type Project = { id: string; name: string; createdAt: number };
 export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; command?: { name: string; hint?: string; does: string }; enabled: boolean };

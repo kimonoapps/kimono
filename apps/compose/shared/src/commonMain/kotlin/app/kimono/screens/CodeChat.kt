@@ -1017,7 +1017,7 @@ private fun ToolGroup(code: Code, marks: AiMarks, calls: List<ToolCall>, live: B
     /* Long work the agent said it's doing (kimono-progress): one card with a bar, the steps folded under it. */
     if (calls.any { it.event.progress?.label != null }) { ProgressGroup(code, marks, calls, live, open); return }
     var chosen by remember { mutableStateOf<Boolean?>(null) }
-    val shown = chosen ?: live
+    val shown = chosen ?: false
     val pending = calls.any { it.result == null }
     val failed = calls.count { it.result?.ok == false }
     val touched = calls.filter { it.event.label == "Edited" || it.event.label == "Wrote" }.mapNotNull { it.event.detail }.distinct()

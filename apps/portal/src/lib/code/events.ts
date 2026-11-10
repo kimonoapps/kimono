@@ -1,3 +1,4 @@
+import { kimonoCommand } from "./kimono-commands";
 import { artifactName, editsOf, shownName, type Edit } from "./artifacts";
 
 /*
@@ -58,7 +59,7 @@ export type CodeEvent =
   | { kind: "rewound"; seq: number }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
   /** Never stored: what it is doing right now, so the status at the end of the chat can say so. */
-  | { kind: "phase"; phase: "working" | "thinking" | "writing" | "tools" | "artifact"; /** What sort of tool, when it's one of these. */ tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string }
+  | { kind: "phase"; phase: "working" | "thinking" | "writing" | "tools" | "artifact"; /** What sort of tool, when it's one of these. */ tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string; /** Its own words for it, for a kimono-* command. */ doing?: string }
   /** Files it gave the person with kimono-send, kept by Kimono to open and download. */
   | { kind: "sent"; files: Attachment[] }
   /** An app of theirs needs connecting: Kimono shows a Connect button for this Composio link. */
@@ -189,7 +190,9 @@ function toolLabel(name: string, input: Record<string, unknown>): { label: strin
 }
 
 /** What a tool call is about, for the status while it runs: the app, the Drive space, or what sort of step. */
-export function toolHint(name: string, input: Record<string, unknown>): { tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string } {
+export function toolHint(name: string, input: Record<string, unknown>): { tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string; doing?: string } {
+  const said = name === "Bash" ? kimonoCommand(input.command) : undefined;
+  if (said) return { tool: "command", doing: said.doing };
   const { app, space } = toolLabel(name, input);
   if (app) return { app };
   /* Only a name that reads as a space's: a glob or a shell line after /files/ is not one. */
@@ -261,7 +264,7 @@ function toolName(name: string, input: Record<string, unknown>): { label: string
   const path = text("file_path") ?? text("path") ?? text("notebook_path");
   const short = (value: string) => value.replace(/^\/workspace\/?/, "") || ".";
   switch (name) {
-    case "Bash": return { label: "Ran", detail: clip(text("command") ?? "", 400) };
+    case "Bash": { const said = kimonoCommand(input.command); return said ? { label: said.label, detail: said.detail } : { label: "Ran", detail: clip(text("command") ?? "", 400) }; }
     case "Read": return { label: "Read", detail: path && short(path) };
     case "Write": return { label: "Wrote", detail: path && short(path) };
     case "Edit": case "MultiEdit": case "NotebookEdit": return { label: "Edited", detail: path && short(path) };

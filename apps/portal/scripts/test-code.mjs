@@ -470,3 +470,14 @@ test('feedback keeps the files a chat names, to open from the bank, and forgets 
   assert.equal(opened(filled.attached[0]), '%PDF brief');
   assert.equal(opened(filled.steps[0].files[0]), '%PDF report');
 });
+
+test('kimono-* commands read as words, and anything else stays a command', () => {
+  const tool = (command) => translate({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'k', name: 'Bash', input: { command } }] } }).events[0];
+  assert.deepEqual(tool('kimono-quran 6:59 | head -30; echo ----; kimono-quran 6:76-79 | head -40; echo ---; kimono-quran 6:151-153 2>&1'),
+    { kind: 'tool', id: 'k', name: 'Bash', label: 'Read the Quran', detail: '6:59 · 6:76–79 · 6:151–153' });
+  assert.equal(tool('kimono-quran 2:255 --tafsir ibn-kathir').label, "Read Ibn Kathir's tafsir on");
+  assert.equal(tool('kimono-hadith bukhari 1').detail, 'Bukhari 1');
+  assert.equal(tool('kimono-chats search "prayer times" --limit 5').detail, 'prayer times');
+  assert.equal(tool('ls && kimono-quran 1:1').label, 'Ran');
+  assert.equal(tool('kimono-quran $(cat ref)').label, 'Ran');
+});
