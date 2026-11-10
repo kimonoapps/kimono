@@ -76,9 +76,12 @@
 .nt-chev svg.i { width: 13px; height: 13px; stroke-width: 2.2; transition: rotate var(--k-t-seat) var(--k-spring); }
 .nt-chev.is-open svg.i { rotate: 90deg; }
 /* + and ··· on a row: shown on hover or focus, always on touch */
-.nt-acts { position: absolute; right: 3px; top: 3px; display: flex; gap: 1px; opacity: 0; transition: opacity var(--k-t-state); }
-.nt-place-row:hover .nt-acts, .nt-place-row:focus-within .nt-acts, .nt-acts:has(.is-open) { opacity: 1; }
-.nt-place-row:hover .nt-place, .nt-place-row:focus-within .nt-place { padding-right: 62px; }
+.nt-acts { position: absolute; right: 0; top: 0; bottom: 0; display: flex; align-items: center; gap: 1px; padding: 0 3px 0 18px; border-radius: 0 8px 8px 0; background: linear-gradient(90deg, transparent, var(--row-bg) 16px); opacity: 0; pointer-events: none; transition: opacity var(--k-t-state); }
+/* They float over the row's end on its own colour: nothing under them moves. */
+.nt-place-row:hover .nt-acts, .nt-place-row:focus-within .nt-acts, .nt-acts:has(.is-open) { opacity: 1; pointer-events: auto; }
+.nt-place-row { --row-bg: var(--k-container); }
+.nt-place-row:hover, .nt-place-row:focus-within { --row-bg: var(--k-container-high); }
+.nt-place-row:has(> .nt-place[aria-current="page"]) { --row-bg: var(--k-secondary-container); }
 .nt-act, .nt-acts .nt-more > button { width: 26px; height: 26px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--k-on-surface-variant); cursor: pointer; }
 .nt-act:hover, .nt-acts .nt-more > button:hover, .nt-acts .nt-more.is-open > button { background: var(--k-container-highest); color: var(--k-on-surface); }
 .nt-act svg.i, .nt-acts svg.i { width: 16px; height: 16px; }
@@ -142,6 +145,7 @@
 .nt-row:hover .nt-row-side, .nt-row:focus-within .nt-row-side { visibility: hidden; }
 @media (hover: none) {
   .nt-acts, .nt-row > .nt-more { opacity: 1; }
+  .nt-acts { pointer-events: auto; }
   .nt-place-row .nt-place { padding-right: 62px; }
   .nt-row .nt-row-side { padding-right: 34px; }
   .nt-row:hover .nt-row-side, .nt-row:focus-within .nt-row-side { visibility: visible; }
