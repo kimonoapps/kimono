@@ -375,7 +375,7 @@ private fun SwitchAct(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
 private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolean, vm: TitleViewModel, go: Go, dl: Map<String, DlState>, downloads: WatchDownloads, wide: Boolean, gutter: Dp) {
     item("eps-head") {
         var open by remember { mutableStateOf(false) }
-        Row(Modifier.padding(horizontal = gutter).padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = gutter).padding(top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             /* One season, or one numbered run: no season shown, just the episodes. */
             if (!page.bySeason) Text("Episodes", style = ui(18, FontWeight.Bold))
             else Box {
@@ -396,15 +396,16 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
                     }
                 }
             }
-            Text("${(if (page.bySeason) page.seasons.firstOrNull { it.number == season }?.episodeCount else null) ?: page.episodes.size} episodes", style = ui(14, color = Night.fg3))
-        }
-        /* Anime with more than one season: this show by season or as one list, over the default in Settings. */
-        if (page.title.shelf == "Anime" && page.layout != "single") {
-            Row(Modifier.padding(horizontal = gutter).padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Joint(listOf("seasons" to "By season", "continuous" to "One list"), page.layout) { v -> if (v != page.layout) vm.episodes(v) }
-                if (page.showEpisodes != null) Text("Use default", style = ui(14, FontWeight.Bold, Night.fg2),
-                    modifier = Modifier.clickableScaleClipped(RoundedCornerShape(8.dp), { vm.episodes(null) }).padding(horizontal = 8.dp, vertical = 8.dp))
+            /* Anime with more than one season: one icon beside the season, lit when it's one list. An override goes back to the default; otherwise it's set. */
+            if (page.title.shelf == "Anime" && page.layout != "single") {
+                val one = (page.showEpisodes ?: page.layout) == "continuous"
+                Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)).background(Night.surface3).border(1.dp, if (one) Night.blush else Night.line, RoundedCornerShape(8.dp))
+                    .clickableScale({ vm.episodes(if (page.showEpisodes != null) null else if (one) "seasons" else "continuous") }), contentAlignment = Alignment.Center) {
+                    I(Ic.list, 22.dp, if (one) Night.blush else Night.fg2)
+                }
             }
+            Spacer(Modifier.weight(1f))
+            Text("${(if (page.bySeason) page.seasons.firstOrNull { it.number == season }?.episodeCount else null) ?: page.episodes.size} episodes", style = ui(14, color = Night.fg3))
         }
     }
     if (loading) items(4) { Skeleton(Modifier.padding(horizontal = gutter, vertical = 10.dp).fillMaxWidth().height(96.dp)) }
