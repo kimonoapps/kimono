@@ -146,15 +146,10 @@ export function Rail({ children, label }: { children: ReactNode; label: string }
   </div>;
 }
 
-/* ───── Brand: Watch's bloom, and Kimono's own logo ───── */
+/* ───── Brand: Watch's bloom ───── */
 
 export const watchId = "kimono-watch";
 /** Watch's app bloom: Kimono's flower with the play glyph, in Watch's colours, as the rail draws it. */
 export function WatchBloom({ accent, className }: { accent: string; className?: string }) {
   return <span className={cx("kw-bloom", className)} aria-hidden="true"><AppIcon app={{ id: watchId, icon: "play", accent }} /></span>;
-}
-/** Kimono's logo, the reversed cut for the dark floor. */
-export function KimonoLogo({ className }: { className?: string }) {
-  // eslint-disable-next-line @next/next/no-img-element -- the Portal's own brand file
-  return <img className={cx("kw-kimono", className)} src="/brand/kimono-logo-reversed.png" alt="Kimono" width={1400} height={460} />;
 }
