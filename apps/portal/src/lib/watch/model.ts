@@ -49,6 +49,8 @@ export type Title = {
   cast: string[];
   /** ISO 639-1, from TMDB: "ja" for most anime. Decides what "original audio" means. */
   originalLanguage: string;
+  /** TMDB's themes ("time travel", "heist", "based on manga"): what Home learns taste from. */
+  keywords: { id: number; name: string }[];
   fetchedAt: number;
 };
 
@@ -143,6 +145,7 @@ export function migrate(db: DatabaseSync) {
   `);
   const columns = (db.prepare("PRAGMA table_info(titles)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("original_language")) db.exec("ALTER TABLE titles ADD COLUMN original_language TEXT NOT NULL DEFAULT ''");
+  if (!columns.includes("keywords")) db.exec("ALTER TABLE titles ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'");
 }
 
 /* ───── Titles ───── */
@@ -158,6 +161,10 @@ type Row = Record<string, unknown>;
 const list = (raw: unknown): string[] => { try { const v = JSON.parse(String(raw)); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; } };
 const num = (raw: unknown) => (raw === null || raw === undefined ? null : Number(raw));
 
+function keywordsOf(raw: unknown): { id: number; name: string }[] {
+  try { const v = JSON.parse(String(raw ?? "[]")); return Array.isArray(v) ? v.filter((k) => k && typeof k.id === "number" && typeof k.name === "string") : []; } catch { return []; }
+}
+
 function titleFrom(row: Row): Title {
   return {
     id: String(row.id), kind: row.kind === "movie" ? "movie" : "series", tmdbId: Number(row.tmdb_id),
@@ -167,19 +174,19 @@ function titleFrom(row: Row): Title {
     poster: (row.poster as string) || null, backdrop: (row.backdrop as string) || null, logo: (row.logo as string) || null,
     runtime: num(row.runtime), popularity: Number(row.popularity), status: String(row.status),
     nextAirDate: (row.next_air_date as string) || null, seasonCount: Number(row.season_count),
-    cast: list(row.cast_names), originalLanguage: String(row.original_language ?? ""), fetchedAt: Number(row.fetched_at),
+    cast: list(row.cast_names), originalLanguage: String(row.original_language ?? ""), keywords: keywordsOf(row.keywords), fetchedAt: Number(row.fetched_at),
   };
 }
 
 export function putTitle(db: DatabaseSync, t: Title) {
-  db.prepare(`INSERT INTO titles (id, kind, tmdb_id, imdb_id, anilist_id, mal_id, name, overview, year, age, genres, moods, shelf, poster, backdrop, logo, runtime, popularity, status, next_air_date, season_count, cast_names, original_language, fetched_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  db.prepare(`INSERT INTO titles (id, kind, tmdb_id, imdb_id, anilist_id, mal_id, name, overview, year, age, genres, moods, shelf, poster, backdrop, logo, runtime, popularity, status, next_air_date, season_count, cast_names, original_language, keywords, fetched_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET imdb_id=excluded.imdb_id, anilist_id=excluded.anilist_id, mal_id=excluded.mal_id, name=excluded.name, overview=excluded.overview,
       year=excluded.year, age=excluded.age, genres=excluded.genres, moods=excluded.moods, shelf=excluded.shelf, poster=excluded.poster, backdrop=excluded.backdrop,
       logo=excluded.logo, runtime=excluded.runtime, popularity=excluded.popularity, status=excluded.status, next_air_date=excluded.next_air_date,
-      season_count=excluded.season_count, cast_names=excluded.cast_names, original_language=excluded.original_language, fetched_at=excluded.fetched_at`)
+      season_count=excluded.season_count, cast_names=excluded.cast_names, original_language=excluded.original_language, keywords=excluded.keywords, fetched_at=excluded.fetched_at`)
     .run(t.id, t.kind, t.tmdbId, t.imdbId, t.anilistId, t.malId, t.name, t.overview, t.year, t.age, JSON.stringify(t.genres), JSON.stringify(t.moods), t.shelf,
-      t.poster, t.backdrop, t.logo, t.runtime, t.popularity, t.status, t.nextAirDate, t.seasonCount, JSON.stringify(t.cast), t.originalLanguage ?? "", t.fetchedAt);
+      t.poster, t.backdrop, t.logo, t.runtime, t.popularity, t.status, t.nextAirDate, t.seasonCount, JSON.stringify(t.cast), t.originalLanguage ?? "", JSON.stringify(t.keywords ?? []), t.fetchedAt);
 }
 
 export function getTitle(db: DatabaseSync, id: string): Title | null {

@@ -24,7 +24,7 @@ import { badges, cleanDevice, describe, heightCap, qualityOptions, rank, type Re
 import { fetchUpstream, searchStreams, stremioId, videoType } from "./streams";
 import { playerTracks, trackPlan, wantFor } from "./languages";
 import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
-import { fillParams, genreTaste, orderRows, rowCatalog, rowMinimum } from "./rows";
+import { fillParams, planRows, rowMinimum, tasteOf, type PlannedRow } from "./rows";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
 import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
@@ -251,13 +251,57 @@ function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof prefsOf>
   return { layout, label, named };
 }
 
-/** Home: the rows, each a query over the catalog. */
-export async function home(cfg: WatchConfig, username: string, origin: string, shelf?: Title["shelf"]) {
+/** Rows Home serves per page while scrolling; a page stops early rather than wait on too many lists. */
+const pageRows = 8;
+const pageTries = 16;
+
+/**
+ * Home, endless: the first page leads with Continue watching, the Top 10 and
+ * the newest rows; every page after follows this person's plan (./rows.ts
+ * planRows): what they watch a lot, as genres and themes, series, films and
+ * anime, and "Because you watched" for their recent titles. `cursor` is where
+ * the next page starts; null when the plan has run out.
+ */
+export async function home(cfg: WatchConfig, username: string, origin: string, shelf?: Title["shelf"], cursor = 0) {
   const db = watchDb();
   const ok = (t: Title) => !shelf || t.shelf === shelf;
   const prefs = prefsOf(db, username);
   const recent = recentTitles(db, username, 30);
   const recentTitlesList = getTitles(db, recent.map((p) => p.titleId));
+  const mine = getTitles(db, listOf(db, username));
+  const recentShows = [...new Map(recentTitlesList.map((t) => [t.id, t])).values()].filter(ok);
+  /* The plan is kept half an hour so pages stay consistent while someone scrolls. */
+  const planKey = `plan:${username}:${shelf ?? "all"}`;
+  const plan = (cursor > 0 && cached<PlannedRow[]>(db, planKey)) || planRows(tasteOf([...recentTitlesList, ...mine]), recentShows.length, shelf);
+  keep(db, planKey, plan, 30 * 60 * 1000);
+  const plays = (titles: Title[]) => visible(titles.filter(ok), (id) => playableOf(db, id));
+  type Row = { id: string; title: string; kind: string; items: Card[] };
+  const cards = (id: string, title: string, titles: Title[]): Row | null => {
+    const items = plays(titles).map((t) => cardOf(t, origin));
+    return items.length >= rowMinimum ? { id, title, kind: "cards", items } : null;
+  };
+  const listFor = (r: PlannedRow): Promise<Title[]> => "similar" in r
+    ? (recentShows[r.similar] ? tmdbList(cfg, `similar:${recentShows[r.similar].id}`, `/${recentShows[r.similar].kind === "movie" ? "movie" : "tv"}/${recentShows[r.similar].tmdbId}/recommendations`, {}, hours(24)) : Promise.resolve([]))
+    : tmdbList(cfg, `row:${r.id}:${new Date().toISOString().slice(0, 10)}`, r.path, fillParams(r.params), hours(r.ttl));
+  const rowFor = (r: PlannedRow, titles: Title[]) => cards(r.id, "similar" in r ? `Because you watched ${recentShows[r.similar]?.name ?? ""}` : r.title, titles);
+
+  /* Walk the plan from the cursor, a few lists at a time, until the page is full. */
+  const rows: Row[] = [];
+  let at = cursor;
+  const fetched: Title[] = [];
+  while (rows.length < pageRows && at < plan.length && at - cursor < pageTries) {
+    const batch = plan.slice(at, Math.min(plan.length, at + Math.min(4, pageRows - rows.length + 2)));
+    at += batch.length;
+    const lists = await Promise.all(batch.map(listFor));
+    lists.forEach((titles, i) => { fetched.push(...titles); const row = rowFor(batch[i], titles); if (row) rows.push(row); });
+  }
+  const next = at < plan.length ? at : null;
+  if (cursor > 0) {
+    checkPlayable(cfg, fetched.filter(ok).map((t) => t.id));
+    return { featured: null, rows, next };
+  }
+
+  /* The first page: personal and popular rows ahead of the plan. */
   const continuing = recent.flatMap((p) => {
     const t = recentTitlesList.find((x) => x.id === p.titleId);
     if (!t || !ok(t)) return [];
@@ -265,48 +309,30 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
     const label = t.kind === "series" ? namer(db, t, prefs).label(p.season, p.episode) : null;
     return [{ ...cardOf(t, origin), season: p.season, episode: p.episode, label, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
   }).slice(0, 12);
-
-  const mine = getTitles(db, listOf(db, username));
-  /* The house rows, nudged by what this person watches (./rows.ts), fetched together and kept for hours. */
-  const ordered = orderRows(rowCatalog, genreTaste([...recentTitlesList, ...mine]), shelf).slice(0, 16);
-  const recentShows = [...new Map(recentTitlesList.map((t) => [t.id, t])).values()].filter(ok).slice(0, 3);
-  const [trending, anime, films, series, catalog, similar] = await Promise.all([
+  const [trending, anime, films, series] = await Promise.all([
     tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6)),
     tmdbList(cfg, "discover:anime", "/discover/tv", { with_genres: "16", with_origin_country: "JP", sort_by: "popularity.desc" }, hours(12)),
     tmdbList(cfg, "trending:movie:week", "/trending/movie/week", {}, hours(6)),
     /* Popular series without talk, news, reality and soap shows (TMDB's trending TV is mostly those), which have nothing to stream. */
     tmdbList(cfg, "discover:popular-series", "/discover/tv", { sort_by: "popularity.desc", "vote_count.gte": "200", without_genres: "10763,10764,10766,10767,16" }, hours(12)),
-    Promise.all(ordered.map((r) => tmdbList(cfg, `row:${r.id}:${new Date().toISOString().slice(0, 10)}`, r.path, fillParams(r.params), hours(r.ttl)))),
-    Promise.all(recentShows.map((t) => tmdbList(cfg, `similar:${t.id}`, `/${t.kind === "movie" ? "movie" : "tv"}/${t.tmdbId}/recommendations`, {}, hours(24)))),
   ]);
   /* Rows from TMDB leave out what is known not to play; someone's own rows show everything they chose. */
-  checkPlayable(cfg, [...trending, ...series, ...similar.flat(), ...anime, ...films, ...catalog.flat()].filter(ok).map((t) => t.id));
-  const plays = (titles: Title[]) => visible(titles.filter(ok), (id) => playableOf(db, id));
+  checkPlayable(cfg, [...trending, ...series, ...anime, ...films, ...fetched].filter(ok).map((t) => t.id));
   const top = plays(trending).slice(0, 10);
-  type Row = { id: string; title: string; kind: string; items: Card[] };
-  const cards = (id: string, title: string, titles: Title[]): Row | null => {
-    const items = plays(titles).map((t) => cardOf(t, origin));
-    return items.length >= rowMinimum ? { id, title, kind: "cards", items } : null;
-  };
-  const because = recentShows.map((t, i) => cards(`similar-${i}`, `Because you watched ${t.name}`, similar[i] ?? []));
-  const house = ordered.map((r, i) => cards(r.id, r.title, catalog[i] ?? []));
-  /* Personal rows first, then a mix: something new, the popular rows, more of what they like, and "because" rows spaced out. */
-  const rows = [
+  const lead = [
     continuing.length ? { id: "continue", title: "Continue watching", kind: "continue", items: continuing } : null,
     top.length ? { id: "top", title: "Top 10 today", kind: "top", items: top.map((t, i) => cardOf(t, origin, { top: i + 1 })) } : null,
-    because[0], house[0],
+    ...rows.slice(0, 3),
     !shelf || shelf === "Series" ? cards("series", "Popular series", series) : null,
-    house[1], house[2],
+    ...rows.slice(3, 5),
     !shelf || shelf === "Anime" ? cards("anime", "Popular anime", anime) : null,
-    because[1], house[3],
-    !shelf || shelf === "Film" ? cards("films", "Popular films", films) : null,
-    house[4],
     mine.length ? { id: "list", title: "My list", kind: "cards", items: mine.filter(ok).map((t) => cardOf(t, origin)) } : null,
-    ...house.slice(5, 9), because[2], ...house.slice(9),
+    !shelf || shelf === "Film" ? cards("films", "Popular films", films) : null,
+    ...rows.slice(5),
   ].filter((row): row is Row => Boolean(row) && row!.items.length > 0);
 
   const featured = top.find((t) => t.backdrop) ?? null;
-  return { featured: featured ? { ...cardOf(featured, origin), backdropLarge: imageUrl(origin, featured.backdrop, "w1280"), overview: featured.overview } : null, rows };
+  return { featured: featured ? { ...cardOf(featured, origin), backdropLarge: imageUrl(origin, featured.backdrop, "w1280"), overview: featured.overview } : null, rows: lead, next };
 }
 
 /**

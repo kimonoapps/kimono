@@ -86,3 +86,120 @@ export function orderRows(catalog: RowSpec[], taste: Map<string, number>, shelf?
 
 /** A row needs this many titles that play, or it stays off Home. */
 export const rowMinimum = 6;
+
+/* ───── Endless Home: rows from what someone watches most ───── */
+
+type Kind = "series" | "film" | "anime";
+const kindWord: Record<Kind, string> = { series: "series", film: "films", anime: "anime" };
+
+/* TMDB's genre ids by the names catalogs use (TMDB's own, and AniList's for anime). */
+const filmGenre: Record<string, string> = {
+  Action: "28", Adventure: "12", "Action & Adventure": "28|12", Comedy: "35", Crime: "80", Documentary: "99", Drama: "18",
+  Family: "10751", Fantasy: "14", History: "36", Horror: "27", Music: "10402", Mystery: "9648", Romance: "10749",
+  "Science Fiction": "878", "Sci-Fi & Fantasy": "878|14", "Sci-Fi": "878", Thriller: "53", War: "10752", "War & Politics": "10752",
+  Western: "37", Psychological: "53", Supernatural: "27|14", Suspense: "53", Mecha: "878", Sports: "18",
+};
+const seriesGenre: Record<string, string> = {
+  Action: "10759", Adventure: "10759", "Action & Adventure": "10759", Comedy: "35", Crime: "80", Documentary: "99", Drama: "18",
+  Family: "10751", Kids: "10762", Mystery: "9648", Thriller: "9648|80", Suspense: "9648", "Science Fiction": "10765",
+  "Sci-Fi & Fantasy": "10765", Fantasy: "10765", "Sci-Fi": "10765", Supernatural: "10765", "War & Politics": "10768", War: "10768",
+  Western: "37", Psychological: "9648", Mecha: "10765",
+};
+/* Genres too broad to say much about someone's taste on their own. */
+const broad = new Set(["Animation", "Drama", "Action & Adventure", "Comedy"]);
+
+/** A row's name for a genre: "Sci-Fi & Fantasy" → "Sci-fi and fantasy". */
+export function genreName(g: string): string {
+  const s = g.replace(/ & /g, " and ").toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export type Taste = {
+  genres: Map<string, number>;
+  keywords: Map<number, { name: string; weight: number }>;
+  kinds: Map<Kind, number>;
+};
+
+/** What someone watches a lot: genres, TMDB themes and kinds, recent titles counting most. */
+export function tasteOf(titles: { genres: string[]; keywords?: { id: number; name: string }[]; shelf: Shelf; kind: "movie" | "series" }[]): Taste {
+  const taste: Taste = { genres: new Map(), keywords: new Map(), kinds: new Map() };
+  titles.slice(0, 40).forEach((t, i) => {
+    const w = 1 / (1 + i * 0.2);
+    for (const g of t.genres) if (g !== "Animation") taste.genres.set(g, (taste.genres.get(g) ?? 0) + (broad.has(g) ? w * 0.5 : w));
+    for (const k of t.keywords ?? []) {
+      const was = taste.keywords.get(k.id);
+      taste.keywords.set(k.id, { name: k.name, weight: (was?.weight ?? 0) + w });
+    }
+    const kind: Kind = t.shelf === "Anime" ? "anime" : t.kind === "movie" ? "film" : "series";
+    taste.kinds.set(kind, (taste.kinds.get(kind) ?? 0) + w);
+  });
+  return taste;
+}
+
+export type PlannedRow = RowSpec & { score: number } | { id: string; title: ""; similar: number; score: number };
+
+function discover(kind: Kind, extra: Record<string, string>, page: number) {
+  const base: { path: string; params: Record<string, string> } = kind === "film"
+    ? { path: "/discover/movie", params: { sort_by: "popularity.desc", "vote_count.gte": "80" } }
+    : kind === "anime"
+      ? { path: "/discover/tv", params: { sort_by: "popularity.desc", with_origin_country: "JP", "vote_count.gte": "20" } }
+      : { path: "/discover/tv", params: { sort_by: "popularity.desc", "vote_count.gte": "60", without_genres: "16,10763,10764,10766,10767" } };
+  const params: Record<string, string> = { ...base.params, ...extra, ...(page > 1 ? { page: String(page) } : {}) };
+  if (kind === "anime") params.with_genres = ["16", extra.with_genres].filter(Boolean).join(",");
+  return { path: base.path, params };
+}
+
+/**
+ * Home's whole plan for someone, as long as their taste allows: the house
+ * rows, then every genre and theme they watch a lot as series, films and
+ * anime (pages two and three as "More …"), and "Because you watched" rows
+ * for many recent titles, sorted by how much each matters to them. Home
+ * serves it a page at a time, so it scrolls on and on.
+ */
+export function planRows(taste: Taste, recentCount: number, shelf?: Shelf, catalog: RowSpec[] = rowCatalog): PlannedRow[] {
+  const kinds: Kind[] = shelf === "Anime" ? ["anime"] : shelf === "Film" ? ["film"] : shelf === "Series" ? ["series"] : ["series", "film", "anime"];
+  const kindTotal = [...taste.kinds.values()].reduce((a, b) => a + b, 0) || 1;
+  /* Kinds someone never watches still appear, lower. */
+  const kindWeight = (k: Kind) => 0.35 + (taste.kinds.get(k) ?? 0) / kindTotal;
+  const top = Math.max(1, ...taste.genres.values(), ...[...taste.keywords.values()].map((k) => k.weight));
+  const out: PlannedRow[] = [];
+  const seen = new Set<string>();
+  /* One row per name and per query: a taste row that matches a house row is the house row. */
+  const add = (row: PlannedRow) => {
+    const keys = [row.id, ...("path" in row ? [`t:${row.title.toLowerCase()}`, `q:${row.path}?${Object.entries(row.params).sort().map(([k, v]) => `${k}=${v}`).join("&")}`] : [])];
+    if (keys.some((k) => seen.has(k))) return;
+    keys.forEach((k) => seen.add(k));
+    out.push(row);
+  };
+
+  orderRows(catalog, taste.genres, shelf).forEach((r, i) => add({ ...r, score: 1.2 - i * 0.04 }));
+  for (const [g, weight] of [...taste.genres].sort((a, b) => b[1] - a[1]).slice(0, 14)) {
+    for (const k of kinds) {
+      const id = k === "film" ? filmGenre[g] : seriesGenre[g];
+      if (!id) continue;
+      for (const page of [1, 2, 3]) {
+        const q = discover(k, { with_genres: id }, page);
+        add({ id: `genre-${k}-${g}-${page}`.toLowerCase().replace(/[^a-z0-9-]+/g, "-"), title: `${page > 1 ? "More " : ""}${page > 1 ? genreName(g).toLowerCase() : genreName(g)} ${kindWord[k]}`, ...q, ttl: 24, shelves: [k === "film" ? "Film" : k === "anime" ? "Anime" : "Series"], genres: [g], score: (weight / top) * kindWeight(k) * (page === 1 ? 1 : page === 2 ? 0.55 : 0.3) });
+      }
+    }
+  }
+  for (const [kid, { name, weight }] of [...taste.keywords].filter(([, k]) => k.weight >= top * 0.15).sort((a, b) => b[1].weight - a[1].weight).slice(0, 16)) {
+    for (const k of kinds) {
+      const q = discover(k, { with_keywords: String(kid) }, 1);
+      add({ id: `theme-${k}-${kid}`, title: `${name.charAt(0).toUpperCase()}${name.slice(1)} ${kindWord[k]}`, ...q, ttl: 48, shelves: [k === "film" ? "Film" : k === "anime" ? "Anime" : "Series"], genres: [], score: (weight / top) * kindWeight(k) * 0.9 });
+    }
+  }
+  for (let i = 0; i < Math.min(recentCount, 12); i++) add({ id: `similar-${i}`, title: "", similar: i, score: 1.1 - i * 0.12 });
+
+  /* Sorted by how much each matters, then spread so two rows of the same thing don't sit together. */
+  const sorted = out.sort((a, b) => b.score - a.score);
+  const spread: PlannedRow[] = [];
+  const pending = [...sorted];
+  while (pending.length) {
+    const last = spread[spread.length - 1];
+    const lastKey = last && "genres" in last ? last.genres[0] ?? last.id : null;
+    const at = pending.findIndex((r) => !("genres" in r) || (r.genres[0] ?? r.id) !== lastKey);
+    spread.push(...pending.splice(at < 0 ? 0 : at, 1));
+  }
+  return spread;
+}

@@ -62,6 +62,7 @@ export function titleFromTmdb(details: Json, kind: TitleKind, region: string, no
     seasonCount: kind === "series" ? Number(details.number_of_seasons ?? 0) : 0,
     cast: cast.slice(0, 6).map((c) => String(c.name)),
     originalLanguage: String(details.original_language ?? ""),
+    keywords: ((kind === "movie" ? details.keywords?.keywords : details.keywords?.results) ?? []).slice(0, 25).map((k: Json) => ({ id: Number(k.id), name: String(k.name) })),
     fetchedAt: now,
   };
 }
@@ -92,7 +93,7 @@ export function stubFromTmdb(item: Json): Title | null {
     /* Films carry no country in lists: Japanese-language animation counts as anime too. */
     shelf: (item.genre_ids ?? []).includes(16) && ((item.origin_country ?? []).includes("JP") || item.original_language === "ja") ? "Anime" : kind === "movie" ? "Film" : "Series",
     poster: item.poster_path ?? null, backdrop: item.backdrop_path ?? null, logo: null, runtime: null,
-    popularity: Number(item.popularity ?? 0), status: "", nextAirDate: null, seasonCount: 0, cast: [], originalLanguage: String(item.original_language ?? ""), fetchedAt: 0,
+    popularity: Number(item.popularity ?? 0), status: "", nextAirDate: null, seasonCount: 0, cast: [], originalLanguage: String(item.original_language ?? ""), keywords: [], fetchedAt: 0,
   };
 }
 

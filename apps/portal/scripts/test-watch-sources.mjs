@@ -101,3 +101,30 @@ test('settings keep subtitle look, previews and download quality, refusing nonse
   const p = model.prefsOf(db, 'a');
   assert.deepEqual([p.subtitleSize, p.subtitleBackground, p.previews, p.downloadQuality], ['large', 'box', false, 'standard']);
 });
+
+test("someone's taste comes from what they watch a lot, and their plan follows it for many rows", () => {
+  const watched = [
+    { genres: ['Horror', 'Mystery'], keywords: [{ id: 1, name: 'haunted house' }], shelf: 'Film', kind: 'movie' },
+    { genres: ['Horror'], keywords: [{ id: 1, name: 'haunted house' }, { id: 2, name: 'time loop' }], shelf: 'Film', kind: 'movie' },
+    { genres: ['Fantasy', 'Adventure'], keywords: [{ id: 3, name: 'magic' }], shelf: 'Anime', kind: 'series' },
+  ];
+  const taste = rows.tasteOf(watched);
+  assert.ok(taste.genres.get('Horror') > taste.genres.get('Fantasy'));
+  assert.equal(taste.keywords.get(1).weight > taste.keywords.get(3).weight, true);
+  const plan = rows.planRows(taste, 3);
+  assert.ok(plan.length > 40, `a long plan (${plan.length})`);
+  const firstHorror = plan.findIndex((r) => r.id === 'genre-film-horror-1');
+  const firstComedy = plan.findIndex((r) => r.id === 'comedy-films');
+  assert.ok(firstHorror >= 0 && firstHorror < firstComedy, 'horror films come before comedies for a horror fan');
+  assert.ok(plan.some((r) => r.id === 'theme-film-1' && /^Haunted house films$/.test(r.title)));
+  assert.ok(plan.some((r) => r.id === 'genre-film-horror-2' && r.title === 'More horror films'));
+  assert.equal(plan.filter((r) => 'similar' in r).length, 3);
+  for (let i = 1; i < plan.length; i++) {
+    const a = plan[i - 1], b = plan[i];
+    if ('genres' in a && 'genres' in b && a.genres[0] && plan.length > 5) assert.ok(a.genres[0] !== b.genres[0] || plan.slice(i).every((r) => 'genres' in r && r.genres[0] === b.genres[0]), `rows ${i - 1} and ${i} repeat ${a.genres[0]}`);
+  }
+  assert.ok(rows.planRows(taste, 0, 'Anime').every((r) => !('shelves' in r) || r.shelves.includes('Anime')));
+  assert.equal(rows.genreName('Sci-Fi & Fantasy'), 'Sci-fi and fantasy');
+  const names = plan.filter((r) => r.title).map((r) => r.title.toLowerCase());
+  assert.equal(new Set(names).size, names.length, 'no two rows share a name');
+});
