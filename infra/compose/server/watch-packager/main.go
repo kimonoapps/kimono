@@ -59,6 +59,9 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 	mux.HandleFunc("POST /probe", authorized(handleProbe))
+	mux.HandleFunc("POST /chapters", authorized(handleChapters))
+	mux.HandleFunc("POST /fingerprint", authorized(handleFingerprint))
+	mux.HandleFunc("POST /ending", authorized(handleEnding))
 	mux.HandleFunc("PUT /sessions/{id}", authorized(handlePut))
 	mux.HandleFunc("DELETE /sessions/{id}", authorized(func(w http.ResponseWriter, r *http.Request) {
 		sessions.remove(r.PathValue("id"))
