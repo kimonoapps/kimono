@@ -546,3 +546,17 @@
 .kw .kw-noart{display:grid;place-items:center;aspect-ratio:16/9;background:var(--surface-2);font-family:var(--display);font-weight:800;font-size:28px;color:var(--fg-3)}
 .kw .kw-p-bot{grid-template-columns:minmax(0,1fr)}
 @media (max-width:560px){.kw .kw-pbtn.kw-lab span{display:none}.kw .kw-pbtn.kw-lab{padding:0 8px}}
+/* ───── Brand: Watch's bloom and Kimono's logo in place of the demo's seal ───── */
+.kw .kw-bloom{display:inline-grid;width:36px;height:36px;flex:none}
+.kw .kw-bloom svg{width:100%;height:100%}
+.kw .kw-bloom-lg{width:72px;height:72px;margin:0 auto 22px}
+.kw .kw-brand{gap:8px}
+.kw .kw-brand .kw-kimono{height:42px;width:auto;margin:2px 0 0 -4px}
+.kw .kw-home-logo{position:absolute;top:calc(env(safe-area-inset-top,0px) + 18px);left:var(--gutter-l);opacity:.75;transition:opacity .2s}
+.kw .kw-home-logo:hover{opacity:1}
+.kw .kw-home-logo .kw-kimono{height:44px;width:auto}
+.kw .kw-profiles{position:relative}
+.kw.kw-waiting{display:grid;place-items:center}
+.kw .kw-breathe{animation:kw-breathe 1.6s ease-in-out infinite;margin:0}
+@keyframes kw-breathe{50%{transform:scale(.92);opacity:.7}}
+@media (max-width:899px){.kw .kw-brand .kw-kimono{height:34px}.kw .kw-bloom{width:32px;height:32px}}

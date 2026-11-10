@@ -25,6 +25,6 @@ export default async function WatchPage() {
   /* One profile per person in the household, you first. */
   const others = accounts.filter((a) => a.username !== username).map((a) => ({ username: a.username, name: a.name || a.username, picture: pictures[a.username.toLowerCase()] ?? null }));
   return <AppShell user={session.user} brandColors={settings.brand.colors} app={app}>
-    {watchConfig(settings).enabled ? <WatchEntry me={me} household={[me, ...others].slice(0, 6)} /> : <WatchOff />}
+    {watchConfig(settings).enabled ? <WatchEntry me={me} household={[me, ...others].slice(0, 6)} accent={app.accent} /> : <WatchOff accent={app.accent} />}
   </AppShell>;
 }

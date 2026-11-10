@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Card, Rating, TitleView } from "./api";
+import { AppIcon } from "@/components/icons";
 import { Icon } from "./icons";
 
 export const cx = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(" ");
@@ -143,4 +144,17 @@ export function Rail({ children, label }: { children: ReactNode; label: string }
     <div className="kw-rail" ref={rail} aria-label={label}>{children}</div>
     <button className="kw-arrow kw-r" aria-label="Scroll right" onClick={() => by(1)}><Icon name="right" /></button>
   </div>;
+}
+
+/* ───── Brand: Watch's bloom, and Kimono's own logo ───── */
+
+export const watchId = "kimono-watch";
+/** Watch's app bloom: Kimono's flower with the play glyph, in Watch's colours, as the rail draws it. */
+export function WatchBloom({ accent, className }: { accent: string; className?: string }) {
+  return <span className={cx("kw-bloom", className)} aria-hidden="true"><AppIcon app={{ id: watchId, icon: "play", accent }} /></span>;
+}
+/** Kimono's logo, the reversed cut for the dark floor. */
+export function KimonoLogo({ className }: { className?: string }) {
+  // eslint-disable-next-line @next/next/no-img-element -- the Portal's own brand file
+  return <img className={cx("kw-kimono", className)} src="/brand/kimono-logo-reversed.png" alt="Kimono" width={1400} height={460} />;
 }

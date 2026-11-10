@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Crossing } from "@/components/crossing";
 import { watchApi, type Card, type Home, type Rating, type Shelf, type TitleView } from "./api";
-import { cx, Toast, WatchContext, type Marks, type Watch } from "./bits";
+import { cx, KimonoLogo, Toast, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
 import { Icon, Wavy } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
@@ -39,7 +39,7 @@ function writePlace(page: Page, title: string | null, push: boolean) {
   if (push) window.history.pushState(null, "", url); else window.history.replaceState(null, "", url);
 }
 
-export function WatchApp({ me, household }: { me: Person; household: Person[] }) {
+export function WatchApp({ me, household, accent }: { me: Person; household: Person[]; accent: string }) {
   const [profile, setProfile] = useState<Person | null>(() => { try { return sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
   const [picking, setPicking] = useState<string | null>(null);
   const [page, setPage] = useState<Page>(() => readPlace().page);
@@ -156,8 +156,9 @@ export function WatchApp({ me, household }: { me: Person; household: Person[] })
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&display=swap" precedence="default" />
     <div ref={root} className={cx("kw", locked && "kw-locked")}>
       {!profile ? <section className="kw-profiles" aria-label="Choose a profile">
+        <Crossing kind="shoji" className="kw-home-logo" href="/" aria-label="Kimono"><KimonoLogo /></Crossing>
         <div>
-          <Crossing kind="shoji" className="kw-seal" href="/" aria-label="Kimono">観</Crossing>
+          <WatchBloom accent={accent} className="kw-bloom-lg" />
           <h1>Who’s watching?</h1>
           <div className={cx("kw-who", picking && "kw-busy")}>
             {household.map((p) => <button key={p.username} className={cx(picking === p.username && "kw-loading", p.username !== me.username && "kw-other")} onClick={() => pick(p)}>
@@ -173,7 +174,7 @@ export function WatchApp({ me, household }: { me: Person; household: Person[] })
         </div>
       </section> : <div>
         <header className={cx("kw-topbar", (scrolled || page !== "home") && "kw-solid")}>
-          <button className="kw-brand" onClick={() => go("home")} aria-label="Kimono Watch home"><div className="kw-seal" aria-hidden="true">観</div><span className="kw-word">KIMONO</span></button>
+          <button className="kw-brand" onClick={() => go("home")} aria-label="Kimono Watch home"><WatchBloom accent={accent} /><KimonoLogo /></button>
           <nav className="kw-topnav" aria-label="Sections">
             <button aria-current={page === "home" ? "page" : undefined} onClick={() => go("home")}>Home</button>
             <button aria-current={page === "hot" ? "page" : undefined} onClick={() => go("hot")}>New &amp; hot</button>

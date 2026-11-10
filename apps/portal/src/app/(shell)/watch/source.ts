@@ -35,7 +35,9 @@ export async function attach(video: HTMLVideoElement, play: Play, onFatal: () =>
   if (play.hls && viaHlsJs()) {
     const { default: Hls } = await import("hls.js");
     if (Hls.isSupported()) {
-      const hls: Hls = new Hls({ enableWorker: true, backBufferLength: 60, maxBufferLength: 40 });
+      /* The packager can take 5–20 s for a first segment: wait for it rather than give up. */
+      const patient = { maxTimeToFirstByteMs: 30_000, maxLoadTimeMs: 120_000, timeoutRetry: { maxNumRetry: 4, retryDelayMs: 0, maxRetryDelayMs: 0 }, errorRetry: { maxNumRetry: 6, retryDelayMs: 1000, maxRetryDelayMs: 8000 } };
+      const hls: Hls = new Hls({ enableWorker: true, backBufferLength: 60, maxBufferLength: 40, fragLoadPolicy: { default: patient }, playlistLoadPolicy: { default: patient }, manifestLoadPolicy: { default: patient } });
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
