@@ -140,7 +140,11 @@ function TopRank({ id, shelf }: { id: string; shelf: string }) {
 function Resume({ view }: { view: TitleView }) {
   const watch = useWatch();
   const t = view.title;
-  if (!view.playable) return <div className="kw-resume"><button className="kw-btn kw-primary" disabled style={{ opacity: .5 }}><Icon name="play" />Not available yet</button></div>;
+  if (!view.playable) {
+    const why = view.availability;
+    const icon = why?.state === "upcoming" ? "bell" : why?.state === "cinemas" ? "film" : "info";
+    return <div className="kw-resume"><div className={cx("kw-away", why?.state && `kw-${why.state}`)} role="status"><Icon name={icon} /><span>{why?.note ?? "Not available yet"}</span></div></div>;
+  }
   if (!view.seasons) {
     const r = view.resume && "fraction" in view.resume ? view.resume : null;
     const left = r && t.runtime ? Math.max(1, Math.round(t.runtime - r.position / 60)) : null;

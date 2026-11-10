@@ -168,8 +168,10 @@ private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map
             }
             if (top != null) RankLine(top, t.shelf)
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val label = when { !page.playable -> "Not available yet"; started -> "Resume"; !t.isFilm -> "Play " + (r?.label ?: page.label(r?.season ?: 1, r?.episode ?: 1)); else -> "Play" }
-                PaperButton(label, Ic.play, { if (page.playable) go.play(t.id, r?.season?.takeIf { it > 0 }, r?.episode?.takeIf { it > 0 }) }, (if (wide) Modifier.widthIn(min = 260.dp) else Modifier.fillMaxWidth()).focusRequester(playFocus))
+                /* Can't play: say why (not out yet, only in cinemas, no copy found). */
+                val label = when { !page.playable -> page.availability?.note ?: "Not available yet"; started -> "Resume"; !t.isFilm -> "Play " + (r?.label ?: page.label(r?.season ?: 1, r?.episode ?: 1)); else -> "Play" }
+                val icon = when { page.playable -> Ic.play; page.availability?.state == "upcoming" -> Ic.bell; page.availability?.state == "cinemas" -> Ic.film; else -> Ic.info }
+                PaperButton(label, icon, { if (page.playable) go.play(t.id, r?.season?.takeIf { it > 0 }, r?.episode?.takeIf { it > 0 }) }, (if (wide) Modifier.widthIn(min = 260.dp) else Modifier.fillMaxWidth()).focusRequester(playFocus))
                 if (started) ResumeLine(page)
             }
             page.tracker?.let { Tracker(page) }

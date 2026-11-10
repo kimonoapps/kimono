@@ -51,6 +51,12 @@ export type Title = {
   originalLanguage: string;
   /** TMDB's themes ("time travel", "heist", "based on manga"): what Home learns taste from. */
   keywords: { id: number; name: string }[];
+  /** First release (films: cinemas or wherever first; series: first episode), "2026-03-04". */
+  releaseDate?: string | null;
+  /** Films: the earliest digital, disc or TV release anywhere, past or announced. Null when TMDB has none. */
+  homeDate?: string | null;
+  /** Films: the earliest cinema release anywhere. Null when TMDB lists none (straight to streaming, events). */
+  cinemaDate?: string | null;
   fetchedAt: number;
 };
 
@@ -147,6 +153,12 @@ export function migrate(db: DatabaseSync) {
   const columns = (db.prepare("PRAGMA table_info(titles)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("original_language")) db.exec("ALTER TABLE titles ADD COLUMN original_language TEXT NOT NULL DEFAULT ''");
   if (!columns.includes("keywords")) db.exec("ALTER TABLE titles ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'");
+  for (const column of ["release_date", "home_date"]) if (!columns.includes(column)) db.exec(`ALTER TABLE titles ADD COLUMN ${column} TEXT`);
+  if (!columns.includes("cinema_date")) {
+    db.exec("ALTER TABLE titles ADD COLUMN cinema_date TEXT");
+    /* Films kept before these dates existed are fetched again on next view (kept meanwhile). */
+    db.exec("UPDATE titles SET fetched_at = 1 WHERE fetched_at > 0 AND kind = 'movie'");
+  }
 }
 
 /* ───── Titles ───── */
@@ -175,19 +187,21 @@ function titleFrom(row: Row): Title {
     poster: (row.poster as string) || null, backdrop: (row.backdrop as string) || null, logo: (row.logo as string) || null,
     runtime: num(row.runtime), popularity: Number(row.popularity), status: String(row.status),
     nextAirDate: (row.next_air_date as string) || null, seasonCount: Number(row.season_count),
-    cast: list(row.cast_names), originalLanguage: String(row.original_language ?? ""), keywords: keywordsOf(row.keywords), fetchedAt: Number(row.fetched_at),
+    cast: list(row.cast_names), originalLanguage: String(row.original_language ?? ""), keywords: keywordsOf(row.keywords),
+    releaseDate: (row.release_date as string) || null, homeDate: (row.home_date as string) || null, cinemaDate: (row.cinema_date as string) || null, fetchedAt: Number(row.fetched_at),
   };
 }
 
 export function putTitle(db: DatabaseSync, t: Title) {
-  db.prepare(`INSERT INTO titles (id, kind, tmdb_id, imdb_id, anilist_id, mal_id, name, overview, year, age, genres, moods, shelf, poster, backdrop, logo, runtime, popularity, status, next_air_date, season_count, cast_names, original_language, keywords, fetched_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  db.prepare(`INSERT INTO titles (id, kind, tmdb_id, imdb_id, anilist_id, mal_id, name, overview, year, age, genres, moods, shelf, poster, backdrop, logo, runtime, popularity, status, next_air_date, season_count, cast_names, original_language, keywords, release_date, home_date, cinema_date, fetched_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET imdb_id=excluded.imdb_id, anilist_id=excluded.anilist_id, mal_id=excluded.mal_id, name=excluded.name, overview=excluded.overview,
       year=excluded.year, age=excluded.age, genres=excluded.genres, moods=excluded.moods, shelf=excluded.shelf, poster=excluded.poster, backdrop=excluded.backdrop,
       logo=excluded.logo, runtime=excluded.runtime, popularity=excluded.popularity, status=excluded.status, next_air_date=excluded.next_air_date,
-      season_count=excluded.season_count, cast_names=excluded.cast_names, original_language=excluded.original_language, keywords=excluded.keywords, fetched_at=excluded.fetched_at`)
+      season_count=excluded.season_count, cast_names=excluded.cast_names, original_language=excluded.original_language, keywords=excluded.keywords,
+      release_date=COALESCE(excluded.release_date, release_date), home_date=COALESCE(excluded.home_date, home_date), cinema_date=COALESCE(excluded.cinema_date, cinema_date), fetched_at=excluded.fetched_at`)
     .run(t.id, t.kind, t.tmdbId, t.imdbId, t.anilistId, t.malId, t.name, t.overview, t.year, t.age, JSON.stringify(t.genres), JSON.stringify(t.moods), t.shelf,
-      t.poster, t.backdrop, t.logo, t.runtime, t.popularity, t.status, t.nextAirDate, t.seasonCount, JSON.stringify(t.cast), t.originalLanguage ?? "", JSON.stringify(t.keywords ?? []), t.fetchedAt);
+      t.poster, t.backdrop, t.logo, t.runtime, t.popularity, t.status, t.nextAirDate, t.seasonCount, JSON.stringify(t.cast), t.originalLanguage ?? "", JSON.stringify(t.keywords ?? []), t.releaseDate ?? null, t.homeDate ?? null, t.cinemaDate ?? null, t.fetchedAt);
 }
 
 export function getTitle(db: DatabaseSync, id: string): Title | null {
@@ -203,9 +217,10 @@ export function getTitles(db: DatabaseSync, ids: string[]): Title[] {
 }
 
 /** How long a title's facts are trusted: a day while it airs, a week once it has ended, a month for films. */
-export function staleAfter(t: Pick<Title, "kind" | "status">): number {
+export function staleAfter(t: Pick<Title, "kind" | "status"> & Partial<Pick<Title, "releaseDate" | "homeDate" | "cinemaDate">>, now = Date.now()): number {
   const day = 24 * 60 * 60 * 1000;
-  if (t.kind === "movie") return 30 * day;
+  /* A film not out at home yet is asked about daily, so it plays the day it is. */
+  if (t.kind === "movie") return (t.cinemaDate && !t.homeDate && now - Date.parse(t.cinemaDate) < 365 * day) || /plan|production/i.test(t.status) ? day : 30 * day;
   return /return|production|plan|pilot/i.test(t.status) ? day : 7 * day;
 }
 export const isStale = (t: Title, now = Date.now()) => now - t.fetchedAt > staleAfter(t);

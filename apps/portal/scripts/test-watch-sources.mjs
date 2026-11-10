@@ -142,3 +142,26 @@ test("one show's episode layout overrides the anime default, and forgetting it g
   model.setShowLayout(db, 'a', 'tv-1429', null);
   assert.equal(model.showLayoutOf(db, 'a', 'tv-1429'), null);
 });
+
+test("a title that can't play says why: not out, only in cinemas, or no copy found", async () => {
+  const { availability } = await import('../src/lib/watch/labels.ts');
+  const { releaseDatesOf } = await import('../src/lib/watch/tmdb.ts');
+  const now = Date.parse('2026-11-10T12:00:00Z');
+  const film = (releaseDate, homeDate, extra = {}) => ({ kind: 'movie', status: 'Released', imdbId: 'tt1', releaseDate, cinemaDate: releaseDate, homeDate, ...extra });
+  assert.deepEqual(availability(film('2026-12-19', null, { status: 'Post Production' }), undefined, now), { state: 'upcoming', note: 'Out Dec 19, 2026' });
+  assert.equal(availability(film(null, null, { status: 'In Production' }), undefined, now).note, 'Not out yet');
+  assert.deepEqual(availability(film('2026-10-24', null), undefined, now), { state: 'cinemas', note: 'Only in cinemas for now' });
+  assert.equal(availability(film('2026-10-24', '2026-12-02'), undefined, now).note, 'Only in cinemas · at home Dec 2, 2026');
+  assert.equal(availability(film('2026-09-01', '2026-10-20'), undefined, now).state, 'ready', 'out at home: playable until a search says not');
+  assert.equal(availability(film('2026-10-24', null), true, now).state, 'ready', 'a copy that plays wins');
+  assert.equal(availability(film('2026-12-15', null), true, now).state, 'upcoming', 'not out yet: a "copy" is something else');
+  assert.equal(availability(film('2019-05-01', null), undefined, now).state, 'ready', 'old films lack home dates on TMDB');
+  assert.equal(availability(film('2026-10-24', null, { cinemaDate: null }), undefined, now).state, 'ready', 'never in cinemas (an event, straight to streaming)');
+  assert.deepEqual(availability(film('2019-05-01', null), false, now), { state: 'missing', note: "We couldn't find a copy of this yet" });
+  assert.equal(availability({ kind: 'series', status: 'Planned', imdbId: null, releaseDate: '2027-04-01' }, undefined, now).note, 'Out Apr 1, 2027');
+  assert.deepEqual(releaseDatesOf({ release_dates: { results: [
+    { iso_3166_1: 'US', release_dates: [{ type: 3, release_date: '2026-10-24T00:00:00.000Z' }, { type: 4, release_date: '2026-12-09T00:00:00.000Z' }] },
+    { iso_3166_1: 'GB', release_dates: [{ type: 4, release_date: '2026-12-02T00:00:00.000Z' }] },
+  ] } }), { cinema: '2026-10-24', home: '2026-12-02' });
+  assert.deepEqual(releaseDatesOf({ release_dates: { results: [{ release_dates: [{ type: 3, release_date: '2026-10-24' }] }] } }), { cinema: '2026-10-24', home: null });
+});

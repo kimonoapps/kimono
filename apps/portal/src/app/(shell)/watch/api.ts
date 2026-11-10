@@ -30,6 +30,8 @@ export type TitleView = {
   inList: boolean; rating: Rating | null; reminding: boolean;
   tracks: { audio: string; subtitles: string } | null;
   playable: boolean;
+  /** Why it can't play, when it can't: not out yet, only in cinemas, or no copy found. */
+  availability?: { state: "ready" | "upcoming" | "cinemas" | "missing"; note: string | null };
   resume: ({ season: number; episode: number; position: number; started: boolean; label?: string }) | ({ position: number; fraction: number }) | null;
   /** "single": one season, so no season anywhere; "continuous": one list numbered from the first; "seasons": the picker. */
   /** This show's own episode layout, or null to follow the default in Settings. */

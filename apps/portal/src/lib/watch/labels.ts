@@ -107,5 +107,35 @@ export function episodeLabel(layout: EpisodeLayout, season: number, number: numb
   return `E${layout === "continuous" ? absolute ?? number : number}`;
 }
 
+/**
+ * Whether a title can be watched here, and when it can't, why, in a few words:
+ * not out yet, only in cinemas, or out but no copy found. [found] is what the
+ * last search said: true (a copy plays), false (none), undefined (not asked).
+ */
+export type Availability = { state: "ready" | "upcoming" | "cinemas" | "missing"; note: string | null };
+const shortDate = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+export function availability(
+  title: Pick<Title, "kind" | "status" | "imdbId"> & Partial<Pick<Title, "releaseDate" | "homeDate" | "cinemaDate">>,
+  found: boolean | undefined, now = Date.now(),
+): Availability {
+  const day = 24 * 60 * 60 * 1000;
+  const at = (iso?: string | null) => (iso ? Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) : NaN);
+  /* Not out anywhere: whatever a search found under its name is something else. */
+  const release = at(title.releaseDate);
+  if (release > now) return { state: "upcoming", note: `Out ${shortDate(title.releaseDate!)}` };
+  if (!title.releaseDate && /plan|production|rumou?red/i.test(title.status)) return { state: "upcoming", note: "Not out yet" };
+  /* Out somewhere: a copy that plays wins over what the dates say. */
+  if (found === true) return { state: "ready", note: null };
+  /* In cinemas: TMDB lists a cinema release that has happened, and no home release yet. */
+  const cinema = at(title.cinemaDate);
+  if (title.kind === "movie" && cinema <= now && now - cinema < 365 * day) {
+    const home = at(title.homeDate);
+    if (!title.homeDate) return { state: "cinemas", note: "Only in cinemas for now" };
+    if (home > now) return { state: "cinemas", note: `Only in cinemas · at home ${shortDate(title.homeDate)}` };
+  }
+  if (found === false || !title.imdbId) return { state: "missing", note: "We couldn't find a copy of this yet" };
+  return { state: "ready", note: null };
+}
+
 /** A finished episode or film counts as finished; part-way is the fraction played. */
 export { finished, fraction };

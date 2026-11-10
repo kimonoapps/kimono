@@ -117,6 +117,10 @@ data class EpisodeInfo(
 @Serializable
 data class TrackChoice(val audio: String, val subtitles: String)
 
+/** [state]: "ready", "upcoming", "cinemas" or "missing"; [note] says so in a few words. */
+@Serializable
+data class Availability(val state: String = "ready", val note: String? = null)
+
 @Serializable
 data class TitlePage(
     val title: TitleInfo,
@@ -125,6 +129,8 @@ data class TitlePage(
     val reminding: Boolean = false,
     val tracks: TrackChoice? = null,
     val playable: Boolean = true,
+    /** Why it can't play, when it can't: not out yet, only in cinemas, or no copy found. */
+    val availability: Availability? = null,
     val resume: Resume? = null,
     val seasons: List<SeasonInfo> = emptyList(),
     val tracker: Tracker? = null,

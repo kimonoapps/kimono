@@ -11,7 +11,7 @@ import { stateDir } from "../state";
 import { anyPlayable, notePlayable, playableOf, pool, shared, streamsKey, streamTtl, toCheck, visible } from "./ahead";
 import { animeEntriesFor, animeMap, anilistMedia, jikanFillers } from "./anime";
 import { watchAppId, watchConfig, type WatchConfig } from "./config";
-import { absoluteNumbers, badge, episodeLabel, episodeLayout, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
+import { absoluteNumbers, availability, badge, episodeLabel, episodeLayout, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
   cached, episodesOf, finished, fraction, getTitle, getTitles, isStale, keep, listOf, markFillers, markSeasonFillers, migrate, parseTitleId,
   cleanDeviceId, cleanQuality, deviceQualityOf, prefsOf, progressOf, qualityFor, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, showLayoutOf, tracksOf, WatchProblem, readState, writeState,
@@ -178,19 +178,28 @@ export function cardOf(t: Title, origin: string, extra: Partial<Card> = {}): Car
   };
 }
 
+/** What to say when a search finds nothing: in cinemas, not out, or no copy. */
+const notFoundNote = (title: Title) => {
+  const why = availability(title, false);
+  return why.state === "missing" ? "We couldn't find a copy of this yet." : `${why.note}.`;
+};
+
 export async function titleView(cfg: WatchConfig, username: string, origin: string, id: string, seasonWanted?: number) {
   const db = watchDb();
   const title = await ensureTitle(cfg, id);
   const prefs = prefsOf(db, username);
   const progress = progressOf(db, username, id);
+  const available = availability(title, playableOf(db, id) ?? undefined);
   const base = {
     title: { ...cardOf(title, origin), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(origin, title.backdrop, "w1280") },
     inList: listOf(db, username).includes(id), rating: ratingOf(db, username, id), reminding: remindsOf(db, username).includes(id),
     tracks: tracksOf(db, username, id),
     /* "seasons" or "continuous" when this show has its own episode layout; null follows the default. */
     showEpisodes: showLayoutOf(db, username, id),
-    /* Taken as playable until a search says otherwise. */
-    playable: Boolean(title.imdbId) && playableOf(db, id) !== false,
+    /* Taken as playable until a search says otherwise, unless it isn't out at home yet. */
+    playable: available.state === "ready",
+    /* Why it can't play: "upcoming" | "cinemas" | "missing", and a few words to say so. */
+    availability: available,
   };
   if (title.kind === "movie") {
     const p = progress.find((x) => x.season === 0 && x.episode === 0);
@@ -467,6 +476,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const db = watchDb();
   const title = await ensureTitle(cfg, String(raw.titleId ?? ""));
   if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
+  /* Not out yet: anything found under its name is something else. */
+  const due = availability(title, undefined);
+  if (due.state === "upcoming") throw new WatchProblem(`${due.note}.`, 404);
   /* Casting picks for the receiver; the web player and receivers get HLS as well as the file (./hls.ts). */
   const cast = castOf(raw.cast);
   const asked = cleanDevice(raw.device);
@@ -493,7 +505,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   /* Nothing the screen plays as it is: with HLS the packager can transcode anything. */
   if (!ranked.length && hls) ranked = rank(found, anything(device), quality, minutes, wantFor(plan, title.originalLanguage), speedsOf(db));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
-  if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
+  if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : notFoundNote(title), 404);
 
   const markers = await markersFor(cfg, username, title, episodes, season, episode, wanted, minutes, fromAniskip,
     picker(cfg, title, episodes, device, quality, wantFor(plan, title.originalLanguage)));

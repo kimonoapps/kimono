@@ -34,6 +34,17 @@ function certificationOf(details: Json, kind: TitleKind, region: string): string
   return (country?.release_dates as Json[] | undefined)?.find((d) => d.certification)?.certification ?? "";
 }
 
+/**
+ * When a film reaches cinemas (2, 3) and homes, digital (4), disc (5) or TV
+ * (6): the earliest of each in any country, from TMDB's release dates. Null
+ * when none is listed.
+ */
+export function releaseDatesOf(details: Json): { cinema: string | null; home: string | null } {
+  const dates = ((details.release_dates?.results ?? []) as Json[]).flatMap((c) => (c.release_dates ?? []) as Json[]);
+  const first = (types: number[]) => dates.filter((d) => types.includes(Number(d.type)) && d.release_date).map((d) => String(d.release_date).slice(0, 10)).sort()[0] ?? null;
+  return { cinema: first([2, 3]), home: first([4, 5, 6]) };
+}
+
 /** A logo in the viewer's language, else one without words, else any. */
 function logoOf(details: Json): string | null {
   const logos: Json[] = details.images?.logos ?? [];
@@ -63,6 +74,9 @@ export function titleFromTmdb(details: Json, kind: TitleKind, region: string, no
     cast: cast.slice(0, 6).map((c) => String(c.name)),
     originalLanguage: String(details.original_language ?? ""),
     keywords: ((kind === "movie" ? details.keywords?.keywords : details.keywords?.results) ?? []).slice(0, 25).map((k: Json) => ({ id: Number(k.id), name: String(k.name) })),
+    releaseDate: date ? date.slice(0, 10) : null,
+    homeDate: kind === "movie" ? releaseDatesOf(details).home : null,
+    cinemaDate: kind === "movie" ? releaseDatesOf(details).cinema : null,
     fetchedAt: now,
   };
 }
