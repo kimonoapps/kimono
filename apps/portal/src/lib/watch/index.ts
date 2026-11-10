@@ -14,13 +14,14 @@ import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { badge, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
   cached, episodesOf, finished, fraction, getTitle, getTitles, isStale, keep, listOf, markFillers, markSeasonFillers, migrate, parseTitleId,
-  prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, WatchProblem, readState, writeState,
+  prefsOf, progressOf, putEpisodes, putSeasons, putTitle, ratingOf, recentTitles, remindsOf, seasonsOf, staleAfter, sweepCache, tracksOf, WatchProblem, readState, writeState,
   type Episode, type Title,
 } from "./model";
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, fingerprintMarkers, type Markers } from "./markers";
 import { badges, cleanDevice, describe, rank, type Release } from "./releases";
 import { findStreams, stremioId, upstreamRequest } from "./streams";
+import { playerTracks, trackPlan, wantFor } from "./languages";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
 import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
@@ -31,13 +32,17 @@ export * from "./model";
 const root = join(stateDir, "watch");
 const cache = globalThis as unknown as { kimonoWatch?: DatabaseSync; kimonoWatchSwept?: number };
 
+let migrated = false;
 export function watchDb(): DatabaseSync {
   if (!cache.kimonoWatch) {
     mkdirSync(root, { recursive: true, mode: 0o700 });
     const opened = new DatabaseSync(join(root, "watch.db"));
     migrate(opened);
     cache.kimonoWatch = opened;
+    migrated = true;
   }
+  /* A hot reload keeps the connection but brings new code: bring the schema along. */
+  if (!migrated) { migrate(cache.kimonoWatch); migrated = true; }
   if (!cache.kimonoWatchSwept || Date.now() - cache.kimonoWatchSwept > 60 * 60 * 1000) {
     cache.kimonoWatchSwept = Date.now();
     sweepCache(cache.kimonoWatch);
@@ -173,6 +178,7 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
   const base = {
     title: { ...cardOf(title, origin), overview: title.overview, genres: title.genres, moods: title.moods, cast: title.cast, runtime: title.runtime, status: title.status, nextAirDate: title.nextAirDate, backdropLarge: imageUrl(origin, title.backdrop, "w1280") },
     inList: listOf(db, username).includes(id), rating: ratingOf(db, username, id), reminding: remindsOf(db, username).includes(id),
+    tracks: tracksOf(db, username, id),
     /* Taken as playable until a search says otherwise. */
     playable: Boolean(title.imdbId) && playableOf(db, id) !== false,
   };
@@ -349,7 +355,8 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   ]);
   const device = cleanDevice(raw.device);
   const minutes = episodesOf(db, title.id, next.season).find((e) => e.number === next.episode)?.runtime ?? title.runtime;
-  return { next, ready: rank(found, device, prefs.quality, minutes, prefs.audioLanguage || "en").length > 0 };
+  const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
+  return { next, ready: rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage)).length > 0 };
 }
 
 /**
@@ -374,7 +381,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   }
 
   const [found, markers] = await Promise.all([releasesFor(cfg, title, season, episode), markersFor(cfg, title, episodes, season, episode)]);
-  const ranked = rank(found, device, prefs.quality, minutes, prefs.audioLanguage || "en");
+  /* Sub or dub: the person's choice for this show, else their settings; the release is picked to carry it. */
+  const plan = trackPlan(title, prefs, tracksOf(db, username, title.id));
+  const ranked = rank(found, device, prefs.quality, minutes, wantFor(plan, title.originalLanguage));
   const wanted = typeof raw.version === "number" ? ranked[raw.version] : ranked[0];
   if (!wanted) throw new WatchProblem(found.length ? "Nothing here plays on this device yet." : "This isn't available to stream yet.", 404);
 
@@ -395,6 +404,9 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     /* Seconds: intro and recap as [start, end], credits as where they start. */
     markers: markers ?? {},
     skipIntros: prefs.skipIntros,
+    /* Which audio and subtitle tracks to switch on, by the tags containers use. */
+    tracks: playerTracks(plan),
+    languages: { audio: wanted.languages, subtitles: wanted.subtitles },
   };
 }
 

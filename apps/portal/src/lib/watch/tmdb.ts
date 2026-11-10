@@ -61,6 +61,7 @@ export function titleFromTmdb(details: Json, kind: TitleKind, region: string, no
     nextAirDate: details.next_episode_to_air?.air_date ?? null,
     seasonCount: kind === "series" ? Number(details.number_of_seasons ?? 0) : 0,
     cast: cast.slice(0, 6).map((c) => String(c.name)),
+    originalLanguage: String(details.original_language ?? ""),
     fetchedAt: now,
   };
 }
@@ -90,7 +91,7 @@ export function stubFromTmdb(item: Json): Title | null {
     age: item.adult ? "18+" : "", genres: [], moods: [],
     shelf: (item.genre_ids ?? []).includes(16) && (item.origin_country ?? []).includes("JP") ? "Anime" : kind === "movie" ? "Film" : "Series",
     poster: item.poster_path ?? null, backdrop: item.backdrop_path ?? null, logo: null, runtime: null,
-    popularity: Number(item.popularity ?? 0), status: "", nextAirDate: null, seasonCount: 0, cast: [], fetchedAt: 0,
+    popularity: Number(item.popularity ?? 0), status: "", nextAirDate: null, seasonCount: 0, cast: [], originalLanguage: String(item.original_language ?? ""), fetchedAt: 0,
   };
 }
 

@@ -6,6 +6,11 @@
  * Pure logic, tested in scripts/test-watch.mjs.
  */
 
+import { languageOf, type LanguageWant } from "./languages";
+
+/* Anime groups that release Japanese audio with their own subtitles (or none, for "raws"): their listed languages are subtitles. */
+const subGroups = /\[(subsplease|erai-raws|horriblesubs|judas|asw|ember|tsundere-raws|anime time|commie|gjm|kaleido-subs|yameii|dkb|ssa|toonshub|varyg|sallysubs|nep_blanc|[a-z-]*-raws)\]|-(subsplease|erai-raws|judas|asw|ember)\b|\b[a-z]+-raws\b/i;
+
 export type Hdr = "hdr10" | "hdr10plus" | "hlg" | "dv";
 export type Codec = "h264" | "hevc" | "av1" | "other";
 export type Source = "remux" | "bluray" | "web-dl" | "webrip" | "hdtv" | "dvd" | "unknown";
@@ -26,7 +31,12 @@ export type Release = {
   audio: AudioFormat;
   atmos: boolean;
   channels: string | null;
+  /** Audio languages (ISO 639-1), as listed or guessed; "multi" when it says so without naming them; empty when unknown. */
   languages: string[];
+  /** Subtitle languages listed for it; empty when unknown. */
+  subtitles: string[];
+  /** Megabits a second when the listing says (season packs make size alone misleading). */
+  mbps: number | null;
   bytes: number | null;
   /** True when the debrid service already has it (plays at once), false when it would have to fetch it, null when unknown. */
   cached: boolean | null;
@@ -84,23 +94,45 @@ export function parseRelease(input: { url: string; name?: string; title?: string
     : has(t, new RegExp(`\\b(dd|ac ?3)${end}`)) ? "ac3" : has(t, new RegExp(`\\baac${end}`)) ? "aac" : has(t, /\bopus\b/) ? "opus" : has(t, /\bflac\b/) ? "flac" : "unknown";
   const ch = /(?<![\d])([257])[ .]([01])(?!\d)/.exec(text.toLowerCase().replace(/_/g, " "));
   const channels = ch ? `${ch[1]}.${ch[2]}` : null;
-  const languages = [
-    ...(has(t, /\b(multi|dual ?audio)\b/) ? ["multi"] : []),
-    ...(has(t, /\b(japanese|jpn|jap)\b/) ? ["ja"] : []),
-    ...(has(t, /\b(english|eng)\b/) ? ["en"] : []),
-    ...(has(t, /\b(french|vff|vf2|truefrench)\b/) ? ["fr"] : []),
-    ...(has(t, /\b(spanish|esp|latino)\b/) ? ["es"] : []),
-    ...(has(t, /\b(german|ger)\b/) ? ["de"] : []),
-  ];
+  /* AIOStreams lists audio after 🌎 and subtitles after 📝; otherwise the name says what it can. */
+  const listed = (mark: string) => {
+    const at = text.indexOf(mark);
+    if (at < 0) return [] as string[];
+    const rest = text.slice(at + mark.length).split(/📝|📁|\n| \/ /u)[0];
+    return [...new Set(rest.split("|").map((x) => languageOf(x)).filter((x): x is string => Boolean(x)))];
+  };
+  const fansub = subGroups.test(text);
+  /* "Raws" are Japanese audio with no subtitles at all; Erai-raws, despite the name, is a subtitle group. */
+  const raws = /(?<!erai)-raws\b/i.test(text);
+  const dual = has(t, /\bdual ?audio\b/);
+  const dubbed = has(t, /\b(dub|dubbed|eng ?dub)\b/) && !has(t, /\bsub(bed|s)?\b(?! ?(&|and) ?dub)/);
+  let languages = listed("🌎");
+  let subtitles = listed("📝");
+  if (fansub && !dual && !dubbed) { subtitles = raws ? [] : [...new Set([...subtitles, ...languages, ...(subtitles.length || languages.length ? [] : ["en"])])]; languages = ["ja"]; }
+  if (!languages.length) {
+    languages = [
+      ...(dual ? ["ja", "en"] : has(t, /\bmulti\b/) ? ["multi"] : []),
+      ...(has(t, /\b(japanese|jpn)\b/) ? ["ja"] : []),
+      ...(has(t, /\b(english|eng)\b/) || dubbed ? ["en"] : []),
+      ...(has(t, /\b(french|vff|vf2|truefrench)\b/) ? ["fr"] : []),
+      ...(has(t, /\b(spanish|esp|latino)\b/) ? ["es"] : []),
+      ...(has(t, /\b(german|ger)\b/) ? ["de"] : []),
+    ].filter((x, i, all) => all.indexOf(x) === i);
+  }
+  if (!subtitles.length && has(t, /\b(esubs?|eng ?subs?|english ?subs?)\b/)) subtitles = ["en"];
+  const rate = /\((\d+(?:\.\d+)?)\s*(mbps|kbps)\)/i.exec(text);
+  const mbps = rate ? Number(rate[1]) / (rate[2].toLowerCase() === "kbps" ? 1000 : 1) : null;
   const sized = /(\d+(?:\.\d+)?)\s*(tb|gb|mb)\b/i.exec(text);
   const bytes = input.bytes && input.bytes > 0 ? input.bytes : sized ? Math.round(Number(sized[1]) * { tb: 1024 ** 4, gb: 1024 ** 3, mb: 1024 ** 2 }[sized[2].toLowerCase() as "tb" | "gb" | "mb"]) : null;
   /* AIOStreams marks what the debrid service holds with ⚡ or a plus, what it would fetch with ⏳. */
   const cached = /⚡|\[[a-z]{2,3}\+\]/i.test(text) ? true : /⏳|\[[a-z]{2,3} download\]/i.test(text) ? false : null;
   const service = has(t, /\b(usenet|nzb|nzbdav|easynews|altmount)\b/) ? "usenet" : has(t, /\b(rd|real ?debrid|tb|torbox|ad|alldebrid|pm|premiumize|debrid)\b/) || cached !== null ? "debrid" : has(t, /\b(p2p|torrent)\b/) ? "p2p" : "unknown";
-  const junk = has(t, /\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine|scr|screener|workprint)\b/);
+  /* Cinema recordings, and the extras a search drags in with an episode: openings, previews, shorts. */
+  const junk = has(t, /\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine|scr|screener|workprint)\b/)
+    || has(t, /\b(ncop|nced|creditless|preview|trailer|mini anime|teaser|pv)\b/) || (mbps !== null && mbps < 0.4);
   return {
     url: input.url, name: (input.name || "").trim(), filename, height, source, codec, tenBit: has(t, /\b10 ?bit\b/) || hdr.length > 0,
-    hdr, dvProfile, audio, atmos: has(t, /\batmos\b/), channels, languages, bytes, cached, service, junk,
+    hdr, dvProfile, audio, atmos: has(t, /\batmos\b/), channels, languages, subtitles, mbps, bytes, cached, service, junk,
   };
 }
 
@@ -111,12 +143,12 @@ export function heightCap(device: Device, quality: Quality): number {
   return Math.min(screen, byQuality);
 }
 
-/** Megabits a second, from the file's size and the running time. */
-export const bitrate = (r: Pick<Release, "bytes">, minutes: number | null) => (r.bytes && minutes ? (r.bytes * 8) / (minutes * 60) / 1e6 : null);
+/** Megabits a second: as listed, else from the file's size and the running time. */
+export const bitrate = (r: Pick<Release, "bytes"> & { mbps?: number | null }, minutes: number | null) => (r.mbps ? r.mbps : r.bytes && minutes ? (r.bytes * 8) / (minutes * 60) / 1e6 : null);
 
 /** Why a release won't do on this device, or null when it plays. */
 export function unplayable(r: Release, device: Device, minutes: number | null): string | null {
-  if (r.junk) return "a cinema recording";
+  if (r.junk) return "not the film or episode itself";
   if (r.cached === false) return "not ready to stream";
   if (r.codec !== "other" && r.codec !== "h264" && !device.codecs.includes(r.codec)) return `${r.codec.toUpperCase()} isn't supported here`;
   /* Profile 5 has no HDR10 under it: elsewhere the picture comes out purple and green. */
@@ -130,7 +162,24 @@ export function unplayable(r: Release, device: Device, minutes: number | null): 
 const sourceRank: Record<Source, number> = { remux: 5, bluray: 4, "web-dl": 3, webrip: 2, hdtv: 1, dvd: 0, unknown: 1 };
 
 /** Higher is better. Close to the cap, then picture, then sound, then a sensible size. */
-export function score(r: Release, device: Device, quality: Quality, minutes: number | null, language = "en"): number {
+/**
+ * How well a release fits the languages wanted. A file with the wanted audio
+ * scores up; one known to lack it scores down (far down when it is a dub
+ * someone asked for, since the original-language version is never a dub).
+ */
+export function languageScore(r: Pick<Release, "languages" | "subtitles">, want: LanguageWant | string): number {
+  const w = typeof want === "string" ? { audio: want, original: "", subtitles: null } : want;
+  const known = r.languages.length > 0;
+  const hasAudio = r.languages.includes(w.audio) || r.languages.includes("multi");
+  let s = 0;
+  if (hasAudio) s += 40;
+  else if (known) s -= w.audio === w.original ? 20 : 200;
+  else if (w.original && w.audio !== w.original) s -= 60;
+  if (w.subtitles && w.audio !== w.subtitles) s += r.subtitles.includes(w.subtitles) ? 20 : r.subtitles.length ? -40 : 0;
+  return s;
+}
+
+export function score(r: Release, device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en"): number {
   const cap = heightCap(device, quality);
   let s = 0;
   const h = r.height || 720;
@@ -144,7 +193,7 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
   if ((r.audio === "truehd" || r.audio.startsWith("dts")) && !device.passthrough.includes(r.audio)) s -= 10;
   if (r.cached) s += 80;
   if (r.service === "usenet") s += 40; /* our own provider: no one else's limits */
-  if (language && (r.languages.includes(language) || r.languages.includes("multi"))) s += 15;
+  s += languageScore(r, language);
   const mbps = bitrate(r, minutes);
   if (mbps !== null) {
     const phone = device.client === "android" || device.client === "ios";
@@ -155,7 +204,7 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
 }
 
 /** Everything that plays here, best first. */
-export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language = "en"): Release[] {
+export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en"): Release[] {
   return releases
     .filter((r) => unplayable(r, device, minutes) === null)
     .map((r) => ({ r, s: score(r, device, quality, minutes, language) }))

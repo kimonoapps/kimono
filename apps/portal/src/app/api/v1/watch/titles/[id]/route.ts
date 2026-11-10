@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { ensureTitle, portalOrigin, setListed, setRating, setReminder, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
+import { ensureTitle, portalOrigin, setListed, setRating, setReminder, setTracks, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -21,12 +21,14 @@ export async function PUT(request: Request, { params }: Context) {
   const read = await readJson(request);
   if ("response" in read) return read.response;
   const { id } = await params;
-  const body = (read.body ?? {}) as { inList?: unknown; rating?: unknown; reminding?: unknown };
+  const body = (read.body ?? {}) as { inList?: unknown; rating?: unknown; reminding?: unknown; tracks?: unknown };
   return watch(async (cfg) => {
     await ensureTitle(cfg, id);
     const db = watchDb();
     if (typeof body.inList === "boolean") setListed(db, user.username, id, body.inList);
     if (typeof body.reminding === "boolean") setReminder(db, user.username, id, body.reminding);
+    /* What they switched to in the player, `{ audio, subtitles }` (a language, "signs" or "off"), kept for the show; null forgets it. */
+    if (body.tracks !== undefined) setTracks(db, user.username, id, body.tracks);
     if (body.rating !== undefined) {
       if (body.rating !== null && typeof body.rating !== "string") throw new WatchProblem("Rate it down, up or love.");
       setRating(db, user.username, id, body.rating as Rating | null);

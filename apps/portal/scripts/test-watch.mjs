@@ -344,7 +344,7 @@ test('a search already under way is joined, not started twice, and forgotten whe
   assert.equal(running.size, 0);
   await assert.rejects(ahead.shared(running, 'k', async () => { throw new Error('down'); }), /down/);
   assert.equal(running.size, 0, 'a failed search is forgotten too, so the next one tries again');
-  assert.equal(ahead.streamsKey('movie-603', 0, 0), 'streams:movie-603:0:0');
+  assert.equal(ahead.streamsKey('movie-603', 0, 0), 'streams2:movie-603:0:0');
 });
 
 test('found streams wait in the same cache play reads, for twenty minutes', () => {
@@ -467,4 +467,75 @@ test('setup and the last error are kept for the status page; a later success cle
   assert.equal(status.lastError(db), null);
   status.noteError(db, 'The stream search didn\'t answer.', 7);
   assert.deepEqual(status.lastError(db), { message: 'The stream search didn\'t answer.', at: 7 });
+});
+
+/* ───── Sub, dub and languages ───── */
+
+import * as languages from '../src/lib/watch/languages.ts';
+
+/* As AIOStreams lists them for Frieren episode 1. */
+const multi = releases.parseRelease({ url: 'u1', name: '[ND⚡] Usenet 1080p', description: '🎥 WEB-DL 🎞️ AVC 🏷️ OldT 📡 Crunchyroll\n🎧 AAC\n📦 61.1 GB (11.6 Mbps)📅 149d 🔍 NZBgeek\n🌎 English | French | German | Japanese | Spanish📝 German | English | Latino | Arabic\n📁 Frieren.Beyond.Journeys.End.2023.S01.1080p.CR.WEB-DL.MULTI.AAC2.0.H.264-OldT', bytes: 61.1 * 1024 ** 3 });
+const subsplease = releases.parseRelease({ url: 'u2', name: '[RD⚡] Torrentio 1080p', description: '🏷️ SubsPlease\n📦 1.59 GB (8.48 Mbps)👥 106 🔍 NyaaSi\n📁 [SubsPlease] Sousou no Frieren - 01v3 (1080p) [9F4DAB7F].mkv', filename: '[SubsPlease] Sousou no Frieren - 01v3 (1080p) [9F4DAB7F].mkv' });
+const erai = releases.parseRelease({ url: 'u3', name: '[RD⚡] Torrentio 1080p', description: '🏷️ Erai-raws\n📦 1.59 GB (8.48 Mbps)\n🌎 English | Russian | Arabic📝 English | Russian | Arabic\n📁 [Erai-raws] Sousou no Frieren - 01 [1080p][Multiple Subtitle][141638CC].mkv' });
+const extra = releases.parseRelease({ url: 'u4', name: '[RD⏳] Torrentio 1080p', description: '🎥 BluRay 🎞️ HEVC 🏷️ Beatrice-Raws\n📦 30.8 MB (164 Kbps)\n📁 [Beatrice-Raws] Sousou no Frieren (OO Magic Episode 01) [BDRip 1920x1080 HEVC TrueHD].mkv' });
+const mini = releases.parseRelease({ url: 'u5', name: '[RD⚡] Torrentio 1080p', description: '📦 10.7 MB\n📁 [Piyoko] Sousou no Frieren - Marumaru no Mahou (Mini Anime) - 01 [WEB 1080p YT VP9 AAC 2.0].mkv' });
+
+test("AIOStreams' language lists become audio and subtitles; fansub groups are Japanese audio", () => {
+  assert.deepEqual(multi.languages, ['en', 'fr', 'de', 'ja', 'es']);
+  assert.deepEqual(multi.subtitles, ['de', 'en', 'es', 'ar']);
+  assert.deepEqual(subsplease.languages, ['ja']);
+  assert.deepEqual(subsplease.subtitles, ['en']);
+  assert.deepEqual(erai.languages, ['ja'], "Erai-raws' listed languages are its subtitles");
+  assert.ok(erai.subtitles.includes('en') && erai.subtitles.includes('ru'));
+  assert.deepEqual(releases.parseRelease({ url: 'x', name: 'Show S01E01 1080p Dual Audio WEB-DL' }).languages, ['ja', 'en']);
+});
+
+test("a season pack's listed bitrate is used, not its size; extras and shorts are not the episode", () => {
+  assert.equal(multi.mbps, 11.6);
+  assert.equal(releases.bitrate(multi, 26), 11.6);
+  assert.equal(releases.unplayable(multi, tv, 26), null, 'a 61 GB pack still plays');
+  assert.equal(extra.junk, true, 'a 164 Kbps extra');
+  assert.equal(mini.junk, true, 'the mini anime');
+});
+
+test('anime defaults to the original with full subtitles; a dub gets signs only', () => {
+  const anime = { shelf: 'Anime', originalLanguage: 'ja' };
+  const prefs = { ...model.defaultPrefs };
+  assert.deepEqual(languages.trackPlan(anime, prefs), { audio: 'ja', subtitles: { language: 'en', kind: 'full' } });
+  assert.deepEqual(languages.trackPlan(anime, { ...prefs, animeAudio: 'dub' }), { audio: 'en', subtitles: { language: 'en', kind: 'signs' } });
+  assert.deepEqual(languages.trackPlan({ shelf: 'Anime', originalLanguage: '' }, prefs).audio, 'ja', 'anime with no language on record is Japanese');
+  const french = { shelf: 'Film', originalLanguage: 'fr' };
+  assert.deepEqual(languages.trackPlan(french, prefs), { audio: 'fr', subtitles: { language: 'en', kind: 'full' } });
+  assert.deepEqual(languages.trackPlan(french, { ...prefs, filmAudio: 'mine' }).audio, 'en');
+  assert.equal(languages.trackPlan(french, { ...prefs, subtitles: 'off' }).subtitles, null);
+  assert.deepEqual(languages.trackPlan(anime, prefs, { audio: 'en', subtitles: 'off' }), { audio: 'en', subtitles: null }, "the show's own choice wins");
+  const told = languages.playerTracks(languages.trackPlan(anime, prefs));
+  assert.deepEqual(told.audio.tags, ['ja', 'jpn']);
+  assert.deepEqual(told.subtitles.tags, ['en', 'eng']);
+});
+
+test('someone who wants the dub never gets a Japanese-only release when a dubbed one exists', () => {
+  const anime = { shelf: 'Anime', originalLanguage: 'ja' };
+  const sub = languages.wantFor(languages.trackPlan(anime, model.defaultPrefs), 'ja');
+  const dub = languages.wantFor(languages.trackPlan(anime, { ...model.defaultPrefs, animeAudio: 'dub' }), 'ja');
+  assert.ok(releases.languageScore(subsplease, dub) < -100);
+  assert.ok(releases.languageScore(multi, dub) > 0);
+  assert.ok(releases.languageScore(subsplease, sub) > 0);
+  const device = { ...phone, codecs: ['h264', 'hevc'] };
+  assert.equal(releases.rank([subsplease, multi], device, 'auto', 26, dub)[0], multi);
+});
+
+test('a show remembers the tracks picked in the player; settings take the new choices', () => {
+  const db = fresh();
+  assert.equal(model.tracksOf(db, 'a', 'tv-1'), null);
+  model.setTracks(db, 'a', 'tv-1', { audio: 'en', subtitles: 'signs' });
+  assert.deepEqual(model.tracksOf(db, 'a', 'tv-1'), { audio: 'en', subtitles: 'signs' });
+  assert.throws(() => model.setTracks(db, 'a', 'tv-1', { audio: 'english', subtitles: 'x' }), /audio language/);
+  model.setTracks(db, 'a', 'tv-1', null);
+  assert.equal(model.tracksOf(db, 'a', 'tv-1'), null);
+  model.savePrefs(db, 'a', { animeAudio: 'dub', filmAudio: 'nope', subtitles: 'always' });
+  const p = model.prefsOf(db, 'a');
+  assert.equal(p.animeAudio, 'dub');
+  assert.equal(p.filmAudio, 'original');
+  assert.equal(p.subtitles, 'always');
 });

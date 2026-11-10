@@ -47,6 +47,8 @@ export type Title = {
   nextAirDate: string | null;
   seasonCount: number;
   cast: string[];
+  /** ISO 639-1, from TMDB: "ja" for most anime. Decides what "original audio" means. */
+  originalLanguage: string;
   fetchedAt: number;
 };
 
@@ -72,12 +74,20 @@ export type Prefs = {
   fillers: FillerChoice;
   /** "auto" picks for the device and connection; the rest cap it. */
   quality: "auto" | "2160" | "1080" | "720" | "saver";
+  /** The person's own language (ISO 639-1): what "my language" and subtitles mean. */
   audioLanguage: string;
+  /** Subtitles in this language; empty means the same as audioLanguage. */
   subtitleLanguage: string;
+  /** Anime in its original audio with subtitles, or dubbed into the person's language. */
+  animeAudio: "original" | "dub";
+  /** Everything else: its original audio, or the person's language when there is a dub. */
+  filmAudio: "original" | "mine";
+  /** "auto": subtitles when the audio isn't the person's language (and signs-only when it is). */
+  subtitles: "auto" | "always" | "off";
   autoplayNext: boolean;
   skipIntros: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", audioLanguage: "en", subtitleLanguage: "", autoplayNext: true, skipIntros: false };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", audioLanguage: "en", subtitleLanguage: "", animeAudio: "original", filmAudio: "original", subtitles: "auto", autoplayNext: true, skipIntros: false };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -119,7 +129,10 @@ export function migrate(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, body TEXT NOT NULL, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, body TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS tracks (username TEXT NOT NULL, title_id TEXT NOT NULL, audio TEXT NOT NULL, subtitles TEXT NOT NULL, PRIMARY KEY (username, title_id));
   `);
+  const columns = (db.prepare("PRAGMA table_info(titles)").all() as { name: string }[]).map((c) => c.name);
+  if (!columns.includes("original_language")) db.exec("ALTER TABLE titles ADD COLUMN original_language TEXT NOT NULL DEFAULT ''");
 }
 
 /* ───── Titles ───── */
@@ -144,19 +157,19 @@ function titleFrom(row: Row): Title {
     poster: (row.poster as string) || null, backdrop: (row.backdrop as string) || null, logo: (row.logo as string) || null,
     runtime: num(row.runtime), popularity: Number(row.popularity), status: String(row.status),
     nextAirDate: (row.next_air_date as string) || null, seasonCount: Number(row.season_count),
-    cast: list(row.cast_names), fetchedAt: Number(row.fetched_at),
+    cast: list(row.cast_names), originalLanguage: String(row.original_language ?? ""), fetchedAt: Number(row.fetched_at),
   };
 }
 
 export function putTitle(db: DatabaseSync, t: Title) {
-  db.prepare(`INSERT INTO titles (id, kind, tmdb_id, imdb_id, anilist_id, mal_id, name, overview, year, age, genres, moods, shelf, poster, backdrop, logo, runtime, popularity, status, next_air_date, season_count, cast_names, fetched_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  db.prepare(`INSERT INTO titles (id, kind, tmdb_id, imdb_id, anilist_id, mal_id, name, overview, year, age, genres, moods, shelf, poster, backdrop, logo, runtime, popularity, status, next_air_date, season_count, cast_names, original_language, fetched_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET imdb_id=excluded.imdb_id, anilist_id=excluded.anilist_id, mal_id=excluded.mal_id, name=excluded.name, overview=excluded.overview,
       year=excluded.year, age=excluded.age, genres=excluded.genres, moods=excluded.moods, shelf=excluded.shelf, poster=excluded.poster, backdrop=excluded.backdrop,
       logo=excluded.logo, runtime=excluded.runtime, popularity=excluded.popularity, status=excluded.status, next_air_date=excluded.next_air_date,
-      season_count=excluded.season_count, cast_names=excluded.cast_names, fetched_at=excluded.fetched_at`)
+      season_count=excluded.season_count, cast_names=excluded.cast_names, original_language=excluded.original_language, fetched_at=excluded.fetched_at`)
     .run(t.id, t.kind, t.tmdbId, t.imdbId, t.anilistId, t.malId, t.name, t.overview, t.year, t.age, JSON.stringify(t.genres), JSON.stringify(t.moods), t.shelf,
-      t.poster, t.backdrop, t.logo, t.runtime, t.popularity, t.status, t.nextAirDate, t.seasonCount, JSON.stringify(t.cast), t.fetchedAt);
+      t.poster, t.backdrop, t.logo, t.runtime, t.popularity, t.status, t.nextAirDate, t.seasonCount, JSON.stringify(t.cast), t.originalLanguage ?? "", t.fetchedAt);
 }
 
 export function getTitle(db: DatabaseSync, id: string): Title | null {
@@ -305,6 +318,9 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
     quality: pick(input.quality, ["auto", "2160", "1080", "720", "saver"] as const, base.quality),
     audioLanguage: lang(input.audioLanguage, base.audioLanguage),
     subtitleLanguage: lang(input.subtitleLanguage, base.subtitleLanguage),
+    animeAudio: pick(input.animeAudio, ["original", "dub"] as const, base.animeAudio),
+    filmAudio: pick(input.filmAudio, ["original", "mine"] as const, base.filmAudio),
+    subtitles: pick(input.subtitles, ["auto", "always", "off"] as const, base.subtitles),
     autoplayNext: typeof input.autoplayNext === "boolean" ? input.autoplayNext : base.autoplayNext,
     skipIntros: typeof input.skipIntros === "boolean" ? input.skipIntros : base.skipIntros,
   };
@@ -314,6 +330,23 @@ export function savePrefs(db: DatabaseSync, username: string, raw: unknown): Pre
   const prefs = cleanPrefs(raw, prefsOf(db, username));
   db.prepare("INSERT INTO prefs (username, body) VALUES (?,?) ON CONFLICT(username) DO UPDATE SET body = excluded.body").run(username, JSON.stringify(prefs));
   return prefs;
+}
+
+/** The tracks someone picked for a show in the player, kept so the next episode starts the same way. */
+export type TrackChoice = { audio: string; subtitles: string };
+export function setTracks(db: DatabaseSync, username: string, titleId: string, raw: unknown) {
+  /* null forgets the choice: back to the person's settings. */
+  if (raw === null) { db.prepare("DELETE FROM tracks WHERE username = ? AND title_id = ?").run(username, titleId); return; }
+  const input = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const audio = typeof input.audio === "string" && /^[a-z]{2}$/.test(input.audio) ? input.audio : null;
+  const subtitles = typeof input.subtitles === "string" && (/^[a-z]{2}$/.test(input.subtitles) || input.subtitles === "off" || input.subtitles === "signs") ? input.subtitles : null;
+  if (!audio || !subtitles) throw new WatchProblem("Send an audio language and a subtitle language, signs or off.");
+  db.prepare("INSERT INTO tracks (username, title_id, audio, subtitles) VALUES (?,?,?,?) ON CONFLICT(username, title_id) DO UPDATE SET audio = excluded.audio, subtitles = excluded.subtitles")
+    .run(username, titleId, audio, subtitles);
+}
+export function tracksOf(db: DatabaseSync, username: string, titleId: string): TrackChoice | null {
+  const row = db.prepare("SELECT audio, subtitles FROM tracks WHERE username = ? AND title_id = ?").get(username, titleId) as Row | undefined;
+  return row ? { audio: String(row.audio), subtitles: String(row.subtitles) } : null;
 }
 
 /* ───── A small cache for answers from elsewhere (trending lists, stream lookups) ───── */

@@ -21,7 +21,7 @@ export const streamTtl = 20 * 60 * 1000;
 export const playableTtl = 24 * 60 * 60 * 1000;
 
 /** The cache key for one film (season and episode 0) or episode's releases. */
-export const streamsKey = (titleId: string, season: number, episode: number) => `streams:${titleId}:${season}:${episode}`;
+export const streamsKey = (titleId: string, season: number, episode: number) => `streams2:${titleId}:${season}:${episode}`;
 
 /**
  * Runs `work` once per key at a time: a second caller while it runs gets the
