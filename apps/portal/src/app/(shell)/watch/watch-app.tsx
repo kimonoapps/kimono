@@ -94,23 +94,49 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
 
   /* ───── Home, and everything else built from it ───── */
   const filterRef = useRef<Shelf | null>(null);
+  const [moreLoading, setMoreLoading] = useState(false);
+  const moreBusy = useRef(false);
+  const homeRef = useRef(home);
+  useLayoutEffect(() => { homeRef.current = home; }, [home]);
   const remember = useCallback((h: Home) => {
     for (const row of h.rows) for (const card of row.items) known.current.set(card.id, { ...known.current.get(card.id), ...card });
   }, []);
+  /* My list and New & hot read Home's own rows; they page until those have come. */
+  const loadAll = useCallback(() => watchApi.homeUntil(["continue", "list"]).then((h) => { remember(h); setAll(h); }, () => {}), [remember]);
+  /* Home again after a change elsewhere: the first page fresh, the pages already scrolled through kept after it. */
   const loadHome = useCallback(async (shelf: Shelf | null) => {
     try {
       const h = await watchApi.home(shelf);
       remember(h);
-      if (!shelf) setAll(h);
-      setHome((now) => (shelf === filterRef.current ? h : now));
+      setHome((now) => {
+        if (shelf !== filterRef.current) return now;
+        if (!now) return h;
+        const fresh = new Set(h.rows.map((r) => r.id));
+        return { ...h, rows: [...h.rows, ...now.rows.filter((r) => !fresh.has(r.id))], next: now.rows.length > h.rows.length ? now.next : h.next };
+      });
+      void loadAll();
     } catch { say("Watch isn't answering. Try again in a moment."); }
-  }, [remember, say]);
-  const chooseShelf = (shelf: Shelf | null) => { filterRef.current = shelf; setHome(null); setFilter(shelf); };
+  }, [remember, say, loadAll]);
+  const chooseShelf = (shelf: Shelf | null) => { filterRef.current = shelf; setHome(null); setMoreLoading(false); setFilter(shelf); };
   useEffect(() => {
     if (!profile) return;
-    watchApi.home(filter).then((h) => { remember(h); if (!filter) setAll(h); if (filterRef.current === filter) setHome(h); }, () => say("Watch isn't answering. Try again in a moment."));
-    if (filter) watchApi.home(null).then((h) => { remember(h); setAll(h); }, () => {});
-  }, [profile, filter, remember, say]);
+    watchApi.home(filter).then((h) => { remember(h); if (filterRef.current === filter) setHome(h); }, () => say("Watch isn't answering. Try again in a moment."));
+    void loadAll();
+  }, [profile, filter, remember, say, loadAll]);
+  /* Home goes on as long as you scroll: the next page when its last rows come near. */
+  const loadMore = useCallback(() => {
+    const now = homeRef.current, shelf = filterRef.current;
+    if (!now?.next || moreBusy.current) return;
+    moreBusy.current = true; setMoreLoading(true);
+    watchApi.home(shelf, now.next).then((page) => {
+      remember(page);
+      setHome((h) => {
+        if (!h || shelf !== filterRef.current || h.next !== now.next) return h;
+        const have = new Set(h.rows.map((r) => r.id));
+        return { ...h, rows: [...h.rows, ...page.rows.filter((r) => !have.has(r.id))], next: page.next ?? null };
+      });
+    }, () => {}).finally(() => { moreBusy.current = false; setMoreLoading(false); });
+  }, [remember]);
 
   /* ───── The bar turns solid once the page moves ───── */
   useEffect(() => {
@@ -123,7 +149,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
   const go = (to: Page) => {
     setPage(to); setSheetId(null); writePlace(to, null, true); root.current?.scrollTo(0, 0);
     /* Lists and what's coming change from other devices too: ask again. */
-    if (to === "hot" || to === "list") watchApi.home(null).then((h) => { remember(h); setAll(h); }, () => {});
+    if (to === "hot" || to === "list") void loadAll();
   };
   const goRef = useRef(go);
   useLayoutEffect(() => { goRef.current = go; });
@@ -158,7 +184,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
     setListed: (id, on) => {
       setMark(id, { inList: on });
       say(on ? "Added to My list" : "Removed from My list");
-      watchApi.mark(id, { inList: on }).then(() => loadHome(filterRef.current)).then(() => (filterRef.current ? watchApi.home(null).then((h) => { remember(h); setAll(h); }) : undefined))
+      watchApi.mark(id, { inList: on }).then(() => loadHome(filterRef.current))
         .catch(() => { setMark(id, { inList: !on }); say("That didn't work."); });
     },
     rate: (id, rating: Rating | null) => {
@@ -173,7 +199,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
     },
     known: () => [...known.current.values()],
     together: (id, at) => setAsking({ titleId: id, season: at?.season ?? 0, episode: at?.episode ?? 0, position: at?.position ?? 0 }),
-  }), [me, accent, prefs, say, listIds, setMark, loadHome, remember]);
+  }), [me, accent, prefs, say, listIds, setMark, loadHome]);
 
   /* ───── Watch together: who's asked you, and starting one ───── */
   useEffect(() => {
@@ -254,7 +280,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
           <button className="kw-iconbtn" aria-label="Settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => go("settings")}><Icon name="gear" /></button>
           <AccountMenu profile={profile} onSettings={() => go("settings")} onSwitch={switchProfile} />
         </header>
-        {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} />
+        {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} more={moreLoading} onMore={loadMore} />
           : page === "settings" ? <SettingsPage me={me} onSwitch={switchProfile} signOut={signOut} />
           : page === "hot" ? <HotPage ids={hotIds} />
             : <ListPage cards={listCards} />}

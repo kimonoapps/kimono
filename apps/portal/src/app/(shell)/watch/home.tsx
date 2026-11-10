@@ -7,8 +7,10 @@ import { Icon } from "./icons";
 
 const chips: [Shelf, string][] = [["Series", "Series"], ["Film", "Films"], ["Anime", "Anime"]];
 
-export function HomePage({ home, filter, setFilter, chipsAway }: {
+export function HomePage({ home, filter, setFilter, chipsAway, more, onMore }: {
   home: Home | null; filter: Shelf | null; setFilter: (shelf: Shelf | null) => void; chipsAway: boolean;
+  /** The next page of rows is on its way; `onMore` asks for it. */
+  more: boolean; onMore: () => void;
 }) {
   const watch = useWatch();
   const top = home?.rows.find((r) => r.kind === "top");
@@ -52,6 +54,10 @@ export function HomePage({ home, filter, setFilter, chipsAway }: {
         </Rail>
       </section>)}
       {home && !home.rows.length ? <p className="kw-empty" style={{ paddingInline: "var(--gutter-l)" }}>Nothing here yet.</p> : null}
+      {home?.next ? <>
+        {more ? <SkeletonRows count={2} /> : null}
+        <MoreRows key={`${filter ?? "all"}:${home.rows.length}`} onMore={onMore} />
+      </> : null}
     </div>
     <HoverCard />
   </main>;
@@ -157,4 +163,17 @@ function HoverCard() {
       </div>
     </> : null}
   </div>;
+}
+
+/* Watches the end of Home: when the last rows come within a couple of rows' height, the next page is asked for. */
+function MoreRows({ onMore }: { onMore: () => void }) {
+  const mark = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = mark.current;
+    if (!el) return;
+    const seen = new IntersectionObserver((entries) => { if (entries.some((e) => e.isIntersecting)) onMore(); }, { root: el.closest(".kw"), rootMargin: "0px 0px 700px 0px" });
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [onMore]);
+  return <div ref={mark} aria-hidden="true" style={{ height: 1 }} />;
 }

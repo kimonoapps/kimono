@@ -10,7 +10,8 @@ export type Card = {
 };
 export type ContinueCard = Card & { season: number; episode: number; fraction: number; left: number; label?: string };
 export type Row = { id: string; title: string; kind: "continue" | "top" | "cards" | string; items: (Card | ContinueCard)[] };
-export type Home = { featured: (Card & { backdropLarge: string | null; overview: string }) | null; rows: Row[] };
+/** A page of Home: the first has the hero; `next` asks for the page after it, null at the end. */
+export type Home = { featured: (Card & { backdropLarge: string | null; overview: string }) | null; rows: Row[]; next?: string | null };
 
 export type Layout = "single" | "continuous" | "seasons";
 export type Rating = "down" | "up" | "love";
@@ -89,7 +90,23 @@ const put = (body: unknown): RequestInit => ({ method: "PUT", body: JSON.stringi
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 export const watchApi = {
-  home: (shelf?: Shelf | null) => call<Home>(`home${shelf ? `?shelf=${shelf}` : ""}`),
+  home: (shelf?: Shelf | null, cursor?: string | null) => {
+    const q = new URLSearchParams();
+    if (shelf) q.set("shelf", shelf);
+    if (cursor) q.set("cursor", cursor);
+    return call<Home>(`home${q.size ? `?${q}` : ""}`);
+  },
+  /** Home's rows from the first page on until the ones wanted have come (My list, Continue watching), at most a few pages. */
+  homeUntil: async (want: string[], pages = 6) => {
+    let page = await call<Home>("home");
+    const all: Home = { ...page, rows: [...page.rows] };
+    for (let i = 1; i < pages && page.next && !want.every((id) => all.rows.some((r) => r.id === id)); i++) {
+      page = await call<Home>(`home?cursor=${encodeURIComponent(page.next)}`);
+      all.rows.push(...page.rows.filter((r) => !all.rows.some((x) => x.id === r.id)));
+      all.next = page.next;
+    }
+    return all;
+  },
   search: (q: string, signal?: AbortSignal) => call<{ results: Card[] }>(`search?q=${encodeURIComponent(q)}`, { signal }),
   title: (id: string, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`),
   mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null }) => call<TitleView>(`titles/${encodeURIComponent(id)}`, put(change)),
