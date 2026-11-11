@@ -15,12 +15,13 @@ function phone(): MobileOS | "desktop" {
 }
 const never = () => () => {};
 
-/** On a phone, a line saying the Kimono app is ready, leading to the steps for that phone. */
-export function KimonoAppOffer({ android, ios }: { android: boolean; ios: boolean }) {
+/** On a phone, a line saying the Kimono app is ready, leading to the steps for that phone: at the top of Home. On a computer, a card under the grid. */
+export function KimonoAppOffer({ android, ios, place }: { android: boolean; ios: boolean; place: "top" | "bottom" }) {
   const detected = useSyncExternalStore(never, phone, () => null);
   const [later, setLater] = useState(false);
   const os = later ? null : detected;
   if (!os || (os === "android" && !android) || (os === "ios" && !ios) || (os === "desktop" && !android && !ios)) return null;
+  if ((os === "desktop") !== (place === "bottom")) return null;
 
   function notNow() {
     try { window.localStorage.setItem(hidden, "1"); } catch { /* nothing to remember it in */ }

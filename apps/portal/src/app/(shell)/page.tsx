@@ -36,6 +36,7 @@ export default async function HomePage() {
   return (
     <AppShell user={user} brandColors={settings.brand.colors} active="home">
       <div className="page home-page">
+        <KimonoAppOffer android={Boolean(offer.android)} ios={offer.ios} place="top" />
         <header className="home-greeting">
           <p className="hero-kicker">{today}</p>
           <h1>Welcome home, <strong>{displayName}.</strong></h1>
@@ -58,7 +59,7 @@ export default async function HomePage() {
           </div>
           </section> : null}
         </HomeApps>
-        <KimonoAppOffer android={Boolean(offer.android)} ios={offer.ios} />
+        <KimonoAppOffer android={Boolean(offer.android)} ios={offer.ios} place="bottom" />
       </div>
     </AppShell>
   );
