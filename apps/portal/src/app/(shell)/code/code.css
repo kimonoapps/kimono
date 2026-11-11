@@ -1224,7 +1224,8 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-scene-ring rect.is-done { stroke: var(--k-lift); stroke-width: 1.8; stroke-linecap: round; transition: stroke-dashoffset 120ms linear; }
 .cd-scene-play:hover .cd-scene-ring rect:not(.is-done) { stroke: rgba(255, 253, 248, .42); }
 @media (prefers-reduced-motion: reduce) { .cd-scene-ring rect.is-done { transition: none; } }
-.cd-scene-play .i { fill: none; }
+/* a line icon (Play again's arrow) stays a line: as specific as the rule above, and after it */
+.cd-scene-play > svg.i { fill: none; }
 .cd-scene-play .i path[d^="M8 5.5"] { fill: currentColor; }
 .cd-scene-scrub { flex: 1; min-width: 0; height: 24px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
 .cd-scene-scrub::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--k-suo) var(--p), var(--k-container-highest) var(--p)); }
