@@ -3,8 +3,8 @@
 import { useEffect, type ReactNode } from "react";
 import { closeIris, expectPlace, immersiveAt, immersiveLayer, openIris, stillCopy } from "@/components/immersive";
 
-/* Back and forward have no press: the circle centres on the screen. */
-const middle = () => ({ x: innerWidth / 2, y: innerHeight / 2 });
+/* Back and forward have no press on the page: the circle centres on the top left, under the browser's own buttons. */
+const historyButtons = () => ({ x: 0, y: 0 });
 
 /*
  * 移 Moving between pages, as Material's shared x-axis and as the phone app
@@ -49,9 +49,9 @@ export function PageTransition({ children }: { children: ReactNode }) {
         const next = document.querySelector<HTMLElement>(".main-content:not([aria-hidden])");
         if (!next) return;
         const opening = immersiveLayer(next);
-        if (into) { if (opening) void openIris(opening, middle()).then(() => ghost?.remove()); else ghost?.remove(); return; }
+        if (into) { if (opening) void openIris(opening, historyButtons()).then(() => ghost?.remove()); else ghost?.remove(); return; }
         /* Out of Watch, its copy closes once Kimono beneath has painted. */
-        if (layer) { requestAnimationFrame(() => requestAnimationFrame(() => { if (ghost) void closeIris(ghost, middle()).then(() => ghost.remove()); })); return; }
+        if (layer) { requestAnimationFrame(() => requestAnimationFrame(() => { if (ghost) void closeIris(ghost, historyButtons()).then(() => ghost.remove()); })); return; }
         next.animate([{ opacity: 0, transform: `translateX(${back ? -48 : 48}px)` }, { opacity: 1, transform: "none" }], { duration: 380, delay: 40, easing: "cubic-bezier(.05, .7, .1, 1)", fill: "backwards" });
       };
       main.style.opacity = "0";
