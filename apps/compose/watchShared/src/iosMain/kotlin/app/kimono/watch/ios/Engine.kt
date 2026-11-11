@@ -67,6 +67,15 @@ class IosEngine(val player: IosPlayer) : PlaybackEngine {
     override fun setVolume(volume: Float) = player.setLevel(volume.toDouble())
     override fun deviceVolume(): Float? = player.systemVolume().takeIf { it >= 0 }?.toFloat()
     override fun setDeviceVolume(volume: Float) = player.setSystemVolume(volume.toDouble())
+    /* The screen's brightness is the whole phone's on iPhone: what it was is put back on leaving. */
+    private var brightnessBefore: Double? = null
+    override fun brightness(): Float? = platform.UIKit.UIScreen.mainScreen.brightness.toFloat()
+    override fun setBrightness(level: Float) {
+        val screen = platform.UIKit.UIScreen.mainScreen
+        if (brightnessBefore == null) brightnessBefore = screen.brightness
+        screen.brightness = level.coerceIn(0f, 1f).toDouble()
+    }
+    override fun restoreBrightness() { brightnessBefore?.let { platform.UIKit.UIScreen.mainScreen.brightness = it }; brightnessBefore = null }
     override fun subtitleLook(size: String, background: String) = player.subtitleLook(size, background)
 
     internal fun tracks(): List<MpvTrack> = runCatching { json.decodeFromString<List<MpvTrack>>(player.tracksJson()) }.getOrDefault(emptyList())

@@ -181,6 +181,8 @@ fun PlayerScreen(
     val deviceVolume = remember(engine) { !tv && engine.deviceVolume() != null }
     var volume by remember(engine) { mutableFloatStateOf(if (deviceVolume) engine.deviceVolume() ?: 1f else 1f) }
     var volumeSetAt by remember { mutableLongStateOf(0L) }
+    var brightness by remember(engine) { mutableStateOf(if (tv) null else engine.brightness()) }
+    DisposableEffect(engine) { onDispose { engine.restoreBrightness() } }
     /* The side buttons with the controls hidden: the volume bar alone comes up for a moment. */
     var volumePeek by remember { mutableIntStateOf(0) }
     var peeking by remember { mutableStateOf(false) }
@@ -515,6 +517,10 @@ fun PlayerScreen(
             if (deviceVolume) engine.setDeviceVolume(it) else engine.setVolume(it)
             if (peeking && !ctl) volumePeek++ else show(hold = true)
         }, onDone = { volumeSetAt = nowMs(); if (peeking && !ctl) volumePeek++ else show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(volumeAlpha).padding(start = 20.dp))
+        /* Right edge (phone): the screen's brightness. */
+        val light = brightness
+        if (!tv && light != null && !state.loading && chrome > 0.01f && post == Post.None && !chatOpen) EdgeSlider(light, { brightness = it; engine.setBrightness(it); show(hold = true) }, onDone = { show() },
+            Modifier.align(Alignment.CenterEnd).zIndex(3f).alpha(chrome).padding(end = 20.dp)) { I(Ic.bright, 22.dp, Color.White) }
 
         /* Skip intro / Skip recap, filling as the part runs. */
         val skip = state.skip
@@ -567,6 +573,17 @@ private fun PBtn(icon: ImageVector, onClick: () -> Unit, size: Dp = 48.dp, iconS
 @Composable
 private fun VolumeSlider(volume: Float, onChange: (Float) -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
     var before by remember { mutableFloatStateOf(1f) }
+    EdgeSlider(volume, onChange, onDone, modifier) {
+        Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({
+            if (volume > 0f) { before = volume; onChange(0f) } else onChange(before.takeIf { it > 0.05f } ?: 1f)
+            onDone()
+        }, focusScale = 1.08f), contentAlignment = Alignment.Center) { I(if (volume <= 0f) Ic.mute else Ic.vol, 22.dp, Color.White) }
+    }
+}
+
+/** An upright track at the screen's edge, drag up for more, with its [icon] under it. */
+@Composable
+private fun EdgeSlider(value: Float, onChange: (Float) -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier, icon: @Composable () -> Unit) {
     var height by remember { mutableIntStateOf(1) }
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.width(40.dp).height(132.dp).onSizeChanged { height = it.height }.pointerInput(Unit) {
@@ -584,16 +601,13 @@ private fun VolumeSlider(volume: Float, onChange: (Float) -> Unit, onDone: () ->
             }
         }, contentAlignment = Alignment.BottomCenter) {
             Box(Modifier.fillMaxHeight().width(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF)).drawBehind {
-                val h = size.height * volume
+                val h = size.height * value
                 drawRect(Night.suo, topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = size.copy(height = h))
             })
-            val px = with(LocalDensity.current) { (height * volume).toDp() }
+            val px = with(LocalDensity.current) { (height * value).toDp() }
             Box(Modifier.offset(y = -(px - 6.dp)).size(12.dp).clip(CircleShape).background(Night.suo))
         }
-        Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({
-            if (volume > 0f) { before = volume; onChange(0f) } else onChange(before.takeIf { it > 0.05f } ?: 1f)
-            onDone()
-        }, focusScale = 1.08f), contentAlignment = Alignment.Center) { I(if (volume <= 0f) Ic.mute else Ic.vol, 22.dp, Color.White) }
+        Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { icon() }
     }
 }
 

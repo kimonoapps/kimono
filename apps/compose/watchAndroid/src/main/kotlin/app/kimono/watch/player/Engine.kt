@@ -205,6 +205,23 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     override fun deviceVolume(): Float? =
         if (onTv || audio.isVolumeFixed || musicMax <= 0) null
         else audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / musicMax.toFloat()
+    /* Brightness is the player window's own: it ends with the player, the phone's setting untouched. */
+    private val window get() = (context as? android.app.Activity)?.window
+    override fun brightness(): Float? {
+        val w = window ?: return null
+        if (onTv) return null
+        val own = w.attributes.screenBrightness
+        if (own >= 0f) return own
+        return runCatching { android.provider.Settings.System.getInt(context.contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS) / 255f }.getOrDefault(0.5f).coerceIn(0f, 1f)
+    }
+    override fun setBrightness(level: Float) {
+        val w = window ?: return
+        w.attributes = w.attributes.apply { screenBrightness = level.coerceIn(0.01f, 1f) }
+    }
+    override fun restoreBrightness() {
+        val w = window ?: return
+        w.attributes = w.attributes.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+    }
     /* No flags: the slider on screen is the indicator, not the system's panel. */
     override fun setDeviceVolume(volume: Float) {
         runCatching { audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, kotlin.math.round(volume.coerceIn(0f, 1f) * musicMax).toInt(), 0) }

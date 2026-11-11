@@ -112,6 +112,11 @@ interface PlaybackEngine {
     /** The phone's own media volume, 0–1, or null where it can't be read (the slider then sets [setVolume]). */
     fun deviceVolume(): Float? = null
     fun setDeviceVolume(volume: Float) {}
+    /** The screen's brightness, 0–1, or null where the player can't set it; set for as long as the player is open. */
+    fun brightness(): Float? = null
+    fun setBrightness(level: Float) {}
+    /** Leaving the player: the screen goes back to the brightness it had. */
+    fun restoreBrightness() {}
     /** Switches on the audio and subtitles the server asked for. */
     fun applyHints(hints: TrackHints)
     /** How text subtitles look: [size] "small" | "medium" | "large", [background] "none" | "shadow" | "box". Styled ASS keeps its own. */
