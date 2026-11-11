@@ -93,6 +93,9 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -288,6 +291,14 @@ fun PlayerScreen(
         delay(3200)
         ctl = false
     }
+    /* Phone: a sheet or the chat left alone for a few seconds while it plays closes, and the picture is back on its own (not while typing). */
+    var touched by remember { mutableIntStateOf(0) }
+    val imeUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(touched, playing, sheet, chatOpen, imeUp) {
+        if (tv || !playing || imeUp || (sheet == null && !chatOpen)) return@LaunchedEffect
+        delay(2500)
+        sheet = null; chatOpen = false; ctl = false
+    }
 
     val focusRoot = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
@@ -359,6 +370,11 @@ fun PlayerScreen(
                 }
                 else -> { if (down) show(); false }
             }
+        }
+        .pointerInput(tv) {
+            if (tv) return@pointerInput
+            /* Any touch anywhere, sheets included, counts as someone still there. */
+            awaitPointerEventScope { while (true) { awaitPointerEvent(PointerEventPass.Initial); touched++ } }
         }
         .pointerInput(tv) {
             if (tv) return@pointerInput
