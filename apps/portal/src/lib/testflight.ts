@@ -22,6 +22,7 @@ const configPath = join(stateDir, "testflight.json");
 const phoneApps = [
   { bundleId: "app.kimono.compose", name: "Kimono" },
   { bundleId: "app.kimono.photos", name: "Kimono Photos" },
+  { bundleId: "app.kimono.watch", name: "Kimono Watch" },
 ] as const;
 const api = "https://api.appstoreconnect.apple.com";
 const syncEvery = 60 * 60 * 1000;
@@ -137,13 +138,23 @@ async function readKept(): Promise<{ invited: Invited; requests: Requests; apple
   }
 }
 
-/** Notes that someone asked for one iPhone app, for an admin to answer; asking again after a decline asks anew. */
+/**
+ * Notes that someone asked for one iPhone app. Kimono itself waits for an
+ * admin; any other app is theirs as soon as they ask, once they have Kimono.
+ * Asking again after a decline asks anew.
+ */
 export function requestTestflight(username: string, bundleId: PhoneAppId = mainApp): Promise<AppRequest["state"]> {
   return configTurn(async () => {
   const config = await readConfig();
   if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
   const key = username.toLowerCase();
   const existing = config.requests[key]?.[bundleId];
+  if (bundleId !== mainApp && config.requests[key]?.[mainApp]?.state === "approved") {
+    if (existing?.state === "approved") return "approved" as const;
+    const approved: AppRequest = { at: existing?.at ?? Date.now(), state: "approved", decidedAt: Date.now(), by: "asked" };
+    await writeConfig({ ...config, requests: { ...config.requests, [key]: { ...config.requests[key], [bundleId]: approved } } });
+    return "approved" as const;
+  }
   if (existing && existing.state !== "declined") return existing.state;
   await writeConfig({ ...config, requests: { ...config.requests, [key]: { ...config.requests[key], [bundleId]: { at: Date.now(), state: "pending" } } } });
   return "pending" as const;
