@@ -3,6 +3,7 @@
 package app.kimono.watch.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -369,7 +370,7 @@ fun PlayerScreen(
                 val third = size.width / 3f
                 val x = up.position.x
                 val right = x > third * 1.86f
-                fun single() { if (chatOpen) { chatOpen = false; show() } else if (pauseCard) { pauseCard = false; show() } else if (ctl && sheet == null) ctl = false else { sheet = null; show() } }
+                fun single() { if (chatOpen || sheet != null) { chatOpen = false; sheet = null; ctl = false } else if (pauseCard) { pauseCard = false; show() } else if (ctl) ctl = false else show() }
                 if (x >= third * 1.14f && !right) {
                     val y = up.position.y
                     val centre = y > size.height * 0.3f && y < size.height * 0.7f
@@ -492,8 +493,11 @@ fun PlayerScreen(
 
         /* Sheets, the chat and Settings sit over the play button row (zIndex 3), never under it. */
         AnimatedVisibility(sheet != null, Modifier.align(Alignment.BottomEnd).zIndex(4f).padding(end = 20.dp, bottom = 90.dp),
-            enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.7f)) { it / 10 }, exit = fadeOut(tween(200))) {
-            PlayerSheet(sheet, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party, onDefaults = { sheet = null; settings = true }, onLeave = onExit)
+            enter = fadeIn(tween(200)) + slideInVertically(spring(dampingRatio = 0.7f)) { it / 10 }, exit = fadeOut(tween(220)) + slideOutVertically(tween(220)) { it / 10 } + scaleOut(tween(220), targetScale = 0.97f)) {
+            /* keeps the last sheet's content while it leaves, so it fades out instead of vanishing */
+            var shown by remember { mutableStateOf(sheet) }
+            if (sheet != null) shown = sheet
+            PlayerSheet(shown, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party, onDefaults = { sheet = null; settings = true }, onLeave = onExit)
         }
 
         if (party != null) Box(Modifier.matchParentSize().zIndex(4f)) { PartyChat(party, chatOpen, tv, { chatOpen = false; show() }, chatFocus) }
