@@ -2,12 +2,12 @@
 
 The Portal keeps the iPhone apps' TestFlight testers in step with Kimono's accounts (`apps/portal/src/lib/testflight.ts`, rules in `testflight-plan.ts`). It uses the App Store Connect API key given under **Admin → Phone app**, stored in the Portal's state dir (`testflight.json`), never shown again. CI has its own copy (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY` secrets) for uploads only.
 
-## Asking and approval
+## Asking
 
-Nobody is invited until they ask and an admin approves, one app at a time (Kimono, Kimono Photos):
+Nobody is invited until they ask, one app at a time (Kimono, Kimono Photos). Asking approves it on the spot: Kimono for anyone, Kimono's other apps once they have Kimono.
 
 - **People ask** for Kimono on **Get the app** on their iPhone, and for Kimono's other apps from that app's screen inside Kimono (`POST /api/v1/app/testflight`, `{ "app": "app.kimono.photos" }`; the Kimono app when left out). `GET` answers where they stand with each app.
-- **Admins answer** under **Asking for the iPhone apps** on **Admin → Phone app**. Approving sends the invite straight away; declining lets them ask again later.
+- **Admins can still answer** under **Asking for the iPhone apps** on **Admin → Phone app** (a request for another app made before Kimono was theirs waits there). Declining takes access away until they ask again.
 
 Requests live in `testflight.json` (`requests`, by username and bundle ID). People who had asked before approval existed count as approved for Kimono only. Anyone already in an app's group stays there.
 
@@ -38,7 +38,7 @@ A re-invite replaces a pending or expired team invite with a new one (Apple emai
 
 Apple only lets someone accept at an Apple Account under the exact email the invite went to. When their Apple Account uses another address, the acceptance page keeps asking them to sign in again. To fix that, invite them at their Apple Account's email instead:
 
-- **The person themself:** **Use a different email** under Request access on **Get the app** (`POST /api/v1/app/testflight/email`, `{ "email": "…" }`; an empty email goes back to their Kimono email).
+- **The person themself:** **Use a different email** under Get your invite on **Get the app** (`POST /api/v1/app/testflight/email`, `{ "email": "…" }`; an empty email goes back to their Kimono email).
 - **An admin:** **Change email** on their row on **Admin → Phone app**; clearing it goes back to their Kimono email.
 
 It's kept per person in `testflight.json` (`appleEmails`). The sync that follows cancels what the Portal sent to the old email, or takes that address off the team if it was already accepted, and invites the new one. When their Kimono access ends, the new address is taken off like any other.

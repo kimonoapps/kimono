@@ -98,7 +98,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
     }
     fun open() { if (!openPhoneApp(phone, platform)) get() }
 
-    /* On an iPhone, an app this Kimono hands out through TestFlight is asked for, and an admin approves it. */
+    /* On an iPhone, an app this Kimono hands out through TestFlight is theirs as soon as they ask. */
     var beta by remember { mutableStateOf<TestflightApp?>(null) }
     var betaEmail by remember { mutableStateOf<String?>(null) }
     var asking by remember { mutableStateOf(false) }
@@ -195,9 +195,8 @@ fun openPhoneApp(phone: PhoneApp, platform: Platform): Boolean {
 @Composable
 private fun TestflightAsk(app: TestflightApp, email: String?, asking: Boolean, ask: () -> Unit, openTestflight: () -> Unit) {
     val line = when (app.status) {
-        "requested" -> "Waiting for an admin to approve"
-        "declined" -> "Not approved"
-        "waiting" -> "Approved. Apple will email you"
+        "requested" -> "Setting up your invite"
+        "waiting" -> "Apple will email you"
         "invited", "stuck" -> if (email != null) "Accept Apple's email to $email, then open TestFlight" else "Accept Apple's email, then open TestFlight"
         "problem" -> "Apple didn't take your email. Ask whoever runs your Kimono"
         "none" -> "Your Kimono account needs an email first"
@@ -206,7 +205,7 @@ private fun TestflightAsk(app: TestflightApp, email: String?, asking: Boolean, a
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         line?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center) }
         when (app.status) {
-            "idle", "declined" -> Seal(if (app.status == "declined") "Ask again" else "Ask for ${app.name}", onClick = ask, busy = asking)
+            "idle", "declined" -> Seal("Get ${app.name}", onClick = ask, busy = asking)
             "waiting" -> Seal("Check again", onClick = ask, tone = SealTone.Quiet, busy = asking)
             "invited", "stuck" -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Seal("Open TestFlight", onClick = openTestflight)

@@ -168,22 +168,21 @@ function IosSteps({ address, kimonoEmail }: { address: string | null; kimonoEmai
         </div>
       </> : null}
     </Step>
-    <Step n={2} title="Request access" done={done[1]}>
+    <Step n={2} title="Get your invite" done={done[1]}>
       {now === 1 ? !standing ? <p>Checking…</p> : <>
         {app?.status === "requested" ? <>
-          <p>Waiting for an admin to approve.</p>
+          <p>Setting up your invite…</p>
           <Seal tone="quiet" onClick={() => check()} busy={busy === "check"}>Check again</Seal>
         </> : app?.status === "waiting" ? <>
-          <p>Approved. Apple&apos;s invite is on its way to <b>{email}</b>.</p>
+          <p>Apple&apos;s invite is on its way to <b>{email}</b>.</p>
           <Seal tone="quiet" onClick={() => check()} busy={busy === "check"}>Check again</Seal>
         </> : app?.status === "problem" ? <>
           <p>Apple didn&apos;t take <b>{email}</b>.</p>
           {changing ? emailForm("Use this email", true) : otherEmail("Use a different email")}
-        </> : changing || !email ? emailForm("Request access", Boolean(email)) : <>
-          {app?.status === "declined" ? <p>Your last request wasn&apos;t approved.</p> : null}
+        </> : changing || !email ? emailForm("Send my invite", Boolean(email)) : <>
           <p>Is <b>{email}</b> your Apple Account email?</p>
           <div className="get-app-actions">
-            <Seal onClick={() => check()} busy={busy === "check"}>Yes, request access</Seal>
+            <Seal onClick={() => check()} busy={busy === "check"}>Yes, send my invite</Seal>
             <button type="button" className="txt" onClick={() => { setNewEmail(""); setChanging(true); }}>No, use another</button>
           </div>
         </>}
