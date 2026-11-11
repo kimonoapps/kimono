@@ -337,35 +337,41 @@ private fun LanguagePanel(page: TitlePage, l: app.kimono.watch.model.TitleLangua
     /* The original, the preferred language, the fallback and what plays now; any other from the list. */
     val near = listOf(l.original, l.preferred?.takeIf { it != "original" } ?: "", l.fallback ?: l.mine, l.audio).filter { it.isNotBlank() }.distinct()
     val audios = near.map { it to if (it == l.original) "${languageName(it)} (original)" else languageName(it) }
-    var more by remember { mutableStateOf(false) }
     val pick = { a: String -> if (a != l.audio) vm.language(app.kimono.watch.model.TrackChoice(a, if (page.tracks != null) l.subtitles else if (a == l.subtitleLanguage) "signs" else l.subtitleLanguage)) }
-    val subs = listOf("off" to "Off", "signs" to "Signs only", l.subtitleLanguage to languageName(l.subtitleLanguage))
+    /* Subtitles: off, signs only, then your subtitle language and the ones near it, then every other. */
+    val subsNear = listOf(l.subtitleLanguage, l.mine, l.subtitles.takeIf { it != "off" && it != "signs" } ?: "").filter { it.isNotBlank() }.distinct()
+    val subs = listOf("off" to "Off", "signs" to "Signs only") + subsNear.map { it to languageName(it) }
+    var open by remember { mutableStateOf<String?>(null) }
     Column(Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Night.surface2).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        /* One dropdown: the original first, then the person's languages, a rule, then every other. */
-        Column {
-            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Night.surface3).clickableScaleClipped(RoundedCornerShape(10.dp), { more = !more })
-                .padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Audio", style = ui(14, FontWeight.Bold), modifier = Modifier.weight(1f))
-                Text(audios.firstOrNull { it.first == l.audio }?.second ?: languageName(l.audio), style = ui(14, color = Night.fg2))
-                I(Ic.more, 20.dp, Night.fg3, Modifier.padding(start = 6.dp).rotate(if (more) 180f else 0f))
-            }
-            androidx.compose.animation.AnimatedVisibility(more) {
-                Column(Modifier.padding(top = 6.dp)) {
-                    audios.forEach { (v, name) -> Choice(name, v == l.audio) { more = false; pick(v) } }
-                    Box(Modifier.padding(vertical = 6.dp).fillMaxWidth().height(1.dp).background(Night.line))
-                    languages.filter { it.first !in near }.forEach { (v, name) -> Choice(name, false) { more = false; pick(v) } }
-                }
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Subtitles", style = ui(14, FontWeight.Bold))
-            Joint(subs, l.subtitles) { v -> if (v != l.subtitles) vm.language(app.kimono.watch.model.TrackChoice(l.audio, v)) }
-        }
+        /* One dropdown each: the nearest first, a rule, then every other. */
+        LanguageDrop("Audio", audios.firstOrNull { it.first == l.audio }?.second ?: languageName(l.audio), open == "audio", { open = if (open == "audio") null else "audio" },
+            audios, l.audio, languages.filter { it.first !in near }) { open = null; pick(it) }
+        LanguageDrop("Subtitles", subs.firstOrNull { it.first == l.subtitles }?.second ?: languageName(l.subtitles), open == "subs", { open = if (open == "subs") null else "subs" },
+            subs, l.subtitles, languages.filter { it.first !in subsNear }) { v -> open = null; if (v != l.subtitles) vm.language(app.kimono.watch.model.TrackChoice(l.audio, v)) }
         if (page.tracks != null) Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Just for this $what.", style = ui(13, color = Night.fg3))
             Text("Use my settings", style = ui(13, FontWeight.Bold, Night.fg2),
                 modifier = Modifier.clickableScaleClipped(RoundedCornerShape(6.dp), { vm.language(null) }).padding(horizontal = 8.dp, vertical = 6.dp))
         } else Text("From your settings. A change here is just for this $what.", style = ui(13, color = Night.fg3))
+    }
+}
+
+@Composable
+private fun LanguageDrop(label: String, value: String, open: Boolean, toggle: () -> Unit, near: List<Pair<String, String>>, selected: String, others: List<Pair<String, String>>, onPick: (String) -> Unit) {
+    Column {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Night.surface3).clickableScaleClipped(RoundedCornerShape(10.dp), toggle)
+            .padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = ui(14, FontWeight.Bold), modifier = Modifier.weight(1f))
+            Text(value, style = ui(14, color = Night.fg2))
+            I(Ic.more, 20.dp, Night.fg3, Modifier.padding(start = 6.dp).rotate(if (open) 180f else 0f))
+        }
+        androidx.compose.animation.AnimatedVisibility(open) {
+            Column(Modifier.padding(top = 6.dp)) {
+                near.forEach { (v, name) -> Choice(name, v == selected) { onPick(v) } }
+                Box(Modifier.padding(vertical = 6.dp).fillMaxWidth().height(1.dp).background(Night.line))
+                others.forEach { (v, name) -> Choice(name, false) { onPick(v) } }
+            }
+        }
     }
 }
 

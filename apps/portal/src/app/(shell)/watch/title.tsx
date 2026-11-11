@@ -273,7 +273,8 @@ function LanguageChoice({ view, open, onChange }: { view: TitleView; open: boole
   /* The original, the preferred language, the fallback and what plays now; any other from the list. */
   const near = [...new Set([l.original, l.preferred && l.preferred !== "original" ? l.preferred : "", l.fallback ?? l.mine, l.audio].filter(Boolean))];
   const others = languages.filter((v) => !near.includes(v));
-  const subs: [string, string][] = [["off", "Off"], ["signs", "Signs only"], [l.subtitleLanguage, languageName(l.subtitleLanguage)]];
+  /* Subtitles: off, signs only, your subtitle language and the ones near it, then every other. */
+  const subsNear = [...new Set([l.subtitleLanguage, l.mine, l.subtitles !== "off" && l.subtitles !== "signs" ? l.subtitles : ""].filter(Boolean))];
   /* Picking audio: subtitles follow, on in your language unless you listen in it. */
   const pickAudio = (audio: string) => onChange({ audio, subtitles: view.tracks ? l.subtitles : audio === l.subtitleLanguage ? "signs" : l.subtitleLanguage });
   return <div className={cx("kw-lang", open && "kw-open")} aria-hidden={!open}>
@@ -285,7 +286,12 @@ function LanguageChoice({ view, open, onChange }: { view: TitleView; open: boole
         </select>
       </div>
       <div className="kw-lang-row"><span>Subtitles</span>
-        <div className="kw-joint kw-joint-sm" role="radiogroup" aria-label="Subtitles">{subs.map(([v, label]) => <button key={v} role="radio" tabIndex={open ? 0 : -1} aria-checked={l.subtitles === v} className={cx(l.subtitles === v && "kw-sel")} onClick={() => { if (l.subtitles !== v) onChange({ audio: l.audio, subtitles: v }); }}>{label}</button>)}</div>
+        <select className="kw-season kw-pick kw-pick-sm" aria-label="Subtitles" tabIndex={open ? 0 : -1} value={l.subtitles} onChange={(event) => { if (event.target.value !== l.subtitles) onChange({ audio: l.audio, subtitles: event.target.value }); }}>
+          <option value="off">Off</option>
+          <option value="signs">Signs only</option>
+          {subsNear.map((v) => <option key={v} value={v}>{languageName(v)}</option>)}
+          <optgroup label="Other languages">{languages.filter((v) => !subsNear.includes(v)).map((v) => <option key={v} value={v}>{languageName(v)}</option>)}</optgroup>
+        </select>
       </div>
       <small>{view.tracks ? <>Just for this {view.title.kind === "movie" ? "film" : "show"}. <button className="kw-textbtn" tabIndex={open ? 0 : -1} onClick={() => onChange(null)}>Use my settings</button></> : "From your settings. A change here is just for this " + (view.title.kind === "movie" ? "film" : "show") + "."}</small>
     </div>
