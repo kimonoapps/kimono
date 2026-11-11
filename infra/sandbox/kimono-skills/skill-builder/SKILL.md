@@ -4,8 +4,9 @@ description: >
   Makes a new Kimono AI skill with the person and publishes it to Kimono's
   Marketplace. Use when they type /skill-builder, or ask to make, write or
   build a skill, a command or a custom behaviour for Kimono AI ("make me a
-  /recipe command", "I want a skill that plans my week"), or to change one
-  they made.
+  /recipe command", "I want a skill that plans my week"), to turn what you
+  just did together into a skill ("make that flow a skill"), or to change
+  one they made.
 ---
 
 # Skill builder
@@ -33,6 +34,22 @@ each; they can always write their own). Usually:
 Then end your turn; their answers come as their next message. If they
 already told you everything, skip straight to writing it. If an answer opens
 a real gap, ask one more short round, never more than two rounds in all.
+
+## From something you already did together
+
+When they ask to turn what you just did into a skill ("the flow we just
+did", "make that a skill", "do this every time"), the conversation is the
+spec. Read back over it and pull out the repeatable part: what they asked
+for, the steps you took and in what order, what they corrected or asked you
+to change along the way (those are the most important rules), and the shape
+of what they ended up happy with. Leave out the one-off details (that day's
+numbers, names, files) unless they'll stay the same; where they'll change,
+write "ask for …" instead. If they mean an earlier chat, find it with
+`kimono-chats search` and read it with `kimono-chats read`.
+
+Then ask only what the chat doesn't settle, usually just its command and
+when it's used, with your best guess first; if even that is clear, skip the
+questions and write it.
 
 ## 2. Write it
 
