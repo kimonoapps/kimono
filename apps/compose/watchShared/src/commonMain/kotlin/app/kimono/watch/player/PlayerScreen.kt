@@ -544,13 +544,19 @@ fun PlayerScreen(
         if (!tv && light != null && !state.loading && chrome > 0.01f && post == Post.None && !chatOpen) EdgeSlider(light, { brightness = it; engine.setBrightness(it); show(hold = true) }, onDone = { show() },
             Modifier.align(Alignment.CenterEnd).zIndex(3f).alpha(chrome).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).padding(end = 20.dp)) { I(Ic.bright, 22.dp, Color.White) }
 
-        /* Skip intro / Skip recap, filling as the part runs. */
+        /* Skip intro / Skip recap: it comes up coloured and the colour drains from its end as its time runs out, an offer rather than a countdown to skipping. */
         val skip = state.skip
+        /* Kept while it leaves, so it fades out whole instead of blanking. */
+        var shownSkip by remember { mutableStateOf(skip) }
+        if (skip != null) shownSkip = skip
         AnimatedVisibility(skip != null && (!skip.gone || ctl) && !state.loading && post == Post.None, Modifier.align(Alignment.BottomEnd).padding(end = 28.dp, bottom = 120.dp),
-            enter = fadeIn(tween(300)) + slideInVertically(spring(dampingRatio = 0.6f)) { it / 4 }, exit = fadeOut(tween(300))) {
-            val s = skip ?: return@AnimatedVisibility
+            enter = fadeIn(tween(300)) + slideInVertically(spring(dampingRatio = 0.6f)) { it / 4 }, exit = fadeOut(tween(220)) + slideOutVertically(tween(220)) { it / 6 }) {
+            val s = shownSkip ?: return@AnimatedVisibility
             val focus = remember { FocusRequester() }
-            PaperButton(s.label, Ic.next, { seekTo(s.to); show() }, Modifier.focusRequester(focus).widthIn(min = 150.dp), height = 48.dp, fill = if (s.gone) 0f else s.progress)
+            /* Linear over the tick's quarter second, so it drains in one motion instead of steps. */
+            val left by animateFloatAsState(1f - s.progress, tween(250, easing = androidx.compose.animation.core.LinearEasing), label = "skipLeft")
+            /* Skipping is the whole of it: the controls stay as they were. */
+            PaperButton(s.label, Ic.next, { seekTo(s.to) }, Modifier.focusRequester(focus).widthIn(min = 150.dp), height = 48.dp, fill = left)
             LaunchedEffect(Unit) { if (tv && !ctl) runCatching { focus.requestFocus() } }
         }
 

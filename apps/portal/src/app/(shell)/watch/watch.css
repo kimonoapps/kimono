@@ -341,7 +341,7 @@
 .kw .kw-subs{position:absolute;left:8%;right:8%;bottom:9%;text-align:center;pointer-events:none;transition:bottom .3s}
 .kw .kw-player.kw-ctl .kw-subs{bottom:20%}
 .kw .kw-subs span{display:inline;font-size:clamp(17px,2.6vw,30px);font-weight:500;line-height:1.5;padding:.08em .4em;background:rgba(0,0,0,.55);color:#fff;box-decoration-break:clone;-webkit-box-decoration-break:clone;border-radius:4px}
-.kw .kw-skip{position:absolute;right:max(28px, env(safe-area-inset-right,0px));bottom:calc(max(14px, env(safe-area-inset-bottom,0px)) + 120px);height:48px;padding:0 22px;border-radius:10px;background:rgba(244,233,225,.92);color:var(--ink);font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(12px);transition:opacity .3s,transform .4s var(--spring);pointer-events:none;overflow:hidden}
+.kw .kw-skip{position:absolute;right:max(28px, env(safe-area-inset-right,0px));bottom:calc(max(14px, env(safe-area-inset-bottom,0px)) + 120px);height:48px;padding:0 22px;border-radius:10px;background:rgba(244,233,225,.92);color:var(--ink);font-weight:700;font-size:16px;display:flex;align-items:center;gap:8px;opacity:0;transform:translateY(12px);transition:opacity .22s,transform .4s var(--spring);pointer-events:none;overflow:hidden}
 .kw .kw-skip.kw-on{opacity:1;transform:none;pointer-events:auto}
 .kw .kw-skip::before{content:"";position:absolute;inset:0 auto 0 0;width:var(--left,0%);background:rgba(126,52,72,.18);transition:width .25s linear}
 .kw .kw-skip>*{position:relative}

@@ -695,6 +695,8 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   }, [watch]);
   const toggleMute = useCallback(() => { const v = video.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); }, []);
   const doSkip = () => { if (skip) { seekTo(skip.to); setSkip(null); } };
+  const shownSkip = useRef<Skip>(null);
+  if (skip) shownSkip.current = skip;
   const openSheet = (kind: Sheet) => { setSheet((s) => (s === kind ? null : kind)); showCtl(true); };
   const closeSheet = useCallback(() => { setSheet(null); showCtl(); }, [showCtl]);
 
@@ -910,7 +912,8 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     {party ? <Chat open={chatOpen} lines={chat} me={me} personOf={personOf} onClose={() => { setChatOpen(false); showCtl(); }} onSend={(text) => void live.current.link?.chat(text)} /> : null}
     {stats && play ? <Stats play={play} video={video} onClose={() => setStats(false)} /> : null}
     <div className={cx("kw-pnote", note && noteGone !== note.at && "kw-on")} role="status" aria-live="polite">{note?.text}</div>
-    <button className={cx("kw-skip", skip && (!skip.gone || ctl) && "kw-on")} style={{ "--left": `${skip?.gone ? 0 : (skip?.left ?? 0) * 100}%` } as React.CSSProperties} onClick={doSkip}><span>{skip?.label ?? "Skip intro"}</span><Icon name="next" /></button>
+    {/* Comes up coloured and drains from its end as its time runs out; keeps its last look while it fades. */}
+    <button className={cx("kw-skip", skip && (!skip.gone || ctl) && "kw-on")} style={{ "--left": `${(1 - (shownSkip.current?.left ?? 1)) * 100}%` } as React.CSSProperties} onClick={doSkip}><span>{shownSkip.current?.label ?? "Skip intro"}</span><Icon name="next" /></button>
 
     <div className={cx("kw-psheet", sheet && "kw-on")} role="dialog">
       {sheet === "cc" && play ? <div className="kw-cols">
