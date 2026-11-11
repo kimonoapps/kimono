@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type ClipboardEvent, createContext, Fragment, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { AppBloom, type AppIdentity, BusyFace, Choice, cx, InkBlot, InkCard, InkWave, InkLoader, Seal } from "@kimono/ui";
 import { cardOf, cardWords } from "@/lib/code/progress-card";
@@ -1124,6 +1124,20 @@ function MessageCount({ length }: { length: number }) {
   return <span className={cx("cd-entry-count", length >= maxMessage && "is-over")} aria-live="polite">{length.toLocaleString("en")} / {maxMessage.toLocaleString("en")}</span>;
 }
 
+/* Pasted words this long, or that won't fit in the box, come in as a text file instead. */
+const pasteAsFile = 4_000;
+/** The paste as "Pasted text.txt" (then "Pasted text 2.txt"…), or null when it belongs in the box. */
+function pastedText(event: ClipboardEvent<HTMLTextAreaElement>, taken: string[]): File | null {
+  const said = event.clipboardData.getData("text/plain");
+  const box = event.currentTarget;
+  const after = box.value.length - (box.selectionEnd - box.selectionStart) + said.length;
+  if (said.length < pasteAsFile && after <= maxMessage) return null;
+  let n = 1;
+  const named = () => n === 1 ? "Pasted text.txt" : `Pasted text ${n}.txt`;
+  while (taken.includes(named())) n++;
+  return new File([said], named(), { type: "text/plain" });
+}
+
 /**
  * Send and Stop are one seal: while the agent works and nothing is written it
  * stops it; a word typed turns it back into Send. The arrow lifts away as the
@@ -1705,7 +1719,8 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
           {slash.menu}
           {slash.wrap(<textarea ref={field} value={prompt} rows={1} aria-label="Message" maxLength={maxMessage} disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
             onChange={(event) => setPrompt(event.target.value)} onScroll={slash.follow}
-            onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); } }}
+            onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); return; }
+              const long = pastedText(event, files.map((f) => f.name)); if (long) { event.preventDefault(); hold([long]); } }}
             onKeyDown={(event) => { if (slash.onKeyDown(event)) return; if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />)}
           <div className="cd-entry-end">
             <MessageCount length={prompt.length} />
@@ -3451,7 +3466,8 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
         placeholder={blocked ? blocked : "Ask for a change, or reply"}
         disabled={Boolean(blocked)}
         onChange={(event) => { setText(event.target.value); sayTyping(event.target.value); }}
-        onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); } }}
+        onPaste={(event) => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); add(files); return; }
+          const long = pastedText(event, pending.map((p) => p.name)); if (long) { event.preventDefault(); add([long]); } }}
         onKeyDown={(event) => { if (slash.onKeyDown(event)) return; if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />)}
       <div className="cd-entry-end">
         <MessageCount length={text.length} />

@@ -1506,7 +1506,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
     val canSend = !sending && !uploading && (text.isNotBlank() || ready.isNotEmpty())
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
-    val dictation = rememberDictation(code, platform, onText = { said -> val kept = joinSaid(text, said).take(32_000); text = kept; code.keep("draft:${w.id}", kept) }, onProblem = { problem = it })
+    val dictation = rememberDictation(code, platform, onText = { said -> val kept = joinSaid(text, said).take(MAX_MESSAGE); text = kept; code.keep("draft:${w.id}", kept) }, onProblem = { problem = it })
     fun send() {
         if (!canSend) return
         /* Sending puts the keyboard away, so the answer can be read as it comes. */
@@ -1584,9 +1584,10 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                     MessageField(
                         code,
                         /* the longest message it takes (the server refuses more) */
-                        value = text, onValueChange = { val kept = it.take(32_000); text = kept; code.keep("draft:${w.id}", kept) },
+                        value = text, onValueChange = { val kept = it.take(MAX_MESSAGE); text = kept; code.keep("draft:${w.id}", kept) },
                         maxLines = 8,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
+                        onLongPaste = { said -> attach { listOf(PastedText(said, pending.map { it.name })) } },
                         modifier = Modifier.weight(1f).heightIn(min = 44.dp).padding(horizontal = 4.dp, vertical = 11.dp),
                         decorationBox = { inner -> Box { if (text.isEmpty()) Text("Ask for a change, or reply", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
                     )
@@ -2438,6 +2439,8 @@ internal fun MessageField(
     code: Code, value: String, onValueChange: (String) -> Unit, maxLines: Int, modifier: Modifier,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     decorationBox: @Composable (inner: @Composable () -> Unit) -> Unit,
+    /** Words pasted in one go that are too long for the box; they stay out of it. */
+    onLongPaste: ((String) -> Unit)? = null,
 ) {
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     val current = if (field.text == value) field else TextFieldValue(value, TextRange(value.length)).also { field = it }
@@ -2445,12 +2448,40 @@ internal fun MessageField(
     val accent = MaterialTheme.colorScheme.primary
     val mark = remember(names, accent) { CommandMark(names.toSet(), accent) }
     BasicTextField(
-        value = current, onValueChange = { field = it; if (it.text != value) onValueChange(it.text) },
+        value = current, onValueChange = { next ->
+            val pasted = onLongPaste?.let { insertedText(current.text, next.text) }
+            if (pasted != null && (pasted.length >= PASTE_AS_FILE || next.text.length > MAX_MESSAGE)) { onLongPaste(pasted); return@BasicTextField }
+            field = next; if (next.text != value) onValueChange(next.text)
+        },
         textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
         cursorBrush = androidx.compose.ui.graphics.SolidColor(accent),
         maxLines = maxLines, keyboardOptions = keyboardOptions, visualTransformation = mark,
         modifier = modifier, decorationBox = decorationBox,
     )
+}
+
+/** The longest message the server takes. */
+internal const val MAX_MESSAGE = 32_000
+/** Pasted words this long, or that won't fit in the box, come in as a text file instead. */
+private const val PASTE_AS_FILE = 4_000
+
+/** What one change put in the middle of [before] to make [after] (what it replaced is gone), or null when nothing longer than a few letters went in. */
+private fun insertedText(before: String, after: String): String? {
+    if (after.length - before.length < 2) return null
+    var head = 0
+    while (head < before.length && head < after.length && before[head] == after[head]) head++
+    var tail = 0
+    while (tail < before.length - head && tail < after.length - head && before[before.length - 1 - tail] == after[after.length - 1 - tail]) tail++
+    return after.substring(head, after.length - tail)
+}
+
+/** Words that came in as a file: "Pasted text.txt", then "Pasted text 2.txt" beside one already there. */
+internal class PastedText(text: String, taken: List<String>) : PickedFile {
+    private val bytes = text.encodeToByteArray()
+    override val name = generateSequence(1) { it + 1 }.map { if (it == 1) "Pasted text.txt" else "Pasted text $it.txt" }.first { it !in taken }
+    override val size = bytes.size.toLong()
+    override val mimeType = "text/plain"
+    override suspend fun read(offset: Long, max: Int): ByteArray = bytes.copyOfRange(offset.toInt().coerceAtMost(bytes.size), (offset + max).toInt().coerceAtMost(bytes.size))
 }
 
 /** Draws a leading "/command" that is one of [names] in the accent, bold, on a light wash of it. Letters only change look, so the cursor's places stay the same. */

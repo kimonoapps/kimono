@@ -525,7 +525,7 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
     val ready = prompt.isNotBlank() && (!onProject || chosen != null) && !sending
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
-    val dictation = rememberDictation(code, platform, onText = { said -> prompt = joinSaid(prompt, said).take(32_000) }, onProblem = { problem = it })
+    val dictation = rememberDictation(code, platform, onText = { said -> prompt = joinSaid(prompt, said).take(MAX_MESSAGE) }, onProblem = { problem = it })
     fun send() {
         if (!ready) return
         focus.clearFocus(); keyboard?.hide()
@@ -617,8 +617,9 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                             onPhotos = if (platform.photoPicker) ({ hold { platform.pickMedia() } }) else null,
                         )
                         MessageField(
-                            code, prompt, { prompt = it.take(32_000) },
+                            code, prompt, { prompt = it.take(MAX_MESSAGE) },
                             maxLines = 10,
+                            onLongPaste = { said -> hold { listOf(PastedText(said, held.map { it.name })) } },
                             modifier = Modifier.weight(1f).heightIn(min = 44.dp).focusRequester(field).padding(horizontal = 4.dp, vertical = 11.dp),
                             decorationBox = { inner -> Box { if (prompt.isEmpty()) Text(if (onProject) "Describe what you want" else "Ask anything", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis); inner() } },
                         )
