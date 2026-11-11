@@ -116,6 +116,8 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
         var later by remember { mutableStateOf(false) }
         val server = when (val s = state) { is SessionState.SignedIn -> s.server; is SessionState.SignedOut -> s.server ?: ""; SessionState.Loading -> null }
         LaunchedEffect(server) { if (server != null) update = session.checkUpdate() }
+        /* Pulling Home down asks again, and shows what it finds even after Later; no answer keeps what was offered. */
+        suspend fun recheck() { session.checkUpdate()?.let { update = it; later = false } }
         /* A surface, not a painted box: it also hands text its on-surface ink, which a bare Text would leave black in dark mode. */
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             val required = update?.takeIf { it.required }
@@ -123,7 +125,7 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
                 SessionState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
                 is SessionState.SignedOut -> SignInScreen(session, s.server)
                 is SessionState.SignedIn -> {
-                    SignedIn(session, platform, s.me, update?.takeIf { !later }) { later = true }
+                    SignedIn(session, platform, s.me, update?.takeIf { !later }, ::recheck) { later = true }
                     if (shared != null) ShareSheet(session, s.me, shared, onSharedHandled)
                 }
             }
@@ -135,7 +137,7 @@ fun KimonoApp(session: Session, platform: Platform, shared: SharedItem?, onShare
 private const val WHERE = "kimono.where"
 
 @Composable
-private fun SignedIn(session: Session, platform: Platform, profile: AccountProfile?, offered: AppUpdate?, onLater: () -> Unit) {
+private fun SignedIn(session: Session, platform: Platform, profile: AccountProfile?, offered: AppUpdate?, recheck: suspend () -> Unit, onLater: () -> Unit) {
     /*
      * Read through state, not captured: the screens below are drawn from the
      * nav graph's destinations, which keep the values they were first built
@@ -243,7 +245,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
-            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, model.drive, code, vpn, admin, here = { app.kimono.screens.phoneAppHere(it, platform) }, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
+            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, recheck, model.drive, code, vpn, admin, here = { app.kimono.screens.phoneAppHere(it, platform) }, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
             /*
              * Kimono AI is one chat at a time with the rest in its drawer, as on the website. It opens
              * on a new chat; a chat chosen in the drawer takes the open one's place, so Back leaves it.

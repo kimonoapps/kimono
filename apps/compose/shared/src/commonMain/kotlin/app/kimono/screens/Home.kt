@@ -72,6 +72,7 @@ import app.kimono.ui.InkDot
 import app.kimono.ui.KimonoBranch
 import app.kimono.ui.KimonoRefresh
 import app.kimono.ui.kimonoIcon
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import app.kimono.ui.segmentColors
 import androidx.compose.foundation.combinedClickable
@@ -91,7 +92,7 @@ import kotlin.time.Clock
  */
 @Composable
 fun HomeScreen(
-    me: AccountProfile?, platform: Platform, update: AppUpdate?, onLater: () -> Unit,
+    me: AccountProfile?, platform: Platform, update: AppUpdate?, onLater: () -> Unit, recheck: suspend () -> Unit,
     drive: Drive, code: Code, vpn: Vpn, admin: Boolean,
     here: (LauncherApp) -> PhoneAppHere, open: (LauncherApp) -> Unit, go: (String) -> Unit,
 ) {
@@ -139,7 +140,7 @@ fun HomeScreen(
     }
     val canPin = mine != null
 
-    KimonoRefresh(refreshing, { scope.launch { refreshing = true; load(); refreshing = false } }, Modifier.fillMaxSize()) {
+    KimonoRefresh(refreshing, { scope.launch { refreshing = true; coroutineScope { launch { recheck() }; load() }; refreshing = false } }, Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "head") {
                 Column {
