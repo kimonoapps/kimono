@@ -81,7 +81,8 @@ final class PlayerView: UIView {
         away.addArrangedSubview(icon)
         away.addArrangedSubview(awayName)
         away.isHidden = true
-        [mpv, av, away].forEach(addSubview)
+        /* AVPlayer's picture sits under mpv's: the muted copy kept ready for picture in picture plays there unseen. */
+        [av, mpv, away].forEach(addSubview)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -101,6 +102,8 @@ final class PlayerView: UIView {
  * AirPlay or float in picture in picture, so for those the same episode's
  * HLS rendition plays through AVPlayer from the same moment, and mpv takes
  * over again when it ends. Nothing plays with the app away except those two.
+ * So that leaving the app floats the episode at once, that rendition plays
+ * muted and in step under mpv's picture; iOS picks it up as the app goes.
  */
 final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate, @unchecked Sendable {
     private let preview: Bool
@@ -130,6 +133,16 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
     private var pipObservation: NSKeyValueObservation?
     private var pipWanted = false
     private var asking = false
+
+    /* The muted copy kept in step under mpv's picture, for picture in picture as the app is left. */
+    private var shadow: AVPlayer?
+    private var shadowReady = false
+    private var shadowAsking = false
+    private var shadowObservation: NSKeyValueObservation?
+    /// Bumped on every new file, so a late answer for the last one is dropped.
+    private var generation = 0
+    /// mpv's picture was dropped going away and wants starting again.
+    private var pictureDropped = false
 
     /* The lock screen. */
     private var info: [String: Any] = [:]
@@ -220,7 +233,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
                 switch name {
                 case "pause":
                     paused = flag
-                    if why == nil { events?.userPaused(paused: flag); nowPlayingTime() }
+                    if why == nil { events?.userPaused(paused: flag); nowPlayingTime(); follow() }
                 case "core-idle":
                     coreIdle = flag
                     if why == nil { events?.playing(on: loaded && !flag) }
@@ -239,6 +252,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
                 framed = true
                 events?.firstFrame()
                 nowPlayingTime()
+                prepareShadow()
             }
         case MPV_EVENT_END_FILE:
             guard let end = event.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee, end.reason == MPV_END_FILE_REASON_ERROR else { return }
@@ -284,6 +298,8 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
 
     func load(url: String, startAt: Double, play: Bool) {
         if why != nil { leaveAV(resume: false) }
+        dropShadow()
+        generation += 1
         loaded = false; framed = false; eof = false; coreIdle = true
         set("pause", play ? "no" : "yes")
         paused = !play
@@ -308,12 +324,13 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
             return
         }
         command(["seek", String(seconds), "absolute"])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.nowPlayingTime() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.nowPlayingTime(); self.follow() }
     }
 
     func setRate(rate speed: Double) {
         set("speed", String(speed))
         if let avPlayer, why != nil, avPlayer.rate > 0 { avPlayer.rate = Float(speed) }
+        follow()
     }
 
     func setMuted(muted: Bool) { set("mute", muted ? "yes" : "no") }
@@ -454,6 +471,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         observers = []
         pip?.stopPictureInPicture()
         pip = nil
+        dropShadow()
         avObservations = []
         avPlayer?.pause()
         avPlayer = nil
@@ -481,6 +499,8 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
     }
 
     func startPip() {
+        /* The muted copy is ready: float it (the delegate hands over as it starts). */
+        if why == nil, shadowReady, let pip, pip.isPictureInPicturePossible { pip.startPictureInPicture(); return }
         if why != nil {
             if let pip, pip.isPictureInPicturePossible { pip.startPictureInPicture() } else { pipWanted = true }
             return
@@ -503,6 +523,12 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
     }
 
     private func enterAV(_ reason: Why) {
+        if why == nil && shadowReady {
+            promote(reason)
+            if reason == .pip { if let pip, pip.isPictureInPicturePossible { pip.startPictureInPicture() } else { pipWanted = true } }
+            return
+        }
+        dropShadow()
         guard !asking, why == nil, let hls else { return }
         asking = true
         avDuration = double("duration")
@@ -548,8 +574,8 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         events?.tracks()
     }
 
-    private func watchAV(_ player: AVPlayer, item: AVPlayerItem, from: Double, play: Bool) {
-        var started = false
+    private func watchAV(_ player: AVPlayer, item: AVPlayerItem, from: Double, play: Bool, ready: Bool = false) {
+        var started = ready
         avObservations = [
             item.observe(\.status, options: [.new]) { [weak self] item, _ in
                 DispatchQueue.main.async {
@@ -631,8 +657,128 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         guard resume else { return }
         if at.isFinite && at > 0 { command(["seek", String(at), "absolute"]) }
         let foreground = UIApplication.shared.applicationState != .background
+        if foreground && pictureDropped { pictureDropped = false; set("vid", "auto") }
         set("pause", wasPlaying && foreground ? "no" : "yes")
         events?.tracks()
+        /* Ready again for the next time the app is left. */
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.prepareShadow() }
+    }
+
+    // MARK: The muted copy, for picture in picture as the app is left
+
+    /// iOS floats a player as the app goes only if one is already playing inline; mpv isn't one.
+    private func prepareShadow() {
+        guard !preview, !disposed, framed, why == nil, shadow == nil, !shadowAsking, !asking, let hls,
+              AVPictureInPictureController.isPictureInPictureSupported() else { return }
+        shadowAsking = true
+        let asked = generation
+        hls.ask { [weak self] url in
+            DispatchQueue.main.async {
+                guard let self, !self.disposed, self.generation == asked else { return }
+                guard let url, let target = URL(string: url) else { self.shadowAsking = false; return }
+                /* The first playlist can take a while (the packager probes the file); ask first, patiently. */
+                var warm = URLRequest(url: target)
+                warm.timeoutInterval = 90
+                URLSession.shared.dataTask(with: warm) { _, _, _ in
+                    DispatchQueue.main.async {
+                        self.shadowAsking = false
+                        guard !self.disposed, self.generation == asked, self.why == nil, self.shadow == nil, !self.asking else { return }
+                        self.startShadow(target)
+                    }
+                }.resume()
+            }
+        }
+    }
+
+    private func startShadow(_ target: URL) {
+        let item = AVPlayerItem(url: target)
+        item.preferredForwardBufferDuration = 10
+        let player = AVPlayer(playerItem: item)
+        player.isMuted = true
+        player.allowsExternalPlayback = false
+        shadow = player
+        avDuration = double("duration")
+        screen.av.playerLayer.player = player
+        screen.av.isHidden = false
+        preparePip()
+        shadowObservation = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            DispatchQueue.main.async {
+                guard let self, self.shadow === player else { return }
+                if item.status == .readyToPlay && !self.shadowReady {
+                    self.shadowReady = true
+                    if let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible), let wanted = group.defaultOption { item.select(wanted, in: group) }
+                    self.follow(force: true)
+                } else if item.status == .failed {
+                    NSLog("Kimono Watch: the HLS rendition failed: %@", item.error?.localizedDescription ?? "")
+                    self.dropShadow()
+                }
+            }
+        }
+    }
+
+    /// Keeps the muted copy where mpv is, playing when it plays. Left alone while the app goes, so iOS can float it.
+    private func follow(force: Bool = false) {
+        guard let shadow, shadowReady, why == nil, UIApplication.shared.applicationState == .active else { return }
+        let at = double("time-pos")
+        let now = shadow.currentTime().seconds
+        if at > 0 && (force || !now.isFinite || abs(now - at) > 1.5) {
+            shadow.seek(to: CMTime(seconds: at, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        let speed = Float(Double(string("speed") ?? "1") ?? 1)
+        if loaded && !paused && !eof { if shadow.rate != speed { shadow.rate = speed } } else if shadow.rate != 0 { shadow.pause() }
+    }
+
+    private func dropShadow() {
+        shadowAsking = false
+        guard let player = shadow else { return }
+        player.pause()
+        shadowObservation = nil
+        shadow = nil
+        shadowReady = false
+        if why == nil {
+            pipObservation = nil
+            pip?.delegate = nil
+            pip = nil
+            screen.av.playerLayer.player = nil
+            screen.av.isHidden = true
+        }
+    }
+
+    /// The muted copy becomes the player: sound on, mpv paused, from where mpv got to.
+    private func promote(_ reason: Why) {
+        guard let player = shadow, let item = player.currentItem, shadowReady, why == nil else { return }
+        let from = double("time-pos")
+        let wasPlaying = player.rate > 0 || !paused
+        why = reason
+        set("pause", "yes")
+        shadowObservation = nil
+        shadow = nil
+        shadowReady = false
+        avPlayer = player
+        player.isMuted = false
+        player.volume = Float(level)
+        player.allowsExternalPlayback = true
+        player.usesExternalPlaybackWhileExternalScreenIsActive = true
+        screen.mpv.isHidden = true
+        let now = player.currentTime().seconds
+        if from > 0 && (!now.isFinite || abs(now - from) > 0.25) {
+            player.seek(to: CMTime(seconds: from, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+        }
+        watchAV(player, item: item, from: from, play: wasPlaying, ready: true)
+        if wasPlaying { player.rate = Float(Double(string("speed") ?? "1") ?? 1) } else { player.pause() }
+        events?.userPaused(paused: !wasPlaying)
+        events?.playing(on: wasPlaying)
+        nowPlayingTime()
+        events?.tracks()
+    }
+
+    func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        if why == nil { promote(.pip) }
+    }
+
+    func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
+        NSLog("Kimono Watch: picture in picture didn't start: %@", error.localizedDescription)
+        if why == .pip && !airplaying() { leaveAV(resume: true) }
     }
 
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
@@ -670,7 +816,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
             self.seek(seconds: event.positionTime)
             return .success
         }
-        tick = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.nowPlayingTime() }
+        tick = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.nowPlayingTime(); self?.follow() }
     }
 
     private func giveBackSession() {
@@ -721,10 +867,20 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
             /* Background audio is off. The picture is dropped while away (mpv's surface comes back black otherwise). */
             self.set("pause", "yes")
             self.set("vid", "no")
+            self.pictureDropped = true
+            /* The muted copy is left playing so iOS can float it; if it didn't, it stops. */
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self, self.why == nil, UIApplication.shared.applicationState == .background else { return }
+                self.shadow?.pause()
+            }
         })
         observers.append(center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self, self.why == nil else { return }
+            self.pictureDropped = false
             self.set("vid", "auto")
+        })
+        observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.follow(force: true)
         })
         guard !preview else { return }
         observers.append(center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
