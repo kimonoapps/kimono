@@ -727,7 +727,7 @@ private fun Scrubber(position: Double, duration: Double, buffered: Double, scrub
     val thumbs = remember(state.answer?.url) { state.answer?.url?.let { engine.thumbnails(it) } }
     DisposableEffect(thumbs) { onDispose { thumbs?.close() } }
     val frame by (thumbs?.frame ?: kotlinx.coroutines.flow.MutableStateFlow(null)).collectAsState()
-    LaunchedEffect(scrub) { scrub?.let { thumbs?.want(it) } }
+    LaunchedEffect(scrub) { scrub?.let { thumbs?.want(it) } ?: thumbs?.idle() }
     var holdAt by remember { mutableLongStateOf(0L) }
     var holding by remember { mutableStateOf(false) }
     /* Read live in the key handler: several presses can land before the next frame. */

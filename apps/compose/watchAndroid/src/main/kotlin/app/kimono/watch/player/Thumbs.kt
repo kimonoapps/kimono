@@ -55,6 +55,8 @@ class Thumbs(private val url: String) : Thumbnails {
         }
     }
 
+    override fun idle() { job?.cancel() }
+
     override fun close() {
         scope.launch { lock.withLock { runCatching { retriever?.release() }; retriever = null } }.invokeOnCompletion { scope.cancel() }
     }

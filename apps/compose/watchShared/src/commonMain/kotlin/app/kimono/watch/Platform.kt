@@ -86,6 +86,8 @@ interface Thumbnails {
     /** The latest frame found, with the ten-second slot it belongs to. */
     val frame: StateFlow<Pair<Int, ImageBitmap>?>
     fun want(seconds: Double)
+    /** The scrub is over: frames still to come are dropped, so the seek has the source to itself. */
+    fun idle() {}
     fun close()
 }
 

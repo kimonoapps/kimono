@@ -140,6 +140,9 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
     /* The muted copy kept in step under mpv's picture, for picture in picture as the app is left. */
     private var shadow: AVPlayer?
     private var shadowReady = false
+    /* A seek mpv hasn't finished: the muted copy keeps still, so the source is mpv's alone until it plays again. */
+    private var seeks = 0
+    private var seeking = false
     private var shadowAsking = false
     private var shadowObservation: NSKeyValueObservation?
     /// Bumped on every new file, so a late answer for the last one is dropped.
@@ -257,7 +260,17 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
             }
         case MPV_EVENT_PLAYBACK_RESTART:
             DispatchQueue.main.async { [self] in
-                guard !disposed, !framed else { return }
+                guard !disposed else { return }
+                if seeking {
+                    /* Playing again: the muted copy catches up once mpv has a few seconds in hand. */
+                    let seek = seeks
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                        guard let self, self.seeks == seek, self.seeking else { return }
+                        self.seeking = false
+                        self.follow()
+                    }
+                }
+                guard !framed else { return }
                 framed = true
                 events?.firstFrame()
                 nowPlayingTime()
@@ -309,6 +322,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         if why != nil { leaveAV(resume: false) }
         dropShadow()
         generation += 1
+        seeking = false
         loaded = false; framed = false; eof = false; coreIdle = true
         set("pause", play ? "no" : "yes")
         paused = !play
@@ -332,8 +346,18 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
             avPlayer.seek(to: CMTime(seconds: seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in self.nowPlayingTime() }
             return
         }
+        /* The muted copy following at once had the packager reading the same spot too, so a seek took longer than opening afresh. */
+        seeks += 1
+        seeking = true
+        shadow?.pause()
         command(["seek", String(seconds), "absolute"])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.nowPlayingTime(); self.follow() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.nowPlayingTime() }
+        let seek = seeks
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            guard let self, self.seeks == seek, self.seeking else { return }
+            self.seeking = false
+            self.follow()
+        }
     }
 
     func setRate(rate speed: Double) {
@@ -728,7 +752,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
 
     /// Keeps the muted copy where mpv is, playing when it plays. Left alone while the app goes, so iOS can float it.
     private func follow(force: Bool = false) {
-        guard let shadow, shadowReady, why == nil, UIApplication.shared.applicationState == .active else { return }
+        guard let shadow, shadowReady, !seeking, why == nil, UIApplication.shared.applicationState == .active else { return }
         let at = double("time-pos")
         let now = shadow.currentTime().seconds
         if at > 0 && (force || !now.isFinite || abs(now - at) > 1.5) {
