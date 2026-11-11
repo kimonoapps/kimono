@@ -33,6 +33,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.kimono.watch
+        # Shares group.app.kimono with Kimono, which reads this app's version from it.
+        CODE_SIGN_ENTITLEMENTS: KimonoWatch/KimonoWatch.entitlements
         PRODUCT_NAME: KimonoWatch
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/../watchShared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"

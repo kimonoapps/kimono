@@ -31,7 +31,11 @@ export type LastSync = {
   at: number; ok: boolean; message: string; counts: Record<string, number>;
   /** The phone apps found in App Store Connect, by name. */
   apps?: string[];
+  /** Each app's newest build testers can install, by bundle ID: the phone offers it as an update. */
+  builds?: Partial<Record<PhoneAppId, LatestBuild>>;
 };
+/** A TestFlight build: its version (CFBundleShortVersionString), build number (CFBundleVersion) and the app's Apple ID, for TestFlight's link to it. */
+export type LatestBuild = { version: string; build: string; appleId: string };
 /** Kimono's iPhone apps by bundle ID, as people ask for them. */
 export type PhoneAppId = (typeof phoneApps)[number]["bundleId"];
 export const mainApp: PhoneAppId = "app.kimono.compose";
@@ -106,7 +110,7 @@ export async function testflightApps(): Promise<{ bundleId: PhoneAppId; name: st
 }
 
 /** Where someone stands with each iPhone app: the last sync's word, or their request while it waits. */
-export async function myTestflight(username: string): Promise<{ email: string | null; apps: { bundleId: PhoneAppId; name: string; status: string }[] } | null> {
+export async function myTestflight(username: string): Promise<{ email: string | null; apps: { bundleId: PhoneAppId; name: string; status: string; latest: LatestBuild | null }[] } | null> {
   const config = await readConfig();
   if (!config) return null;
   const key = username.toLowerCase();
@@ -119,7 +123,7 @@ export async function myTestflight(username: string): Promise<{ email: string | 
       : synced && synced !== "not requested" && synced !== "no email" ? synced
       : request?.state === "approved" ? "approved"
       : synced ?? "not requested";
-    return { ...a, status };
+    return { ...a, status, latest: config.lastSync?.builds?.[a.bundleId] ?? null };
   });
   /* The email Apple invites: the one given for their Apple Account, else their Kimono one. */
   return { email: config.appleEmails[key] ?? row?.email ?? null, apps };
@@ -236,6 +240,12 @@ class AppStoreConnect {
     return body;
   }
 
+  /** The first page of a list only. */
+  async first(path: string): Promise<Resource[]> {
+    const data = (await this.request(path))?.data;
+    return Array.isArray(data) ? data : data ? [data] : [];
+  }
+
   /** Every page of a list. */
   async all(path: string): Promise<Resource[]> {
     const out: Resource[] = [];
@@ -329,6 +339,15 @@ async function findApps(store: AppStoreConnect, config: Config) {
       ?? await store.create("betaGroups", { name: config.groupName, isInternalGroup: true, hasAccessToAllBuilds: true }, { app: { data: { type: "apps", id: appId } } });
   };
   return { main, app, present, notYet, groupFor };
+}
+
+/** An app's newest processed, unexpired build, with its version; null when it has none yet. */
+async function latestBuild(store: AppStoreConnect, appId: string): Promise<LatestBuild | null> {
+  const [build] = await store.first(`/v1/builds?filter[app]=${appId}&filter[processingState]=VALID&filter[expired]=false&sort=-uploadedDate&limit=1&fields[builds]=version`);
+  if (!build) return null;
+  const [release] = await store.first(`/v1/builds/${build.id}/preReleaseVersion?fields[preReleaseVersions]=version`);
+  const version = release ? text(release, "version") : "";
+  return version ? { version, build: text(build, "version"), appleId: appId } : null;
 }
 
 /** The apps someone may see on the team: only those they were approved for (Kimono's own always, as the team is for it). */
@@ -451,7 +470,7 @@ async function runSync(): Promise<Synced> {
   if (!config) return { ok: false, message: "No App Store Connect key yet.", statuses: [] };
   const store = new AppStoreConnect(config);
   let statuses: TesterStatus[] = [];
-  let outcome: { ok: boolean; message: string; apps?: string[] };
+  let outcome: { ok: boolean; message: string; apps?: string[]; builds?: LastSync["builds"] };
   try {
     const { main, app, present, notYet, groupFor } = await findApps(store, config);
     const broken: string[] = [];
@@ -539,7 +558,14 @@ async function runSync(): Promise<Synced> {
       ...(notYet.length ? [`${notYet.join(" and ")} ${notYet.length === 1 ? "isn't" : "aren't"} in App Store Connect yet.`] : []),
       ...broken,
     ];
+    /* Each app's newest build, so a phone with an older one offers the update. One that can't be read keeps the last sync's. */
+    const builds: LastSync["builds"] = { ...config.lastSync?.builds };
+    await Promise.all([{ bundleId: mainApp, app }, ...present].map(async ({ bundleId, app: found }) => {
+      const latest = await latestBuild(store, found.id).catch(() => undefined);
+      if (latest) builds[bundleId] = latest;
+    }));
     outcome = {
+      builds,
       ok: errors === 0 && broken.length === 0,
       message: [errors ? `${errors} ${errors === 1 ? "person" : "people"} couldn't be updated.` : "In step.", ...notes].join(" "),
       apps: [main.name, ...present.map((other) => other.name)],
@@ -555,7 +581,8 @@ async function runSync(): Promise<Synced> {
     const latest = await readConfig();
     if (latest && latest.keyId === config.keyId) {
       const apps = outcome.apps ?? latest.lastSync?.apps;
-      await writeConfig({ ...latest, invited: config.invited, lastSync: { at: Date.now(), ok: outcome.ok, message: outcome.message, counts, ...(apps ? { apps } : {}) }, statuses });
+      const builds = outcome.builds ?? latest.lastSync?.builds;
+      await writeConfig({ ...latest, invited: config.invited, lastSync: { at: Date.now(), ok: outcome.ok, message: outcome.message, counts, ...(apps ? { apps } : {}), ...(builds ? { builds } : {}) }, statuses });
     }
   });
   return { ok: outcome.ok, message: outcome.message, statuses };

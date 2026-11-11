@@ -18,7 +18,7 @@ struct KimonoWatchApp: App {
         }
         .onChange(of: phase) { _, now in
             switch now {
-            case .active: WatchIos.shared.cameForward()
+            case .active: WatchIos.shared.cameForward(); KimonoGroup.tellVersion()
             case .background: WatchIos.shared.wentBackground()
             default: break
             }
@@ -44,5 +44,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     /// iOS wakes the app when a background download finishes; the downloader calls this back once it has the file.
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         Downloader.shared.finishedEvents = completionHandler
+    }
+}
+
+/// Leaves this build's version in the app group Kimono shares, so Kimono can tell when TestFlight has a newer one.
+enum KimonoGroup {
+    static func tellVersion() {
+        guard let shared = UserDefaults(suiteName: "group.app.kimono"), let id = Bundle.main.bundleIdentifier else { return }
+        let info = Bundle.main.infoDictionary
+        shared.set(info?["CFBundleShortVersionString"] as? String, forKey: "\(id).version")
+        shared.set(info?["CFBundleVersion"] as? String, forKey: "\(id).build")
     }
 }

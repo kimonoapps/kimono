@@ -119,6 +119,9 @@ private class IosPlatform(private val host: IosHost) : Platform {
     override val os = "ios"
     override fun openUrl(url: String) = host.openUrl(url)
     /* Only for the schemes listed under LSApplicationQueriesSchemes; any other answers false. */
+    /* Kimono Photos and Kimono Watch leave their version in the app group they share with Kimono, each time they open. */
+    override fun installedVersion(packageId: String): String? = platform.Foundation.NSUserDefaults(suiteName = APP_GROUP).stringForKey("$packageId.version")
+    override fun installedBuild(packageId: String): String? = platform.Foundation.NSUserDefaults(suiteName = APP_GROUP).stringForKey("$packageId.build")
     override fun canOpen(url: String): Boolean? = platform.Foundation.NSURL.URLWithString(url)?.let { platform.UIKit.UIApplication.sharedApplication.canOpenURL(it) }
     override fun cacheDir() = host.cacheDir()
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
@@ -168,3 +171,6 @@ fun MainViewController(host: IosHost): UIViewController {
     val session = Session(platform, HttpClient(Darwin) { followRedirects = true })
     return ComposeUIViewController { KimonoApp(session, platform, null) {} }
 }
+
+/** The app group Kimono shares with its other iPhone apps. */
+private const val APP_GROUP = "group.app.kimono"

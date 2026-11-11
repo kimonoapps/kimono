@@ -39,6 +39,8 @@ import app.kimono.data.LauncherApp
 import app.kimono.data.PhoneApp
 import app.kimono.data.Testflight
 import app.kimono.data.TestflightApp
+import app.kimono.data.newerVersion
+import app.kimono.data.TestflightBuild
 import app.kimono.data.appFor
 import app.kimono.data.KimonoProblem
 import app.kimono.data.Platform
@@ -65,9 +67,19 @@ import kotlinx.coroutines.launch
 /** How an app's own phone app stands on this phone. Null fields: the phone won't say (an iPhone), or it has none. */
 data class PhoneAppHere(val installed: Boolean?, val version: String?, val update: String?)
 
-fun phoneAppHere(app: LauncherApp, platform: Platform): PhoneAppHere {
-    /* An iPhone says only whether something answers the app's own link (kimono-photos://); never its version. */
-    if (platform.os == "ios") return PhoneAppHere(app.phoneApp?.connectLink?.let { platform.canOpen(it.substringBefore("://") + "://") }, null, null)
+fun phoneAppHere(app: LauncherApp, platform: Platform, latest: TestflightBuild? = null): PhoneAppHere {
+    /*
+     * An iPhone says whether something answers the app's own link (kimono-photos://); its version is
+     * what the app left in Kimono's app group when it last opened, and TestFlight's newest build is the offer.
+     */
+    if (platform.os == "ios") {
+        val installed = app.phoneApp?.connectLink?.let { platform.canOpen(it.substringBefore("://") + "://") }
+        val pkg = app.phoneApp?.androidPackage?.takeIf { installed == true } ?: return PhoneAppHere(installed, null, null)
+        val version = platform.installedVersion(pkg)
+        val build = platform.installedBuild(pkg)
+        val newer = latest?.takeIf { version != null && build != null && (newerVersion(it.version, version) || (it.version == version && newerVersion(it.build, build))) }
+        return PhoneAppHere(true, version, newer?.label(version))
+    }
     val pkg = app.phoneApp?.androidPackage?.takeIf { platform.os == "android" } ?: return PhoneAppHere(null, null, null)
     val installed = platform.isInstalled(pkg)
     val version = if (installed == true) platform.installedVersion(pkg) else null
@@ -82,7 +94,6 @@ fun installedHere(app: LauncherApp, platform: Platform): Boolean? = phoneAppHere
 fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight? = null, back: () -> Unit) {
     val phone = app.phoneApp ?: return
     var here by remember { mutableStateOf(phoneAppHere(app, platform)) }
-    LifecycleResumeEffect(app.id) { here = phoneAppHere(app, platform); onPauseOrDispose {} }
     val scope = rememberCoroutineScope()
     var progress by remember { mutableStateOf<Float?>(null) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -90,7 +101,10 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
     /* Kimono hands this one out itself on Android: it downloads and installs it, rather than sending you to a page. Only with a hash to check it by. */
     val handOut = phone.release?.takeIf { platform.os == "android" && phone.androidPackage != null && it.sha256 != null }
 
+    var beta by remember { mutableStateOf<TestflightApp?>(null) }
     fun get() {
+        /* On an iPhone, its page in TestFlight, which has the install and the update. */
+        beta?.latest?.let { if (platform.os == "ios") { platform.openUrl(it.link); return } }
         if (handOut == null) { store?.let(platform::openUrl); return }
         progress = 0f; problem = null
         scope.launch {
@@ -101,7 +115,6 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
     fun open() { if (!openPhoneApp(phone, platform)) get() }
 
     /* On an iPhone, an app this Kimono hands out through TestFlight is theirs as soon as they ask. */
-    var beta by remember { mutableStateOf<TestflightApp?>(null) }
     var betaEmail by remember { mutableStateOf<String?>(null) }
     var asking by remember { mutableStateOf(false) }
     /* One of Kimono's own that the last sync hadn't seen in App Store Connect yet: still asked for here, never on the website. */
@@ -112,6 +125,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
     if (platform.os == "ios" && testflight != null) LaunchedEffect(app.id, looks) {
         if (!asking) testflight.mine()?.let { mine -> beta = mine.appFor(phone, app.fullName) ?: unseen(); betaEmail = mine.email }
     }
+    LaunchedEffect(app.id, looks, beta) { here = phoneAppHere(app, platform, beta?.latest) }
     fun ask(bundleId: String) {
         val flight = testflight ?: return
         asking = true; problem = null
@@ -160,7 +174,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
                             Seal("Open", onClick = ::open, tone = SealTone.Quiet)
                         }
                         here.installed == true -> Seal("Open ${phone.name}", onClick = ::open)
-                        flight != null -> TestflightAsk(flight, betaEmail, asking, ask = { ask(flight.bundleId) }, openTestflight = { platform.openUrl("itms-beta://") })
+                        flight != null -> TestflightAsk(flight, betaEmail, asking, ask = { ask(flight.bundleId) }, openTestflight = { platform.openUrl(flight.latest?.link ?: "itms-beta://") })
                         handOut != null || store != null -> Seal("Get ${phone.name}", onClick = ::get)
                     }
                     Problem(problem)

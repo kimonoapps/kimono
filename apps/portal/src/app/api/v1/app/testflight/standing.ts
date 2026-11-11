@@ -32,6 +32,6 @@ export function stage(status: string | undefined): Stage {
 /** What the TestFlight endpoints answer: the Kimono app's standing first (as before), then every iPhone app's. */
 export async function answer(username: string) {
   const mine = await myTestflight(username);
-  const apps = (mine?.apps ?? []).map((app) => ({ bundleId: app.bundleId, name: app.name, status: standing(app.status), stage: stage(app.status) }));
+  const apps = (mine?.apps ?? []).map((app) => ({ bundleId: app.bundleId, name: app.name, status: standing(app.status), stage: stage(app.status), latest: app.latest }));
   return { status: apps.find((app) => app.bundleId === mainApp)?.status ?? "idle", email: mine?.email ?? null, apps };
 }

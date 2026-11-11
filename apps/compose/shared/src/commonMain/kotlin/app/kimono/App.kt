@@ -3,6 +3,7 @@
 package app.kimono
 
 import app.kimono.ui.InkDialog
+import app.kimono.data.appFor
 import app.kimono.ui.InkConfirm
 import app.kimono.ui.InkTitle
 import app.kimono.ui.InkSheet
@@ -156,6 +157,13 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
     val testflight = remember(session) { app.kimono.data.Testflight(session) }
+    /* On an iPhone, TestFlight's newest builds: an app older than its build shows Update, as on Android. Asked again on coming back. */
+    var flights by remember(session) { mutableStateOf<app.kimono.data.TestflightStanding?>(null) }
+    var flightLooks by remember { mutableStateOf(0) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(session) { flightLooks++; onPauseOrDispose {} }
+    if (platform.os == "ios") LaunchedEffect(session, flightLooks) { testflight.mine()?.let { flights = it } }
+    fun here(target: app.kimono.data.LauncherApp) =
+        app.kimono.screens.phoneAppHere(target, platform, target.phoneApp?.let { phone -> flights?.let { it.appFor(phone, target.fullName)?.latest } })
     val notes = remember(session) { app.kimono.screens.NotesModel(app.kimono.data.Notes(session, platform), model.drive, platform) }
     /*
      * Where you were: every screen on the way there is kept as you move, and the app
@@ -198,7 +206,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             /* An app with a phone app of its own: open it when it's here, and when it isn't, its page here to get it. Never its website. */
             /* With a newer version waiting (its tile says Update), its page, which has the update. */
             target.phoneApp != null -> {
-                if (app.kimono.screens.phoneAppHere(target, platform).update != null || !app.kimono.screens.openPhoneApp(target.phoneApp, platform)) nav.navigate("app/${target.id}")
+                if (here(target).update != null || !app.kimono.screens.openPhoneApp(target.phoneApp, platform)) nav.navigate("app/${target.id}")
             }
             else -> (if (platform.os == "ios") target.ios else target.android)?.let(platform::openUrl) ?: target.web.takeIf { it.isNotBlank() }?.let(platform::openUrl)
         }
@@ -222,7 +230,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             )
         },
     ) { padding ->
-        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, here = { app.kimono.screens.phoneAppHere(it, platform) }, onDismiss = { appsOpen = false }, home = { appsOpen = false; goTab("home") }) { appsOpen = false; openApp(it) }
+        if (appsOpen) app.kimono.screens.AppsSheet(model.drive, here = ::here, onDismiss = { appsOpen = false }, home = { appsOpen = false; goTab("home") }) { appsOpen = false; openApp(it) }
         /*
          * Material's own motion between screens. Tabs fade through: the old one
          * fades quickly, the new one settles in from just smaller. A screen
@@ -245,7 +253,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
-            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, recheck, model.drive, code, vpn, admin, here = { app.kimono.screens.phoneAppHere(it, platform) }, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
+            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, recheck, model.drive, code, vpn, admin, here = ::here, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
             /*
              * Kimono AI is one chat at a time with the rest in its drawer, as on the website. It opens
              * on a new chat; a chat chosen in the drawer takes the open one's place, so Back leaves it.

@@ -25,7 +25,16 @@ private val json = Json { ignoreUnknownKeys = true }
  * (no email to invite).
  */
 @Serializable
-data class TestflightApp(val bundleId: String, val name: String, val status: String)
+data class TestflightApp(val bundleId: String, val name: String, val status: String, val latest: TestflightBuild? = null)
+
+/** An app's newest TestFlight build: its version, build number, and the Apple ID TestFlight's link to it takes. */
+@Serializable
+data class TestflightBuild(val version: String, val build: String, val appleId: String) {
+    /** Opens the app's page in TestFlight, where its update is. */
+    val link: String get() = "itms-beta://beta.itunes.apple.com/v1/app/$appleId"
+    /** How the phone names it: the version, with the build when that's all that changed. */
+    fun label(installedVersion: String?): String = if (installedVersion == version) "$version ($build)" else version
+}
 
 @Serializable
 data class TestflightStanding(val email: String? = null, val apps: List<TestflightApp> = emptyList())

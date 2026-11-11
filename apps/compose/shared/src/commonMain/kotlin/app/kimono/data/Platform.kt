@@ -52,6 +52,8 @@ interface Platform {
     fun installedVersion(packageId: String): String? = null
     /** Whether an installed app answers [url] (an iPhone's kimono-photos://, say); null where the phone won't say. */
     fun canOpen(url: String): Boolean? = null
+    /** The build number (CFBundleVersion) of the installed app with [packageId], where the phone keeps it apart from the version (an iPhone). */
+    fun installedBuild(packageId: String): String? = null
     /** Opens the installed app with [packageId]; false if it couldn't. */
     fun openInstalled(packageId: String): Boolean = false
     /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */
