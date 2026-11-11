@@ -96,6 +96,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -514,18 +518,18 @@ fun PlayerScreen(
             }
         }
 
-        /* Left edge (phone): the volume, up and down. */
+        /* Left edge (phone): the volume, up and down, clear of the camera when it sits on that side. */
         val peek by animateFloatAsState(if (peeking && !ctl) 1f else 0f, tween(if (peeking) 150 else 300), label = "peek")
         val volumeAlpha = maxOf(chrome, peek)
         if (!tv && !state.loading && volumeAlpha > 0.01f && post == Post.None) VolumeSlider(volume, {
             volume = it; volumeSetAt = nowMs()
             if (deviceVolume) engine.setDeviceVolume(it) else engine.setVolume(it)
             if (peeking && !ctl) volumePeek++ else show(hold = true)
-        }, onDone = { volumeSetAt = nowMs(); if (peeking && !ctl) volumePeek++ else show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(volumeAlpha).padding(start = 20.dp))
+        }, onDone = { volumeSetAt = nowMs(); if (peeking && !ctl) volumePeek++ else show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(volumeAlpha).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).padding(start = 20.dp))
         /* Right edge (phone): the screen's brightness. */
         val light = brightness
         if (!tv && light != null && !state.loading && chrome > 0.01f && post == Post.None && !chatOpen) EdgeSlider(light, { brightness = it; engine.setBrightness(it); show(hold = true) }, onDone = { show() },
-            Modifier.align(Alignment.CenterEnd).zIndex(3f).alpha(chrome).padding(end = 20.dp)) { I(Ic.bright, 22.dp, Color.White) }
+            Modifier.align(Alignment.CenterEnd).zIndex(3f).alpha(chrome).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).padding(end = 20.dp)) { I(Ic.bright, 22.dp, Color.White) }
 
         /* Skip intro / Skip recap, filling as the part runs. */
         val skip = state.skip
