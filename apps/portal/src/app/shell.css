@@ -81,6 +81,7 @@
 .app-tile-bloom.k-app-bloom { width: 76px; height: 76px; margin: -4px 0 10px -6px; transition: transform .6s var(--k-spring); }
 .app-tile-link:hover .app-tile-bloom { transform: rotate(14deg) scale(1.04); }
 .app-tile-link b { font: 600 24px/1.15 var(--k-display); color: var(--k-plum); }
+.app-tile-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .app-tile-link small { font-size: 14px; line-height: 1.4; color: var(--k-on-surface-variant); }
 .app-tile-out { position: absolute; top: 22px; right: 62px; width: 20px; height: 20px; fill: none; stroke: var(--k-on-surface-variant); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .app-tile-pin { position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--k-on-surface-variant); cursor: pointer; opacity: 0; transition: opacity var(--k-t-state), background-color var(--k-t-state), transform var(--k-t-fold) var(--k-spring); }

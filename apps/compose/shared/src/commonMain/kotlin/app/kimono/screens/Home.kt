@@ -84,6 +84,7 @@ import kotlin.time.Clock
 /*
  * 家 Home, in three parts that don't run into each other:
  *  - Your apps: the ones pinned (My apps, shared with the website's rail), a tap away.
+ *  - New: apps just added and still in beta, unless pinned.
  *  - Now: a short row of glances, only those with something to say (Kimono AI's chats,
  *    what's new in Drive, your devices, updates ready), sliding sideways so they never push
  *    the apps down.
@@ -101,6 +102,7 @@ fun HomeScreen(
     val driveOn by drive.driveOn.collectAsState()
     val mine by drive.myApps.collectAsState()
     val groups by drive.appGroups.collectAsState()
+    val newIds by drive.newApps.collectAsState()
     var recent by remember { mutableStateOf<List<DriveNode>?>(null) }
     var tasks by remember { mutableStateOf(code.knownWorkspaces()) }
     var devices by remember { mutableStateOf(vpn.known()) }
@@ -126,8 +128,9 @@ fun HomeScreen(
     val mesh = devices?.takeIf { it.member && it.available && it.devices.isNotEmpty() }
     val pinned = apps?.let { all -> myAppsOf(all, mine) }.orEmpty()
     val pinnedIds = pinned.map { it.id }.toSet()
+    val fresh = newIds.mapNotNull { id -> apps?.firstOrNull { it.id == id && id !in pinnedIds } }
     /* Every other app under what it's for; a Kimono from before the groups lists them all as one. */
-    val rest = apps.orEmpty().filter { it.id !in pinnedIds }
+    val rest = apps.orEmpty().filter { it.id !in pinnedIds && it.id !in newIds }
     val sections = rest.let { all ->
         val byId = all.associateBy { it.id }
         val placed = groups.flatMap { it.apps }.toSet()
@@ -168,6 +171,14 @@ fun HomeScreen(
                         four.forEach { app -> Box(Modifier.weight(1f)) { Launch(app, here(app), pinned = true, canPin = canPin, pin = { pin(app) }) { open(app) } } }
                         repeat(4 - four.size) { Spacer(Modifier.weight(1f)) }
                     }
+                }
+            }
+
+            /* ── New ── */
+            if (fresh.isNotEmpty()) item(key = "new-label") { Part("New") }
+            itemsIndexed(fresh, key = { _, app -> "new:${app.id}" }) { index, app ->
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) {
+                    AppLine(app, here(app), index, fresh.size, canPin = canPin, fresh = true, pin = { pin(app) }) { open(app) }
                 }
             }
 
@@ -233,7 +244,7 @@ fun HomeScreen(
                 }
                 itemsIndexed(list, key = { _, app -> "rest:${app.id}" }) { index, app ->
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) {
-                        AppLine(app, here(app), index, list.size, canPin = canPin, pin = { pin(app) }) { open(app) }
+                        AppLine(app, here(app), index, list.size, canPin = canPin, fresh = app.id in newIds, pin = { pin(app) }) { open(app) }
                     }
                 }
             }
@@ -269,7 +280,7 @@ private fun Launch(app: LauncherApp, here: PhoneAppHere, pinned: Boolean, canPin
 
 /** Any other app: a quiet row with what it's for. Held, it can be pinned. */
 @Composable
-private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int, canPin: Boolean, pin: () -> Unit, onClick: () -> Unit) {
+private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int, canPin: Boolean, fresh: Boolean, pin: () -> Unit, onClick: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         androidx.compose.material3.SegmentedListItem(
@@ -291,9 +302,24 @@ private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int
                     !app.own && app.phoneApp == null -> Icon(kimonoIcon("out"), "Opens in the browser", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                 }
             },
-        ) { Text(app.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(app.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (fresh) { Tag("New", strong = true); Tag("Beta", strong = false) }
+            }
+        }
         PinMenu(menu, false, app.name, { menu = false }, pin)
     }
+}
+
+/** A small flat tag beside an app's name: New in the app's ink, Beta quiet. */
+@Composable
+private fun Tag(text: String, strong: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    Text(
+        text, style = MaterialTheme.typography.labelSmall, color = if (strong) colors.onPrimary else colors.onSurfaceVariant,
+        modifier = Modifier.clip(MaterialTheme.shapes.extraSmall).background(if (strong) colors.primary else colors.surfaceContainerHighest).padding(horizontal = 6.dp, vertical = 1.dp),
+    )
 }
 
 @Composable

@@ -9,8 +9,9 @@ import { detectMobileOS, type MobileOS } from "@/lib/mobile-app";
 import { MobileAppTutorial } from "./mobile-app-tutorial";
 import { noteUse, usePins } from "./pins";
 import type { RailApp } from "./rail";
+import { newApps } from "@/lib/app-categories";
 
-type TileApp = RailApp & { mobileApp?: KimonoApp["mobileApp"]; /** One live line ("9 spaces · 2 new files today") in place of the description. */ line?: string };
+type TileApp = RailApp & { mobileApp?: KimonoApp["mobileApp"]; /** One live line ("9 spaces · 2 new files today") in place of the description. */ line?: string; };
 
 /*
  * The app grid: every app is a tile with its inked bloom and its name. Hover
@@ -75,7 +76,7 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
             aria-label={`Open Kimono ${app.name}${app.external ? " in a new tab" : ""}: ${app.description}`}
           >
             <AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} className="app-tile-bloom" />
-            <b>{app.name}</b>
+            <span className="app-tile-name"><b>{app.name}</b>{newApps.includes(app.id) ? <><span className="k-chip k-wants">New</span><span className="k-chip">Beta</span></> : null}</span>
             <small>{app.line ?? app.description}</small>
           </Crossing>
           {app.external ? <svg className="app-tile-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg> : null}
