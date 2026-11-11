@@ -426,6 +426,11 @@ test('a rating keeps what it thought, where it thought it, and what its tools ga
   assert.deepEqual(steps.map((s) => s.thought ?? s.tool ?? s.said), ['I should compute it rather than guess.', 'Bash', 'It is 1.5.', '1.5']);
   assert.equal(steps[1].output, '1.5\n(full output)');
   assert.match(steps[1].detail, /a long comment/);
+  /* When each part happened, so a slow answer shows where its time went. */
+  const { answer: kept } = bank(db)[0];
+  assert.ok(kept.at > 0 && kept.endedAt >= kept.at);
+  assert.ok(steps.every((s) => s.at >= kept.at && s.at <= kept.endedAt));
+  assert.ok(steps[1].tookMs >= 0);
   model.rewindTo(db, w.id, 1);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM thinking').get().n, 0);
 });

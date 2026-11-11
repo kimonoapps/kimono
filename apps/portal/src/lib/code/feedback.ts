@@ -22,8 +22,8 @@ export const kimonoVersion = () => process.env.KIMONO_VERSION?.trim() || "dev";
 
 const clip = (text: string, max: number) => text.length <= max ? text : `${text.slice(0, max)}…`;
 
-export type Step = { said?: string; thought?: string; tool?: string; detail?: string; ok?: boolean; output?: string; sent?: string[]; /** What was sent, kept beside the bank (kept-files.ts) to open again; kept since these began. */ files?: Attachment[]; artifact?: string; /** The artifact's page as it stood when kept (kept since these began; older entries have the name alone). */ page?: { title: string; content: string } };
-export type Answer = { asked: string; attachments: string[]; /** What was attached, kept like a step's files. */ attached?: Attachment[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number };
+export type Step = { said?: string; thought?: string; tool?: string; detail?: string; ok?: boolean; output?: string; sent?: string[]; /** What was sent, kept beside the bank (kept-files.ts) to open again; kept since these began. */ files?: Attachment[]; artifact?: string; /** The artifact's page as it stood when kept (kept since these began; older entries have the name alone). */ page?: { title: string; content: string }; /** When it happened, in ms since the epoch (kept since these began). */ at?: number; /** A tool's: how long it ran, from its call to its result. */ tookMs?: number };
+export type Answer = { asked: string; attachments: string[]; /** What was attached, kept like a step's files. */ attached?: Attachment[]; steps: Step[]; ok: boolean; error?: string; model?: string; durationMs?: number; /** When it was asked and when it ended, in ms since the epoch (kept since these began). */ at?: number; endedAt?: number };
 
 /** The chat up to the answer that ended at [doneSeq]: that answer, and every turn before it. */
 function answerAt(db: DatabaseSync, workspaceId: string, doneSeq: number): { answer: Answer; before: Answer[] } | null {
@@ -38,8 +38,11 @@ function answerAt(db: DatabaseSync, workspaceId: string, doneSeq: number): { ans
 /** A thought, between the events of a turn: what it was thinking before what came next. */
 type Thought = { kind: "thought"; text: string };
 
+/** An event of the chat with when it happened. */
+type Timed = { event: CodeEvent | Thought; at: number };
+
 /** The chat's events with what it thought placed among them, where it thought it. */
-function withThinking(db: DatabaseSync, workspaceId: string, events: StoredEvent[], upTo: number): (CodeEvent | Thought)[] {
+function withThinking(db: DatabaseSync, workspaceId: string, events: StoredEvent[], upTo: number): Timed[] {
   const thoughts = thinkingUpTo(db, workspaceId, upTo);
   /* The timeline shortens a tool's command and output; the bank keeps them as they were, where it has them. */
   const calls = toolCallsOf(db, workspaceId);
@@ -50,34 +53,36 @@ function withThinking(db: DatabaseSync, workspaceId: string, events: StoredEvent
     if (event.kind === "tool-result" && call.output !== null) return { ...event, output: call.output };
     return event;
   };
-  return events.flatMap((e) => [full(e.event), ...(thoughts.get(e.seq) ?? []).map((text): Thought => ({ kind: "thought", text }))]);
+  return events.flatMap((e): Timed[] => [{ event: full(e.event), at: e.at }, ...(thoughts.get(e.seq) ?? []).map((t) => ({ event: { kind: "thought", text: t.text } as Thought, at: t.at }))]);
 }
 
 /** A run of events as turns, each from an ask to the next ask after a done. */
-function turnsOf(events: (CodeEvent | Thought)[]): Answer[] {
+function turnsOf(events: Timed[]): Answer[] {
   const turns: Answer[] = [];
-  let current: (CodeEvent | Thought)[] = [];
-  for (const event of events) {
-    if (event.kind === "ask" && !event.queued && current.some((e) => e.kind === "done")) { turns.push(turnOf(current)); current = []; }
-    current.push(event);
+  let current: Timed[] = [];
+  for (const timed of events) {
+    const event = timed.event;
+    if (event.kind === "ask" && !event.queued && current.some((e) => e.event.kind === "done")) { turns.push(turnOf(current)); current = []; }
+    current.push(timed);
   }
   if (current.length) turns.push(turnOf(current));
   return turns;
 }
 
-function turnOf(events: (CodeEvent | Thought)[]): Answer {
+function turnOf(events: Timed[]): Answer {
   const answer: Answer = { asked: "", attachments: [], steps: [], ok: true };
   const tools = new Map<string, Step>();
-  for (const event of events) {
+  for (const { event, at } of events) {
+    answer.at ??= at;
     switch (event.kind) {
       case "ask": answer.asked = answer.asked ? `${answer.asked}\n\n${event.text}` : event.text; answer.attachments.push(...event.attachments.map((a) => a.name)); if (event.attachments.length) answer.attached = [...answer.attached ?? [], ...event.attachments]; break;
-      case "text": answer.steps.push({ said: event.text }); break;
-      case "thought": answer.steps.push({ thought: event.text }); break;
-      case "tool": { const step: Step = { tool: event.name, detail: event.detail ?? event.label }; tools.set(event.id, step); answer.steps.push(step); break; }
-      case "tool-result": { const step = tools.get(event.id); if (step) { step.ok = event.ok; if (event.output?.trim()) step.output = event.output; } break; }
-      case "artifact": answer.steps.push({ artifact: event.name }); break;
-      case "sent": answer.steps.push({ sent: event.files.map((f) => f.name), files: event.files }); break;
-      case "done": answer.ok = event.ok; if (event.error) answer.error = event.error; if (event.model) answer.model = event.model; if (event.durationMs) answer.durationMs = event.durationMs; break;
+      case "text": answer.steps.push({ said: event.text, at }); break;
+      case "thought": answer.steps.push({ thought: event.text, at }); break;
+      case "tool": { const step: Step = { tool: event.name, detail: event.detail ?? event.label, at }; tools.set(event.id, step); answer.steps.push(step); break; }
+      case "tool-result": { const step = tools.get(event.id); if (step) { step.ok = event.ok; if (event.output?.trim()) step.output = event.output; if (step.at !== undefined) step.tookMs = at - step.at; } break; }
+      case "artifact": answer.steps.push({ artifact: event.name, at }); break;
+      case "sent": answer.steps.push({ sent: event.files.map((f) => f.name), files: event.files, at }); break;
+      case "done": answer.endedAt = at; answer.ok = event.ok; if (event.error) answer.error = event.error; if (event.model) answer.model = event.model; if (event.durationMs) answer.durationMs = event.durationMs; break;
     }
   }
   return answer;

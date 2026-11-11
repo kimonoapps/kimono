@@ -783,10 +783,10 @@ export function keepThinking(db: DatabaseSync, workspaceId: string, text: string
 }
 
 /** What the agent thought in a chat up to [seq], by the event each came after. */
-export function thinkingUpTo(db: DatabaseSync, workspaceId: string, seq: number): Map<number, string[]> {
-  const rows = db.prepare("SELECT after_seq, text FROM thinking WHERE workspace_id = ? AND after_seq <= ? ORDER BY after_seq, rowid").all(workspaceId, seq) as { after_seq: number; text: string }[];
-  const by = new Map<number, string[]>();
-  for (const row of rows) by.set(row.after_seq, [...(by.get(row.after_seq) ?? []), row.text]);
+export function thinkingUpTo(db: DatabaseSync, workspaceId: string, seq: number): Map<number, { text: string; at: number }[]> {
+  const rows = db.prepare("SELECT after_seq, text, at FROM thinking WHERE workspace_id = ? AND after_seq <= ? ORDER BY after_seq, rowid").all(workspaceId, seq) as { after_seq: number; text: string; at: number }[];
+  const by = new Map<number, { text: string; at: number }[]>();
+  for (const row of rows) by.set(row.after_seq, [...(by.get(row.after_seq) ?? []), { text: row.text, at: row.at }]);
   return by;
 }
 
