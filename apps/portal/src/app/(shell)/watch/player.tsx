@@ -157,11 +157,11 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   }, []);
 
   /* ───── Where they are, back to the server ───── */
-  const save = useCallback(() => {
+  const save = useCallback((stopped = false) => {
     const v = video.current, l = live.current;
     if (!v || !l.titleId || !v.duration || !isFinite(v.duration) || l.loading) return;
     l.savedAt = Date.now(); l.changed = true;
-    void watchApi.progress({ titleId: l.titleId, season: l.ep?.season ?? 0, episode: l.ep?.episode ?? 0, position: Math.floor(v.currentTime), duration: Math.floor(v.duration) });
+    void watchApi.progress({ titleId: l.titleId, season: l.ep?.season ?? 0, episode: l.ep?.episode ?? 0, position: Math.floor(v.currentTime), duration: Math.floor(v.duration), ...(stopped ? { stopped } : {}) });
   }, []);
 
   /* ───── Loading an episode or a film ───── */
@@ -352,7 +352,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   }), [begin, join, leaveParty]);
 
   const exit = useCallback(() => {
-    save();
+    save(true);
     leaveParty(true);
     live.current.token++;
     clearInterval(pctTimer.current); clearInterval(countTimer.current);
@@ -371,16 +371,17 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   useEffect(() => {
     const away = () => { if (live.current.titleId) save(); };
     const hidden = () => { if (document.visibilityState === "hidden") away(); };
-    window.addEventListener("pagehide", away);
+    const gone = () => { if (live.current.titleId) save(true); };
+    window.addEventListener("pagehide", gone);
     document.addEventListener("visibilitychange", hidden);
-    return () => { window.removeEventListener("pagehide", away); document.removeEventListener("visibilitychange", hidden); };
+    return () => { window.removeEventListener("pagehide", gone); document.removeEventListener("visibilitychange", hidden); };
   }, [save]);
 
   /* ───── Going to another episode ───── */
   const goTo = useCallback(async (to: Ref, startAt?: number) => {
     const id = live.current.titleId;
     if (!id) return;
-    save();
+    save(true);
     live.current.tries = 0;
     setEp(to); live.current.ep = to;
     const shown = live.current.view;
@@ -981,7 +982,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
               <button className="kw-btn kw-primary" onClick={() => watch.remind(t.id, !reminding, t.name)}><Icon name={reminding ? "check" : "bell"} /><span>{reminding ? "Reminding you" : "Remind me"}</span></button>
             </div>
           </> : null}
-          {recs.length && !party ? <div className="kw-recs">{recs.map((c) => <button key={c.id} aria-label={`Play ${c.name}`} onClick={() => { save(); setTitleId(c.id); live.current.titleId = c.id; void open(c.id); }}><Img src={c.backdrop ?? c.poster} /><span>{c.name}</span></button>)}</div> : null}
+          {recs.length && !party ? <div className="kw-recs">{recs.map((c) => <button key={c.id} aria-label={`Play ${c.name}`} onClick={() => { save(true); setTitleId(c.id); live.current.titleId = c.id; void open(c.id); }}><Img src={c.backdrop ?? c.poster} /><span>{c.name}</span></button>)}</div> : null}
         </div>
       </> : null}
     </div>

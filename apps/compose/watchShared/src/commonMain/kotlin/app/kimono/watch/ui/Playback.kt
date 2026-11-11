@@ -217,21 +217,21 @@ class PlayerViewModel(
     fun shape(ratio: Float) { _state.value.answer?.url?.let { shape = it to ratio } }
 
     /** Tells the Portal where playback is. */
-    fun save(position: Double, duration: Double) {
+    fun save(position: Double, duration: Double, stopped: Boolean = false) {
         if (duration <= 0) return
         lastSaved = position
         val s = _state.value
         val measured = shape?.takeIf { it.first == s.answer?.url && it.first != shapeTold }
         if (measured != null) shapeTold = measured.first
-        viewModelScope.launch { runCatching { api.progress(titleId, s.season, s.episode, position, duration, measured?.first, measured?.second) } }
+        viewModelScope.launch { runCatching { api.progress(titleId, s.season, s.episode, position, duration, measured?.first, measured?.second, stopped) } }
     }
 
-    /** Leaving the player: the last position is sent even as the screen goes. */
+    /** Leaving the player: the last position is sent even as the screen goes, and, when it's [closed], that the stream stopped. */
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
-    fun leave(position: Double, duration: Double) {
+    fun leave(position: Double, duration: Double, closed: Boolean = true) {
         if (duration <= 0) return
         val s = _state.value
-        kotlinx.coroutines.GlobalScope.launch { withContext(NonCancellable) { runCatching { api.progress(titleId, s.season, s.episode, position, duration) } } }
+        kotlinx.coroutines.GlobalScope.launch { withContext(NonCancellable) { runCatching { api.progress(titleId, s.season, s.episode, position, duration, stopped = closed) } } }
     }
 
     fun watchCredits() {
@@ -290,8 +290,9 @@ class PlayerViewModel(
         return true
     }
 
+    /* Moving on from this one: its screen frees for the next. */
     private fun finishCurrent() {
-        if (lastDur > 0) save(lastDur, lastDur)
+        if (lastDur > 0) save(lastDur, lastDur, stopped = true)
     }
 
     /** The filler question, answered once for good. */

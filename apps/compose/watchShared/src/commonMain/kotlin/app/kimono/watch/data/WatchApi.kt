@@ -90,11 +90,12 @@ class WatchApi(
     /** Asks the admins for one more screen at once. */
     suspend fun askScreens() { send(HttpMethod.Post, "/screens", buildJsonObject {}) }
 
-    /** Where playback is; [stream] and [aspect] once per copy: the address it plays from and its picture's shape. */
-    suspend fun progress(titleId: String, season: Int, episode: Int, position: Double, duration: Double, stream: String? = null, aspect: Float? = null) {
+    /** Where playback is; [stream] and [aspect] once per copy: the address it plays from and its picture's shape. [stopped] on the last, as the player closes. */
+    suspend fun progress(titleId: String, season: Int, episode: Int, position: Double, duration: Double, stream: String? = null, aspect: Float? = null, stopped: Boolean = false) {
         send(HttpMethod.Put, "/progress", buildJsonObject {
             put("titleId", titleId); put("season", season); put("episode", episode); put("position", position); put("duration", duration)
             if (stream != null && aspect != null) { put("stream", stream); put("aspect", aspect) }
+            if (stopped) put("stopped", true)
         })
     }
 

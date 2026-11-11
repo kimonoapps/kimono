@@ -37,7 +37,7 @@ import { screensOf } from "./screens";
 import { migrateTogether } from "./together";
 import { markDead, isDead } from "./dead";
 import { framingOf, noteShape } from "./shape";
-import { asked, endedBefore, endStreams, heard, streamLifeMs, playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
+import { asked, endedBefore, endStreams, heard, stopped, streamLifeMs, playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
 import { anything, castOf, displayAspect, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, startSegment, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
@@ -937,7 +937,7 @@ export function endMyStreams(username: string): { ended: number } {
   return { ended: endStreams(username) };
 }
 
-/** A player's progress report also says it's still watching (./flow.ts). */
-export function stillWatching(username: string, titleId: string, season: number, episode: number) {
-  heard(username, watchKey(titleId, season, episode));
+/** A player's progress report also says it's still watching (./flow.ts), or, its last one, that it was closed. */
+export function stillWatching(username: string, titleId: string, season: number, episode: number, closed = false) {
+  (closed ? stopped : heard)(username, watchKey(titleId, season, episode));
 }

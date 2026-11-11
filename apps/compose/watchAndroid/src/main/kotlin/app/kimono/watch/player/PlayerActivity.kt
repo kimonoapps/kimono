@@ -193,7 +193,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         val p = engine.player
-        if (::vm.isInitialized && p.duration > 0) vm.leave(p.currentPosition / 1000.0, p.duration / 1000.0)
+        if (::vm.isInitialized && p.duration > 0) vm.leave(p.currentPosition / 1000.0, p.duration / 1000.0, closed = isFinishing)
         if (isFinishing) together?.leave()
         session?.release()
         engine.release()

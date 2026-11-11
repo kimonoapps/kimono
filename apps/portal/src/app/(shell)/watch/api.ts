@@ -151,7 +151,7 @@ export const watchApi = {
   endStreams: () => call<{ ended: number }>("streams", { method: "DELETE" }),
   /** Asks the admins for one more screen at once. */
   askScreens: () => call<{ asked: { want: number; at: number } }>("screens", post({})),
-  progress: (body: { titleId: string; season: number; episode: number; position: number; duration: number }) =>
+  progress: (body: { titleId: string; season: number; episode: number; position: number; duration: number; stopped?: boolean }) =>
     fetch("/api/v1/watch/progress", { method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" }, credentials: "same-origin", keepalive: true }).catch(() => null),
 };
 

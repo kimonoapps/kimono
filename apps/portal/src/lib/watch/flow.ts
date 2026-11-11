@@ -14,7 +14,8 @@
  * A stream counts while a player is heard from on it: a request for the file
  * or an HLS part, or a progress report. An open connection alone doesn't: the
  * packager, or a player that went away without hanging up, can hold one for
- * as long as it likes. A paused player goes quiet and gives its slot back.
+ * as long as it likes. A paused player goes quiet and gives its slot back,
+ * and a player that's closed says so and gives it back at once.
  *
  * In memory: a restart forgets, which only frees the slots.
  */
@@ -71,6 +72,12 @@ const moving = (flow: Flow, now: number) => flow.open > 0 || flow.waiting > 0 ||
 export function heard(username: string, what: string, now = Date.now()) {
   const flow = flows.get(username)?.get(what);
   if (flow) flow.heard = Math.max(flow.heard, now);
+}
+
+/** A player was closed on `what`: its slot frees now instead of after going quiet. Asking for it again counts it again. */
+export function stopped(username: string, what: string) {
+  const flow = flows.get(username)?.get(what);
+  if (flow) flow.heard = 0;
 }
 
 /** A player's request for the file: counts the stream from now. */
