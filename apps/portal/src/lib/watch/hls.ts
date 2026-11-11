@@ -61,6 +61,8 @@ export type HlsGrant = {
   burn: boolean;
   /** Seconds the player starts from (where this person left off), so the encoder starts there rather than at the opening. */
   from?: number;
+  /** The intro and recap, [start, end] in seconds: the packager makes what follows each while it plays, since most skip. */
+  skips?: [number, number][];
 };
 
 export const sealHls = (key: Buffer, grant: HlsGrant) => sealJson(key, { k: "hls", ...grant }, grant.expiresAt);

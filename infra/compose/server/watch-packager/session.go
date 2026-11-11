@@ -44,6 +44,15 @@ type Spec struct {
 	// The segment the player starts in (where the viewer left off): the
 	// encoder starts there before anything is asked for.
 	Start int `json:"start,omitempty"`
+	// The intro and recap: what follows each is made while the viewer is
+	// in it, since most skip.
+	Skips []Skip `json:"skips,omitempty"`
+}
+
+// Skip is a part the player offers to skip, in seconds.
+type Skip struct {
+	Start float64 `json:"start"`
+	End   float64 `json:"end"`
 }
 
 const (
@@ -67,6 +76,11 @@ const (
 	// Filled in nearest first: the segment just before alone, then this much
 	// at a time, so a skip back of ten seconds is ready soonest.
 	fillChunk = 12.0
+	// Seconds after an intro or recap made while the viewer is in it: the
+	// picture plays from them while the encoder starts where they end.
+	skipAhead = 15.0
+	// Seconds before an intro or recap that already count as in it.
+	skipLead = 5.0
 )
 
 var errGone = errors.New("no such segment")
@@ -111,7 +125,7 @@ type Session struct {
 	mu         sync.Mutex
 	changed    chan struct{}
 	run        *run
-	behind     *run // filling in before run's start (fillBehind)
+	behind     *run // filling in before run's start (fillBehind) or after a skip (skipAhead)
 	ready      map[string]map[int]bool
 	sizes      map[string]map[int]int64
 	inits      map[string]bool
@@ -660,6 +674,9 @@ func (s *Session) Segment(ctx context.Context, name string, k int) (string, erro
 	settled := false
 	for {
 		if s.ready[name][k] {
+			if mine == s.seq {
+				s.leapLocked(k)
+			}
 			return s.path(name, k), nil
 		}
 		if mine == s.seq && s.needsRestart(k, true) && !settled && s.running() {
@@ -757,6 +774,7 @@ func (s *Session) tick() {
 			}
 			/* Once the picture asked for is out: the source has room for both. */
 			if r.firstAt > 0 && time.Since(r.began) > r.firstAt+time.Second {
+				s.skipAheadLocked(r)
 				s.fillBehindLocked(r)
 			}
 		}
@@ -787,6 +805,74 @@ func (s *Session) fillBehindLocked(r *run) {
 			s.behind = b
 			log.Printf("session %s: filling in segments %d to %d", s.id[:8], lo, hi-1)
 		}
+		return
+	}
+}
+
+// skipRange is the segments after skip sk that are made ahead of it.
+func (s *Session) skipRange(sk Skip) (lo, stop int) {
+	lo = s.index(sk.End)
+	if lo < 0 || sk.End >= s.spec.Duration-1 {
+		return 0, 0
+	}
+	stop = lo + 1
+	for stop < len(s.spec.Segments) && s.spec.Segments[stop]-s.spec.Segments[lo] < skipAhead {
+		stop++
+	}
+	return lo, stop
+}
+
+// skipAheadLocked makes the seconds after the intro or recap the viewer is
+// in, unless the encoder will be there soon anyway: a skip then plays at once.
+func (s *Session) skipAheadLocked(r *run) {
+	if s.behind != nil || s.closed {
+		return
+	}
+	at := s.spec.Segments[s.lastReq]
+	for _, sk := range s.spec.Skips {
+		if at < sk.Start-skipLead || at >= sk.End {
+			continue
+		}
+		lo, stop := s.skipRange(sk)
+		if stop <= lo || r.start > lo || sk.End-s.end(s.progressOf(r)) <= restartGap {
+			continue
+		}
+		for ; lo < stop && s.madeLocked(lo); lo++ {
+		}
+		if lo == stop || s.failures[lo] > 0 {
+			continue
+		}
+		if b := s.launchLocked(lo, stop); b != nil {
+			s.behind = b
+			log.Printf("session %s: making segments %d to %d ahead of a skip", s.id[:8], lo, stop-1)
+		}
+		return
+	}
+}
+
+// leapLocked follows a skip that landed on segments made ahead of it: the
+// encoder starts where they end, while they play.
+func (s *Session) leapLocked(k int) {
+	if s.behind != nil && !s.behind.done {
+		return
+	}
+	for _, sk := range s.spec.Skips {
+		lo, stop := s.skipRange(sk)
+		if k < lo || k >= stop {
+			continue
+		}
+		j := k
+		for j < len(s.spec.Segments) && s.madeLocked(j) {
+			j++
+		}
+		if j == len(s.spec.Segments) || s.failures[j] > 0 {
+			return
+		}
+		if r := s.run; r != nil && !r.done && r.start <= j && s.spec.Segments[j]-s.end(s.progressOf(r)) <= restartGap {
+			return
+		}
+		log.Printf("session %s: skipped to %d; encoding on from %d", s.id[:8], k, j)
+		s.startLocked(j)
 		return
 	}
 }

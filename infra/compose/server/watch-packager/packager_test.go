@@ -180,3 +180,30 @@ func TestSlowRunsStartOverRatherThanCatchUp(t *testing.T) {
 		t.Fatal("waited past the gap")
 	}
 }
+
+func TestSkipsMakeWhatFollowsOnlyWhenTheEncoderIsFar(t *testing.T) {
+	segments := make([]float64, 100)
+	for k := range segments {
+		segments[k] = float64(k) * 6
+	}
+	s := &Session{spec: Spec{Segments: segments, Duration: 600, Outputs: []Output{{Name: "v0", Kind: "fmp4"}}, Skips: []Skip{{Start: 60, End: 147}}},
+		ready: map[string]map[int]bool{"v0": {}}, failures: map[int]int{}}
+	if lo, stop := s.skipRange(s.spec.Skips[0]); lo != 24 || stop != 27 {
+		t.Fatalf("made %d to %d after an intro ending at 147 s", lo, stop-1)
+	}
+	if _, stop := s.skipRange(Skip{Start: 580, End: 600}); stop != 0 {
+		t.Fatal("made something after a part that runs to the end")
+	}
+	/* The encoder is 12 s from the intro's end: it gets there itself, so nothing else starts. */
+	s.lastReq = 18
+	s.skipAheadLocked(&run{start: 10, progress: map[string]int{"v0": 21}})
+	if s.behind != nil {
+		t.Fatal("made the segments after the intro with the encoder nearly there")
+	}
+	/* Before the intro, nothing either. */
+	s.lastReq = 5
+	s.skipAheadLocked(&run{start: 2, progress: map[string]int{"v0": 9}})
+	if s.behind != nil {
+		t.Fatal("made the segments after the intro before it began")
+	}
+}

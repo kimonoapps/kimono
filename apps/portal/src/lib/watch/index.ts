@@ -579,6 +579,7 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     burn: raw.burnSubtitles === true,
     /* A quality switch or another version carries on from where the player is; a fresh play from where they left off. */
     from: Number(raw.startAt) > 0 ? Number(raw.startAt) : startAt,
+    skips: [markers.recap, markers.intro].filter((s): s is [number, number] => Array.isArray(s) && s.length === 2 && s[1] > s[0]),
   } : null;
   return {
     url: address(wanted),
@@ -778,7 +779,7 @@ function linkOf(username: string): number | undefined {
 
 /* ───── HLS (./hls.ts) ───── */
 
-type HlsSession = { id: string; plan: HlsPlan; spec: PackagerJob & { input: string; segments: number[]; duration: number; ahead: number; start: number }; at: number };
+type HlsSession = { id: string; plan: HlsPlan; spec: PackagerJob & { input: string; segments: number[]; duration: number; ahead: number; start: number; skips: { start: number; end: number }[] }; at: number };
 const hlsSessions = ((globalThis as unknown as { kimonoWatchHls?: Map<string, HlsSession> }).kimonoWatchHls ??= new Map());
 const hlsStarting = ((globalThis as unknown as { kimonoWatchHlsStarting?: Map<string, Promise<HlsSession>> }).kimonoWatchHlsStarting ??= new Map());
 
@@ -824,7 +825,7 @@ function hlsSession(cfg: WatchConfig, token: string, grant: HlsGrant): Promise<H
     const played = openStream(await streamKey(), grant.stream);
     if (played) noteShape(watchDb(), played.url, displayAspect(probe));
     const job = ffmpegArgs(plan, probe.hardware);
-    const session: HlsSession = { id, plan, spec: { ...job, input, segments: plan.segments, duration: plan.duration, ahead: 45, start: startSegment(plan.segments, grant.from) }, at: Date.now() };
+    const session: HlsSession = { id, plan, spec: { ...job, input, segments: plan.segments, duration: plan.duration, ahead: 45, start: startSegment(plan.segments, grant.from), skips: (grant.skips ?? []).map(([start, end]) => ({ start, end })) }, at: Date.now() };
     await putSession(cfg, session);
     for (const [key, s] of hlsSessions) if (Date.now() - s.at > 6 * 60 * 60 * 1000) hlsSessions.delete(key);
     hlsSessions.set(id, session);
