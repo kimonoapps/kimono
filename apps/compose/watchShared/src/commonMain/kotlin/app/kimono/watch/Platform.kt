@@ -109,6 +109,9 @@ interface PlaybackEngine {
     fun setSpeed(speed: Float)
     /** The player's own loudness, 0–1, under the device's volume. */
     fun setVolume(volume: Float) {}
+    /** The phone's own media volume, 0–1, or null where it can't be read (the slider then sets [setVolume]). */
+    fun deviceVolume(): Float? = null
+    fun setDeviceVolume(volume: Float) {}
     /** Switches on the audio and subtitles the server asked for. */
     fun applyHints(hints: TrackHints)
     /** How text subtitles look: [size] "small" | "medium" | "large", [background] "none" | "shadow" | "box". Styled ASS keeps its own. */

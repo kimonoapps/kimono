@@ -141,7 +141,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         self.preview = preview
         super.init()
         start()
-        if !preview { takeSession() }
+        if !preview { takeSession(); screen.addSubview(volumeView) }
         observe()
         /* A video output started while the view was off screen drew at no size: start it again on the real surface. */
         screen.attached = { [weak self] in
@@ -170,7 +170,7 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
             ("keep-open", "yes"), ("idle", "yes"), ("force-seekable", "yes"),
             ("user-agent", "KimonoWatch"), ("network-timeout", "60"),
             ("cache", "yes"), ("cache-pause-wait", "2.5"),
-            ("demuxer-max-bytes", preview ? "40MiB" : "200MiB"), ("demuxer-max-back-bytes", preview ? "8MiB" : "60MiB"),
+            ("demuxer-max-bytes", preview ? "40MiB" : "200MiB"), ("demuxer-max-back-bytes", preview ? "8MiB" : "160MiB"),
             ("demuxer-readahead-secs", preview ? "20" : "120"),
             ("input-default-bindings", "no"), ("input-vo-keyboard", "no"), ("osc", "no"), ("osd-level", "0"),
             /* Plain subtitles as the demo draws them: white on a soft dark box, Zen Maru Gothic. Styled ASS stays as made. */
@@ -324,6 +324,27 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         self.level = max(0, min(1, level))
         set("volume", String(Int((self.level * 100).rounded())))
         avPlayer?.volume = Float(self.level)
+    }
+
+    /* The phone's volume is set through MPVolumeView's slider; kept in the view tree (barely visible) so the system HUD stays away while it's ours. */
+    private lazy var volumeView: MPVolumeView = {
+        let v = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 120, height: 40))
+        v.alpha = 0.01
+        v.isUserInteractionEnabled = false
+        return v
+    }()
+
+    func systemVolume() -> Double {
+        if preview { return -1 }
+        return Double(AVAudioSession.sharedInstance().outputVolume)
+    }
+
+    func setSystemVolume(level: Double) {
+        if preview { return }
+        if volumeView.superview == nil { screen.addSubview(volumeView) }
+        guard let slider = volumeView.subviews.compactMap({ $0 as? UISlider }).first else { return }
+        slider.setValue(Float(max(0, min(1, level))), animated: false)
+        slider.sendActions(for: .valueChanged)
     }
 
     func state() -> IosPlayerState {

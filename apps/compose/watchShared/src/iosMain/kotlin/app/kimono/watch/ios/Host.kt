@@ -79,6 +79,9 @@ interface IosPlayer {
     fun setMuted(muted: Boolean)
     /** The player's own loudness, 0–1. */
     fun setLevel(level: Double)
+    /** The phone's media volume, 0–1 (negative when unknown), and setting it without the system's volume HUD. */
+    fun systemVolume(): Double
+    fun setSystemVolume(level: Double)
     fun state(): IosPlayerState
     /** `[{id, type: "audio"|"sub"|"video", lang, title, selected, codec, channels, forced}]`. */
     fun tracksJson(): String

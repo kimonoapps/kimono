@@ -177,7 +177,10 @@ fun PlayerScreen(
     LaunchedEffect(prefs?.subtitleSize, prefs?.subtitleBackground) { prefs?.let { engine.subtitleLook(it.subtitleSize, it.subtitleBackground) } }
     var scrub by remember { mutableStateOf<Double?>(null) }
     var speed by remember { mutableFloatStateOf(1f) }
-    var volume by remember { mutableFloatStateOf(1f) }
+    /* On a phone the slider is the phone's own volume (the buttons on its side move it too); elsewhere the player's. */
+    val deviceVolume = remember(engine) { !tv && engine.deviceVolume() != null }
+    var volume by remember(engine) { mutableFloatStateOf(if (deviceVolume) engine.deviceVolume() ?: 1f else 1f) }
+    var volumeSetAt by remember { mutableLongStateOf(0L) }
     var ripple by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
     var pausedAt by remember { mutableLongStateOf(0L) }
     var pauseCard by remember { mutableStateOf(false) }
@@ -205,7 +208,7 @@ fun PlayerScreen(
         if (state.loads == 0) return@LaunchedEffect
         engine.load(answer.url, dlKey(vm.titleId, state.season, state.episode), state.startAt, play = party == null)
         engine.setSpeed(speed)
-        engine.setVolume(volume)
+        engine.setVolume(if (deviceVolume) 1f else volume)
         sheet = null
     }
     DisposableEffect(engine) {
@@ -258,6 +261,10 @@ fun PlayerScreen(
             buffered = engine.buffered
             buffering = engine.buffering
             startFill = engine.startFill
+            /* The volume buttons moved it: the slider follows and the controls come up to show it. */
+            if (deviceVolume && nowMs() - volumeSetAt > 700) engine.deviceVolume()?.let { v ->
+                if (abs(v - volume) > 0.005f) { volume = v; show() }
+            }
             /* Skipping intros by themselves is the host's to do in a party. */
             vm.tick(position, duration, engine.playing)?.let { if (party == null || party.isHost) seekTo(it) }
             if (party != null) {
@@ -486,7 +493,6 @@ fun PlayerScreen(
                             if (!state.isFilm && ep != null) append("   ${state.label} “${ep.name}”")
                         }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (!tv) VolumeSlider(volume, { volume = it; engine.setVolume(it); show(hold = true) }, onDone = { show() })
                     if (!state.isFilm) LabBtn(Ic.eps, "Episodes", tv) { sheet = if (sheet == Sheet.Episodes) null else Sheet.Episodes; show() }
                     LabBtn(Ic.cc, "Audio & subtitles", tv) { sheet = if (sheet == Sheet.Tracks) null else Sheet.Tracks; show() }
                     LabBtn(Ic.gear, "Settings", tv) { sheet = if (sheet == Sheet.Settings) null else Sheet.Settings; show() }
@@ -496,6 +502,13 @@ fun PlayerScreen(
                 }
             }
         }
+
+        /* Left edge (phone): the volume, up and down. */
+        if (!tv && !state.loading && chrome > 0.01f && post == Post.None) VolumeSlider(volume, {
+            volume = it; volumeSetAt = nowMs()
+            if (deviceVolume) engine.setDeviceVolume(it) else engine.setVolume(it)
+            show(hold = true)
+        }, onDone = { volumeSetAt = nowMs(); show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(chrome).padding(start = 20.dp))
 
         /* Skip intro / Skip recap, filling as the part runs. */
         val skip = state.skip
@@ -544,36 +557,37 @@ private fun PBtn(icon: ImageVector, onClick: () -> Unit, size: Dp = 48.dp, iconS
     }
 }
 
-/** The player's volume: the speaker mutes and unmutes, the track sets how loud. */
+/** The volume, standing on the left edge: the track sets how loud (drag up for louder), the speaker under it mutes and unmutes. */
 @Composable
-private fun VolumeSlider(volume: Float, onChange: (Float) -> Unit, onDone: () -> Unit) {
+private fun VolumeSlider(volume: Float, onChange: (Float) -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
     var before by remember { mutableFloatStateOf(1f) }
-    var width by remember { mutableIntStateOf(1) }
-    Row(Modifier.height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({
-            if (volume > 0f) { before = volume; onChange(0f) } else onChange(before.takeIf { it > 0.05f } ?: 1f)
-            onDone()
-        }, focusScale = 1.08f), contentAlignment = Alignment.Center) { I(if (volume <= 0f) Ic.mute else Ic.vol, 22.dp, Color.White) }
-        Box(Modifier.width(96.dp).height(28.dp).onSizeChanged { width = it.width }.pointerInput(Unit) {
+    var height by remember { mutableIntStateOf(1) }
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.width(40.dp).height(132.dp).onSizeChanged { height = it.height }.pointerInput(Unit) {
             awaitEachGesture {
                 val down = awaitFirstDown()
                 down.consume()
-                onChange((down.position.x / width).coerceIn(0f, 1f))
+                onChange((1f - down.position.y / height).coerceIn(0f, 1f))
                 while (true) {
                     val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
                     if (!change.pressed) { change.consume(); break }
                     change.consume()
-                    onChange((change.position.x / width).coerceIn(0f, 1f))
+                    onChange((1f - change.position.y / height).coerceIn(0f, 1f))
                 }
                 onDone()
             }
-        }, contentAlignment = Alignment.CenterStart) {
-            Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF)).drawBehind {
-                drawRect(Night.suo, size = size.copy(width = size.width * volume))
+        }, contentAlignment = Alignment.BottomCenter) {
+            Box(Modifier.fillMaxHeight().width(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF)).drawBehind {
+                val h = size.height * volume
+                drawRect(Night.suo, topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = size.copy(height = h))
             })
-            val px = with(LocalDensity.current) { (width * volume).toDp() }
-            Box(Modifier.offset(x = px - 6.dp).size(12.dp).clip(CircleShape).background(Night.suo))
+            val px = with(LocalDensity.current) { (height * volume).toDp() }
+            Box(Modifier.offset(y = -(px - 6.dp)).size(12.dp).clip(CircleShape).background(Night.suo))
         }
+        Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({
+            if (volume > 0f) { before = volume; onChange(0f) } else onChange(before.takeIf { it > 0.05f } ?: 1f)
+            onDone()
+        }, focusScale = 1.08f), contentAlignment = Alignment.Center) { I(if (volume <= 0f) Ic.mute else Ic.vol, 22.dp, Color.White) }
     }
 }
 

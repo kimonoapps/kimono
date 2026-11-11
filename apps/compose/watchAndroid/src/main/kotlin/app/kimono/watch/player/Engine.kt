@@ -59,7 +59,8 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setTrackSelector(selector)
-        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 120_000, START_MS, 4_000).build())
+        /* The last minute is kept, so skipping back plays from memory instead of asking the server again. */
+        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(20_000, 120_000, START_MS, 4_000).setBackBuffer(60_000, true).build())
         .setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000)
         .setHandleAudioBecomingNoisy(true)
         .setVideoChangeFrameRateStrategy(if (tv) C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS else C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
@@ -199,6 +200,15 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     override fun seekTo(seconds: Double) = player.seekTo((seconds * 1000).toLong())
     override fun setSpeed(speed: Float) = player.setPlaybackSpeed(speed)
     override fun setVolume(volume: Float) { player.volume = volume }
+    private val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+    private val musicMax get() = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+    override fun deviceVolume(): Float? =
+        if (onTv || audio.isVolumeFixed || musicMax <= 0) null
+        else audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / musicMax.toFloat()
+    /* No flags: the slider on screen is the indicator, not the system's panel. */
+    override fun setDeviceVolume(volume: Float) {
+        runCatching { audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, kotlin.math.round(volume.coerceIn(0f, 1f) * musicMax).toInt(), 0) }
+    }
 
     override fun listen(listener: EngineListener): () -> Unit {
         val l = object : Player.Listener {
