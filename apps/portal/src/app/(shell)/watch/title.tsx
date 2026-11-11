@@ -274,7 +274,7 @@ function MoreLikeThis({ id, shelf }: { id: string; shelf: TitleView["title"]["sh
 function LanguageChoice({ view, open, onChange }: { view: TitleView; open: boolean; onChange: (tracks: { audio: string; subtitles: string } | null) => void }) {
   const l = view.language!;
   /* The original, the preferred language, the fallback and what plays now; any other from the list. */
-  const near = [...new Set([l.original, l.preferred && l.preferred !== "original" ? l.preferred : "", l.fallback ?? l.mine, l.audio].filter(Boolean))];
+  const near = [...new Set([l.original, l.preferred && l.preferred !== "original" ? l.preferred : "", l.fallback && l.fallback !== "original" ? l.fallback : l.mine, l.audio].filter(Boolean))];
   const others = languages.filter((v) => !near.includes(v));
   /* Subtitles: off, signs only, your subtitle language and the ones near it, then every other. */
   const subsNear = [...new Set([l.subtitleLanguage, l.mine, l.subtitles !== "off" && l.subtitles !== "signs" ? l.subtitles : ""].filter(Boolean))];

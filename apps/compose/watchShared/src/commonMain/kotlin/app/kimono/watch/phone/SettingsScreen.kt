@@ -103,7 +103,7 @@ private fun Part.icon() = when (this) {
 /** What a group is set to now, in a few words, for its row on the settings page. */
 @Composable
 private fun Part.summary(p: Prefs, state: SettingsState, watch: WatchServices): String = when (this) {
-    Part.Languages -> (if (p.preferredLanguage == "original") "Original" else languageName(p.preferredLanguage)) + ", then " + languageName(p.fallbackLanguage) + " · Subtitles " + when (p.subtitles) { "auto" -> "automatic"; "always" -> "always"; else -> "off" }
+    Part.Languages -> (if (p.preferredLanguage == "original") "Original" else languageName(p.preferredLanguage)) + ", then " + (if (p.fallbackLanguage == "original") "original" else languageName(p.fallbackLanguage)) + " · Subtitles " + when (p.subtitles) { "auto" -> "automatic"; "always" -> "always"; else -> "off" }
     Part.Quality -> qualityChoices.firstOrNull { it.first == (state.quality ?: "auto") }?.second ?: "Auto"
     Part.Anime -> (if (p.animeEpisodes == "continuous") "One list" else "By season") + " · Fillers " + when (p.fillers) { "skip" -> "skipped"; "watch" -> "watched"; else -> "ask" }
     Part.Look -> p.subtitleSize.replaceFirstChar { it.uppercase() } + " · " + when (p.subtitleBackground) { "none" -> "Outline"; "box" -> "Box"; else -> "Shadow" }
@@ -260,10 +260,15 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
         }
         Part.Languages -> {
             Picker("Preferred language", if (p.preferredLanguage == "original") "Original language" else languageName(p.preferredLanguage), listOf("original" to "Original language") + languages, p.preferredLanguage, key = "preferredLanguage") { v ->
-                store.set("preferredLanguage", v) { it.copy(preferredLanguage = v, audioLanguage = if (v == "original") it.fallbackLanguage else v) }
+                store.set("preferredLanguage", v) {
+                    /* Original then original says nothing: the fallback becomes your own language. */
+                    val fallback = if (v == "original" && it.fallbackLanguage == "original") it.audioLanguage else it.fallbackLanguage
+                    it.copy(preferredLanguage = v, fallbackLanguage = fallback, audioLanguage = if (v == "original") fallback else v)
+                }
             }
-            Picker("Fallback language", languageName(p.fallbackLanguage), languages, p.fallbackLanguage, key = "fallbackLanguage") { v ->
-                store.set("fallbackLanguage", v) { it.copy(fallbackLanguage = v, audioLanguage = if (it.preferredLanguage == "original") v else it.audioLanguage) }
+            val fallbacks = (if (p.preferredLanguage == "original") emptyList() else listOf("original" to "Original language")) + languages
+            Picker("Fallback language", if (p.fallbackLanguage == "original") "Original language" else languageName(p.fallbackLanguage), fallbacks, p.fallbackLanguage, key = "fallbackLanguage") { v ->
+                store.set("fallbackLanguage", v) { it.copy(fallbackLanguage = v, audioLanguage = if (it.preferredLanguage == "original" && v != "original") v else it.audioLanguage) }
             }
             Field("Subtitles", if (p.subtitles == "auto") "Automatic: when the audio isn’t in your language." else null, key = "subtitles") {
                 Joint(listOf("auto" to "Automatic", "always" to "Always", "off" to "Off"), p.subtitles) { v -> store.set("subtitles", v) { it.copy(subtitles = v) } }

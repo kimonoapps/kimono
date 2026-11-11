@@ -735,6 +735,22 @@ test('no copy in the preferred language: one with the fallback is next, and play
   assert.equal(languages.withFallback(plan, prefs, japanese.languages).audio, 'es', 'without the fallback either, nothing changes');
 });
 
+test('fallback "original": a copy without the preferred language plays in the title\'s own', () => {
+  const prefs = model.cleanPrefs({ preferredLanguage: 'en', fallbackLanguage: 'original' }, model.defaultPrefs);
+  assert.equal(prefs.fallbackLanguage, 'original');
+  assert.equal(prefs.audioLanguage, 'en');
+  const plan = languages.trackPlan({ shelf: 'Anime', originalLanguage: '' }, prefs);
+  const want = languages.wantFor(plan, 'ja', prefs.fallbackLanguage);
+  assert.equal(want.fallback, 'ja');
+  const japanese = { ...multi, languages: ['ja'] }, french = { ...multi, languages: ['fr'] };
+  assert.ok(releases.languageScore(japanese, want) > releases.languageScore(french, want));
+  assert.equal(languages.withFallback(plan, prefs, japanese.languages, null, 'ja').audio, 'ja');
+  assert.equal(languages.withFallback(plan, prefs, french.languages, null, 'ja').audio, 'en');
+  const both = model.cleanPrefs({ preferredLanguage: 'original' }, prefs);
+  assert.equal(both.fallbackLanguage, 'en', 'original then original falls back to your own language');
+  assert.equal(both.audioLanguage, 'en');
+});
+
 test("the relay follows AIOStreams' redirect to nzbdav, with the login as that hop's header only", async () => {
   const seen = [];
   const fake = async (url, init) => {

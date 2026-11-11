@@ -44,7 +44,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
   const lookName = { none: "Outline", shadow: "Shadow", box: "Box" }[prefs?.subtitleBackground ?? "shadow"];
   const on = (items: [boolean, string][]) => items.filter(([b]) => b).map(([, l]) => l).join(" · ") || "All off";
   const groups: { id: Group; title: string; icon: IconName; summary: string }[] = prefs ? [
-    { id: "languages", title: "Languages", icon: "chat", summary: `${prefs.preferredLanguage === "original" ? "Original" : languageName(prefs.preferredLanguage)}, then ${languageName(prefs.fallbackLanguage)} · Subtitles ${({ auto: "automatic", always: "always", off: "off" } as Record<string, string>)[prefs.subtitles] ?? prefs.subtitles}` },
+    { id: "languages", title: "Languages", icon: "chat", summary: `${prefs.preferredLanguage === "original" ? "Original" : languageName(prefs.preferredLanguage)}, then ${prefs.fallbackLanguage === "original" ? "original" : languageName(prefs.fallbackLanguage)} · Subtitles ${({ auto: "automatic", always: "always", off: "off" } as Record<string, string>)[prefs.subtitles] ?? prefs.subtitles}` },
     { id: "look", title: "Subtitle look", icon: "cc", summary: `${sizeName} · ${lookName}` },
     { id: "playing", title: "Playing", icon: "play", summary: on([[prefs.autoplayNext, "Next episode"], [prefs.skipIntros, "Skip intros"], [prefs.previews !== false, "Previews"]]) },
     { id: "quality", title: "Quality", icon: "film", summary: qualities.find((q) => q.value === quality)?.label ?? "Auto" },
@@ -79,7 +79,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
             <Pick value={prefs.preferredLanguage} onChange={(v) => save("preferredLanguage", { preferredLanguage: v })} options={[["original", "Original language"], ...languages.map((l) => [l, languageName(l)] as [string, string])]} label="Preferred language" />
           </Row>
           <Row label="Fallback language" done={ticked === "fallbackLanguage"}>
-            <Pick value={prefs.fallbackLanguage} onChange={(v) => save("fallbackLanguage", { fallbackLanguage: v })} options={languages.map((l) => [l, languageName(l)])} label="Fallback language" />
+            <Pick value={prefs.fallbackLanguage} onChange={(v) => save("fallbackLanguage", { fallbackLanguage: v })} options={[...(prefs.preferredLanguage === "original" ? [] : [["original", "Original language"] as [string, string]]), ...languages.map((l) => [l, languageName(l)] as [string, string])]} label="Fallback language" />
           </Row>
           <Row label="Subtitles" done={ticked === "subtitles"} note={prefs.subtitles === "auto" ? "When the audio isn’t in your language." : undefined}>
             <Seg value={prefs.subtitles} onChange={(v) => save("subtitles", { subtitles: v as Prefs["subtitles"] })} options={[["auto", "Automatic"], ["always", "Always"], ["off", "Off"]]} />

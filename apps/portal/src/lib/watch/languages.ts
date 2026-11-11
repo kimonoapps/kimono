@@ -45,18 +45,24 @@ export type TrackPlan = {
  * translated.
  */
 export function trackPlan(title: { shelf: string; originalLanguage: string }, prefs: Prefs, choice?: TrackChoice | null): TrackPlan {
-  const mine = prefs.audioLanguage || "en";
-  const original = title.originalLanguage || (title.shelf === "Anime" ? "ja" : mine);
+  const original = originalOf(title, prefs);
   const audio = choice?.audio || (prefs.preferredLanguage && prefs.preferredLanguage !== "original" ? prefs.preferredLanguage : original);
   return planFor(audio, prefs, choice);
 }
+
+/** A title's original language: anime is Japanese when nothing says. */
+export const originalOf = (title: { shelf: string; originalLanguage: string }, prefs: Prefs) => title.originalLanguage || (title.shelf === "Anime" ? "ja" : prefs.audioLanguage || "en");
+
+/** The fallback as a language: "original" is the title's own. */
+export const fallbackOf = (fallback: string, original: string) => (fallback === "original" ? original : fallback);
 
 /**
  * The copy picked has no track in the language planned but has the fallback
  * (known from its listing): play the fallback, with subtitles worked out again.
  */
-export function withFallback(plan: TrackPlan, prefs: Prefs, languages: string[], choice?: TrackChoice | null): TrackPlan {
-  const fallback = prefs.fallbackLanguage || "en";
+export function withFallback(plan: TrackPlan, prefs: Prefs, languages: string[], choice?: TrackChoice | null, original = ""): TrackPlan {
+  const fallback = fallbackOf(prefs.fallbackLanguage || "en", original);
+  if (!fallback) return plan;
   if (!languages.length || languages.includes(plan.audio) || languages.includes("multi") || plan.audio === fallback || !languages.includes(fallback)) return plan;
   return planFor(fallback, prefs, choice ? { ...choice, subtitles: choice.subtitles === plan.audio ? "off" : choice.subtitles } : null);
 }
@@ -89,5 +95,5 @@ export function playerTracks(plan: TrackPlan) {
 }
 
 /** For ranking releases: the audio wanted, the fallback and the title's original, plus the subtitle language when the audio isn't the person's. */
-export const wantFor = (plan: TrackPlan, original: string, fallback = "") => ({ audio: plan.audio, original, fallback, subtitles: plan.subtitles?.kind === "full" ? plan.subtitles.language : null });
+export const wantFor = (plan: TrackPlan, original: string, fallback = "") => ({ audio: plan.audio, original, fallback: fallbackOf(fallback, original), subtitles: plan.subtitles?.kind === "full" ? plan.subtitles.language : null });
 export type LanguageWant = ReturnType<typeof wantFor>;

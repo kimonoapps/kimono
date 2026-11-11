@@ -355,13 +355,16 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
   const lang = (value: unknown, fallback: string) => (typeof value === "string" && /^([a-z]{2,3})?$/.test(value) ? value : fallback);
   const code = (value: unknown, fallback: string) => (typeof value === "string" && /^[a-z]{2,3}$/.test(value) ? value : fallback);
   const preferred = input.preferredLanguage === "original" ? "original" : code(input.preferredLanguage, base.preferredLanguage);
-  const fallback = code(input.fallbackLanguage, base.fallbackLanguage);
+  /* "original": a copy without the preferred language plays in the title's own. Pointless when that's the preference. */
+  const mine = code(base.audioLanguage, "en");
+  const asked = input.fallbackLanguage === "original" ? "original" : code(input.fallbackLanguage, base.fallbackLanguage);
+  const fallback = asked === "original" && preferred === "original" ? mine : asked;
   return {
     fillers: pick(input.fillers, ["ask", "skip", "watch"] as const, base.fillers),
     quality: pick(input.quality, ["auto", "best", "2160", "1080", "720", "saver"] as const, base.quality),
     preferredLanguage: preferred,
     fallbackLanguage: fallback,
-    audioLanguage: preferred === "original" ? fallback : preferred,
+    audioLanguage: preferred !== "original" ? preferred : fallback !== "original" ? fallback : mine,
     subtitleLanguage: lang(input.subtitleLanguage, base.subtitleLanguage),
     subtitles: pick(input.subtitles, ["auto", "always", "off"] as const, base.subtitles),
     animeEpisodes: pick(input.animeEpisodes, ["seasons", "continuous"] as const, base.animeEpisodes),
