@@ -414,7 +414,7 @@ fun PlayerScreen(
                 val x = up.position.x
                 val right = x > third * 1.86f
                 fun single() { if (chatOpen || sheet != null) { chatOpen = false; sheet = null; ctl = false } else if (pauseCard) { pauseCard = false; show() } else if (ctl) ctl = false else show() }
-                val onPlay = (up.position - Offset(size.width / 2f, size.height / 2f)).getDistance() < 80.dp.toPx()
+                val onPlay = (up.position - Offset(size.width / 2f, size.height / 2f)).getDistance() < 56.dp.toPx()
                 if (onPlay && !ctl && !chatOpen && sheet == null && !state.loading && state.problem == null && post == Post.None) { pauseCard = false; toggle(); show(); return@awaitEachGesture }
                 if (x >= third * 1.14f && !right) { single(); return@awaitEachGesture }
                 /* A sheet or the chat open: the tap only closes it. */
