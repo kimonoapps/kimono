@@ -25,6 +25,8 @@ export type PlanAccount = {
   active: boolean | null;
   /** false when they haven't been approved for this app: they're invited to the team (for another app) but not put in this one's group. */
   wants?: boolean;
+  /** false when they haven't been approved for any app: never invited to the team, though kept if already on it. */
+  asked?: boolean;
 };
 export type PlanUser = { id: string; email: string; roles: string[] };
 /** expired: Apple's link no longer works, so they need a fresh one. */
@@ -92,6 +94,8 @@ export function planSync(input: {
       else { steps.push({ kind: "add", email, ...names }); row("added"); }
     }
     else if (invitations.has(email)) row(invitations.get(email)?.expired ? "invite expired" : "invited (waiting to accept)");
+    /* Someone kept from an earlier invite who never asked is left be, never invited again. */
+    else if (account.asked === false) row("not requested");
     else { steps.push({ kind: "invite", email, ...names }); row("invited (waiting to accept)"); }
   }
 

@@ -16,7 +16,7 @@ export default async function GetAppPage({ searchParams }: { searchParams: Promi
   const asked = query.for === "ios" || query.for === "android" ? query.for : null;
   return <AppShell user={session.user} brandColors={settings.brand.colors}>
     <div className="page get-app-page">
-      <AppGuide offer={offer} asked={asked} />
+      <AppGuide offer={offer} asked={asked} email={session.user.email ?? null} />
     </div>
   </AppShell>;
 }

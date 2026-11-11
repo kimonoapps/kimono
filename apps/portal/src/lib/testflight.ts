@@ -121,7 +121,8 @@ export async function myTestflight(username: string): Promise<{ email: string | 
       : synced ?? "not requested";
     return { ...a, status };
   });
-  return { email: row?.email ?? null, apps };
+  /* The email Apple invites: the one given for their Apple Account, else their Kimono one. */
+  return { email: config.appleEmails[key] ?? row?.email ?? null, apps };
 }
 
 /* Whom the Portal invited, and who asked, kept even without a key. */
@@ -286,7 +287,8 @@ async function kimonoAccounts(config: Config): Promise<{ list: PlanAccount[]; no
     const email = config.appleEmails[account.username.toLowerCase()] || account.email || null;
     const wanted = phoneApps.some((a) => approved(account.username, a.bundleId)) || Boolean(email && invited.has(email.toLowerCase()));
     if (email && !wanted) notAsked.add(account.username.toLowerCase());
-    return { username: account.username, name: account.name || account.username, email: wanted ? email : null, active: standing ? standing.active : null, wants: approved(account.username, mainApp) };
+    const asked = phoneApps.some((a) => approved(account.username, a.bundleId));
+    return { username: account.username, name: account.name || account.username, email: wanted ? email : null, active: standing ? standing.active : null, wants: approved(account.username, mainApp), asked };
   }));
   return { list, notAsked, approved };
 }
@@ -330,7 +332,13 @@ async function findApps(store: AppStoreConnect, config: Config) {
   return { main, app, present, notYet, groupFor };
 }
 
-/** Invites someone to the App Store Connect team, seeing only Kimono's apps; Apple emails them. */
+/** The apps someone may see on the team: only those they were approved for (Kimono's own always, as the team is for it). */
+function appsFor(config: Config, username: string | undefined, found: { bundleId: PhoneAppId; app: Resource }[]): Resource[] {
+  const mine = username ? config.requests[username.toLowerCase()] ?? {} : {};
+  return found.filter((f) => f.bundleId === mainApp || mine[f.bundleId]?.state === "approved").map((f) => f.app);
+}
+
+/** Invites someone to the App Store Connect team, seeing only the Kimono apps they asked for; Apple emails them. */
 async function inviteToTeam(store: AppStoreConnect, config: Config, step: { email: string; firstName: string; lastName: string }, apps: Resource[]) {
   const made = await store.create("userInvitations", {
     email: step.email, firstName: step.firstName, lastName: step.lastName,
@@ -373,6 +381,7 @@ export async function resendTestflight(who: string[] | "stuck"): Promise<{ ok: b
       const account = accounts.find((a) => a.username.toLowerCase() === username);
       const email = account?.email?.trim().toLowerCase();
       if (!account || !email || account.active === false) { results.push({ username, outcome: "nothing to send", message: "No Kimono access, or no email" }); continue; }
+      if (!account.asked) { results.push({ username: account.username, outcome: "nothing to send", message: "Hasn't asked for an app" }); continue; }
       const last = config.resent[email];
       if (last && Date.now() - last < resendGap) { results.push({ username: account.username, outcome: "too soon" }); continue; }
       try {
@@ -381,7 +390,7 @@ export async function resendTestflight(who: string[] | "stuck"): Promise<{ ok: b
         if (invitation || !onTeam) {
           /* Apple's team invite: a new one replaces the old, whose link may have expired. */
           if (invitation) await store.remove(`/v1/userInvitations/${invitation.id}`);
-          await inviteToTeam(store, config, { email, ...nameParts(account.name, account.username) }, [app, ...present.map((other) => other.app)]);
+          await inviteToTeam(store, config, { email, ...nameParts(account.name, account.username) }, appsFor(config, account.username, [{ bundleId: mainApp, app }, ...present]));
         } else {
           /* On the team: TestFlight's own invite again, for each app whose group they're in. */
           let sent = 0;
@@ -477,7 +486,8 @@ async function runSync(): Promise<Synced> {
       try {
         switch (step.kind) {
           case "invite": {
-            await inviteToTeam(store, config, step, [app, ...present.map((other) => other.app)]);
+            const who = accounts.find((a) => a.email?.trim().toLowerCase() === step.email);
+            await inviteToTeam(store, config, step, appsFor(config, who?.username, [{ bundleId: mainApp, app }, ...present]));
             break;
           }
           case "add": {

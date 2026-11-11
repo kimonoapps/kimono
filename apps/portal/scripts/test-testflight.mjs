@@ -114,6 +114,17 @@ test('someone on the team but not approved for this app is not put in its group;
   assert.deepEqual(plan.statuses.map((s) => [s.username, s.status]), [['mina', 'not requested'], ['ren', 'tester'], ['sora', 'invited (waiting to accept)']]);
 });
 
+test('someone kept from an earlier invite who never asked is not invited again', () => {
+  const plan = planSync({
+    ...base,
+    accounts: [{ ...account('kai', 'kai@kimono.test'), wants: false, asked: false }, { ...account('yui', 'yui@kimono.test'), wants: false, asked: false }],
+    invitations: [{ id: 'i-yui', email: 'yui@kimono.test', expired: true }],
+    invited: { 'kai@kimono.test': { at: 1 }, 'yui@kimono.test': { at: 1 } },
+  });
+  assert.deepEqual(plan.steps, [], 'nothing sent, nothing taken away');
+  assert.deepEqual(plan.statuses.map((s) => [s.username, s.status]), [['kai', 'not requested'], ['yui', 'invite expired']]);
+});
+
 test("another app's group only gets people approved for it", () => {
   const also = planAlso({
     accounts: [{ ...account('mina', 'mina@kimono.test'), wants: true }, { ...account('ren', 'ren@kimono.test'), wants: false }, { ...account('sora', 'sora@kimono.test'), wants: false }],
