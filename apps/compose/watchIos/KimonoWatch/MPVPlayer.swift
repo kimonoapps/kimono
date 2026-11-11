@@ -343,10 +343,11 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
         avPlayer?.volume = Float(self.level)
     }
 
-    /* The phone's volume is set through MPVolumeView's slider; kept in the view tree (barely visible) so the system HUD stays away while it's ours. */
+    /* The phone's volume is set through MPVolumeView's slider. While one sits in the window (inside its bounds, a point wide and barely visible), iOS keeps its volume HUD away, side buttons included. */
     private lazy var volumeView: MPVolumeView = {
-        let v = MPVolumeView(frame: CGRect(x: -2000, y: -2000, width: 120, height: 40))
+        let v = MPVolumeView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
         v.alpha = 0.01
+        v.clipsToBounds = true
         v.isUserInteractionEnabled = false
         return v
     }()

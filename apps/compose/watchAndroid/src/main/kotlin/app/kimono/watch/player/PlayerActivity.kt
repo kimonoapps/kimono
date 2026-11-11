@@ -150,6 +150,20 @@ class PlayerActivity : ComponentActivity() {
         runCatching { setPictureInPictureParams(PictureInPictureParams.Builder().setAspectRatio(ratio()).setAutoEnterEnabled(auto).setSeamlessResizeEnabled(true).build()) }
     }
 
+    /* Phone: the side buttons move the media volume with no system bar; the player's own slider shows instead. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val dir = when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_VOLUME_UP -> android.media.AudioManager.ADJUST_RAISE
+            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> android.media.AudioManager.ADJUST_LOWER
+            android.view.KeyEvent.KEYCODE_VOLUME_MUTE -> android.media.AudioManager.ADJUST_TOGGLE_MUTE
+            else -> return super.dispatchKeyEvent(event)
+        }
+        val audio = getSystemService(android.media.AudioManager::class.java)
+        if (watch.tv || pip.value || audio == null || audio.isVolumeFixed) return super.dispatchKeyEvent(event)
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) runCatching { audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, dir, 0) }
+        return true
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         /* Before Android 12 there's no auto-enter: ask as the person leaves. */
