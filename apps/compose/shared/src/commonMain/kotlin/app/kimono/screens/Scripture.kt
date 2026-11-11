@@ -3,7 +3,7 @@ package app.kimono.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import app.kimono.ui.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -250,7 +250,7 @@ private fun TafsirSheet(code: Code, p: QuranPassage, lang: String, close: () -> 
                 Column(Modifier.fillMaxWidth().inkBleed("tafsir:${p.ref}").padding(start = 20.dp, end = 8.dp, top = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         InkTitle("Tafsir", modifier = Modifier.weight(1f))
-                        androidx.compose.material3.IconButton(onClick = close) { androidx.compose.material3.Icon(app.kimono.ui.kimonoIcon("close"), "Close") }
+                        app.kimono.ui.IconButton(onClick = close) { androidx.compose.material3.Icon(app.kimono.ui.kimonoIcon("close"), "Close") }
                     }
                     Text("${p.chapter.name} ${p.ref.replace("-", "–")}", style = MaterialTheme.typography.labelLarge, color = scheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp))
                 }

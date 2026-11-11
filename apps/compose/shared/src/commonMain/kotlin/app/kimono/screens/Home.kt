@@ -8,7 +8,7 @@ import app.kimono.ui.InkTitle
 import app.kimono.ui.InkSheet
 import app.kimono.ui.InkMenuItem
 import app.kimono.ui.InkMenu
-import androidx.compose.foundation.clickable
+import app.kimono.ui.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -75,7 +75,7 @@ import app.kimono.ui.kimonoIcon
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import app.kimono.ui.segmentColors
-import androidx.compose.foundation.combinedClickable
+import app.kimono.ui.combinedClickable
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed

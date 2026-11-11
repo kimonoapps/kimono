@@ -9,7 +9,7 @@ import app.kimono.ui.InkSheet
 import app.kimono.ui.InkMenuItem
 import app.kimono.ui.InkMenu
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import app.kimono.ui.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
