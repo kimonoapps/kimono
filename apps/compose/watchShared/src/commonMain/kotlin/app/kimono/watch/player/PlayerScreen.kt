@@ -414,7 +414,7 @@ fun PlayerScreen(
                 val x = up.position.x
                 val right = x > third * 1.86f
                 fun single() { if (chatOpen || sheet != null) { chatOpen = false; sheet = null; ctl = false } else if (pauseCard) { pauseCard = false; show() } else if (ctl) ctl = false else show() }
-                val onPlay = (up.position - Offset(size.width / 2f, size.height / 2f)).getDistance() < 56.dp.toPx()
+                val onPlay = (up.position - Offset(size.width / 2f, size.height / 2f)).getDistance() < 80.dp.toPx()
                 if (onPlay && !ctl && !chatOpen && sheet == null && !state.loading && state.problem == null && post == Post.None) { pauseCard = false; toggle(); show(); return@awaitEachGesture }
                 if (x >= third * 1.14f && !right) { single(); return@awaitEachGesture }
                 /* A sheet or the chat open: the tap only closes it. */
@@ -498,7 +498,7 @@ fun PlayerScreen(
             Box(Modifier.alpha(chrome)) { SeekBtn(false) { if (chrome > 0.5f) { seekBy(-10.0); rip(false); show() } } }
             /* while the spinner turns it has the middle: the button steps aside, keeping its place */
             val spinning = stalled && buffering
-            Box(Modifier.alpha(if (spinning) 0f else if (pauseCard) 1f else chrome)) { if (spinning) Spacer(Modifier.size(76.dp)) else PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true) }
+            Box(Modifier.alpha(if (spinning) 0f else if (pauseCard) 1f else chrome)) { if (spinning) Spacer(Modifier.size(76.dp)) else PlayBtn(playing, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true) }
             Box(Modifier.alpha(chrome)) { SeekBtn(true) { if (chrome > 0.5f) { seekBy(10.0); rip(true); show() } } }
         }
         if (!state.loading && chrome > 0.01f) {
@@ -509,7 +509,7 @@ fun PlayerScreen(
                     onScrub = { scrub = it; show(hold = true) }, onCommit = { scrub?.let { seekTo(it) }; scrub = null; show() })
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = if (tv) Arrangement.spacedBy(6.dp) else Arrangement.SpaceAround, modifier = Modifier.fillMaxWidth()) {
                     if (tv) {
-                        PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, focus = playFocus)
+                        PlayBtn(playing, { toggle(); show() }, focus = playFocus)
                         SeekBtn(false, small = true) { seekBy(-10.0); show() }
                         SeekBtn(true, small = true) { seekBy(10.0); show() }
                         Text(androidx.compose.ui.text.buildAnnotatedString {
@@ -594,6 +594,38 @@ private fun PBtn(icon: ImageVector, onClick: () -> Unit, size: Dp = 48.dp, iconS
     Box(Modifier.size(size).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).clip(CircleShape).clickableScale({ if (enabled) onClick() }, focusScale = 1.08f), contentAlignment = Alignment.Center) {
         if (shadow) I(icon, iconSize, Color.Black.copy(alpha = 0.6f), Modifier.offset(y = 2.dp).blur(8.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded))
         I(icon, iconSize, Color.White)
+    }
+}
+
+/** Play and pause as one glyph: each bar of the pause folds into one half of the play triangle and back. */
+@Composable
+private fun PlayBtn(playing: Boolean, onClick: () -> Unit, size: Dp = 48.dp, iconSize: Dp = 28.dp, focus: FocusRequester? = null, shadow: Boolean = false) {
+    val t by animateFloatAsState(if (playing) 0f else 1f, spring(dampingRatio = 0.8f, stiffness = 500f), label = "playMorph")
+    Box(Modifier.size(size).then(if (focus != null) Modifier.focusRequester(focus) else Modifier).clip(CircleShape).clickableScale(onClick, focusScale = 1.08f), contentAlignment = Alignment.Center) {
+        if (shadow) PlayGlyph(t, Color.Black.copy(alpha = 0.6f), Modifier.size(iconSize).offset(y = 2.dp).blur(8.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded))
+        PlayGlyph(t, Color.White, Modifier.size(iconSize))
+    }
+}
+
+/* Pause bars and the play triangle's two halves, as matching quads on the 24-unit icon grid. */
+private val pauseQuads = listOf(floatArrayOf(6f, 5f, 10f, 5f, 10f, 19f, 6f, 19f), floatArrayOf(14f, 5f, 18f, 5f, 18f, 19f, 14f, 19f))
+private val playQuads = listOf(floatArrayOf(8f, 5f, 13.5f, 8.5f, 13.5f, 15.5f, 8f, 19f), floatArrayOf(13.5f, 8.5f, 19f, 12f, 19f, 12f, 13.5f, 15.5f))
+
+@Composable
+private fun PlayGlyph(t: Float, tint: Color, modifier: Modifier) {
+    androidx.compose.foundation.Canvas(modifier) {
+        val k = this.size.minDimension / 24f
+        val path = androidx.compose.ui.graphics.Path()
+        for (q in 0..1) {
+            val a = pauseQuads[q]; val b = playQuads[q]
+            for (i in 0..3) {
+                val x = (a[i * 2] + (b[i * 2] - a[i * 2]) * t) * k
+                val y = (a[i * 2 + 1] + (b[i * 2 + 1] - a[i * 2 + 1]) * t) * k
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            path.close()
+        }
+        drawPath(path, tint)
     }
 }
 
