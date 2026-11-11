@@ -230,11 +230,16 @@ fun PlayerScreen(
     DisposableEffect(engine) {
         /* In a party a dropped stream is asked again, quietly, a few times: the party waits meanwhile. */
         var retries = 0
+        /* Once it has played, a drop or a bad stretch is picked up again from where it was, once per half minute watched, before it's called broken. */
+        var played = false
+        var resumedAt = -1e9
         var dubTries = 0
         var dubEpisode: Pair<Int?, Int?>? = null
         val stop = engine.listen(object : EngineListener {
-            override fun firstFrame() { retries = 0; vm.started() }
+            override fun firstFrame() { retries = 0; played = true; vm.started() }
             override fun error(decoder: Boolean, network: Boolean) {
+                val at = engine.position
+                if (played && !vm.state.value.loading && at > resumedAt + 30) { resumedAt = at; vm.retry(); return }
                 /* A version this device can't decode: quietly try the next one. */
                 if (decoder && vm.fallback(engine.position)) return
                 /* A dead copy answers 502 and is passed over for hours: asking play again gets another one.

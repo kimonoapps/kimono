@@ -338,7 +338,7 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
         /* The phone's player is heard only while it's the one playing; the TV's while casting. */
         val l = object : Player.Listener {
             override fun onRenderedFirstFrame() { if (!onRemote) listener.firstFrame() }
-            override fun onPlayerError(error: PlaybackException) { if (!onRemote) listener.error(decoder = error.errorCode in 4000..4999, network = error.errorCode in 2000..2999) }
+            override fun onPlayerError(error: PlaybackException) { android.util.Log.w("KimonoWatch", "playback error ${error.errorCodeName} at ${player.currentPosition / 1000}s", error); if (!onRemote) listener.error(decoder = error.errorCode in 4000..4999, network = error.errorCode in 2000..2999) }
             override fun onTracksChanged(tracks: Tracks) { if (!onRemote && tracks.groups.isNotEmpty()) listener.tracks() }
             override fun onVideoSizeChanged(videoSize: VideoSize) { if (videoSize.width > 0 && videoSize.height > 0) listener.aspect(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height) }
             override fun onIsPlayingChanged(isPlaying: Boolean) { if (!onRemote) listener.playing(isPlaying) }
