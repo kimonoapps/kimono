@@ -661,6 +661,14 @@ test('someone who wants the dub never gets a Japanese-only release when a dubbed
   const english = { ...multi, languages: ['ja', 'en'] };
   assert.ok(releases.languageScore(english, dub) > releases.languageScore(unlisted, dub), 'an unlisted MULTI may be any dub: below one that says English');
   assert.ok(releases.languageScore(unlisted, dub) > releases.languageScore(subsplease, dub));
+  /* A download takes the first pick with no player to notice the missing dub: size, cache and speed never put the Japanese-only copy ahead. */
+  const heavy = releases.parseRelease({ url: 'u3', name: '[TB download] Comet 1080p', description: '📁 Frieren.S01E01.1080p.BluRay.Dual-Audio.FLAC.x264-Group.mkv\n📦 6.2 GB (34 Mbps)', bytes: 6.2 * 1024 ** 3 });
+  const plain = { ...heavy, url: 'u4', cached: true, languages: [] };
+  for (const q of ['auto', 'saver']) {
+    const order = releases.rank([subsplease, { ...heavy, cached: true }, plain], device, q, 26, dub, { debrid: { mbps: 200 } });
+    assert.equal(order[0].url, 'u3', `the dub first at ${q}`);
+    assert.equal(order.at(-1), subsplease, `Japanese-only last at ${q}`);
+  }
 });
 
 test('a show remembers the tracks picked in the player; settings take the new choices', () => {

@@ -285,12 +285,23 @@ export function score(r: Release, device: Device, quality: Quality, minutes: num
 
 /** Everything that plays here, best first. */
 export function rank(releases: Release[], device: Device, quality: Quality, minutes: number | null, language: LanguageWant | string = "en", speeds: Speeds = {}, framing?: Framing): Release[] {
+  const tier = dubTier(language);
   return releases
     .filter((r) => unplayable(r, device, minutes, quality) === null)
-    .map((r) => ({ r, s: score(r, device, quality, minutes, language, speeds, framing) }))
-    .sort((a, b) => b.s - a.s)
+    .map((r) => ({ r, t: tier(r), s: score(r, device, quality, minutes, language, speeds, framing) }))
+    .sort((a, b) => a.t - b.t || b.s - a.s)
     .map(({ r }) => r)
     .filter(unique());
+}
+
+/**
+ * A dub asked for: every copy that lists it comes before every one that
+ * doesn't, whatever its size, cache or speed. Points can be outweighed; a
+ * download has no player to notice the wrong audio and try the next copy.
+ */
+function dubTier(want: LanguageWant | string): (r: Release) => number {
+  if (typeof want === "string" || !want.original || want.audio === want.original) return () => 0;
+  return (r) => r.languages.includes(want.audio) ? 0 : !r.languages.length || r.languages.includes("multi") || (want.fallback && r.languages.includes(want.fallback)) ? 1 : 2;
 }
 
 /**
