@@ -84,7 +84,7 @@ import kotlin.time.Clock
 /*
  * 家 Home, in three parts that don't run into each other:
  *  - Your apps: the ones pinned (My apps, shared with the website's rail), a tap away.
- *  - New: apps just added and still in beta, unless pinned.
+ *  - New: apps just added, unless pinned.
  *  - Now: a short row of glances, only those with something to say (Kimono AI's chats,
  *    what's new in Drive, your devices, updates ready), sliding sideways so they never push
  *    the apps down.
@@ -103,6 +103,7 @@ fun HomeScreen(
     val mine by drive.myApps.collectAsState()
     val groups by drive.appGroups.collectAsState()
     val newIds by drive.newApps.collectAsState()
+    val betaIds by drive.betaApps.collectAsState()
     var recent by remember { mutableStateOf<List<DriveNode>?>(null) }
     var tasks by remember { mutableStateOf(code.knownWorkspaces()) }
     var devices by remember { mutableStateOf(vpn.known()) }
@@ -178,7 +179,7 @@ fun HomeScreen(
             if (fresh.isNotEmpty()) item(key = "new-label") { Part("New") }
             itemsIndexed(fresh, key = { _, app -> "new:${app.id}" }) { index, app ->
                 Box(Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) {
-                    AppLine(app, here(app), index, fresh.size, canPin = canPin, fresh = true, pin = { pin(app) }) { open(app) }
+                    AppLine(app, here(app), index, fresh.size, canPin = canPin, fresh = true, beta = app.id in betaIds, pin = { pin(app) }) { open(app) }
                 }
             }
 
@@ -244,7 +245,7 @@ fun HomeScreen(
                 }
                 itemsIndexed(list, key = { _, app -> "rest:${app.id}" }) { index, app ->
                     Box(Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) {
-                        AppLine(app, here(app), index, list.size, canPin = canPin, fresh = app.id in newIds, pin = { pin(app) }) { open(app) }
+                        AppLine(app, here(app), index, list.size, canPin = canPin, fresh = app.id in newIds, beta = app.id in betaIds, pin = { pin(app) }) { open(app) }
                     }
                 }
             }
@@ -280,7 +281,7 @@ private fun Launch(app: LauncherApp, here: PhoneAppHere, pinned: Boolean, canPin
 
 /** Any other app: a quiet row with what it's for. Held, it can be pinned. */
 @Composable
-private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int, canPin: Boolean, fresh: Boolean, pin: () -> Unit, onClick: () -> Unit) {
+private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int, canPin: Boolean, fresh: Boolean, beta: Boolean, pin: () -> Unit, onClick: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Box {
         androidx.compose.material3.SegmentedListItem(
@@ -305,7 +306,8 @@ private fun AppLine(app: LauncherApp, here: PhoneAppHere, index: Int, count: Int
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(app.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                if (fresh) { Tag("New", strong = true); Tag("Beta", strong = false) }
+                if (fresh) Tag("New", strong = true)
+                if (beta) Tag("Beta", strong = false)
             }
         }
         PinMenu(menu, false, app.name, { menu = false }, pin)

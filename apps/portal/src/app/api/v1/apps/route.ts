@@ -7,7 +7,7 @@ import { driveConfig, driveIdentity } from "@/lib/drive/config";
 import { scanAppDefinitions } from "@/lib/definitions";
 import { holdsMeshAccess } from "@/lib/directory";
 import { getPlatformSettings } from "@/lib/settings";
-import { categorize, newApps } from "@/lib/app-categories";
+import { betaApps, categorize, newApps } from "@/lib/app-categories";
 import { withReleasedPhoneApp } from "@/lib/app-releases";
 import { myApps } from "@/lib/my-apps";
 
@@ -80,8 +80,9 @@ export async function GET() {
     launcher,
     /* My apps, as on the website's rail (the phone skips any it can't open, and keeps them when it saves), and Home's groups. */
     myApps: await myApps(user.username),
-    /* Just added, still in beta: the phone's Home lists them under Your apps. */
+    /* Just added: the phone's Home lists them under Your apps. Beta ones say so. */
     newApps: newApps.filter((id) => opened.some((app) => app.id === id)),
+    betaApps: betaApps.filter((id) => opened.some((app) => app.id === id)),
     categories: categorize(opened).map((group) => ({ id: group.id, label: group.label, apps: group.apps.map((app) => app.id) })),
     driveOn,
     drive: drive ? { ...drive, bloom: bloomSvg(drive, { glyph: drive.glyph, standalone: true, unique: drive.id }) } : null,

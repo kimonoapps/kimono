@@ -155,7 +155,7 @@ data class BloomLook(val id: String, val accent: String, val glyph: String?)
 @Serializable
 private data class AppList(
     val apps: List<KimonoAppLink>, val launcher: List<LauncherApp>? = null, val drive: DriveLook? = null, val driveOn: Boolean = true,
-    val myApps: List<String>? = null, val categories: List<AppGroup> = emptyList(), val newApps: List<String> = emptyList(),
+    val myApps: List<String>? = null, val categories: List<AppGroup> = emptyList(), val newApps: List<String> = emptyList(), val betaApps: List<String> = emptyList(),
 )
 
 /** One of Home's groups of apps (Productivity, For you…), by id, in order. */
@@ -408,8 +408,10 @@ class Drive(private val session: Session) {
     val myApps = kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     /** Home's groups of every app. */
     val appGroups = kotlinx.coroutines.flow.MutableStateFlow<List<AppGroup>>(emptyList())
-    /** Apps just added, still in beta: Home lists them under Your apps. */
+    /** Apps just added: Home lists them under Your apps. */
     val newApps = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+    /** Apps still in beta: Home says so beside their names. */
+    val betaApps = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
 
     /** Changes My apps: shown at once, saved behind it; if saving fails, the server's list comes back. */
     suspend fun setMyApps(ids: List<String>) {
@@ -425,6 +427,7 @@ class Drive(private val session: Session) {
         list.myApps?.let { myApps.value = it }
         appGroups.value = list.categories
         newApps.value = list.newApps
+        betaApps.value = list.betaApps
         list.drive?.let { look -> look.accent?.let { driveBloom.value = BloomLook(look.id, it, look.glyph ?: "file") } }
         driveOn.value = list.driveOn
         launcher.value = list.launcher ?: olderLauncher(list)
