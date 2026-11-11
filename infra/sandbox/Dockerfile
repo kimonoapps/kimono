@@ -3,7 +3,9 @@
 # outside — and it has no internet, so everything it uses is baked in here.
 # Every version is pinned; bump them together with the image tag in
 # cli/internal/sandbox/config.go.
-FROM node:22.23.5-bookworm-slim AS node
+# The full image: 22.23.5-bookworm-slim was published without arm64. Only
+# node itself and its modules are copied out, so it is the same Node.
+FROM node:22.23.5-bookworm AS node
 FROM golang:1.26.10-bookworm AS go
 
 FROM debian:bookworm-slim
