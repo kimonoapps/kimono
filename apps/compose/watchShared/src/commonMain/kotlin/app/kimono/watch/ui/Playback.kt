@@ -51,7 +51,7 @@ data class PlayerState(
     val finding: Boolean = true,
 ) {
     val isFilm get() = page?.title?.isFilm == true
-    /** Both of this person's streams are in use elsewhere (the server's 429). */
+    /** All of this person's screens are in use elsewhere (the server's 429). */
     val tooMany get() = problem?.startsWith("You're already watching") == true
     val current: EpisodeInfo? get() = page?.episode(season, episode)
     /** "S2:E3", "E27" or "E3", as the title names its episodes. */
@@ -141,7 +141,12 @@ class PlayerViewModel(
         loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, at = lastPos.takeIf { it > 0 }) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "This didn't start. Try again.") } }
     }
 
-    /** Both streams are taken: end them everywhere, then start here. */
+    /** Asks the admins for one more screen; [done] says whether it went. */
+    fun askForScreens(done: (Boolean) -> Unit) {
+        viewModelScope.launch { done(runCatching { api.askScreens() }.isSuccess) }
+    }
+
+    /** Every screen is taken: end them everywhere, then start here. */
     fun endOthers() {
         _state.value = _state.value.copy(loading = true, problem = null)
         viewModelScope.launch {

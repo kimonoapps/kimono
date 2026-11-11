@@ -13,6 +13,7 @@ import { planDigest, readReconcilerStatus } from "@/lib/desired-state";
 import { updateNotice } from "@/lib/kimono-release";
 import { describeService, readServicesStatus } from "@/lib/kimono-services";
 import { backupHealth } from "./backups/machinery";
+import { screenAsks, watchDb } from "@/lib/watch";
 
 export const metadata = { title: "Admin" };
 
@@ -27,6 +28,7 @@ export default async function AdminPage() {
   if (!["owner", "admin"].includes(session.user.role)) redirect("/");
   const [settings, scan, config, status, deployment, notice] = await Promise.all([getPlatformSettings(), scanAppDefinitions(), readBackupConfig(), readBackupStatus(), readReconcilerStatus(), updateNotice(session.user.username)]);
   const services = await readServicesStatus();
+  const screenRequests = (() => { try { return screenAsks(watchDb()).length; } catch { return 0; } })();
   const servicesDown = services.watched ? (services.status?.services ?? []).filter((state) => !describeService(state).ok).length : 0;
 
   const apps = appRegistry(settings, scan.definitions);
@@ -85,6 +87,7 @@ export default async function AdminPage() {
         {section("/admin/vpn", "shield", "#5c7150", "Kimono VPN", "Who may build a private mesh", null)}
         {section("/admin/feedback", "people", "#74565c", "Kimono AI feedback", "Thumbs and reports on its answers", null)}
         {section("/admin/phone-app", "phone", "#a84d63", "Phone app", "Releases and TestFlight testers", null)}
+        {section("/admin/watch", "laptop", "#4e2b37", "Kimono Watch", "Screens at once, and who's asking for more", screenRequests ? <span className="k-ink-dot k-wants">{screenRequests} asking</span> : null)}
         {section("/admin/links", "link", "#8a7c77", "People and invites", "Invite someone, reset a password", null)}
       </div>
     </div>

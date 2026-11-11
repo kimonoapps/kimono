@@ -109,14 +109,16 @@ export function streamsOf(username: string, except?: string, now = Date.now()): 
   return out;
 }
 
-/** Whether starting `what` would be one stream too many. Something already playing always carries on. */
-export function tooMany(username: string, what: string, now = Date.now()): boolean {
+/** Whether starting `what` would be one stream too many for someone allowed `limit`. Something already playing always carries on. */
+export function tooMany(username: string, what: string, now = Date.now(), limit = streamsPerPerson): boolean {
   const flow = flows.get(username)?.get(what);
   if (flow && live(flow, now)) return false;
-  return streamsOf(username, what, now).length >= streamsPerPerson;
+  return streamsOf(username, what, now).length >= limit;
 }
 
-export const tooManyNote = "You're already watching on two screens. Stop one to watch here.";
+const counts = ["no", "one", "two", "three", "four", "five", "six"];
+/** What a player says when it's turned away. Players spot it by its start: "You're already watching". */
+export const tooManyNote = (limit = streamsPerPerson) => `You're already watching on ${counts[limit] ?? limit} screens. Stop one to watch here.`;
 
 function add(map: Map<number, number>, from: number, to: number) {
   for (let t = from; t < to;) {

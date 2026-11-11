@@ -814,3 +814,4 @@
 .kw .kw-tg-chips .kw-face-s{width:30px;height:30px;font-size:14px}
 .kw .kw-tg-chips button>.kw-ic{width:16px;height:16px;color:var(--fg-3)}
 .kw .kw-tg-chips button:hover>.kw-ic{color:var(--fg)}
+.kw .kw-btn:disabled{opacity:.55;cursor:default}

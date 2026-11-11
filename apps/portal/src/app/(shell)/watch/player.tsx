@@ -65,6 +65,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const [loading, setLoading] = useState(false);
   const [pct, setPct] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
+  const [askedMore, setAskedMore] = useState<"no" | "asking" | "asked">("no");
   const [paused, setPaused] = useState(true);
   const [buffering, setBuffering] = useState(false);
   const [ctl, setCtl] = useState(true);
@@ -806,7 +807,8 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     <div className={cx("kw-pload", (loading || problem) && "kw-on")}>
       {problem ? <div className="kw-oops"><p>{problem}</p><div className="kw-btns" style={{ justifyContent: "center" }}>
         <button className="kw-btn kw-tonal" onClick={exit}>Back</button>
-        {problem.startsWith("You're already watching") ? <button className="kw-btn kw-primary" onClick={() => { setProblem(null); setLoading(true); void watchApi.endStreams().then(() => loadEpisode(titleId!, ep), () => { setLoading(false); setProblem("Those didn't stop. Try again."); }); }}>Stop both</button> : null}
+        {problem.startsWith("You're already watching") ? <button className="kw-btn kw-primary" onClick={() => { setProblem(null); setLoading(true); void watchApi.endStreams().then(() => loadEpisode(titleId!, ep), () => { setLoading(false); setProblem("Those didn't stop. Try again."); }); }}>Stop the others</button> : null}
+        {problem.startsWith("You're already watching") ? <button className="kw-btn kw-tonal" disabled={askedMore !== "no"} onClick={() => { setAskedMore("asking"); void watchApi.askScreens().then(() => setAskedMore("asked"), () => setAskedMore("no")); }}>{askedMore === "asked" ? "Asked" : "Ask for more"}</button> : null}
         {play && play.versions.some((x) => x.key !== play.version.key && !live.current.avoid.includes(x.key)) ? <button className="kw-btn kw-primary" onClick={() => { live.current.tries = 0; void loadEpisode(titleId!, ep, { avoid: [...live.current.avoid, play.version.key] }); }}>Try another version</button> : null}
       </div></div> : <>
         <InkRing className="kw-start" value={pct / 100} percent label="Starting" />

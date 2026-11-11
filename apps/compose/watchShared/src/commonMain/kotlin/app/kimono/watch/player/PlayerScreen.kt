@@ -756,8 +756,15 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
                 val f = remember { FocusRequester() }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PaperButton("Back", null, onExit, tonal = true)
-                    if (state.tooMany) PaperButton("Stop both", null, { vm.endOthers() }, Modifier.focusRequester(f))
+                    if (state.tooMany) PaperButton("Stop the others", null, { vm.endOthers() }, Modifier.focusRequester(f))
                     else PaperButton("Try again", null, { vm.retry() }, Modifier.focusRequester(f))
+                }
+                if (state.tooMany) {
+                    /* 0: not asked, 1: asking, 2: asked. */
+                    var asked by remember { mutableIntStateOf(0) }
+                    PaperButton(if (asked == 2) "Asked" else "Ask for more", null, {
+                        if (asked == 0) { asked = 1; vm.askForScreens { ok -> asked = if (ok) 2 else 0 } }
+                    }, Modifier.alpha(if (asked == 0) 1f else .55f), tonal = true)
                 }
                 LaunchedEffect(Unit) { runCatching { f.requestFocus() } }
             }

@@ -12,6 +12,7 @@ import * as streams from '../src/lib/watch/streams.ts';
 import * as hls from '../src/lib/watch/hls.ts';
 import * as party from '../src/lib/watch/together.ts';
 import * as flow from '../src/lib/watch/flow.ts';
+import * as screens from '../src/lib/watch/screens.ts';
 
 const day = 24 * 60 * 60 * 1000;
 function fresh() {
@@ -1377,4 +1378,28 @@ test('a stall is the server when the relay waits on the source, else the connect
   now = 12_000;
   assert.equal(flow.verdict('sami', 'fast', now).slow, 'connection');
   assert.equal(flow.verdict('sami', 'nothing', now).slow, null);
+});
+
+test('two screens each until an admin approves more; asking twice is one request', () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  assert.equal(screens.screensOf(db, 'sami'), 2);
+  assert.equal(screens.askForScreens(db, 'sami', 1).want, 3);
+  assert.equal(screens.askForScreens(db, 'sami', 2).at, 1, 'the first ask stands');
+  assert.deepEqual(screens.screenAsks(db).map((a) => [a.username, a.have, a.want]), [['sami', 2, 3]]);
+  assert.equal(screens.decideScreens(db, 'sami', true), 3);
+  assert.equal(screens.screensOf(db, 'sami'), 3);
+  assert.deepEqual(screens.screenAsks(db), []);
+  screens.askForScreens(db, 'sami');
+  assert.equal(screens.decideScreens(db, 'sami', false), null);
+  assert.equal(screens.screensOf(db, 'sami'), 3, 'declining keeps what they had');
+  assert.throws(() => screens.decideScreens(db, 'sami', true));
+  screens.setScreens(db, 'sami', 2);
+  assert.equal(screens.screensOf(db, 'sami'), 2);
+  assert.deepEqual(screens.moreScreens(db), []);
+  flow.forgetFlows();
+  flow.asked('sami', 'a'); flow.asked('sami', 'b');
+  assert.equal(flow.tooMany('sami', 'c'), true);
+  assert.equal(flow.tooMany('sami', 'c', Date.now(), 3), false, 'a third screen when allowed');
+  assert.match(flow.tooManyNote(3), /^You're already watching on three screens/);
 });

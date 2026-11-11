@@ -33,6 +33,7 @@ import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from
 import { lastError, noteError, probe, type Probe } from "./status";
 import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
+import { screensOf } from "./screens";
 import { migrateTogether } from "./together";
 import { markDead, isDead } from "./dead";
 import { framingOf, noteShape } from "./shape";
@@ -40,6 +41,7 @@ import { asked, endedBefore, endStreams, heard, streamLifeMs, playbackNeedsSourc
 import { anything, castOf, displayAspect, probeAttempts, probeOutcome, ffmpegArgs, hlsPath, masterPlaylist, mediaPlaylist, openHls, planHls, screenFor, sealHls, sessionOf, startSegment, subtitlePlaylist, type HlsGrant, type HlsPlan, type PackagerJob, type Probe as HlsProbe } from "./hls";
 
 export * from "./model";
+export { askForScreens, decideScreens, moreScreens, mostScreens, screenAsks, screensOf, setScreens } from "./screens";
 
 const root = join(stateDir, "watch");
 const cache = globalThis as unknown as { kimonoWatch?: DatabaseSync; kimonoWatchSwept?: number };
@@ -533,7 +535,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
   const episode = title.kind === "series" ? Number(raw.episode) || 1 : 0;
   /* Two streams at once per person; what's already playing (a quality switch, another version) carries on. */
   const what = watchKey(title.id, season, episode);
-  if (tooMany(username, what)) throw new WatchProblem(tooManyNote, 429);
+  const screens = screensOf(db, username);
+  if (tooMany(username, what, Date.now(), screens)) throw new WatchProblem(tooManyNote(screens), 429);
   let minutes = title.runtime;
   let episodes: Episode[] = [];
   if (title.kind === "series") {
@@ -726,7 +729,8 @@ export async function relay(request: Request, token: string): Promise<Response> 
   const byPackager = new URL(request.url).searchParams.has("packager");
   if (what && endedBefore(grant.username, grant.expiresAt)) return new Response("This was stopped from another screen.", { status: 410 });
   if (what && request.method !== "HEAD" && !byPackager) {
-    if (tooMany(grant.username, what)) return new Response(tooManyNote, { status: 429 });
+    const screens = screensOf(watchDb(), grant.username);
+    if (tooMany(grant.username, what, Date.now(), screens)) return new Response(tooManyNote(screens), { status: 429 });
     asked(grant.username, what);
   }
   const startedAt = performance.now();
@@ -854,7 +858,8 @@ export async function hlsRelay(request: Request, token: string, path: string[]):
     const what = stream?.what ?? null;
     if (stream && what && endedBefore(grant.username, stream.expiresAt)) return new Response("This was stopped from another screen.", { status: 410, headers: hlsHeaders("text/plain") });
     if (what && request.method !== "HEAD") {
-      if (tooMany(grant.username, what)) return new Response(tooManyNote, { status: 429, headers: hlsHeaders("text/plain") });
+      const screens = screensOf(watchDb(), grant.username);
+      if (tooMany(grant.username, what, Date.now(), screens)) return new Response(tooManyNote(screens), { status: 429, headers: hlsHeaders("text/plain") });
       asked(grant.username, what);
     }
     const headers = new Headers();
