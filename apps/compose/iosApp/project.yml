@@ -56,6 +56,8 @@ targets:
         NSMicrophoneUsageDescription: Speak a message to Kimono AI instead of typing it.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Kimono's own iPhone apps, to tell whether they're installed and open them straight away.
+        LSApplicationQueriesSchemes: [kimono-photos, kimono-watch]
     preBuildScripts:
       - name: Build the shared Kotlin framework
         basedOnDependencyAnalysis: false

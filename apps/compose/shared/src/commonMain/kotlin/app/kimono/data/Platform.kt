@@ -50,6 +50,8 @@ interface Platform {
     fun isInstalled(packageId: String): Boolean? = null
     /** The version name of the installed app with [packageId] ("3.1.0-kimono.1"); null if it isn't installed or the phone won't say. */
     fun installedVersion(packageId: String): String? = null
+    /** Whether an installed app answers [url] (an iPhone's kimono-photos://, say); null where the phone won't say. */
+    fun canOpen(url: String): Boolean? = null
     /** Opens the installed app with [packageId]; false if it couldn't. */
     fun openInstalled(packageId: String): Boolean = false
     /** Opens the system share sheet with [text] (a link, say), so it can go to any app. */

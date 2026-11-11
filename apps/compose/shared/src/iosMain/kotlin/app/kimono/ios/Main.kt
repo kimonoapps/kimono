@@ -118,6 +118,8 @@ private class IosPlatform(private val host: IosHost) : Platform {
         suspendCancellableCoroutine { waiting -> host.pickPicture { waiting.resume(it?.toByteArray()) } }
     override val os = "ios"
     override fun openUrl(url: String) = host.openUrl(url)
+    /* Only for the schemes listed under LSApplicationQueriesSchemes; any other answers false. */
+    override fun canOpen(url: String): Boolean? = platform.Foundation.NSURL.URLWithString(url)?.let { platform.UIKit.UIApplication.sharedApplication.canOpenURL(it) }
     override fun cacheDir() = host.cacheDir()
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
     override fun share(text: String) = host.share(text)

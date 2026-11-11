@@ -66,6 +66,8 @@ import kotlinx.coroutines.launch
 data class PhoneAppHere(val installed: Boolean?, val version: String?, val update: String?)
 
 fun phoneAppHere(app: LauncherApp, platform: Platform): PhoneAppHere {
+    /* An iPhone says only whether something answers the app's own link (kimono-photos://); never its version. */
+    if (platform.os == "ios") return PhoneAppHere(app.phoneApp?.connectLink?.let { platform.canOpen(it.substringBefore("://") + "://") }, null, null)
     val pkg = app.phoneApp?.androidPackage?.takeIf { platform.os == "android" } ?: return PhoneAppHere(null, null, null)
     val installed = platform.isInstalled(pkg)
     val version = if (installed == true) platform.installedVersion(pkg) else null
@@ -104,8 +106,11 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
     var asking by remember { mutableStateOf(false) }
     /* One of Kimono's own that the last sync hadn't seen in App Store Connect yet: still asked for here, never on the website. */
     fun unseen() = phone.androidPackage?.takeIf { it.startsWith("app.kimono.") }?.let { TestflightApp(it, phone.name, "idle") }
-    if (platform.os == "ios" && testflight != null) LaunchedEffect(app.id) {
-        testflight.mine()?.let { mine -> beta = mine.appFor(phone, app.fullName) ?: unseen(); betaEmail = mine.email }
+    /* Looked at again on coming back, say from Mail or TestFlight. */
+    var looks by remember { mutableStateOf(0) }
+    LifecycleResumeEffect(app.id) { looks++; onPauseOrDispose {} }
+    if (platform.os == "ios" && testflight != null) LaunchedEffect(app.id, looks) {
+        if (!asking) testflight.mine()?.let { mine -> beta = mine.appFor(phone, app.fullName) ?: unseen(); betaEmail = mine.email }
     }
     fun ask(bundleId: String) {
         val flight = testflight ?: return
@@ -146,7 +151,6 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
                     val going = progress
                     val flight = beta
                     when {
-                        flight != null -> TestflightAsk(flight, betaEmail, asking, ask = { ask(flight.bundleId) }, openTestflight = { platform.openUrl("itms-beta://") })
                         going != null -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             InkProgress(progress = { going }, modifier = Modifier.width(200.dp))
                             Text(if (going < 1f) "Downloading ${phone.name}" else "Android will ask you to confirm", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -156,12 +160,20 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
                             Seal("Open", onClick = ::open, tone = SealTone.Quiet)
                         }
                         here.installed == true -> Seal("Open ${phone.name}", onClick = ::open)
+                        flight != null -> TestflightAsk(flight, betaEmail, asking, ask = { ask(flight.bundleId) }, openTestflight = { platform.openUrl("itms-beta://") })
                         handOut != null || store != null -> Seal("Get ${phone.name}", onClick = ::get)
                     }
                     Problem(problem)
                 }
-                if (phone.steps.isNotEmpty()) Text("Set it up", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
-                phone.steps.forEachIndexed { index, step ->
+                /* On an iPhone, until it's installed: the steps to get it through TestFlight. Its own steps after. */
+                val flight = beta?.takeIf { here.installed != true }
+                if (flight != null) {
+                    Text("Get it", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
+                    TestflightSteps(flight, betaEmail)
+                }
+                val steps = if (flight != null) emptyList() else phone.steps
+                if (steps.isNotEmpty()) Text("Set it up", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
+                steps.forEachIndexed { index, step ->
                     Step(index + 1, step.title) {
                         Text(step.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         when (step.kind) {
@@ -190,6 +202,11 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
  * False when it isn't installed (or this phone can't tell).
  */
 fun openPhoneApp(phone: PhoneApp, platform: Platform): Boolean {
+    if (platform.os == "ios") {
+        val link = phone.connectLink ?: return false
+        if (platform.canOpen(link.substringBefore("://") + "://") != true) return false
+        platform.openUrl(link); return true
+    }
     val pkg = phone.androidPackage?.takeIf { platform.os == "android" } ?: return false
     if (platform.isInstalled(pkg) != true) return false
     val link = phone.connectLink ?: return platform.openInstalled(pkg)
@@ -206,6 +223,7 @@ private fun TestflightAsk(app: TestflightApp, email: String?, asking: Boolean, a
         app.status == "requested" -> "Waiting for approval"
         app.status == "waiting" -> "Sent. $inbox for Apple's invite"
         app.status == "invited" || app.status == "stuck" -> "$inbox, accept Apple's invite, then open TestFlight"
+        app.status == "tester" -> "You're in. Install it from TestFlight"
         app.status == "problem" -> "Apple didn't take your email. Ask whoever runs your Kimono"
         app.status == "none" -> "Your Kimono account needs an email first"
         else -> null
@@ -224,3 +242,23 @@ private fun TestflightAsk(app: TestflightApp, email: String?, asking: Boolean, a
     }
 }
 
+
+/** Getting an iPhone app through TestFlight, one step at a time, each ticked once it's done. */
+@Composable
+private fun TestflightSteps(app: TestflightApp, email: String?) {
+    val asked = app.status !in setOf("idle", "declined", "problem", "none")
+    val joined = app.status == "tester"
+    val steps = listOf(
+        Triple("Get access", "Ask for ${app.name} above.", asked),
+        Triple("Accept Apple's invite", "Apple emails ${email ?: "you"} an invite to TestFlight.", joined),
+        Triple("Install from TestFlight", "Open TestFlight and install ${app.name}, then come back here.", false),
+    )
+    steps.forEachIndexed { index, (title, description, done) ->
+        Step(index + 1, title) {
+            if (done) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(kimonoIcon("check"), null, tint = Kata.moss, modifier = Modifier.size(18.dp))
+                Text("Done", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
+            } else Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
