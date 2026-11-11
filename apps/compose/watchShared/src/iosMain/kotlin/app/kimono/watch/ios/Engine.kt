@@ -90,7 +90,14 @@ class IosEngine(val player: IosPlayer) : PlaybackEngine {
         if (subs == null) { subtitlesOff = true; player.selectSubtitles(null); return }
         subtitlesOff = false
         val words = subs.signsTitles.ifEmpty { signsWords }
-        val inLanguage = all.filter { it.type == "sub" && matches(it.lang, subs.tags + subs.language) }
+        /* In the language by tag, else untagged tracks titled with it ("English", "Eng [Full]"). */
+        val text = all.filter { it.type == "sub" }
+        val name = languageName(subs.language)?.lowercase()
+        val inLanguage = text.filter { matches(it.lang, subs.tags + subs.language) }.ifEmpty {
+            text.filter { t ->
+                language2(t.lang) == null && t.title?.lowercase()?.let { l -> (name != null && name in l) || subs.tags.any { g -> g.length == 3 && Regex("\\b$g\\b").containsMatchIn(l) } } == true
+            }
+        }
         fun isSigns(t: MpvTrack) = t.forced || (t.title?.lowercase()?.let { l -> words.any { it in l } } == true)
         val pick = if (subs.kind == "signs") inLanguage.firstOrNull(::isSigns) else inLanguage.firstOrNull { !isSigns(it) } ?: inLanguage.firstOrNull()
         if (pick != null) player.selectSubtitles(pick.id)

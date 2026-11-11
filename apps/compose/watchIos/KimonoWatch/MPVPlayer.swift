@@ -243,12 +243,18 @@ final class MPVPlayer: NSObject, IosPlayer, AVPictureInPictureControllerDelegate
                 case "paused-for-cache": pausedForCache = flag
                 case "eof-reached": eof = flag
                 case "video-params/aspect": if double > 0 { events?.shape(ratio: double) }
-                case "track-list/count": if int > 0 && why == nil { events?.tracks() }
+                /* Only once this load's file is open: a late count from the last file would hint the wrong tracks. */
+                case "track-list/count": if int > 0 && loaded && why == nil { events?.tracks() }
                 default: break
                 }
             }
         case MPV_EVENT_FILE_LOADED:
-            DispatchQueue.main.async { [self] in loaded = true; eof = false }
+            /* The tracks are all known now. Said here too, as the count alone stays quiet when the next file has as many tracks as the last. */
+            DispatchQueue.main.async { [self] in
+                loaded = true; eof = false
+                guard !disposed, why == nil else { return }
+                events?.tracks()
+            }
         case MPV_EVENT_PLAYBACK_RESTART:
             DispatchQueue.main.async { [self] in
                 guard !disposed, !framed else { return }

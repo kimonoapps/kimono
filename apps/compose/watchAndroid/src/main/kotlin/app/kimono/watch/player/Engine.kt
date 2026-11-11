@@ -122,7 +122,15 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
         } else {
             p.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
             val words = subs.signsTitles.ifEmpty { signsWords }
-            val inLanguage = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && matches(it.getTrackFormat(0).language, subs.tags + subs.language) }
+            /* Tracks this phone can draw, in the language by tag, else untagged ones titled with it ("English", "Eng [Full]"). */
+            val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }.sortedByDescending { it.isTrackSupported(0) }
+            val name = languageName(subs.language)?.lowercase()
+            val inLanguage = text.filter { matches(it.getTrackFormat(0).language, subs.tags + subs.language) }.ifEmpty {
+                text.filter { g ->
+                    val f = g.getTrackFormat(0)
+                    language2(f.language) == null && f.label?.lowercase()?.let { l -> (name != null && name in l) || subs.tags.any { t -> t.length == 3 && Regex("\\b$t\\b").containsMatchIn(l) } } == true
+                }
+            }
             fun isSigns(g: Tracks.Group) = g.getTrackFormat(0).label?.lowercase()?.let { l -> words.any { it in l } } == true
             val pick = if (subs.kind == "signs") inLanguage.firstOrNull(::isSigns) else inLanguage.firstOrNull { !isSigns(it) } ?: inLanguage.firstOrNull()
             if (pick != null) p.setOverrideForType(TrackSelectionOverride(pick.mediaTrackGroup, 0))
