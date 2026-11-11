@@ -52,6 +52,7 @@ import app.kimono.watch.model.TrackHints
 import io.github.peerless2012.ass.media.kt.buildWithAssSupport
 import io.github.peerless2012.ass.media.type.AssRenderType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -69,7 +70,13 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     val selector = DefaultTrackSelector(context).apply {
         setParameters(buildUponParameters().setTunnelingEnabled(tv).setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true))
     }
-    private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
+    /*
+     * HTTP/1.1, a connection per read: over HTTP/2 every read shares one, and a seek's
+     * new read waited behind the megabytes already sent for the old spot, so closing
+     * and reopening the player was quicker. A seek now drops the old connection outright.
+     */
+    private val http = OkHttpClient.Builder().protocols(listOf(Protocol.HTTP_1_1))
+        .connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
     private val source = Downloads.readThrough(context, OkHttpDataSource.Factory(http).setUserAgent("KimonoWatch"))
 
     val player: ExoPlayer = ExoPlayer.Builder(context)
