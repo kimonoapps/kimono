@@ -96,10 +96,11 @@ function wavePoints(from: number, to: number, mid: number, amp: number, length: 
 }
 
 /* The brush, as the phone lays it (InkProgress.kt): a pressed, easing wave with a faint bleed round it, and a flat, broken track. */
-const waveBrush = (points: InkPoint[], seed: number, weight: number) => inkBrushD(points, inkRandom(seed), weight, { lift: null, swell: .32, wander: .12, step: 1.5 });
-const bleedBrush = (points: InkPoint[], seed: number, weight: number) => inkBrushD(points, inkRandom(seed + 1), weight * 1.9, { lift: null, swell: .45, wander: .3, step: 1.5 });
-const trackBrush = (from: number, to: number, mid: number, weight: number) => to - from < weight ? ""
-  : inkBrushD([[from, mid], [to, mid]], inkRandom(7), weight * .8, { lift: [60, 140], gap: [4, 7], swell: .25, wander: .1, step: 1.5 });
+/* Each is pinned to the paper (`origin`: how far along the bar it starts), so as a line grows or runs along, its weight and its lifts stay where they are instead of jumping. */
+const waveBrush = (points: InkPoint[], origin: number, weight: number) => inkBrushD(points, inkRandom(11), weight, { lift: null, swell: .32, wander: .12, step: 1.5, origin });
+const bleedBrush = (points: InkPoint[], origin: number, weight: number) => inkBrushD(points, inkRandom(12), weight * 1.9, { lift: null, swell: .45, wander: .3, step: 1.5, origin });
+const trackBrush = (points: InkPoint[], origin: number, extent: number, weight: number) => inkBrushD(points, inkRandom(7), weight * .8, { lift: [60, 140], gap: [4, 7], swell: .25, wander: .1, step: 1.5, origin, extent });
+const flatTrack = (from: number, to: number, mid: number, weight: number, start: number, end: number) => to - from < weight ? "" : trackBrush([[from, mid], [to, mid]], from - start, end - start, weight);
 
 /** One frame of the bar in a w×h box: the waves, the track, the dot. */
 function frame(w: number, h: number, t: number, value: number | undefined) {
@@ -116,21 +117,21 @@ function frame(w: number, h: number, t: number, value: number | undefined) {
     const reach = start + span * value;
     /* Flat where it starts and where it lands, wavy between. */
     const swing = amp * Math.min(1, value / .1) * Math.max(0, Math.min(1, (1 - value) / .05));
-    if (value > 0) { const points = wavePoints(start, reach, mid, swing, length, phase); bleed = bleedBrush(points, 11, weight); wave = waveBrush(points, 11, weight); }
-    track = trackBrush(value > 0 ? reach + gap : start, end - weight * 1.2, mid, weight);
+    if (value > 0) { const points = wavePoints(start, reach, mid, swing, length, phase); bleed = bleedBrush(points, 0, weight); wave = waveBrush(points, 0, weight); }
+    track = flatTrack(value > 0 ? reach + gap : start, end - weight * 1.2, mid, weight, start, end);
     dot = end - weight * .3;
   } else {
     const c = t % CYCLE;
     let at = start;
     const lines = [[along(c, RUNS[1]), along(c, RUNS[0])], [along(c, RUNS[3]), along(c, RUNS[2])]]
       .map(([tail, head]) => [start + span * tail, start + span * head]).filter(([a, b]) => b - a > weight * .6);
-    lines.forEach(([a, b], i) => {
-      track += trackBrush(at, a - gap, mid, weight);
+    for (const [a, b] of lines) {
+      track += flatTrack(at, a - gap, mid, weight, start, end);
       const points = wavePoints(a, b, mid, amp, length, phase);
-      bleed += bleedBrush(points, 11 + i * 4, weight); wave += waveBrush(points, 11 + i * 4, weight);
+      bleed += bleedBrush(points, a - start, weight); wave += waveBrush(points, a - start, weight);
       at = b + gap;
-    });
-    track += trackBrush(at, end, mid, weight);
+    }
+    track += flatTrack(at, end, mid, weight, start, end);
   }
   return { weight, mid, wave, bleed, track, dot };
 }
@@ -147,7 +148,7 @@ function Wave({ value, colour, label, className }: { value?: number; colour?: st
     const observer = new ResizeObserver(measure); observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  const known = typeof value === "number" ? Math.min(1, Math.max(0, value)) : undefined;
+  const known = useGlide(typeof value === "number" ? Math.min(1, Math.max(0, value)) : undefined, now);
   const [w, h] = size;
   const f = w && h ? frame(w, h, now, known) : null;
   return <span ref={box} className={className} style={colour ? { color: colour } : undefined} role="progressbar" aria-label={label || undefined}
@@ -159,6 +160,22 @@ function Wave({ value, colour, label, className }: { value?: number; colour?: st
       {f.dot !== null ? <circle cx={f.dot.toFixed(1)} cy={f.mid} r={(f.weight * .45).toFixed(2)} fill="currentColor" opacity=".7"/> : null}
     </svg> : null}
   </span>;
+}
+
+/**
+ * The value shown, gliding after the real one a frame at a time, so a progress
+ * that arrives in steps (an upload's chunks) fills smoothly instead of jumping.
+ * Going back (a new upload) starts again from there at once.
+ */
+function useGlide(target: number | undefined, now: number) {
+  const held = useRef<{ shown: number; at: number } | null>(null);
+  if (target === undefined) { held.current = null; return undefined; }
+  /* Held still for reduced motion: the clock doesn't run, so show the value as it is. */
+  if (typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches) return target;
+  const h = held.current;
+  if (!h || target < h.shown) held.current = { shown: target, at: now };
+  else { h.shown += (target - h.shown) * (1 - Math.exp(-Math.max(0, now - h.at) / 140)); if (Math.abs(target - h.shown) < .001) h.shown = target; h.at = now; }
+  return held.current!.shown;
 }
 
 /** Milliseconds since mount, every frame; held at 500 for reduced motion (a known bar still fills, an unknown one shows one wave). */
@@ -207,7 +224,7 @@ function ringFrame(t: number, value: number) {
   if (value > 0) {
     const steps = Math.max(2, Math.ceil(240 * value)), points: InkPoint[] = [];
     for (let k = 0; k <= steps; k++) { const a = top + (reach - top) * (k / steps); points.push(at(a, radius + swing * Math.sin((a - top) * waves - phase))); }
-    bleed = bleedBrush(points, 11, weight); wave = waveBrush(points, 11, weight);
+    bleed = bleedBrush(points, 0, weight); wave = waveBrush(points, 0, weight);
   }
   /* The track: the rest of the circle, a gap either side of the wave. */
   const gap = value > 0 && value < 1 ? .2 : 0;
@@ -215,7 +232,7 @@ function ringFrame(t: number, value: number) {
   if (to - from > .05) {
     const steps = Math.ceil(120 * (to - from) / turn) + 1, points: InkPoint[] = [];
     for (let k = 0; k <= steps; k++) points.push(at(from + (to - from) * (k / steps), radius));
-    track = inkBrushD(points, inkRandom(7), weight * .8, { lift: [60, 140], gap: [4, 7], swell: .25, wander: .1, step: 1.5 });
+    track = trackBrush(points, (from - top) * radius, turn * radius, weight);
   }
   return { wave, bleed, track };
 }
@@ -228,7 +245,7 @@ function ringFrame(t: number, value: number) {
  */
 export function InkRing({ value, label = "Loading", percent = false, className }: { value: number; label?: string; percent?: boolean; className?: string }) {
   const now = useClock();
-  const known = Math.min(1, Math.max(0, value || 0));
+  const known = useGlide(Math.min(1, Math.max(0, value || 0)), now) ?? 0;
   const f = ringFrame(now, known);
   return <span className={cx("k-ring", className)} role="progressbar" aria-label={label || undefined} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(known * 100)}>
     <svg viewBox="0 0 100 100" aria-hidden="true">

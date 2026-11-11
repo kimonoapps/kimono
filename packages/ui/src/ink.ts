@@ -102,7 +102,11 @@ export function petalSvg(seed: number, colour = "#c75f78") {
 }
 
 export type InkPoint = [number, number];
-type BrushOptions = { lift?: [number, number] | null; gap?: [number, number]; swell?: number; wander?: number; step?: number; tip?: number };
+type BrushOptions = {
+  lift?: [number, number] | null; gap?: [number, number]; swell?: number; wander?: number; step?: number; tip?: number;
+  /** Where this line starts along a longer one (`extent` long) it is part of: the pressure and the lifts stay put on the paper as the line grows or moves, instead of being laid afresh from its start. */
+  origin?: number; extent?: number;
+};
 const smoothstep = (x: number) => x * x * (3 - 2 * x);
 
 /**
@@ -111,7 +115,7 @@ const smoothstep = (x: number) => x * x * (3 - 2 * x);
  * its course, the ends taper, and with `lift` the brush leaves the paper now
  * and then. Returns a filled outline (path d), to fill, not stroke.
  */
-export function inkBrushD(points: InkPoint[], random: InkRandom, width: number, { lift = [70, 120], gap = [4, 9], swell = .38, wander = .22, step = .9, tip = .3 }: BrushOptions = {}) {
+export function inkBrushD(points: InkPoint[], random: InkRandom, width: number, { lift = [70, 120], gap = [4, 9], swell = .38, wander = .22, step = .9, tip = .3, origin = 0, extent }: BrushOptions = {}) {
   if (points.length < 2) return "";
   const at = [0];
   for (let i = 1; i < points.length; i++) at.push(at[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
@@ -121,16 +125,18 @@ export function inkBrushD(points: InkPoint[], random: InkRandom, width: number, 
   const p1 = between(random, 0, 6.28), p2 = between(random, 0, 6.28), p3 = between(random, 0, 6.28);
   const pressure = (d: number) => 1 + swell * (.65 * Math.sin(d * f1 + p1) + .35 * Math.sin(d * f2 + p2));
   const drift = (d: number) => width * wander * Math.sin(d * f3 + p3);
-  const runs: [number, number][] = [];
-  if (!lift) runs.push([0, length]);
+  /* The lifts are laid along the whole line, from its very start, then cut to the part drawn here. */
+  const whole = Math.max(extent ?? 0, origin + length), laid: [number, number][] = [];
+  if (!lift) laid.push([0, whole]);
   else {
-    for (let a = 0; a < length;) {
-      const stop = Math.min(a + between(random, lift[0], lift[1]), length);
-      if (stop - a > width * 1.5) runs.push([a, stop]);
+    for (let a = 0; a < whole;) {
+      const stop = Math.min(a + between(random, lift[0], lift[1]), whole);
+      if (stop - a > width * 1.5) laid.push([a, stop]);
       a = stop + between(random, gap[0], gap[1]);
     }
-    if (runs.length && runs[runs.length - 1][1] < length - gap[1]) runs.push([runs[runs.length - 1][1] + gap[0], length]);
+    if (laid.length && laid[laid.length - 1][1] < whole - gap[1]) laid.push([laid[laid.length - 1][1] + gap[0], whole]);
   }
+  const runs = laid.map(([a, b]): [number, number] => [Math.max(a, origin) - origin, Math.min(b, origin + length) - origin]).filter(([a, b]) => b - a > width * .8);
   let out = "";
   for (const [a, b] of runs) {
     const span = b - a, count = Math.max(3, Math.round(span / step)), taper = Math.min(width * 2.2, span * .3);
@@ -143,7 +149,7 @@ export function inkBrushD(points: InkPoint[], random: InkRandom, width: number, 
       const [x0, y0] = points[seg - 1], [x1, y1] = points[seg], l = at[seg] - at[seg - 1] || 1, u = (d - at[seg - 1]) / l;
       const tx = (x1 - x0) / l, ty = (y1 - y0) / l, nx = -ty, ny = tx;
       const ease = taper <= 0 ? 1 : tip + (1 - tip) * smoothstep(Math.min(1, Math.max(0, Math.min(d - a, b - d) / taper)));
-      const half = width * pressure(d) * ease / 2, off = drift(d);
+      const half = width * pressure(d + origin) * ease / 2, off = drift(d + origin);
       const cx = x0 + (x1 - x0) * u + nx * off, cy = y0 + (y1 - y0) * u + ny * off;
       left.push(`${(cx + nx * half).toFixed(2)} ${(cy + ny * half).toFixed(2)}`);
       right.push(`${(cx - nx * half).toFixed(2)} ${(cy - ny * half).toFixed(2)}`);
