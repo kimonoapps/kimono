@@ -576,7 +576,7 @@
 .kw .kw-brand{gap:8px}
 .kw .kw-profiles{position:relative}
 .kw.kw-waiting{display:grid;place-items:center}
-.kw .kw-quality{margin-top:18px;display:grid}
+.kw .kw-quality{display:grid}
 .kw .kw-quality h4{margin-bottom:6px}
 .kw .kw-account .kw-smenu{left:auto;right:0;transform-origin:top right;min-width:230px}
 .kw .kw-menu-h{margin:6px 12px 4px;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--fg-3)}

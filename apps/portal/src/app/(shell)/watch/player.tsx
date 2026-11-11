@@ -23,7 +23,7 @@ export type PlayerHandle = {
   where: () => { titleId: string; season: number; episode: number; position: number } | null;
 };
 type Post = "next" | "ask" | "end" | null;
-type Sheet = "cc" | "speed" | "eps" | "party" | "react" | null;
+type Sheet = "cc" | "speed" | "quality" | "eps" | "party" | "react" | null;
 type Skip = { label: string; to: number; left: number; gone: boolean } | null;
 /** Seconds Skip intro / Skip recap stays up by itself; after that only with the controls. */
 const SKIP_SHOWN = 10;
@@ -871,7 +871,8 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
           <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} aria-label="Volume" onChange={(event) => { const v = video.current; if (!v) return; v.volume = Number(event.target.value); v.muted = v.volume === 0; setVolume(v.volume); setMuted(v.muted); }} />
         </div>
         <div className="kw-name">{t ? <><b>{t.name}</b>{!movie && ep && episode ? <>&nbsp; {epLabel} “{episode.name}”</> : null}</> : null}</div>
-        <button className="kw-pbtn kw-lab" aria-label="Speed and quality" onClick={() => openSheet("speed")}><Icon name="speed" /><span>Speed &amp; quality</span></button>
+        <button className="kw-pbtn kw-lab" aria-label="Playback speed" onClick={() => openSheet("speed")}><Icon name="speed" /><span>Speed</span></button>
+        {play?.quality && play.quality.options.length > 1 ? <button className="kw-pbtn kw-lab" aria-label="Quality" onClick={() => openSheet("quality")}><Icon name="hd" /><span>Quality</span></button> : null}
         {!movie ? <button className="kw-pbtn kw-lab" aria-label="Episodes" onClick={() => openSheet("eps")}><Icon name="eps" /><span>Episodes</span></button> : null}
         <button className="kw-pbtn kw-lab" aria-label="Audio and subtitles" onClick={() => openSheet("cc")}><Icon name="cc" /><span>Audio &amp; subtitles</span></button>
         {party ? <>
@@ -908,13 +909,13 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
         const link = live.current.link;
         if (link?.state) { if (!steering()) return; const v = video.current; link.assume({ rate: x, position: v?.currentTime ?? link.position(), at: link.now() }); void link.command("rate", { rate: x }); return; }
         setSpeed(x); if (video.current) video.current.playbackRate = x;
-      }}><i />{x}x{x === 1 ? " (Normal)" : ""}</button>)}</div>
-        {play?.quality && play.quality.options.length > 1 ? <div className="kw-quality"><h4>Quality</h4>{play.quality.options.map((q) => <button key={q.value} className={cx("kw-opt", play.quality!.current === q.value && "kw-sel")} onClick={() => {
+      }}><i />{x}x{x === 1 ? " (Normal)" : ""}</button>)}</div></> : null}
+      {sheet === "quality" && play?.quality ? <><div className="kw-quality"><h4>Quality</h4>{play.quality.options.map((q) => <button key={q.value} className={cx("kw-opt", play.quality!.current === q.value && "kw-sel")} onClick={() => {
           if (play.quality!.current === q.value || !titleId || !video.current) return;
           oneOff.current = q.value;
           void loadEpisode(titleId, live.current.ep, { startAt: video.current.currentTime });
-        }}><Icon name="check" />{q.label}</button>)}</div> : null}
-        <button className="kw-opt kw-more" onClick={() => { exit(); watch.openSettings(); }}>More settings<Icon name="right" /></button>
+        }}><Icon name="check" />{q.label}</button>)}</div>
+        <button className="kw-opt kw-more" onClick={() => { exit(); watch.openSettings(); }}>Your defaults<Icon name="right" /></button>
       </> : null}
       {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} bySeason={!view?.layout || view.layout === "seasons"} season={view?.season ?? ep.season} continuous={view?.layout === "continuous"} progress={time / d} onPick={(to) => { setSheet(null); pickEpisode(to); }} /> : null}
       {sheet === "react" && party ? <div className="kw-reacts">{reactionSet.map((e) => <button key={e} aria-label={`React ${e}`} onClick={() => void live.current.link?.react(e)}>{e}</button>)}</div> : null}
