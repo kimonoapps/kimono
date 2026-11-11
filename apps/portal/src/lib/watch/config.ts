@@ -45,6 +45,8 @@ export function watchConfig(settings: PlatformSettings) {
     anilistUrl: "https://graphql.anilist.co",
     /* Opening, ending and recap times for anime. */
     aniskipUrl: "https://api.aniskip.com/v2",
+    /* Episode counts of anime seasons split into parts. */
+    kitsuUrl: "https://kitsu.app/api/edge",
     /* Fribb's map between TMDB, TVDB, IMDb, AniList and MyAnimeList ids. */
     animeMapUrl: value("anime_map_url") || "https://raw.githubusercontent.com/Fribb/anime-lists/master/anime-list-full.json",
     colors: instance?.colors,

@@ -10,7 +10,7 @@ import { resolveSecrets } from "../secrets";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
 import { anyPlayable, noteSearch, notePlayable, quietAfter, sourcesQuiet, playableOf, pool, shared, streamsKey, streamTtl, toCheck, visible } from "./ahead";
-import { animeEntriesFor, animeMap, anilistMedia, jikanFillers } from "./anime";
+import { animeEntriesFor, animeMap, anilistMedia, jikanFillers, kitsuEpisode, kitsuParts, type KitsuPart } from "./anime";
 import { watchAppId, watchConfig, type WatchConfig } from "./config";
 import { absoluteNumbers, availability, badge, episodeLabel, episodeLayout, fillerAhead, nextEpisode, resumePoint, seasonTracker } from "./labels";
 import {
@@ -438,20 +438,26 @@ function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: nu
   /* An empty answer is never reused: sources drop searches when busy, so it's asked again. */
   if (known?.length) return Promise.resolve(known);
   return shared(searching, key, async () => {
-    if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
+    const ids = [await kitsuIdFor(cfg, title, season, episode), title.imdbId ? stremioId(title.imdbId, season || undefined, episode || undefined) : null].filter((id): id is string => Boolean(id));
+    if (!ids.length) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
     const manifest = await ensureProvisioned(db, cfg, await nzbdavAccess());
-    const id = stremioId(title.imdbId, season || undefined, episode || undefined);
-    let { releases: found, complete, refused } = await searchStreams(manifest, title.kind, id);
-    /*
-     * Nothing at all: a busy source may have dropped it, or the search turned
-     * it away for coming too often (its window is 15 seconds). Asked again,
-     * after the window when refused, before it is believed.
-     */
-    for (const wait of refused ? [8000, 8000] : [2000]) {
-      if (found.length) break;
-      await new Promise((done) => setTimeout(done, wait));
+    let found: Release[] = [], complete = false;
+    /* Anime goes by Kitsu's numbering first; when that finds nothing, by IMDb like any show. */
+    for (const id of ids) {
+      let refused: boolean;
       ({ releases: found, complete, refused } = await searchStreams(manifest, title.kind, id));
-      if (!refused) break;
+      /*
+       * Nothing at all: a busy source may have dropped it, or the search turned
+       * it away for coming too often (its window is 15 seconds). Asked again,
+       * after the window when refused, before it is believed.
+       */
+      for (const wait of refused ? [8000, 8000] : [2000]) {
+        if (found.length) break;
+        await new Promise((done) => setTimeout(done, wait));
+        ({ releases: found, complete, refused } = await searchStreams(manifest, title.kind, id));
+        if (!refused) break;
+      }
+      if (found.length) break;
     }
     /* Still nothing, and the search didn't finish: that's no answer, so it isn't kept and play doesn't say "no copy". */
     if (!found.length && !complete) throw new WatchProblem("Watch's sources are busy right now. Try again in a moment.", 503);
@@ -462,6 +468,26 @@ function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: nu
     else if (season <= 1 && episode <= 1 && complete && streak < quietAfter) notePlayable(db, title.id, false);
     return found;
   });
+}
+/** An anime episode's Stremio id by Kitsu ("kitsu:41982:3"), or null when its numbering there isn't clear. */
+async function kitsuIdFor(cfg: WatchConfig, title: Title, season: number, episode: number): Promise<string | null> {
+  if (title.shelf !== "Anime" || title.kind !== "series" || season <= 0) return null;
+  const map = await animeMap(cfg.animeMapUrl, join(root, "anime-list.json"));
+  const entries = map ? animeEntriesFor(map, { kind: "series", tmdbId: title.tmdbId, imdbId: title.imdbId }) : [];
+  if (!entries.some((e) => e.kitsuId)) return null;
+  const db = watchDb();
+  /* The entries this episode could belong to; their lengths change while they air, so they're kept a day. */
+  const ids = [...new Set(entries.filter((e) => e.kitsuId && (e.season === season || e.season === null)).map((e) => e.kitsuId!))].sort((a, b) => a - b);
+  const partsKey = `kitsu:${ids.join(",")}`;
+  let parts = cached<KitsuPart[]>(db, partsKey);
+  if (!parts) {
+    parts = await kitsuParts(cfg.kitsuUrl, ids);
+    if (parts) keep(db, partsKey, parts, 24 * hours(1));
+  }
+  /* One long entry is counted from the very first episode, so every season has to be there. */
+  const episodes = entries.length === 1 && entries[0].season === null ? await allEpisodes(cfg, title).catch(() => []) : [];
+  const at = kitsuEpisode(entries, episodes, { season, episode }, parts ?? []);
+  return at ? `kitsu:${at.kitsuId}:${at.episode}` : null;
 }
 const searching = ((globalThis as unknown as { kimonoWatchSearching?: Map<string, Promise<Release[]>> }).kimonoWatchSearching ??= new Map());
 

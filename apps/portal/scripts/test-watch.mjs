@@ -405,6 +405,27 @@ test("AniSkip's episode is the season's own number, or counted from the first fo
   assert.equal(markers.aniskipUrl('https://api.aniskip.com/v2', 21, 5), 'https://api.aniskip.com/v2/skip-times/21/5?types=op&types=ed&types=recap&episodeLength=0');
 });
 
+test("anime searches go by Kitsu's numbering when it's clear, and by IMDb otherwise", () => {
+  const eps = [ep(1, 1), ep(1, 2), ep(2, 1), ep(2, 2), ep(2, 3), ep(0, 1)];
+  const part = (kitsuId, episodes, startDate) => ({ kitsuId, episodes, startDate });
+  /* A season that is one entry keeps its number. */
+  assert.deepEqual(anime.kitsuEpisode([{ kitsuId: 7442, season: 1 }, { kitsuId: 8671, season: 2 }], eps, { season: 2, episode: 3 }, []), { kitsuId: 8671, episode: 3 });
+  /* A season in two parts (AoT's third) is cut by the parts' lengths, in air order. */
+  const aot3 = [{ kitsuId: 41982, season: 3 }, { kitsuId: 13569, season: 3 }];
+  const counts = [part(41982, 10, '2019-04-29'), part(13569, 12, '2018-07-23')];
+  assert.deepEqual(anime.kitsuEpisode(aot3, eps, { season: 3, episode: 12 }, counts), { kitsuId: 13569, episode: 12 });
+  assert.deepEqual(anime.kitsuEpisode(aot3, eps, { season: 3, episode: 15 }, counts), { kitsuId: 41982, episode: 3 });
+  assert.equal(anime.kitsuEpisode(aot3, eps, { season: 3, episode: 23 }, counts), null, 'past both parts');
+  assert.equal(anime.kitsuEpisode(aot3, eps, { season: 3, episode: 3 }, []), null, 'no lengths: no guess');
+  assert.deepEqual(anime.kitsuEpisode(aot3, eps, { season: 3, episode: 20 }, [part(13569, 12, '2018-07-23'), part(41982, null, '2019-04-29')]), { kitsuId: 41982, episode: 8 }, 'the airing part takes the rest');
+  /* One long entry (One Piece) counts from the first episode, specials left out. */
+  assert.deepEqual(anime.kitsuEpisode([{ kitsuId: 12, season: null }], eps, { season: 2, episode: 2 }, [part(12, null, '1999-10-20')]), { kitsuId: 12, episode: 4 });
+  /* Unclear or wrong for this show: IMDb. */
+  assert.equal(anime.kitsuEpisode([{ kitsuId: 1, season: 1 }], eps, { season: 2, episode: 1 }, []), null);
+  assert.equal(anime.kitsuEpisode([{ kitsuId: 1, season: 1 }], eps, { season: 1, episode: 14 }, [part(1, 12, '2020-01-01')]), null, 'longer than the entry');
+  assert.equal(anime.kitsuEpisode([{ kitsuId: 1, season: 1 }], eps, { season: 0, episode: 1 }, []), null, 'specials');
+});
+
 test("AniSkip's times become intro, recap and credits", () => {
   const m = markers.markersFrom({ found: true, results: [
     { skipType: 'op', interval: { startTime: 89.95, endTime: 179.12 } },
