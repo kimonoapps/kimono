@@ -918,16 +918,6 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
   .top-header { background: var(--k-ground); backdrop-filter: none; }
 }
 
-.mobile-app-downloads { display: flex; flex-wrap: wrap; gap: .75rem; margin-block: 1rem; }
-.mobile-app-downloads .k-seal { min-height: 44px; white-space: normal; text-align: center; }
-@media (max-width: 480px) {
-  .mobile-app-downloads { flex-direction: column; }
-  .mobile-app-downloads .k-seal { width: 100%; }
-}
-
-.mobile-app-server { display: grid; gap: .75rem; }
-.mobile-app-server input { width: 100%; box-sizing: border-box; padding: .75rem; font-size: 16px; }
-
 /* Provider marks rest on folded paper with an offset ink shadow. */
 .provider-mark { position: relative; isolation: isolate; width: 48px; height: 48px; flex: none; display: grid; place-items: center; color: var(--k-plum); }
 .provider-mark::before { content: ""; position: absolute; inset: 2px; z-index: -1; border: 1px solid var(--k-sakura-soft); border-radius: var(--k-r-s); background: var(--k-sheet); transform: rotate(-7deg); box-shadow: 3px 4px 0 var(--k-sakura-wash), 5px 6px 0 color-mix(in srgb, var(--k-plum) 18%, transparent); }

@@ -2,11 +2,9 @@
 
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { useState, type MouseEvent } from "react";
-import { flushSync } from "react-dom";
 import { AppBloom, cx } from "@kimono/ui";
 import type { KimonoApp } from "@/lib/apps";
-import { detectMobileOS, type MobileOS } from "@/lib/mobile-app";
-import { MobileAppTutorial } from "./mobile-app-tutorial";
+import { detectMobileOS } from "@/lib/mobile-app";
 import { noteUse, usePins } from "./pins";
 import type { RailApp } from "./rail";
 import { betaApps, newApps } from "@/lib/app-categories";
@@ -28,8 +26,6 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
   onReorder?: (ids: string[]) => void;
 }) {
   const [pins, setPins] = usePins(mine);
-  const [selected, setSelected] = useState<TileApp | null>(null);
-  const [mobileOS, setMobileOS] = useState<MobileOS>(null);
   const crossTo = useCrossTo();
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropBefore, setDropBefore] = useState<string | null>(null);
@@ -45,13 +41,12 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
   function open(app: TileApp, event: MouseEvent) {
     noteUse(app.id);
     onOpen?.();
-    /* On a phone, an app with its own phone app offers that first. */
+    /* On a phone, an app with its own phone app sends people to get the Kimono app instead. */
     if (!app.mobileApp || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
     const os = detectMobileOS(navigator);
     if (!os && !window.matchMedia("(max-width: 940px), (pointer: coarse)").matches) return;
     event.preventDefault();
-    setMobileOS(os);
-    setSelected(app);
+    crossTo("hanafubuki", os ? `/get-app?for=${os}` : "/get-app", false);
   }
 
   return <>
@@ -87,6 +82,5 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
         </div>;
       })}
     </div>
-    {selected?.mobileApp && <MobileAppTutorial key={selected.id} app={selected.mobileApp} serverUrl={selected.href} os={mobileOS} onClose={() => setSelected(null)} onContinue={() => { flushSync(() => setSelected(null)); crossTo("kakejiku", selected.href, selected.external); }} />}
   </>;
 }
