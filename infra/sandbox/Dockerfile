@@ -95,7 +95,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # What the agent shows people: screenshots (kimono-shot) and a running app
 # behind a link (kimono-serve, kimono-unserve, which run it under supervise).
 # See docs/kimono-code.md.
-COPY bin/kimono-ask bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-link bin/kimono-progress bin/kimono-say bin/kimono-chats bin/kimono-quran bin/kimono-hadith /usr/local/bin/
+COPY bin/kimono-ask bin/kimono-skill bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-link bin/kimono-progress bin/kimono-say bin/kimono-chats bin/kimono-quran bin/kimono-hadith /usr/local/bin/
 # How to make artifacts: the kit, scenes and maths (read by the agent; see docs/kimono-ai.md).
 COPY artifacts.md media.md /opt/kimono/
 COPY bin/shot.cjs bin/supervise /usr/local/lib/kimono/
@@ -110,8 +110,11 @@ ENV PATH=/opt/kimono/python/bin:/home/agent/go/bin:/usr/local/go/bin:$PATH \
 # Skills a person can turn on for Kimono AI (infra/sandbox/vendor-skills.sh
 # copies them, with their licences, from the commits it pins). A turn links
 # the ones they chose into ~/.claude/skills. Anthropic's document skills
-# expect docx, pptxgenjs and markitdown to be here already.
+# expect docx, pptxgenjs and markitdown to be here already. Kimono's own
+# (kimono-skills: the Skill builder) sit beside them, outside what the script
+# replaces.
 COPY skills /opt/kimono/skills
+COPY kimono-skills /opt/kimono/skills
 RUN chmod -R a+rX /opt/kimono/skills \
  && npm install -g --no-fund --no-audit docx@9.15.3 pptxgenjs@4.0.1 \
  && npm cache clean --force \

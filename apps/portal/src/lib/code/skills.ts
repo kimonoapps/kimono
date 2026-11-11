@@ -18,14 +18,17 @@ import { CodeProblem } from "./model";
  * catalog's default.
  *
  * Anyone can also write skills of their own (custom_skills): a name, when it
- * should be used, and its instructions. They're theirs alone until an admin
- * publishes one, which puts it in everyone's catalog, off until they turn it
- * on. A turn hands the sandbox each custom skill that's on as a SKILL.md to
- * write beside the image's own.
+ * should be used, and its instructions. They're theirs alone until they
+ * publish one to the Marketplace (by hand, or the Skill builder does it as it
+ * writes one). The Marketplace is a page people open on purpose: a published
+ * skill is in nobody else's list, and never on, until they add it there.
+ * Admins can change or take down any published skill. A turn hands the
+ * sandbox each custom skill that's on as a SKILL.md to write beside the
+ * image's own.
  */
 
 export type SkillKind = "always" | "on-demand";
-export type Skill = { id: string; name: string; description: string; kind: SkillKind; defaultOn: boolean; icon: string; source: string; author: string; license: string; /** Its slash command in the chat box, and what to type after it. */ command?: { name: string; hint?: string; does: string }; /** A skill someone here wrote: whether it's this person's, whether it's published, and (when they may change it) its instructions. */ custom?: { mine: boolean; published: boolean; editable: boolean; body?: string } };
+export type Skill = { id: string; name: string; description: string; kind: SkillKind; defaultOn: boolean; icon: string; source: string; author: string; license: string; /** Its slash command in the chat box, and what to type after it. */ command?: { name: string; hint?: string; does: string }; /** A skill someone here wrote: whether it's this person's, whether it's published, and (when they may change it) its instructions. */ custom?: { mine: boolean; published: boolean; editable: boolean; body?: string; /** How many people have it on. */ uses: number; /** Who wrote it, by username (author is their name). */ by: string } };
 export type SkillChoice = Skill & { enabled: boolean };
 
 export const skills: Skill[] = [
@@ -41,6 +44,7 @@ export const skills: Skill[] = [
   { id: "pptx", name: "PowerPoint", description: "Makes and edits slide decks.", kind: "on-demand", defaultOn: true, icon: "file", source: "https://github.com/anthropics/skills/tree/main/skills/pptx", author: "Anthropic", license: "Apache-2.0" },
   { id: "xlsx", name: "Excel spreadsheets", description: "Makes spreadsheets with working formulas and charts.", kind: "on-demand", defaultOn: true, icon: "file", source: "https://github.com/anthropics/skills/tree/main/skills/xlsx", author: "Anthropic", license: "Apache-2.0" },
   { id: "frontend-design", name: "Website design", description: "Gives websites it builds a distinctive look instead of a template one.", kind: "on-demand", defaultOn: true, icon: "code", source: "https://github.com/anthropics/skills/tree/main/skills/frontend-design", author: "Anthropic", license: "Apache-2.0" },
+  { id: "skill-builder", name: "Skill builder", description: "Type /skill-builder and say what you want: it asks you a few questions, writes the skill and puts it in the Marketplace.", kind: "on-demand", defaultOn: true, icon: "spark", source: "", author: "Kimono", license: "", command: { name: "skill-builder", hint: "what it should do", does: "Make a skill of your own and publish it" } },
   { id: "discernment-nudge", name: "Think it through", description: "After advice or a draft, prompts you to check it for yourself.", kind: "on-demand", defaultOn: false, icon: "spark", source: "https://github.com/anthropics/skills/tree/main/skills/discernment-nudge", author: "Anthropic", license: "Apache-2.0" },
 ];
 
@@ -66,22 +70,25 @@ export function seeNotice(db: DatabaseSync, username: string, notice: string, no
   db.prepare("INSERT OR IGNORE INTO notices_seen (username, notice, at) VALUES (?, ?, ?)").run(username, notice, now);
 }
 
-type CustomRow = { id: string; owner: string; author: string; name: string; slug: string; description: string; kind: SkillKind; body: string; published: number };
+type CustomRow = { id: string; owner: string; author: string; name: string; slug: string; description: string; kind: SkillKind; body: string; published: number; uses: number };
+const customColumns = "id, owner, author, name, slug, description, kind, body, published, (SELECT COUNT(*) FROM skill_choices c WHERE c.skill_id = custom_skills.id AND c.enabled = 1) AS uses";
 export type SkillViewer = { username: string; admin: boolean };
 
 /** Custom skills this person can see: their own, and every published one. */
 function customRows(db: DatabaseSync, username: string): CustomRow[] {
-  return db.prepare("SELECT id, owner, author, name, slug, description, kind, body, published FROM custom_skills WHERE owner = ? OR published = 1 ORDER BY published DESC, created_at").all(username) as CustomRow[];
+  return db.prepare(`SELECT ${customColumns} FROM custom_skills WHERE owner = ? OR published = 1 ORDER BY uses DESC, created_at DESC`).all(username) as CustomRow[];
 }
 
 function asSkill(row: CustomRow, viewer: SkillViewer): Skill {
   const mine = row.owner === viewer.username;
   const editable = mine || (viewer.admin && row.published === 1);
   return {
+    /* Someone else's published skill is off until it's added from the Marketplace. */
     id: row.id, name: row.name, description: row.description, kind: row.kind, defaultOn: mine, icon: row.kind === "always" ? "spark" : "chat",
     source: "", author: row.author, license: "",
     ...(row.kind === "on-demand" ? { command: { name: row.slug, does: row.description } } : {}),
-    custom: { mine, published: row.published === 1, editable, ...(editable ? { body: row.body } : {}) },
+    /* Anyone may read a published skill's instructions before adding it. */
+    custom: { mine, published: row.published === 1, editable, uses: row.uses, by: row.owner, ...(editable || row.published === 1 ? { body: row.body } : {}) },
   };
 }
 
@@ -103,13 +110,21 @@ export function setSkill(db: DatabaseSync, username: string, id: string, enabled
 /* ── skills people write ── */
 
 export const customLimits = { name: 60, description: 300, body: 20_000, perPerson: 40 };
-export type CustomSkillInput = { name?: unknown; description?: unknown; kind?: unknown; body?: unknown; published?: unknown };
+export type CustomSkillInput = { name?: unknown; description?: unknown; kind?: unknown; body?: unknown; published?: unknown; /** Its / command, when they chose one; otherwise it comes from the name. */ command?: unknown };
 
 function text(value: unknown, what: string, max: number): string {
   if (typeof value !== "string" || !value.trim()) throw new CodeProblem(`Give it ${what}.`);
   const trimmed = value.trim();
   if (trimmed.length > max) throw new CodeProblem(`Its ${what === "a name" ? "name" : what === "a description" ? "description" : "instructions"} can be at most ${max.toLocaleString("en")} characters.`);
   return trimmed;
+}
+
+/** A / command they asked for, as a slug: taken or reserved ones get a number, like a name's. */
+function wantedSlug(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") throw new CodeProblem("Its command should be a word or two.");
+  const slug = value.replace(/^\//, "").trim();
+  return slug || undefined;
 }
 
 function slugFor(db: DatabaseSync, name: string, except?: string): string {
@@ -123,37 +138,37 @@ function slugFor(db: DatabaseSync, name: string, except?: string): string {
 }
 
 function row(db: DatabaseSync, id: string): CustomRow | undefined {
-  return db.prepare("SELECT id, owner, author, name, slug, description, kind, body, published FROM custom_skills WHERE id = ?").get(id) as CustomRow | undefined;
+  return db.prepare(`SELECT ${customColumns} FROM custom_skills WHERE id = ?`).get(id) as CustomRow | undefined;
 }
 
-/** Writes a new skill of this person's own. Only an admin can publish it at once. */
+/** Writes a new skill of this person's own, published to the Marketplace when they say so. */
 export function createSkill(db: DatabaseSync, viewer: SkillViewer & { author: string }, input: CustomSkillInput, now = Date.now()): string {
   const name = text(input.name, "a name", customLimits.name);
   const description = text(input.description, "a description", customLimits.description);
   const body = text(input.body, "instructions", customLimits.body);
   const kind: SkillKind = input.kind === "always" ? "always" : "on-demand";
-  if (input.published === true && !viewer.admin) throw new CodeProblem("Only an admin can publish a skill.", 403);
   const count = (db.prepare("SELECT COUNT(*) AS n FROM custom_skills WHERE owner = ?").get(viewer.username) as { n: number }).n;
   if (count >= customLimits.perPerson) throw new CodeProblem(`You can keep up to ${customLimits.perPerson} skills of your own.`);
   const id = `c-${randomBytes(6).toString("hex")}`;
   db.prepare("INSERT INTO custom_skills (id, owner, author, name, slug, description, kind, body, published, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(id, viewer.username, viewer.author, name, slugFor(db, name), description, kind, body, input.published === true ? 1 : 0, now, now);
+    .run(id, viewer.username, viewer.author, name, slugFor(db, wantedSlug(input.command) ?? name), description, kind, body, input.published === true ? 1 : 0, now, now);
   return id;
 }
 
-/** Changes a skill: its owner, or an admin for a published one. Publishing either way is for admins. */
+/** Changes a skill: its owner, or an admin for a published one. Its owner publishes or unpublishes it; an admin can take someone's down. */
 export function updateSkill(db: DatabaseSync, viewer: SkillViewer, id: string, input: CustomSkillInput, now = Date.now()) {
   const current = row(db, id);
   if (!current || (current.owner !== viewer.username && current.published !== 1)) throw new CodeProblem("That skill isn't here.", 404);
   if (current.owner !== viewer.username && !viewer.admin) throw new CodeProblem("That skill isn't yours to change.", 403);
   if (input.published !== undefined && typeof input.published !== "boolean") throw new CodeProblem("Say whether it's published.");
-  if (input.published !== undefined && input.published !== (current.published === 1) && !viewer.admin) throw new CodeProblem("Only an admin can publish a skill.", 403);
+  if (input.published === true && current.published !== 1 && current.owner !== viewer.username) throw new CodeProblem("Only whoever wrote it can publish it.", 403);
   const name = input.name === undefined ? current.name : text(input.name, "a name", customLimits.name);
   const description = input.description === undefined ? current.description : text(input.description, "a description", customLimits.description);
   const body = input.body === undefined ? current.body : text(input.body, "instructions", customLimits.body);
   const kind: SkillKind = input.kind === undefined ? current.kind : input.kind === "always" ? "always" : "on-demand";
   const published = input.published === undefined ? current.published : input.published ? 1 : 0;
-  const slug = name === current.name ? current.slug : slugFor(db, name, id);
+  const command = wantedSlug(input.command);
+  const slug = command ? (command === current.slug ? current.slug : slugFor(db, command, id)) : name === current.name ? current.slug : slugFor(db, name, id);
   db.prepare("UPDATE custom_skills SET name = ?, slug = ?, description = ?, kind = ?, body = ?, published = ?, updated_at = ? WHERE id = ?")
     .run(name, slug, description, kind, body, published, now, id);
 }
@@ -182,4 +197,41 @@ export function skillsForTurn(db: DatabaseSync, owner: string, byOwner: boolean)
   const wanted = new Set([...linked, ...always]);
   const custom = [...rows.values()].filter((r) => wanted.has(r.id)).map((r) => ({ id: r.slug, file: skillFile(r) }));
   return { skills: linked.map(folder), always: always.map(folder), custom };
+}
+
+/* ── skills it makes with the person (infra/sandbox/bin/kimono-skill) ──
+ * kimono-skill writes /workspace/.kimono/skills-made/<id>.json and says its id; the turn reads it once the call
+ * answers and saves the skill as the chat owner's own. Only the owner's own turns make skills. */
+
+export const madeSkillsDir = ".kimono/skills-made";
+export const madeSkillId = (output: string) => /\(skill (\d{10,16}-[0-9a-f]{8})\)/.exec(output)?.[1];
+export const isSkillCommand = (input: string | undefined) => {
+  if (!input) return false;
+  try { const command = (JSON.parse(input) as { command?: unknown }).command; return typeof command === "string" && /(^|[\s;&|(])kimono-skill(\s|$)/.test(command); } catch { return false; }
+};
+
+export type MadeSkill = { skill?: string; name: string; command?: string; published: boolean; updated?: boolean; problem?: string };
+
+/** Saves what kimono-skill wrote as the owner's skill (or changes theirs, by its command), on for them at once. */
+export function saveMadeSkill(db: DatabaseSync, owner: SkillViewer & { author: string }, text: string, now = Date.now()): MadeSkill {
+  let raw: Record<string, unknown>;
+  try { raw = JSON.parse(text) as Record<string, unknown>; } catch { return { name: "A skill", published: false, problem: "It couldn't be read." }; }
+  const name = typeof raw.name === "string" ? raw.name.trim().slice(0, customLimits.name) : "A skill";
+  const input: CustomSkillInput = { name: raw.name, description: raw.description, kind: raw.kind, body: raw.body, command: raw.command, ...(typeof raw.publish === "boolean" ? { published: raw.publish } : {}) };
+  try {
+    if (typeof raw.update === "string") {
+      const current = db.prepare("SELECT id FROM custom_skills WHERE owner = ? AND slug = ?").get(owner.username, raw.update.replace(/^\//, "")) as { id: string } | undefined;
+      if (!current) return { name: name || `/${raw.update}`, published: false, problem: `There's no skill of yours called /${raw.update}.` };
+      updateSkill(db, owner, current.id, Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined)), now);
+      setSkill(db, owner.username, current.id, true, now);
+      const saved = row(db, current.id)!;
+      return { skill: saved.id, name: saved.name, ...(saved.kind === "on-demand" ? { command: saved.slug } : {}), published: saved.published === 1, updated: true };
+    }
+    const id = createSkill(db, owner, input, now);
+    setSkill(db, owner.username, id, true, now);
+    const saved = row(db, id)!;
+    return { skill: id, name: saved.name, ...(saved.kind === "on-demand" ? { command: saved.slug } : {}), published: saved.published === 1 };
+  } catch (error) {
+    return { name, published: false, problem: error instanceof Error ? error.message : "It couldn't be saved." };
+  }
 }

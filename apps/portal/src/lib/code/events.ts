@@ -69,6 +69,8 @@ export type CodeEvent =
   | { kind: "question"; id: string; questions: Question[] }
   /** How the person answered them: what they picked or wrote for each, in order, or that they skipped them. */
   | { kind: "question-answer"; id: string; skipped?: boolean; answers?: QuestionAnswer[] }
+  /** A skill it made with the person (kimono-skill): saved as theirs, and in the Marketplace when published; problem when it couldn't be. */
+  | { kind: "skill-made"; skill?: string; name: string; command?: string; published: boolean; updated?: boolean; problem?: string }
   /** How the person answered an access request. */
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 

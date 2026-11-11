@@ -3,6 +3,8 @@
 package app.kimono.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.verticalScroll
 import app.kimono.ui.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -344,6 +346,9 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
     var admin by remember { mutableStateOf(false) }
     /* The skill being written or changed: a new one is an empty SkillChoice with no id. */
     var writing by remember { mutableStateOf<app.kimono.data.SkillChoice?>(null) }
+    /* Someone else's skill, open to read and add (or, for an admin, take down). */
+    var reading by remember { mutableStateOf<app.kimono.data.SkillChoice?>(null) }
+    var allMarket by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { runCatching { code.skillCatalog() }.onSuccess { skills = it.skills; admin = it.admin } }
     fun flip(id: String, on: Boolean) {
         skills = skills?.map { if (it.id == id) it.copy(enabled = on) else it }
@@ -406,23 +411,41 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
                     ) { Text(m.text, style = MaterialTheme.typography.bodyLarge) }
                 }
             }
-            /* The skills, as on the web: the person's own (tap to change), then the catalog; each on or off for every chat. */
+            /* The skills, as on the web: the person's own (tap to change), the ones they use, then the Marketplace of what others here published. */
             val list = skills
             if (list != null) {
                 val mine = list.filter { it.custom?.mine == true }
-                val others = list.filter { it.custom?.mine != true }
+                val others = list.filter { it.custom == null || (it.custom.inMarket && it.enabled) }
+                val market = list.filter { it.custom?.inMarket == true }
                 item {
                     Row(Modifier.padding(top = 16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) { Heading("Your skills") }
                         TextButton(onClick = { writing = app.kimono.data.SkillChoice(id = "", name = "") }) { Icon(kimonoIcon("plus"), null, modifier = Modifier.size(18.dp)); Spacer(Modifier.size(4.dp)); Text("Add") }
                     }
                 }
-                if (mine.isEmpty()) item { Text("Write your own: what it's for, and what it should do.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
+                if (mine.isEmpty()) item { Text("Write your own here, or type /skill-builder in a chat and it makes one with you.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
                 itemsIndexed(mine, key = { _, s -> "mine:${s.id}" }) { index, s -> SkillRow(s, index, mine.size, onOpen = { writing = s }, onFlip = { on -> flip(s.id, on) }) }
                 if (others.isNotEmpty()) item { Box(Modifier.padding(top = 16.dp)) { Heading("Skills") } }
-                itemsIndexed(others, key = { _, s -> "skill:${s.id}" }) { index, s -> SkillRow(s, index, others.size, onOpen = if (s.custom?.editable == true) ({ writing = s }) else null, onFlip = { on -> flip(s.id, on) }) }
+                itemsIndexed(others, key = { _, s -> "skill:${s.id}" }) { index, s -> SkillRow(s, index, others.size, onOpen = if (s.custom != null) ({ reading = s }) else null, onFlip = { on -> flip(s.id, on) }) }
+                /* The Marketplace, like Pro Tools: six at first, the rest folded away; a card opens it to read, Add puts it in their Skills. */
+                item {
+                    Column(Modifier.fillMaxWidth().padding(start = 4.dp, top = 20.dp, bottom = 6.dp)) {
+                        Text("Marketplace", style = MaterialTheme.typography.titleMedium)
+                        Text("Skills people here made. Add one to use it in your chats.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (market.isEmpty()) item { Text("Nothing here yet. Type /skill-builder in a chat to make the first one.", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(8.dp)) }
+                val shownMarket = if (allMarket) market else market.take(6)
+                items(shownMarket, key = { s -> "market:${s.id}" }) { s -> MarketCard(s, onOpen = { reading = s }, onFlip = { on -> flip(s.id, on) }) }
+                if (market.size > 6) item {
+                    Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) { Seal(if (allMarket) "Show fewer" else "See all ${market.size}", tone = SealTone.Quiet, onClick = { allMarket = !allMarket }) }
+                }
             }
         }
+    }
+    reading?.let { r ->
+        val now = skills?.firstOrNull { it.id == r.id } ?: r
+        MarketSkillSheet(code, now, onDismiss = { reading = null }, onFlip = { on -> flip(now.id, on) }) { next -> skills = next.skills; reading = null }
     }
     writing?.let { s ->
         SkillSheet(code, s, admin, onDismiss = { writing = null }) { next -> skills = next.skills; admin = next.admin; writing = null }
@@ -441,7 +464,8 @@ fun MemoryScreen(code: Code, back: () -> Unit) {
 @Composable
 private fun SkillRow(s: app.kimono.data.SkillChoice, index: Int, count: Int, onOpen: (() -> Unit)?, onFlip: (Boolean) -> Unit) {
     val note = when {
-        s.custom?.mine == true -> if (s.custom.published) "${s.description} · Published" else s.description
+        s.custom?.mine == true -> if (s.custom.published) "${s.description} · In the Marketplace${if (s.custom.uses > 0) " · ${usesWords(s.custom.uses)}" else ""}" else s.description
+        s.custom?.inMarket == true -> "${s.description} · Published by ${s.author}"
         s.author.isNotBlank() -> "${s.description} · ${s.author}"
         else -> s.description
     }
@@ -458,7 +482,7 @@ private fun SkillRow(s: app.kimono.data.SkillChoice, index: Int, count: Int, onO
     ) { Text(s.name, style = MaterialTheme.typography.bodyLarge) }
 }
 
-/** Writing a skill, or changing one: its name, what it's for, whether it shapes every reply, its instructions; admins can publish it to everyone. */
+/** Writing a skill, or changing one: its name, what it's for, whether it shapes every reply, its instructions, and whether it's in the Marketplace. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SkillSheet(code: Code, skill: app.kimono.data.SkillChoice, admin: Boolean, onDismiss: () -> Unit, done: (app.kimono.data.SkillCatalog) -> Unit) {
@@ -489,10 +513,10 @@ private fun SkillSheet(code: Code, skill: app.kimono.data.SkillChoice, admin: Bo
                 androidx.compose.material3.Switch(always, { always = it })
             }
             OutlinedTextField(body, { body = it.take(20_000); problem = null }, label = { Text("Instructions") }, minLines = 5, maxLines = 12, modifier = Modifier.fillMaxWidth())
-            if (admin) Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Publish to everyone", style = MaterialTheme.typography.bodyLarge)
-                    Text("In everyone's Skills, off until they turn it on", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("In the Marketplace", style = MaterialTheme.typography.bodyLarge)
+                    Text(if (published) "Anyone here can add it" else "Only you have it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 androidx.compose.material3.Switch(published, { published = it })
             }
@@ -502,9 +526,85 @@ private fun SkillSheet(code: Code, skill: app.kimono.data.SkillChoice, admin: Bo
                 Spacer(Modifier.weight(1f))
                 Seal(if (creating) "Add skill" else "Save", busy = busy, enabled = ready, onClick = {
                     val kind = if (always) "always" else "on-demand"
-                    val publish = if (admin) published else null
+                    val publish: Boolean? = published
                     run { if (creating) code.createSkill(name.trim(), description.trim(), kind, body.trim(), publish) else code.changeSkill(skill.id, name.trim(), description.trim(), kind, body.trim(), publish) }
                 })
+            }
+        }
+    }
+}
+
+private fun usesWords(n: Int) = if (n == 1) "1 person uses it" else "$n people use it"
+
+/** Who published a skill: their portrait (initials when there's no picture) and name. */
+@Composable
+private fun PublishedBy(s: app.kimono.data.SkillChoice, size: androidx.compose.ui.unit.Dp = 18.dp) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        app.kimono.ui.Portrait(null, s.author, s.custom?.by?.ifBlank { null } ?: s.author, size)
+        Text("Published by ${s.author}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** One skill in the Marketplace: its mark and / command, name, what it's for, who published it, and Add. Added ones take the ink's edge. */
+@Composable
+private fun MarketCard(s: app.kimono.data.SkillChoice, onOpen: () -> Unit, onFlip: (Boolean) -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(shape).background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .then(if (s.enabled) Modifier.border(1.5.dp, (app.kimono.ui.LocalInkTint.current ?: Kata.suo).copy(alpha = .6f), shape) else Modifier)
+            .clickable { onOpen() }.padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            app.kimono.ui.InkBlot("skill-${s.id}", size = 32.dp, tint = if (s.enabled) app.kimono.ui.LocalInkTint.current ?: Kata.suo else MaterialTheme.colorScheme.outlineVariant) {
+                Icon(kimonoIcon(s.icon.takeIf { it in setOf("spark", "chat", "notes", "code", "image", "file", "checklist") } ?: "spark"), null, modifier = Modifier.size(16.dp), tint = Kata.ink)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(s.command?.let { "/${it.name}" } ?: "Every reply", style = MaterialTheme.typography.labelMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 7.dp, vertical = 4.dp))
+        }
+        Text(s.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(s.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        PublishedBy(s)
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(top = 2.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .4f))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(s.custom?.uses?.takeIf { it > 0 }?.let { usesWords(it) } ?: "New", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Seal(if (s.enabled) "Added" else "Add", compact = true, tone = if (s.enabled) SealTone.Quiet else SealTone.Primary, onClick = { onFlip(!s.enabled) })
+        }
+    }
+}
+
+/** Someone else's skill from the Marketplace, to read before adding: who published it, how it's used, its instructions; an admin can take it down. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MarketSkillSheet(code: Code, s: app.kimono.data.SkillChoice, onDismiss: () -> Unit, onFlip: (Boolean) -> Unit, done: (app.kimono.data.SkillCatalog) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    fun run(work: suspend () -> app.kimono.data.SkillCatalog) {
+        busy = true; problem = null
+        scope.launch { try { done(work()) } catch (e: KimonoProblem) { problem = e.message }; busy = false }
+    }
+    app.kimono.ui.InkSheet(onDismissRequest = onDismiss, seed = "skill-${s.id}") {
+        Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            app.kimono.ui.InkTitle(s.name, icon = "spark")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { PublishedBy(s, 22.dp) }
+                s.custom?.uses?.takeIf { it > 0 }?.let { Text(usesWords(it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+            Text(s.description, style = MaterialTheme.typography.bodyLarge)
+            Text(s.command?.let { "Type /${it.name} in a chat, or it’s used when what you ask fits." } ?: "Shapes every reply it gives you.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            s.custom?.body?.takeIf { it.isNotBlank() }?.let { body ->
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerLow).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Instructions", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(body, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Problem(problem)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (s.custom?.editable == true) Seal("Take it down", compact = true, tone = SealTone.Quiet, enabled = !busy, onClick = { run { code.changeSkill(s.id, s.name, s.description, s.kind, s.custom.body.orEmpty(), false) } })
+                Spacer(Modifier.weight(1f))
+                Seal(if (s.enabled) "Remove" else "Add", tone = if (s.enabled) SealTone.Quiet else SealTone.Primary, onClick = { onFlip(!s.enabled) })
             }
         }
     }

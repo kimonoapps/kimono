@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""kimono-skill <<'JSON'
+{"name": "Meal planner", "description": "Plans a week of dinners…", "kind": "on-demand",
+ "command": "meal-plan", "body": "the instructions", "publish": true}
+JSON
+
+Saves a skill of the person's own and publishes it to Kimono's Marketplace
+(add "publish": false to keep it to them). "kind" is "on-demand" or "always".
+To change one of theirs, add "update": "<its command>" with only what changes.
+It's switched on for them in every chat from their next message.
+"""
+import json, os, re, secrets, sys, time
+
+if sys.argv[1:2] in (["-h"], ["--help"]):
+    sys.exit(__doc__.strip())
+raw = open(sys.argv[1], encoding="utf-8").read() if sys.argv[1:] else sys.stdin.read()
+try:
+    skill = json.loads(raw)
+except ValueError as error:
+    sys.exit(f"kimono-skill: that isn't JSON ({error})")
+if not isinstance(skill, dict):
+    sys.exit("kimono-skill: give one skill, as an object")
+
+limits = {"name": 60, "description": 300, "body": 20000}
+clean = {}
+updating = skill.get("update")
+if updating is not None:
+    if not isinstance(updating, str) or not updating.strip("/ "):
+        sys.exit("kimono-skill: \"update\" is the command of a skill of theirs")
+    clean["update"] = updating.strip("/ ")
+for field, most in limits.items():
+    value = skill.get(field)
+    if value is None and updating is not None:
+        continue
+    if not isinstance(value, str) or not value.strip():
+        sys.exit(f"kimono-skill: give it a {field}")
+    value = value.strip() if field == "body" else " ".join(value.split())
+    if len(value) > most:
+        sys.exit(f"kimono-skill: keep its {field} under {most} characters")
+    clean[field] = value
+kind = skill.get("kind")
+if kind is not None:
+    if kind not in ("on-demand", "always"):
+        sys.exit("kimono-skill: \"kind\" is \"on-demand\" or \"always\"")
+    clean["kind"] = kind
+elif updating is None:
+    clean["kind"] = "on-demand"
+command = skill.get("command")
+if command:
+    command = str(command).strip().lstrip("/").lower()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", command):
+        sys.exit("kimono-skill: a command is lowercase letters, digits and dashes, up to 40")
+    clean["command"] = command
+if "publish" in skill:
+    if not isinstance(skill["publish"], bool):
+        sys.exit("kimono-skill: \"publish\" is true or false")
+    clean["publish"] = skill["publish"]
+elif updating is None:
+    clean["publish"] = True
+
+folder = os.environ.get("KIMONO_SKILLS_MADE_DIR", "/workspace/.kimono/skills-made")
+os.makedirs(folder, exist_ok=True)
+sid = f"{int(time.time() * 1000)}-{secrets.token_hex(4)}"
+with open(f"{folder}/.{sid}.json", "w", encoding="utf-8") as f:
+    json.dump(clean, f)
+os.rename(f"{folder}/.{sid}.json", f"{folder}/{sid}.json")
+where = "and published it to the Marketplace" if clean.get("publish") else "for them only" if clean.get("publish") is False else ""
+print(f"Saved (skill {sid}) {where}. It's on for them from their next message.".replace("  ", " "))

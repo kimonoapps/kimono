@@ -454,7 +454,7 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
             is CodeEvent.Access -> items += Item.Access(stored.seq, e, answers[e.id])
             is CodeEvent.Question -> replied[e.id]?.let { items += Item.Asked(stored.seq, e, it) }
             is CodeEvent.Published, is CodeEvent.Preview, CodeEvent.PreviewStopped, is CodeEvent.Slept, is CodeEvent.Disk, is CodeEvent.Compacted,
-            is CodeEvent.Remembered, is CodeEvent.Artifact, is CodeEvent.Connect, is CodeEvent.Sent -> items += Item.Plain(stored.seq, e)
+            is CodeEvent.Remembered, is CodeEvent.SkillMade, is CodeEvent.Artifact, is CodeEvent.Connect, is CodeEvent.Sent -> items += Item.Plain(stored.seq, e)
             else -> {}
         }
     }
@@ -576,6 +576,8 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
                                 else "This chat's files take ${gigabytes(e.used)} of its ${gigabytes(e.quota)}. It was asked to free some space first.", failed = true)
                             is CodeEvent.Compacted -> Note("diff", "Compacted the conversation${e.before?.let { " · it held ${kTokens(it)} tokens" } ?: ""}")
                             is CodeEvent.Remembered -> Note("chat", "${when (e.how) { "forgot" -> "Forgot"; "changed" -> "Now remembers"; else -> "Remembered" }}: ${e.text}", trailing = { TextLink("For you") { open("ai/memory") } })
+                            is CodeEvent.SkillMade -> if (e.problem != null) Note("spark", "Couldn’t save ${e.name}: ${e.problem}", failed = true)
+                                else Note("spark", "${if (e.updated) "Changed" else "Made"} ${e.name}${e.command?.let { " · /$it" } ?: ""}${if (e.published) " · in the Marketplace" else ""}", trailing = { if (w.isOwner) TextLink("For you") { open("ai/memory") } })
                             is CodeEvent.Published -> Note("pr", "Opened pull request #${e.number}", trailing = { TextLink("Open") { platform.openUrl(e.url) } })
                             is CodeEvent.Connect -> ConnectCard(code, platform, e.app, e.url, waitingFor = if (w.isOwner) null else people.nameOf(w.owner))
                             is CodeEvent.Sent -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

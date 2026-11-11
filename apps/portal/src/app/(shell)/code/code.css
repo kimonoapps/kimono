@@ -1675,6 +1675,41 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-skill-publish { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--k-r-l); background: var(--k-container-low); }
 .cd-skill-publish .cd-page-words { flex: 1; }
 .cd-skill-actions { display: flex; justify-content: flex-end; padding-bottom: 24px; }
+.cd-skill-note { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--k-on-surface-variant); }
+.cd-skill-note svg.i { width: 14px; height: 14px; color: var(--k-app-accent); }
+.cd-skill-open .cd-market-by { margin-top: 2px; }
+
+/* ── the Marketplace: skills people here published, a grid like Pro Tools ──
+   Each tile is a card of paper: its mark and / command on top, the name and
+   what it's for, then who published it beside Add. Added ones take the ink. */
+.cd-market { margin-top: 10px; }
+.cd-market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.cd-market-tile { position: relative; min-width: 0; display: grid; grid-template-rows: auto auto 1fr auto auto; gap: 6px; padding: 14px 14px 12px; border-radius: var(--k-r-l); background: var(--k-container-low); transition: background .15s, box-shadow .2s; }
+.cd-market-tile:hover { background: var(--k-container); }
+.cd-market-tile.is-added { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--k-app-accent) 55%, transparent); }
+.cd-market-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.cd-market-cmd { font: 500 12.5px/1 var(--k-mono, ui-monospace, monospace); color: var(--k-on-surface-variant); padding: 5px 7px; border-radius: 6px; background: var(--k-container-high, var(--k-container)); }
+.cd-market-tile > b { font: 600 15px/1.3 var(--k-sans); color: var(--k-on-surface); overflow-wrap: anywhere; }
+.cd-market-tile > p { margin: 0; font: 400 13.5px/1.45 var(--k-sans); color: var(--k-on-surface-variant); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.cd-market-foot { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid color-mix(in srgb, var(--k-on-surface) 8%, transparent); }
+.cd-market-foot small { font-size: 12.5px; color: var(--k-on-surface-variant); }
+.cd-market-tile > .cd-market-by { margin-top: 4px; }
+.is-link > .cd-market-foot .k-seal { pointer-events: auto; }
+.cd-market-by { display: inline-flex; flex: 1 1 auto; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; color: var(--k-on-surface-variant); }
+.cd-market-by > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-market-by .cd-face { flex: none; }
+@media (max-width: 560px) { .cd-market-grid { grid-template-columns: 1fr; } }
+
+/* someone else's skill, to read before adding */
+.cd-skill-view { display: grid; gap: 14px; padding-bottom: 24px; }
+.cd-skill-hero { display: flex; align-items: center; gap: 14px; padding: 18px; border-radius: var(--k-r-xl); background: var(--k-container-lowest); flex-wrap: wrap; }
+.cd-skill-hero .cd-page-words { flex: 1; min-width: 180px; display: grid; gap: 6px; }
+.cd-skill-hero .cd-page-words b { font: 600 22px/1.2 var(--k-display); color: var(--k-plum); }
+.cd-skill-about { margin: 0; font: 400 16px/1.5 var(--k-sans); color: var(--k-on-surface); }
+.cd-skill-read { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container-low); }
+.cd-skill-read span { font: 600 12.5px/1.3 var(--k-sans); color: var(--k-on-surface-variant); }
+.cd-skill-read p { margin: 0; white-space: pre-wrap; font: 400 14.5px/1.55 var(--k-sans); color: var(--k-on-surface); }
+.cd-skill-made code { font-size: 12.5px; }
 
 /* ── the chat bar ──
    A sheet of paper lifted off the page: soft layered shadow, a hairline edge.

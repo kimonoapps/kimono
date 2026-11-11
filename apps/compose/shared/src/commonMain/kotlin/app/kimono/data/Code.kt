@@ -123,11 +123,14 @@ data class SkillCommand(val name: String, val hint: String? = null, val does: St
 @Serializable
 data class SkillChoice(val id: String, val name: String, val description: String = "", val enabled: Boolean = false, val command: SkillCommand? = null, val icon: String = "spark", val author: String = "", val source: String = "", val kind: String = "on-demand", val custom: CustomSkill? = null)
 
-/** A skill someone here wrote: whether it's this person's, published to everyone, and (when they may change it) its instructions. */
+/** A skill someone here wrote: whether it's this person's, in the Marketplace, its instructions, how many use it, and who wrote it (username). */
 @Serializable
-data class CustomSkill(val mine: Boolean = false, val published: Boolean = false, val editable: Boolean = false, val body: String? = null)
+data class CustomSkill(val mine: Boolean = false, val published: Boolean = false, val editable: Boolean = false, val body: String? = null, val uses: Int = 0, val by: String = "") {
+    /** Someone else's, published: in the Marketplace, and in this person's Skills only once added. */
+    val inMarket: Boolean get() = published && !mine
+}
 
-/** The skills, and whether this person may publish one to everyone (owners and admins). */
+/** The skills, and whether this person is an admin (who can take anyone's down). Everyone publishes their own. */
 @Serializable
 data class SkillCatalog(val skills: List<SkillChoice> = emptyList(), val admin: Boolean = false)
 
@@ -273,6 +276,8 @@ sealed interface CodeEvent {
     data class Question(val id: String, val questions: List<AskedQuestion>) : CodeEvent
     data class QuestionAnswer(val id: String, val skipped: Boolean, val answers: List<QuestionReply>) : CodeEvent
     data class Remembered(val text: String, val how: String?) : CodeEvent
+    /** A skill it made with the person (the Skill builder): saved as theirs, in the Marketplace when [published]; [problem] when it couldn't be. */
+    data class SkillMade(val skill: String?, val name: String, val command: String?, val published: Boolean, val updated: Boolean, val problem: String?) : CodeEvent
     data class Connect(val app: String, val url: String) : CodeEvent
     data class Artifact(val id: String, val name: String, val action: String) : CodeEvent
     data class ArtifactKept(val name: String, val version: Int, val title: String) : CodeEvent
@@ -405,6 +410,7 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     }?.filter { it.question.isNotBlank() } ?: emptyList())
     "question-answer" -> CodeEvent.QuestionAnswer(o.text("id") ?: "", o.flag("skipped") == true, repliesOf(o["answers"]))
     "remembered" -> CodeEvent.Remembered(o.text("text") ?: "", o.text("how"))
+    "skill-made" -> CodeEvent.SkillMade(o.text("skill"), o.text("name") ?: "A skill", o.text("command"), o.flag("published") == true, o.flag("updated") == true, o.text("problem"))
     "connect" -> CodeEvent.Connect(o.text("app") ?: "", o.text("url") ?: "")
     "artifact" -> CodeEvent.Artifact(o.text("id") ?: "", o.text("name") ?: "", o.text("action") ?: "wrote")
     "artifact-saved" -> CodeEvent.ArtifactKept(o.text("name") ?: "", o["version"]?.jsonPrimitive?.intOrNull ?: 0, o.text("title") ?: "")
@@ -706,7 +712,7 @@ class Code(private val session: Session, private val platform: Platform? = null)
     suspend fun setSkill(id: String, enabled: Boolean): List<SkillChoice> =
         json.decodeFromString<SkillList>(session.call("/api/v1/code/skills", HttpMethod.Post, jsonBody(JsonObject.of("id" to id, "enabled" to enabled)))).skills
     suspend fun skillCatalog(): SkillCatalog = json.decodeFromString(session.call("/api/v1/code/skills"))
-    /** Writes a skill of this person's own; [published] only counts for an admin. */
+    /** Writes a skill of this person's own; [published] puts it in the Marketplace. */
     suspend fun createSkill(name: String, description: String, kind: String, body: String, published: Boolean?): SkillCatalog =
         json.decodeFromString(session.call("/api/v1/code/skills", HttpMethod.Post, jsonBody(JsonObject.of("create" to JsonObject.of("name" to name, "description" to description, "kind" to kind, "body" to body, *(if (published != null) arrayOf("published" to published) else emptyArray()))))))
     suspend fun changeSkill(id: String, name: String, description: String, kind: String, body: String, published: Boolean?): SkillCatalog =

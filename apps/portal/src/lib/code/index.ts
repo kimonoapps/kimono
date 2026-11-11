@@ -11,7 +11,7 @@ import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
 import { backfillRatingFiles, backfillRatings, kimonoVersion, type Versions } from "./feedback";
-import { islamNoticeNote, noticeSeen, skillsForTurn } from "./skills";
+import { islamNoticeNote, isSkillCommand, madeSkillId, madeSkillsDir, noticeSeen, saveMadeSkill, skillsForTurn } from "./skills";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
 import {
@@ -506,6 +506,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   let probe: ProgressProbe | undefined;
   /* kimono-ask calls, by id, until they answer with the questions they wrote. */
   const asking = new Set<string>();
+  /* kimono-skill calls, by id, until they answer with the skill they wrote. */
+  const making = new Set<string>();
   try {
     const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
     await ensure(config, workspace, who(user), { owner: byOwner });
@@ -636,6 +638,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
           keepToolCall(db(), workspace.id, call);
           if (isAskCommand(call.input)) asking.add(call.id);
           else if (call.output !== undefined && asking.delete(call.id)) await takeQuestions(config, workspace, turn, call.output);
+          if (isSkillCommand(call.input)) making.add(call.id);
+          else if (call.output !== undefined && making.delete(call.id) && byOwner) await takeSkill(config, workspace, turn, user, call.output);
         }
         if (translated.result) result = translated.result;
         if (translated.context) context = translated.context;
@@ -765,6 +769,20 @@ async function takeQuestions(config: CodeConfig, workspace: Workspace, turn: str
     if (questions) record(workspace.id, turn, { kind: "question", id, questions });
     await sandbox.removeFile(config, workspace, path).catch(() => {});
   } catch (error) { console.warn("Kimono AI couldn't take its questions:", error instanceof Error ? error.message : error); }
+}
+
+/** What kimono-skill wrote, saved as the owner's skill: the chat says so, or why it couldn't be. */
+async function takeSkill(config: CodeConfig, workspace: Workspace, turn: string, user: ApiUser, output: string) {
+  const id = madeSkillId(output);
+  if (!id) return;
+  try {
+    const path = `${madeSkillsDir}/${id}.json`;
+    const response = await sandbox.file(config, workspace, path);
+    if (!response.ok) return;
+    const made = saveMadeSkill(db(), { username: workspace.owner, admin: user.role === "owner" || user.role === "admin", author: user.name || user.username }, await response.text());
+    record(workspace.id, turn, { kind: "skill-made", ...made });
+    await sandbox.removeFile(config, workspace, path).catch(() => {});
+  } catch (error) { console.warn("Kimono AI couldn't save a skill:", error instanceof Error ? error.message : error); }
 }
 
 /** The person answers its questions (or skips them): the answers go to it as their message. */

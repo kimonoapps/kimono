@@ -61,6 +61,7 @@ export type CodeEvent =
   | { kind: "disk"; used: number; quota: number; full?: boolean }
   | { kind: "access"; id: string; space: string; path: string; need: "read" | "change"; why: string; file: boolean; state: "pending" | "auto" | "missing"; node?: string }
   | { kind: "remembered"; text: string; how?: "changed" | "forgot" }
+  | { kind: "skill-made"; skill?: string; name: string; command?: string; published: boolean; updated?: boolean; problem?: string }
   | { kind: "connect"; app: string; url: string }
   | { kind: "artifact"; id: string; name: string; action: "wrote" | "edited" | "shown" }
   | { kind: "artifact-saved"; name: string; version: number; title: string }
@@ -78,9 +79,9 @@ export type CodeEvent =
 export type Question = { question: string; header?: string; options: { label: string; description?: string }[]; multi: boolean };
 export type QuestionAnswer = { picked: string[]; other?: string };
 export type Project = { id: string; name: string; createdAt: number };
-export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; command?: { name: string; hint?: string; does: string }; custom?: { mine: boolean; published: boolean; editable: boolean; body?: string }; enabled: boolean };
+export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; command?: { name: string; hint?: string; does: string }; custom?: { mine: boolean; published: boolean; editable: boolean; body?: string; uses: number; by: string }; enabled: boolean };
 export type SkillCatalog = { skills: SkillChoice[]; admin: boolean };
-export type SkillDraft = { name: string; description: string; kind: "always" | "on-demand"; body: string; published?: boolean };
+export type SkillDraft = { name: string; description: string; kind: "always" | "on-demand"; body: string; published?: boolean; command?: string };
 export type Profile = { instructions: string; memories: { id: string; title?: string; text: string; source: "person" | "ai"; createdAt: number }[] };
 /** An app the person connected through Composio. */
 export type Connection = { app: string; name: string; logo: string; account: string; status: string; since: string | null };

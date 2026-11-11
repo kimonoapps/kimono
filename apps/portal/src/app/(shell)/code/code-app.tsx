@@ -675,7 +675,17 @@ function MemoryView({ now, page }: { now: number; page: string | null }) {
   </section>;
 }
 
-/** The skills: the person's own (written here, opened to change), then the catalog (the well-known ones, and those an admin published), each on or off for every chat. */
+/* A skill someone else here published: it's in the Marketplace, and in their Skills only once added. */
+const inMarket = (s: SkillChoice) => !!s.custom && !s.custom.mine && s.custom.published;
+const usesWords = (n: number) => n === 1 ? "1 person uses it" : `${n.toLocaleString("en")} people use it`;
+
+/** Who published a skill, with their portrait, and how many use it. */
+function PublishedBy({ skill, uses = true }: { skill: SkillChoice; uses?: boolean }) {
+  const count = skill.custom?.uses ?? 0;
+  return <span className="cd-market-by"><Face username={skill.custom?.by ?? skill.author} size={18} /><span>Published by {skill.author}{uses && count ? ` · ${usesWords(count)}` : ""}</span></span>;
+}
+
+/** The skills: the person's own (written here, opened to change), the ones they use, then the Marketplace of what others here published. */
 function SkillsList() {
   const [list, setList] = useState<SkillChoice[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -685,17 +695,22 @@ function SkillsList() {
     code.setSkill(id, enabled).then(setList, (error) => { setProblem(problemText(error)); void code.skills().then(setList); });
   };
   const mine = list?.filter((s) => s.custom?.mine) ?? [];
-  const catalog = list?.filter((s) => !s.custom?.mine) ?? [];
+  /* Kimono's own, and the Marketplace ones they added; one they turn off goes back to the Marketplace. */
+  const catalog = list?.filter((s) => !s.custom || (inMarket(s) && s.enabled)) ?? [];
+  const market = list?.filter(inMarket) ?? [];
+  const open = (s: SkillChoice) => goTo({ memory: "1", page: `skill:${s.id}` });
   const row = (s: SkillChoice) => <li key={s.id} className="cd-skill">
     <InkBlot className="cd-page-mark" tint={s.enabled ? inkTint.live : inkTint.quiet} seed={s.id}><Icon name={s.icon as IconName} /></InkBlot>
-    {s.custom?.editable ? <button type="button" className="cd-page-words cd-skill-open" onClick={() => goTo({ memory: "1", page: `skill:${s.id}` })}>
+    {s.custom ? <button type="button" className="cd-page-words cd-skill-open" onClick={() => open(s)}>
       <b>{s.name}</b>
-      <small>{s.description}{s.custom.mine ? s.custom.published ? " · Published" : "" : ` · ${s.author}`}</small>
+      <small>{s.description}</small>
+      {s.custom.mine ? s.custom.published ? <small className="cd-skill-note"><Icon name="spark" />In the Marketplace{s.custom.uses ? ` · ${usesWords(s.custom.uses)}` : ""}</small> : null
+        : <PublishedBy skill={s} uses={false} />}
     </button> : <span className="cd-page-words">
       <b>{s.name}</b>
-      <small>{s.description} {s.source ? <a href={s.source} target="_blank" rel="noreferrer">{s.author}</a> : s.author}</small>
+      <small>{s.description} {s.source ? <a href={s.source} target="_blank" rel="noreferrer">{s.author}</a> : null}</small>
     </span>}
-    <JointSwitch name={`skill-${s.id}`} defaultChecked={s.enabled} label={s.name} onChange={(on) => flip(s.id, on)} />
+    <JointSwitch key={`${s.id}:${s.enabled}`} name={`skill-${s.id}`} defaultChecked={s.enabled} label={s.name} onChange={(on) => flip(s.id, on)} />
   </li>;
   return <>
     {list ? <section className="cd-skills cd-for" aria-labelledby="cd-yours-title">
@@ -704,7 +719,7 @@ function SkillsList() {
         <button type="button" className="cd-quietbutton" onClick={() => goTo({ memory: "1", page: "skill:new" })}><Icon name="plus" />Add</button>
       </div>
       {mine.length ? <ul className="cd-pages">{mine.map(row)}</ul>
-        : <p className="cd-for-empty">Write your own: what it&rsquo;s for, and what it should do.</p>}
+        : <p className="cd-for-empty">Write your own here, or type /skill-builder in a chat and it makes one with you.</p>}
     </section> : null}
     <section className="cd-skills" aria-labelledby="cd-skills-title">
       <h2 id="cd-skills-title">Skills</h2>
@@ -712,7 +727,36 @@ function SkillsList() {
       {list === null && !problem ? <SkeletonRows rows={4} mark={false} /> : null}
       {list ? <ul className="cd-pages">{catalog.map(row)}</ul> : null}
     </section>
+    {list ? <Marketplace skills={market} flip={flip} /> : null}
   </>;
+}
+
+/** What people here published: a grid like Pro Tools, six at first and the rest folded away, each added with a tap. */
+function Marketplace({ skills: market, flip }: { skills: SkillChoice[]; flip: (id: string, on: boolean) => void }) {
+  const [all, setAll] = useState(false);
+  const fold = 6;
+  const shown = all ? market : market.slice(0, fold);
+  return <section className="cd-skills cd-market" aria-labelledby="cd-market-title">
+    <div className="cd-conn-prohead">
+      <span><h2 id="cd-market-title" className="cd-conn-sub">Marketplace</h2><small>Skills people here made. Add one to use it in your chats.</small></span>
+    </div>
+    {market.length ? <ul className="cd-market-grid" id="cd-market-grid">{shown.map((s) => <li key={s.id} className={cx("cd-market-tile is-link", s.enabled && "is-added")}>
+      <button type="button" className="cd-conn-open" onClick={() => goTo({ memory: "1", page: `skill:${s.id}` })} aria-label={`About ${s.name}`} />
+      <div className="cd-market-top">
+        <InkBlot className="cd-page-mark" tint={s.enabled ? inkTint.live : inkTint.quiet} seed={s.id}><Icon name={s.icon as IconName} /></InkBlot>
+        <span className="cd-market-cmd">{s.command ? `/${s.command.name}` : "Every reply"}</span>
+      </div>
+      <b>{s.name}</b>
+      <p>{s.description}</p>
+      <PublishedBy skill={s} uses={false} />
+      <div className="cd-market-foot">
+        <small>{s.custom?.uses ? usesWords(s.custom.uses) : "New"}</small>
+        <Seal type="button" compact tone={s.enabled ? "quiet" : "primary"} aria-pressed={s.enabled} onClick={() => flip(s.id, !s.enabled)}>{s.enabled ? "Added" : "Add"}</Seal>
+      </div>
+    </li>)}</ul>
+      : <p className="cd-for-empty">Nothing here yet. Type /skill-builder in a chat to make the first one.</p>}
+    {market.length > fold ? <div className="cd-conn-more"><Seal type="button" tone="quiet" aria-expanded={all} aria-controls="cd-market-grid" onClick={() => setAll(!all)}>{all ? "Show fewer" : `See all ${market.length}`}</Seal></div> : null}
+  </section>;
 }
 
 const skillKinds = [
@@ -720,7 +764,7 @@ const skillKinds = [
   { value: "always", label: "In every reply", detail: "Shapes everything it says to you" },
 ];
 
-/** A skill someone here wrote: its name, when it's used, and its instructions. Admins can publish it to everyone. */
+/** A skill someone here wrote: its own, to change and publish; someone else's from the Marketplace, to read and add. */
 function SkillPage({ id }: { id: string }) {
   const creating = id === "new";
   const [catalog, setCatalog] = useState<SkillCatalog | null>(null);
@@ -733,7 +777,7 @@ function SkillPage({ id }: { id: string }) {
     code.skillCatalog().then((next) => {
       setCatalog(next);
       const found = next.skills.find((s) => s.id === id);
-      if (!creating && found?.custom?.editable) setDraft({ name: found.name, description: found.description, kind: found.kind, body: found.custom.body ?? "", published: found.custom.published });
+      if (!creating && found?.custom?.mine) setDraft({ name: found.name, description: found.description, kind: found.kind, body: found.custom.body ?? "", published: found.custom.published });
     }, (error) => setProblem(problemText(error)));
   }, [id, creating]);
   useLayoutEffect(() => { const el = body.current; if (!el) return; el.style.height = "0px"; el.style.height = `${el.scrollHeight}px`; }, [draft?.body]);
@@ -742,25 +786,45 @@ function SkillPage({ id }: { id: string }) {
   const save = () => {
     if (!draft || !ready) return;
     setBusy(true); setProblem(null);
-    const sent = { ...draft, ...(catalog?.admin ? {} : { published: undefined }) };
-    (creating ? code.createSkill(sent) : code.changeSkill(id, sent)).then(() => goTo({ memory: "1" }), (error) => { setProblem(problemText(error)); setBusy(false); });
+    (creating ? code.createSkill(draft) : code.changeSkill(id, draft)).then(() => goTo({ memory: "1" }), (error) => { setProblem(problemText(error)); setBusy(false); });
   };
   const remove = () => {
     setBusy(true); setProblem(null);
     code.deleteSkill(id).then(() => goTo({ memory: "1" }), (error) => { setProblem(problemText(error)); setBusy(false); });
   };
-  const missing = catalog !== null && !creating && !skill?.custom?.editable;
+  const add = (on: boolean) => {
+    setBusy(true); setProblem(null);
+    code.setSkill(id, on).then((skills) => setCatalog((c) => c && { ...c, skills }), (error) => setProblem(problemText(error))).finally(() => setBusy(false));
+  };
+  /* An admin can take down someone else's: unpublish it, or delete it. */
+  const takeDown = () => {
+    setBusy(true); setProblem(null);
+    code.changeSkill(id, { published: false }).then(() => goTo({ memory: "1" }), (error) => { setProblem(problemText(error)); setBusy(false); });
+  };
+  const theirs = !!skill && inMarket(skill);
+  const missing = catalog !== null && !creating && !skill?.custom?.mine && !theirs;
   return <section className="cd-sheet cd-conn cd-memory cd-page">
     <header className="cd-conn-head">
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({ memory: "1" })} aria-label="For you" title="For you"><Icon name="back" /></button>
       <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
-      <span className="cd-page-state" role="status">{problem ? <span className="cd-problem">{problem}</span> : skill?.custom && !skill.custom.mine ? `By ${skill.author}` : ""}</span>
+      <span className="cd-page-state" role="status">{problem ? <span className="cd-problem">{problem}</span> : ""}</span>
       <span className="cd-grow" />
-      {!creating && skill?.custom?.editable ? <button type="button" className="cd-roundbutton" aria-label="Delete this skill" title="Delete this skill" disabled={busy} onClick={remove}><Icon name="trash" /></button> : null}
+      {!creating && (skill?.custom?.mine || (theirs && skill?.custom?.editable)) ? <button type="button" className="cd-roundbutton" aria-label="Delete this skill" title="Delete this skill" disabled={busy} onClick={remove}><Icon name="trash" /></button> : null}
     </header>
     <div className="cd-conn-body cd-page-body">
       {catalog === null && !problem ? <SkeletonRows rows={3} mark={false} />
         : missing ? <p className="cd-conn-empty">This skill isn&rsquo;t here any more.</p>
+        : theirs && skill ? <div className="cd-skill-view">
+          <div className="cd-skill-hero">
+            <InkBlot className="cd-page-mark" tint={skill.enabled ? inkTint.live : inkTint.quiet} seed={skill.id}><Icon name={skill.icon as IconName} /></InkBlot>
+            <span className="cd-page-words"><b>{skill.name}</b><PublishedBy skill={skill} /></span>
+            <Seal type="button" busy={busy} tone={skill.enabled ? "quiet" : "primary"} onClick={() => add(!skill.enabled)}>{skill.enabled ? "Remove" : "Add"}</Seal>
+          </div>
+          <p className="cd-skill-about">{skill.description}</p>
+          <p className="cd-skill-note">{skill.command ? <>Type <b>/{skill.command.name}</b> in a chat, or it&rsquo;s used when what you ask fits.</> : "Shapes every reply it gives you."}</p>
+          {skill.custom?.body ? <div className="cd-skill-read"><span>Instructions</span><p>{skill.custom.body}</p></div> : null}
+          {skill.custom?.editable ? <div className="cd-skill-actions"><Seal type="button" tone="quiet" busy={busy} onClick={takeDown}>Take it out of the Marketplace</Seal></div> : null}
+        </div>
         : draft ? <form className="cd-skill-form" onSubmit={(event) => { event.preventDefault(); save(); }}>
           <input className="cd-page-title" value={draft.name} maxLength={60} placeholder="Name it" aria-label="Name" autoFocus={creating} onChange={(event) => edit({ name: event.target.value })} />
           <label className="cd-skill-field"><span>What it&rsquo;s for</span>
@@ -769,10 +833,10 @@ function SkillPage({ id }: { id: string }) {
           <Choice label="Used" aria-label="When it's used" className="cd-skill-kind" value={draft.kind} onChange={(next) => edit({ kind: next as SkillDraft["kind"] })} options={skillKinds} />
           <textarea ref={body} className="cd-page-text cd-skill-body" value={draft.body} maxLength={20_000} aria-label="Instructions"
             placeholder="What it should do, step by step, the way you'd explain it to a friend helping out." onChange={(event) => edit({ body: event.target.value })} />
-          {catalog?.admin ? <div className="cd-skill-publish">
-            <span className="cd-page-words"><b>Publish to everyone</b><small>It shows in everyone&rsquo;s Skills, off until they turn it on</small></span>
-            <JointSwitch name="skill-published" defaultChecked={!!draft.published} label="Publish to everyone" onChange={(on) => edit({ published: on })} />
-          </div> : null}
+          <div className="cd-skill-publish">
+            <span className="cd-page-words"><b>In the Marketplace</b><small>{draft.published ? `Anyone here can add it${skill?.custom?.uses ? ` · ${usesWords(skill.custom.uses)}` : ""}` : "Only you have it"}</small></span>
+            <JointSwitch name="skill-published" defaultChecked={!!draft.published} label="In the Marketplace" onChange={(on) => edit({ published: on })} />
+          </div>
           <div className="cd-skill-actions"><Seal type="submit" busy={busy} disabled={!ready}>{creating ? "Add skill" : "Save"}</Seal></div>
         </form> : null}
     </div>
@@ -2178,6 +2242,7 @@ type Item =
   | { type: "disk"; seq: number; event: Extract<CodeEvent, { kind: "disk" }> }
   | { type: "compacted"; seq: number; before?: number }
   | { type: "remembered"; seq: number; text: string; how?: "changed" | "forgot" }
+  | { type: "skill-made"; seq: number; event: Extract<CodeEvent, { kind: "skill-made" }> }
   | { type: "artifact"; seq: number; id: string; name: string; action: "wrote" | "edited" | "shown" }
   | { type: "connect"; seq: number; app: string; url: string }
   | { type: "sent"; seq: number; files: Attachment[] }
@@ -2225,6 +2290,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
       case "question": items.push({ type: "question", seq, event, answer: replied.get(event.id) }); break;
       case "remembered": items.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
+      case "skill-made": items.push({ type: "skill-made", seq, event }); break;
       case "artifact": items.push({ type: "artifact", seq, id: event.id, name: event.name, action: event.action }); break;
       case "connect": items.push({ type: "connect", seq, app: event.app, url: event.url }); break;
       case "sent": items.push({ type: "sent", seq, files: event.files }); break;
@@ -2338,6 +2404,14 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
             case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
               ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
               : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
+            case "skill-made": {
+              const made = item.event;
+              if (made.problem) return <p key={item.seq} className="cd-note"><Icon name="spark" /><span>Couldn&rsquo;t save {made.name}: {made.problem}</span></p>;
+              return <p key={item.seq} className="cd-note cd-skill-made"><Icon name="spark" /><span>
+                {made.updated ? "Changed" : "Made"} <b>{made.name}</b>{made.command ? <> · <code>/{made.command}</code></> : null}{made.published ? " · in the Marketplace" : ""}
+                {owns && made.skill ? <> <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1", page: `skill:${made.skill}` })}>Open</button></> : null}
+              </span></p>;
+            }
             case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} {owns ? <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>For you</button> : null}</span></p>;
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
             /* Still waiting, the questions are in the writing bar; answered, a quiet line says what it asked. */

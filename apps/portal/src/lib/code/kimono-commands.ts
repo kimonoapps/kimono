@@ -75,6 +75,7 @@ export function kimonoCommand(command: unknown): Said | undefined {
   if (typeof command !== "string" || !command.includes("kimono-")) return undefined;
   /* Its questions come as JSON on stdin (a heredoc), and show in place of the writing bar: the step just says so. */
   if (/^\s*(?:\S*\/)?kimono-ask(\s|$)/.test(command)) return { label: "Asked you", doing: "Asking you" };
+  if (/^\s*(?:\S*\/)?kimono-skill(\s|$)/.test(command)) return { label: "Saved a skill", doing: "Saving the skill" };
   const said: Said[] = [];
   /* Each step of the line; within a step, what comes after a pipe only trims it. */
   for (const step of command.replace(/\d?>&\d|\d?>\s*\/dev\/null/g, " ").split(/&&|\|\||;|\n/)) {
