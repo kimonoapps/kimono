@@ -250,7 +250,7 @@ fun PlayerScreen(
                     }
                 }
             }
-            override fun aspect(ratio: Float) { aspect = ratio }
+            override fun aspect(ratio: Float) { aspect = ratio; vm.shape(ratio) }
             override fun playing(on: Boolean) { playing = on }
             /* Paused by the person (not a buffering stall): the controls come up, and "You're watching" later. */
             override fun userPaused(paused: Boolean) {

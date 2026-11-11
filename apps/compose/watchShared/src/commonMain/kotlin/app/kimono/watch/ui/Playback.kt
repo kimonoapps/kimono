@@ -211,12 +211,19 @@ class PlayerViewModel(
         return autoSeek
     }
 
+    /* The picture's shape as it plays, told once per copy: a copy cropped to 16:9 is passed over next time. */
+    private var shape: Pair<String, Float>? = null
+    private var shapeTold: String? = null
+    fun shape(ratio: Float) { _state.value.answer?.url?.let { shape = it to ratio } }
+
     /** Tells the Portal where playback is. */
     fun save(position: Double, duration: Double) {
         if (duration <= 0) return
         lastSaved = position
         val s = _state.value
-        viewModelScope.launch { runCatching { api.progress(titleId, s.season, s.episode, position, duration) } }
+        val measured = shape?.takeIf { it.first == s.answer?.url && it.first != shapeTold }
+        if (measured != null) shapeTold = measured.first
+        viewModelScope.launch { runCatching { api.progress(titleId, s.season, s.episode, position, duration, measured?.first, measured?.second) } }
     }
 
     /** Leaving the player: the last position is sent even as the screen goes. */

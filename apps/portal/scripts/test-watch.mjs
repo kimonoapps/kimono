@@ -80,6 +80,9 @@ test("a 16:9 copy of a 4:3 show, as measured when it played, ranks below the sho
   const framing = { expected: 4 / 3, shapeOf: (url) => shapes[url] ?? null };
   const phone = releases.cleanDevice({ client: 'android' });
   assert.equal(releases.rank([crop, made], phone, 'auto', 23, 'ja', {}, framing)[0], made);
+  /* A cached 1080p Blu-ray crop against a 480p DVD as made: points alone put the crop first. */
+  const bigCrop = { ...R('Naruto.S01E01.1080p.BluRay.x265-Group'), url: 'https://x/crop', cached: true }, dvd = { ...R('Naruto.S01E01.480p.DVDRip.x264-Group'), url: 'https://x/made' };
+  assert.equal(releases.rank([bigCrop, dvd], phone, 'auto', 23, 'ja', {}, framing)[0], dvd, 'the show as made, even at 480p');
   assert.equal(hls.displayAspect(probeOf([vstream({ width: 720, height: 480, sample_aspect_ratio: '8:9' })])), 4 / 3);
 });
 

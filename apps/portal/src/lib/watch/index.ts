@@ -410,6 +410,12 @@ async function streamKey(): Promise<Buffer> {
   return Buffer.from((await resolveSecrets([name]))[name], "hex");
 }
 
+/** A shape the apps measured as a copy played (they play the file, so the packager never probes it): kept for that copy, if the address is this person's. */
+export async function noteShapeOf(username: string, address: string, aspect: number) {
+  const played = openStream(await streamKey(), address.split("/stream/").pop()?.split(/[/?]/)[0] ?? "");
+  if (played && played.username === username && aspect > 0.5 && aspect < 4) noteShape(watchDb(), played.url, aspect);
+}
+
 /** nzbdav's API key and WebDAV password: the server's (shared with nzbdav at deploy), else Kimono's own for a local nzbdav. */
 async function nzbdavAccess(): Promise<NzbdavAccess> {
   const env = { key: process.env.KIMONO_WATCH_NZBDAV_KEY?.trim(), webdavPassword: process.env.KIMONO_WATCH_NZBDAV_WEBDAV_PASSWORD?.trim() };

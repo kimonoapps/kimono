@@ -288,7 +288,8 @@ export function rank(releases: Release[], device: Device, quality: Quality, minu
   const tier = dubTier(language);
   return releases
     .filter((r) => unplayable(r, device, minutes, quality) === null)
-    .map((r) => ({ r, t: tier(r), s: score(r, device, quality, minutes, language, speeds, framing) }))
+    /* Someone else's framing comes after every copy as made, whatever it gains in size or speed. */
+    .map((r) => ({ r, t: tier(r) + (offShape(r, framing) ? 10 : 0), s: score(r, device, quality, minutes, language, speeds, framing) }))
     .sort((a, b) => a.t - b.t || b.s - a.s)
     .map(({ r }) => r)
     .filter(unique());
