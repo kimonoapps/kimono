@@ -446,7 +446,9 @@ fun PlayerScreen(
         /* Middle (phone): back ten, play, forward ten. Play stays up over "You're watching", one tap away. */
         if (!tv && !state.loading && state.problem == null && (chrome > 0.01f || pauseCard) && post == Post.None) Row(Modifier.align(Alignment.Center).zIndex(3f), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.alpha(chrome)) { SeekBtn(false) { if (chrome > 0.5f) { seekBy(-10.0); rip(false); show() } } }
-            Box(Modifier.alpha(if (pauseCard) 1f else chrome)) { PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true) }
+            /* while the spinner turns it has the middle: the button steps aside, keeping its place */
+            val spinning = stalled && buffering
+            Box(Modifier.alpha(if (spinning) 0f else if (pauseCard) 1f else chrome)) { if (spinning) Spacer(Modifier.size(76.dp)) else PBtn(if (playing) Ic.pause else Ic.play, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true) }
             Box(Modifier.alpha(chrome)) { SeekBtn(true) { if (chrome > 0.5f) { seekBy(10.0); rip(true); show() } } }
         }
         if (!state.loading && chrome > 0.01f) {

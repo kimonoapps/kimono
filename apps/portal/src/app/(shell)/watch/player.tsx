@@ -829,7 +829,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     </div>
     <div className="kw-p-mid">
       <button className="kw-pbtn kw-seek" aria-label="Back 10 seconds" onClick={() => { seek(-10); ripple("l"); }}><SeekIcon name="rw" /></button>
-      <button className="kw-pbtn kw-big" aria-label={paused ? "Play" : "Pause"} onClick={togglePlay}><Icon name={paused ? "play" : "pause"} /></button>
+      <button className={cx("kw-pbtn kw-big", sk && "kw-under-spin")} aria-label={paused ? "Play" : "Pause"} onClick={togglePlay}><Icon name={paused ? "play" : "pause"} /></button>
       <button className="kw-pbtn kw-seek" aria-label="Forward 10 seconds" onClick={() => { seek(10); ripple("r"); }}><SeekIcon name="ff" /></button>
     </div>
     <div className="kw-p-bot">
