@@ -45,17 +45,20 @@ function secretReference(appId: string, key: string) { return `\${${secretName(a
 type TemplateContext = {
   appId: string;
   hostname: string;
+  /** The Portal's own address (https://…), for an app that sends people back to it. */
+  portal: string;
   configuration: Record<string, string>;
   fields: Map<string, ConfigurationField>;
   services: Set<string>;
   oidc?: Record<string, string>;
 };
 
-const tokenPattern = /\{\{(hostname|config\.[A-Z0-9_]+|secret\.[A-Z0-9_]+|service\.[a-z0-9-]+|oidc\.[a-zA-Z]+)\}\}/g;
+const tokenPattern = /\{\{(hostname|portal|config\.[A-Z0-9_]+|secret\.[A-Z0-9_]+|service\.[a-z0-9-]+|oidc\.[a-zA-Z]+)\}\}/g;
 
 function resolveTemplate(template: string, context: TemplateContext) {
   return template.replace(tokenPattern, (_, token: string) => {
     if (token === "hostname") return context.hostname;
+    if (token === "portal") return context.portal;
     const [kind, key] = token.split(".");
     if (kind === "config") return context.configuration[key] ?? "";
     if (kind === "secret") return secretReference(context.appId, key);
@@ -264,6 +267,13 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
     files: {}, providerActions: [], bootstraps: [], secrets: [], warnings: [],
   };
 
+  // The address the Portal already answers on, read from its own instance rather
+  // than assumed: the Portal's hostname is an administrator's choice and is often
+  // neither "kimono" nor a subdomain at all. Directly published names point at it.
+  const portal = settings.apps["kimono-portal"];
+  const portalHostname = portal ? appHostname(portal.domain, settings.baseDomain) : "";
+  const portalOrigin = portalHostname ? `https://${portalHostname}` : "";
+
   for (const app of Object.values(settings.apps).filter((item) => item.enabled && item.definitionId !== "kimono-portal")) {
     const definition = definitionById.get(app.definitionId);
     if (!definition) { plan.warnings.push(`${app.name}: definition ${app.definitionId} is unavailable`); continue; }
@@ -279,7 +289,7 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
     const fields = new Map(definition.spec.configuration.map((field) => [field.key, field]));
     const identity = definition.spec.identity;
     const oidc = settings.identityDomain ? oidcValues(app.id, settings.identityDomain, hostname) : null;
-    const context: TemplateContext = { appId: app.id, hostname, configuration, fields, services, ...(oidc ? { oidc } : {}) };
+    const context: TemplateContext = { appId: app.id, hostname, portal: portalOrigin, configuration, fields, services, ...(oidc ? { oidc } : {}) };
 
     /* Its published services meet the appliance's proxy and its connectors here, and no other app. */
     if (routedServices.size) plan.compose.networks[edgeNetwork] = { internal: true, proxy: true };
@@ -350,11 +360,6 @@ export function renderDeploymentPlan(settings: PlatformSettings, definitions: Ap
     }
   }
 
-  // Directly published names point at the address the Portal already answers on,
-  // read from its own instance rather than assumed: the Portal's hostname is an
-  // administrator's choice and is often neither "kimono" nor a subdomain at all.
-  const portal = settings.apps["kimono-portal"];
-  const portalHostname = portal ? appHostname(portal.domain, settings.baseDomain) : "";
 
   const notes = settings.apps[notesAppId];
   const notesHostname = notes?.enabled ? appHostname(notes.domain, settings.baseDomain) : "";

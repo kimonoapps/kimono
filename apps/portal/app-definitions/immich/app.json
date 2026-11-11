@@ -71,7 +71,8 @@
           "DB_USERNAME": "immich",
           "DB_PASSWORD": "{{secret.DATABASE_PASSWORD}}",
           "REDIS_HOSTNAME": "{{service.redis}}",
-          "REDIS_PORT": "6379"
+          "REDIS_PORT": "6379",
+          "KIMONO_GET_APP_URL": "{{portal}}/get-app"
         }
       },
       {
