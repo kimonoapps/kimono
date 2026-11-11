@@ -639,9 +639,10 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     why: {
       device: { client: device.client, maxHeight: device.maxHeight, codecs: device.codecs, hdr: device.hdr, ...(device.mbps ? { mbps: device.mbps } : {}), ...(device.link ? { link: device.link } : {}) },
       quality, cap: Math.min(heightCap(device, quality), linkCap(device.mbps ?? device.link)), copies: found.length,
+      audio: plan.audio, original: title.originalLanguage || null, ownChoice: Boolean(tracksOf(db, username, title.id)?.audio),
       uhd: found.filter((r) => r.height >= 2160).slice(0, 8).map((r) => {
         const at = ranked.indexOf(r);
-        return { label: describe(r), name: r.filename || r.name, reason: unplayable(r, device, minutes, quality) ?? (at < 0 ? "a duplicate" : at === ranked.indexOf(wanted) ? "playing" : `ranked #${at + 1}`) };
+        return { label: describe(r), name: r.filename || r.name, languages: r.languages, reason: unplayable(r, device, minutes, quality) ?? (at < 0 ? "a duplicate" : at === ranked.indexOf(wanted) ? "playing" : `ranked #${at + 1}`) };
       }),
     },
   };

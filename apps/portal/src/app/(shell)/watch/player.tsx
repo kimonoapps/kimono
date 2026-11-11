@@ -1107,6 +1107,7 @@ function Stats({ play, video, onClose }: { play: Play; video: React.RefObject<HT
     ["Screen", screenSize],
     ["Reported", w ? `${w.device.maxHeight}p · ${w.device.codecs.join(", ")} · HDR ${w.device.hdr.join(", ") || "none"}${w.device.link ? ` · ${w.device.link} Mbps link` : ""}` : "—"],
     ["Quality", w ? `${w.quality} · up to ${Number.isFinite(w.cap) ? `${w.cap}p` : "any"}` : play.quality?.current ?? "—"],
+    ["Audio", w ? `${w.audio} wanted${w.ownChoice ? " (picked for this show)" : " (from Settings)"} · original ${w.original ?? "?"}` : "—"],
     ["Copy", play.version.label],
     ["Stream", variants.join("\n") || "…"],
     ["Picture", size],
@@ -1117,7 +1118,7 @@ function Stats({ play, video, onClose }: { play: Play; video: React.RefObject<HT
       <dl>{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
       {w ? <>
         <p>4K copies ({w.uhd.length} of {w.copies})</p>
-        <ul>{w.uhd.length ? w.uhd.map((u, i) => <li key={i} title={u.name}><b>{u.reason}</b> {u.label}</li>) : <li>None found</li>}</ul>
+        <ul>{w.uhd.length ? w.uhd.map((u, i) => <li key={i} title={u.name}><b>{u.reason}</b> {u.label} · {u.languages.join(", ") || "languages not listed"}</li>) : <li>None found</li>}</ul>
       </> : null}
     </div>
   );
