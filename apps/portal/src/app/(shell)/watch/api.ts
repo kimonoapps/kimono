@@ -119,7 +119,8 @@ export const watchApi = {
   },
   search: (q: string, signal?: AbortSignal) => call<{ results: Card[] }>(`search?q=${encodeURIComponent(q)}`, { signal }),
   title: (id: string, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`),
-  mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null; episodes?: "seasons" | "continuous" | null }) => call<TitleView>(`titles/${encodeURIComponent(id)}`, put(change)),
+  /** The page comes back for `season` when given, so the episode list stays where it was. */
+  mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null; episodes?: "seasons" | "continuous" | null }, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`, put(change)),
   prefs: () => call<Prefs>("prefs"),
   /** While a stream stalls: whether the server's side or this connection is holding it up. */
   health: (titleId: string, season: number, episode: number) => call<{ slow: "server" | "connection" | null }>(`health?titleId=${encodeURIComponent(titleId)}&season=${season}&episode=${episode}`),
@@ -212,6 +213,18 @@ export function clock(seconds: number) {
 }
 export const minutesText = (min: number | null | undefined) => (min ? (min >= 60 ? `${Math.floor(min / 60)}h ${min % 60}m` : `${min}m`) : "");
 const languageNames = typeof Intl !== "undefined" && "DisplayNames" in Intl ? new Intl.DisplayNames(["en"], { type: "language" }) : null;
+/** Containers tag tracks "eng", "jpn", "fre"; the server keeps languages as "en", "ja", "fr". Null when it can't tell ("und"). */
+const threeToTwo: Record<string, string> = {
+  eng: "en", jpn: "ja", fre: "fr", fra: "fr", ger: "de", deu: "de", spa: "es", ita: "it", por: "pt", rus: "ru", ara: "ar", hin: "hi",
+  chi: "zh", zho: "zh", kor: "ko", pol: "pl", ind: "id", tha: "th", vie: "vi", tur: "tr", dut: "nl", nld: "nl", may: "ms", msa: "ms",
+  heb: "he", swe: "sv", nor: "no", nob: "no", nno: "no", dan: "da", fin: "fi", cze: "cs", ces: "cs", hun: "hu", gre: "el", ell: "el",
+  rum: "ro", ron: "ro", ukr: "uk", per: "fa", fas: "fa", tam: "ta", tel: "te", ben: "bn", fil: "tl", tgl: "tl",
+};
+export function twoLetter(code: string | null | undefined): string | null {
+  const c = (code ?? "").trim().toLowerCase().split(/[-_]/)[0];
+  if (/^[a-z]{2}$/.test(c)) return c;
+  return threeToTwo[c] ?? null;
+}
 export const languageName = (code: string) => { try { return languageNames?.of(code) ?? code; } catch { return code; } };
 export function airText(date: string) {
   const d = new Date(`${date}T12:00:00`);

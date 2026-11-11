@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
-import { airText, clock, deviceOf, labelOf, languageName, longLabel, shownNumber, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
+import { airText, clock, deviceOf, labelOf, languageName, longLabel, twoLetter, shownNumber, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, Spinner, TitleMark, useTabTitle, useWatch } from "./bits";
 import { subtitleClass } from "./settings";
 import { InkRing } from "@kimono/ui";
@@ -33,12 +33,12 @@ const speeds = [0.5, 0.75, 1, 1.25, 1.5];
 const wide = () => matchMedia("(min-width: 900px)").matches;
 /** "[9volt] English (Full) ASS" reads "English (Full)"; a bare group name gets its language in front. */
 function trackLabel(label: string, language: string) {
-  const name = languageName(language.length === 3 ? ({ eng: "en", jpn: "ja", por: "pt", spa: "es", fre: "fr", fra: "fr", ger: "de", deu: "de", ita: "it", rus: "ru", ara: "ar", chi: "zh", zho: "zh", kor: "ko" } as Record<string, string>)[language] ?? language : language);
+  const name = languageName(twoLetter(language) ?? language);
   const clean = label.replace(/\[[^\]]*\]/g, "").replace(/\b(ASS|SSA|SRT|PGS|VTT|WEBVTT|SUP)\b/gi, "").replace(/\s+/g, " ").trim();
   if (!clean) return name || label;
   return clean.toLowerCase().includes(name.toLowerCase()) || !name ? clean : `${name} (${clean.replace(/^\((.*)\)$/, "$1")})`;
 }
-const two = (code: string) => (/^[a-z]{2}$/.test(code) ? code : null);
+const two = twoLetter;
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
 const future = (date: string | null | undefined) => (date && Date.parse(date) > Date.now() ? date : null);
 
@@ -781,7 +781,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     else Array.from(v.textTracks).filter((t) => t.kind === "subtitles" || t.kind === "captions").forEach((t, i) => { t.mode = String(i) === key ? "hidden" : "disabled"; });
     setTextOn(key === "off" ? null : key);
     setCue("");
-    const sub = key === "off" ? "off" : chosen && (play?.tracks.subtitles?.signsTitles ?? ["signs", "songs", "forced"]).some((x) => chosen.label.toLowerCase().includes(x)) ? "signs" : two(chosen?.language ?? "") ?? "off";
+    const sub = key === "off" ? "off" : chosen && (play?.tracks.subtitles?.signsTitles ?? ["signs", "songs", "forced"]).some((x) => chosen.label.toLowerCase().includes(x)) ? "signs" : two(chosen?.language) ?? (subsNow === "off" ? "off" : subsNow);
     void setTracks(audioNow, sub, false);
   };
   const pickAudio = (key: string) => {

@@ -61,9 +61,12 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
     setSeasonLoading(false);
   };
   const [langOpen, setLangOpen] = useState(false);
+  /* Shows the pick at once (a select snaps back otherwise), and the page comes back for the season on screen. */
   const setLanguage = async (tracks: { audio: string; subtitles: string } | null) => {
-    try { apply(await watchApi.mark(id, { tracks })); }
-    catch { watch.toast("That didn't work."); }
+    const before = view;
+    if (before?.language) setView({ ...before, tracks, language: tracks ? { ...before.language, ...tracks } : before.language });
+    try { apply(await watchApi.mark(id, { tracks }, before?.season)); }
+    catch { if (before) setView(before); watch.toast("That didn't work."); }
   };
   const t = view?.title;
   useTabTitle(t?.name);

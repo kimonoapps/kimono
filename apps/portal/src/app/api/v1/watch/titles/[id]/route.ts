@@ -35,6 +35,7 @@ export async function PUT(request: Request, { params }: Context) {
       if (body.rating !== null && typeof body.rating !== "string") throw new WatchProblem("Rate it down, up or love.");
       setRating(db, user.username, id, body.rating as Rating | null);
     }
-    return apiJson(await titleView(cfg, user.username, portalOrigin(request), id));
+    const season = Number(new URL(request.url).searchParams.get("season")) || undefined;
+    return apiJson(await titleView(cfg, user.username, portalOrigin(request), id, season));
   });
 }
