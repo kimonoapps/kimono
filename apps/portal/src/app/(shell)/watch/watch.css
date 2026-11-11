@@ -815,6 +815,5 @@
 .kw .kw-tg-chips button>.kw-ic{width:16px;height:16px;color:var(--fg-3)}
 .kw .kw-tg-chips button:hover>.kw-ic{color:var(--fg)}
 .kw .kw-btn:disabled{opacity:.55;cursor:default}
-.kw .kw-spinner{display:block;width:48px;height:48px;color:var(--suo)}
-.kw .kw-spinner .k-morph{width:100%;height:100%}
+.kw .kw-spinner{display:block;width:48px;height:48px;color:var(--suo);overflow:visible}
 .kw .kw-spin .kw-spinner{width:100%;height:100%}
