@@ -65,7 +65,7 @@ export type Play = {
   autoplayNext: boolean;
   markers: Markers;
   skipIntros: boolean;
-  tracks: { audio: { language: string; tags: string[] }; subtitles: { language: string; tags: string[]; kind: "full" | "signs"; signsTitles: string[] } | null };
+  tracks: { asked?: string; audio: { language: string; tags: string[] }; subtitles: { language: string; tags: string[]; kind: "full" | "signs"; signsTitles: string[] } | null };
   languages: { audio: string[]; subtitles: string[] };
   /** The quality playing and the ones this release offers here; absent from older servers. */
   quality?: { current: string; options: { value: string; label: string }[] };

@@ -309,6 +309,9 @@ class PlayerViewModel(
         viewModelScope.launch { runCatching { api.mark(titleId, tracks = TrackChoice(audio, subtitles)) } }
     }
 
+    /** A few words over the player. */
+    fun say(text: String) = toasts.show(text)
+
     fun remind() {
         val page = _state.value.page ?: return
         _state.value = _state.value.copy(page = page.copy(reminding = true))

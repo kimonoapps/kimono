@@ -152,7 +152,8 @@ export type HlsPlan = {
   video:
     | { index: number; mode: "copy"; codec: Codec; codecs: string; width: number; height: number; bandwidth: number; range: "SDR" | "PQ" | "HLG"; frameRate: number | null }
     | { index: number; mode: "transcode"; rungs: Rung[]; tonemap: boolean; hwDecode: boolean; frameRate: number | null; tenBit: boolean };
-  audio: { index: number; mode: "copy" | "aac"; codecs: string } | null;
+  /** language: the track's own tag ("fre", "jpn"), "und" when the file doesn't say. */
+  audio: { index: number; mode: "copy" | "aac"; codecs: string; language: string } | null;
   subtitles: { index: number; name: string; language: string; default: boolean; forced: boolean }[];
   burn: { index: number; bitmap: boolean } | null;
 };
@@ -268,7 +269,7 @@ export function planHls(probe: Probe, grant: Pick<HlsGrant, "screen" | "audio" |
     duration,
     segments: segmentTimes(duration, copy ? probe.keyframes : null),
     video: plan,
-    audio: audio ? { index: audio.index, mode: passes ? "copy" : "aac", codecs: passes ? audioCodecs[audio.codec_name ?? "aac"] : "mp4a.40.2" } : null,
+    audio: audio ? { index: audio.index, mode: passes ? "copy" : "aac", codecs: passes ? audioCodecs[audio.codec_name ?? "aac"] : "mp4a.40.2", language: (audio.tags?.language ?? "und").toLowerCase() } : null,
     subtitles: text.filter((s) => s.index !== burn?.index).map((s) => ({
       index: s.index,
       name: s.tags?.title?.trim() || languageName(s.tags?.language) || `Subtitles ${s.index}`,
@@ -391,6 +392,8 @@ const quote = (s: string) => s.replace(/["\n\r]/g, "'");
  */
 export function masterPlaylist(plan: HlsPlan): string {
   const lines = ["#EXTM3U", "#EXT-X-VERSION:7", "#EXT-X-INDEPENDENT-SEGMENTS"];
+  /* The one audio track's language, so the player can say when it isn't the one asked for. */
+  if (plan.audio) lines.push(`#EXT-X-SESSION-DATA:DATA-ID="app.kimono.audio-language",VALUE="${quote(plan.audio.language)}"`);
   plan.subtitles.forEach((s, i) => {
     lines.push(`#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="${quote(s.name)}",LANGUAGE="${quote(s.language)}",DEFAULT=${s.default ? "YES" : "NO"},AUTOSELECT=${s.default || !s.forced ? "YES" : "NO"},FORCED=NO,URI="s${i}.m3u8"`);
   });

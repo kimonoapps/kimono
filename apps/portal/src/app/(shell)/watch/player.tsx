@@ -123,11 +123,11 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const [unread, setUnread] = useState(0);
   const [floats, setFloats] = useState<Reaction[]>([]);
   const [online, setOnline] = useState(true);
-  const [note, setNote] = useState<{ text: string; at: number } | null>(null);
+  const [note, setNote] = useState<{ text: string; at: number; ms?: number } | null>(null);
   const [noteGone, setNoteGone] = useState<number | null>(null);
   useEffect(() => {
     if (!note) return;
-    const t = setTimeout(() => setNoteGone(note.at), 2400);
+    const t = setTimeout(() => setNoteGone(note.at), note.ms ?? 2400);
     return () => clearTimeout(t);
   }, [note]);
   const [myClient] = useState(screenId);
@@ -291,7 +291,21 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     onParty(null);
   }, [onParty, speed]);
 
-  const say = useCallback((text: string) => setNote({ text, at: Date.now() }), []);
+  const say = useCallback((text: string, ms?: number) => setNote({ text, at: Date.now(), ms }), []);
+  /* Not the audio asked for (no copy has it, or this copy's file lacks it): said as it starts. */
+  const toldAudio = useRef<string | null>(null);
+  useEffect(() => {
+    if (!play || loading || toldAudio.current === play.url) return;
+    toldAudio.current = play.url;
+    const asked = play.tracks.asked ?? play.tracks.audio.language;
+    const tell = (actual: string | null) => {
+      if (actual && asked && actual !== asked) say(`No ${languageName(asked)} for this ${movie ? "film" : "episode"}. Playing ${languageName(actual)}.`, 6000);
+    };
+    if (!play.hls) { tell(two(play.tracks.audio.language)); return; }
+    void fetch(play.hls).then((r) => r.text())
+      .then((text) => tell(two(/DATA-ID="app\.kimono\.audio-language",VALUE="([^"]*)"/.exec(text)?.[1]) ?? play.tracks.audio.language))
+      .catch(() => tell(play.tracks.audio.language));
+  }, [play, loading, movie, say]);
   const join = useCallback(async (partyId: string) => {
     if (live.current.link?.id === partyId) return;
     leaveParty(true);

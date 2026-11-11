@@ -911,6 +911,7 @@ test('ffmpeg arguments: copy keeps the picture, transcoding forces keyframes on 
 test('playlists list every segment, relative to the sealed address, and nothing else is served', () => {
   const plan = hls.planHls(dualAudio(), grantFor(browser));
   const master = hls.masterPlaylist(plan);
+  assert.ok(master.includes(`#EXT-X-SESSION-DATA:DATA-ID="app.kimono.audio-language",VALUE="${plan.audio.language}"`), 'the audio track\'s language is in the playlist');
   assert.match(master, /#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="Full Subtitles",LANGUAGE="eng",DEFAULT=YES,AUTOSELECT=YES,FORCED=NO,URI="s1.m3u8"/);
   assert.match(master, /#EXT-X-STREAM-INF:BANDWIDTH=5000000,CODECS="avc1.640029,mp4a.40.2",RESOLUTION=1920x1080,FRAME-RATE=23.976,VIDEO-RANGE=SDR,SUBTITLES="subs",CLOSED-CAPTIONS=NONE\nv0.m3u8\n/);
   const media = hls.mediaPlaylist(plan, 0);

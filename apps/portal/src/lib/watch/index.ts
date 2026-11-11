@@ -632,8 +632,8 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     /* Seconds: intro and recap as [start, end], credits as where they start. */
     markers,
     skipIntros: prefs.skipIntros,
-    /* Which audio and subtitle tracks to switch on, by the tags containers use. */
-    tracks,
+    /* Which audio and subtitle tracks to switch on, by the tags containers use; asked: the audio wanted before falling back. */
+    tracks: { ...tracks, asked: plan.audio },
     languages: { audio: wanted.languages, subtitles: wanted.subtitles },
   };
 }

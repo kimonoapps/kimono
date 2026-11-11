@@ -2,6 +2,7 @@
 
 package app.kimono.watch.player
 
+import app.kimono.watch.phone.languageName
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.Animatable
@@ -252,6 +253,11 @@ fun PlayerScreen(
                     if (want != null && original != null && want != original && audios.isNotEmpty() && audios.all { it.language != null } && audios.none { it.language == want }) {
                         if (dubTries < 3 && vm.fallback(engine.position)) { dubTries++; return }
                     }
+                    /* Not the audio asked for (no copy has it, or this file lacks it): said as it starts. */
+                    val asked = answer.tracks.asked ?: want
+                    val actual = if (want != null && audios.any { it.language == want }) want else (audios.firstOrNull { it.selected } ?: audios.firstOrNull())?.language ?: want
+                    if (asked != null && actual != null && actual != asked)
+                        vm.say("No ${languageName(asked)} for this ${if (vm.state.value.isFilm) "film" else "episode"}. Playing ${languageName(actual)}.")
                 }
             }
             override fun aspect(ratio: Float) { aspect = ratio; vm.shape(ratio) }

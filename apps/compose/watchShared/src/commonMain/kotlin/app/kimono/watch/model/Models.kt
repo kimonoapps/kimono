@@ -209,7 +209,8 @@ data class AudioHint(val language: String, val tags: List<String> = emptyList())
 data class SubtitleHint(val language: String, val tags: List<String> = emptyList(), val kind: String = "full", val signsTitles: List<String> = emptyList())
 
 @Serializable
-data class TrackHints(val audio: AudioHint? = null, val subtitles: SubtitleHint? = null)
+/** asked: the audio wanted before the server fell back to another language (no copy had it). */
+data class TrackHints(val audio: AudioHint? = null, val subtitles: SubtitleHint? = null, val asked: String? = null)
 
 @Serializable
 data class Languages(val audio: List<String> = emptyList(), val subtitles: List<String> = emptyList())
