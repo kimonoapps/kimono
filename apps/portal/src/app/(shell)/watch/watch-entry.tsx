@@ -10,7 +10,7 @@ import { WatchApp, type Person } from "./watch-app";
  * there only: the server sends Watch's bloom, breathing, and the browser takes over.
  */
 const never = () => () => {};
-export function WatchEntry(props: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void> }) {
+export function WatchEntry(props: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void>; phoneApp?: boolean }) {
   const here = useSyncExternalStore(never, () => true, () => false);
   if (!here) return <div className="kw kw-waiting"><Spinner color={props.accent} label="Opening" className="kw-wait" /></div>;
   return <WatchApp {...props} />;

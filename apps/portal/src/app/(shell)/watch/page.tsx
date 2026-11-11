@@ -1,3 +1,4 @@
+import { appOffer } from "@/lib/app-offer";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -40,12 +41,12 @@ export default async function WatchPage() {
   const admin = session.user.role === "owner" || session.user.role === "admin";
   if (!watchConfig(settings).enabled && admin) redirect("/admin/apps/kimono-watch");
   const app = await watchIdentity(settings);
-  const [accounts, pictures] = await Promise.all([listAccounts(), picturePaths()]);
+  const [accounts, pictures, offer] = await Promise.all([listAccounts(), picturePaths(), appOffer()]);
   const username = session.user.username;
   const me: Person = { username, name: session.user.name?.trim() || username, picture: pictures[username.toLowerCase()] ?? session.user.image ?? null };
   /* One profile per person in the household, you first. */
   const others = accounts.filter((a) => a.username !== username).map((a) => ({ username: a.username, name: a.name || a.username, picture: pictures[a.username.toLowerCase()] ?? null }));
   return <AppShell user={session.user} brandColors={settings.brand.colors} app={app}>
-    {watchConfig(settings).enabled ? <WatchEntry me={me} household={[me, ...others].slice(0, 6)} accent={app.accent} signOut={signOut} /> : <WatchOff accent={app.accent} />}
+    {watchConfig(settings).enabled ? <WatchEntry me={me} household={[me, ...others].slice(0, 6)} accent={app.accent} signOut={signOut} phoneApp={Boolean(offer.android) || offer.ios} /> : <WatchOff accent={app.accent} />}
   </AppShell>;
 }

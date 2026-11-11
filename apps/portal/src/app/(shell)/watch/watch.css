@@ -581,6 +581,30 @@
 .kw .kw-account .kw-smenu{left:auto;right:0;transform-origin:top right;min-width:230px}
 .kw .kw-menu-h{margin:6px 12px 4px;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--fg-3)}
 .kw .kw-menu-rule{height:1px;background:var(--line);margin:6px 8px}
+/* The avatar's menu: you, who's watching now, who you watch with, then where else to go. */
+.kw .kw-amenu{width:300px;max-height:min(560px,calc(100vh - 90px))}
+.kw .kw-amenu .kw-menu-h{margin:8px 12px 6px}
+.kw .kw-am-me{display:flex;align-items:center;gap:12px;padding:10px 12px 8px}
+.kw .kw-am-me .kw-face-s{width:40px;height:40px;font-size:19px;border-radius:11px}
+.kw .kw-am-me span,.kw .kw-am-party > span:nth-child(2){display:grid;gap:2px;min-width:0}
+.kw .kw-am-me b{font-size:16px}
+.kw .kw-am-me small,.kw .kw-am-party small{font-size:13px;color:var(--fg-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kw .kw-am-party{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:6px 8px 6px 12px}
+.kw .kw-am-party b{font-size:14px}
+.kw .kw-am-party .kw-btn{height:34px;padding:0 14px;font-size:13px}
+.kw .kw-am-faces{display:flex}
+.kw .kw-am-faces .kw-face-s{box-shadow:0 0 0 2px var(--surface-3)}
+.kw .kw-am-faces .kw-face-s + .kw-face-s{margin-left:-10px}
+.kw .kw-am-people{display:flex;flex-wrap:wrap;gap:4px 2px;padding:0 6px 4px}
+.kw .kw-am-people > span{display:grid;justify-items:center;gap:4px;width:52px;position:relative}
+.kw .kw-am-people .kw-face-s{width:36px;height:36px;font-size:17px;border-radius:10px}
+.kw .kw-am-people small{font-size:11px;color:var(--fg-3);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kw .kw-am-people > span.kw-on .kw-face-s{box-shadow:0 0 0 2px var(--surface-3),0 0 0 4px var(--blush)}
+.kw .kw-am-people > span.kw-on small{color:var(--fg)}
+.kw .kw-amenu > button .kw-ic,.kw .kw-amenu .kw-menu-link .line-icon{width:20px;height:20px;opacity:1;color:var(--fg-2)}
+.kw .kw-amenu .kw-menu-link .line-icon{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.kw .kw-amenu .kw-menu-link b{font-weight:500}
+.kw .kw-live-dot{position:absolute;right:-3px;top:-3px;pointer-events:none;width:10px;height:10px;border-radius:50%;background:var(--blush);box-shadow:0 0 0 2px var(--bg)}
 .kw .kw-smenu button[aria-checked="true"] .kw-ic{opacity:1}
 /* The house lockup (bloom, kimono, watch), as every app wears it, in light ink on the dark floor. */
 .kw .kw-brand .k-app-lockup-word{color:var(--fg);font-size:23px}

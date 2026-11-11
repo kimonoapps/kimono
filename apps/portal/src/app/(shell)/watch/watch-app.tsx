@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, type TitleView } from "./api";
 import { AppLockup, KimonoBranch } from "@kimono/ui";
-import { Crossing } from "@/components/crossing";
+import { Crossing, useCrossTo } from "@/components/crossing";
+import { LineIcon } from "@/components/line-icon";
 import { circleSettled, placeReady } from "@/components/immersive";
 import { cx, Spinner, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
@@ -50,11 +51,12 @@ function writePlace(page: Page, title: string | null, push: boolean) {
   if (push) window.history.pushState(null, "", url); else window.history.replaceState(null, "", url);
 }
 
-export function WatchApp({ me, household, accent, signOut }: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void> }) {
+export function WatchApp({ me, household, accent, signOut, phoneApp = false }: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void>; phoneApp?: boolean }) {
   /* Arriving by a party's link goes straight in: it can only be you. */
   const [profile, setProfile] = useState<Person | null>(() => { try { return !PROFILE_PICKER || readParty() || sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
   const [people, setPeople] = useState<Person[]>(household);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [parties, setParties] = useState<Invite[]>([]);
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [asking, setAsking] = useState<{ titleId: string; season: number; episode: number; position: number } | null>(null);
   const [arriving, setArriving] = useState<string | null>(() => readParty());
@@ -210,7 +212,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
   useEffect(() => {
     if (!profile) return;
     let stop = false;
-    const look = () => together.list().then(async (l) => { await circleSettled(); if (stop) return; setPeople(l.people.length ? l.people : household); setInvites(l.parties.filter((p) => p.invited)); }, () => {});
+    const look = () => together.list().then(async (l) => { await circleSettled(); if (stop) return; setPeople(l.people.length ? l.people : household); setInvites(l.parties.filter((p) => p.invited)); setParties(l.parties); }, () => {});
     look();
     const timer = setInterval(() => { if (!document.hidden) look(); }, 15_000);
     return () => { stop = true; clearInterval(timer); };
@@ -290,7 +292,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
           <div className="kw-spacer" />
           <button className="kw-iconbtn" aria-label="Search" onClick={() => setSearching(true)}><Icon name="search" /></button>
           <button className="kw-iconbtn" aria-label="Settings" aria-current={page === "settings" ? "page" : undefined} onClick={() => go("settings")}><Icon name="gear" /></button>
-          <AccountMenu profile={profile} onSettings={() => go("settings")} onSwitch={switchProfile} />
+          <AccountMenu profile={profile} people={people} parties={parties} onJoin={joinParty} onSwitch={switchProfile} phoneApp={phoneApp} />
           <Crossing kind="shoji" href="/" className="kw-tokimono" aria-label="Back to Kimono" title="Back to Kimono"><KimonoBranch /></Crossing>
         </header>
         {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} more={moreLoading} onMore={loadMore} />
@@ -319,33 +321,67 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
   </WatchContext.Provider>;
 }
 
-/* ───── The avatar's menu: this device's quality, and switching profile ───── */
-function AccountMenu({ profile, onSwitch, onSettings }: { profile: Person; onSwitch: () => void; onSettings: () => void }) {
+/* ───── The avatar's menu: you, who you watch with, the phone app, and your Kimono account ───── */
+function AccountMenu({ profile, people, parties, onJoin, onSwitch, phoneApp }: { profile: Person; people: Person[]; parties: Invite[]; onJoin: (id: string) => void; onSwitch: () => void; phoneApp: boolean }) {
   const [open, setOpen] = useState(false);
   const [shown, setShown] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const crossTo = useCrossTo();
   useEffect(() => {
     if (!open) return;
     const frame = requestAnimationFrame(() => setShown(true));
-    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) { setOpen(false); setShown(false); } };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); setShown(false); } };
+    const away = (event: PointerEvent) => { if (!box.current?.contains(event.target as Node)) close(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
     document.addEventListener("pointerdown", away, true);
     document.addEventListener("keydown", key);
     return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key); };
-  }, [open]);
-  const close = () => { setOpen(false); setShown(false); };
-  /* About the person only: switching, settings, and the Kimono account. */
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* The menu folds away first, then Watch closes over wherever you're going. */
+  const close = () => { setShown(false); setTimeout(() => setOpen(false), 160); };
+  const leave = (href: string) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    close();
+    setTimeout(() => crossTo("shoji", href), 140);
+  };
+  const me = profile.username.toLowerCase();
+  const others = people.filter((p) => p.username.toLowerCase() !== me);
+  const live = parties.filter((p) => p.host !== me || p.watching.length > 1);
+  const watching = new Set(parties.flatMap((p) => p.watching.map((u) => u.toLowerCase())));
+  const personOf = (u: string) => people.find((x) => x.username.toLowerCase() === u.toLowerCase());
   return <div className="kw-sdrop kw-account" ref={box}>
-    <button className="kw-avatar" aria-label="Account" aria-haspopup="menu" aria-expanded={open} style={{ background: faceOf(profile.username), overflow: "hidden", padding: 0 }} onClick={() => { setOpen(!open); setShown(false); }}>
+    <button className="kw-avatar" aria-label="Account" aria-haspopup="menu" aria-expanded={open} style={{ background: faceOf(profile.username), overflow: "hidden", padding: 0 }} onClick={() => (open ? close() : setOpen(true))}>
       {profile.picture
         // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
         ? <img src={profile.picture} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : initial(profile)}
     </button>
-    {open ? <div className={cx("kw-smenu", shown && "kw-on")} role="menu">
-      <p className="kw-menu-h">{profile.name}</p>
-      {PROFILE_PICKER ? <button role="menuitem" onClick={() => { close(); onSwitch(); }}><span /><b>Switch profile</b><span /></button> : null}
-      <button role="menuitem" onClick={() => { close(); onSettings(); }}><span /><b>Settings</b><span /></button>
-      <Crossing kind="shoji" role="menuitem" className="kw-menu-link" href="/account" onClick={close}><span /><b>Kimono account</b><span /></Crossing>
+    {live.length ? <i className="kw-live-dot" aria-hidden="true" /> : null}
+    {open ? <div className={cx("kw-smenu kw-amenu", shown && "kw-on")} role="menu">
+      <div className="kw-am-me"><InviteFace person={profile} /><span><b>{profile.name}</b><small>{profile.username}</small></span></div>
+      {live.length ? <>
+        <div className="kw-menu-rule" />
+        <p className="kw-menu-h">Watching now</p>
+        {live.map((p) => {
+          const host = personOf(p.host) ?? { username: p.host, name: p.hostName, picture: null };
+          const with_ = p.watching.filter((u) => u.toLowerCase() !== p.host);
+          return <div key={p.id} className="kw-am-party">
+            <span className="kw-am-faces"><InviteFace person={host} />{with_.slice(0, 2).map((u) => <InviteFace key={u} person={personOf(u) ?? { username: u, name: u, picture: null }} />)}</span>
+            <span><b>{p.host === me ? "Your party" : `${(p.hostName || p.host).split(" ")[0]}${with_.length ? ` +${with_.length}` : ""}`}</b><small>{p.title?.name ?? "Picking something"}{p.season ? ` · S${p.season}:E${p.episode}` : ""}</small></span>
+            <button className="kw-btn kw-tonal" onClick={() => { close(); onJoin(p.id); }}>{p.watching.some((u) => u.toLowerCase() === me) ? "Back in" : "Join"}</button>
+          </div>;
+        })}
+      </> : null}
+      {others.length ? <>
+        <div className="kw-menu-rule" />
+        <p className="kw-menu-h">Watch together with</p>
+        <div className="kw-am-people">{others.slice(0, 10).map((p) => <span key={p.username} title={watching.has(p.username.toLowerCase()) ? `${p.name} is watching` : p.name} className={cx(watching.has(p.username.toLowerCase()) && "kw-on")}>
+          <InviteFace person={p} /><small>{(p.name || p.username).split(" ")[0]}</small>
+        </span>)}</div>
+      </> : null}
+      <div className="kw-menu-rule" />
+      {PROFILE_PICKER ? <button role="menuitem" onClick={() => { close(); onSwitch(); }}><Icon name="group" /><b>Switch profile</b><span /></button> : null}
+      {phoneApp ? <a role="menuitem" className="kw-menu-link" href="/get-app" onClick={leave("/get-app")}><LineIcon name="phone" /><b>Get the Kimono app</b><span /></a> : null}
+      <a role="menuitem" className="kw-menu-link" href="/account" onClick={leave("/account")}><LineIcon name="user" /><b>Kimono account</b><span /></a>
     </div> : null}
   </div>;
 }
