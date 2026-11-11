@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // sample makes a 30-second Matroska file with a keyframe every 2 seconds.
@@ -154,5 +155,28 @@ func TestEvictKeepsWhatsNearTheViewer(t *testing.T) {
 	s.evictLocked()
 	if len(s.ready["v0"]) != before {
 		t.Fatal("deleted more once under the budget")
+	}
+}
+
+func TestSlowRunsStartOverRatherThanCatchUp(t *testing.T) {
+	segments := make([]float64, 100)
+	for k := range segments {
+		segments[k] = float64(k) * 6
+	}
+	s := &Session{spec: Spec{Segments: segments, Duration: 600, Outputs: []Output{{Name: "v0", Kind: "fmp4"}}}}
+	/* Started at 10, first segment in 2 s, then three more in 6 s: half the film's speed. */
+	at := func(pace time.Duration) *run {
+		return &run{start: 10, progress: map[string]int{"v0": 13}, began: time.Now().Add(-2*time.Second - pace), firstAt: 2 * time.Second, firstEnd: s.end(10)}
+	}
+	s.run = at(36 * time.Second) // 18 s of film in 36 s
+	if !s.needsRestart(15, true) {
+		t.Fatal("waited 12 s of film at half speed instead of starting over")
+	}
+	s.run = at(3 * time.Second) // six times the film's speed
+	if s.needsRestart(15, true) {
+		t.Fatal("started over when the run would get there in 2 s")
+	}
+	if !s.needsRestart(30, true) {
+		t.Fatal("waited past the gap")
 	}
 }

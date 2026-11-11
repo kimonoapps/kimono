@@ -24,7 +24,9 @@ import (
 )
 
 const (
-	headBytes = 1 << 20
+	/* Past ffmpeg's probe (5 MB): every encoder restart probes the file again, and
+	   one with bitmap or ASS subtitles (most films) reads all of it. */
+	headBytes = 6 << 20
 	tailBytes = 2 << 20
 	maxInputs = 16
 )

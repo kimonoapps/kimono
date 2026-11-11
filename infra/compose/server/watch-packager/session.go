@@ -75,7 +75,14 @@ type run struct {
 	produced bool
 	paused   bool
 	stderr   *tail
-	readers  sync.WaitGroup
+	// How fast this run makes segments, to tell whether a request a little
+	// past it is quicker waited for or started over at.
+	began     time.Time
+	firstAt   time.Duration // to the first finished segment
+	firstEnd  float64       // where that segment ends
+	pausedAt  time.Time
+	pausedFor time.Duration
+	readers   sync.WaitGroup
 }
 
 type pendingSegment struct {
@@ -108,6 +115,8 @@ type Session struct {
 	// Only the newest request moves the encoder: one a player gave up on
 	// (it seeks away and aborts) must not drag it back.
 	seq int
+	// Video requests waiting now: subtitles leave moving the encoder to them.
+	videoWaiting int
 }
 
 func newSession(id string, spec Spec, root string) (*Session, error) {
@@ -201,7 +210,32 @@ func (s *Session) needsRestart(k int, video bool) bool {
 	if r.done || k < r.start || (video && k <= p) {
 		return true
 	}
-	return s.spec.Segments[k]-s.end(p) > restartGap
+	if s.spec.Segments[k]-s.end(p) > restartGap {
+		return true
+	}
+	/* Within reach, but a high-bitrate film or a transcode can take longer to
+	   read its way there than a new run takes to make its first segment. */
+	wait, known := s.etaLocked(r, k)
+	return known && wait > r.firstAt+settleFor
+}
+
+// etaLocked is how long run r will take to finish segment k at the pace it
+// has kept since its first segment; known is false until there is a pace.
+func (s *Session) etaLocked(r *run, k int) (time.Duration, bool) {
+	p := s.progressOf(r)
+	if r.firstAt == 0 || p < 0 {
+		return 0, false
+	}
+	active := time.Since(r.began) - r.pausedFor - r.firstAt
+	if r.paused {
+		active -= time.Since(r.pausedAt)
+	}
+	made := s.end(p) - r.firstEnd
+	if made <= 0 || active < 500*time.Millisecond {
+		return 0, false
+	}
+	pace := made / active.Seconds() // seconds of the film per second
+	return time.Duration((s.end(k) - s.end(p)) / pace * float64(time.Second)), true
 }
 
 // explain logs why the encoder moves, for the server's logs.
@@ -248,7 +282,7 @@ func (s *Session) startLocked(k int) {
 	filled := s.fill(args, start)
 	cmd := exec.Command(ffmpegPath, filled...)
 	cmd.Dir = s.dir
-	r := &run{cmd: cmd, start: k, progress: map[string]int{}, tails: map[string]*pendingSegment{}, stderr: &tail{}}
+	r := &run{cmd: cmd, start: k, progress: map[string]int{}, tails: map[string]*pendingSegment{}, stderr: &tail{}, began: time.Now()}
 	cmd.Stderr = r.stderr
 	readers := make([]*os.File, len(s.spec.Outputs))
 	for i := range s.spec.Outputs {
@@ -329,6 +363,9 @@ func (s *Session) read(r *run, o Output, f *os.File) {
 		s.sizes[o.Name][k] = int64(len(b))
 		r.progress[o.Name] = k
 		r.produced = true
+		if r.firstAt == 0 {
+			r.firstAt, r.firstEnd = time.Since(r.began), s.end(k)
+		}
 		s.coverLocked(r)
 		s.notify()
 		s.mu.Unlock()
@@ -464,6 +501,7 @@ func (s *Session) resumeLocked() {
 	if r := s.run; r != nil && r.paused && !r.done {
 		_ = r.cmd.Process.Signal(syscall.SIGCONT)
 		r.paused = false
+		r.pausedFor += time.Since(r.pausedAt)
 	}
 }
 
@@ -517,6 +555,13 @@ func (s *Session) Segment(ctx context.Context, name string, k int) (string, erro
 	s.lastReq = k
 	s.seq++
 	mine := s.seq
+	s.videoWaiting++
+	defer func() {
+		/* Subtitles held back for this request look again. */
+		if s.videoWaiting--; s.videoWaiting == 0 {
+			s.notify()
+		}
+	}()
 	deadline := time.Now().Add(waitFor)
 	settled := false
 	for {
@@ -552,7 +597,9 @@ func (s *Session) Subtitles(ctx context.Context, name string, k int) ([]byte, er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.lastAccess = time.Now()
-	s.seq++
+	/* Not counted as newer than the video: after a seek players ask for the
+	   subtitles a segment before the picture, and starting the encoder there
+	   would make the picture wait for a whole segment more. */
 	mine := s.seq
 	deadline := time.Now().Add(waitFor)
 	settled := false
@@ -564,14 +611,15 @@ func (s *Session) Subtitles(ctx context.Context, name string, k int) ([]byte, er
 			/* Behind where the encoder started: the video there was asked for before, so nothing is missed. */
 			return vttSegment(nil, 0, 0), nil
 		}
-		if mine == s.seq && s.needsRestart(k, false) && !settled && s.running() {
+		moves := mine == s.seq && s.videoWaiting == 0 && s.needsRestart(k, false)
+		if moves && !settled && s.running() {
 			settled = true
 			if err := s.settleLocked(ctx); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		if mine == s.seq && s.needsRestart(k, false) {
+		if moves {
 			if s.failures[k] >= maxFailures {
 				return nil, fmt.Errorf("%s", s.problem)
 			}
@@ -604,7 +652,7 @@ func (s *Session) tick() {
 			ahead := s.end(s.progressOf(r)) - s.spec.Segments[s.lastReq]
 			if !r.paused && ahead > s.spec.Ahead {
 				if r.cmd.Process.Signal(syscall.SIGSTOP) == nil {
-					r.paused = true
+					r.paused, r.pausedAt = true, time.Now()
 				}
 			} else if r.paused && ahead < s.spec.Ahead-15 {
 				s.resumeLocked()
