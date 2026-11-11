@@ -441,23 +441,27 @@ function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: nu
     const ids = [await kitsuIdFor(cfg, title, season, episode), title.imdbId ? stremioId(title.imdbId, season || undefined, episode || undefined) : null].filter((id): id is string => Boolean(id));
     if (!ids.length) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
     const manifest = await ensureProvisioned(db, cfg, await nzbdavAccess());
-    let found: Release[] = [], complete = false;
-    /* Anime goes by Kitsu's numbering first; when that finds nothing, by IMDb like any show. */
+    let found: Release[] = [], complete = true;
+    /*
+     * Anime by Kitsu's numbering and by IMDb's seasons, both: fansubs go by the
+     * first, the streaming services' 4K HDR copies by the second. One after the
+     * other, since sources turn away searches that come too close together.
+     */
     for (const id of ids) {
-      let refused: boolean;
-      ({ releases: found, complete, refused } = await searchStreams(manifest, title.kind, id));
+      let { releases, complete: done, refused } = await searchStreams(manifest, title.kind, id);
       /*
        * Nothing at all: a busy source may have dropped it, or the search turned
        * it away for coming too often (its window is 15 seconds). Asked again,
        * after the window when refused, before it is believed.
        */
       for (const wait of refused ? [8000, 8000] : [2000]) {
-        if (found.length) break;
-        await new Promise((done) => setTimeout(done, wait));
-        ({ releases: found, complete, refused } = await searchStreams(manifest, title.kind, id));
+        if (releases.length || found.length) break;
+        await new Promise((ok) => setTimeout(ok, wait));
+        ({ releases, complete: done, refused } = await searchStreams(manifest, title.kind, id));
         if (!refused) break;
       }
-      if (found.length) break;
+      found = [...found, ...releases];
+      complete &&= done;
     }
     /* Still nothing, and the search didn't finish: that's no answer, so it isn't kept and play doesn't say "no copy". */
     if (!found.length && !complete) throw new WatchProblem("Watch's sources are busy right now. Try again in a moment.", 503);
