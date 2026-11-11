@@ -71,7 +71,12 @@ export type CodeEvent =
   | { kind: "sent"; files: Attachment[] }
   | { kind: "artifact-draft"; id: string; name: string; content: string }
   | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string; doing?: string }
-  | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
+  | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" }
+  | { kind: "question"; id: string; questions: Question[] }
+  | { kind: "question-answer"; id: string; skipped?: boolean; answers?: QuestionAnswer[] };
+/** One of the questions the agent put to the person (kimono-ask). */
+export type Question = { question: string; header?: string; options: { label: string; description?: string }[]; multi: boolean };
+export type QuestionAnswer = { picked: string[]; other?: string };
 export type Project = { id: string; name: string; createdAt: number };
 export type SkillChoice = { id: string; name: string; description: string; kind: "always" | "on-demand"; defaultOn: boolean; icon: string; source: string; author: string; license: string; command?: { name: string; hint?: string; does: string }; custom?: { mine: boolean; published: boolean; editable: boolean; body?: string }; enabled: boolean };
 export type SkillCatalog = { skills: SkillChoice[]; admin: boolean };
@@ -198,6 +203,8 @@ export const code = {
   report: (id: string, reason: string) => call<void>(`${ws(id)}/report`, json("POST", { reason })),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),
+  /** Answers the agent's questions, in order; or skips them. */
+  answerQuestions: (id: string, question: string, answers: QuestionAnswer[] | "skip") => call<StoredEvent>(`${ws(id)}/questions/${encodeURIComponent(question)}`, json("POST", answers === "skip" ? { skip: true } : { answers })),
   /** Projects: folders a person keeps chats in. */
   projects: () => call<{ projects: Project[] }>("/projects").then((r) => r.projects),
   createProject: (name: string) => call<Project>("/projects", json("POST", { name })),

@@ -17,7 +17,7 @@ import { JointSwitch } from "@/components/joint-switch";
 import {
   code, drive, efforts, largestAttachment, modelChoices, modelKey, modelNow, smallAttachment, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   artifactLinkUrl, chatLinkUrl, setShareLink, type Access, type ArtifactSharing, type ChatSharing, type Person, type SharedArtifact,
-  type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type SkillChoice, type SkillCatalog, type SkillDraft, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage, type Phase,
+  type AccessSettings, type AppDetails, type ConnectableApp, type Profile, type SkillChoice, type SkillCatalog, type SkillDraft, type Project, type Connection, type AppHealth, type SandboxStatus, type Attachment, type Changes, type CodeEvent, type Entry, type Repository, type StoredEvent, type Workspace, type Effort, type Usage, type Phase, type QuestionAnswer,
 } from "./api";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./markdown";
@@ -2166,7 +2166,8 @@ type Item =
   | { type: "artifact"; seq: number; id: string; name: string; action: "wrote" | "edited" | "shown" }
   | { type: "connect"; seq: number; app: string; url: string }
   | { type: "sent"; seq: number; files: Attachment[] }
-  | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> };
+  | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> }
+  | { type: "question"; seq: number; event: Extract<CodeEvent, { kind: "question" }>; answer?: Extract<CodeEvent, { kind: "question-answer" }> };
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
 function itemsOf(events: StoredEvent[]): Item[] {
@@ -2174,7 +2175,11 @@ function itemsOf(events: StoredEvent[]): Item[] {
   const tools = new Map<string, Tool>();
   const answers = new Map<string, Extract<CodeEvent, { kind: "access-answer" }>>();
   let said: string[] = [];
-  for (const { event } of events) if (event.kind === "access-answer") answers.set(event.id, event);
+  const replied = new Map<string, Extract<CodeEvent, { kind: "question-answer" }>>();
+  for (const { event } of events) {
+    if (event.kind === "access-answer") answers.set(event.id, event);
+    if (event.kind === "question-answer") replied.set(event.id, event);
+  }
   for (const { seq, at, event } of events) {
     const last = items.at(-1);
     switch (event.kind) {
@@ -2203,6 +2208,7 @@ function itemsOf(events: StoredEvent[]): Item[] {
       case "disk": items.push({ type: "disk", seq, event }); break;
       case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
       case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
+      case "question": items.push({ type: "question", seq, event, answer: replied.get(event.id) }); break;
       case "remembered": items.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
       case "artifact": items.push({ type: "artifact", seq, id: event.id, name: event.name, action: event.action }); break;
       case "connect": items.push({ type: "connect", seq, app: event.app, url: event.url }); break;
@@ -2288,6 +2294,8 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   const lastAsk = items.findLastIndex((i) => i.type === "ask");
   const lastTools = items.slice(lastAsk + 1).findLast((i) => i.type === "tools");
   const lastPreview = items.findLast((i) => i.type === "preview")?.seq;
+  /* Its questions waiting for an answer take the writing bar's place once its turn is over (until then, Stop stays there). */
+  const asked = (items.findLast((i) => i.type === "question" && !i.answer) as Extract<Item, { type: "question" }> | undefined)?.event;
   const lastContext = (items.findLast((i) => i.type === "done" && i.event.context) as Extract<Item, { type: "done" }> | undefined)?.event.context ?? null;
   return <div className="cd-chat">
     <Scroller className="cd-scroll" viewClassName="cd-scroll-view" viewRef={scroller} onScroll={onScroll}>
@@ -2317,6 +2325,8 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
               : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
             case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} {owns ? <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>For you</button> : null}</span></p>;
             case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
+            /* Still waiting, the questions are in the writing bar; answered, a quiet line says what it asked. */
+            case "question": return item.answer ? <p key={item.seq} className="cd-note cd-asked"><Icon name="chat" /><span>Asked {item.event.questions.length > 1 ? item.event.questions.map((q) => q.header ?? q.question).join(" · ") : item.event.questions[0].question}{item.answer.skipped ? " · skipped" : ""}</span></p> : null;
             case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
             case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
             case "connect": return <ConnectCard key={item.seq} app={item.app} url={item.url} />;
@@ -2335,7 +2345,9 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
       </div>
       {away ? <div className="cd-latest-wrap"><button type="button" className="cd-latest" onClick={() => { const el = scroller.current; if (el) { el.scrollTop = el.scrollHeight; pinned.current = true; setAway(false); } }}>Latest ↓</button></div> : null}
     </Scroller>
-    {access === "read" ? <p className="cd-viewonly">You can view this chat</p> : <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />}
+    {access === "read" ? <p className="cd-viewonly">You can view this chat</p>
+      : asked && !running ? <QuestionBar key={asked.id} workspace={workspace} event={asked} />
+      : <Composer workspace={workspace} running={running} blocked={blocked} context={lastContext} />}
   </div>;
 });
 
@@ -3238,6 +3250,93 @@ type Pending = { id: string; name: string; size: number; preview: string | null;
 
 /** "42%" of a big file on its way, or null for one that attaches in one go. */
 const sentShare = (sent: number | undefined, size: number) => sent === undefined || !size ? null : `${Math.min(99, Math.floor((sent / size) * 100))}%`;
+
+/**
+ * The agent's questions (kimono-ask), where the writing bar was: one at a time, two to four options
+ * each and always Other to write your own. A single choice moves on as it is tapped; several are
+ * ticked, then Next. The answers go as your message.
+ */
+function QuestionBar({ workspace, event }: { workspace: Workspace; event: Extract<CodeEvent, { kind: "question" }> }) {
+  const questions = event.questions;
+  const [at, setAt] = useState(0);
+  const [answers, setAnswers] = useState<QuestionAnswer[]>(() => questions.map(() => ({ picked: [] })));
+  const [writing, setWriting] = useState<number | null>(null);
+  const [busy, setBusy] = useState<"send" | "skip" | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const other = useRef<HTMLInputElement>(null);
+  const q = questions[at];
+  const a = answers[at];
+  const last = at === questions.length - 1;
+  const ready = (x: QuestionAnswer) => x.picked.length > 0 || Boolean(x.other?.trim());
+  const send = async (all: QuestionAnswer[] | "skip") => {
+    setBusy(all === "skip" ? "skip" : "send"); setProblem(null);
+    try {
+      await code.answerQuestions(workspace.id, event.id, all === "skip" ? "skip" : all.map((x) => ({ picked: x.picked, ...(x.other?.trim() ? { other: x.other.trim() } : {}) })));
+    } catch (error) { setProblem(problemText(error)); setBusy(null); }
+  };
+  const next = (all: QuestionAnswer[]) => { setWriting(null); if (last) void send(all); else setAt(at + 1); };
+  /* the newest answers at once, so taps and keys in quick succession build on each other */
+  const latest = useRef(answers);
+  const change = (to: QuestionAnswer | ((now: QuestionAnswer) => QuestionAnswer)) => {
+    const all = latest.current.map((x, i) => i === at ? (typeof to === "function" ? to(x) : to) : x);
+    latest.current = all; setAnswers(all); return all;
+  };
+  const pick = (label: string) => {
+    if (busy) return;
+    if (q.multi) { change((now) => ({ ...now, picked: now.picked.includes(label) ? now.picked.filter((p) => p !== label) : [...now.picked, label] })); return; }
+    /* a moment to see the tap land, then on */
+    const all = change({ picked: [label] });
+    window.setTimeout(() => next(all), 180);
+  };
+  useEffect(() => { if (writing === at) other.current?.focus(); }, [writing, at]);
+  /* 1 to 4 pick, as long as you aren't writing somewhere */
+  const pickRef = useRef(pick);
+  pickRef.current = pick;
+  useEffect(() => {
+    const onKey = (key: KeyboardEvent) => {
+      const target = key.target as HTMLElement | null;
+      if (key.metaKey || key.ctrlKey || key.altKey || target?.closest("input, textarea, select, [contenteditable=true], [role=dialog]")) return;
+      const n = Number(key.key);
+      if (n >= 1 && n <= q.options.length) { key.preventDefault(); pickRef.current(q.options[n - 1].label); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [q]);
+  return <div className="cd-composer cd-quiz" role="group" aria-label={questions.length > 1 ? `Question ${at + 1} of ${questions.length}` : "Question"}>
+    <div className="cd-quiz-head">
+      {questions.length > 1 ? <span className="cd-quiz-step">
+        <button type="button" className="cd-quiz-back" aria-label="Previous question" disabled={at === 0 || busy !== null} onClick={() => { setWriting(null); setAt(at - 1); }}><Icon name="chevron" /></button>
+        <span aria-hidden="true">{at + 1} of {questions.length}</span>
+      </span> : null}
+      <b className="cd-quiz-q" id={`${event.id}-${at}`}>{q.question}</b>
+      <button type="button" className="cd-quietbutton cd-quiz-skip" disabled={busy !== null} onClick={() => void send("skip")}>{busy === "skip" ? "…" : "Skip"}</button>
+    </div>
+    <div key={at} className="cd-quiz-options" role={q.multi ? "group" : "radiogroup"} aria-labelledby={`${event.id}-${at}`}>
+      {q.options.map((o, i) => {
+        const on = a.picked.includes(o.label);
+        return <button key={o.label} type="button" role={q.multi ? "checkbox" : "radio"} aria-checked={on} disabled={busy !== null}
+          className={cx("cd-quiz-option", on && "is-on", q.multi && "is-multi")} onClick={() => pick(o.label)}>
+          <span className="cd-quiz-key" aria-hidden="true">{q.multi ? (on ? "✓" : "") : i + 1}</span>
+          <span className="cd-quiz-words"><span>{o.label}</span>{o.description ? <small>{o.description}</small> : null}</span>
+        </button>;
+      })}
+      {writing === at
+        ? <form className="cd-quiz-other is-open" onSubmit={(e) => { e.preventDefault(); const said = other.current?.value ?? ""; const all = change((now) => ({ ...now, picked: q.multi ? now.picked : [], other: said })); if (ready(all[at])) next(all); }}>
+          <input ref={other} defaultValue={a.other ?? ""} maxLength={2000} placeholder="Your answer" aria-label="Your own answer" enterKeyHint={last ? "send" : "next"}
+            onChange={(e) => { const other = e.target.value; change((now) => ({ ...now, picked: q.multi ? now.picked : [], other })); }} />
+          <SendStop mode="send" busy={busy === "send"} disabled={busy !== null || !ready(a)} onSend={() => { const said = other.current?.value ?? ""; const all = change((now) => ({ ...now, picked: q.multi ? now.picked : [], other: said })); if (ready(all[at])) next(all); }} onStop={() => {}} />
+        </form>
+        : <button type="button" className={cx("cd-quiz-option cd-quiz-other", a.other?.trim() && "is-on")} disabled={busy !== null} onClick={() => setWriting(at)}>
+          <span className="cd-quiz-key" aria-hidden="true">✎</span>
+          <span className="cd-quiz-words"><span>{a.other?.trim() || "Other…"}</span></span>
+        </button>}
+    </div>
+    {q.multi && writing !== at ? <div className="cd-quiz-foot">
+      <Seal type="button" compact busy={busy === "send"} disabled={busy !== null || !ready(a)} onClick={() => next(latest.current)}>{last ? "Send" : "Next"}</Seal>
+    </div> : null}
+    {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+  </div>;
+}
 
 function Composer({ workspace, running, blocked, context }: { workspace: Workspace; running: boolean; blocked: string | null; context: { used: number; window?: number } | null }) {
   const owns = useOwns();

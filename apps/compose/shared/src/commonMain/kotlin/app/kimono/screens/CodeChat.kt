@@ -424,6 +424,8 @@ private sealed interface Item {
     data class Plain(override val key: Long, val event: CodeEvent) : Item
     data class Shots(override val key: Long, val shots: MutableList<CodeEvent.Image>) : Item
     data class Access(override val key: Long, val event: CodeEvent.Access, val answer: CodeEvent.AccessAnswer?) : Item
+    /** A question it asked that has been answered or skipped; one still waiting is in the writing bar's place instead. */
+    data class Asked(override val key: Long, val event: CodeEvent.Question, val answer: CodeEvent.QuestionAnswer) : Item
 }
 
 /** Consecutive tool calls fold into one group, each call paired with its result; pictures in a row together. */
@@ -431,6 +433,7 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
     val items = mutableListOf<Item>()
     val calls = mutableMapOf<String, ToolCall>()
     val answers = events.mapNotNull { it.event as? CodeEvent.AccessAnswer }.associateBy { it.id }
+    val replied = events.mapNotNull { it.event as? CodeEvent.QuestionAnswer }.associateBy { it.id }
     val said = mutableListOf<String>()
     for (stored in events) {
         val last = items.lastOrNull()
@@ -449,6 +452,7 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
             is CodeEvent.Done -> { items += Item.Done(stored.seq, e, stored.at, said.joinToString("\n\n")); said.clear() }
             is CodeEvent.Image -> if (last is Item.Shots) last.shots += e else items += Item.Shots(stored.seq, mutableListOf(e))
             is CodeEvent.Access -> items += Item.Access(stored.seq, e, answers[e.id])
+            is CodeEvent.Question -> replied[e.id]?.let { items += Item.Asked(stored.seq, e, it) }
             is CodeEvent.Published, is CodeEvent.Preview, CodeEvent.PreviewStopped, is CodeEvent.Slept, is CodeEvent.Disk, is CodeEvent.Compacted,
             is CodeEvent.Remembered, is CodeEvent.Artifact, is CodeEvent.Connect, is CodeEvent.Sent -> items += Item.Plain(stored.seq, e)
             else -> {}
@@ -510,6 +514,22 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
     var replies by remember(w.id) { mutableStateOf<Map<Long, String>>(emptyMap()) }
     LaunchedEffect(w.id) { runCatching { code.replies(w.id) }.onSuccess { replies = it } }
     val asking = askingFor(items, ratings)
+    /* The latest question it asked that has no answer yet: it takes the writing bar's place until it has one. */
+    val waiting = remember(events.size) {
+        val replied = events.mapNotNullTo(mutableSetOf()) { (it.event as? CodeEvent.QuestionAnswer)?.id }
+        events.lastOrNull { (it.event as? CodeEvent.Question)?.let { q -> q.id !in replied && q.questions.isNotEmpty() } == true }?.event as? CodeEvent.Question
+    }
+    val asked = remember(waiting?.id) { waiting?.let { QuestionDraft(it) } }
+    /* Answered here and on its way: the bar comes back at once, and the panel again if it didn't go. */
+    var sentQuestion by remember(w.id) { mutableStateOf<String?>(null) }
+    fun answerQuestion(draft: QuestionDraft, replies: List<app.kimono.data.QuestionReply>?) {
+        draft.problem = null
+        sentQuestion = draft.question.id
+        scope.launch {
+            try { code.answerQuestion(w.id, draft.question.id, replies) }
+            catch (p: KimonoProblem) { draft.problem = p.message ?: "Didn't send"; if (sentQuestion == draft.question.id) sentQuestion = null }
+        }
+    }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     /* Swiping the conversation left slides it over to show when each message was sent, as in Messages; let go and it slides back. */
     val reveal = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -545,6 +565,7 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         }
                         is Item.Shots -> ShotGallery(code, w, item.shots) { at -> viewing = item.shots.toList() to at }
                         is Item.Access -> AccessCard(code, drive, marks, people, w, item.event, item.answer, open)
+                        is Item.Asked -> Note("chat", askedLine(item.event, item.answer))
                         is Item.Plain -> when (val e = item.event) {
                             is CodeEvent.Preview -> if (w.running && w.preview?.url == e.url && item.key == lastPreview) PreviewCard(code, platform, w, e.url, ready = false)
                                 else Note("link", "The app ran at ${e.host}")
@@ -586,7 +607,11 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
             ) { Text("Latest ↓", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)) }
         }
-        if (w.canWrite) Composer(code, drive, platform, marks, w, lastContext, usageTop)
+        if (w.canWrite) Composer(code, drive, platform, marks, w, lastContext, usageTop, standIn = asked?.takeIf { it.question.id != sentQuestion && !w.running }?.let { draft -> @Composable {
+            QuestionPanel(draft,
+                onAnswer = { replies -> answerQuestion(draft, replies) },
+                onSkip = { answerQuestion(draft, null) })
+        } })
         else Text("You can view this chat", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().padding(horizontal = 24.dp, vertical = 16.dp))
     }
@@ -1462,7 +1487,7 @@ private fun UsageButton(top: UsageTop) {
 }
 
 @Composable
-private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMarks, w: CodeWorkspace, context: ContextUse?, usageTop: UsageTop) {
+private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMarks, w: CodeWorkspace, context: ContextUse?, usageTop: UsageTop, standIn: (@Composable () -> Unit)? = null) {
     var choosing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var text by remember(w.id) { mutableStateOf(code.recall("draft:${w.id}") ?: "") }
@@ -1496,7 +1521,9 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
             sending = false
         }
     }
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp)) {
+    /* A question it asked stands in the bar's place; the settings sheet and what was written stay. */
+    if (standIn != null) standIn()
+    else Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).bottomChrome().imePadding().padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 4.dp)) {
         Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (switching != null) {

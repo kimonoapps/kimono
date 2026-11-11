@@ -269,6 +269,9 @@ sealed interface CodeEvent {
     data class Disk(val used: Long, val quota: Long, val full: Boolean) : CodeEvent
     data class Access(val id: String, val space: String, val path: String, val need: String, val why: String, val file: Boolean, val state: String, val node: String?) : CodeEvent
     data class AccessAnswer(val id: String, val state: String, val scope: String?, val need: String?) : CodeEvent
+    /** It asks the person 1 to 4 questions at once; the panel stands in for the composer until a [QuestionAnswer] with this [id]. */
+    data class Question(val id: String, val questions: List<AskedQuestion>) : CodeEvent
+    data class QuestionAnswer(val id: String, val skipped: Boolean, val answers: List<QuestionReply>) : CodeEvent
     data class Remembered(val text: String, val how: String?) : CodeEvent
     data class Connect(val app: String, val url: String) : CodeEvent
     data class Artifact(val id: String, val name: String, val action: String) : CodeEvent
@@ -287,6 +290,11 @@ sealed interface CodeEvent {
     data class Phase(val phase: String, val tool: String?, val app: String?, val space: String?) : CodeEvent
     data object Unknown : CodeEvent
 }
+
+data class QuestionOption(val label: String, val description: String?)
+data class AskedQuestion(val question: String, val header: String, val options: List<QuestionOption>, val multi: Boolean)
+/** One question's answer: the options picked, and what they wrote under Other, if anything. */
+data class QuestionReply(val picked: List<String>, val other: String?)
 
 data class StoredCodeEvent(val seq: Long, val at: Long, val event: CodeEvent)
 
@@ -363,6 +371,10 @@ private fun JsonObject.flag(key: String) = (this[key] as? JsonPrimitive)?.boolea
 private fun JsonObject.long(key: String) = (this[key] as? JsonPrimitive)?.let { it.longOrNull ?: it.doubleOrNull?.toLong() }
 private fun attachmentsOf(element: JsonElement?) = (element as? JsonArray)?.mapNotNull { runCatching { json.decodeFromJsonElement(CodeAttachment.serializer(), it) }.getOrNull() } ?: emptyList()
 
+private fun repliesOf(element: JsonElement?) = (element as? JsonArray)?.mapNotNull { a ->
+    (a as? JsonObject)?.let { ao -> QuestionReply((ao["picked"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList(), ao.text("other")?.takeIf { it.isNotBlank() }) }
+} ?: emptyList()
+
 private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "ask" -> CodeEvent.Ask(o.text("by") ?: "", o.text("text") ?: "", attachmentsOf(o["attachments"]), o.flag("queued") == true)
     "started" -> CodeEvent.Started
@@ -384,6 +396,14 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "disk" -> CodeEvent.Disk(o.long("used") ?: 0, o.long("quota") ?: 0, o.flag("full") == true)
     "access" -> CodeEvent.Access(o.text("id") ?: "", o.text("space") ?: "", o.text("path") ?: "", o.text("need") ?: "read", o.text("why") ?: "", o.flag("file") == true, o.text("state") ?: "pending", o.text("node"))
     "access-answer" -> CodeEvent.AccessAnswer(o.text("id") ?: "", o.text("state") ?: "denied", o.text("scope"), o.text("need"))
+    "question" -> CodeEvent.Question(o.text("id") ?: "", (o["questions"] as? JsonArray)?.mapNotNull { q ->
+        (q as? JsonObject)?.let { qo ->
+            AskedQuestion(qo.text("question") ?: "", qo.text("header") ?: "",
+                (qo["options"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.let { op -> QuestionOption(op.text("label") ?: "", op.text("description")?.takeIf { d -> d.isNotBlank() }) } }?.filter { it.label.isNotBlank() } ?: emptyList(),
+                qo.flag("multi") == true)
+        }
+    }?.filter { it.question.isNotBlank() } ?: emptyList())
+    "question-answer" -> CodeEvent.QuestionAnswer(o.text("id") ?: "", o.flag("skipped") == true, repliesOf(o["answers"]))
     "remembered" -> CodeEvent.Remembered(o.text("text") ?: "", o.text("how"))
     "connect" -> CodeEvent.Connect(o.text("app") ?: "", o.text("url") ?: "")
     "artifact" -> CodeEvent.Artifact(o.text("id") ?: "", o.text("name") ?: "", o.text("action") ?: "wrote")
@@ -607,6 +627,19 @@ class Code(private val session: Session, private val platform: Platform? = null)
     /** Answers its request to open some of Drive: "file" (with the one [file]), "chat", "always" or "deny". */
     suspend fun answerAccess(id: String, request: String, choice: String, file: String? = null) {
         session.call("${ws(id)}/access/${request.encodeURLParameter()}", HttpMethod.Post, jsonBody(buildJsonObject { put("choice", choice); if (file != null) put("file", file) }))
+    }
+
+    /** Answers its questions, one [QuestionReply] per question in order, or skips them all ([answers] null). The server posts it as their message and starts its next turn. */
+    suspend fun answerQuestion(id: String, question: String, answers: List<QuestionReply>?) {
+        session.call("${ws(id)}/questions/${question.encodeURLParameter()}", HttpMethod.Post, jsonBody(buildJsonObject {
+            if (answers == null) put("skip", true)
+            else put("answers", kotlinx.serialization.json.buildJsonArray {
+                answers.forEach { a -> add(buildJsonObject {
+                    put("picked", kotlinx.serialization.json.buildJsonArray { a.picked.forEach { add(JsonPrimitive(it)) } })
+                    if (!a.other.isNullOrBlank()) put("other", a.other)
+                }) }
+            })
+        }))
     }
 
     /** The latest saved version of one of the chat's artifacts. */

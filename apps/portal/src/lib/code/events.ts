@@ -1,5 +1,6 @@
 import { kimonoCommand } from "./kimono-commands";
 import { artifactName, editsOf, shownName, type Edit } from "./artifacts";
+import type { Question, QuestionAnswer } from "./questions";
 
 /*
  * What a workspace's timeline is made of. The node streams Claude Code's own
@@ -64,6 +65,10 @@ export type CodeEvent =
   | { kind: "sent"; files: Attachment[] }
   /** An app of theirs needs connecting: Kimono shows a Connect button for this Composio link. */
   | { kind: "connect"; app: string; url: string }
+  /** Questions it put to the person (kimono-ask): shown in place of the writing bar until answered. */
+  | { kind: "question"; id: string; questions: Question[] }
+  /** How the person answered them: what they picked or wrote for each, in order, or that they skipped them. */
+  | { kind: "question-answer"; id: string; skipped?: boolean; answers?: QuestionAnswer[] }
   /** How the person answered an access request. */
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
 

@@ -1988,3 +1988,48 @@ button.cd-scrip-title:hover { text-decoration: underline; text-decoration-color:
 .cd-notice > div { flex: 1 1 320px; display: grid; gap: 6px; }
 .cd-notice p { margin: 0; font-size: 14.5px; line-height: 1.55; }
 .cd-notice .k-seal { flex: none; }
+
+/* ── its questions, in the writing bar's place (QuestionBar) ──
+   The bar keeps its paper and its brush stroke; inside, the question and its
+   answers as rows to tap, each with a small stamp for its key. */
+.cd .cd-composer.cd-quiz { display: grid; gap: 10px; padding: 14px 14px 12px; }
+.cd-quiz-head { display: flex; align-items: flex-start; gap: 10px; padding: 2px 2px 0 4px; }
+.cd-quiz-q { flex: 1; min-width: 0; font: 600 16px/1.4 var(--k-sans); color: var(--k-on-surface, var(--k-ink)); overflow-wrap: anywhere; }
+.cd-quiz-step { display: inline-flex; align-items: center; gap: 2px; flex: none; margin-top: 1px; font: 600 12px/1 var(--k-mono, var(--k-sans)); color: var(--k-faint); white-space: nowrap; }
+.cd-quiz-back { display: grid; place-items: center; width: 28px; height: 28px; margin: -4px 0 -4px -6px; border: 0; border-radius: 9px; background: transparent; color: var(--k-ink-soft); cursor: pointer; }
+.cd-quiz-back svg { width: 18px; height: 18px; transform: scaleX(-1); }
+.cd-quiz-back:hover:not(:disabled) { background: var(--k-hover); }
+.cd-quiz-back:disabled { opacity: .3; cursor: default; }
+.cd-quiz-skip { flex: none; margin: -6px -4px 0 0; }
+.cd-quiz-options { display: grid; gap: 6px; max-height: min(55dvh, 440px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 2px; margin: -2px; animation: cd-quiz-in .28s var(--k-ease-settle, ease-out); }
+.cd-quiz-options::-webkit-scrollbar { display: none; }
+@keyframes cd-quiz-in { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .cd-quiz-options { animation: none; } }
+.cd-quiz-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 50px; padding: 9px 14px 9px 10px; border: 0; border-radius: 18px;
+  background: var(--k-container-low); color: var(--k-ink); font: 500 15px/1.35 var(--k-sans); text-align: left; cursor: pointer;
+  transition: background .18s var(--k-ease-settle, ease), box-shadow .18s var(--k-ease-settle, ease), transform .25s var(--k-spring, ease); }
+.cd-quiz-option:hover:not(:disabled) { background: color-mix(in srgb, var(--k-app-accent) 7%, var(--k-container-low)); }
+.cd-quiz-option:active:not(:disabled) { transform: scale(.985); }
+.cd-quiz-option:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 2px; }
+.cd-quiz-option.is-on { background: color-mix(in srgb, var(--k-app-accent) 14%, var(--k-container-lowest)); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--k-app-accent) 65%, transparent); }
+.cd-quiz-option:disabled { cursor: default; }
+.cd-quiz-key { display: grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 8px; box-shadow: inset 0 0 0 1.5px var(--k-container-highest);
+  font: 700 12px/1 var(--k-mono, var(--k-sans)); color: var(--k-ink-soft); background: var(--k-container-lowest); transition: background .18s, color .18s, box-shadow .18s; }
+.cd-quiz-option.is-on .cd-quiz-key { background: var(--k-app-accent); color: #fff; box-shadow: none; }
+.cd-quiz-words { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.cd-quiz-words small { font: 400 13px/1.4 var(--k-sans); color: var(--k-on-surface-variant, var(--k-ink-soft)); }
+.cd-quiz-other:not(.is-open) .cd-quiz-words span { color: var(--k-ink-soft); }
+.cd-quiz-other.is-on .cd-quiz-words span { color: var(--k-ink); }
+form.cd-quiz-other { display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 4px 4px 4px 14px; border-radius: 18px; background: var(--k-container-lowest);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--k-app-accent) 65%, transparent); }
+form.cd-quiz-other input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: 400 15.5px/1.4 var(--k-sans); color: var(--k-ink); }
+form.cd-quiz-other input::placeholder { color: var(--k-faint); }
+.cd-quiz-foot { display: flex; justify-content: flex-end; }
+.cd-asked span { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .cd .cd-composer.cd-quiz { padding: 12px 10px 10px; border-radius: 26px; }
+  .cd-quiz-option, form.cd-quiz-other { min-height: 56px; font-size: 16px; }
+  form.cd-quiz-other input { font-size: 16px; }
+  .cd-quiz-q { font-size: 16.5px; }
+  .cd-quiz-foot .k-seal, .cd-quiz-foot button { min-height: 44px; min-width: 96px; }
+}

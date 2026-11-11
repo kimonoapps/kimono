@@ -217,10 +217,12 @@ Rules:
 - Maths in words goes between `$…$`, or `$$…$$` for an equation on its own
   line (KaTeX). In a JS string, write a backslash twice: `"$\\sqrt{x}$"`, or
   use `String.raw`.
-- **Short: 15 to 40 seconds, never over a minute.** Three to six ideas, a
-  caption for each, and one scene per artifact. Show the one thing that is
-  hard to picture, not the whole topic: the reply's words carry the rest.
-  Before you write it, add up the waits and steps.
+- **As long as it needs.** Most are 15 to 40 seconds: three to six ideas, a
+  caption for each, showing the one thing that is hard to picture while the
+  reply's words carry the rest. Go longer when they ask for a whole process
+  "from start to finish" or what you remember says they like long ones; go
+  shorter when it says they found one too long. One scene per artifact. Before
+  you write it, add up the waits and steps.
 - Maths (a function, a curve, an area, a vector) goes on `axes()`. A real,
   physical thing (an EpiPen, an engine, a heart, a lock) is drawn as itself and
   moved: a `drawing()` (see Drawings) or a 3D `model()`, never labelled cards. Ideas

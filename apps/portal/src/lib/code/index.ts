@@ -31,6 +31,7 @@ import { serveTempLink, tempLinkBase, tempLinkKey } from "./temp-links";
 export { efforts, type Effort } from "./node";
 import { markChat, retitle, shotToDrive, syncDrive } from "./drive";
 import { hasHistory, historyNote, syncHistory } from "./history";
+import { answersOf, answerText, askedId, askNote, isAskCommand, questionsDir, questionsOf } from "./questions";
 import { gitAccountOf, ownProject } from "./forgejo";
 import { suggestTitle } from "./title";
 import { db as driveDb } from "../drive";
@@ -503,6 +504,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   const proCalls = new Map<string, { at: number; tools: string[] }>();
   /* The card this turn put up, if any: followed on after the turn only while the sandbox watches its job. */
   let probe: ProgressProbe | undefined;
+  /* kimono-ask calls, by id, until they answer with the questions they wrote. */
+  const asking = new Set<string>();
   try {
     const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
     await ensure(config, workspace, who(user), { owner: byOwner });
@@ -530,7 +533,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [...(byOwner ? [aboutNow(who(user).name), contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []), noticeSeen(db(), user.username, "islam") ? "" : islamNoticeNote].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
+    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [...(byOwner ? [aboutNow(who(user).name), contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []), askNote, noticeSeen(db(), user.username, "islam") ? "" : islamNoticeNote].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
     const response = await sandbox.turn(config, workspace, input, controller.signal).catch(async (error) => {
       /* The sandbox lost the chat's session (its container was made again): a new
          one is told the conversation so far, so it never starts from nothing. */
@@ -629,7 +632,11 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         const translated = translate(line);
         if (translated.session) setSession(db(), workspace.id, translated.session);
         for (const thought of translated.thinking ?? []) keepThinking(db(), workspace.id, thought);
-        for (const call of translated.calls ?? []) keepToolCall(db(), workspace.id, call);
+        for (const call of translated.calls ?? []) {
+          keepToolCall(db(), workspace.id, call);
+          if (isAskCommand(call.input)) asking.add(call.id);
+          else if (call.output !== undefined && asking.delete(call.id)) await takeQuestions(config, workspace, turn, call.output);
+        }
         if (translated.result) result = translated.result;
         if (translated.context) context = translated.context;
         for (const call of translated.artifacts ?? []) pendingArtifacts.set(call.id, call);
@@ -743,6 +750,35 @@ async function nameChat(config: CodeConfig, workspace: Workspace) {
   } finally {
     naming.delete(workspace.id);
   }
+}
+
+/* ── questions it puts to the person (lib/code/questions.ts) ── */
+
+/** What kimono-ask wrote, put up for the person; a question that can't be read is dropped, so the chat never hangs on it. */
+async function takeQuestions(config: CodeConfig, workspace: Workspace, turn: string, output: string) {
+  const id = askedId(output);
+  if (!id) return;
+  try {
+    const path = `${questionsDir}/${id}.json`;
+    const response = await sandbox.file(config, workspace, path);
+    const questions = response.ok ? questionsOf(await response.text()) : undefined;
+    if (questions) record(workspace.id, turn, { kind: "question", id, questions });
+    await sandbox.removeFile(config, workspace, path).catch(() => {});
+  } catch (error) { console.warn("Kimono AI couldn't take its questions:", error instanceof Error ? error.message : error); }
+}
+
+/** The person answers its questions (or skips them): the answers go to it as their message. */
+export function answerQuestions(config: CodeConfig, workspace: Workspace, user: ApiUser, id: string, body: { answers?: unknown; skip?: unknown }) {
+  const events = eventsAfter(db(), workspace.id, 0, 100_000);
+  const asked = events.findLast((e) => e.event.kind === "question" && e.event.id === id)?.event as Extract<CodeEvent, { kind: "question" }> | undefined;
+  if (!asked) throw new CodeProblem("Those questions aren't here.", 404);
+  if (events.some((e) => e.event.kind === "question-answer" && e.event.id === id)) throw new CodeProblem("They were answered already.", 409);
+  if (body.skip === true) return record(workspace.id, runningTurn(db(), workspace.id), { kind: "question-answer", id, skipped: true });
+  const answers = answersOf(asked.questions, body.answers);
+  if (!answers) throw new CodeProblem("Answer each question with its options or your own words.");
+  const recorded = record(workspace.id, runningTurn(db(), workspace.id), { kind: "question-answer", id, answers });
+  ask(config, workspace, user, answerText(asked.questions, answers), []);
+  return recorded;
 }
 
 /* ── access to the person's Drive ── */
