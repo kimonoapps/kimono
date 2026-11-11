@@ -405,7 +405,7 @@ fun PlayerScreen(
         }
         .pointerInput(tv) {
             if (tv) return@pointerInput
-            /* A tap in the middle only shows or hides the controls (pausing is the play button's); the sides answer a tap at once too, and a quick second tap there goes back or forward ten. */
+            /* A tap in the middle shows or hides the controls, except on the play button's spot, which pauses or plays even while the controls are hidden; the sides answer a tap at once too, and a quick second tap there goes back or forward ten. */
             awaitEachGesture {
                 awaitFirstDown()
                 val up = waitForUpOrCancellation() ?: return@awaitEachGesture
@@ -414,6 +414,8 @@ fun PlayerScreen(
                 val x = up.position.x
                 val right = x > third * 1.86f
                 fun single() { if (chatOpen || sheet != null) { chatOpen = false; sheet = null; ctl = false } else if (pauseCard) { pauseCard = false; show() } else if (ctl) ctl = false else show() }
+                val onPlay = (up.position - Offset(size.width / 2f, size.height / 2f)).getDistance() < 56.dp.toPx()
+                if (onPlay && !ctl && !chatOpen && sheet == null && !state.loading && state.problem == null && post == Post.None) { pauseCard = false; toggle(); show(); return@awaitEachGesture }
                 if (x >= third * 1.14f && !right) { single(); return@awaitEachGesture }
                 /* A sheet or the chat open: the tap only closes it. */
                 if (chatOpen || sheet != null) { single(); return@awaitEachGesture }
