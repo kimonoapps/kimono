@@ -1381,7 +1381,7 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-home-apps .cd-conn-id small { font-size: 12.5px; -webkit-line-clamp: 1; line-clamp: 1; }
 .cd-hello-row .cd-tuning { margin-left: 2px; }
 @media (max-width: 720px) { .cd-home-apps ul { grid-template-columns: 1fr 1fr; } .cd-hello-row { flex-wrap: wrap; } }
-.cd-app .cd-conn-head .cd-back { display: inline-grid !important; place-items: center; margin: 0; }
+.cd-app .cd-conn-head .cd-back, .cd-page .cd-conn-head .cd-back { display: inline-grid !important; place-items: center; margin: 0; }
 .cd-app-count { margin: 0 4px; font-size: 14.5px; color: var(--k-on-surface-variant); }
 .cd-app-count b { color: var(--k-on-surface); }
 
