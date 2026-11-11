@@ -129,6 +129,25 @@ func handleFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("cache-control", "private, max-age=3600")
+	if r.URL.Query().Has("peek") {
+		/* The scrubber's pictures: only what is made, at once. */
+		k := -1
+		if file != "init.mp4" {
+			m := segmentFile.FindStringSubmatch(file)
+			if m == nil || m[2] != "m4s" || output.Kind != "fmp4" {
+				http.NotFound(w, r)
+				return
+			}
+			k, _ = strconv.Atoi(m[1])
+		} else if output.Kind != "fmp4" {
+			http.NotFound(w, r)
+			return
+		}
+		path, err := s.Peek(output.Name, k)
+		w.Header().Set("cache-control", "no-store")
+		serveFile(w, r, path, "video/mp4", err)
+		return
+	}
 	if file == "init.mp4" && output.Kind == "fmp4" {
 		path, err := s.Init(r.Context(), output.Name)
 		serveFile(w, r, path, "video/mp4", err)

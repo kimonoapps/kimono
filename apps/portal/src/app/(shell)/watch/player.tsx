@@ -742,11 +742,14 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   /* ───── The scrubber, with a picture of where you'd land ───── */
   const atX = (x: number) => { const r = track.current!.getBoundingClientRect(); return Math.min(Math.max(0, (x - r.left) / r.width), 1); };
   const pending = useRef<number | null>(null);
+  /* Where the picture on the scrubber is from: one from elsewhere (the spot isn't made yet) isn't shown. */
+  const [drawnAt, setDrawnAt] = useState<number | null>(null);
   const drawAt = useCallback((t: number) => {
     const tv = thumbVideo.current, p = live.current.play, v = video.current;
     if (!tv || !p || !v) return;
     if (!thumbDetach.current) thumbDetach.current = attachThumb(tv, p);
-    if (tv.seeking || tv.readyState < 1) { pending.current = t; return; }
+    /* Not waiting out a seek: one to a spot not made yet never lands, and the next must still go. */
+    if (tv.readyState < 1) { pending.current = t; return; }
     pending.current = null;
     tv.currentTime = t;
   }, []);
@@ -756,6 +759,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     const drawn = () => {
       const c = canvas.current;
       if (c) c.getContext("2d")?.drawImage(tv, 0, 0, c.width, c.height);
+      setDrawnAt(tv.currentTime);
       if (pending.current !== null) { const t = pending.current; pending.current = null; tv.currentTime = t; }
     };
     const ready = () => { if (pending.current !== null) { const t = pending.current; pending.current = null; tv.currentTime = t; } };
@@ -874,7 +878,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
           <div className="kw-knob" style={{ left: `${(shownT / d) * 100}%` }} />
           <div className="kw-thumb" style={{ left: thumbLeft }}>
             <em>{chapter}</em>
-            <div className="kw-img"><canvas ref={canvas} width={192} height={108} /></div>
+            <div className="kw-img" style={drawnAt === null || Math.abs(drawnAt - peekT) > 12 ? { visibility: "hidden" } : undefined}><canvas ref={canvas} width={192} height={108} /></div>
             <span>{clock(peekT)}</span>
           </div>
         </div>

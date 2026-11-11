@@ -207,3 +207,25 @@ func TestSkipsMakeWhatFollowsOnlyWhenTheEncoderIsFar(t *testing.T) {
 		t.Fatal("made the segments after the intro before it began")
 	}
 }
+
+func TestPeekOnlyServesWhatIsMadeAndNeverMovesTheEncoder(t *testing.T) {
+	s, err := newSession("peek0000", Spec{Input: "http://x", Args: []string{"-i"}, Outputs: []Output{{Name: "v0", Kind: "fmp4"}}, Segments: []float64{0, 6, 12, 18}, Duration: 24}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	s.lastReq = 1
+	if _, err := s.Peek("v0", 3); !errors.Is(err, errGone) {
+		t.Fatalf("an unmade segment: %v", err)
+	}
+	if _, err := s.Peek("v0", -1); !errors.Is(err, errGone) {
+		t.Fatalf("an unmade init: %v", err)
+	}
+	if s.run != nil || s.lastReq != 1 || s.seq != 0 {
+		t.Fatalf("a peek moved the encoder: run %v, lastReq %d, seq %d", s.run, s.lastReq, s.seq)
+	}
+	s.ready["v0"][2] = true
+	if path, err := s.Peek("v0", 2); err != nil || path != s.path("v0", 2) {
+		t.Fatalf("a made segment: %q %v", path, err)
+	}
+}

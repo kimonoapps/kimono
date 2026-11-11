@@ -886,6 +886,9 @@ const hlsHeaders = (type: string) => new Headers({
 
 /** An HLS address's playlists (made here) and segments (from the packager, with Range kept). Receivers fetch from other origins, so it answers any. */
 export async function hlsRelay(request: Request, token: string, path: string[]): Promise<Response> {
+  /* Under peek/: the scrubber's pictures, only from what the packager has made. They never move its encoder off where the player is, nor count as watching. */
+  const peek = path[0] === "peek";
+  if (peek) path = path.slice(1);
   const grant = openHls(await streamKey(), token);
   if (!grant) return new Response("This link has run out. Press play again.", { status: 410, headers: hlsHeaders("text/plain") });
   return watch(async (cfg) => {
@@ -904,7 +907,7 @@ export async function hlsRelay(request: Request, token: string, path: string[]):
     const stream = openStream(await streamKey(), grant.stream);
     const what = stream?.what ?? null;
     if (stream && what && endedBefore(grant.username, stream.expiresAt)) return new Response("This was stopped from another screen.", { status: 410, headers: hlsHeaders("text/plain") });
-    if (what && request.method !== "HEAD") {
+    if (what && request.method !== "HEAD" && !peek) {
       const screens = screensOf(watchDb(), grant.username);
       if (tooMany(grant.username, what, Date.now(), screens)) return new Response(tooManyNote(screens), { status: 429, headers: hlsHeaders("text/plain") });
       asked(grant.username, what);
@@ -912,7 +915,7 @@ export async function hlsRelay(request: Request, token: string, path: string[]):
     const headers = new Headers();
     const range = request.headers.get("range");
     if (range) headers.set("range", range);
-    const fetchFile = () => packagerFetch(cfg, `/sessions/${session.id}/${wanted.output}/${wanted.file}`, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal }).catch(() => null);
+    const fetchFile = () => packagerFetch(cfg, `/sessions/${session.id}/${wanted.output}/${wanted.file}${peek ? "?peek=1" : ""}`, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal }).catch(() => null);
     let upstream = await fetchFile();
     /* The packager restarted or let the session go idle: describe it again. */
     if (upstream?.status === 404 && upstream.headers.get("x-kimono-packager") === "no-session") {
@@ -925,7 +928,7 @@ export async function hlsRelay(request: Request, token: string, path: string[]):
       return new Response("This part of the stream isn't ready.", { status: upstream?.status === 404 ? 404 : 503, headers: hlsHeaders("text/plain") });
     }
     const out = hlsHeaders(wanted.file.endsWith(".vtt") ? "text/vtt; charset=utf-8" : "video/mp4");
-    out.set("cache-control", "private, max-age=3600");
+    out.set("cache-control", peek ? "private, no-store" : "private, max-age=3600");
     out.set("accept-ranges", "bytes");
     for (const name of ["content-length", "content-range"]) { const value = upstream.headers.get(name); if (value) out.set(name, value); }
     return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers: out });

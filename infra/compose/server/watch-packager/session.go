@@ -652,6 +652,25 @@ func (s *Session) Init(ctx context.Context, name string) (string, error) {
 	}
 }
 
+// Peek returns a video output's init or segment k (-1 for init) only if it is
+// already made: the scrubber's pictures. It never moves the encoder or counts
+// as the viewer, so hovering over the timeline doesn't pull ffmpeg away from
+// where the player is, and a seek doesn't have to win it back.
+func (s *Session) Peek(name string, k int) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if k < 0 {
+		if s.inits[name] {
+			return s.initPath(name), nil
+		}
+		return "", errGone
+	}
+	if k < len(s.spec.Segments) && s.ready[name][k] {
+		return s.path(name, k), nil
+	}
+	return "", errGone
+}
+
 // Segment returns a video segment's path, moving the encoder there if needed.
 func (s *Session) Segment(ctx context.Context, name string, k int) (string, error) {
 	if k < 0 || k >= len(s.spec.Segments) {

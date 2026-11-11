@@ -91,18 +91,28 @@ export async function attach(video: HTMLVideoElement, play: Play, onFatal: () =>
 
 /**
  * Opens the same stream in a second, hidden <video> for the scrubber's
- * pictures: at the lowest quality where hls.js plays it. Gives back how to let go.
+ * pictures: at the lowest quality where hls.js plays it, and only from what
+ * the packager has already made (peek/), so hovering over the timeline never
+ * moves its encoder away from where the player is. Gives back how to let go.
  */
 export function attachThumb(thumb: HTMLVideoElement, play: Play): () => void {
   const clear = () => { thumb.removeAttribute("src"); thumb.load(); };
-  if (!play.hls || !viaHlsJs()) { thumb.src = play.hls ?? play.url; return clear; }
-  let hls: Hls | null = null, gone = false;
+  const peek = play.hls?.replace(/\/main\.m3u8$/, "/peek/main.m3u8") ?? null;
+  /* Without peek/ (an older address) the pictures would move the encoder: none rather than a slow seek. */
+  if (!peek || peek === play.hls) { if (!play.hls) thumb.src = play.url; return clear; }
+  if (!viaHlsJs()) { thumb.src = peek; return clear; }
+  let hls: Hls | null = null, gone = false, stopped = false;
+  /* A spot not made yet is a 404, asked once: hls.js then gives up, and the next spot starts it again. */
+  const again = () => { if (hls && stopped) { stopped = false; hls.startLoad(thumb.currentTime); } };
   void import("hls.js").then(({ default: Hls }) => {
     if (gone) return;
-    if (!Hls.isSupported()) { thumb.src = play.hls!; return; }
-    hls = new Hls({ startLevel: 0, capLevelToPlayerSize: true, maxBufferLength: 4, maxMaxBufferLength: 8, backBufferLength: 0 });
-    hls.loadSource(play.hls!);
+    if (!Hls.isSupported()) { thumb.src = peek; return; }
+    const once = { maxTimeToFirstByteMs: 8000, maxLoadTimeMs: 20_000, timeoutRetry: null, errorRetry: null };
+    hls = new Hls({ startLevel: 0, capLevelToPlayerSize: true, maxBufferLength: 4, maxMaxBufferLength: 8, backBufferLength: 0, fragLoadPolicy: { default: once } });
+    hls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) { stopped = true; hls?.stopLoad(); } });
+    hls.loadSource(peek);
     hls.attachMedia(thumb);
+    thumb.addEventListener("seeking", again);
   });
-  return () => { gone = true; hls?.destroy(); clear(); };
+  return () => { gone = true; thumb.removeEventListener("seeking", again); hls?.destroy(); clear(); };
 }
