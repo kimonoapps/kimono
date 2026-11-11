@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Card, Prefs, Rating, TitleView } from "./api";
+import { MorphLoader } from "@kimono/ui";
 import { AppIcon } from "@/components/icons";
 import { Icon } from "./icons";
 
@@ -178,10 +179,8 @@ export function useTabTitle(name: string | null | undefined) {
   }, [name]);
 }
 
-/* ───── Waiting: Material's circular spinner, not the morphing shape ───── */
+/* ───── Waiting: Material's morphing loading indicator, flat, not painted in ink ───── */
 
 export function Spinner({ color, label = "Loading", className }: { color?: string; label?: string; className?: string }) {
-  return <svg className={cx("kw-spinner", className)} viewBox="0 0 48 48" role="progressbar" aria-label={label} style={color ? { color } : undefined}>
-    <circle cx="24" cy="24" r="20" />
-  </svg>;
+  return <span className={cx("kw-spinner", className)} style={color ? { color } : undefined}><MorphLoader tone="plain" label={label} /></span>;
 }

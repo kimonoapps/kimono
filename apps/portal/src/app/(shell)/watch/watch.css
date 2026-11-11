@@ -815,8 +815,6 @@
 .kw .kw-tg-chips button>.kw-ic{width:16px;height:16px;color:var(--fg-3)}
 .kw .kw-tg-chips button:hover>.kw-ic{color:var(--fg)}
 .kw .kw-btn:disabled{opacity:.55;cursor:default}
-.kw .kw-spinner{display:block;width:48px;height:48px;color:var(--suo);animation:kw-spinner-turn 1.4s linear infinite}
-.kw .kw-spinner circle{fill:none;stroke:currentColor;stroke-width:4;stroke-linecap:round;stroke-dasharray:1 200;stroke-dashoffset:0;animation:kw-spinner-dash 1.4s ease-in-out infinite}
+.kw .kw-spinner{display:block;width:48px;height:48px;color:var(--suo)}
+.kw .kw-spinner .k-morph{width:100%;height:100%}
 .kw .kw-spin .kw-spinner{width:100%;height:100%}
-@keyframes kw-spinner-turn{to{transform:rotate(360deg)}}
-@keyframes kw-spinner-dash{0%{stroke-dasharray:1 200;stroke-dashoffset:0}50%{stroke-dasharray:90 200;stroke-dashoffset:-15}100%{stroke-dasharray:90 200;stroke-dashoffset:-124}}
