@@ -21,9 +21,9 @@
     "mobileApp": {
       "name": "Kimono Photos",
       "iosUrl": "/get-app?for=ios",
-      "androidUrl": "https://github.com/kimonoapps/repatches/releases/download/immich%2Fv3.3.6-kimono.1/kimono-photos-3.3.6-kimono.1.apk",
+      "androidUrl": "https://github.com/kimonoapps/repatches/releases/download/immich%2Fv3.3.6-kimono.4/kimono-photos-3.3.6-kimono.4.apk",
       "androidPackage": "app.kimono.photos",
-      "androidSha256": "f4cc386ea7508575da5ca80d5e8c9224d4348daf2e33881f8944943b2545975d",
+      "androidSha256": "4c72e20edc52f50ffd4f5c93846209afb8a967a04c35f4a97f1261f88b8b7b92",
       "steps": [
         {
           "id": "download",
@@ -50,7 +50,7 @@
     "services": [
       {
         "id": "server",
-        "image": "ghcr.io/kimonoapps/kimono-photos-server:3.3.6-kimono.1",
+        "image": "ghcr.io/kimonoapps/kimono-photos-server:3.3.6-kimono.4",
         "dependsOn": [
           "database",
           "redis",
