@@ -697,6 +697,20 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const doSkip = () => { if (skip) { seekTo(skip.to); setSkip(null); } };
   const shownSkip = useRef<Skip>(null);
   if (skip) shownSkip.current = skip;
+  /* The drain is drawn every frame from the video's own clock, not stepped with timeupdate's few a second; it holds still once skipped. */
+  const skipBtn = useRef<HTMLButtonElement>(null);
+  const skipOn = Boolean(skip);
+  useEffect(() => {
+    if (!skipOn) return;
+    let frame = 0;
+    const draw = () => {
+      const v = video.current, from = live.current.skipFrom, b = skipBtn.current;
+      if (v && from && b) b.style.setProperty("--left", String(Math.min(1, Math.max(0, 1 - (v.currentTime - from.at) / SKIP_SHOWN))));
+      frame = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(frame);
+  }, [skipOn]);
   const openSheet = (kind: Sheet) => { setSheet((s) => (s === kind ? null : kind)); showCtl(true); };
   const closeSheet = useCallback(() => { setSheet(null); showCtl(); }, [showCtl]);
 
@@ -913,7 +927,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     {stats && play ? <Stats play={play} video={video} onClose={() => setStats(false)} /> : null}
     <div className={cx("kw-pnote", note && noteGone !== note.at && "kw-on")} role="status" aria-live="polite">{note?.text}</div>
     {/* Comes up coloured and drains from its end as its time runs out; keeps its last look while it fades. */}
-    <button className={cx("kw-skip", skip && (!skip.gone || ctl) && "kw-on")} style={{ "--left": `${(1 - (shownSkip.current?.left ?? 1)) * 100}%` } as React.CSSProperties} onClick={doSkip}><span>{shownSkip.current?.label ?? "Skip intro"}</span><Icon name="next" /></button>
+    <button ref={skipBtn} className={cx("kw-skip", skip && (!skip.gone || ctl) && "kw-on")} onClick={doSkip}><span>{shownSkip.current?.label ?? "Skip intro"}</span><Icon name="next" /></button>
 
     <div className={cx("kw-psheet", sheet && "kw-on")} role="dialog">
       {sheet === "cc" && play ? <div className="kw-cols">

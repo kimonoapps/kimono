@@ -127,6 +127,7 @@ import app.kimono.watch.ui.clickableScaleClipped
 import app.kimono.watch.ui.clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import androidx.compose.runtime.withFrameMillis
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -553,8 +554,21 @@ fun PlayerScreen(
             enter = fadeIn(tween(300)) + slideInVertically(spring(dampingRatio = 0.6f)) { it / 4 }, exit = fadeOut(tween(220)) + slideOutVertically(tween(220)) { it / 6 }) {
             val s = shownSkip ?: return@AnimatedVisibility
             val focus = remember { FocusRequester() }
-            /* Linear over the tick's quarter second, so it drains in one motion instead of steps. */
-            val left by animateFloatAsState(1f - s.progress, tween(250, easing = androidx.compose.animation.core.LinearEasing), label = "skipLeft")
+            /* Drawn every frame: playback only reports itself four times a second, so between reports it runs on the clock at the playing speed, never more than half a second past the last report. */
+            var left by remember { mutableFloatStateOf(1f - s.progress) }
+            LaunchedEffect(s.label, s.from) {
+                var anchor = position; var at = nowMs()
+                while (isActive) {
+                    withFrameMillis {
+                        val now = nowMs()
+                        if (position != anchor) { anchor = position; at = now }
+                        val ahead = if (playing && !buffering) ((now - at) / 1000.0 * speed).coerceAtMost(0.5) else 0.0
+                        val target = (1.0 - (anchor + ahead - s.from) / app.kimono.watch.ui.SKIP_SHOWN).coerceIn(0.0, 1.0).toFloat()
+                        /* Only ever drains, unless a seek back put time on it again. */
+                        left = if (target > left + 0.05f || target < left) target else left
+                    }
+                }
+            }
             /* Skipping is the whole of it: the controls stay as they were. */
             PaperButton(s.label, Ic.next, { seekTo(s.to) }, Modifier.focusRequester(focus).widthIn(min = 150.dp), height = 48.dp, fill = left)
             LaunchedEffect(Unit) { if (tv && !ctl) runCatching { focus.requestFocus() } }

@@ -30,8 +30,8 @@ sealed interface Post {
     data object End : Post
 }
 
-/** [progress] runs out over [SKIP_SHOWN] seconds; once [gone] it shows only with the controls. */
-data class SkipOffer(val label: String, val to: Double, val progress: Float, val gone: Boolean = false)
+/** [progress] runs out over [SKIP_SHOWN] seconds from [from]; once [gone] it shows only with the controls. */
+data class SkipOffer(val label: String, val to: Double, val progress: Float, val gone: Boolean = false, val from: Double = 0.0)
 
 /** Seconds Skip intro / Skip recap stays up by itself. */
 const val SKIP_SHOWN = 10.0
@@ -163,7 +163,7 @@ class PlayerViewModel(
     private fun offer(label: String, span: List<Double>, position: Double): SkipOffer {
         val from = skipFrom?.takeIf { it.first == span[0] && position >= it.second } ?: (span[0] to position).also { skipFrom = it }
         val shownFor = position - from.second
-        return SkipOffer(label, span[1], (shownFor / SKIP_SHOWN).coerceAtMost(1.0).toFloat(), shownFor >= SKIP_SHOWN)
+        return SkipOffer(label, span[1], (shownFor / SKIP_SHOWN).coerceAtMost(1.0).toFloat(), shownFor >= SKIP_SHOWN, from.second)
     }
 
     /**
