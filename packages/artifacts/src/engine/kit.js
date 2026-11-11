@@ -723,7 +723,7 @@
       Math.random = seeded(7);
       try {
         /* in a block of its own, so the scene may name its own things after the kit's (const clear = …) */
-        new Function(...Object.keys(timeline.api), `"use strict";\n{\n${code}\n}`)(...Object.values(timeline.api));
+        new Function(...Object.keys(timeline.api), `"use strict";\n{\n${keepTexBackslashes(code)}\n}`)(...Object.values(timeline.api));
         this.errorBox.hidden = true;
       } catch (error) {
         this.errorBox.hidden = false; this.errorBox.textContent = String(error?.message || error);
@@ -1397,6 +1397,53 @@
   const MATH = /(\$\$[\s\S]+?\$\$)|(\\\[[\s\S]+?\\\])|(\\\([\s\S]+?\\\))|((?<![\\\w$])\$(?=[^\s$])[^$\n]*?[^\s\\$]\$(?!\d))/g;
   const hasMath = (text) => { MATH.lastIndex = 0; const found = MATH.test(String(text)); MATH.lastIndex = 0; return found; };
   K.hasMath = hasMath;
+  /*
+   * A scene's maths written with one backslash ("$\text{m/s}$") loses it to JS: \t turns into a tab,
+   * \f into a form feed, \D into D. In a string that is plainly LaTeX, and has no doubled backslash
+   * already, each single backslash before a command is doubled back before the script runs.
+   * \u and \x escapes stay, and \n stays a line break unless a known command follows (\neq, \nabla).
+   */
+  const TEX_N = /^n(?:abla|eq|e|u|ot|eg|i|ewline|exists|parallel|mid|leq|geq|subseteq|subset|rightarrow|Rightarrow|leftarrow)(?![A-Za-z])/;
+  const TEX_SURE = /\\(?![ntrbfvux0])[A-Za-z]{2,}|\\[,;:!]/;
+  function fixTex(body) {
+    if (body.includes("\\\\")) return body;
+    const texy = TEX_SURE.test(body) || /[$^_{]/.test(body) && /\\[A-Za-z]{2,}/.test(body);
+    if (!texy) return body;
+    return body.replace(/\\([A-Za-z,;:!{}|%#&])/g, (all, c, at) => {
+      const rest = body.slice(at + 1);
+      if (/^u(?:[0-9a-fA-F]{4}|\{)/.test(rest) || /^x[0-9a-fA-F]{2}/.test(rest)) return all;
+      if (c === "n" && !TEX_N.test(rest)) return all;
+      if (!/[A-Za-z]/.test(c) && !/[$^_{]/.test(body)) return all;
+      return `\\\\${c}`;
+    });
+  }
+  /** The scene's source with its string literals' LaTeX backslashes kept (see fixTex). */
+  function keepTexBackslashes(code) {
+    let out = "", i = 0;
+    while (i < code.length) {
+      const c = code[i];
+      if (c === "/" && code[i + 1] === "/") { const end = code.indexOf("\n", i); const stop = end < 0 ? code.length : end; out += code.slice(i, stop); i = stop; continue; }
+      if (c === "/" && code[i + 1] === "*") { const end = code.indexOf("*/", i + 2); const stop = end < 0 ? code.length : end + 2; out += code.slice(i, stop); i = stop; continue; }
+      if (c !== '"' && c !== "'" && c !== "`") { out += c; i++; continue; }
+      /* a literal: its text runs to the matching quote; a template's ${…} parts are code */
+      let j = i + 1, piece = "";
+      out += c;
+      while (j < code.length && code[j] !== c) {
+        if (code[j] === "\\") { piece += code.slice(j, j + 2); j += 2; continue; }
+        if (c === "`" && code[j] === "$" && code[j + 1] === "{") {
+          let depth = 1, k = j + 2;
+          while (k < code.length && depth) { if (code[k] === "{") depth++; else if (code[k] === "}") depth--; k++; }
+          out += fixTex(piece) + code.slice(j, k); piece = ""; j = k; continue;
+        }
+        if (c !== "`" && code[j] === "\n") break;
+        piece += code[j++];
+      }
+      out += fixTex(piece) + (j < code.length ? code[j] : "");
+      i = j + 1;
+    }
+    return out;
+  }
+  K.keepTexBackslashes = keepTexBackslashes;
   /** Text split into plain runs and maths: [{ text } | { tex, display }]. */
   function mathParts(text) {
     const out = []; let last = 0; text = String(text);
