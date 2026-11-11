@@ -148,6 +148,8 @@ fun PlayerScreen(
     rotate: (() -> Unit)? = null,
     /** Starts a party on what's playing, from here: the platform reopens the player in it. */
     onTogether: ((season: Int?, episode: Int?, at: Double) -> Unit)? = null,
+    /** On a phone: who's joining is asked here, then the player moves into the party made. */
+    onJoinParty: ((partyId: String) -> Unit)? = null,
 ) {
     val state by vm.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -158,6 +160,8 @@ fun PlayerScreen(
     var playing by remember { mutableStateOf(false) }
     var buffering by remember { mutableStateOf(false) }
     var aspect by remember { mutableFloatStateOf(16f / 9f) }
+    /* Watch together from the player: who's joining first (phones). */
+    var askTogether by remember { mutableStateOf(false) }
     var ctl by remember { mutableStateOf(true) }
     var poke by remember { mutableIntStateOf(0) }
     var sheet by remember { mutableStateOf<Sheet?>(null) }
@@ -520,7 +524,11 @@ fun PlayerScreen(
                     LabBtn(Ic.cc, "Audio & subtitles", tv) { sheet = if (sheet == Sheet.Tracks) null else Sheet.Tracks; show() }
                     LabBtn(Ic.gear, "Settings", tv) { sheet = if (sheet == Sheet.Settings) null else Sheet.Settings; show() }
                     if (party != null) LabBtn(Ic.chat, "Chat", tv, dot = unread && !chatOpen) { chatOpen = !chatOpen; sheet = null; show() }
-                    else if (onTogether != null) LabBtn(Ic.people, "Watch together", tv) { engine.pause(); onTogether(state.season.takeIf { !state.isFilm }, state.episode.takeIf { !state.isFilm }, engine.position) }
+                    else if (onTogether != null) LabBtn(Ic.people, "Watch together", tv) {
+                        engine.pause()
+                        if (!tv && onJoinParty != null) askTogether = true
+                        else onTogether(state.season.takeIf { !state.isFilm }, state.episode.takeIf { !state.isFilm }, engine.position)
+                    }
                     if (state.answer?.next != null) LabBtn(Ic.next, "Next episode", tv) { vm.playNext() }
                 }
             }
@@ -556,6 +564,12 @@ fun PlayerScreen(
             var shown by remember { mutableStateOf(sheet) }
             if (sheet != null) shown = sheet
             PlayerSheet(shown, vm, engine, tracksVersion, speed, { speed = it; engine.setSpeed(it); party?.rate(it) }, position, { sheet = null; show() }, party, onDefaults = { sheet = null; settings = true }, onLeave = onExit)
+        }
+
+        if (askTogether && onJoinParty != null) state.page?.let { page ->
+            app.kimono.watch.phone.TogetherStart(page.title.name, if (state.isFilm) null else state.label, vm.titleId,
+                state.season.takeIf { !state.isFilm }, state.episode.takeIf { !state.isFilm }, engine.position,
+                onDismiss = { askTogether = false }, onStarted = { id -> askTogether = false; onJoinParty(id) })
         }
 
         if (party != null) Box(Modifier.matchParentSize().zIndex(4f)) { PartyChat(party, chatOpen, tv, { chatOpen = false; show() }, chatFocus) }

@@ -153,7 +153,8 @@ internal class PlayerSession(private val host: IosWatchHost, private val service
         var pip by androidx.compose.runtime.remember { mutableStateOf(false) }
         LaunchedEffect(Unit) { while (isActive) { pip = engine.pip; delay(300) } }
         PlayerScreen(v, engine, tv = false, pip = pip, onExit = { close() }, onRec = { id -> close(); WatchIos.openPlayer(PlayerStart(id, null, null)) }, party = party, corner = { Corner() }, rotate = { host.rotatePlayer() },
-            onTogether = { s, e, at -> close(); WatchIos.openPlayer(PlayerStart(v.titleId, s, e, together = true, at = at)) })
+            onTogether = { s, e, at -> close(); WatchIos.openPlayer(PlayerStart(v.titleId, s, e, together = true, at = at)) },
+            onJoinParty = { id -> close(); WatchIos.openPlayer(PlayerStart(null, null, null, party = id)) })
     }
 
     /** AirPlay (AVRoutePickerView) and picture in picture. */

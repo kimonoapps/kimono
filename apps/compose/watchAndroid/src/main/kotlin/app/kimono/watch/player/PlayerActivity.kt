@@ -117,7 +117,8 @@ class PlayerActivity : ComponentActivity() {
             val ended by (together?.ended ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
             androidx.compose.runtime.LaunchedEffect(ended) { if (ended) { app.toasts.show("The party has ended."); finish() } }
             PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish, onRec = rec, party = together, rotate = if (app.tv) null else ::rotate,
-                onTogether = { s, e, at -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("titleId", titleId).putExtra("season", s ?: 0).putExtra("episode", e ?: 0).putExtra("together", true).putExtra("at", at)); finish() })
+                onTogether = { s, e, at -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("titleId", titleId).putExtra("season", s ?: 0).putExtra("episode", e ?: 0).putExtra("together", true).putExtra("at", at)); finish() },
+                onJoinParty = { id -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("party", id)); finish() })
         } } }
     }
 
