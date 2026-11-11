@@ -21,7 +21,7 @@ import {
 import { cachedImage, imageHeaders, imageRequest, imageUrl } from "./images";
 import { aniskip, aniskipEpisode, chooseMarkers, type Markers } from "./markers";
 import { analyseLater, skipsFor, type SkipDeps, type SkipTarget } from "./skips";
-import { badges, bitrate, cleanDevice, describe, heightCap, qualityOptions, rank, type Release } from "./releases";
+import { badges, bitrate, cleanDevice, describe, heightCap, linkCap, qualityOptions, rank, unplayable, type Release } from "./releases";
 
 /** One file's size: by bitrate and runtime when known (a pack lists the whole season), else what the listing says. */
 const sizeOf = (r: Release, minutes: number | null) => { const mbps = bitrate(r, minutes); return mbps && minutes ? Math.round((mbps * 1e6 / 8) * minutes * 60) : r.bytes; };
@@ -635,6 +635,15 @@ export async function play(cfg: WatchConfig, username: string, origin: string, r
     /* Which audio and subtitle tracks to switch on, by the tags containers use; asked: the audio wanted before falling back. */
     tracks: { ...tracks, asked: plan.audio },
     languages: { audio: wanted.languages, subtitles: wanted.subtitles },
+    /* For the player's stats (I on the web): what the screen said it shows, the height allowed, and why each 4K copy wasn't taken. */
+    why: {
+      device: { client: device.client, maxHeight: device.maxHeight, codecs: device.codecs, hdr: device.hdr, ...(device.mbps ? { mbps: device.mbps } : {}), ...(device.link ? { link: device.link } : {}) },
+      quality, cap: Math.min(heightCap(device, quality), linkCap(device.mbps ?? device.link)), copies: found.length,
+      uhd: found.filter((r) => r.height >= 2160).slice(0, 8).map((r) => {
+        const at = ranked.indexOf(r);
+        return { label: describe(r), name: r.filename || r.name, reason: unplayable(r, device, minutes, quality) ?? (at < 0 ? "a duplicate" : at === ranked.indexOf(wanted) ? "playing" : `ranked #${at + 1}`) };
+      }),
+    },
   };
 }
 

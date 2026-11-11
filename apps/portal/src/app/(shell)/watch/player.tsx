@@ -65,6 +65,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const [ep, setEp] = useState<Ref | null>(null);
   const [play, setPlay] = useState<Play | null>(null);
   const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState(false);
   const [pct, setPct] = useState(0);
   const [problem, setProblem] = useState<string | null>(null);
   const [askedMore, setAskedMore] = useState<"no" | "asking" | "asked">("no");
@@ -709,6 +710,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       else if (k === "m") toggleMute();
       else if (k === "s" && skip) doSkip();
       else if (k === "n" && live.current.play?.next) playNext();
+      else if (k === "i") { setStats((x) => !x); return; }
       else if (k === "escape") { event.stopPropagation(); if (chatOpenRef.current) setChatOpen(false); else if (live.current.sheet) closeSheet(); else if (!document.fullscreenElement) exit(); }
       else return;
       showCtl();
@@ -901,6 +903,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     {party ? <Waiting party={party} client={myClient} loading={loading} firstOf={firstOf} canSteer={canSteer} onSkip={() => void live.current.link?.command("skip-wait")} /> : null}
     <div className="kw-floats" aria-hidden="true">{floats.map((f) => <span key={f.id} style={{ "--x": `${(f.id * 37) % 60}px` } as React.CSSProperties}>{f.emoji}<small>{firstOf(f.username)}</small></span>)}</div>
     {party ? <Chat open={chatOpen} lines={chat} me={me} personOf={personOf} onClose={() => { setChatOpen(false); showCtl(); }} onSend={(text) => void live.current.link?.chat(text)} /> : null}
+    {stats && play ? <Stats play={play} video={video} onClose={() => setStats(false)} /> : null}
     <div className={cx("kw-pnote", note && noteGone !== note.at && "kw-on")} role="status" aria-live="polite">{note?.text}</div>
     <button className={cx("kw-skip", skip && (!skip.gone || ctl) && "kw-on")} style={{ "--left": `${skip?.gone ? 0 : (skip?.left ?? 0) * 100}%` } as React.CSSProperties} onClick={doSkip}><span>{skip?.label ?? "Skip intro"}</span><Icon name="next" /></button>
 
@@ -1078,4 +1081,44 @@ function Chat({ open, lines, me, personOf, onClose, onSend }: { open: boolean; l
       <button className="kw-pbtn" aria-label="Send" tabIndex={open ? 0 : -1}><Icon name="send" /></button>
     </form>
   </aside>;
+}
+
+/* I: what this browser reported, what the server allowed, what's playing, and why each 4K copy wasn't taken. */
+function Stats({ play, video, onClose }: { play: Play; video: React.RefObject<HTMLVideoElement | null>; onClose: () => void }) {
+  const [variants, setVariants] = useState<string[]>([]);
+  const [size, setSize] = useState("");
+  const [screenSize, setScreenSize] = useState("");
+  useEffect(() => {
+    setScreenSize(`${screen.width}×${screen.height} at ${devicePixelRatio}x, ${matchMedia("(dynamic-range: high)").matches ? "HDR on" : "HDR off"}`);
+    if (!play.hls) { setVariants(["(the file itself, no HLS)"]); return; }
+    void fetch(play.hls).then((r) => r.text()).then((text) => setVariants(text.split("\n").filter((l) => l.startsWith("#EXT-X-STREAM-INF:")).map((l) => {
+      const at = (k: string) => new RegExp(`${k}=("[^"]*"|[^,]*)`).exec(l)?.[1]?.replace(/"/g, "") ?? "?";
+      return `${at("RESOLUTION")} · ${at("VIDEO-RANGE")} · ${at("CODECS")} · ${Math.round(Number(at("BANDWIDTH")) / 1e6)} Mbps`;
+    }))).catch(() => setVariants(["(couldn't read the playlist)"]));
+  }, [play.hls]);
+  useEffect(() => {
+    const tick = () => { const v = video.current; setSize(v && v.videoWidth ? `${v.videoWidth}×${v.videoHeight}` : "—"); };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [video]);
+  const w = play.why;
+  const rows: [string, string][] = [
+    ["Screen", screenSize],
+    ["Reported", w ? `${w.device.maxHeight}p · ${w.device.codecs.join(", ")} · HDR ${w.device.hdr.join(", ") || "none"}${w.device.link ? ` · ${w.device.link} Mbps link` : ""}` : "—"],
+    ["Quality", w ? `${w.quality} · up to ${Number.isFinite(w.cap) ? `${w.cap}p` : "any"}` : play.quality?.current ?? "—"],
+    ["Copy", play.version.label],
+    ["Stream", variants.join("\n") || "…"],
+    ["Picture", size],
+  ];
+  return (
+    <div className="kw-stats" role="dialog" aria-label="Stats">
+      <button className="kw-stats-x" onClick={onClose} aria-label="Close">×</button>
+      <dl>{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+      {w ? <>
+        <p>4K copies ({w.uhd.length} of {w.copies})</p>
+        <ul>{w.uhd.length ? w.uhd.map((u, i) => <li key={i} title={u.name}><b>{u.reason}</b> {u.label}</li>) : <li>None found</li>}</ul>
+      </> : null}
+    </div>
+  );
 }

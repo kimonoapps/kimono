@@ -635,6 +635,15 @@
 
 .kw .kw-pnote{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 76px);z-index:7;transform:translate(-50%,-8px);background:var(--paper);color:var(--ink);font-weight:700;font-size:14px;padding:9px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s,transform .35s var(--spring);white-space:nowrap}
 .kw .kw-pnote.kw-on{opacity:1;transform:translate(-50%,0)}
+.kw .kw-stats{position:absolute;left:max(16px, env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 16px);z-index:8;width:min(440px, calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;background:rgba(10,8,12,.88);color:#eee;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;padding:12px 14px;border-radius:8px}
+.kw .kw-stats dl{margin:0;display:grid;gap:4px}
+.kw .kw-stats dl div{display:grid;grid-template-columns:72px 1fr;gap:8px}
+.kw .kw-stats dt{color:#999}
+.kw .kw-stats dd{margin:0;white-space:pre-wrap;word-break:break-word}
+.kw .kw-stats p{margin:10px 0 4px;color:#999}
+.kw .kw-stats ul{margin:0;padding:0;list-style:none;display:grid;gap:3px}
+.kw .kw-stats b{color:#f2c37a;font-weight:600}
+.kw .kw-stats-x{position:absolute;right:6px;top:4px;background:none;border:0;color:#999;font-size:18px;cursor:pointer}
 
 .kw .kw-floats{position:absolute;right:max(36px, env(safe-area-inset-right,0px));bottom:150px;width:120px;height:0;z-index:5;pointer-events:none}
 .kw .kw-floats span{position:absolute;bottom:0;right:var(--x,0);display:grid;justify-items:center;font-size:34px;line-height:1;animation:kw-float 2.8s cubic-bezier(.2,.7,.3,1) forwards}

@@ -69,6 +69,8 @@ export type Play = {
   languages: { audio: string[]; subtitles: string[] };
   /** The quality playing and the ones this release offers here; absent from older servers. */
   quality?: { current: string; options: { value: string; label: string }[] };
+  /** For the player's stats: what this screen reported, the height allowed, and why each 4K copy wasn't taken. */
+  why?: { device: { client: string; maxHeight: number; codecs: string[]; hdr: string[]; mbps?: number; link?: number }; quality: string; cap: number; copies: number; uhd: { label: string; name: string; reason: string }[] };
 };
 /** Languages to pick from, by their ISO 639-1 code. */
 export const languages = ["en", "ja", "fr", "de", "es", "it", "pt", "nl", "sv", "no", "da", "fi", "pl", "ru", "uk", "tr", "ar", "hi", "ko", "zh"];
