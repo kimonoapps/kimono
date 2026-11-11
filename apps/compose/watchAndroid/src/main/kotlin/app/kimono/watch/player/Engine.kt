@@ -82,6 +82,10 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     init {
         subtitleLook("medium", "shadow")
         subtitles.setApplyEmbeddedStyles(true)
+        /* Plain subtitles (SRT, WebVTT, PGS) reach the view only from here; libass draws ASS on its own overlay and sends no cues. */
+        player.addListener(object : Player.Listener {
+            override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) = subtitles.setCues(cueGroup.cues)
+        })
     }
 
     /**
