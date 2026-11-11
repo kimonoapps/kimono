@@ -1,10 +1,9 @@
 "use client";
 
-import { Crossing, useCrossTo } from "@/components/crossing";
-import { useState, type MouseEvent } from "react";
+import { Crossing } from "@/components/crossing";
+import { useState } from "react";
 import { AppBloom, cx } from "@kimono/ui";
 import type { KimonoApp } from "@/lib/apps";
-import { detectMobileOS } from "@/lib/mobile-app";
 import { noteUse, usePins } from "./pins";
 import type { RailApp } from "./rail";
 import { betaApps, newApps } from "@/lib/app-categories";
@@ -26,7 +25,6 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
   onReorder?: (ids: string[]) => void;
 }) {
   const [pins, setPins] = usePins(mine);
-  const crossTo = useCrossTo();
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropBefore, setDropBefore] = useState<string | null>(null);
   const order = apps.map((app) => app.id);
@@ -38,15 +36,9 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
     onReorder(next);
   }
 
-  function open(app: TileApp, event: MouseEvent) {
+  function open(app: TileApp) {
     noteUse(app.id);
     onOpen?.();
-    /* On a phone, an app with its own phone app sends people to get the Kimono app instead. */
-    if (!app.mobileApp || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-    const os = detectMobileOS(navigator);
-    if (!os && !window.matchMedia("(max-width: 940px), (pointer: coarse)").matches) return;
-    event.preventDefault();
-    crossTo("hanafubuki", os ? `/get-app?for=${os}` : "/get-app", false);
   }
 
   return <>
@@ -67,7 +59,7 @@ export function AppTiles({ apps, mine = [], compact = false, onOpen, onReorder }
             draggable
             onDragStart={(event) => { event.dataTransfer.setData("text/kimono-app", app.id); event.dataTransfer.effectAllowed = "copyMove"; if (onReorder) setDragging(app.id); }}
             onDragEnd={() => { setDragging(null); setDropBefore(null); }}
-            onClick={(event) => open(app, event)}
+            onClick={() => open(app)}
             aria-label={`Open Kimono ${app.name}${app.external ? " in a new tab" : ""}: ${app.description}`}
           >
             <AppBloom identity={{ id: app.id, name: app.name, accent: app.accent, glyph: app.glyph }} glyphHref={app.iconUrl || undefined} className="app-tile-bloom" />
