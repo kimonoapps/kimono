@@ -183,9 +183,10 @@ function Tracker({ view }: { view: TitleView }) {
         : "That’s the end of the series so far";
   return <div className="kw-tracker">
     <div className="kw-lab"><b>{tr.left === 1 ? "Last episode" : tr.left === 0 ? "All caught up" : `${tr.left} episodes left`}{!view.layout || view.layout === "seasons" ? ` in Season ${tr.season}` : ""}</b><span>{after}</span></div>
-    <div className="kw-segs">{tr.marks.map((m) => <i key={m.episode} className={cx(m.state === "done" && "kw-fin", m.state === "skip" && "kw-skip", m.state === "upcoming" && "kw-upcoming")}>
+    {tr.marks.length > 40 ? <div className="kw-segs"><i><b style={{ width: `${(tr.marks.reduce((n, m) => n + (m.state === "done" || m.state === "skip" ? 1 : m.state === "open" ? m.fraction : 0), 0) / tr.marks.length) * 100}%` }} /></i></div>
+      : <div className="kw-segs">{tr.marks.map((m) => <i key={m.episode} className={cx(m.state === "done" && "kw-fin", m.state === "skip" && "kw-skip", m.state === "upcoming" && "kw-upcoming")}>
       {m.state === "open" && m.fraction > 0 ? <b style={{ width: `${m.fraction * 100}%` }} /> : null}
-    </i>)}</div>
+    </i>)}</div>}
   </div>;
 }
 

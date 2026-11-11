@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { airText, watchApi, type Card, type TitleView } from "./api";
 import { cx, Img, TitleMark, useWatch } from "./bits";
 import { PosterCard, viewOf } from "./home";
@@ -91,6 +91,8 @@ export function SearchPage({ onClose }: { onClose: () => void }) {
   const [results, setResults] = useState<Card[] | null>(null);
   const [asked, setAsked] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const [leaving, setLeaving] = useState(false);
+  const close = useCallback(() => { setLeaving(true); setTimeout(onClose, 200); }, [onClose]);
   useEffect(() => { input.current?.focus(); }, []);
   useEffect(() => {
     const control = new AbortController();
@@ -100,12 +102,12 @@ export function SearchPage({ onClose }: { onClose: () => void }) {
     return () => { clearTimeout(t); control.abort(); };
   }, [q]);
   useEffect(() => {
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector(".kw-sheet")) onClose(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector(".kw-sheet")) close(); };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [onClose]);
-  return <div className="kw-search">
-    <div className="kw-sbar"><Icon name="search" /><input ref={input} type="search" placeholder="Titles, people, genres" autoComplete="off" value={q} onChange={(event) => { setQ(event.target.value); setResults(null); }} /><button className="kw-iconbtn" aria-label="Close search" onClick={onClose}><Icon name="close" /></button></div>
+  }, [close]);
+  return <div className={cx("kw-search", leaving && "kw-out")}>
+    <div className="kw-sbar"><Icon name="search" /><input ref={input} type="search" placeholder="Titles, people, genres" autoComplete="off" value={q} onChange={(event) => { setQ(event.target.value); setResults(null); }} /><button className="kw-iconbtn" aria-label="Close search" onClick={close}><Icon name="close" /></button></div>
     {!results ? <>
       <div className="kw-sk kw-sk-line" style={{ width: "30%", height: 18, marginBottom: 14 }} />
       <div className="kw-slist">{Array.from({ length: 4 }, (_, i) => <div key={i} className="kw-sk" style={{ height: 80 }} />)}</div>
