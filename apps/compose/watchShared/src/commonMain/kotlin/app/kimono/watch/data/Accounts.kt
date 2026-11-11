@@ -277,7 +277,8 @@ class Accounts(private val keeper: Keeper, val http: HttpClient) {
         val first = try { attempt(token(profile)) } catch (e: Exception) { wrap(e) }
         if (first != null) return first
         access.remove(profile.key)
-        return (try { attempt(renew(profile)) } catch (e: Exception) { wrap(e) }) ?: throw WatchProblem("${profile.shown} was signed out. Sign in again.", 401)
+        /* Refused again with a token Authentik has only just granted: the server is the confused one (starting up for an update). */
+        return (try { attempt(renew(profile)) } catch (e: Exception) { wrap(e) }) ?: throw WatchProblem(OFFLINE)
     }
 
     /** Calls /api/v1 as whoever is watching. [path] starts with a slash. */
@@ -298,6 +299,8 @@ class Accounts(private val keeper: Keeper, val http: HttpClient) {
         if (first != null) return first
         access.remove(profile.key)
         val second = try { attempt(renew(profile)) } catch (e: Exception) { wrap(e) }
-        return second ?: run { remove(profile); throw WatchProblem("${profile.shown} was signed out. Sign in again.", 401) }
+        /* Only Authentik refusing the saved sign-in (in renew) signs someone out; a 401 on a token it
+           has only just granted is the server starting up for an update, so the account stays. */
+        return second ?: throw WatchProblem(OFFLINE)
     }
 }

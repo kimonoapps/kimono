@@ -101,11 +101,14 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
         LaunchedEffect(Unit) {
             accounts.load()
             val all = accounts.profiles.value.orEmpty()
+            /* A connect link to a Kimono someone here is already signed in to (the Portal's
+               "Open Kimono Watch", tapped again after updating) opens on them, not on sign-in. */
+            val linked = connect?.let { savedOn(all, it, accounts.lastKey) }
             phase = when {
-                connect != null -> Phase.SignIn(all.isEmpty(), connect)
+                connect != null && linked == null -> Phase.SignIn(all.isEmpty(), connect)
                 all.isEmpty() -> Phase.SignIn(true)
                 /* Picker off: straight into whoever signed in last, or sign in again. */
-                !PROFILE_PICKER -> (all.firstOrNull { it.key == accounts.lastKey } ?: all[0]).let { p ->
+                !PROFILE_PICKER || linked != null -> (linked ?: all.firstOrNull { it.key == accounts.lastKey } ?: all[0]).let { p ->
                     /* Only a real sign-out (the server refused the saved sign-in) asks to sign in again.
                        Offline, or the server restarting for an update: straight in, and pages retry. */
                     val signedOut = runCatching { accounts.ready(p) }.exceptionOrNull().let { it is WatchProblem && it.status == 401 }
@@ -116,8 +119,16 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
                 else -> Phase.Profiles
             }
         }
-        /* A connect link from the Portal's "Get the app": sign in to that Kimono. */
-        LaunchedEffect(connect) { if (connect != null && phase != Phase.Loading) phase = Phase.SignIn(accounts.profiles.value.orEmpty().isEmpty(), connect) }
+        /* A connect link from the Portal's "Get the app": sign in to that Kimono, or open on whoever already is. */
+        LaunchedEffect(connect) {
+            if (connect == null || phase == Phase.Loading) return@LaunchedEffect
+            val linked = savedOn(accounts.profiles.value.orEmpty(), connect, accounts.lastKey)
+            phase = when {
+                linked == null -> Phase.SignIn(accounts.profiles.value.orEmpty().isEmpty(), connect)
+                (phase as? Phase.Shell)?.profile?.let { sameServer(it.server, connect) } == true -> phase
+                else -> runCatching { accounts.choose(linked); Phase.Shell(linked) }.getOrDefault(phase)
+            }
+        }
         Box(Modifier.fillMaxSize().background(Night.bg)) {
             AnimatedContent(phase, transitionSpec = { fadeIn(tween(350)) togetherWith fadeOut(tween(250)) }, contentKey = { it::class to ((it as? Phase.Shell)?.profile?.key) }, label = "phase") { p ->
                 when (p) {
@@ -141,6 +152,11 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
         LaunchedEffect(active) { if (active == null && phase is Phase.Shell) phase = if (!PROFILE_PICKER || accounts.profiles.value.orEmpty().isEmpty()) Phase.SignIn(true) else Phase.Profiles }
     }
 }
+
+private fun sameServer(a: String, b: String) = a.trimEnd('/').equals(b.trimEnd('/'), ignoreCase = true)
+
+/** Who's signed in here to the Kimono at [server]: whoever was watching last, if they are. */
+private fun savedOn(all: List<Profile>, server: String, last: String?): Profile? = all.filter { sameServer(it.server, server) }.let { here -> here.firstOrNull { it.key == last } ?: here.firstOrNull() }
 
 /** App start: Watch's bloom, and Kimono's loader under it. */
 @Composable
