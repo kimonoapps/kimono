@@ -47,10 +47,11 @@ type Spec struct {
 }
 
 const (
-	idleAfter  = 60 * time.Second
-	waitFor    = 100 * time.Second
-	restartGap = 24.0 // seconds past the encoder's progress worth waiting for
-	keepBehind = 8    // segments always kept behind the latest request
+	segmentTarget = 6.0 // seconds a segment runs at least (the Portal's plan)
+	idleAfter     = 60 * time.Second
+	waitFor       = 100 * time.Second
+	restartGap    = 24.0 // seconds past the encoder's progress worth waiting for
+	keepBehind    = 8    // segments always kept behind the latest request
 	// Made segments are kept for the whole play, so seeking back is instant,
 	// until a session's take this much disk; then those farthest from the
 	// viewer go first.
@@ -60,6 +61,12 @@ const (
 	// another, and only where it stops is worth reading from the source.
 	settleFor   = 400 * time.Millisecond
 	maxFailures = 2
+	// Seconds before where the encoder started that are made once it is well
+	// ahead, so skipping back after a seek or a resume lands on made segments.
+	fillBehind = 60.0
+	// Filled in nearest first: the segment just before alone, then this much
+	// at a time, so a skip back of ten seconds is ready soonest.
+	fillChunk = 12.0
 )
 
 var errGone = errors.New("no such segment")
@@ -82,7 +89,13 @@ type run struct {
 	firstEnd  float64       // where that segment ends
 	pausedAt  time.Time
 	pausedFor time.Duration
-	readers   sync.WaitGroup
+	// A run filling in behind the encoder's start stops once it reaches
+	// this segment; 0 for the encoder itself.
+	stop int
+	// How far back the encoder's run has been filled in from (its start
+	// until a fill-in begins).
+	filledFrom int
+	readers    sync.WaitGroup
 }
 
 type pendingSegment struct {
@@ -98,6 +111,7 @@ type Session struct {
 	mu         sync.Mutex
 	changed    chan struct{}
 	run        *run
+	behind     *run // filling in before run's start (fillBehind)
 	ready      map[string]map[int]bool
 	sizes      map[string]map[int]int64
 	inits      map[string]bool
@@ -203,6 +217,16 @@ func (s *Session) initPath(name string) string { return filepath.Join(s.dir, nam
 // started after k, won't bring it, nor (for video) one already past it.
 func (s *Session) needsRestart(k int, video bool) bool {
 	r := s.run
+	if b := s.behind; b != nil && !b.done && k > s.progressOf(b) && k < b.stop {
+		/* Being filled in now: waited for when that's sooner than starting over. */
+		cost := 2 * time.Second
+		if r != nil && r.firstAt > 0 {
+			cost = r.firstAt
+		}
+		if wait, known := s.etaLocked(b, k); !known || wait <= cost+settleFor {
+			return false
+		}
+	}
 	if r == nil {
 		return true
 	}
@@ -231,7 +255,8 @@ func (s *Session) etaLocked(r *run, k int) (time.Duration, bool) {
 		active -= time.Since(r.pausedAt)
 	}
 	made := s.end(p) - r.firstEnd
-	if made <= 0 || active < 500*time.Millisecond {
+	/* A pace from a moment's work is noise (a burst, or a pause to share the source). */
+	if made < 2*segmentTarget || active < 2*time.Second {
 		return 0, false
 	}
 	pace := made / active.Seconds() // seconds of the film per second
@@ -246,7 +271,12 @@ func (s *Session) explain(name string, k int) {
 }
 
 func (s *Session) stopLocked() {
-	r := s.run
+	kill(s.run)
+	kill(s.behind)
+	s.behind = nil
+}
+
+func kill(r *run) {
 	if r == nil || r.done || r.cmd.Process == nil {
 		return
 	}
@@ -271,6 +301,41 @@ func (s *Session) startLocked(k int) {
 		return
 	}
 	s.stopLocked()
+	r := s.launchLocked(k, 0)
+	if r == nil {
+		return
+	}
+	s.run = r
+	log.Printf("session %s: encoding from segment %d (%.1fs)%s", s.id[:8], k, s.spec.Segments[k], map[bool]string{true: " in software", false: ""}[s.fallback])
+	s.notify()
+}
+
+// moveLocked brings the encoder to segment k. Just behind where it started
+// (skipping back after a seek or a resume), a run fills in from k instead,
+// so what it has made ahead stays and goes on.
+func (s *Session) moveLocked(k int) {
+	r := s.run
+	if r == nil || r.done || k >= r.start || s.spec.Segments[r.start]-s.spec.Segments[k] > fillBehind || s.failures[k] > 0 || !s.prepared {
+		s.startLocked(k)
+		return
+	}
+	kill(s.behind)
+	s.behind = nil
+	stop := k + 1
+	for stop < r.start && !s.madeLocked(stop) {
+		stop++
+	}
+	if b := s.launchLocked(k, stop); b != nil {
+		s.behind = b
+		r.filledFrom = min(r.filledFrom, k)
+		log.Printf("session %s: filling in segments %d to %d for a skip back", s.id[:8], k, stop-1)
+		s.notify()
+	}
+}
+
+// launchLocked starts ffmpeg at segment k, its outputs read into the
+// session; stop > 0 for a run that only fills in up to that segment.
+func (s *Session) launchLocked(k, stop int) *run {
 	args := s.spec.Args
 	if s.fallback && len(s.spec.Fallback) > 0 {
 		args = s.spec.Fallback
@@ -282,14 +347,14 @@ func (s *Session) startLocked(k int) {
 	filled := s.fill(args, start)
 	cmd := exec.Command(ffmpegPath, filled...)
 	cmd.Dir = s.dir
-	r := &run{cmd: cmd, start: k, progress: map[string]int{}, tails: map[string]*pendingSegment{}, stderr: &tail{}, began: time.Now()}
+	r := &run{cmd: cmd, start: k, stop: stop, filledFrom: k, progress: map[string]int{}, tails: map[string]*pendingSegment{}, stderr: &tail{}, began: time.Now()}
 	cmd.Stderr = r.stderr
 	readers := make([]*os.File, len(s.spec.Outputs))
 	for i := range s.spec.Outputs {
 		pr, pw, err := os.Pipe()
 		if err != nil {
 			s.problem = err.Error()
-			return
+			return nil
 		}
 		readers[i] = pr
 		cmd.ExtraFiles = append(cmd.ExtraFiles, pw)
@@ -299,19 +364,17 @@ func (s *Session) startLocked(k int) {
 		for _, f := range append(readers, cmd.ExtraFiles...) {
 			f.Close()
 		}
-		return
+		return nil
 	}
 	for _, f := range cmd.ExtraFiles {
 		f.Close()
 	}
-	s.run = r
-	log.Printf("session %s: encoding from segment %d (%.1fs)%s", s.id[:8], k, start, map[bool]string{true: " in software", false: ""}[s.fallback])
 	for i, o := range s.spec.Outputs {
 		r.readers.Add(1)
 		go s.read(r, o, readers[i])
 	}
 	go s.wait(r)
-	s.notify()
+	return r
 }
 
 func (s *Session) fill(args []string, start float64) []string {
@@ -353,20 +416,40 @@ func (s *Session) read(r *run, o Output, f *os.File) {
 	current, last := -1, -1
 	var data, lastData []byte
 	finish := func(k int, b []byte) {
-		path := s.path(o.Name, k)
-		tmp := path + ".part"
-		if err := os.WriteFile(tmp, b, 0o600); err == nil {
-			_ = os.Rename(tmp, path)
+		s.mu.Lock()
+		/* Filling in behind leaves what the encoder has made as it is. */
+		keep := r.stop > 0 && s.ready[o.Name][k]
+		past := r.stop > 0 && k >= r.stop
+		s.mu.Unlock()
+		if past {
+			return
+		}
+		if !keep {
+			path := s.path(o.Name, k)
+			tmp := path + ".part"
+			if err := os.WriteFile(tmp, b, 0o600); err == nil {
+				_ = os.Rename(tmp, path)
+			}
 		}
 		s.mu.Lock()
-		s.ready[o.Name][k] = true
-		s.sizes[o.Name][k] = int64(len(b))
+		if !keep {
+			s.ready[o.Name][k] = true
+			s.sizes[o.Name][k] = int64(len(b))
+		}
 		r.progress[o.Name] = k
 		r.produced = true
 		if r.firstAt == 0 {
 			r.firstAt, r.firstEnd = time.Since(r.began), s.end(k)
 		}
 		s.coverLocked(r)
+		if r.stop > 0 && s.progressOf(r) >= r.stop-1 {
+			/* The subtitles up to here are read too: their cues come before the picture's next keyframe. */
+			for j := r.start; j < r.stop; j++ {
+				s.covered[j] = true
+			}
+			kill(r)
+			log.Printf("session %s: filled in segments %d to %d", s.id[:8], r.start, r.stop-1)
+		}
 		s.notify()
 		s.mu.Unlock()
 		last, lastData = k, b
@@ -452,6 +535,17 @@ func (s *Session) wait(r *run) {
 	defer s.mu.Unlock()
 	r.done = true
 	r.ok = err == nil && !r.killed
+	if r.stop > 0 {
+		if s.behind == r {
+			s.behind = nil
+		}
+		/* One that made nothing: the next request there starts the encoder itself. */
+		if !r.ok && !r.killed && !r.produced {
+			s.failures[r.start]++
+		}
+		s.notify()
+		return
+	}
 	if r.ok {
 		for name, t := range r.tails {
 			path := s.path(name, t.index)
@@ -580,7 +674,7 @@ func (s *Session) Segment(ctx context.Context, name string, k int) (string, erro
 				return "", fmt.Errorf("%s", s.problem)
 			}
 			s.explain(name, k)
-			s.startLocked(k)
+			s.moveLocked(k)
 		}
 		s.resumeLocked()
 		if !s.waitLocked(ctx, deadline) {
@@ -607,11 +701,15 @@ func (s *Session) Subtitles(ctx context.Context, name string, k int) ([]byte, er
 		if s.covered[k] {
 			return vttSegment(s.cues[name], s.spec.Segments[k], s.end(k)), nil
 		}
-		if r := s.run; r != nil && k < r.start && !r.done {
+		if b := s.behind; b != nil && !b.done && k >= b.start && k < b.stop {
+			/* Being filled in: wait for it. */
+		} else if r := s.run; r != nil && k < r.start && !r.done && s.videoWaiting == 0 {
 			/* Behind where the encoder started: the video there was asked for before, so nothing is missed. */
 			return vttSegment(nil, 0, 0), nil
 		}
-		moves := mine == s.seq && s.videoWaiting == 0 && s.needsRestart(k, false)
+		/* Only when the encoder won't get here: one merely far ahead of the
+		   picture would be dragged away from where the picture is wanted. */
+		moves := mine == s.seq && s.videoWaiting == 0 && (s.run == nil || s.run.done) && s.needsRestart(k, false)
 		if moves && !settled && s.running() {
 			settled = true
 			if err := s.settleLocked(ctx); err != nil {
@@ -657,10 +755,50 @@ func (s *Session) tick() {
 			} else if r.paused && ahead < s.spec.Ahead-15 {
 				s.resumeLocked()
 			}
+			/* Once the picture asked for is out: the source has room for both. */
+			if r.firstAt > 0 && time.Since(r.began) > r.firstAt+time.Second {
+				s.fillBehindLocked(r)
+			}
 		}
 		s.evictLocked()
 		s.mu.Unlock()
 	}
+}
+
+// fillBehindLocked makes the minute before where the encoder started, once
+// it is well ahead of the viewer, nearest first: skipping back after a seek
+// or a resume then lands on made segments instead of moving the encoder.
+func (s *Session) fillBehindLocked(r *run) {
+	if s.behind != nil || s.closed {
+		return
+	}
+	for hi := r.filledFrom; hi > 0 && s.spec.Segments[r.start]-s.spec.Segments[hi] < fillBehind; hi = r.filledFrom {
+		lo := hi - 1
+		for lo > 0 && hi < r.start && s.spec.Segments[hi]-s.spec.Segments[lo] < fillChunk {
+			lo--
+		}
+		r.filledFrom = lo
+		for ; lo < hi && s.madeLocked(lo); lo++ {
+		}
+		if lo == hi {
+			continue
+		}
+		if b := s.launchLocked(lo, hi); b != nil {
+			s.behind = b
+			log.Printf("session %s: filling in segments %d to %d", s.id[:8], lo, hi-1)
+		}
+		return
+	}
+}
+
+// madeLocked says whether every picture output has segment k.
+func (s *Session) madeLocked(k int) bool {
+	for _, o := range s.spec.Outputs {
+		if o.Kind == "fmp4" && !s.ready[o.Name][k] {
+			return false
+		}
+	}
+	return true
 }
 
 // evictLocked deletes made segments once the session's take more than

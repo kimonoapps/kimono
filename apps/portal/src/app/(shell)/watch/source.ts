@@ -57,6 +57,15 @@ export async function attach(video: HTMLVideoElement, play: Play, onFatal: () =>
       hls.loadSource(play.hls);
       hls.attachMedia(video);
       hls.subtitleDisplay = false;
+      /* hls.js drops the segment it is loading only when a seek goes past it; seeking back, it would first wait for
+         that one (often the packager's next, still being made) before asking for where you went. */
+      const seeking = () => {
+        const t = video.currentTime, b = video.buffered;
+        for (let i = 0; i < b.length; i++) if (t >= b.start(i) && t < b.end(i) - 0.5) return;
+        hls.stopLoad();
+        hls.startLoad(t);
+      };
+      video.addEventListener("seeking", seeking);
       const named = (list: { name: string; lang?: string }[]) => list.map((t, id) => ({ id, label: t.name, language: t.lang ?? "" }));
       return {
         kind: "hls-js",
@@ -66,7 +75,7 @@ export async function attach(video: HTMLVideoElement, play: Play, onFatal: () =>
         subtitleNow: () => hls.subtitleTrack,
         setAudio: (id) => { hls.audioTrack = id; },
         setSubtitles: (id) => { hls.subtitleTrack = id; },
-        detach: () => { hls.destroy(); video.removeAttribute("src"); video.load(); },
+        detach: () => { video.removeEventListener("seeking", seeking); hls.destroy(); video.removeAttribute("src"); video.load(); },
       };
     }
   }
