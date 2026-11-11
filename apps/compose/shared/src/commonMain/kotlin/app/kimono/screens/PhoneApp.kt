@@ -102,14 +102,19 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
     var beta by remember { mutableStateOf<TestflightApp?>(null) }
     var betaEmail by remember { mutableStateOf<String?>(null) }
     var asking by remember { mutableStateOf(false) }
+    /* One of Kimono's own that the last sync hadn't seen in App Store Connect yet: still asked for here, never on the website. */
+    fun unseen() = phone.androidPackage?.takeIf { it.startsWith("app.kimono.") }?.let { TestflightApp(it, phone.name, "idle") }
     if (platform.os == "ios" && testflight != null) LaunchedEffect(app.id) {
-        testflight.mine()?.let { mine -> beta = mine.appFor(phone, app.fullName); betaEmail = mine.email }
+        testflight.mine()?.let { mine -> beta = mine.appFor(phone, app.fullName) ?: unseen(); betaEmail = mine.email }
     }
     fun ask(bundleId: String) {
         val flight = testflight ?: return
         asking = true; problem = null
         scope.launch {
-            try { val mine = flight.ask(bundleId); beta = mine.appFor(phone, app.fullName); betaEmail = mine.email }
+            try {
+                val mine = flight.ask(bundleId); betaEmail = mine.email
+                beta = mine.appFor(phone, app.fullName) ?: unseen().also { problem = "${phone.name} isn't on TestFlight yet. Try again later." }
+            }
             catch (failure: KimonoProblem) { problem = failure.message }
             catch (_: Exception) { problem = "Kimono isn't answering. Try again in a moment." }
             asking = false
@@ -163,7 +168,7 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
                             "download" -> if (here.installed == true) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(kimonoIcon("check"), null, tint = Kata.moss, modifier = Modifier.size(18.dp))
                                 Text("Installed", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
-                            } else if (handOut != null || store != null) Seal("Get ${phone.name}", onClick = ::get, tone = SealTone.Quiet, compact = true, enabled = progress == null)
+                            } else if (beta == null && (handOut != null || store != null)) Seal("Get ${phone.name}", onClick = ::get, tone = SealTone.Quiet, compact = true, enabled = progress == null)
                             "server" -> Copyable(app.web)
                             /* Hands the app this Kimono's address (kimono-photos://connect?server=…). */
                             "open" -> step.href?.let { href -> Seal(step.label ?: "Open ${phone.name}", onClick = { platform.openUrl(href) }, tone = SealTone.Quiet, compact = true, enabled = here.installed != false) }
@@ -194,12 +199,15 @@ fun openPhoneApp(phone: PhoneApp, platform: Platform): Boolean {
 /** Asking for an iPhone app through TestFlight, and where that stands. */
 @Composable
 private fun TestflightAsk(app: TestflightApp, email: String?, asking: Boolean, ask: () -> Unit, openTestflight: () -> Unit) {
-    val line = when (app.status) {
-        "requested" -> "Setting up your invite"
-        "waiting" -> "Apple will email you"
-        "invited", "stuck" -> if (email != null) "Accept Apple's email to $email, then open TestFlight" else "Accept Apple's email, then open TestFlight"
-        "problem" -> "Apple didn't take your email. Ask whoever runs your Kimono"
-        "none" -> "Your Kimono account needs an email first"
+    val inbox = email?.let { "Check $it" } ?: "Check your email"
+    val line = when {
+        asking && app.status in setOf("idle", "declined") -> "Sending your request"
+        app.status == "idle" || app.status == "declined" -> "Apple emails you an invite to install it with TestFlight"
+        app.status == "requested" -> "Waiting for approval"
+        app.status == "waiting" -> "Sent. $inbox for Apple's invite"
+        app.status == "invited" || app.status == "stuck" -> "$inbox, accept Apple's invite, then open TestFlight"
+        app.status == "problem" -> "Apple didn't take your email. Ask whoever runs your Kimono"
+        app.status == "none" -> "Your Kimono account needs an email first"
         else -> null
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {

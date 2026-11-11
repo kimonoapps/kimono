@@ -143,20 +143,21 @@ async function readKept(): Promise<{ invited: Invited; requests: Requests; apple
  * Notes that someone asked for one iPhone app: Kimono is theirs as soon as
  * they ask, and so is any other app once they have Kimono.
  */
-export function requestTestflight(username: string, bundleId: PhoneAppId = mainApp): Promise<AppRequest["state"]> {
+/** The request's state, and whether this ask is what approved it (so it should be sent now). */
+export function requestTestflight(username: string, bundleId: PhoneAppId = mainApp): Promise<{ state: AppRequest["state"]; fresh: boolean }> {
   return configTurn(async () => {
   const config = await readConfig();
   if (!config) throw new Error("The iPhone app isn't set up on this Kimono yet.");
   const key = username.toLowerCase();
   const existing = config.requests[key]?.[bundleId];
-  if (existing?.state === "approved") return "approved" as const;
+  if (existing?.state === "approved") return { state: "approved" as const, fresh: false };
   const ready = bundleId === mainApp || config.requests[key]?.[mainApp]?.state === "approved";
-  if (!ready && existing?.state === "pending") return "pending" as const;
+  if (!ready && existing?.state === "pending") return { state: "pending" as const, fresh: false };
   const request: AppRequest = ready
     ? { at: existing?.at ?? Date.now(), state: "approved", decidedAt: Date.now(), by: "asked" }
     : { at: Date.now(), state: "pending" };
   await writeConfig({ ...config, requests: { ...config.requests, [key]: { ...config.requests[key], [bundleId]: request } } });
-  return request.state;
+  return { state: request.state, fresh: true };
   });
 }
 
