@@ -704,8 +704,13 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     if ((event.target as HTMLElement).closest("button, .kw-scrub, .kw-psheet, input, .kw-post, .kw-pload, .kw-chat, .kw-hold")) return;
     if (event.pointerType === "mouse") { if (sheet) { closeSheet(); return; } togglePlay(); showCtl(); return; }
     const now = Date.now(), side = event.clientX < innerWidth * 0.38 ? "l" : event.clientX > innerWidth * 0.62 ? "r" : null;
-    /* The middle plays and pauses at once; the sides wait a moment for a double tap. */
-    if (!side) { if (sheet) closeSheet(); else { setPinfo(false); togglePlay(); showCtl(); } lastTap.current = 0; return; }
+    /* The centre of the screen plays and pauses at once; above and below it a tap only shows or hides the controls; the sides wait a moment for a double tap. */
+    if (!side) {
+      const centre = event.clientY > innerHeight * 0.3 && event.clientY < innerHeight * 0.7;
+      lastTap.current = 0; clearTimeout(tapTimer.current);
+      if (sheet) closeSheet(); else if (centre) { setPinfo(false); togglePlay(); showCtl(); } else if (ctl) setCtl(false); else showCtl();
+      return;
+    }
     if (now - lastTap.current < 300) { clearTimeout(tapTimer.current); seek(side === "l" ? -10 : 10); ripple(side); lastTap.current = 0; return; }
     lastTap.current = now; clearTimeout(tapTimer.current);
     tapTimer.current = setTimeout(() => { if (ctl && !sheet) setCtl(false); else showCtl(); }, 260);
