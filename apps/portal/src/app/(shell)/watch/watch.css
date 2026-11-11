@@ -145,7 +145,6 @@
 .kw .kw-cw{width:clamp(200px,22vw,320px);display:grid;gap:0;border-radius:8px;overflow:hidden;background:var(--surface)}
 .kw .kw-cw .kw-shot{position:relative;aspect-ratio:16/9;overflow:hidden}
 .kw .kw-cw .kw-shot img{width:100%;height:100%;object-fit:cover}
-.kw .kw-cw .kw-play{position:absolute;inset:0;margin:auto;width:48px;height:48px;border-radius:50%;border:1.5px solid var(--fg);background:rgba(17,12,10,.45);display:grid;place-items:center}
 .kw .kw-bar{height:3px;background:rgba(239,224,218,.22);position:relative}
 .kw .kw-bar i{position:absolute;inset:0 auto 0 0;background:var(--suo)}
 .kw .kw-cw .kw-meta{display:flex;align-items:center;gap:8px;padding:8px 6px 8px 12px;font-size:13px;color:var(--fg-2)}

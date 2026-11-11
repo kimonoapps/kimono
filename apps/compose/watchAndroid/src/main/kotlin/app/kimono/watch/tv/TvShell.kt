@@ -285,14 +285,13 @@ fun TvCard(card: Card, go: Go, width: Dp = 196.dp, modifier: Modifier = Modifier
 @Composable
 private fun TvContinue(card: Card, go: Go) {
     val shape = RoundedCornerShape(8.dp)
-    Surface(onClick = { go.play(card.id, card.season?.takeIf { it > 0 }, card.episode?.takeIf { it > 0 }) }, onLongClick = { go.open(card) }, modifier = Modifier.width(228.dp),
+    Surface(onClick = { go.open(card) }, onLongClick = { go.play(card.id, card.season?.takeIf { it > 0 }, card.episode?.takeIf { it > 0 }) }, modifier = Modifier.width(228.dp),
         shape = ClickableSurfaceDefaults.shape(shape), colors = ClickableSurfaceDefaults.colors(containerColor = Night.surface, focusedContainerColor = Night.surface2),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
         border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Night.blush), inset = 0.dp, shape = shape))) {
         Column {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
                 Img(card.backdrop ?: card.poster, Modifier.fillMaxSize())
-                Box(Modifier.size(48.dp).background(Color(0x73110C0A), CircleShape), contentAlignment = Alignment.Center) { I(Ic.play) }
             }
             ProgressLine(((card.fraction ?: 0.0).coerceAtLeast(0.04)).toFloat(), Modifier.fillMaxWidth())
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {

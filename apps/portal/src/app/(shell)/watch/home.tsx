@@ -78,12 +78,11 @@ function ContinueTile({ card }: { card: ContinueCard }) {
   const series = card.kind === "series";
   const label = series ? `${card.label ?? `S${card.season}:E${card.episode}`} · ${card.left}m left` : `${card.left}m left`;
   return <div className="kw-cw">
-    <button className="kw-shot" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}>
+    <button className="kw-shot" aria-label={card.name} onClick={() => watch.openTitle(card.id)}>
       <Img src={card.backdrop ?? card.poster} />
-      <span className="kw-play"><Icon name="play" /></span>
     </button>
     <div className="kw-bar"><i style={{ width: `${Math.max(4, card.fraction * 100)}%` }} /></div>
-    <div className="kw-meta"><div><b>{card.name}</b>{label}</div><button className="kw-iconbtn" aria-label="Details" onClick={() => watch.openTitle(card.id)}><Icon name="info" /></button></div>
+    <div className="kw-meta"><div><b>{card.name}</b>{label}</div><button className="kw-iconbtn" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}><Icon name="play" /></button></div>
   </div>;
 }
 

@@ -272,9 +272,8 @@ fun PosterCard(card: Card, go: Go, width: Dp = 112.dp, plain: Boolean = false, m
 @Composable
 private fun ContinueCard(card: Card, go: Go) {
     Column(Modifier.width(168.dp).clip(RoundedCornerShape(8.dp)).background(Night.surface)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickableScale({ go.play(card.id, card.season?.takeIf { it > 0 }, card.episode?.takeIf { it > 0 }) }), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickableScale({ go.open(card) })) {
             Img(card.backdrop ?: card.poster, Modifier.fillMaxSize())
-            Box(Modifier.size(48.dp).clip(CircleShape).background(Color(0x73110C0A)).border(1.5.dp, Night.fg, CircleShape), contentAlignment = Alignment.Center) { I(Ic.play) }
         }
         ProgressLine(((card.fraction ?: 0.0).coerceAtLeast(0.04)).toFloat(), Modifier.fillMaxWidth())
         Row(Modifier.padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -283,7 +282,7 @@ private fun ContinueCard(card: Card, go: Go) {
                 val label = if (card.isFilm || (card.season ?: 0) == 0) "Film" else card.label ?: "S${card.season}:E${card.episode}"
                 Text("$label · ${card.left ?: 0}m left", style = ui(13, color = Night.fg2), maxLines = 1)
             }
-            Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ go.open(card) }), contentAlignment = Alignment.Center) { I(Ic.info) }
+            Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ go.play(card.id, card.season?.takeIf { it > 0 }, card.episode?.takeIf { it > 0 }) }), contentAlignment = Alignment.Center) { I(Ic.play) }
         }
     }
 }
