@@ -7,8 +7,22 @@ export async function GET() {
   const user = await apiUser();
   if (!user) return unauthorized();
   if (!(await testflightSettings().catch(() => null))) return apiError(404, "The iPhone app isn't set up on this Kimono yet.");
-  return apiJson(await answer(user.username));
+  const mine = await answer(user.username);
+  /*
+   * Someone partway through (invite sent, not yet accepted) sees App Store Connect's word within
+   * seconds, not the hourly sync's; anyone else starts a sync in the background every few minutes,
+   * so a new build shows as an update soon after it's out.
+   */
+  if (mine.apps.some((app) => midway.has(app.status))) {
+    await syncTestflightIfDue(10 * 1000);
+    return apiJson(await answer(user.username));
+  }
+  void syncTestflightIfDue(5 * 60 * 1000);
+  return apiJson(mine);
 }
+
+/** Where someone is waiting on Apple, not on Kimono: worth asking App Store Connect again soon. */
+const midway = new Set(["waiting", "invited", "stuck"]);
 
 /**
  * Asks for one iPhone app ({ "app": bundle ID }, the Kimono app when left out).
