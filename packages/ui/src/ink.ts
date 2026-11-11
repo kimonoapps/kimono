@@ -100,3 +100,55 @@ export function petalSvg(seed: number, colour = "#c75f78") {
   return `<svg viewBox="0 0 100 100" aria-hidden="true" style="overflow:visible"><defs>${inkFilters(unique, 3 + seed % 40)}${washGradient(`g-${unique}`, mixHex(colour, "#ffffff", .78), mixHex(colour, "#ffffff", .5), mixHex(colour, "#ffffff", .15), "80%")}</defs>`
     + `<path d="${d}" fill="url(#g-${unique})" filter="url(#ink-wash-${unique})" opacity=".95"></path><path d="${d}" ${brushAttributes(random, unique)}></path></svg>`;
 }
+
+export type InkPoint = [number, number];
+type BrushOptions = { lift?: [number, number] | null; gap?: [number, number]; swell?: number; wander?: number; step?: number; tip?: number };
+const smoothstep = (x: number) => x * x * (3 - 2 * x);
+
+/**
+ * A brush stroke along an open polyline, as the phone's inkBrush (Ink.kt): the
+ * width presses and eases on slow seeded waves, the line drifts a little off
+ * its course, the ends taper, and with `lift` the brush leaves the paper now
+ * and then. Returns a filled outline (path d), to fill, not stroke.
+ */
+export function inkBrushD(points: InkPoint[], random: InkRandom, width: number, { lift = [70, 120], gap = [4, 9], swell = .38, wander = .22, step = .9, tip = .3 }: BrushOptions = {}) {
+  if (points.length < 2) return "";
+  const at = [0];
+  for (let i = 1; i < points.length; i++) at.push(at[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
+  const length = at[at.length - 1];
+  if (length <= 0) return "";
+  const f1 = between(random, .05, .09), f2 = between(random, .13, .21), f3 = between(random, .03, .06);
+  const p1 = between(random, 0, 6.28), p2 = between(random, 0, 6.28), p3 = between(random, 0, 6.28);
+  const pressure = (d: number) => 1 + swell * (.65 * Math.sin(d * f1 + p1) + .35 * Math.sin(d * f2 + p2));
+  const drift = (d: number) => width * wander * Math.sin(d * f3 + p3);
+  const runs: [number, number][] = [];
+  if (!lift) runs.push([0, length]);
+  else {
+    for (let a = 0; a < length;) {
+      const stop = Math.min(a + between(random, lift[0], lift[1]), length);
+      if (stop - a > width * 1.5) runs.push([a, stop]);
+      a = stop + between(random, gap[0], gap[1]);
+    }
+    if (runs.length && runs[runs.length - 1][1] < length - gap[1]) runs.push([runs[runs.length - 1][1] + gap[0], length]);
+  }
+  let out = "";
+  for (const [a, b] of runs) {
+    const span = b - a, count = Math.max(3, Math.round(span / step)), taper = Math.min(width * 2.2, span * .3);
+    const left: string[] = [], right: string[] = [];
+    let seg = 1;
+    for (let k = 0; k <= count; k++) {
+      const d = Math.min(length, Math.max(0, a + span * k / count));
+      while (seg < at.length - 1 && at[seg] < d) seg++;
+      while (seg > 1 && at[seg - 1] > d) seg--;
+      const [x0, y0] = points[seg - 1], [x1, y1] = points[seg], l = at[seg] - at[seg - 1] || 1, u = (d - at[seg - 1]) / l;
+      const tx = (x1 - x0) / l, ty = (y1 - y0) / l, nx = -ty, ny = tx;
+      const ease = taper <= 0 ? 1 : tip + (1 - tip) * smoothstep(Math.min(1, Math.max(0, Math.min(d - a, b - d) / taper)));
+      const half = width * pressure(d) * ease / 2, off = drift(d);
+      const cx = x0 + (x1 - x0) * u + nx * off, cy = y0 + (y1 - y0) * u + ny * off;
+      left.push(`${(cx + nx * half).toFixed(2)} ${(cy + ny * half).toFixed(2)}`);
+      right.push(`${(cx - nx * half).toFixed(2)} ${(cy - ny * half).toFixed(2)}`);
+    }
+    out += `M${left.join("L")}L${right.reverse().join("L")}Z`;
+  }
+  return out;
+}

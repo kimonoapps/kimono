@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { cx } from "./cx";
-import { inkFilters, mixHex, washGradient } from "./ink";
+import { inkBrushD, inkFilters, inkRandom, mixHex, washGradient, type InkPoint } from "./ink";
 
 /*
  * How Kimono waits (docs/design-system.md, "Waiting"):
@@ -87,13 +87,19 @@ const RUNS: [number, number][] = [[0, 1000], [250, 1250], [650, 1500], [900, 175
 const ease = (x: number) => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 const along = (t: number, [a, b]: [number, number]) => ease(Math.min(1, Math.max(0, (t - a) / (b - a))));
 
-function waveD(from: number, to: number, mid: number, amp: number, length: number, phase: number) {
-  const y = (x: number) => (mid + amp * Math.sin((x + phase) / length * 2 * Math.PI)).toFixed(2);
-  let d = `M${from.toFixed(1)} ${y(from)}`;
-  for (let x = from; x < to;) { x = Math.min(to, x + 1.5); d += `L${x.toFixed(1)} ${y(x)}`; }
-  return d;
+/** The wave between two x's, as points, its crests moving with `phase`. */
+function wavePoints(from: number, to: number, mid: number, amp: number, length: number, phase: number) {
+  const y = (x: number) => mid + amp * Math.sin((x + phase) / length * 2 * Math.PI);
+  const points: InkPoint[] = [[from, y(from)]];
+  for (let x = from; x < to;) { x = Math.min(to, x + 1.5); points.push([x, y(x)]); }
+  return points;
 }
-const flatD = (from: number, to: number, mid: number) => to - from > 1 ? `M${from.toFixed(1)} ${mid}L${to.toFixed(1)} ${mid}` : "";
+
+/* The brush, as the phone lays it (InkProgress.kt): a pressed, easing wave with a faint bleed round it, and a flat, broken track. */
+const waveBrush = (points: InkPoint[], seed: number, weight: number) => inkBrushD(points, inkRandom(seed), weight, { lift: null, swell: .32, wander: .12, step: 1.5 });
+const bleedBrush = (points: InkPoint[], seed: number, weight: number) => inkBrushD(points, inkRandom(seed + 1), weight * 1.9, { lift: null, swell: .45, wander: .3, step: 1.5 });
+const trackBrush = (from: number, to: number, mid: number, weight: number) => to - from < weight ? ""
+  : inkBrushD([[from, mid], [to, mid]], inkRandom(7), weight * .8, { lift: [60, 140], gap: [4, 7], swell: .25, wander: .1, step: 1.5 });
 
 /** One frame of the bar in a w×h box: the waves, the track, the dot. */
 function frame(w: number, h: number, t: number, value: number | undefined) {
@@ -104,35 +110,36 @@ function frame(w: number, h: number, t: number, value: number | undefined) {
   const length = Math.min(value === undefined ? bar * 2.4 : bar * 4, Math.max(w / 2.5, bar * 1.6));
   const gap = weight * 1.3, start = pad, end = w - pad, span = end - start;
   const phase = -(t / 1000 * length) % length;
-  const waves: string[] = [], track: string[] = [];
+  let wave = "", bleed = "", track = "";
   let dot: number | null = null;
   if (value !== undefined) {
     const reach = start + span * value;
+    /* Flat where it starts and where it lands, wavy between. */
     const swing = amp * Math.min(1, value / .1) * Math.max(0, Math.min(1, (1 - value) / .05));
-    if (value > 0) waves.push(waveD(start, reach, mid, swing, length, phase));
-    track.push(flatD(value > 0 ? reach + gap : start, end - weight * 1.2, mid));
+    if (value > 0) { const points = wavePoints(start, reach, mid, swing, length, phase); bleed = bleedBrush(points, 11, weight); wave = waveBrush(points, 11, weight); }
+    track = trackBrush(value > 0 ? reach + gap : start, end - weight * 1.2, mid, weight);
     dot = end - weight * .3;
   } else {
     const c = t % CYCLE;
     let at = start;
-    for (const [tail, head] of [[along(c, RUNS[1]), along(c, RUNS[0])], [along(c, RUNS[3]), along(c, RUNS[2])]]) {
-      const a = start + span * tail, b = start + span * head;
-      if (b - a <= weight * .6) continue;
-      track.push(flatD(at, a - gap, mid));
-      waves.push(waveD(a, b, mid, amp, length, phase));
+    const lines = [[along(c, RUNS[1]), along(c, RUNS[0])], [along(c, RUNS[3]), along(c, RUNS[2])]]
+      .map(([tail, head]) => [start + span * tail, start + span * head]).filter(([a, b]) => b - a > weight * .6);
+    lines.forEach(([a, b], i) => {
+      track += trackBrush(at, a - gap, mid, weight);
+      const points = wavePoints(a, b, mid, amp, length, phase);
+      bleed += bleedBrush(points, 11 + i * 4, weight); wave += waveBrush(points, 11 + i * 4, weight);
       at = b + gap;
-    }
-    track.push(flatD(at, end, mid));
+    });
+    track += trackBrush(at, end, mid, weight);
   }
-  return { weight, mid, wave: waves.join(""), track: track.join(""), dot };
+  return { weight, mid, wave, bleed, track, dot };
 }
 
 /** The bar, drawn every frame into whatever box CSS gives it. */
 function Wave({ value, colour, label, className }: { value?: number; colour?: string; label: string; className: string }) {
-  const unique = useId().replaceAll(":", "");
   const box = useRef<HTMLSpanElement>(null);
   const [size, setSize] = useState<[number, number]>([0, 0]);
-  const [now, setNow] = useState(0);
+  const now = useClock();
   useLayoutEffect(() => {
     const el = box.current; if (!el) return;
     const measure = () => setSize([Math.round(el.clientWidth), Math.round(el.clientHeight)]);
@@ -140,8 +147,24 @@ function Wave({ value, colour, label, className }: { value?: number; colour?: st
     const observer = new ResizeObserver(measure); observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  const known = typeof value === "number" ? Math.min(1, Math.max(0, value)) : undefined;
+  const [w, h] = size;
+  const f = w && h ? frame(w, h, now, known) : null;
+  return <span ref={box} className={className} style={colour ? { color: colour } : undefined} role="progressbar" aria-label={label || undefined}
+    aria-valuemin={known !== undefined ? 0 : undefined} aria-valuemax={known !== undefined ? 100 : undefined} aria-valuenow={known !== undefined ? Math.round(known * 100) : undefined}>
+    {f ? <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden="true">
+      {f.track ? <path d={f.track} fill="currentColor" opacity=".24"/> : null}
+      {f.bleed ? <path d={f.bleed} fill="currentColor" opacity=".18"/> : null}
+      {f.wave ? <path d={f.wave} fill="currentColor" opacity=".9"/> : null}
+      {f.dot !== null ? <circle cx={f.dot.toFixed(1)} cy={f.mid} r={(f.weight * .45).toFixed(2)} fill="currentColor" opacity=".7"/> : null}
+    </svg> : null}
+  </span>;
+}
+
+/** Milliseconds since mount, every frame; held at 500 for reduced motion (a known bar still fills, an unknown one shows one wave). */
+function useClock() {
+  const [now, setNow] = useState(0);
   useEffect(() => {
-    /* Held still for reduced motion: a known bar still fills, an unknown one shows one wave. */
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setNow(500); return; }
     const begun = performance.now();
     let raf = 0;
@@ -149,23 +172,7 @@ function Wave({ value, colour, label, className }: { value?: number; colour?: st
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
-  const known = typeof value === "number" ? Math.min(1, Math.max(0, value)) : undefined;
-  const [w, h] = size;
-  const f = w && h ? frame(w, h, now, known) : null;
-  return <span ref={box} className={className} style={colour ? { color: colour } : undefined} role="progressbar" aria-label={label || undefined}
-    aria-valuemin={known !== undefined ? 0 : undefined} aria-valuemax={known !== undefined ? 100 : undefined} aria-valuenow={known !== undefined ? Math.round(known * 100) : undefined}>
-    {f ? <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} aria-hidden="true">
-      {/* Sized to the bar, not to each line: a flat line has no height to filter. */}
-      <defs dangerouslySetInnerHTML={{ __html: `<filter id="ink-fine-${unique}" filterUnits="userSpaceOnUse" x="-6" y="-6" width="${w + 12}" height="${h + 12}"><feTurbulence type="fractalNoise" baseFrequency=".08" numOctaves="2" seed="16" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"></feDisplacementMap></filter>`
-        + `<filter id="ink-wash-${unique}" filterUnits="userSpaceOnUse" x="-6" y="-6" width="${w + 12}" height="${h + 12}"><feTurbulence type="fractalNoise" baseFrequency=".02 .06" numOctaves="3" seed="14" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="5" result="d"></feDisplacementMap><feGaussianBlur in="d" stdDeviation=".6"></feGaussianBlur></filter>` }}/>
-      {f.track ? <path d={f.track} fill="none" stroke="currentColor" strokeWidth={(f.weight * .8).toFixed(2)} strokeLinecap="round" strokeDasharray="90 5" opacity=".24" filter={`url(#ink-fine-${unique})`}/> : null}
-      {f.wave ? <>
-        <path d={f.wave} fill="none" stroke="currentColor" strokeWidth={(f.weight * 1.9).toFixed(2)} strokeLinecap="round" strokeLinejoin="round" opacity=".18" filter={`url(#ink-wash-${unique})`}/>
-        <path d={f.wave} fill="none" stroke="currentColor" strokeWidth={f.weight.toFixed(2)} strokeLinecap="round" strokeLinejoin="round" opacity=".9" filter={`url(#ink-fine-${unique})`}/>
-      </> : null}
-      {f.dot !== null ? <circle cx={f.dot.toFixed(1)} cy={f.mid} r={(f.weight * .45).toFixed(2)} fill="currentColor" opacity=".7"/> : null}
-    </svg> : null}
-  </span>;
+  return now;
 }
 
 /** The loader, for a wait with no measure. `tone="wash"` is suō on paper (or `ink`, #rrggbb); `tone="plain"` takes the text colour. */
@@ -187,62 +194,47 @@ export function InkWave({ value, label = "Loading", className }: { value?: numbe
   return <Wave value={value} label={label} className={cx("k-wave", className)}/>;
 }
 
-/** One frame of the ring in a 100×100 box: the filled wave from the top, clockwise, then the track. */
+/** One frame of the ring in a 100×100 box: the filled wave from the top, clockwise, then the track, brushed as the bar is. */
 function ringFrame(t: number, value: number) {
   const centre = 50, radius = 38, weight = 7, amp = 2.6, waves = 12;
   const turn = Math.PI * 2, top = -Math.PI / 2;
   const phase = (t / 1000) * 1.6;
   /* Like the bar: flat at the very start and the very end, wavy between. */
   const swing = amp * Math.min(1, value / .1) * Math.max(0, Math.min(1, (1 - value) / .05));
-  const at = (a: number, r: number) => `${(centre + r * Math.cos(a)).toFixed(2)} ${(centre + r * Math.sin(a)).toFixed(2)}`;
+  const at = (a: number, r: number): InkPoint => [centre + r * Math.cos(a), centre + r * Math.sin(a)];
   const reach = top + turn * value;
-  let wave = "";
+  let wave = "", bleed = "", track = "";
   if (value > 0) {
-    const steps = Math.max(2, Math.ceil(240 * value));
-    for (let k = 0; k <= steps; k++) {
-      const a = top + (reach - top) * (k / steps);
-      wave += `${k ? "L" : "M"}${at(a, radius + swing * Math.sin((a - top) * waves - phase))}`;
-    }
+    const steps = Math.max(2, Math.ceil(240 * value)), points: InkPoint[] = [];
+    for (let k = 0; k <= steps; k++) { const a = top + (reach - top) * (k / steps); points.push(at(a, radius + swing * Math.sin((a - top) * waves - phase))); }
+    bleed = bleedBrush(points, 11, weight); wave = waveBrush(points, 11, weight);
   }
   /* The track: the rest of the circle, a gap either side of the wave. */
   const gap = value > 0 && value < 1 ? .2 : 0;
   const from = value > 0 ? reach + gap : top, to = top + turn - (value > 0 ? gap : 0);
-  let track = "";
   if (to - from > .05) {
-    const steps = Math.ceil(120 * (to - from) / turn) + 1;
-    for (let k = 0; k <= steps; k++) track += `${k ? "L" : "M"}${at(from + (to - from) * (k / steps), radius)}`;
+    const steps = Math.ceil(120 * (to - from) / turn) + 1, points: InkPoint[] = [];
+    for (let k = 0; k <= steps; k++) points.push(at(from + (to - from) * (k / steps), radius));
+    track = inkBrushD(points, inkRandom(7), weight * .8, { lift: [60, 140], gap: [4, 7], swell: .25, wander: .1, step: 1.5 });
   }
-  return { wave, track, weight };
+  return { wave, bleed, track };
 }
 
 /**
- * The wavy ring for a real progress: the bar's brushed wave and wash drawn
- * round a circle, filling clockwise from the top as `value` (0–1) grows.
- * `percent` writes the value in its middle. Never for a wait with no measure:
- * that is InkLoader.
+ * The wavy ring for a real progress: the bar's brushed wave drawn round a
+ * circle, filling clockwise from the top as `value` (0–1) grows. `percent`
+ * writes the value in its middle. Never for a wait with no measure: that is
+ * InkLoader.
  */
 export function InkRing({ value, label = "Loading", percent = false, className }: { value: number; label?: string; percent?: boolean; className?: string }) {
-  const unique = useId().replaceAll(":", "");
-  const [now, setNow] = useState(0);
-  useEffect(() => {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setNow(500); return; }
-    const begun = performance.now();
-    let raf = 0;
-    const tick = (at: number) => { setNow(Math.max(0, at - begun)); raf = requestAnimationFrame(tick); };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  const now = useClock();
   const known = Math.min(1, Math.max(0, value || 0));
   const f = ringFrame(now, known);
   return <span className={cx("k-ring", className)} role="progressbar" aria-label={label || undefined} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(known * 100)}>
     <svg viewBox="0 0 100 100" aria-hidden="true">
-      <defs dangerouslySetInnerHTML={{ __html: `<filter id="ink-fine-${unique}" filterUnits="userSpaceOnUse" x="-6" y="-6" width="112" height="112"><feTurbulence type="fractalNoise" baseFrequency=".08" numOctaves="2" seed="16" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4"></feDisplacementMap></filter>`
-        + `<filter id="ink-wash-${unique}" filterUnits="userSpaceOnUse" x="-6" y="-6" width="112" height="112"><feTurbulence type="fractalNoise" baseFrequency=".02 .06" numOctaves="3" seed="14" result="n"></feTurbulence><feDisplacementMap in="SourceGraphic" in2="n" scale="5" result="d"></feDisplacementMap><feGaussianBlur in="d" stdDeviation=".6"></feGaussianBlur></filter>` }}/>
-      {f.track ? <path d={f.track} fill="none" stroke="currentColor" strokeWidth={(f.weight * .8).toFixed(2)} strokeLinecap="round" strokeDasharray="90 5" opacity=".24" filter={`url(#ink-fine-${unique})`}/> : null}
-      {f.wave ? <>
-        <path d={f.wave} fill="none" stroke="currentColor" strokeWidth={(f.weight * 1.9).toFixed(2)} strokeLinecap="round" strokeLinejoin="round" opacity=".18" filter={`url(#ink-wash-${unique})`}/>
-        <path d={f.wave} fill="none" stroke="currentColor" strokeWidth={f.weight.toFixed(2)} strokeLinecap="round" strokeLinejoin="round" opacity=".9" filter={`url(#ink-fine-${unique})`}/>
-      </> : null}
+      {f.track ? <path d={f.track} fill="currentColor" opacity=".24"/> : null}
+      {f.bleed ? <path d={f.bleed} fill="currentColor" opacity=".18"/> : null}
+      {f.wave ? <path d={f.wave} fill="currentColor" opacity=".9"/> : null}
     </svg>
     {percent ? <span className="k-ring-percent" aria-hidden="true">{Math.floor(known * 100)}%</span> : null}
   </span>;
