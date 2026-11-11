@@ -436,8 +436,10 @@ fun PlayerScreen(
             val x by animateDpAsState(if (small) 24.dp else 0.dp, tween(700), label = "x")
             val y by animateDpAsState(if (small) (if (maxWidth < maxHeight) 70.dp else 24.dp) else 0.dp, tween(700), label = "y")
             Box(Modifier.offset(x, y).size(w, h).clip(RoundedCornerShape(if (small) 10.dp else 0.dp)).then(if (small) Modifier.border(2.dp, Color(0x4DFFFFFF), RoundedCornerShape(10.dp)) else Modifier), contentAlignment = Alignment.Center) {
+                /* mpv letterboxes and centres the picture itself; resizing its view when the shape arrives left a stale picture off to one side. */
+                if (engine.fitsItself) engine.Picture(Modifier.fillMaxSize())
                 Box(Modifier.aspectRatio(aspect, matchHeightConstraintsFirst = w / h > aspect).fillMaxSize()) {
-                    engine.Picture(Modifier.fillMaxSize())
+                    if (!engine.fitsItself) engine.Picture(Modifier.fillMaxSize())
                     if (!small) {
                         val lift by animateDpAsState(if (ctl && !pip) 70.dp else 0.dp, tween(300), label = "lift")
                         engine.Captions(Modifier.fillMaxSize().padding(bottom = lift).alpha(if (post is Post.Next || post is Post.Ask) 0f else 1f))

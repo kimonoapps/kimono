@@ -132,6 +132,8 @@ interface PlaybackEngine {
     fun thumbnails(url: String): Thumbnails
     /** The picture itself, fitted by the screen around it. */
     @Composable fun Picture(modifier: Modifier)
+    /** The picture keeps its own shape inside whatever it's given (mpv): it gets the whole area, so it isn't resized once it's started. */
+    val fitsItself: Boolean get() = false
     /** Subtitles, drawn over the picture (libass for styled ones). */
     @Composable fun Captions(modifier: Modifier)
 }

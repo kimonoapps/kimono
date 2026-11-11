@@ -39,6 +39,9 @@ final class MPVView: UIView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         metal.frame = bounds
+        /* MoltenVK set the drawable's size when the swapchain was made; it doesn't follow the bounds by itself. */
+        let size = CGSize(width: bounds.width * metal.contentsScale, height: bounds.height * metal.contentsScale)
+        if size.width > 1, size.height > 1, metal.drawableSize != size { metal.drawableSize = size }
         CATransaction.commit()
     }
 }

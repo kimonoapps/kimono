@@ -139,6 +139,8 @@ class IosEngine(val player: IosPlayer) : PlaybackEngine {
         override fun close() {}
     }
 
+    override val fitsItself get() = true
+
     @Composable
     override fun Picture(modifier: Modifier) {
         UIKitView(factory = { player.view() }, modifier = modifier, properties = UIKitInteropProperties(isInteractive = false, isNativeAccessibilityEnabled = false))
