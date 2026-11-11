@@ -24,7 +24,9 @@ export type PlayerHandle = {
 };
 type Post = "next" | "ask" | "end" | null;
 type Sheet = "cc" | "speed" | "eps" | "party" | "react" | null;
-type Skip = { label: string; to: number; left: number } | null;
+type Skip = { label: string; to: number; left: number; gone: boolean } | null;
+/** Seconds Skip intro / Skip recap stays up by itself; after that only with the controls. */
+const SKIP_SHOWN = 10;
 type LocalTrack = { key: string; label: string; language: string };
 
 const speeds = [0.5, 0.75, 1, 1.25, 1.5];
@@ -105,7 +107,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   const [choice, setChoice] = useState<{ audio: string; subtitles: string } | null>(null);
 
   /* What timers and listeners read: the latest, without waiting for a render. */
-  const live = useRef({ titleId: null as string | null, ep: null as Ref | null, play: null as Play | null, view: null as TitleView | null, post: null as Post, sheet: null as Sheet, drag: false, buffering: false, loading: false, creditsDone: false, prepared: false, autoSkipped: false, savedAt: 0, token: 0, tries: 0, avoid: [] as string[], changed: false, link: null as PartyLink | null, correcting: false, startTimer: undefined as ReturnType<typeof setTimeout> | undefined });
+  const live = useRef({ titleId: null as string | null, ep: null as Ref | null, play: null as Play | null, view: null as TitleView | null, post: null as Post, sheet: null as Sheet, drag: false, buffering: false, loading: false, creditsDone: false, prepared: false, autoSkipped: false, skipFrom: null as { s: number; at: number } | null, savedAt: 0, token: 0, tries: 0, avoid: [] as string[], changed: false, link: null as PartyLink | null, correcting: false, startTimer: undefined as ReturnType<typeof setTimeout> | undefined });
   useLayoutEffect(() => {
     Object.assign(live.current, { titleId, ep, play, view, post, sheet, drag: drag !== null, buffering, loading });
   });
@@ -460,7 +462,11 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       const mine = !l.link?.state || l.link.state.host === me.toLowerCase();
       if (intro && p.skipIntros && mine && !l.autoSkipped && t >= intro[0] && t < intro[1] - 1) { l.autoSkipped = true; seekTo(intro[1]); return; }
       const span = recap && t >= recap[0] && t < recap[1] ? { label: "Skip recap", s: recap } : intro && t >= intro[0] && t < intro[1] ? { label: "Skip intro", s: intro } : null;
-      setSkip(span && !l.post ? { label: span.label, to: span.s[1], left: (t - span.s[0]) / (span.s[1] - span.s[0]) } : null);
+      /* Up for SKIP_SHOWN seconds from where it first showed (a seek into the middle counts from there), filling as it runs out. */
+      if (!span) l.skipFrom = null;
+      else if (l.skipFrom?.s !== span.s[0] || t < l.skipFrom.at) l.skipFrom = { s: span.s[0], at: t };
+      const shownFor = l.skipFrom ? t - l.skipFrom.at : 0;
+      setSkip(span && !l.post ? { label: span.label, to: span.s[1], left: Math.min(1, shownFor / SKIP_SHOWN), gone: shownFor >= SKIP_SHOWN } : null);
       /* Credits: the corner vignette for what's next, or the end card. */
       const series = Boolean(l.view?.seasons);
       const creditsAt = credits ?? (series ? d - 20 : Infinity);
@@ -880,7 +886,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     <div className="kw-floats" aria-hidden="true">{floats.map((f) => <span key={f.id} style={{ "--x": `${(f.id * 37) % 60}px` } as React.CSSProperties}>{f.emoji}<small>{firstOf(f.username)}</small></span>)}</div>
     {party ? <Chat open={chatOpen} lines={chat} me={me} personOf={personOf} onClose={() => { setChatOpen(false); showCtl(); }} onSend={(text) => void live.current.link?.chat(text)} /> : null}
     <div className={cx("kw-pnote", note && noteGone !== note.at && "kw-on")} role="status" aria-live="polite">{note?.text}</div>
-    <button className={cx("kw-skip", skip && "kw-on")} style={{ "--left": `${(skip?.left ?? 0) * 100}%` } as React.CSSProperties} onClick={doSkip}><span>{skip?.label ?? "Skip intro"}</span><Icon name="next" /></button>
+    <button className={cx("kw-skip", skip && (!skip.gone || ctl) && "kw-on")} style={{ "--left": `${skip?.gone ? 0 : (skip?.left ?? 0) * 100}%` } as React.CSSProperties} onClick={doSkip}><span>{skip?.label ?? "Skip intro"}</span><Icon name="next" /></button>
 
     <div className={cx("kw-psheet", sheet && "kw-on")} role="dialog">
       {sheet === "cc" && play ? <div className="kw-cols">

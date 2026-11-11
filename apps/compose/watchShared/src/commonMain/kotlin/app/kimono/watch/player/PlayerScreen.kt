@@ -372,7 +372,7 @@ fun PlayerScreen(
                 Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
                     if (!tv || ctl || post != Post.None) { if (down) show(); return@onPreviewKeyEvent false }
                     val offer = state.skip
-                    if (offer != null) { if (down) seekTo(offer.to); return@onPreviewKeyEvent true }
+                    if (offer != null && !offer.gone) { if (down) seekTo(offer.to); return@onPreviewKeyEvent true }
                     if (down) { toggle(); show(); scope.launch { delay(50); runCatching { playFocus.requestFocus() } } }
                     true
                 }
@@ -524,11 +524,11 @@ fun PlayerScreen(
 
         /* Skip intro / Skip recap, filling as the part runs. */
         val skip = state.skip
-        AnimatedVisibility(skip != null && !state.loading && post == Post.None, Modifier.align(Alignment.BottomEnd).padding(end = 28.dp, bottom = 120.dp),
+        AnimatedVisibility(skip != null && (!skip.gone || ctl) && !state.loading && post == Post.None, Modifier.align(Alignment.BottomEnd).padding(end = 28.dp, bottom = 120.dp),
             enter = fadeIn(tween(300)) + slideInVertically(spring(dampingRatio = 0.6f)) { it / 4 }, exit = fadeOut(tween(300))) {
             val s = skip ?: return@AnimatedVisibility
             val focus = remember { FocusRequester() }
-            PaperButton(s.label, Ic.next, { seekTo(s.to); show() }, Modifier.focusRequester(focus).widthIn(min = 150.dp), height = 48.dp, fill = s.progress)
+            PaperButton(s.label, Ic.next, { seekTo(s.to); show() }, Modifier.focusRequester(focus).widthIn(min = 150.dp), height = 48.dp, fill = if (s.gone) 0f else s.progress)
             LaunchedEffect(Unit) { if (tv && !ctl) runCatching { focus.requestFocus() } }
         }
 

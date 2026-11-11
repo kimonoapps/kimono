@@ -30,7 +30,11 @@ sealed interface Post {
     data object End : Post
 }
 
-data class SkipOffer(val label: String, val to: Double, val progress: Float)
+/** [progress] runs out over [SKIP_SHOWN] seconds; once [gone] it shows only with the controls. */
+data class SkipOffer(val label: String, val to: Double, val progress: Float, val gone: Boolean = false)
+
+/** Seconds Skip intro / Skip recap stays up by itself. */
+const val SKIP_SHOWN = 10.0
 
 data class PlayerState(
     val titleId: String,
@@ -79,6 +83,8 @@ class PlayerViewModel(
     private var lastSaved = -100.0
     private var prepared = false
     private var autoSkipped = false
+    /* The part's start and where its skip first showed (a seek into the middle counts from there). */
+    private var skipFrom: Pair<Double, Double>? = null
     private var creditsDone = false
     private var lastPos = 0.0
     private var lastDur = 0.0
@@ -121,7 +127,7 @@ class PlayerViewModel(
     private suspend fun load(season: Int, episode: Int, version: Int? = null, at: Double? = null, quality: String? = null, avoid: List<String> = emptyList()) {
         tried = avoid
         _state.value = _state.value.copy(season = season, episode = episode, loading = true, finding = true, problem = null, skip = null, post = Post.None)
-        prepared = false; autoSkipped = false; creditsDone = false; lastSaved = -100.0
+        prepared = false; autoSkipped = false; skipFrom = null; creditsDone = false; lastSaved = -100.0
         val page = _state.value.page
         if (page != null && !page.title.isFilm && page.bySeason && page.season != season) {
             runCatching { api.title(titleId, season) }.getOrNull()?.let { _state.value = _state.value.copy(page = it) }
@@ -154,6 +160,12 @@ class PlayerViewModel(
         }
     }
 
+    private fun offer(label: String, span: List<Double>, position: Double): SkipOffer {
+        val from = skipFrom?.takeIf { it.first == span[0] && position >= it.second } ?: (span[0] to position).also { skipFrom = it }
+        val shownFor = position - from.second
+        return SkipOffer(label, span[1], (shownFor / SKIP_SHOWN).coerceAtMost(1.0).toFloat(), shownFor >= SKIP_SHOWN)
+    }
+
     /**
      * Called a few times a second with where playback is. Returns a position to
      * seek to when an intro should be skipped by itself (the person's setting).
@@ -169,13 +181,14 @@ class PlayerViewModel(
         var autoSeek: Double? = null
         val skip = when {
             s.post !is Post.None -> null
-            recap != null && position >= recap[0] && position < recap[1] -> SkipOffer("Skip recap", recap[1], ((position - recap[0]) / (recap[1] - recap[0])).toFloat())
+            recap != null && position >= recap[0] && position < recap[1] -> offer("Skip recap", recap, position)
             intro != null && position >= intro[0] && position < intro[1] -> {
                 if (answer.skipIntros && !autoSkipped) { autoSkipped = true; autoSeek = intro[1]; null }
-                else SkipOffer("Skip intro", intro[1], ((position - intro[0]) / (intro[1] - intro[0])).toFloat())
+                else offer("Skip intro", intro, position)
             }
             else -> null
         }
+        if (skip == null) skipFrom = null
         val credits = s.creditsAt(duration)
         var post = s.post
         if (position < credits - 1) {
