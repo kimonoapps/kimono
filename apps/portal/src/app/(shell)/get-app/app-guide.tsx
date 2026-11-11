@@ -170,16 +170,16 @@ function IosSteps({ address, kimonoEmail }: { address: string | null; kimonoEmai
     </Step>
     <Step n={2} title="Get your invite" done={done[1]}>
       {now === 1 ? !standing ? <p>Checking…</p> : <>
-        {app?.status === "requested" ? <>
-          <p>Setting up your invite…</p>
+        <p>Use the email you sign in to the App Store with.</p>
+        {changing ? emailForm(app?.status === "requested" || app?.status === "waiting" || app?.status === "problem" ? "Use this email" : "Send my invite", true)
+        : app?.status === "requested" || app?.status === "waiting" ? <>
+          <p>{app.status === "waiting" ? <>Apple&apos;s invite is on its way to <b>{email}</b>.</> : <>Setting up your invite to <b>{email}</b>…</>}</p>
           <Seal tone="quiet" onClick={() => check()} busy={busy === "check"}>Check again</Seal>
-        </> : app?.status === "waiting" ? <>
-          <p>Apple&apos;s invite is on its way to <b>{email}</b>.</p>
-          <Seal tone="quiet" onClick={() => check()} busy={busy === "check"}>Check again</Seal>
+          {otherEmail("Use a different email")}
         </> : app?.status === "problem" ? <>
           <p>Apple didn&apos;t take <b>{email}</b>.</p>
-          {changing ? emailForm("Use this email", true) : otherEmail("Use a different email")}
-        </> : changing || !email ? emailForm("Send my invite", Boolean(email)) : <>
+          {otherEmail("Use a different email")}
+        </> : !email ? emailForm("Send my invite", false) : <>
           <p>Is <b>{email}</b> your Apple Account email?</p>
           <div className="get-app-actions">
             <Seal onClick={() => check()} busy={busy === "check"}>Yes, send my invite</Seal>
