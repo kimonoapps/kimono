@@ -313,9 +313,15 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
             }
         }
         if (page.hasFillers) SwitchAct("Skip fillers", page.fillers == "skip") { vm.skipFillers(it) }
-        if (page.playable) Act(Ic.people, "Watch together", false) {
-            val r = page.resume
-            go.together(t.id, r?.season?.takeIf { it > 0 }, r?.episode?.takeIf { it > 0 }, r?.position ?: 0.0)
+        if (page.playable) {
+            /* Who to ask first, then the player opens in the party. */
+            var together by remember { mutableStateOf(false) }
+            Act(Ic.people, "Watch together", together) { together = true }
+            if (together) {
+                val r = page.resume
+                TogetherStart(t.name, r?.label?.takeIf { r.season > 0 || r.episode > 0 }, t.id, r?.season?.takeIf { it > 0 }, r?.episode?.takeIf { it > 0 }, r?.position ?: 0.0,
+                    onDismiss = { together = false }, onStarted = { id -> together = false; go.join(id) })
+            }
         }
     }
     androidx.compose.animation.AnimatedVisibility(language && page.language != null,
