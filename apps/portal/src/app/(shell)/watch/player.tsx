@@ -770,8 +770,9 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     if (!id || !v) return;
     setChoice({ audio, subtitles });
     const a = two(audio) ?? two(play?.tracks.audio.language ?? "") ?? "en";
-    void watchApi.mark(id, { tracks: { audio: a, subtitles } }).catch(() => {});
-    if (reload) { setSheet(null); void loadEpisode(id, live.current.ep, { startAt: v.currentTime }); }
+    const saved = watchApi.mark(id, { tracks: { audio: a, subtitles } }).catch(() => {});
+    /* The play asked for after the save lands, or the server still has the old choice and plays that. */
+    if (reload) { setSheet(null); const at = v.currentTime; await saved; void loadEpisode(id, live.current.ep, { startAt: at }); }
   };
   const pickText = (key: string) => {
     const v = video.current, a = attached.current;

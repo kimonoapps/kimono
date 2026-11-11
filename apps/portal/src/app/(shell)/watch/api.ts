@@ -98,6 +98,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 const put = (body: unknown): RequestInit => ({ method: "PUT", body: JSON.stringify(body) });
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
+/* A language change still on its way, per title: a play waits for it, or it gets the old languages. */
+const savingTracks = new Map<string, Promise<unknown>>();
 
 export const watchApi = {
   home: (shelf?: Shelf | null, cursor?: string | null) => {
@@ -120,7 +122,15 @@ export const watchApi = {
   search: (q: string, signal?: AbortSignal) => call<{ results: Card[] }>(`search?q=${encodeURIComponent(q)}`, { signal }),
   title: (id: string, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`),
   /** The page comes back for `season` when given, so the episode list stays where it was. */
-  mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null; episodes?: "seasons" | "continuous" | null }, season?: number) => call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`, put(change)),
+  mark: (id: string, change: { inList?: boolean; rating?: Rating | null; reminding?: boolean; tracks?: { audio: string; subtitles: string } | null; episodes?: "seasons" | "continuous" | null }, season?: number) => {
+    const done = call<TitleView>(`titles/${encodeURIComponent(id)}${season ? `?season=${season}` : ""}`, put(change));
+    if (change.tracks !== undefined) {
+      const settled = done.catch(() => {});
+      savingTracks.set(id, settled);
+      void settled.then(() => { if (savingTracks.get(id) === settled) savingTracks.delete(id); });
+    }
+    return done;
+  },
   prefs: () => call<Prefs>("prefs"),
   /** While a stream stalls: whether the server's side or this connection is holding it up. */
   health: (titleId: string, season: number, episode: number) => call<{ slow: "server" | "connection" | null }>(`health?titleId=${encodeURIComponent(titleId)}&season=${season}&episode=${episode}`),
@@ -129,7 +139,10 @@ export const watchApi = {
   setPrefs: (change: Partial<Prefs>) => call<Prefs>("prefs", put(change)),
   /** This browser's own preferred quality. */
   setDeviceQuality: (quality: string) => call<Prefs>("prefs", put({ device: deviceId(), quality })),
-  play: (body: { titleId: string; season?: number; episode?: number; version?: number; avoid?: string[]; quality?: string; startAt?: number; device: Device }) => call<Play>("play", post({ ...body, deviceId: deviceId() })),
+  play: async (body: { titleId: string; season?: number; episode?: number; version?: number; avoid?: string[]; quality?: string; startAt?: number; device: Device }) => {
+    await savingTracks.get(body.titleId);
+    return call<Play>("play", post({ ...body, deviceId: deviceId() }));
+  },
   prepare: (body: { titleId: string; season: number; episode: number; device: Device }) => call<{ next: (Ref & { skipped: number; label?: string }) | null; ready: boolean }>("prepare", post({ ...body, deviceId: deviceId() })),
   /** Kept alive so it still lands when the page is closing. */
   /** Ends every stream this person has going, on every screen. */
