@@ -391,7 +391,7 @@ fun PlayerScreen(
         }
         .pointerInput(tv) {
             if (tv) return@pointerInput
-            /* The centre of the screen plays and pauses at once; above and below it a tap only shows or hides the controls; the sides wait a moment for a double tap (back or forward ten). */
+            /* The centre of the screen plays and pauses at once; above and below it a tap only shows or hides the controls; the sides answer a tap at once too, and a quick second tap there goes back or forward ten. */
             awaitEachGesture {
                 awaitFirstDown()
                 val up = waitForUpOrCancellation() ?: return@awaitEachGesture
@@ -406,9 +406,14 @@ fun PlayerScreen(
                     if (!centre || chatOpen || sheet != null) single() else { toggle(); show() }
                     return@awaitEachGesture
                 }
-                val again = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) { awaitFirstDown() }
-                if (again == null) { single(); return@awaitEachGesture }
+                /* A sheet or the chat open: the tap only closes it. */
+                if (chatOpen || sheet != null) { single(); return@awaitEachGesture }
+                /* The tap answers at once; if a second follows it was a double tap, so the controls go back as they were and it seeks. */
+                val before = ctl
+                single()
+                withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) { awaitFirstDown() } ?: return@awaitEachGesture
                 waitForUpOrCancellation()?.consume()
+                ctl = before
                 seekBy(if (right) 10.0 else -10.0); rip(right)
             }
         }) {
