@@ -24,6 +24,18 @@ final class Host: NSObject, IosHost, @unchecked Sendable {
         return q
     }
 
+    /// What Kimono Photos or Kimono Watch left in the shared group when it last opened: "version\nbuild".
+    func installedApp(bundleId: String) -> String? {
+        guard let group, !group.hasPrefix("$(") else { return nil }
+        let q: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "app.kimono.installed", kSecAttrAccount as String: bundleId,
+            kSecAttrAccessGroup as String: group, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var out: AnyObject?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
     func readKept(key: String) -> String? {
         for grouped in [true, false] {
             var q = query(key, grouped: grouped)

@@ -47,12 +47,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
-/// Leaves this build's version in the app group Kimono shares, so Kimono can tell when TestFlight has a newer one.
+/// Leaves this build's version in the keychain group Kimono shares, so Kimono can tell when TestFlight has a newer one.
 enum KimonoGroup {
     static func tellVersion() {
-        guard let shared = UserDefaults(suiteName: "group.app.kimono"), let id = Bundle.main.bundleIdentifier else { return }
+        guard let group = Bundle.main.object(forInfoDictionaryKey: "KimonoKeychainGroup") as? String, !group.hasPrefix("$("),
+              let id = Bundle.main.bundleIdentifier else { return }
         let info = Bundle.main.infoDictionary
-        shared.set(info?["CFBundleShortVersionString"] as? String, forKey: "\(id).version")
-        shared.set(info?["CFBundleVersion"] as? String, forKey: "\(id).build")
+        let value = Data("\(info?["CFBundleShortVersionString"] as? String ?? "")\n\(info?["CFBundleVersion"] as? String ?? "")".utf8)
+        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "app.kimono.installed", kSecAttrAccount as String: id, kSecAttrAccessGroup as String: group]
+        if SecItemUpdate(q as CFDictionary, [kSecValueData as String: value] as CFDictionary) == errSecItemNotFound {
+            var add = q
+            add[kSecValueData as String] = value
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            SecItemAdd(add as CFDictionary, nil)
+        }
     }
 }

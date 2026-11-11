@@ -36,6 +36,8 @@ import kotlin.coroutines.resume
 interface IosHost {
     /** A value kept in the Keychain, shared with the Files app extension. */
     fun readKept(key: String): String?
+    /** What Kimono Photos or Kimono Watch ([bundleId]) left in the shared keychain group: its version and build, a line each; null if it hasn't. */
+    fun installedApp(bundleId: String): String?
     fun keep(key: String, value: String?)
     fun randomBytes(count: Int): NSData
     fun sha256(data: NSData): NSData
@@ -119,9 +121,9 @@ private class IosPlatform(private val host: IosHost) : Platform {
     override val os = "ios"
     override fun openUrl(url: String) = host.openUrl(url)
     /* Only for the schemes listed under LSApplicationQueriesSchemes; any other answers false. */
-    /* Kimono Photos and Kimono Watch leave their version in the app group they share with Kimono, each time they open. */
-    override fun installedVersion(packageId: String): String? = platform.Foundation.NSUserDefaults(suiteName = APP_GROUP).stringForKey("$packageId.version")
-    override fun installedBuild(packageId: String): String? = platform.Foundation.NSUserDefaults(suiteName = APP_GROUP).stringForKey("$packageId.build")
+    /* Kimono Photos and Kimono Watch leave their version in the keychain group they share with Kimono, each time they open. */
+    override fun installedVersion(packageId: String): String? = host.installedApp(packageId)?.lines()?.getOrNull(0)?.takeIf { it.isNotBlank() }
+    override fun installedBuild(packageId: String): String? = host.installedApp(packageId)?.lines()?.getOrNull(1)?.takeIf { it.isNotBlank() }
     override fun canOpen(url: String): Boolean? = platform.Foundation.NSURL.URLWithString(url)?.let { platform.UIKit.UIApplication.sharedApplication.canOpenURL(it) }
     override fun cacheDir() = host.cacheDir()
     override fun openFile(path: String, mimeType: String?) = host.openFile(path)
@@ -171,6 +173,3 @@ fun MainViewController(host: IosHost): UIViewController {
     val session = Session(platform, HttpClient(Darwin) { followRedirects = true })
     return ComposeUIViewController { KimonoApp(session, platform, null) {} }
 }
-
-/** The app group Kimono shares with its other iPhone apps. */
-private const val APP_GROUP = "group.app.kimono"

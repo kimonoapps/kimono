@@ -33,7 +33,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.kimono.watch
-        # Shares group.app.kimono with Kimono, which reads this app's version from it.
+        # Shares the app.kimono.shared keychain group with Kimono, which reads this app's version from it.
         CODE_SIGN_ENTITLEMENTS: KimonoWatch/KimonoWatch.entitlements
         PRODUCT_NAME: KimonoWatch
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -63,6 +63,7 @@ targets:
           - CFBundleURLName: app.kimono.watch.connect
             CFBundleURLSchemes: [kimono-watch]
         NSLocalNetworkUsageDescription: Find AirPlay screens and your Kimono at home.
+        KimonoKeychainGroup: "$(AppIdentifierPrefix)app.kimono.shared"
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     preBuildScripts:
