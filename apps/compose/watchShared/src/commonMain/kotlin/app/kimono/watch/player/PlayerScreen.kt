@@ -181,6 +181,10 @@ fun PlayerScreen(
     val deviceVolume = remember(engine) { !tv && engine.deviceVolume() != null }
     var volume by remember(engine) { mutableFloatStateOf(if (deviceVolume) engine.deviceVolume() ?: 1f else 1f) }
     var volumeSetAt by remember { mutableLongStateOf(0L) }
+    /* The side buttons with the controls hidden: the volume bar alone comes up for a moment. */
+    var volumePeek by remember { mutableIntStateOf(0) }
+    var peeking by remember { mutableStateOf(false) }
+    LaunchedEffect(volumePeek) { if (volumePeek > 0) { delay(1500); peeking = false } }
     var ripple by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
     var pausedAt by remember { mutableLongStateOf(0L) }
     var pauseCard by remember { mutableStateOf(false) }
@@ -261,9 +265,9 @@ fun PlayerScreen(
             buffered = engine.buffered
             buffering = engine.buffering
             startFill = engine.startFill
-            /* The volume buttons moved it: the slider follows and the controls come up to show it. */
+            /* The volume buttons moved it: the slider follows, and shows by itself if the controls are hidden. */
             if (deviceVolume && nowMs() - volumeSetAt > 700) engine.deviceVolume()?.let { v ->
-                if (abs(v - volume) > 0.005f) { volume = v; show() }
+                if (abs(v - volume) > 0.005f) { volume = v; if (ctl) show() else { peeking = true; volumePeek++ } }
             }
             /* Skipping intros by themselves is the host's to do in a party. */
             vm.tick(position, duration, engine.playing)?.let { if (party == null || party.isHost) seekTo(it) }
@@ -504,11 +508,13 @@ fun PlayerScreen(
         }
 
         /* Left edge (phone): the volume, up and down. */
-        if (!tv && !state.loading && chrome > 0.01f && post == Post.None) VolumeSlider(volume, {
+        val peek by animateFloatAsState(if (peeking && !ctl) 1f else 0f, tween(if (peeking) 150 else 300), label = "peek")
+        val volumeAlpha = maxOf(chrome, peek)
+        if (!tv && !state.loading && volumeAlpha > 0.01f && post == Post.None) VolumeSlider(volume, {
             volume = it; volumeSetAt = nowMs()
             if (deviceVolume) engine.setDeviceVolume(it) else engine.setVolume(it)
-            show(hold = true)
-        }, onDone = { volumeSetAt = nowMs(); show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(chrome).padding(start = 20.dp))
+            if (peeking && !ctl) volumePeek++ else show(hold = true)
+        }, onDone = { volumeSetAt = nowMs(); if (peeking && !ctl) volumePeek++ else show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(volumeAlpha).padding(start = 20.dp))
 
         /* Skip intro / Skip recap, filling as the part runs. */
         val skip = state.skip
