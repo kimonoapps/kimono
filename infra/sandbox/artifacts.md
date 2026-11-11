@@ -228,6 +228,10 @@ Rules:
   (see Diagrams): no `axes()`, and never boxes built from `line()` or a row of
   blocks from `bars()`.
 - `height` is 200 to 520.
+- **A scene takes about a minute to make.** It plays for the person as you
+  write it, so don't check it yourself: no test pages, headless browser,
+  screenshots or numeric checks, even when they say to take your time.
+  Narrate with one `kimono-say` call.
 
 ### Time and values
 - `wait(s)`, `together(fn)`
@@ -308,6 +312,10 @@ animate(cap, 1, 1)
 caption("Press the orange tip into the thigh.")
 animate(push, 1, 1.2)
 ```
+
+- Many moving things (electrons in a wire, a crowd) are a drawing too: one
+  `<circle id="e0">…` per piece, placed in `move()` from `t`. Never reach for
+  three.js or a hand-made canvas to draw in 2D.
 
 ### 3D (x right, y across, z up)
 - `axes3d({ x: [..], y: [..], z: [..] })` frames the camera on this box
