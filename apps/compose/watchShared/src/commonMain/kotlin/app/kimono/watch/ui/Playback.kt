@@ -257,9 +257,10 @@ class PlayerViewModel(
         loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, index, at) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "That version didn't start.") } }
     }
 
-    /** Another quality from the player's menu, from the same moment; this play only (Settings keeps the device's). */
+    /** Another quality from the player's menu, from the same moment; it becomes this device's (or its mobile data's), never the show's. */
     fun quality(value: String, at: Double) {
         val s = _state.value
+        viewModelScope.launch { runCatching { api.deviceQuality(api.deviceId(), value) } }
         loadJob?.cancel()
         loadJob = viewModelScope.launch { runCatching { load(s.season, s.episode, at = at, quality = value) }.onFailure { e -> failed((e as? WatchProblem)?.message ?: "That quality didn't start.") } }
     }

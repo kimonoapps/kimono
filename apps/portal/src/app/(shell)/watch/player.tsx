@@ -166,7 +166,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   /* ───── Loading an episode or a film ───── */
   const pctTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const retry = useRef<((id: string, at: Ref | null, opts?: { version?: number; avoid?: string[]; startAt?: number }) => Promise<void>) | null>(null);
-  /* A quality picked in the player holds for the rest of this sitting, not beyond. */
+  /* A quality picked in the player becomes this browser's own (saved for next time too); this holds it until the save lands. */
   const oneOff = useRef<string | null>(null);
   const loadEpisode = useCallback(async (id: string, at: Ref | null, opts: { version?: number; avoid?: string[]; startAt?: number } = {}) => {
     const v = video.current;
@@ -913,6 +913,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       {sheet === "quality" && play?.quality ? <><div className="kw-quality"><h4>Quality</h4>{play.quality.options.map((q) => <button key={q.value} className={cx("kw-opt", play.quality!.current === q.value && "kw-sel")} onClick={() => {
           if (play.quality!.current === q.value || !titleId || !video.current) return;
           oneOff.current = q.value;
+          void watchApi.setDeviceQuality(q.value).catch(() => {});
           void loadEpisode(titleId, live.current.ep, { startAt: video.current.currentTime });
         }}><Icon name="check" />{q.label}</button>)}</div>
         <button className="kw-opt kw-more" onClick={() => { exit(); watch.openSettings(); }}>Your defaults<Icon name="right" /></button>
