@@ -204,7 +204,22 @@ fun PartySheet(party: TogetherViewModel, tv: Boolean, first: FocusRequester, onL
         }
         if (others.isNotEmpty()) {
             Text("Invite", style = ui(18, FontWeight.Bold), modifier = Modifier.padding(start = 6.dp, top = 14.dp, bottom = 6.dp))
-            others.forEach { p ->
+            /* On a phone: the three most recent, and a search for anyone else. A TV lists everyone. */
+            var query by remember { mutableStateOf("") }
+            val recent by party.recent.collectAsState()
+            val shown = if (tv) others else if (query.isNotBlank()) others.filter { it.shown.contains(query.trim(), true) || it.username.contains(query.trim(), true) }
+                else others.sortedBy { recent.indexOf(it.username.lowercase()).let { i -> if (i < 0) Int.MAX_VALUE else i } }.take(3)
+            if (!tv && others.size > 3) Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp).fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).background(Night.surface2)
+                .border(1.dp, Night.line, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                I(Ic.search, 18.dp, Night.fg3)
+                Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) Text("Search people", style = ui(15, color = Night.fg3))
+                    BasicTextField(query, { query = it.take(60) }, Modifier.fillMaxWidth(), singleLine = true, textStyle = ui(15), cursorBrush = SolidColor(Night.suo),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search))
+                }
+            }
+            if (shown.isEmpty()) Text("No one by that name", style = ui(14, color = Night.fg3), modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 4.dp))
+            shown.forEach { p ->
                 val asked = p.username.lowercase() in invited
                 PartyRow(firstOnce(), onClick = if (asked) null else ({ party.invite(listOf(p.username)) })) {
                     PersonFace(p, p.username, 30.dp)

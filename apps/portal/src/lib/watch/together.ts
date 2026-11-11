@@ -441,6 +441,19 @@ export function partiesFor(db: DatabaseSync, username: string, now: number): Par
   return rows.map((r) => JSON.parse(r.body) as Party).filter((p) => p.host === u || p.invited.includes(u) || p.members.some((m) => m.username === u));
 }
 
+/** Who someone has watched with or asked lately (parties are kept a week after they end), most recent first. */
+export function recentWith(db: DatabaseSync, username: string): string[] {
+  const u = username.toLowerCase();
+  const rows = db.prepare("SELECT body FROM parties ORDER BY updated_at DESC LIMIT 200").all() as { body: string }[];
+  const out: string[] = [];
+  for (const r of rows) {
+    const p = JSON.parse(r.body) as Party;
+    if (p.host !== u && !p.invited.includes(u) && !p.members.some((m) => m.username === u)) continue;
+    for (const x of [p.host, ...(p.host === u ? p.invited : []), ...p.members.map((m) => m.username)]) if (x !== u && !out.includes(x)) out.push(x);
+  }
+  return out;
+}
+
 /** Parties nobody has touched in half a day are over, whatever they say. */
 export function endForgotten(db: DatabaseSync, now: number) {
   db.prepare("UPDATE parties SET ended = 1 WHERE ended = 0 AND updated_at < ?").run(now - 12 * 60 * 60 * 1000);

@@ -91,6 +91,9 @@ class TogetherViewModel(private val api: WatchApi, val client: String, val party
     val chat: StateFlow<List<ChatLine>> = _chat
     private val _people = MutableStateFlow<List<Person>>(emptyList())
     val people: StateFlow<List<Person>> = _people
+    private val _recent = MutableStateFlow<List<String>>(emptyList())
+    /** Usernames watched with or asked lately, most recent first. */
+    val recent: StateFlow<List<String>> = _recent
     private val _floating = MutableSharedFlow<Floating>(extraBufferCapacity = 16)
     val floating: SharedFlow<Floating> = _floating
     private val _ended = MutableStateFlow(false)
@@ -112,7 +115,7 @@ class TogetherViewModel(private val api: WatchApi, val client: String, val party
 
     init {
         viewModelScope.launch { runCatching { api.party(partyId) }.onSuccess { take(it.state, force = true); _chat.value = it.chat } }
-        viewModelScope.launch { runCatching { api.parties() }.onSuccess { _people.value = it.people } }
+        viewModelScope.launch { runCatching { api.parties() }.onSuccess { _people.value = it.people; _recent.value = it.recent } }
         /* The clock: six pings to start, then one every 20 s, the last 15 kept. */
         viewModelScope.launch {
             repeat(6) { ping(); delay(150) }

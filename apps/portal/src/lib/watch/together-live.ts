@@ -7,7 +7,7 @@ import { picturePaths } from "../pictures";
 import type { WatchConfig } from "./config";
 import { cardOf, ensureTitle, getTitle, namer, nextUp, prefsOf, watchDb, WatchProblem } from "./index";
 import {
-  addChat, cleanClient, command, decline, endForgotten, invite, labelView, leave, loadParty, newParty, parseCommand, partiesFor, reactions, report, saveParty, seen, tick, viewOf,
+  addChat, cleanClient, command, decline, endForgotten, invite, labelView, leave, loadParty, newParty, parseCommand, partiesFor, reactions, recentWith, report, saveParty, seen, tick, viewOf,
   type ChatLine, type MemberState, type Party, type PartyView,
 } from "./together";
 
@@ -168,7 +168,8 @@ export async function partiesOf(username: string, origin: string) {
       seq: p.seq,
     };
   }).filter((p) => p.watching.length > 0 || p.host === u);
-  return { parties, people: everyone };
+  /* recent: who they've watched with or asked lately, most recent first, for the invite list. */
+  return { parties, people: everyone, recent: recentWith(db, u) };
 }
 
 /** The party now, and its chat: what a screen starts from. */

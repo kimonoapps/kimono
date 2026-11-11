@@ -73,7 +73,8 @@ data class PartySummary(
 )
 
 @Serializable
-data class Parties(val parties: List<PartySummary> = emptyList(), val people: List<Person> = emptyList())
+/** recent: usernames watched with or asked lately, most recent first. */
+data class Parties(val parties: List<PartySummary> = emptyList(), val people: List<Person> = emptyList(), val recent: List<String> = emptyList())
 
 @Serializable
 data class PartyAnswer(val ok: Boolean = true, val state: PartyView? = null, val reason: String? = null)
