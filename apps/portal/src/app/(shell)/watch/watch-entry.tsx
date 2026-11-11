@@ -1,9 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { InkLoader } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
-import { WatchBloom } from "./bits";
+import { Spinner, WatchBloom } from "./bits";
 import { WatchApp, type Person } from "./watch-app";
 
 /*
@@ -13,7 +12,7 @@ import { WatchApp, type Person } from "./watch-app";
 const never = () => () => {};
 export function WatchEntry(props: { me: Person; household: Person[]; accent: string; signOut: () => Promise<void> }) {
   const here = useSyncExternalStore(never, () => true, () => false);
-  if (!here) return <div className="kw kw-waiting"><InkLoader ink={props.accent} label="Opening" className="kw-wait" /></div>;
+  if (!here) return <div className="kw kw-waiting"><Spinner color={props.accent} label="Opening" className="kw-wait" /></div>;
   return <WatchApp {...props} />;
 }
 

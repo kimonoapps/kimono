@@ -5,9 +5,8 @@ import { watchApi, type Card, type Home, type Prefs, type Rating, type Shelf, ty
 import { AppLockup, KimonoBranch } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
 import { circleSettled, placeReady } from "@/components/immersive";
-import { cx, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
+import { cx, Spinner, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
 import { HomePage } from "./home";
-import { InkLoader } from "@kimono/ui";
 import { Icon } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
 import { Player, type PlayerHandle } from "./player";
@@ -271,7 +270,7 @@ export function WatchApp({ me, household, accent, signOut }: { me: Person; house
           <div className={cx("kw-who", picking && "kw-busy")}>
             {household.map((p) => <button key={p.username} className={cx(picking === p.username && "kw-loading", p.username !== me.username && "kw-other")} onClick={() => pick(p)}>
               <span className="kw-face" style={{ background: faceOf(p.username) }}>
-                {picking === p.username ? <InkLoader tone="plain" label="Opening" className="kw-face-wait" />
+                {picking === p.username ? <Spinner color="currentColor" label="Opening" className="kw-face-wait" />
                   : p.picture
                     // eslint-disable-next-line @next/next/no-img-element -- the Portal's own portrait
                     ? <img src={p.picture} alt="" /> : initial(p)}

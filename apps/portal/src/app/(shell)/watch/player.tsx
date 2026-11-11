@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
 import { airText, clock, deviceOf, labelOf, languageName, longLabel, shownNumber, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
-import { alike, cx, Img, TitleMark, useTabTitle, useWatch } from "./bits";
+import { alike, cx, Img, Spinner, TitleMark, useTabTitle, useWatch } from "./bits";
 import { subtitleClass } from "./settings";
-import { InkLoader, InkRing } from "@kimono/ui";
+import { InkRing } from "@kimono/ui";
 import { Icon, SeekIcon } from "./icons";
 import { attach, attachThumb, type Attached } from "./source";
 import { correction, PartyLink, positionAt, reactionSet, screenId, together, type ChatLine, type PartyView, type Person, type Reaction } from "./party";
@@ -802,7 +802,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     {(["l", "r"] as const).map((side) => <div key={`${side}${rip[side]}`} className={cx("kw-ripple", `kw-${side}`, rip[side] > 0 && "kw-go")}>
       <div><Icon name={side === "l" ? "rw" : "ff"} />10 seconds</div>
     </div>)}
-    <div className={cx("kw-spin", sk && "kw-on")}>{sk ? <InkLoader ink={watch.accent} label="Buffering" /> : null}</div>
+    <div className={cx("kw-spin", sk && "kw-on")}>{sk ? <Spinner color={watch.accent} label="Buffering" /> : null}</div>
     <div className={cx("kw-slow", sk && slow && "kw-on")} role="status">{slow === "server" ? "The server is slow right now" : slow ? "Your connection is slow" : ""}</div>
     <div className={cx("kw-pload", (loading || problem) && "kw-on")}>
       {problem ? <div className="kw-oops"><p>{problem}</p><div className="kw-btns" style={{ justifyContent: "center" }}>

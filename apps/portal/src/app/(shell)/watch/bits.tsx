@@ -177,3 +177,11 @@ export function useTabTitle(name: string | null | undefined) {
     return () => { const at = titles.findIndex((t) => t.key === key); if (at >= 0) titles.splice(at, 1); showTitle(); };
   }, [name]);
 }
+
+/* ───── Waiting: Material's circular spinner, not the morphing shape ───── */
+
+export function Spinner({ color, label = "Loading", className }: { color?: string; label?: string; className?: string }) {
+  return <svg className={cx("kw-spinner", className)} viewBox="0 0 48 48" role="progressbar" aria-label={label} style={color ? { color } : undefined}>
+    <circle cx="24" cy="24" r="20" />
+  </svg>;
+}
