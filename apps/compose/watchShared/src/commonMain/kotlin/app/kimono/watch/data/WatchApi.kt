@@ -63,8 +63,8 @@ class WatchApi(
     suspend fun showEpisodes(id: String, value: String?): TitlePage =
         json.decodeFromString(send(HttpMethod.Put, "/titles/$id", buildJsonObject { put("episodes", value?.let { JsonPrimitive(it) } ?: JsonNull) }))
 
-    /** Starts a play; [quality] is a one-off choice from the player's Quality menu; [cast] ("airplay", "chromecast") asks for the HLS rendition too. */
-    suspend fun play(titleId: String, season: Int = 0, episode: Int = 0, version: Int? = null, quality: String? = null, cast: String? = null, avoid: List<String> = emptyList()): PlayAnswer =
+    /** Starts a play; [quality] is a one-off choice from the player's Quality menu; [cast] ("airplay", "chromecast") asks for the HLS rendition too, made from [startAt] when it's given. */
+    suspend fun play(titleId: String, season: Int = 0, episode: Int = 0, version: Int? = null, quality: String? = null, cast: String? = null, avoid: List<String> = emptyList(), startAt: Double? = null): PlayAnswer =
         json.decodeFromString(send(HttpMethod.Post, "/play", buildJsonObject {
             put("titleId", titleId)
             if (season > 0) { put("season", season); put("episode", episode) }
@@ -72,6 +72,7 @@ class WatchApi(
             if (avoid.isNotEmpty()) put("avoid", kotlinx.serialization.json.JsonArray(avoid.map { kotlinx.serialization.json.JsonPrimitive(it) }))
             quality?.let { put("quality", it) }
             cast?.let { put("cast", it) }
+            startAt?.takeIf { it > 0 }?.let { put("startAt", it) }
             put("deviceId", deviceId())
             put("device", json.encodeToJsonElement(device()))
         }))

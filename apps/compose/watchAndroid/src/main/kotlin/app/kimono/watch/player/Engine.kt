@@ -24,6 +24,21 @@ import app.kimono.watch.PlaybackEngine
 import app.kimono.watch.Thumbnails
 import app.kimono.watch.TrackOption
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.cast.RemoteCastPlayer
+import androidx.media3.cast.SessionAvailabilityListener
+import com.google.android.gms.cast.framework.CastContext
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -79,7 +94,64 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     private val onTv = tv
     private val captionFont = ResourcesCompat.getFont(context, R.font.zen_maru_medium)
 
+    /*
+     * Chromecast: while a TV is picked the TV plays the Portal's HLS rendition
+     * and the phone is its remote; the phone's own player stops (no stream
+     * held open) and picks up where the TV was when the cast ends.
+     * None on Android TV, or without Google Play services.
+     */
+    private val remote: RemoteCastPlayer? = if (tv) null else runCatching {
+        CastContext.getSharedInstance(context)
+        RemoteCastPlayer.Builder(context).setSeekBackIncrementMs(10_000).setSeekForwardIncrementMs(10_000).build()
+    }.getOrNull()
+    /** The TV's name while casting, else null. */
+    val castingTo = mutableStateOf<String?>(null)
+    val casting get() = onRemote
+    /** Whether this phone can cast at all. */
+    val canCast get() = remote != null
+    /** The episode as a cast item from this many seconds in: the HLS address, title and still. Set by the player. */
+    var castItem: (suspend (Double) -> MediaItem?)? = null
+    private var onRemote = false
+    private var local: Pair<String, String>? = null
+    private var remoteAt = 0.0
+    private var remoteStarted = false
+    private val scope = MainScope()
+    private var castJob: Job? = null
+    private val active: Player get() = if (onRemote) remote ?: player else player
+
+    private fun tvName() = runCatching { CastContext.getSharedInstance(context).sessionManager.currentCastSession?.castDevice?.friendlyName }.getOrNull() ?: "TV"
+
+    private fun toTv(at: Double, play: Boolean) {
+        val r = remote ?: return
+        onRemote = true
+        castingTo.value = tvName()
+        remoteAt = at
+        remoteStarted = false
+        player.stop()
+        castJob?.cancel()
+        castJob = scope.launch {
+            val item = castItem?.invoke(at)
+            if (item == null) { toPhone(); return@launch }
+            r.setMediaItem(item, (at * 1000).toLong())
+            r.prepare()
+            r.playWhenReady = play
+        }
+    }
+
+    private fun toPhone() {
+        if (!onRemote) return
+        castJob?.cancel()
+        onRemote = false
+        castingTo.value = null
+        val (url, key) = local ?: return
+        load(url, key, remoteAt, play = false)
+    }
+
     init {
+        remote?.setSessionAvailabilityListener(object : SessionAvailabilityListener {
+            override fun onCastSessionAvailable() { if (!onRemote && local != null) toTv(player.currentPosition / 1000.0, play = true) }
+            override fun onCastSessionUnavailable() = toPhone()
+        })
         subtitleLook("medium", "shadow")
         subtitles.setApplyEmbeddedStyles(true)
         /* Plain subtitles (SRT, WebVTT, PGS) reach the view only from here; libass draws ASS on its own overlay and sends no cues. */
@@ -105,6 +177,9 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     }
 
     override fun load(url: String, key: String, startAt: Double, play: Boolean) {
+        local = url to key
+        /* A TV already picked (before the player opened, or the next episode): it plays there. */
+        if (remote?.isCastSessionAvailable == true) return toTv(startAt, play)
         val item = MediaItem.Builder().setUri(url).setCustomCacheKey(key).build()
         player.setMediaItem(item, (startAt * 1000).toLong().coerceAtLeast(0))
         player.prepare()
@@ -113,6 +188,8 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
 
     /** Switches on the audio and subtitles the server asked for, by the tags containers use. */
     override fun applyHints(hints: TrackHints) {
+        /* The HLS rendition carries just the audio and subtitles asked for. */
+        if (onRemote) return
         val tracks = player.currentTracks
         val p = selector.buildUponParameters()
         hints.audio?.let { want ->
@@ -150,12 +227,13 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
         return tags.any { it.equals(l, true) || it.equals(base, true) || runCatching { Locale.forLanguageTag(it).isO3Language }.getOrNull().equals(base, true) }
     }
 
-    override fun audioOptions(): List<TrackOption> = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.mapIndexed { i, g ->
+    override fun audioOptions(): List<TrackOption> = if (onRemote) emptyList() else player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.mapIndexed { i, g ->
         val f = g.getTrackFormat(0)
         TrackOption(g, audioLabel(f, i), language2(f.language), false, g.isSelected)
     }
 
     override fun subtitleOptions(): List<TrackOption> {
+        if (onRemote) return emptyList()
         val groups = player.currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
         val off = TrackOption(null, "Off", null, false, groups.none { it.isSelected } || selector.parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))
         return listOf(off) + groups.map { g ->
@@ -171,6 +249,7 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
      * 10-bit H.264 (common in anime) and 10-bit HEVC, which some decoders accept and then garble.
      */
     override fun videoBeyondDecoders(): Boolean {
+        if (onRemote) return false
         val f = player.currentTracks.groups.firstOrNull { it.type == C.TRACK_TYPE_VIDEO }?.getTrackFormat(0) ?: return false
         if (f.sampleMimeType == MimeTypes.VIDEO_AV1) {
             val hw = android.os.Build.VERSION.SDK_INT >= 29 && android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos.any { !it.isEncoder && it.isHardwareAccelerated && it.supportedTypes.any { t -> t.equals("video/av01", true) } }
@@ -198,25 +277,33 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     override fun selectAudio(option: TrackOption) = select(option, C.TRACK_TYPE_AUDIO)
     override fun selectSubtitles(option: TrackOption) = select(option, C.TRACK_TYPE_TEXT)
 
-    override val position get() = player.currentPosition / 1000.0
-    override val duration get() = player.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.div(1000.0) ?: 0.0
-    override val buffered get() = player.bufferedPosition / 1000.0
-    override val playing get() = player.isPlaying
-    override val playWhenReady get() = player.playWhenReady
-    override val buffering get() = player.playbackState == Player.STATE_BUFFERING
-    override val ended get() = player.playbackState == Player.STATE_ENDED
+    /* While the TV is still starting, it's where the phone was. */
+    override val position get() = if (onRemote) (if (remoteStarted) remote!!.currentPosition / 1000.0 else remoteAt).also { remoteAt = it } else player.currentPosition / 1000.0
+    override val duration get() = active.duration.takeIf { it != C.TIME_UNSET && it > 0 }?.div(1000.0) ?: 0.0
+    override val buffered get() = active.bufferedPosition / 1000.0
+    override val playing get() = active.isPlaying
+    override val playWhenReady get() = active.playWhenReady
+    override val buffering get() = if (onRemote) !remoteStarted || remote!!.playbackState == Player.STATE_BUFFERING else player.playbackState == Player.STATE_BUFFERING
+    override val ended get() = active.playbackState == Player.STATE_ENDED
     /* ExoPlayer starts once this much is buffered ahead (bufferForPlaybackMs below). */
-    override val startFill get() = if (player.playbackState == Player.STATE_IDLE) 0f else ((player.bufferedPosition - player.currentPosition) / START_MS.toFloat()).coerceIn(0f, 1f)
-    override fun play() = player.play()
-    override fun pause() = player.pause()
-    override fun seekTo(seconds: Double) = player.seekTo((seconds * 1000).toLong())
-    override fun setSpeed(speed: Float) = player.setPlaybackSpeed(speed)
+    override val startFill get() = if (onRemote) (if (remoteStarted) 1f else 0f)
+        else if (player.playbackState == Player.STATE_IDLE) 0f else ((player.bufferedPosition - player.currentPosition) / START_MS.toFloat()).coerceIn(0f, 1f)
+    override fun play() = active.play()
+    override fun pause() = active.pause()
+    override fun seekTo(seconds: Double) { if (onRemote && !remoteStarted) remoteAt = seconds; active.seekTo((seconds * 1000).toLong()) }
+    override fun setSpeed(speed: Float) = active.setPlaybackSpeed(speed)
     override fun setVolume(volume: Float) { player.volume = volume }
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
     private val musicMax get() = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-    override fun deviceVolume(): Float? =
-        if (onTv || audio.isVolumeFixed || musicMax <= 0) null
-        else audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / musicMax.toFloat()
+    /* Casting, the slider and the side buttons are the TV's volume. */
+    private val tvMax get() = remote?.deviceInfo?.maxVolume ?: 0
+    override fun deviceVolume(): Float? = when {
+        onRemote -> if (tvMax > 0) remote!!.deviceVolume / tvMax.toFloat() else null
+        onTv || audio.isVolumeFixed || musicMax <= 0 -> null
+        else -> audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) / musicMax.toFloat()
+    }
+    /** The phone's volume buttons while casting: a step on the TV. */
+    fun stepTvVolume(up: Boolean) { remote?.let { if (up) it.increaseDeviceVolume(0) else it.decreaseDeviceVolume(0) } }
     /* Brightness is the player window's own: it ends with the player, the phone's setting untouched. */
     private val window get() = (context as? android.app.Activity)?.window
     override fun brightness(): Float? {
@@ -236,35 +323,59 @@ class Engine(private val context: Context, tv: Boolean, val subtitles: SubtitleV
     }
     /* No flags: the slider on screen is the indicator, not the system's panel. */
     override fun setDeviceVolume(volume: Float) {
+        if (onRemote) { if (tvMax > 0) remote?.setDeviceVolume(kotlin.math.round(volume.coerceIn(0f, 1f) * tvMax).toInt(), 0); return }
         runCatching { audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, kotlin.math.round(volume.coerceIn(0f, 1f) * musicMax).toInt(), 0) }
     }
 
     override fun listen(listener: EngineListener): () -> Unit {
+        /* The phone's player is heard only while it's the one playing; the TV's while casting. */
         val l = object : Player.Listener {
-            override fun onRenderedFirstFrame() = listener.firstFrame()
-            override fun onPlayerError(error: PlaybackException) = listener.error(decoder = error.errorCode in 4000..4999, network = error.errorCode in 2000..2999)
-            override fun onTracksChanged(tracks: Tracks) { if (tracks.groups.isNotEmpty()) listener.tracks() }
+            override fun onRenderedFirstFrame() { if (!onRemote) listener.firstFrame() }
+            override fun onPlayerError(error: PlaybackException) { if (!onRemote) listener.error(decoder = error.errorCode in 4000..4999, network = error.errorCode in 2000..2999) }
+            override fun onTracksChanged(tracks: Tracks) { if (!onRemote && tracks.groups.isNotEmpty()) listener.tracks() }
             override fun onVideoSizeChanged(videoSize: VideoSize) { if (videoSize.width > 0 && videoSize.height > 0) listener.aspect(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height) }
-            override fun onIsPlayingChanged(isPlaying: Boolean) = listener.playing(isPlaying)
-            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) = listener.userPaused(!playWhenReady)
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (!onRemote) listener.playing(isPlaying) }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { if (!onRemote) listener.userPaused(!playWhenReady) }
+        }
+        val r = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (onRemote && state == Player.STATE_READY && !remoteStarted) { remoteStarted = true; listener.firstFrame() }
+            }
+            /* The receiver lost the stream: asked again like a dropped one. */
+            override fun onPlayerError(error: PlaybackException) { if (onRemote) listener.error(decoder = false, network = true) }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { if (onRemote) listener.playing(isPlaying) }
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) { if (onRemote && remoteStarted) listener.userPaused(!playWhenReady) }
         }
         player.addListener(l)
-        return { player.removeListener(l) }
+        remote?.addListener(r)
+        return { player.removeListener(l); remote?.removeListener(r) }
     }
 
     override fun thumbnails(url: String): Thumbnails = Thumbs(url)
 
     @Composable
     override fun Picture(modifier: Modifier) {
-        AndroidView({ SurfaceView(it).also { v -> player.setVideoSurfaceView(v) } }, modifier)
+        Box(modifier) {
+            AndroidView({ SurfaceView(it).also { v -> player.setVideoSurfaceView(v) } }, Modifier.fillMaxSize())
+            castingTo.value?.let { name ->
+                Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black), contentAlignment = Alignment.Center) {
+                    Text("Playing on $name", color = androidx.compose.ui.graphics.Color(0xFFF4E9E1), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
     }
 
     @Composable
     override fun Captions(modifier: Modifier) {
-        AndroidView({ subtitles }, modifier)
+        if (castingTo.value == null) AndroidView({ subtitles }, modifier)
     }
 
-    fun release() { player.release() }
+    /** Leaving the player stops the TV too: nothing would be left saying where it got to. */
+    fun release() {
+        scope.cancel()
+        remote?.let { if (onRemote) it.stop(); it.setSessionAvailabilityListener(null); it.release() }
+        player.release()
+    }
 
     companion object {
         fun language2(code: String?): String? = code?.takeIf { it.isNotBlank() && it != C.LANGUAGE_UNDETERMINED }?.let { Locale.forLanguageTag(it).language.takeIf { l -> l.length == 2 } ?: it.take(2) }

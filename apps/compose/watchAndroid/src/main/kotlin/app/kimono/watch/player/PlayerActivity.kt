@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import app.kimono.watch.watch
@@ -112,11 +113,28 @@ class PlayerActivity : ComponentActivity() {
         vm = provider[PlayerViewModel::class.java]
         together = partyId?.let { provider[TogetherViewModel::class.java] }
         if (fresh) vm.start(season, episode)
+        /* The TV is handed the Portal's HLS rendition of this same episode, with the title and its still. */
+        engine.castItem = { at ->
+            val s = vm.state.value
+            val server = app.accounts.active.value?.server.orEmpty()
+            runCatching { app.api.play(vm.titleId, s.season, s.episode, cast = "chromecast", startAt = at).hls }.getOrNull()?.let { hls ->
+                val page = s.page
+                val ep = s.current
+                val meta = androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle(page?.title?.name)
+                    .setSubtitle(if (page == null || page.title.isFilm || ep == null) page?.title?.year?.toString() else "${s.label} · ${ep.name}")
+                    .setArtworkUri((ep?.still ?: page?.title?.backdrop ?: page?.title?.poster)?.let { android.net.Uri.parse(if (it.startsWith("http")) it else server + it) })
+                    .build()
+                androidx.media3.common.MediaItem.Builder().setUri(if (hls.startsWith("http")) hls else server + hls)
+                    .setMimeType(androidx.media3.common.MimeTypes.APPLICATION_M3U8).setMediaMetadata(meta).build()
+            }
+        }
         val rec = { id: String -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("titleId", id)); finish() }
         setContent { WatchTheme { androidx.compose.runtime.CompositionLocalProvider(LocalWatch provides app.services) {
             val ended by (together?.ended ?: kotlinx.coroutines.flow.MutableStateFlow(false)).collectAsState()
             androidx.compose.runtime.LaunchedEffect(ended) { if (ended) { app.toasts.show("The party has ended."); finish() } }
             PlayerScreen(vm, engine, app.tv, pip.value, onExit = ::finish, onRec = rec, party = together, rotate = if (app.tv) null else ::rotate,
+                corner = if (engine.canCast) { { CastButton() } } else null,
                 onTogether = { s, e, at -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("titleId", titleId).putExtra("season", s ?: 0).putExtra("episode", e ?: 0).putExtra("together", true).putExtra("at", at)); finish() },
                 onJoinParty = { id -> startActivity(android.content.Intent(this, PlayerActivity::class.java).putExtra("party", id)); finish() })
         } } }
@@ -159,6 +177,10 @@ class PlayerActivity : ComponentActivity() {
             android.view.KeyEvent.KEYCODE_VOLUME_MUTE -> android.media.AudioManager.ADJUST_TOGGLE_MUTE
             else -> return super.dispatchKeyEvent(event)
         }
+        if (engine.casting) {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN && dir != android.media.AudioManager.ADJUST_TOGGLE_MUTE) engine.stepTvVolume(dir == android.media.AudioManager.ADJUST_RAISE)
+            return true
+        }
         val audio = getSystemService(android.media.AudioManager::class.java)
         if (watch.tv || pip.value || audio == null || audio.isVolumeFixed) return super.dispatchKeyEvent(event)
         if (event.action == android.view.KeyEvent.ACTION_DOWN) runCatching { audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, dir, 0) }
@@ -186,17 +208,26 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStop() {
         super.onStop()
-        val p = engine.player
-        if (::vm.isInitialized && p.duration > 0) vm.save(p.currentPosition / 1000.0, p.duration / 1000.0)
-        if (!pip.value) p.pause()
+        /* Casting, the TV carries on with the phone put away. */
+        if (::vm.isInitialized && engine.duration > 0) vm.save(engine.position, engine.duration)
+        if (!pip.value && !engine.casting) engine.player.pause()
     }
 
     override fun onDestroy() {
-        val p = engine.player
-        if (::vm.isInitialized && p.duration > 0) vm.leave(p.currentPosition / 1000.0, p.duration / 1000.0, closed = isFinishing)
+        if (::vm.isInitialized && engine.duration > 0) vm.leave(engine.position, engine.duration, closed = isFinishing)
         if (isFinishing) together?.leave()
         session?.release()
         engine.release()
         super.onDestroy()
+    }
+}
+
+/** The Cast button: Media3's own, in the player's white. */
+@androidx.compose.runtime.Composable
+private fun CastButton() {
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides androidx.compose.ui.graphics.Color.White) {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.size(48.dp), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            androidx.media3.cast.MediaRouteButton(androidx.compose.ui.Modifier.size(48.dp))
+        }
     }
 }

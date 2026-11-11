@@ -69,6 +69,9 @@ dependencies {
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
     implementation("androidx.media3:media3-ui:$media3")
     implementation("androidx.media3:media3-session:$media3")
+    /* Chromecast: the TV plays the Portal's HLS rendition with Google's built-in receiver, the phone is the remote. */
+    implementation("androidx.media3:media3-cast:$media3")
+    implementation("androidx.mediarouter:mediarouter:1.8.1")
     /* AC-3, E-AC-3, DTS and TrueHD decoded in software where the device can't. */
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
     /* libass: anime subtitles drawn with their styles, signs and karaoke. */
