@@ -591,7 +591,7 @@ private fun ItemSheet(node: DriveNode, thumbnail: suspend (Int) -> String?, choi
                         onClick = { onDismiss(); choice.onClick() },
                         shapes = ListItemDefaults.segmentedShapes(index, choices.size),
                         colors = ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
-                        leadingContent = { InkBlot("choice-${choice.label}", size = 36.dp, tint = if (choice.danger) MaterialTheme.colorScheme.error else LocalInkTint.current ?: app.kimono.theme.Kata.plum) { Icon(kimonoIcon(choice.icon), null, tint = tint, modifier = Modifier.size(18.dp)) } },
+                        leadingContent = { InkBlot("choice-${choice.label}", size = 36.dp, tint = if (choice.danger) MaterialTheme.colorScheme.error else LocalInkTint.current ?: app.kimono.theme.Kata.plum) { Icon(kimonoIcon(choice.icon), null, tint = if (choice.danger) androidx.compose.ui.graphics.Color(0xFF93000A) else app.kimono.theme.Kata.plum, modifier = Modifier.size(18.dp)) } },
                     ) { Text(choice.label, style = MaterialTheme.typography.bodyLarge, color = tint) }
                 }
             }
