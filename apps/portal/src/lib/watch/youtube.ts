@@ -52,7 +52,9 @@ export function showsFrom(query: string, playlists: Playlist[]): Show[] {
   const groups = new Map<string, { show: Show; count: number; first: number }>();
   playlists.forEach((p, index) => {
     const name = baseName(p.title) || p.title;
-    if (!plain(name).includes(q) && !q.includes(plain(name))) return;
+    /* "rachid show 2m" finds "Rachid Show", but "dar lghezlane" doesn't find someone's "Dar". */
+    const n = plain(name);
+    if (!n.includes(q) && !(q.includes(n) && n.length >= q.length * 0.6)) return;
     if (!p.channelId) return;
     const id = youtubeTitleId(p.channelId, name);
     const known = groups.get(id);

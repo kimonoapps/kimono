@@ -184,14 +184,15 @@ async function youtubeReleases(title: Title, season: number, episode: number): P
 }
 
 /** Shows on YouTube for a search TMDB has nothing close for; a day's answer kept, since each look runs yt-dlp. */
+const lookingUp = ((globalThis as unknown as { kimonoWatchYoutubeLooks?: Map<string, Promise<Show[]>> }).kimonoWatchYoutubeLooks ??= new Map());
 async function youtubeSearch(q: string): Promise<Title[]> {
   const db = watchDb();
   const key = `yt:search:${q.toLowerCase()}`;
-  let shows = cached<Show[]>(db, key);
-  if (!shows) {
-    shows = showsFrom(q, await searchPlaylists(q));
-    keep(db, key, shows, hours(24));
-  }
+  const shows = cached<Show[]>(db, key) ?? await shared(lookingUp, key, async () => {
+    const found = showsFrom(q, await searchPlaylists(q));
+    keep(db, key, found, hours(24));
+    return found;
+  });
   for (const show of shows) keep(db, `yt:show:${show.id}`, show, longKept);
   return shows.map((show) => seed(stubOf(show))).filter((t): t is Title => Boolean(t));
 }
@@ -481,6 +482,8 @@ export async function search(cfg: WatchConfig, origin: string, query: string) {
   const q = query.trim().slice(0, 100);
   if (!q) return { results: (await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6))).slice(0, 12).map((t) => cardOf(t, origin)) };
   const params = { query: q, include_adult: "false" };
+  /* A broadcaster's own uploads (./youtube.ts): older shows TMDB lists often have no other copy. Looked up alongside TMDB. */
+  const fromYoutube = q.length >= 3 ? youtubeSearch(q).catch(() => [] as Title[]) : Promise.resolve([] as Title[]);
   /* Films and shows must answer; people only add to them. */
   const [movies, shows, people] = await Promise.all([
     tmdb(cfg.tmdbToken, "/search/movie", params),
@@ -488,8 +491,15 @@ export async function search(cfg: WatchConfig, origin: string, query: string) {
     tmdb(cfg.tmdbToken, "/search/person", params).catch(() => ({ results: [] })),
   ]);
   let titles = searchOrder(q, movies.results ?? [], shows.results ?? [], people.results ?? []).map((item) => seed(stubFromTmdb(item))).filter((t): t is Title => Boolean(t));
-  /* Nothing on TMDB by that name: a broadcaster's own uploads may have it (./youtube.ts). */
-  if (q.length >= 3 && !titles.some((t) => namedLike(q, t.name))) titles = [...(await youtubeSearch(q).catch(() => [])), ...titles];
+  /*
+   * A new look on YouTube takes a few seconds (later ones are a day's cache):
+   * with TMDB titles by that name to show, search waits for it briefly and a
+   * late answer is there the next time; with none, it waits for it.
+   */
+  const named = titles.filter((t) => namedLike(q, t.name)).length;
+  const late = new Promise<Title[]>((done) => setTimeout(() => done([]), named ? 2500 : 15_000));
+  const youtube = await Promise.race([fromYoutube, late]);
+  titles = named ? [...titles.slice(0, named), ...youtube.filter((t) => namedLike(q, t.name)), ...titles.slice(named)] : [...youtube, ...titles];
   return { results: titles.slice(0, 30).map((t) => cardOf(t, origin)) };
 }
 

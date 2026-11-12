@@ -1480,6 +1480,8 @@ test("a show TMDB doesn't list is a channel's playlists under its name, seasons 
   const seasons = yt.seasonsFrom(shows[0], [...found, { id: 'F', title: 'rachid show 2021-2022' }]).map((p) => p.id);
   assert.deepEqual(seasons, ['D', 'F', 'C', 'B'], 'by year, the one without a year last; other shows left out');
   assert.equal(yt.showsFrom('rachid show', found.slice(0, 1))[0].channel, 'ChaHid Morocco', 'when nobody has several, the first found stands');
+  assert.equal(yt.showsFrom('rachid show 2m', found)[0].channel, '2MTV', 'a query with more than the name still finds it');
+  assert.deepEqual(yt.showsFrom('dar lghezlane', [{ id: 'G', title: 'Dar', channel: 'X', channelId: 'UCx' }]), [], 'a short name inside a longer query is another show');
 });
 
 test("a YouTube season is its full episodes, clips left out", async () => {
