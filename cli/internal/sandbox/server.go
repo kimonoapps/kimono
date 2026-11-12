@@ -173,7 +173,8 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]any{"ok": true, "version": Version, "image": s.cfg.Image, "runtime": s.runtime})
+		/* naming "shared": chats are named in the node's own naming container, so naming can run as a turn starts without slowing it. */
+		writeJSON(w, 200, map[string]any{"ok": true, "version": Version, "image": s.cfg.Image, "runtime": s.runtime, "naming": "shared"})
 	})
 	mux.HandleFunc("PUT /v1/workspaces/{id}", s.workspaceCall(s.handleEnsure))
 	mux.HandleFunc("GET /v1/workspaces/{id}", s.workspaceCall(s.handleState))

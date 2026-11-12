@@ -539,8 +539,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
     /* A new chat is named from its first message as it's sent, in the node's naming container, alongside
        its sandbox being made: a message too short to name by itself ("hey") waits for the answer, at the
-       end of the turn. */
-    if (!second) void nameChat(config, workspace, { early: true });
+       end of the turn. Only a node with that container (namesApart): an older one names in the chat's own
+       sandbox, which would slow the turn starting there. */
+    if (!second) void namesApart(config).then((apart) => { if (apart) void nameChat(config, workspace, { early: true, turn }); });
     /* A sandbox made ready in the last few minutes is still there (the node stops one after 15 quiet minutes):
        what's in it is read while it's made ready, instead of after, a round trip to the node less before the agent starts. */
     const warm = Date.now() - (awake.at.get(workspace.id) ?? 0) < 14 * 60_000 && !second;
@@ -791,7 +792,16 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
 
 const naming = new Set<string>();
 
-async function nameChat(config: CodeConfig, workspace: Workspace, { early = false } = {}) {
+/* Whether the node names chats in a container of its own (its health says so), asked at most every five minutes. */
+let namesApartAsked: { at: number; answer: Promise<boolean> } | null = null;
+function namesApart(config: CodeConfig): Promise<boolean> {
+  if (!namesApartAsked || Date.now() - namesApartAsked.at > 5 * 60_000) {
+    namesApartAsked = { at: Date.now(), answer: sandbox.health(config).then((h) => h.naming === "shared", () => false) };
+  }
+  return namesApartAsked.answer;
+}
+
+async function nameChat(config: CodeConfig, workspace: Workspace, { early = false, turn }: { early?: boolean; turn?: string } = {}) {
   if (naming.has(workspace.id)) return;
   naming.add(workspace.id);
   try {
@@ -799,7 +809,8 @@ async function nameChat(config: CodeConfig, workspace: Workspace, { early = fals
     const events = eventsAfter(db(), workspace.id, 0, 400);
     const first = events.find((e) => e.event.kind === "ask");
     if (!first || first.event.kind !== "ask") return;
-    if (early && first.event.text.trim().split(/\s+/).filter(Boolean).length < 4 && !first.event.attachments.length) return;
+    /* Early, only on the chat's first message, and one long enough to name by itself; a chat left unnamed is tried again only as a turn ends. */
+    if (early && (first.turn !== turn || (first.event.text.trim().split(/\s+/).filter(Boolean).length < 4 && !first.event.attachments.length))) return;
     /* Someone renamed it before Kimono could (or before chats were named): theirs stays. */
     const current = workspaceFor(db(), workspace.id, workspace.owner);
     if (current.title !== titleFrom(first.event.text)) { nameWorkspace(db(), workspace.id, null); return; }
