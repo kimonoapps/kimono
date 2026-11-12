@@ -26,12 +26,13 @@ import { badges, bitrate, cleanDevice, describe, heightCap, linkCap, qualityOpti
 /** One file's size: by bitrate and runtime when known (a pack lists the whole season), else what the listing says. */
 const sizeOf = (r: Release, minutes: number | null) => { const mbps = bitrate(r, minutes); return mbps && minutes ? Math.round((mbps * 1e6 / 8) * minutes * 60) : r.bytes; };
 import { fetchUpstream, searchStreams, stremioId, videoType } from "./streams";
+import { channelPlaylists, directCopy, episodesFrom, isYoutubeId, keepHd, keptAddress, keptCopy, keptResponse, playlistVideos, releaseOf, searchPlaylists, seasonsFrom, showsFrom, stubOf, type Show } from "./youtube";
 import { originalOf, playerTracks, trackPlan, wantFor, withFallback } from "./languages";
 import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
 import { fillParams, planRows, rowMinimum, tasteOf, type PlannedRow } from "./rows";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
 import { lastError, noteError, probe, type Probe } from "./status";
-import { fetchDetails, fetchSeason, searchOrder, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
+import { fetchDetails, fetchSeason, namedLike, searchOrder, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
 import { screensOf } from "./screens";
 import { migrateTogether } from "./together";
@@ -98,6 +99,7 @@ function seed(stub: Title | null): Title | null {
 
 /** The title in full: fetched the first time, refreshed when stale, the old copy kept if TMDB is down. */
 export async function ensureTitle(cfg: WatchConfig, id: string): Promise<Title> {
+  if (isYoutubeId(id)) return ensureYoutubeTitle(id);
   const { kind, tmdbId } = parseTitleId(id);
   const db = watchDb();
   const known = getTitle(db, id);
@@ -113,6 +115,85 @@ export async function ensureTitle(cfg: WatchConfig, id: string): Promise<Title> 
     if (known && known.fetchedAt > 0) return known;
     throw error;
   }
+}
+
+/* ───── YouTube's shows (./youtube.ts) ───── */
+
+const youtubeDir = () => join(root, "youtube");
+const longKept = 10 * 365 * 24 * 60 * 60 * 1000;
+/** Whether streams can be looked for at all: by IMDb id, or by a show's videos on YouTube. */
+const findable = (title: Title) => Boolean(title.imdbId) || isYoutubeId(title.id);
+
+/** A YouTube show in full: its seasons are its channel's playlists under its name, looked up again when stale. */
+async function ensureYoutubeTitle(id: string): Promise<Title> {
+  const db = watchDb();
+  const known = getTitle(db, id);
+  if (known && !isStale(known)) return known;
+  const show = cached<Show>(db, `yt:show:${id}`);
+  if (!show) { if (known) return known; throw new WatchProblem("That isn't a title.", 404); }
+  try {
+    /* A search for its name on its channel is seconds; the channel's every playlist (2MTV has hundreds) is the fallback. */
+    const searched = (await searchPlaylists(`${show.name} ${show.channel}`, 60).catch(() => [])).filter((p) => p.channelId === show.channelId);
+    let seasons = seasonsFrom(show, searched);
+    if (!seasons.length) seasons = seasonsFrom(show, await channelPlaylists(show.channelId));
+    if (!seasons.length) throw new WatchProblem("That show isn't on YouTube anymore.", 404);
+    /* Seasons keep their numbers (progress and episodes are kept by them): a playlist seen before stays where it was, a new one goes last. */
+    const before = cached<string[]>(db, `yt:seasons:${id}`) ?? [];
+    const order = [...before, ...seasons.map((s) => s.id).filter((p) => !before.includes(p))];
+    const names = new Map(seasons.map((s) => [s.id, s.title]));
+    const had = new Map(seasonsOf(db, id).map((s) => [s.number, s]));
+    keep(db, `yt:seasons:${id}`, order, longKept);
+    const title: Title = { ...(known ?? stubOf(show)), seasonCount: order.length, fetchedAt: Date.now() };
+    putTitle(db, title);
+    putSeasons(db, id, order.map((p, i) => ({ number: i + 1, name: names.get(p) ?? had.get(i + 1)?.name ?? `Season ${i + 1}`, episodeCount: had.get(i + 1)?.episodeCount ?? 0, airDate: null, poster: null })));
+    /* The title page wants every season's episodes (for where to resume): four playlists at a time, not one after another. */
+    const due = seasonsOf(db, id).filter((s) => Date.now() - s.fetchedAt > staleAfter(title));
+    await pool(due, 4, async (s) => { await fetchYoutubeSeason(title, s.number).catch(() => {}); return true; }, Infinity);
+    return getTitle(db, id) ?? title;
+  } catch (error) {
+    if (known && known.fetchedAt > 0) return known;
+    throw error;
+  }
+}
+
+/** A YouTube season's episodes: the playlist's full-length videos, in its order. */
+async function fetchYoutubeSeason(title: Title, season: number) {
+  const db = watchDb();
+  const playlist = (cached<string[]>(db, `yt:seasons:${title.id}`) ?? [])[season - 1];
+  if (!playlist) throw new WatchProblem("That season doesn't exist.", 404);
+  const episodes = episodesFrom(await playlistVideos(playlist));
+  keep(db, `yt:ep:${title.id}:${season}`, episodes.map((e) => e.videoId), longKept);
+  putEpisodes(db, title.id, season, episodes.map(({ videoId: _, ...e }) => e)); // eslint-disable-line @typescript-eslint/no-unused-vars
+  db.prepare("UPDATE seasons SET episode_count = ? WHERE title_id = ? AND number = ?").run(episodes.length, title.id, season);
+  /* A show found without a picture takes its first episode's. */
+  if (!title.poster && episodes[0]?.still) putTitle(db, { ...title, poster: episodes[0].still, backdrop: episodes[0].still });
+}
+
+/**
+ * A YouTube episode's copies: the kept 1080p one once it's there, else the
+ * 360p file that plays now, while the 1080p one is fetched for next time.
+ */
+async function youtubeReleases(title: Title, season: number, episode: number): Promise<Release[]> {
+  const video = (cached<string[]>(watchDb(), `yt:ep:${title.id}:${season}`) ?? [])[episode - 1];
+  if (!video) throw new WatchProblem("That episode doesn't exist.", 404);
+  const kept = await keptCopy(youtubeDir(), video);
+  if (kept) return [releaseOf(keptAddress(video), kept.height, kept.bytes, true)];
+  keepHd(youtubeDir(), video);
+  const now = await directCopy(video);
+  return [releaseOf(now.url, now.height, now.bytes, false)];
+}
+
+/** Shows on YouTube for a search TMDB has nothing close for; a day's answer kept, since each look runs yt-dlp. */
+async function youtubeSearch(q: string): Promise<Title[]> {
+  const db = watchDb();
+  const key = `yt:search:${q.toLowerCase()}`;
+  let shows = cached<Show[]>(db, key);
+  if (!shows) {
+    shows = showsFrom(q, await searchPlaylists(q));
+    keep(db, key, shows, hours(24));
+  }
+  for (const show of shows) keep(db, `yt:show:${show.id}`, show, longKept);
+  return shows.map((show) => seed(stubOf(show))).filter((t): t is Title => Boolean(t));
 }
 
 async function enrichAnime(cfg: WatchConfig, title: Title, details: Record<string, unknown>) {
@@ -141,7 +222,8 @@ export async function ensureSeason(cfg: WatchConfig, title: Title, season: numbe
   if (!known) throw new WatchProblem("That season doesn't exist.", 404);
   if (Date.now() - known.fetchedAt > staleAfter(title)) {
     try {
-      putEpisodes(db, title.id, season, episodesFromTmdb(await fetchSeason(cfg.tmdbToken, title.tmdbId, season)));
+      if (isYoutubeId(title.id)) await fetchYoutubeSeason(title, season);
+      else putEpisodes(db, title.id, season, episodesFromTmdb(await fetchSeason(cfg.tmdbToken, title.tmdbId, season)));
       if (title.shelf === "Anime") await flagFillers(cfg, title, season);
     } catch (error) {
       if (!known.fetchedAt) throw error;
@@ -200,7 +282,7 @@ export async function titleView(cfg: WatchConfig, username: string, origin: stri
   const known = availability(title, playableOf(db, id) ?? undefined);
   /* Nothing to search, or sources that find nothing for anything: say that, not "no copy". */
   const available = known.state !== "missing" && known.state !== "ready" ? known
-    : !hasSources(cfg) ? { state: "missing" as const, note: "Watch isn't connected to anything to stream from yet" }
+    : !hasSources(cfg) && !isYoutubeId(title.id) ? { state: "missing" as const, note: "Watch isn't connected to anything to stream from yet" }
       : known.state === "missing" && sourcesQuiet(db) ? { state: "missing" as const, note: "Watch's sources aren't finding anything right now" }
         : known;
   const base = {
@@ -386,7 +468,7 @@ function checkPlayable(cfg: WatchConfig, ids: string[]) {
   if (!batch.length) return;
   pool(batch, 2, async (id) => {
     const title = await ensureTitle(cfg, id);
-    if (!title.imdbId) { notePlayable(db, id, false); return true; }
+    if (!findable(title)) { notePlayable(db, id, false); return true; }
     const first = title.kind === "series" ? 1 : 0;
     await releasesFor(cfg, title, first, first);
     return true;
@@ -405,7 +487,9 @@ export async function search(cfg: WatchConfig, origin: string, query: string) {
     tmdb(cfg.tmdbToken, "/search/tv", params),
     tmdb(cfg.tmdbToken, "/search/person", params).catch(() => ({ results: [] })),
   ]);
-  const titles = searchOrder(q, movies.results ?? [], shows.results ?? [], people.results ?? []).map((item) => seed(stubFromTmdb(item))).filter((t): t is Title => Boolean(t));
+  let titles = searchOrder(q, movies.results ?? [], shows.results ?? [], people.results ?? []).map((item) => seed(stubFromTmdb(item))).filter((t): t is Title => Boolean(t));
+  /* Nothing on TMDB by that name: a broadcaster's own uploads may have it (./youtube.ts). */
+  if (q.length >= 3 && !titles.some((t) => namedLike(q, t.name))) titles = [...(await youtubeSearch(q).catch(() => [])), ...titles];
   return { results: titles.slice(0, 30).map((t) => cardOf(t, origin)) };
 }
 
@@ -444,6 +528,13 @@ function releasesFor(cfg: WatchConfig, title: Title, season: number, episode: nu
   /* An empty answer is never reused: sources drop searches when busy, so it's asked again. */
   if (known?.length) return Promise.resolve(known);
   return shared(searching, key, async () => {
+    if (isYoutubeId(title.id)) {
+      const found = await youtubeReleases(title, season, episode);
+      /* YouTube's address lasts hours, but the kept copy may be ready in minutes: asked again soon. */
+      keep(db, key, found, 2 * 60 * 1000);
+      notePlayable(db, title.id, true);
+      return found;
+    }
     const ids = [await kitsuIdFor(cfg, title, season, episode), title.imdbId ? stremioId(title.imdbId, season || undefined, episode || undefined) : null].filter((id): id is string => Boolean(id));
     if (!ids.length) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
     const manifest = await ensureProvisioned(db, cfg, await nzbdavAccess());
@@ -503,7 +594,7 @@ const searching = ((globalThis as unknown as { kimonoWatchSearching?: Map<string
 
 /** Starts finding an episode's streams without waiting; play reports any trouble when it comes to it. */
 function findAhead(cfg: WatchConfig, title: Title, season: number, episode: number) {
-  if (!title.imdbId || !hasSources(cfg)) return;
+  if (!findable(title) || (!hasSources(cfg) && !isYoutubeId(title.id))) return;
   releasesFor(cfg, title, season, episode).catch(() => {});
 }
 
@@ -530,7 +621,7 @@ export async function prepare(cfg: WatchConfig, username: string, raw: Record<st
   if (title.kind === "movie") return { next: null, ready: false };
   const prefs = prefsOf(db, username);
   const next = nextEpisode(await allEpisodes(cfg, title), { season: Number(raw.season) || 1, episode: Number(raw.episode) || 1 }, prefs.fillers);
-  if (!next || !title.imdbId) return { next, ready: false };
+  if (!next || !findable(title)) return { next, ready: false };
   const episodes = episodesOf(db, title.id);
   const [found, fromAniskip] = await Promise.all([
     releasesFor(cfg, title, next.season, next.episode).catch(() => []),
@@ -559,7 +650,7 @@ const copyKey = (r: { url: string }) => createHash("sha1").update(r.url).digest(
 export async function play(cfg: WatchConfig, username: string, origin: string, raw: Record<string, unknown>) {
   const db = watchDb();
   const title = await ensureTitle(cfg, String(raw.titleId ?? ""));
-  if (!title.imdbId) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
+  if (!findable(title)) throw new WatchProblem("There's no way to find streams for this one yet.", 404);
   /* Not out yet: anything found under its name is something else. */
   const due = availability(title, undefined);
   if (due.state === "upcoming") throw new WatchProblem(`${due.note}.`, 404);
@@ -788,6 +879,11 @@ export async function relay(request: Request, token: string): Promise<Response> 
   }
   const startedAt = performance.now();
   const opened = what ? waitOn(grant.username, what) : () => {};
+  /* A YouTube episode kept on disk (./youtube.ts). */
+  if (grant.url.startsWith("kimono-youtube:")) {
+    const kept = await keptResponse(youtubeDir(), grant.url, request).finally(opened);
+    return what && kept.body ? new Response(tracked(kept.body, grant.username, what), { status: kept.status, headers: kept.headers }) : kept;
+  }
   const upstream = await fetchUpstream(grant.url, { method: request.method === "HEAD" ? "HEAD" : "GET", headers, signal: request.signal }).finally(opened);
   /* 404 when the copy is gone (refused, or a stand-in clip): the packager passes over it; 502 when it may only be slow. */
   if (!upstream) return new Response("The stream stopped answering. Try another version.", { status: isDead(grant.url) ? 404 : 502 });

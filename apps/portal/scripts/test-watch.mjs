@@ -1461,3 +1461,44 @@ test("search keeps a common first name's films and shows, and someone named exac
   const named = tmdb.searchOrder('Rachid Badouri', [{ id: 5, title: 'Rachid Badouri - Rechargé', popularity: 1 }, { id: 99, title: 'Father Son Therapy', popularity: 3 }], [], people);
   assert.deepEqual(named.map((t) => `${t.media_type}-${t.id}`), ['movie-5', 'movie-99'], 'their best-known titles come after titles named for them, once');
 });
+
+test("a show TMDB doesn't list is a channel's playlists under its name, seasons oldest first", async () => {
+  const yt = await import('../src/lib/watch/youtube.ts');
+  const found = [
+    { id: 'A', title: 'Rachid Show 2026 2M', channel: 'ChaHid Morocco', channelId: 'UCh6DQ6tKZyPyArCl41HBNiQ' },
+    { id: 'B', title: 'Rachid Show', channel: '2MTV', channelId: 'UClozwh5URilIQpDFeXch8qw' },
+    { id: 'C', title: 'Rachid Show 2025', channel: '2MTV', channelId: 'UClozwh5URilIQpDFeXch8qw', cover: 'eCLi8k_uIUo' },
+    { id: 'D', title: 'Rachid Show: Season 2014', channel: '2MTV', channelId: 'UClozwh5URilIQpDFeXch8qw' },
+    { id: 'E', title: 'Cuisine Choumicha', channel: '2MTV', channelId: 'UClozwh5URilIQpDFeXch8qw' },
+  ];
+  const shows = yt.showsFrom('rachid show', found);
+  assert.equal(shows.length, 1, "the broadcaster's several seasons beat someone's one playlist");
+  assert.equal(shows[0].channel, '2MTV');
+  assert.equal(shows[0].cover, 'eCLi8k_uIUo');
+  assert.ok(yt.isYoutubeId(shows[0].id));
+  assert.equal(shows[0].id, yt.youtubeTitleId('UClozwh5URilIQpDFeXch8qw', 'Rachid show'), 'the id holds whatever the case');
+  const seasons = yt.seasonsFrom(shows[0], [...found, { id: 'F', title: 'rachid show 2021-2022' }]).map((p) => p.id);
+  assert.deepEqual(seasons, ['D', 'F', 'C', 'B'], 'by year, the one without a year last; other shows left out');
+  assert.equal(yt.showsFrom('rachid show', found.slice(0, 1))[0].channel, 'ChaHid Morocco', 'when nobody has several, the first found stands');
+});
+
+test("a YouTube season is its full episodes, clips left out", async () => {
+  const yt = await import('../src/lib/watch/youtube.ts');
+  const eps = yt.episodesFrom([
+    { id: 'aaaaaaaaaaa', title: 'Rachid Show: Friday', seconds: 4580 },
+    { id: 'bbbbbbbbbbb', title: 'A surprise on set', seconds: 43 },
+    { id: 'ccccccccccc', title: '[Deleted video]', seconds: null },
+    { id: 'ddddddddddd', title: 'Rachid Show with Eko', seconds: 5052 },
+  ]);
+  assert.deepEqual(eps.map((e) => [e.number, e.videoId, e.runtime, e.still]), [[1, 'aaaaaaaaaaa', 76, '/yt/aaaaaaaaaaa.jpg'], [2, 'ddddddddddd', 84, '/yt/ddddddddddd.jpg']]);
+  assert.equal(yt.episodesFrom([{ id: 'x', title: 'Short show', seconds: 600 }]).length, 1, 'a show of short episodes keeps them');
+});
+
+test("YouTube thumbnails are images Kimono serves, and a YouTube show isn't 'no copy'", async () => {
+  const images = await import('../src/lib/watch/images.ts');
+  const labels = await import('../src/lib/watch/labels.ts');
+  assert.deepEqual(images.imageRequest('w500', ['yt', 'eCLi8k_uIUo.jpg']), { size: 'w500', file: '-yt-eCLi8k_uIUo.jpg', type: 'image/jpeg' });
+  assert.equal(images.imageRequest('w500', ['yt', '../x.jpg']), null);
+  assert.equal(labels.availability({ id: 'yt-UClozwh5URilIQpDFeXch8qw.1234abcd', kind: 'series', status: 'Returning Series', imdbId: null }, undefined).state, 'ready');
+  assert.equal(labels.availability({ id: 'tv-1', kind: 'series', status: 'Ended', imdbId: null }, undefined).state, 'missing');
+});

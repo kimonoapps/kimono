@@ -29,6 +29,15 @@ COPY --from=build /app/apps/portal/.next/static ./apps/portal/.next/static
 COPY --from=build /app/apps/portal/public ./apps/portal/public
 COPY --from=build /app/apps/portal/app-definitions /usr/share/kimono/app-definitions
 COPY --from=cloudflared /usr/local/bin/cloudflared /usr/local/bin/cloudflared
+# Watch's YouTube shows (apps/portal/src/lib/watch/youtube.ts): yt-dlp finds
+# and fetches them, ffmpeg puts HD picture and sound in one file. YouTube
+# changes often: move this pin forward when episodes stop resolving.
+ARG YTDLP_VERSION=2026.10.26
+ARG YTDLP_SHA256=e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3
+RUN apk add --no-cache ffmpeg python3 \
+ && wget -qO /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp" \
+ && echo "${YTDLP_SHA256}  /usr/local/bin/yt-dlp" | sha256sum -c - \
+ && chmod 755 /usr/local/bin/yt-dlp
 USER node
 EXPOSE 3000
 CMD ["node", "apps/portal/server.js"]

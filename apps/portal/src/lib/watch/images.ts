@@ -25,6 +25,11 @@ export const imageUrl = (origin: string, path: string | null, size = "w780") => 
 
 /** A request's size and file, if it is one TMDB could have: one plain file name, a known size and kind. */
 export function imageRequest(size: string, path: string[]): { size: string; file: string; type: string } | null {
+  /* A YouTube video's thumbnail ("/yt/<video>.jpg", ./youtube.ts); TMDB's names never have a dash at the start. */
+  if ((imageSizes as readonly string[]).includes(size) && path.length === 2 && path[0] === "yt") {
+    const video = /^([A-Za-z0-9_-]{11})\.jpg$/.exec(path[1])?.[1];
+    return video ? { size, file: `-yt-${video}.jpg`, type: types.jpg } : null;
+  }
   if (!(imageSizes as readonly string[]).includes(size) || path.length !== 1) return null;
   const match = /^[A-Za-z0-9_-]{1,64}\.(jpg|jpeg|png|webp|svg)$/.exec(path[0]);
   return match ? { size, file: path[0], type: types[match[1]] } : null;
@@ -88,7 +93,11 @@ async function account(dir: string, bytes: number) {
 }
 
 async function fetchImage(dir: string, size: string, file: string): Promise<Buffer | null> {
-  const response = await fetch(`https://image.tmdb.org/t/p/${size}/${file}`, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  const video = /^-yt-([A-Za-z0-9_-]{11})\.jpg$/.exec(file)?.[1];
+  const from = video ? `https://i.ytimg.com/vi/${video}/${["w780", "w1280", "original"].includes(size) ? "maxresdefault" : "hqdefault"}.jpg` : `https://image.tmdb.org/t/p/${size}/${file}`;
+  let response = await fetch(from, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
+  /* Older videos have no full-size thumbnail. */
+  if (video && !response?.ok) response = await fetch(`https://i.ytimg.com/vi/${video}/hqdefault.jpg`, { signal: AbortSignal.timeout(15_000) }).catch(() => null);
   if (!response?.ok) return null;
   const body = Buffer.from(await response.arrayBuffer());
   const folder = join(dir, size);

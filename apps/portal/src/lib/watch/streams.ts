@@ -79,11 +79,15 @@ export function upstreamRequest(url: string): { url: string; authorization: stri
  * only, so it never travels to another host.
  */
 export async function fetchUpstream(url: string, init: { method: string; headers: Headers; signal?: AbortSignal }, get: typeof fetch = fetch): Promise<Response | null> {
-  let next = url;
+  /* An address that only opens for one client carries its User-Agent (./youtube.ts). */
+  const at = url.indexOf("#kimono-ua=");
+  const agent = at < 0 ? null : decodeURIComponent(url.slice(at + "#kimono-ua=".length));
+  let next = at < 0 ? url : url.slice(0, at);
   for (let hop = 0; hop < 6; hop++) {
     const target = upstreamRequest(next);
     const headers = new Headers(init.headers);
     headers.delete("authorization");
+    if (agent) headers.set("user-agent", agent);
     if (target.authorization) headers.set("authorization", target.authorization);
     const response = await get(target.url, { method: init.method, headers, redirect: "manual", signal: init.signal }).catch(() => null);
     if (!response) return null;

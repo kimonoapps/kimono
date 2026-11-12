@@ -121,6 +121,9 @@ const plain = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCa
  * query come first, then those starting with it, then the rest by popularity;
  * someone the query names in full brings their best-known titles after those.
  */
+/** Whether a title's name is the query or starts with it, as search ranks them. */
+export const namedLike = (query: string, name: string) => plain(name).startsWith(plain(query));
+
 export function searchOrder(query: string, movies: Json[], shows: Json[], people: Json[]): Json[] {
   const q = plain(query);
   const nameOf = (item: Json) => plain(String(item.title ?? item.name ?? ""));

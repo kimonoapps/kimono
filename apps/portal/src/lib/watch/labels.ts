@@ -115,7 +115,7 @@ export function episodeLabel(layout: EpisodeLayout, season: number, number: numb
 export type Availability = { state: "ready" | "upcoming" | "cinemas" | "missing"; note: string | null };
 const shortDate = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 export function availability(
-  title: Pick<Title, "kind" | "status" | "imdbId"> & Partial<Pick<Title, "releaseDate" | "homeDate" | "cinemaDate">>,
+  title: Pick<Title, "kind" | "status" | "imdbId"> & Partial<Pick<Title, "id" | "releaseDate" | "homeDate" | "cinemaDate">>,
   found: boolean | undefined, now = Date.now(),
 ): Availability {
   const day = 24 * 60 * 60 * 1000;
@@ -133,7 +133,8 @@ export function availability(
     if (!title.homeDate) return { state: "cinemas", note: "Only in cinemas for now" };
     if (home > now) return { state: "cinemas", note: `Only in cinemas · at home ${shortDate(title.homeDate)}` };
   }
-  if (found === false || !title.imdbId) return { state: "missing", note: "We couldn't find a copy of this yet" };
+  /* YouTube's shows have no IMDb id: they're found by their videos (./youtube.ts). */
+  if (found === false || (!title.imdbId && !title.id?.startsWith("yt-"))) return { state: "missing", note: "We couldn't find a copy of this yet" };
   return { state: "ready", note: null };
 }
 
