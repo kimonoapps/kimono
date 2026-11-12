@@ -86,8 +86,10 @@ export async function sendFile(request: Request, path: string, file: { name: str
     "Content-Security-Policy": "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox",
     /* Shared links are fetched by Discord and the like; private files stay on Kimono. */
     "Cross-Origin-Resource-Policy": file.shared ? "cross-origin" : "same-site",
-    /* Never kept by a proxy or CDN, and checked every time, so turning a link off ends it at once. */
-    "Cache-Control": "private, no-cache",
+    /* Never kept by a proxy or CDN, and checked every time, so turning a link off ends it at once.
+       no-transform: nothing on the way (Next, Caddy, Cloudflare) may recompress it, so the size
+       arrives and a browser can say how long a download has left instead of "Resuming…". */
+    "Cache-Control": "private, no-cache, no-transform",
   });
   if (request.headers.get("if-none-match") === `"${file.etag}"`) return new Response(null, { status: 304, headers });
 

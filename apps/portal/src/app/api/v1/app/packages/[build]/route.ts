@@ -10,7 +10,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bui
       "Content-Type": "application/vnd.android.package-archive",
       "Content-Length": String(found.size),
       "Content-Disposition": `attachment; filename="kimono-${found.version}.apk"`,
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": "public, max-age=31536000, immutable, no-transform",
       "X-Content-Type-Options": "nosniff",
     },
   });
