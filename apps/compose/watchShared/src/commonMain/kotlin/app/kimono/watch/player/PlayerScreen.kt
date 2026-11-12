@@ -490,16 +490,23 @@ fun PlayerScreen(
         /* Top: back and what's on. */
         val name = state.page?.title?.name ?: ""
         val ep = state.current
-        Row(Modifier.fillMaxWidth().alpha(if (state.loading) 1f else chrome).padding(top = 14.dp, start = 20.dp, end = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PBtn(Ic.back, onExit, enabled = chrome > 0.5f || state.loading)
-            Text(androidx.compose.ui.text.buildAnnotatedString {
-                pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg, fontWeight = FontWeight.Bold)); append(name); pop()
-                if (!state.isFilm && ep != null) append("  ${state.label} · ${ep.name}")
-            }, style = ui(15, color = Night.fg2), modifier = Modifier.weight(1f), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (party != null && !state.loading) Box(Modifier.alpha(chrome)) { PartyFaces(party) { if (chrome > 0.5f) { chatOpen = false; sheet = if (sheet == Sheet.Party) null else Sheet.Party; show() } } }
-            if (rotate != null && !tv && !state.loading && chrome > 0.5f) PBtn(Ic.rotate, { rotate(); show() }, iconSize = 24.dp)
-            if (corner != null && !state.loading && chrome > 0.5f) corner() else if (rotate == null || tv) Spacer(Modifier.size(48.dp))
-        }
+        /* The title is centred on the screen, not in what the buttons leave; the buttons are always laid out (only faded and inert), so nothing shifts as the controls come and go. */
+        TopBar(Modifier.fillMaxWidth().alpha(if (state.loading) 1f else chrome).padding(top = 14.dp, start = 20.dp, end = 20.dp),
+            start = { PBtn(Ic.back, onExit, enabled = chrome > 0.5f || state.loading) },
+            title = {
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg, fontWeight = FontWeight.Bold)); append(name); pop()
+                    if (!state.isFilm && ep != null) append("  ${state.label} · ${ep.name}")
+                }, style = ui(15, color = Night.fg2), textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+            end = {
+                Row(Modifier.alpha(if (state.loading) 0f else 1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val live = chrome > 0.5f && !state.loading
+                    if (party != null) PartyFaces(party) { if (live) { chatOpen = false; sheet = if (sheet == Sheet.Party) null else Sheet.Party; show() } }
+                    if (rotate != null && !tv) PBtn(Ic.rotate, { rotate(); show() }, iconSize = 24.dp, enabled = live)
+                    if (corner != null) Box(Modifier.then(if (live) Modifier else Modifier.pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() } } })) { corner() }
+                }
+            })
 
         /* Middle (phone): back ten, play, forward ten. Play stays up over "You're watching", one tap away. */
         val lingerBack by animateFloatAsState(if (linger == false) 1f else 0f, tween(if (linger == false) 150 else 400), label = "lingerBack")
@@ -618,6 +625,24 @@ fun PlayerScreen(
     }
     LaunchedEffect(Unit) { runCatching { focusRoot.requestFocus() } }
     LaunchedEffect(ctl, tv, settings) { if (tv && !ctl && !settings) runCatching { focusRoot.requestFocus() } }
+}
+
+/** Back at the start, buttons at the end, and the title truly centred between equal margins (as wide as the wider side). */
+@Composable
+private fun TopBar(modifier: Modifier, start: @Composable () -> Unit, title: @Composable () -> Unit, end: @Composable () -> Unit) {
+    androidx.compose.ui.layout.Layout({ Box { start() }; Box { title() }; Box { end() } }, modifier) { m, c ->
+        val loose = c.copy(minWidth = 0, minHeight = 0)
+        val s = m[0].measure(loose); val e = m[2].measure(loose)
+        val gap = 12.dp.roundToPx()
+        val side = maxOf(s.width, e.width) + gap
+        val t = m[1].measure(loose.copy(maxWidth = (c.maxWidth - side * 2).coerceAtLeast(0)))
+        val h = maxOf(s.height, e.height, t.height)
+        layout(c.maxWidth, h) {
+            s.place(0, (h - s.height) / 2)
+            t.place((c.maxWidth - t.width) / 2, (h - t.height) / 2)
+            e.place(c.maxWidth - e.width, (h - e.height) / 2)
+        }
+    }
 }
 
 /** [shadow]: a soft drop shadow in the glyph's own shape, so it reads on bright frames. */
