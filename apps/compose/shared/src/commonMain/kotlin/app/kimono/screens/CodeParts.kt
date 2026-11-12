@@ -23,6 +23,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -73,6 +79,30 @@ import kotlin.time.Clock
 
 /** Now, by the server's clock, since the times we count from are the server's. */
 internal fun now() = app.kimono.data.ServerClock.now()
+
+/** A chat's name; while it's being named, a soft bar with light passing over it where the name will be. */
+@Composable
+internal fun ChatName(w: app.kimono.data.CodeWorkspace, style: androidx.compose.ui.text.TextStyle, modifier: Modifier = Modifier, maxLines: Int = 1) {
+    val until = w.namingUntil
+    val time = ticking(until != null && now() < until)
+    if (until == null || time >= until) {
+        androidx.compose.material3.Text(w.title, style = style, maxLines = maxLines, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = modifier)
+        return
+    }
+    val shimmer = androidx.compose.animation.core.rememberInfiniteTransition(label = "naming")
+    val at by shimmer.animateFloat(-1f, 2f, androidx.compose.animation.core.infiniteRepeatable(androidx.compose.animation.core.tween(1400, easing = androidx.compose.animation.core.FastOutSlowInEasing)), label = "naming-at")
+    val base = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHigh
+    val light = androidx.compose.material3.MaterialTheme.colorScheme.surfaceContainerHighest
+    val height = with(androidx.compose.ui.platform.LocalDensity.current) { (style.fontSize.toPx() * .6f).toDp() }
+    androidx.compose.foundation.layout.Box(
+        modifier.semantics { contentDescription = "Naming this chat" }.width(120.dp).height(height).clip(androidx.compose.foundation.shape.CircleShape).drawBehind {
+            drawRect(androidx.compose.ui.graphics.Brush.linearGradient(
+                0f to base, ((at - .25f).coerceIn(0f, 1f)) to base, (at.coerceIn(0f, 1f)) to light, ((at + .25f).coerceIn(0f, 1f)) to base, 1f to base,
+                start = androidx.compose.ui.geometry.Offset.Zero, end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+            ))
+        },
+    )
+}
 
 /** A clock that ticks every second while [running]. */
 @Composable

@@ -89,6 +89,8 @@ data class CodeWorkspace(
     /** Whose chat it is, and what this person may do in it: "owner", or shared with them to "edit" (write) or "read". */
     val owner: String = "",
     val access: String = "owner",
+    /** Until when it may still get a name from its first exchange: a shimmer stands in for the name till then. */
+    val namingUntil: Long? = null,
 ) {
     val running get() = turn?.state == "running"
     val isOwner get() = access == "owner"

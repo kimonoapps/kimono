@@ -348,7 +348,7 @@ private fun DrawerChat(w: CodeWorkspace, current: String?, time: Long, go: (Stri
     var menu by remember { mutableStateOf(false) }
     Box {
         DrawerRow(selected = w.id == current, onClick = { go("code/${w.id}") }, onLongClick = act?.let { { menu = true } }, indent = indent, lead = lead) {
-            Text(w.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            ChatName(w, MaterialTheme.typography.bodyLarge, Modifier.weight(1f))
             val turn = w.turn
             when {
                 turn?.state == "running" -> InkLoader(size = 16.dp)

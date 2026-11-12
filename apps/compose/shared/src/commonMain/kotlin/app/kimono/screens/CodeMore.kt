@@ -188,7 +188,7 @@ fun ConnectionsScreen(code: Code, platform: Platform, back: () -> Unit, open: (S
                                         Icon(FilledBolt, null, modifier = Modifier.size(16.dp))
                                         Text("Pro Tools", style = MaterialTheme.typography.titleMedium)
                                     }
-                                    Text("No connection needed, with a limited budget each month.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("If this runs out, Kimono AI keeps working. Only Pro Tools stop until it resets.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 budget?.let { m ->
                                     Column(horizontalAlignment = Alignment.End) {

@@ -129,6 +129,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.kimono.data.SkillCommand
@@ -214,7 +215,9 @@ internal class Drafts {
     var text by mutableStateOf<String?>(null)
     val artifacts = mutableStateMapOf<String, Pair<String, String>>()
     var now by mutableStateOf<CodeEvent.Phase?>(null)
-    fun clear() { text = null; artifacts.clear(); now = null }
+    /** Its words just landed as a reply, and it hasn't started anything since: no Working under it while the turn ends. */
+    var said by mutableStateOf(false)
+    fun clear() { text = null; artifacts.clear(); now = null; said = false }
 }
 
 @Composable
@@ -239,7 +242,8 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
             when (e) {
                 is CodeEvent.Draft -> drafts.text = e.text
                 is CodeEvent.ArtifactDraft -> drafts.artifacts[e.name] = e.id to e.content
-                is CodeEvent.Phase -> drafts.now = e
+                /* "Writing" can come in after its words have landed (it waits a moment to settle): that starts nothing new. */
+                is CodeEvent.Phase -> { drafts.now = e; if (e.phase != "writing") drafts.said = false }
                 is CodeEvent.Renamed -> refresh()
                 /* A message was changed: the chat from it on went, and runs again from there. */
                 is CodeEvent.Rewound -> { events.removeAll { it.seq >= e.seq }; drafts.clear(); refresh() }
@@ -249,7 +253,9 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
         }
         if (stored.seq <= (events.lastOrNull()?.seq ?: 0)) return
         when (e) {
-            is CodeEvent.Say, is CodeEvent.Tool, is CodeEvent.Artifact -> drafts.text = null
+            is CodeEvent.Say -> { drafts.text = null; drafts.said = true }
+            is CodeEvent.Tool, is CodeEvent.Artifact -> { drafts.text = null; drafts.said = false }
+            is CodeEvent.Ask -> drafts.said = false
             is CodeEvent.ArtifactKept -> drafts.artifacts.remove(e.name)
             is CodeEvent.Done -> drafts.clear()
             else -> {}
@@ -312,7 +318,7 @@ fun WorkspaceScreen(code: Code, drive: Drive, platform: Platform, id: String, sh
                 title = {
                     Column(Modifier.clip(RoundedCornerShape(10.dp)).clickable(enabled = w != null && owns) { renaming = true }) {
                         if (renaming && w != null) InlineName(w.title, MaterialTheme.typography.titleMedium, Modifier.fillMaxWidth(), onSave = { name -> workspace = code.rename(id, name.take(120)) }, onEnd = { renaming = false })
-                        else Text(w?.title ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        else if (w != null) ChatName(w, MaterialTheme.typography.titleMedium)
                         val under = when {
                             w == null -> null
                             !connected -> "Reconnecting…"
@@ -562,7 +568,7 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
     fun Tail() {
         writing.forEach { name -> ArtifactCard(code, platform, artifacts, name) }
         drafts.text?.let { DraftWords(it) }
-        if (drafts.text.isNullOrBlank() && drafts.now?.phase != "writing") Working(code, marks, w.turn?.startedAt, drafts.now, artifact = drafts.artifacts.isNotEmpty())
+        if (drafts.text.isNullOrBlank() && !drafts.said) Working(code, drafts.now, artifact = drafts.artifacts.isNotEmpty())
     }
     /* One item of the timeline, or of a take. */
     @Composable
@@ -637,7 +643,7 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
                     when {
                         tailInPair -> Spacer(Modifier.size(1.dp))
                         /* Not while the reply's own words are coming in: those show it's working. */
-                        w.running && (drafts.text.isNullOrBlank() && drafts.now?.phase != "writing") -> Working(code, marks, w.turn?.startedAt, drafts.now, artifact = drafts.artifacts.isNotEmpty())
+                        w.running && drafts.text.isNullOrBlank() && !drafts.said -> Working(code, drafts.now, artifact = drafts.artifacts.isNotEmpty())
                         w.running -> Spacer(Modifier.size(1.dp))
                         w.preview != null && !w.preview.stopped && items.lastOrNull() !is Item.Ask -> PreviewCard(code, platform, w, w.preview.url, ready = true)
                         else -> Spacer(Modifier.size(1.dp))
@@ -745,16 +751,16 @@ private fun TakesBlock(code: Code, w: CodeWorkspace, item: Item.Takes, latest: B
     }
 }
 
-/** Working, at the end of the conversation: what it's doing, in its own words and ink, and how long. */
+/**
+ * Working, at the end of the conversation: Material's loading indicator where its first word will land,
+ * and a few words only when they say something (where it's looking, an app it's using, an artifact on its way).
+ */
 @Composable
-private fun Working(code: Code, marks: AiMarks, since: Long?, doing: CodeEvent.Phase?, artifact: Boolean) {
-    val time = ticking(true)
+private fun Working(code: Code, doing: CodeEvent.Phase?, artifact: Boolean) {
     val phase = if (artifact || doing?.phase == "artifact") "artifact" else doing?.phase ?: "working"
     val appName = doing?.app?.let { AppName(code, it) }
     val words = when (phase) {
         "artifact" -> "Working my magic"
-        "thinking" -> "Thinking"
-        "writing" -> "Writing"
         "tools" -> when {
             appName != null -> "Using $appName"
             doing?.space != null -> "Looking in ${doing.space}"
@@ -764,23 +770,15 @@ private fun Working(code: Code, marks: AiMarks, since: Long?, doing: CodeEvent.P
             doing?.tool == "helper" -> "Asking a helper"
             else -> "Using tools"
         }
-        else -> "Working"
+        else -> null
     }
-    val seal = if (phase == "tools") doing?.app ?: doing?.space?.let { "space:$it" } else null
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 4.dp).semantics(mergeDescendants = true) { }) {
-        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
-            if (seal != null) key(seal) { NowSeal { if (doing?.app != null) AppLogo(code, doing.app, 16.dp) else DriveMark(marks, 16.dp) } }
-            else {
-                CompositionLocalProvider(app.kimono.ui.LocalInkTint provides when (phase) { "thinking" -> thinkingInk; "artifact" -> null; else -> app.kimono.ui.LocalInkTint.current }) { InkLoader(size = 22.dp) }
-                if (phase == "artifact") InkSparks()
-            }
-        }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.heightIn(min = 26.dp).semantics(mergeDescendants = true) { contentDescription = words ?: "Working" }) {
+        androidx.compose.material3.LoadingIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.primary)
         androidx.compose.animation.AnimatedContent(
-            targetState = phase to words,
-            transitionSpec = { (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(240)) + androidx.compose.animation.slideInVertically { it / 4 }) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) },
+            targetState = words,
+            transitionSpec = { androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) togetherWith androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) },
             label = "now",
-        ) { (p, w) -> NowWords(p, w) }
-        since?.let { Text(elapsedText(time - it), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f)) }
+        ) { w -> if (w != null) Text(w, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
 }
 
@@ -1802,7 +1800,11 @@ private fun MetersSheet(code: Code, w: CodeWorkspace, context: ContextUse?, usag
                 if (u != null && shown.fiveHour != null) UsageRow("5-hour window", shown.fiveHour, "${percent(shown.fiveHour)} $whose${resetWords(u.fiveHour.resetsAt)?.let { " · resets $it" } ?: ""}")
                 if (u != null && shown.week != null) UsageRow("This week", shown.week, "${percent(shown.week)} $whose${resetWords(u.week.resetsAt)?.let { " · resets $it" } ?: ""}")
             }
-            u?.media?.takeIf { all || shown.tools != null }?.let { m -> UsageRow("Pro Tools", m.fraction, m.words?.let { w -> "$w${resetWords(m.resetsAt)?.let { " · resets $it" } ?: ""}" } ?: "Not reported yet", icon = "bolt") }
+            u?.media?.takeIf { all || shown.tools != null }?.let { m ->
+                UsageRow("Pro Tools", m.fraction, m.words?.let { w -> "$w${resetWords(m.resetsAt)?.let { " · resets $it" } ?: ""}" } ?: "Not reported yet", icon = "bolt")
+                /* People take the Pro Tools budget for their plan: running out never stops Kimono AI. */
+                Text("If Pro Tools run out, Kimono AI keeps working. Only Pro Tools stop${resetWords(m.resetsAt)?.let { " until $it" } ?: " until they reset"}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (u != null && !u.unlimited && (all || shown.fiveHour != null || shown.week != null)) Text(if (u.noFiveHour) "Your share is ${percent(u.week.share)} of the week." else "Your share is ${percent(u.fiveHour.share)} of each 5-hour window and ${percent(u.week.share)} of the week.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Problem(problem)
         }
@@ -2334,8 +2336,15 @@ private fun mathConfig(style: TextStyle) = LatexConfig(
 
 /** A line of Markdown text, its maths sitting in the line. */
 @Composable
-private fun MdText(text: String, style: TextStyle, codeBg: Color, link: Color, modifier: Modifier = Modifier, fadeTail: Boolean = false) {
-    val (plainAnnotated, maths) = remember(text, codeBg, link) { inline(text, codeBg, link) }
+private fun MdText(text: String, style: TextStyle, codeBg: Color, link: Color, modifier: Modifier = Modifier, fadeTail: Boolean = false, tip: Boolean = false) {
+    val (inlined, maths) = remember(text, codeBg, link) { inline(text, codeBg, link) }
+    /* A reply still being written: Material's loading indicator rides just after its last word, on its line. */
+    val plainAnnotated = if (!tip) inlined else remember(inlined) {
+        androidx.compose.ui.text.buildAnnotatedString { append(inlined); append("\u2009"); appendInlineContent("tip", "…") }
+    }
+    val tipContent = if (!tip) emptyMap() else mapOf("tip" to androidx.compose.foundation.text.InlineTextContent(
+        androidx.compose.ui.text.Placeholder(1.15.em, 1.15.em, androidx.compose.ui.text.PlaceholderVerticalAlign.TextCenter),
+    ) { androidx.compose.material3.LoadingIndicator(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.primary) })
     /* the end of a reply being written: its last letters fade from full ink to faint, so new words fade in */
     val annotated = if (!fadeTail) plainAnnotated else remember(plainAnnotated, style.color) {
         val builder = androidx.compose.ui.text.AnnotatedString.Builder(plainAnnotated)
@@ -2347,14 +2356,14 @@ private fun MdText(text: String, style: TextStyle, codeBg: Color, link: Color, m
         }
         builder.toAnnotatedString()
     }
-    if (maths.isEmpty()) { Text(annotated, style = style, modifier = modifier); return }
+    if (maths.isEmpty()) { Text(annotated, style = style, inlineContent = tipContent, modifier = modifier); return }
     val config = remember(style.fontSize, style.color) { mathConfig(style) }
     val measurer = rememberLatexMeasurer(config)
     val dark = isSystemInDarkTheme()
     val content = remember(maths, measurer, dark) {
         maths.withIndex().mapNotNull { (k, tex) -> measurer.inlineContent("\\textstyle ${mathSource(tex)}", config, dark)?.let { "math$k" to it } }.toMap()
     }
-    Text(annotated, style = style, inlineContent = content, modifier = modifier)
+    Text(annotated, style = style, inlineContent = content + tipContent, modifier = modifier)
 }
 
 /** Maths on a line of its own: centred, scrolling sideways when wide. */
@@ -2388,7 +2397,7 @@ private fun displayMath(lines: List<String>, i: Int): Pair<String, Int>? {
  * a second, however fast it comes.
  */
 @Composable
-private fun DraftWords(text: String) = RevealWords(text)
+private fun DraftWords(text: String) = RevealWords(text, tip = true)
 
 /* How far the reply being written has been let out. A finished reply that takes its draft's place
    carries on from here instead of jumping to its end; any other starts from its first word. */
@@ -2396,7 +2405,7 @@ private object Revealed { var text = ""; var at = 0 }
 
 /** Lets [text] out from [from] (or where its draft got to): at least 150 letters a second, and faster the further behind it is. */
 @Composable
-private fun RevealWords(text: String, from: Int? = null, onShown: (Int) -> Unit = {}) {
+private fun RevealWords(text: String, from: Int? = null, tip: Boolean = false, onShown: (Int) -> Unit = {}) {
     val latest by androidx.compose.runtime.rememberUpdatedState(text)
     val report by androidx.compose.runtime.rememberUpdatedState(onShown)
     var shown by remember {
@@ -2433,11 +2442,13 @@ private fun RevealWords(text: String, from: Int? = null, onShown: (Int) -> Unit 
         }
     }
     /* once it's all out, it's drawn as any reply is */
-    if (shown >= text.length) Markdown(text) else Markdown(text.take(shown), fadeTail = true)
+    /* A draft keeps its loading indicator just after its last word: more is on its way. */
+    if (tip) Markdown(text.take(shown), fadeTail = shown < text.length, tip = true)
+    else if (shown >= text.length) Markdown(text) else Markdown(text.take(shown), fadeTail = true)
 }
 
 @Composable
-private fun Markdown(source: String, fadeTail: Boolean = false) {
+private fun Markdown(source: String, fadeTail: Boolean = false, tip: Boolean = false) {
     val lines = remember(source) { source.replace("\r\n", "\n").split('\n') }
     val style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface)
     val codeBg = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -2489,7 +2500,7 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
                             val endsIt = fadeTail && lines.drop(i + 1).all { it.isBlank() }
                             Row(Modifier.padding(start = (depth * 16).dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(if (ordered) "${n}." else "•", style = style)
-                                MdText(item, style, codeBg, link, fadeTail = endsIt)
+                                MdText(item, style, codeBg, link, fadeTail = endsIt, tip = tip && lines.drop(i + 1).all { it.isBlank() })
                             }
                             n++; i++
                         }
@@ -2514,7 +2525,7 @@ private fun Markdown(source: String, fadeTail: Boolean = false) {
                         val body = mutableListOf<String>()
                         while (i < lines.size && lines[i].isNotBlank() && !Regex("^(#{1,4}\\s|\\s*```|\\s*~~~|\\s*[-*+]\\s+|\\s*\\d+[.)]\\s+|\\s*>|\\s*\\||\\s*\\$\\$|\\s*\\\\\\[)").containsMatchIn(lines[i])) body += lines[i++]
                         if (body.isEmpty()) { body += lines[i++] }
-                        MdText(body.joinToString("\n"), style, codeBg, link, fadeTail = fadeTail && lines.drop(i).all { it.isBlank() })
+                        MdText(body.joinToString("\n"), style, codeBg, link, fadeTail = fadeTail && lines.drop(i).all { it.isBlank() }, tip = tip && lines.drop(i).all { it.isBlank() })
                     }
                 }
             }
