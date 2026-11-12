@@ -197,7 +197,11 @@ fun PlayerScreen(
     var volumePeek by remember { mutableIntStateOf(0) }
     var peeking by remember { mutableStateOf(false) }
     LaunchedEffect(volumePeek) { if (volumePeek > 0) { delay(1500); peeking = false } }
-    var ripple by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
+    /* A seek turns its ±10 once more each time; that one button stays up a moment after, even with the controls gone. */
+    var spinBack by remember { mutableIntStateOf(0) }
+    var spinFwd by remember { mutableIntStateOf(0) }
+    var linger by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(spinBack, spinFwd) { if (linger != null) { delay(1400); linger = null } }
     var pausedAt by remember { mutableLongStateOf(0L) }
     var pauseCard by remember { mutableStateOf(false) }
     var tracksVersion by remember { mutableIntStateOf(0) }
@@ -216,7 +220,7 @@ fun PlayerScreen(
         if (engine.playing || engine.playWhenReady) { engine.pause(); party?.pause(engine.position) }
         else { engine.play(); party?.play(engine.position) }
     }
-    fun rip(right: Boolean) { ripple = right to ((ripple?.second ?: 0) + 1) }
+    fun rip(right: Boolean) { if (right) spinFwd++ else spinBack++; linger = right }
 
     /* A new stream to load. */
     LaunchedEffect(state.loads) {
@@ -460,8 +464,6 @@ fun PlayerScreen(
         val chrome by animateFloatAsState(if (ctl && post == Post.None) 1f else 0f, tween(300), label = "chrome")
         Box(Modifier.fillMaxSize().alpha(chrome).background(Brush.verticalGradient(0f to Color(0xA6000000), 0.22f to Color.Transparent, 0.62f to Color.Transparent, 1f to Color(0xCC000000))))
 
-        Ripple(ripple, Modifier.fillMaxSize())
-
         var stalled by remember { mutableStateOf(false) }
         LaunchedEffect(buffering) { stalled = false; if (buffering) { delay(600); stalled = true } }
         if (stalled && buffering && !state.loading && post == Post.None) InkLoader(Modifier.align(Alignment.Center).zIndex(2f), size = 48.dp)
@@ -500,12 +502,16 @@ fun PlayerScreen(
         }
 
         /* Middle (phone): back ten, play, forward ten. Play stays up over "You're watching", one tap away. */
-        if (!tv && !state.loading && state.problem == null && (chrome > 0.01f || pauseCard) && post == Post.None) Row(Modifier.align(Alignment.Center).zIndex(3f), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.alpha(chrome)) { SeekBtn(false) { if (chrome > 0.5f) { seekBy(-10.0); rip(false); show() } } }
+        val lingerBack by animateFloatAsState(if (linger == false) 1f else 0f, tween(if (linger == false) 150 else 400), label = "lingerBack")
+        val lingerFwd by animateFloatAsState(if (linger == true) 1f else 0f, tween(if (linger == true) 150 else 400), label = "lingerFwd")
+        /* Up on its own after a double tap, a tap on it seeks again without bringing the rest back. */
+        fun seekTap(right: Boolean) { val alone = chrome <= 0.5f; if (!alone || linger == right) { seekBy(if (right) 10.0 else -10.0); rip(right); if (!alone) show() } }
+        if (!tv && !state.loading && state.problem == null && (chrome > 0.01f || pauseCard || lingerBack > 0.01f || lingerFwd > 0.01f) && post == Post.None) Row(Modifier.align(Alignment.Center).zIndex(3f), horizontalArrangement = Arrangement.spacedBy(64.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.alpha(maxOf(chrome, lingerBack))) { SeekBtn(false, spins = spinBack) { seekTap(false) } }
             /* while the spinner turns it has the middle: the button steps aside, keeping its place */
             val spinning = stalled && buffering
             Box(Modifier.alpha(if (spinning) 0f else if (pauseCard) 1f else chrome)) { if (spinning) Spacer(Modifier.size(76.dp)) else PlayBtn(playing, { toggle(); show() }, size = 76.dp, iconSize = 52.dp, shadow = true) }
-            Box(Modifier.alpha(chrome)) { SeekBtn(true) { if (chrome > 0.5f) { seekBy(10.0); rip(true); show() } } }
+            Box(Modifier.alpha(maxOf(chrome, lingerFwd))) { SeekBtn(true, spins = spinFwd) { seekTap(true) } }
         }
         if (!state.loading && chrome > 0.01f) {
             /* Bottom: the scrubber, then the buttons. */
@@ -537,18 +543,19 @@ fun PlayerScreen(
             }
         }
 
-        /* Left edge (phone): the volume, up and down, clear of the camera when it sits on that side. */
+        /* Left edge (phone): the volume, up and down, tucked in just beside the camera when it sits on that side. */
+        val cutoutStart = with(LocalDensity.current) { WindowInsets.displayCutout.getLeft(this, androidx.compose.ui.unit.LayoutDirection.Ltr).toDp() }
         val peek by animateFloatAsState(if (peeking && !ctl) 1f else 0f, tween(if (peeking) 150 else 300), label = "peek")
         val volumeAlpha = maxOf(chrome, peek)
         if (!tv && !state.loading && volumeAlpha > 0.01f && post == Post.None) VolumeSlider(volume, {
             volume = it; volumeSetAt = nowMs()
             if (deviceVolume) engine.setDeviceVolume(it) else engine.setVolume(it)
             if (peeking && !ctl) volumePeek++ else show(hold = true)
-        }, onDone = { volumeSetAt = nowMs(); if (peeking && !ctl) volumePeek++ else show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(volumeAlpha).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).padding(start = 20.dp))
+        }, onDone = { volumeSetAt = nowMs(); if (peeking && !ctl) volumePeek++ else show() }, Modifier.align(Alignment.CenterStart).zIndex(3f).alpha(volumeAlpha).padding(start = (cutoutStart - 6.dp).coerceAtLeast(10.dp)))
         /* Right edge (phone): the screen's brightness. */
         val light = brightness
         if (!tv && light != null && !state.loading && chrome > 0.01f && post == Post.None && !chatOpen) EdgeSlider(light, { brightness = it; engine.setBrightness(it); show(hold = true) }, onDone = { show() },
-            Modifier.align(Alignment.CenterEnd).zIndex(3f).alpha(chrome).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).padding(end = 20.dp)) { I(Ic.bright, 22.dp, Color.White) }
+            Modifier.align(Alignment.CenterEnd).zIndex(3f).alpha(chrome).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)).padding(end = 20.dp)) { ShadowI(Ic.bright, 22.dp) }
 
         /* Skip intro / Skip recap: it comes up coloured and the colour drains from its end as its time runs out, an offer rather than a countdown to skipping. */
         val skip = state.skip
@@ -662,7 +669,7 @@ private fun VolumeSlider(volume: Float, onChange: (Float) -> Unit, onDone: () ->
         Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({
             if (volume > 0f) { before = volume; onChange(0f) } else onChange(before.takeIf { it > 0.05f } ?: 1f)
             onDone()
-        }, focusScale = 1.08f), contentAlignment = Alignment.Center) { I(if (volume <= 0f) Ic.mute else Ic.vol, 22.dp, Color.White) }
+        }, focusScale = 1.08f), contentAlignment = Alignment.Center) { ShadowI(if (volume <= 0f) Ic.mute else Ic.vol, 22.dp) }
     }
 }
 
@@ -685,22 +692,36 @@ private fun EdgeSlider(value: Float, onChange: (Float) -> Unit, onDone: () -> Un
                 onDone()
             }
         }, contentAlignment = Alignment.BottomCenter) {
+            Box(Modifier.fillMaxHeight().width(4.dp).offset(y = 1.dp).blur(5.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(2.dp)))
             Box(Modifier.fillMaxHeight().width(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF)).drawBehind {
                 val h = size.height * value
                 drawRect(Night.suo, topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = size.copy(height = h))
             })
             val px = with(LocalDensity.current) { (height * value).toDp() }
+            Box(Modifier.offset(y = -(px - 7.dp)).size(12.dp).blur(5.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded).background(Color.Black.copy(alpha = 0.6f), CircleShape))
             Box(Modifier.offset(y = -(px - 6.dp)).size(12.dp).clip(CircleShape).background(Night.suo))
         }
         Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { icon() }
     }
 }
 
+/** A white glyph over a soft drop shadow in its own shape, so it reads on bright frames. */
 @Composable
-private fun SeekBtn(forward: Boolean, small: Boolean = false, onClick: () -> Unit) {
+private fun ShadowI(icon: ImageVector, size: Dp, modifier: Modifier = Modifier) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        I(icon, size, Color.Black.copy(alpha = 0.6f), Modifier.offset(y = 2.dp).blur(8.dp, androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded))
+        I(icon, size, Color.White)
+    }
+}
+
+/** ±10: each of [spins] turns the arrow once round its circle (forward clockwise, back the other way), the 10 holding still inside. */
+@Composable
+private fun SeekBtn(forward: Boolean, small: Boolean = false, spins: Int = 0, onClick: () -> Unit) {
+    val turn by animateFloatAsState(spins * 360f * (if (forward) 1f else -1f), spring(dampingRatio = 0.7f, stiffness = 260f), label = "seekTurn")
     Box(Modifier.size(48.dp).clip(CircleShape).clickableScale(onClick, focusScale = 1.08f), contentAlignment = Alignment.Center) {
-        I(if (forward) Ic.ff else Ic.rw, 28.dp, Color.White)
-        Text("10", style = ui(9, FontWeight.Bold, Color.White), modifier = Modifier.padding(top = 2.dp))
+        /* the arrow's circle sits at (12, 13) on its 24-unit grid */
+        ShadowI(if (forward) Ic.ff else Ic.rw, 28.dp, Modifier.graphicsLayer { rotationZ = turn; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0.5f, 13f / 24f) })
+        Text("10", style = ui(9, FontWeight.Bold, Color.White).copy(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1f), blurRadius = 6f)), modifier = Modifier.padding(top = 2.dp))
     }
 }
 
@@ -716,23 +737,6 @@ private fun LabBtn(icon: ImageVector, label: String, tv: Boolean, dot: Boolean =
                 if (dot) Box(Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-2).dp).size(9.dp).clip(CircleShape).background(Night.suo).border(2.dp, Color.Black, CircleShape))
             }
             if (!tv) Text(label, style = ui(13, color = Color.White))
-        }
-    }
-}
-
-@Composable
-private fun Ripple(ripple: Pair<Boolean, Int>?, modifier: Modifier) {
-    val a = remember { Animatable(0f) }
-    LaunchedEffect(ripple) { if (ripple != null) { a.snapTo(1f); a.animateTo(0f, tween(600)) } }
-    val right = ripple?.first ?: false
-    BoxWithConstraints(modifier) {
-        if (a.value > 0f) Box(Modifier.align(if (right) Alignment.CenterEnd else Alignment.CenterStart).width(maxWidth * 0.38f).fillMaxHeight()
-            .alpha(a.value).clip(if (right) RoundedCornerShape(topStartPercent = 50, bottomStartPercent = 50) else RoundedCornerShape(topEndPercent = 50, bottomEndPercent = 50))
-            .background(Color.White.copy(alpha = 0.12f * a.value)), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                I(if (right) Ic.ff else Ic.rw, 28.dp, Color.White)
-                Text("10 seconds", style = ui(13, FontWeight.Bold, Color.White))
-            }
         }
     }
 }
