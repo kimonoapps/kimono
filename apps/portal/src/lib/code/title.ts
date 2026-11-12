@@ -6,8 +6,10 @@ import { sandbox } from "./node";
 
 /*
  * A chat's name, from its first exchange: a few words, like a person would
- * file it under. Haiku writes it through Claude Code in the chat's sandbox
- * (the node's /name). Anything going wrong leaves the name the chat started with.
+ * file it under. Haiku writes it through Claude Code in the node's one shared
+ * naming container (the node's /name), not the chat's own sandbox, so it can
+ * start as the first message is sent. Anything going wrong leaves the name the
+ * chat started with.
  */
 export async function suggestTitle(config: CodeConfig, workspace: Workspace, asked: string, answered: string): Promise<string | null> {
   if (!asked.trim()) return null;

@@ -537,6 +537,10 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   const making = new Set<string>();
   try {
     const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
+    /* A new chat is named from its first message as it's sent, in the node's naming container, alongside
+       its sandbox being made: a message too short to name by itself ("hey") waits for the answer, at the
+       end of the turn. */
+    if (!second) void nameChat(config, workspace, { early: true });
     /* A sandbox made ready in the last few minutes is still there (the node stops one after 15 quiet minutes):
        what's in it is read while it's made ready, instead of after, a round trip to the node less before the agent starts. */
     const warm = Date.now() - (awake.at.get(workspace.id) ?? 0) < 14 * 60_000 && !second;
@@ -545,9 +549,6 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* A new, empty sandbox after all: what was read ahead isn't it. */
     if (ready.fresh && ahead) { ahead.tree = null; ahead.granted = null; }
     timing.ensured = Date.now();
-    /* A new chat is named from its first message as the answer is written, not after it: a message too
-       short to name by itself ("hey") waits for the answer, at the end of the turn, as before. */
-    if (!second) void nameChat(config, workspace, { early: true });
     const session = second ? second.session : workspaceFor(db(), workspace.id, workspace.owner).session;
     /* The person's other chats, for it to look back on (none in a chat shared with others). Each is a file written
        into the sandbox, so a first chat of someone with many would wait seconds for them: the agent starts as they
@@ -805,9 +806,10 @@ async function nameChat(config: CodeConfig, workspace: Workspace, { early = fals
     const reply = events.filter((e) => e.turn === first.turn && e.event.kind === "text").map((e) => (e.event as { text: string }).text).join("\n\n");
     const title = await suggestTitle(config, current, first.event.text || first.event.attachments.map((a) => a.name).join(", "), reply);
     if (!title || !nameWorkspace(db(), workspace.id, title)) return;
+    /* Said first, so the name shows at once; its Drive folder follows. */
+    broadcast(workspace.id, null, { kind: "renamed", title });
     const named = workspaceFor(db(), workspace.id, workspace.owner);
     await retitle(db(), named).catch((error) => console.warn("Kimono AI couldn't rename a chat's folder:", error instanceof Error ? error.message : error));
-    broadcast(workspace.id, null, { kind: "renamed", title });
   } catch (error) {
     console.warn("Kimono AI couldn't name a chat:", error instanceof Error ? error.message : error);
   } finally {

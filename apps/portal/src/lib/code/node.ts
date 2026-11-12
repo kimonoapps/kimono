@@ -86,7 +86,7 @@ export const sandbox = {
 
   /** A name for the chat from its first exchange, from Haiku in its sandbox. */
   name: (config: CodeConfig, workspace: Workspace, conversation: string) => call(config, `${at(workspace)}/name`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversation }), timeout: 60_000,
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversation, model: { token: config.modelToken } }), timeout: 60_000,
   }).then(json<{ title: string }>),
 
   cancel: (config: CodeConfig, workspace: Workspace) => call(config, `${at(workspace)}/cancel`, { method: "POST", timeout: 10_000 }).then(() => undefined),

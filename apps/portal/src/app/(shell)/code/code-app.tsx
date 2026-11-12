@@ -127,7 +127,8 @@ function useTimeline(id: string | null, onDone: () => void) {
         const event = stored.event;
         if (stored.seq === 0) {
           if (event.kind === "typing") { const by = event.by, until = Date.now() + 6000; setTypers((now) => ({ ...now, [by]: until })); continue; }
-          if (event.kind === "renamed") { changed = true; continue; }
+          /* A new name shows at once, not after things settle. */
+          if (event.kind === "renamed") { done.current(); continue; }
           /* A message was changed: the chat from it on went, and runs again from there. */
           if (event.kind === "rewound") {
             const from = event.seq;

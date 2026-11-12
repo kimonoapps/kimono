@@ -29,6 +29,8 @@ type Server struct {
 	byCapability map[string]*workspace
 	// naming holds the one-off keys a chat is named with: each reaches the model only while its naming runs.
 	naming map[string]*workspace
+	// namerMu keeps the naming container from being made twice at once.
+	namerMu sync.Mutex
 	// previews are the live apps, by workspace id; kept in StateDir.
 	previews map[string]*preview
 	// records keep each sandbox's repository and last activity; kept in StateDir.
@@ -136,6 +138,12 @@ func (s *Server) Run(ctx context.Context) error {
 		}(server)
 	}
 	s.cfg.Logf("Kimono Code sandboxes: API on %s, gateway on %s (containers use %s), previews on %s, runtime %s; pause after %s, stop after %s", s.cfg.Listen, gatewayListen, s.gatewayURL, s.cfg.PreviewListen, s.runtime, s.cfg.PauseAfter, s.cfg.StopAfter)
+	/* Warm before the first chat needs a name. */
+	go func() {
+		if err := s.namer(context.Background()); err != nil {
+			s.cfg.Logf("the naming container: %v", err)
+		}
+	}()
 
 	// Whatever went overdue while the node was down sleeps now, not later.
 	s.sweep(ctx)
