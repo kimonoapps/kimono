@@ -1276,7 +1276,20 @@ function RevealWords({ text, className, id }: { text: string; className: string;
   /* A finished reply, once it's all out, is drawn as any reply is, with no fading words left to fade again.
      A draft keeps its words as they are: it may grow again any moment. */
   const done = id !== undefined && shown >= text.length;
-  return <div className={className}><Markdown text={done ? text : text.slice(0, shown)} streaming={!done} /></div>;
+  /* A word already shown that's drawn anew (the draft becoming the reply when a tool starts, a line
+     becoming a list) keeps still: only words past the ones seen before fade in. */
+  const box = useRef<HTMLDivElement>(null);
+  const seen = useRef(-1);
+  useLayoutEffect(() => {
+    const words = box.current ? [...box.current.querySelectorAll<HTMLElement>(".cd-w")] : [];
+    const before = seen.current < 0 ? words.length : seen.current;
+    words.forEach((word, n) => {
+      if (n < before && !word.dataset.seen) for (const a of word.getAnimations()) a.finish();
+      word.dataset.seen = "1";
+    });
+    seen.current = words.length;
+  });
+  return <div ref={box} className={className}><Markdown text={done ? text : text.slice(0, shown)} streaming={!done} /></div>;
 }
 
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
