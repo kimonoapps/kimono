@@ -1125,8 +1125,8 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-thinking .cd-now { white-space: nowrap; animation: cd-now-in .18s ease-out both; }
 @keyframes cd-now-in { from { opacity: 0; } }
 .cd-say.is-draft { position: relative; }
-.cd-say .cd-tip { position: absolute; left: 0; top: 0; width: 18px; height: 18px; color: var(--k-primary); pointer-events: none; transition: translate .12s ease-out; }
-@media (prefers-reduced-motion: reduce) { .cd-thinking, .cd-thinking .cd-now { animation: none; } .cd-say .cd-tip { transition: none; } }
+.cd-say .cd-tip { position: absolute; left: 0; top: 0; width: 18px; height: 18px; color: var(--k-primary); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .cd-thinking, .cd-thinking .cd-now { animation: none; } }
 .cd-morph { width: 16px; height: 16px; color: var(--k-moss); flex: none; }
 .ci .cd-morph { width: 14px; height: 14px; }
 
