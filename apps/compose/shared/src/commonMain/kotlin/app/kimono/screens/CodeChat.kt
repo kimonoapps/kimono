@@ -107,6 +107,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
@@ -426,7 +427,16 @@ private sealed interface Item {
     data class Access(override val key: Long, val event: CodeEvent.Access, val answer: CodeEvent.AccessAnswer?) : Item
     /** A question it asked that has been answered or skipped; one still waiting is in the writing bar's place instead. */
     data class Asked(override val key: Long, val event: CodeEvent.Question, val answer: CodeEvent.QuestionAnswer) : Item
+    /** Two takes on one message, each its own run of items to its Done; which one the person [kept], or which was [dropped]. */
+    class Takes(override val key: Long, val id: String) : Item {
+        val takes = mutableListOf(mutableListOf<Item>())
+        var kept: Int? = null
+        var dropped: Int? = null
+    }
 }
+
+/** Every item, the takes of a pair in order among them. */
+private fun flatItems(items: List<Item>): List<Item> = items.flatMap { if (it is Item.Takes) it.takes.flatten() else listOf(it) }
 
 /** Consecutive tool calls fold into one group, each call paired with its result; pictures in a row together. */
 private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
@@ -435,26 +445,41 @@ private fun itemsOf(events: List<StoredCodeEvent>): List<Item> {
     val answers = events.mapNotNull { it.event as? CodeEvent.AccessAnswer }.associateBy { it.id }
     val replied = events.mapNotNull { it.event as? CodeEvent.QuestionAnswer }.associateBy { it.id }
     val said = mutableListOf<String>()
+    /* Where items go: the timeline, or the take under way. */
+    var into: MutableList<Item> = items
+    fun pairOf(id: String) = items.lastOrNull { it is Item.Takes && it.id == id } as Item.Takes?
     for (stored in events) {
-        val last = items.lastOrNull()
+        val last = into.lastOrNull()
         when (val e = stored.event) {
-            is CodeEvent.Ask -> { items += Item.Ask(stored.seq, e, stored.at); said.clear() }
+            is CodeEvent.Ask -> { into = items; items += Item.Ask(stored.seq, e, stored.at); said.clear() }
+            is CodeEvent.Take -> {
+                val pair = if (e.n == 0) null else pairOf(e.id)
+                if (pair != null) { val second = mutableListOf<Item>(); if (pair.takes.size > 1) pair.takes[1] = second else pair.takes += second; into = second }
+                else { val fresh = Item.Takes(stored.seq, e.id); items += fresh; into = fresh.takes[0] }
+                said.clear()
+            }
+            is CodeEvent.TakeKept -> pairOf(e.id)?.kept = e.n
+            is CodeEvent.TakeDropped -> pairOf(e.id)?.dropped = e.n
             /* sent while it worked: read now, so no longer waiting; or never read, because it was stopped */
             is CodeEvent.Steered -> for (i in items.indices) { val a = items[i]; if (a is Item.Ask && a.key in e.seqs) items[i] = a.copy(event = a.event.copy(queued = false)) }
             is CodeEvent.Dropped -> for (i in items.indices) { val a = items[i]; if (a is Item.Ask && a.key in e.seqs) items[i] = a.copy(event = a.event.copy(dropped = true)) }
-            is CodeEvent.Say -> { items += Item.Say(stored.seq, e.text); said += e.text }
+            is CodeEvent.Say -> { into += Item.Say(stored.seq, e.text); said += e.text }
             is CodeEvent.Tool -> {
                 val call = ToolCall(e).also { calls[e.id] = it }
-                if (last is Item.Tools) last.calls += call else items += Item.Tools(stored.seq, mutableListOf(call))
+                if (last is Item.Tools) last.calls += call else into += Item.Tools(stored.seq, mutableListOf(call))
             }
             is CodeEvent.ToolResult -> calls[e.id]?.result = e
             is CodeEvent.Progress -> calls[e.id]?.probe = e
-            is CodeEvent.Done -> { items += Item.Done(stored.seq, e, stored.at, said.joinToString("\n\n")); said.clear() }
-            is CodeEvent.Image -> if (last is Item.Shots) last.shots += e else items += Item.Shots(stored.seq, mutableListOf(e))
-            is CodeEvent.Access -> items += Item.Access(stored.seq, e, answers[e.id])
-            is CodeEvent.Question -> replied[e.id]?.let { items += Item.Asked(stored.seq, e, it) }
+            is CodeEvent.Done -> {
+                into += Item.Done(stored.seq, e, stored.at, said.joinToString("\n\n")); said.clear()
+                /* The second take ends at its Done; what follows is the timeline's again. */
+                if (into !== items && (items.lastOrNull() as? Item.Takes)?.takes?.getOrNull(1) === into) into = items
+            }
+            is CodeEvent.Image -> if (last is Item.Shots) last.shots += e else into += Item.Shots(stored.seq, mutableListOf(e))
+            is CodeEvent.Access -> into += Item.Access(stored.seq, e, answers[e.id])
+            is CodeEvent.Question -> replied[e.id]?.let { into += Item.Asked(stored.seq, e, it) }
             is CodeEvent.Published, is CodeEvent.Preview, CodeEvent.PreviewStopped, is CodeEvent.Slept, is CodeEvent.Disk, is CodeEvent.Compacted,
-            is CodeEvent.Remembered, is CodeEvent.SkillMade, is CodeEvent.Artifact, is CodeEvent.Connect, is CodeEvent.Sent -> items += Item.Plain(stored.seq, e)
+            is CodeEvent.Remembered, is CodeEvent.SkillMade, is CodeEvent.Artifact, is CodeEvent.Connect, is CodeEvent.Sent -> into += Item.Plain(stored.seq, e)
             else -> {}
         }
     }
@@ -475,7 +500,8 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
     val list = rememberLazyListState()
     val scope = rememberCoroutineScope()
     /* An artifact still being written has no place in the timeline yet: it is drawn at the end until its call lands. */
-    val placed = items.mapNotNull { ((it as? Item.Plain)?.event as? CodeEvent.Artifact)?.id }.toSet()
+    val flat = remember(items) { flatItems(items) }
+    val placed = flat.mapNotNull { ((it as? Item.Plain)?.event as? CodeEvent.Artifact)?.id }.toSet()
     val writing = drafts.artifacts.entries.filter { it.value.first !in placed }.map { it.key }
     /* Follows it while you're at the bottom; leaves you alone once you scroll up. */
     val atBottom by remember { derivedStateOf { val info = list.layoutInfo; val last = info.visibleItemsInfo.lastOrNull(); last == null || last.index >= info.totalItemsCount - 1 } }
@@ -494,26 +520,26 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
         }
     }
     val total = items.size + writing.size + 2
-    LaunchedEffect(items.size, writing.size, drafts.text?.length?.div(80), w.running) { if (following && total > 0) list.animateScrollToItem(total - 1) }
+    LaunchedEffect(flat.size, writing.size, drafts.text?.length?.div(80), w.running) { if (following && total > 0) list.animateScrollToItem(total - 1) }
     /* Only the turn under way may hold a group open. */
-    val lastAsk = items.indexOfLast { it is Item.Ask }
-    val lastTools = items.drop(lastAsk + 1).lastOrNull { it is Item.Tools }
-    val lastPreview = items.lastOrNull { (it as? Item.Plain)?.event is CodeEvent.Preview }?.key
-    val lastContext = items.lastOrNull { it is Item.Done && it.event.context != null }?.let { (it as Item.Done).event.context }
+    val lastAsk = flat.indexOfLast { it is Item.Ask }
+    val lastTools = flat.drop(lastAsk + 1).lastOrNull { it is Item.Tools }
+    val lastPreview = flat.lastOrNull { (it as? Item.Plain)?.event is CodeEvent.Preview }?.key
+    val lastContext = flat.lastOrNull { it is Item.Done && it.event.context != null }?.let { (it as Item.Done).event.context }
     var viewing by remember { mutableStateOf<Pair<List<CodeEvent.Image>, Int>?>(null) }
     /* Replies that land after the chat has opened are let out word by word; ones already there just show. */
     var liveFrom by remember(w.id) { mutableStateOf(Long.MAX_VALUE) }
     /* How far each live reply has been let out, kept while the chat is open so a reply scrolled off and back doesn't start again. */
     val revealed = remember(w.id) { mutableMapOf<Long, Int>() }
     val hasItems = items.isNotEmpty()
-    val itemsNow by androidx.compose.runtime.rememberUpdatedState(items)
+    val itemsNow by androidx.compose.runtime.rememberUpdatedState(flat)
     LaunchedEffect(w.id, hasItems) { if (hasItems && liveFrom == Long.MAX_VALUE) { kotlinx.coroutines.delay(500); liveFrom = itemsNow.lastOrNull()?.key ?: 0L } }
     var ratings by remember(w.id) { mutableStateOf<Map<Long, Int>>(emptyMap()) }
     LaunchedEffect(w.id) { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } }
     /* An administrator's thank-you for a thumb, shown under its answer. */
     var replies by remember(w.id) { mutableStateOf<Map<Long, String>>(emptyMap()) }
     LaunchedEffect(w.id) { runCatching { code.replies(w.id) }.onSuccess { replies = it } }
-    val asking = askingFor(items, ratings)
+    val asking = askingFor(flat, ratings)
     /* The latest question it asked that has no answer yet: it takes the writing bar's place until it has one. */
     val waiting = remember(events.size) {
         val replied = events.mapNotNullTo(mutableSetOf()) { (it.event as? CodeEvent.QuestionAnswer)?.id }
@@ -530,10 +556,58 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
             catch (p: KimonoProblem) { draft.problem = p.message ?: "Didn't send"; if (sentQuestion == draft.question.id) sentQuestion = null }
         }
     }
+    /* What it's writing now, and that it's working: inside the last take while a pair runs, else at the end. */
+    val tailInPair = w.running && items.lastOrNull() is Item.Takes
+    @Composable
+    fun Tail() {
+        writing.forEach { name -> ArtifactCard(code, platform, artifacts, name) }
+        drafts.text?.let { DraftWords(it) }
+        if (drafts.text.isNullOrBlank() && drafts.now?.phase != "writing") Working(code, marks, w.turn?.startedAt, drafts.now, artifact = drafts.artifacts.isNotEmpty())
+    }
+    /* One item of the timeline, or of a take. */
+    @Composable
+    fun Show(item: Item) {
+        when (item) {
+            is Item.Takes -> TakesBlock(code, w, item, latest = item === items.lastOrNull(), withTail = tailInPair && item === items.lastOrNull(), tail = { Tail() }, show = { Show(it) })
+            is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
+            /* Let out once: scrolled away and back, or already out, it just shows. */
+            is Item.Say -> if (item.key > liveFrom && (revealed[item.key] ?: -1) < item.text.length) RevealWords(item.text, from = revealed[item.key]) { revealed[item.key] = it } else Markdown(item.text)
+            is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
+            is Item.Done -> DoneNote(item.event, item.answer, ratings[item.key], asking = asking == item.key, reply = if (ratings[item.key] != null) replies[item.key] else null) { rating, note ->
+                ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
+                /* Not saved: show what the server has, not what was hoped. */
+                scope.launch { runCatching { code.rate(w.id, item.key, rating, note) }.onSuccess { ratings = it }.onFailure { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } } }
+            }
+            is Item.Shots -> ShotGallery(code, w, item.shots) { at -> viewing = item.shots.toList() to at }
+            is Item.Access -> AccessCard(code, drive, marks, people, w, item.event, item.answer, open)
+            is Item.Asked -> Note("chat", askedLine(item.event, item.answer))
+            is Item.Plain -> when (val e = item.event) {
+                is CodeEvent.Preview -> if (w.running && w.preview?.url == e.url && item.key == lastPreview) PreviewCard(code, platform, w, e.url, ready = false)
+                    else Note("link", "The app ran at ${e.host}")
+                CodeEvent.PreviewStopped -> Note("link", "The app’s link was taken down.")
+                /* only a project's chat says it was put to sleep; a plain chat just wakes */
+                is CodeEvent.Slept -> if (w.isProject) Note("restart", "Put to sleep to make room for “${e.forTitle}”. It wakes when you open it.")
+                is CodeEvent.Disk -> Note("close", if (e.full) "Stopped: this chat's files took ${gigabytes(e.used)}, past its ${gigabytes(e.quota)}. Its app was stopped too. Ask it to free some space."
+                    else "This chat's files take ${gigabytes(e.used)} of its ${gigabytes(e.quota)}. It was asked to free some space first.", failed = true)
+                is CodeEvent.Compacted -> Note("diff", "Compacted the conversation${e.before?.let { " · it held ${kTokens(it)} tokens" } ?: ""}")
+                is CodeEvent.Remembered -> Note("chat", "${when (e.how) { "forgot" -> "Forgot"; "changed" -> "Now remembers"; else -> "Remembered" }}: ${e.text}", trailing = { TextLink("For you") { open("ai/memory") } })
+                is CodeEvent.SkillMade -> if (e.problem != null) Note("spark", "Couldn’t save ${e.name}: ${e.problem}", failed = true)
+                    else Note("spark", "${if (e.updated) "Changed" else "Made"} ${e.name}${e.command?.let { " · /$it" } ?: ""}${if (e.published) " · in the Marketplace" else ""}", trailing = { if (w.isOwner) TextLink("For you") { open("ai/memory") } })
+                is CodeEvent.Published -> Note("pr", "Opened pull request #${e.number}", trailing = { TextLink("Open") { platform.openUrl(e.url) } })
+                is CodeEvent.Connect -> ConnectCard(code, platform, e.app, e.url, waitingFor = if (w.isOwner) null else people.nameOf(w.owner))
+                is CodeEvent.Sent -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    e.files.filter { it.isMedia }.takeIf { it.isNotEmpty() }?.let { AttachedMedia(code, platform, w, it) }
+                    e.files.filterNot { it.isMedia }.forEach { SentFile(code, platform, w, it) }
+                }
+                is CodeEvent.Artifact -> if (e.action == "edited") ArtifactChanged(artifacts, code, e.name) else ArtifactCard(code, platform, artifacts, e.name)
+                else -> {}
+            }
+        }
+    }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     /* Swiping the conversation left slides it over to show when each message was sent, as in Messages; let go and it slides back. */
     val reveal = remember { androidx.compose.animation.core.Animatable(0f) }
-    val shownAt = remember(items.size) { now() }
+    val shownAt = remember(flat.size) { now() }
     /* A tap on the conversation itself (not on something in it) puts the keyboard away, ending a rename as tapping away does on the website. */
     Column(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures(onTap = { focusManager.clearFocus() }) }) {
         Box(Modifier.weight(1f).fillMaxWidth().pointerInput(Unit) {
@@ -553,48 +627,15 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
                         fadeOutSpec = null,
                     )) {
                     TimeAside(when (item) { is Item.Ask -> item.at; is Item.Done -> item.at; else -> 0L }.takeIf { it > 0 }?.let { messageTime(it, shownAt, platform.utcOffsetMillis(it)) }, reveal.value) {
-                    when (item) {
-                        is Item.Ask -> AskBubble(code, platform, people, w, item.event, seq = item.key)
-                        /* Let out once: scrolled away and back, or already out, it just shows. */
-                        is Item.Say -> if (item.key > liveFrom && (revealed[item.key] ?: -1) < item.text.length) RevealWords(item.text, from = revealed[item.key]) { revealed[item.key] = it } else Markdown(item.text)
-                        is Item.Tools -> ToolGroup(code, marks, item.calls, live = w.running && item === lastTools, open)
-                        is Item.Done -> DoneNote(item.event, item.answer, ratings[item.key], asking = asking == item.key, reply = if (ratings[item.key] != null) replies[item.key] else null) { rating, note ->
-                            ratings = if (rating == null) ratings - item.key else ratings + (item.key to rating)
-                            /* Not saved: show what the server has, not what was hoped. */
-                            scope.launch { runCatching { code.rate(w.id, item.key, rating, note) }.onSuccess { ratings = it }.onFailure { runCatching { code.ratings(w.id) }.onSuccess { ratings = it } } }
-                        }
-                        is Item.Shots -> ShotGallery(code, w, item.shots) { at -> viewing = item.shots.toList() to at }
-                        is Item.Access -> AccessCard(code, drive, marks, people, w, item.event, item.answer, open)
-                        is Item.Asked -> Note("chat", askedLine(item.event, item.answer))
-                        is Item.Plain -> when (val e = item.event) {
-                            is CodeEvent.Preview -> if (w.running && w.preview?.url == e.url && item.key == lastPreview) PreviewCard(code, platform, w, e.url, ready = false)
-                                else Note("link", "The app ran at ${e.host}")
-                            CodeEvent.PreviewStopped -> Note("link", "The app’s link was taken down.")
-                            /* only a project's chat says it was put to sleep; a plain chat just wakes */
-                            is CodeEvent.Slept -> if (w.isProject) Note("restart", "Put to sleep to make room for “${e.forTitle}”. It wakes when you open it.")
-                            is CodeEvent.Disk -> Note("close", if (e.full) "Stopped: this chat's files took ${gigabytes(e.used)}, past its ${gigabytes(e.quota)}. Its app was stopped too. Ask it to free some space."
-                                else "This chat's files take ${gigabytes(e.used)} of its ${gigabytes(e.quota)}. It was asked to free some space first.", failed = true)
-                            is CodeEvent.Compacted -> Note("diff", "Compacted the conversation${e.before?.let { " · it held ${kTokens(it)} tokens" } ?: ""}")
-                            is CodeEvent.Remembered -> Note("chat", "${when (e.how) { "forgot" -> "Forgot"; "changed" -> "Now remembers"; else -> "Remembered" }}: ${e.text}", trailing = { TextLink("For you") { open("ai/memory") } })
-                            is CodeEvent.SkillMade -> if (e.problem != null) Note("spark", "Couldn’t save ${e.name}: ${e.problem}", failed = true)
-                                else Note("spark", "${if (e.updated) "Changed" else "Made"} ${e.name}${e.command?.let { " · /$it" } ?: ""}${if (e.published) " · in the Marketplace" else ""}", trailing = { if (w.isOwner) TextLink("For you") { open("ai/memory") } })
-                            is CodeEvent.Published -> Note("pr", "Opened pull request #${e.number}", trailing = { TextLink("Open") { platform.openUrl(e.url) } })
-                            is CodeEvent.Connect -> ConnectCard(code, platform, e.app, e.url, waitingFor = if (w.isOwner) null else people.nameOf(w.owner))
-                            is CodeEvent.Sent -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                e.files.filter { it.isMedia }.takeIf { it.isNotEmpty() }?.let { AttachedMedia(code, platform, w, it) }
-                                e.files.filterNot { it.isMedia }.forEach { SentFile(code, platform, w, it) }
-                            }
-                            is CodeEvent.Artifact -> if (e.action == "edited") ArtifactChanged(artifacts, code, e.name) else ArtifactCard(code, platform, artifacts, e.name)
-                            else -> {}
-                        }
-                    }
+                        Show(item)
                     }
                     }
                 }
-                items(writing, key = { "writing-${drafts.artifacts[it]?.first ?: it}" }) { name -> ArtifactCard(code, platform, artifacts, name) }
-                item(key = "draft") { drafts.text?.let { DraftWords(it) } }
+                items(if (tailInPair) emptyList() else writing, key = { "writing-${drafts.artifacts[it]?.first ?: it}" }) { name -> ArtifactCard(code, platform, artifacts, name) }
+                item(key = "draft") { if (!tailInPair) drafts.text?.let { DraftWords(it) } }
                 item(key = "tail") {
                     when {
+                        tailInPair -> Spacer(Modifier.size(1.dp))
                         /* Not while the reply's own words are coming in: those show it's working. */
                         w.running && (drafts.text.isNullOrBlank() && drafts.now?.phase != "writing") -> Working(code, marks, w.turn?.startedAt, drafts.now, artifact = drafts.artifacts.isNotEmpty())
                         w.running -> Spacer(Modifier.size(1.dp))
@@ -619,6 +660,86 @@ private fun ChatBody(code: Code, drive: Drive, platform: Platform, marks: AiMark
     }
     viewing?.let { (shots, at) -> ShotViewer(code, w, shots, at) { viewing = null } }
     artifacts.full?.let { name -> ArtifactFull(code, platform, artifacts, name) }
+}
+
+/* ── two takes on one answer (portal lib/code/takes.ts) ──
+   Two tabs, First and Second, and the person keeps one; from then on it answers them that way.
+   Kept, the other folds away behind a quiet line. */
+
+@Composable
+private fun TakesBlock(code: Code, w: CodeWorkspace, item: Item.Takes, latest: Boolean, withTail: Boolean, tail: @Composable () -> Unit, show: @Composable (Item) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var tab by remember(item.key) { mutableStateOf(0) }
+    var other by remember(item.key) { mutableStateOf(false) }
+    var busy by remember(item.key) { mutableStateOf<Int?>(null) }
+    var problem by remember(item.key) { mutableStateOf<String?>(null) }
+    val gap = Arrangement.spacedBy(12.dp)
+    val hair = MaterialTheme.colorScheme.outlineVariant
+    /* The second hasn't begun, or one of them didn't come off: the other is just the answer. */
+    val alone = when {
+        item.takes.size < 2 || item.dropped == 1 -> 0
+        item.dropped == 0 -> 1
+        else -> null
+    }
+    if (alone != null) {
+        Column(verticalArrangement = gap) {
+            item.takes[alone].forEach { show(it) }
+            if (withTail) tail()
+        }
+        return
+    }
+    val kept = item.kept?.takeIf { it in 0..1 }
+    if (kept != null) {
+        Column(verticalArrangement = gap) {
+            item.takes[kept].forEach { show(it) }
+            TextLink(if (other) "Hide the other take" else "The other take") { other = !other }
+            if (other) Column(
+                Modifier.fillMaxWidth().drawBehind { drawLine(hair, androidx.compose.ui.geometry.Offset(1.dp.toPx(), 0f), androidx.compose.ui.geometry.Offset(1.dp.toPx(), size.height), 2.dp.toPx()) }.padding(start = 16.dp),
+                verticalArrangement = gap,
+            ) { item.takes[1 - kept].forEach { show(it) } }
+        }
+        return
+    }
+    val ends = item.takes.map { take -> take.firstNotNullOfOrNull { it as? Item.Done } }
+    /* Only the chat's owner keeps one, once both are in and neither went wrong, and only on the latest answer. */
+    val keepable = w.isOwner && latest && !w.running && ends.all { it?.event?.ok == true }
+    fun keep(n: Int) {
+        busy = n; problem = null
+        scope.launch {
+            try { code.keepTake(w.id, item.id, n) }
+            catch (p: KimonoProblem) { problem = p.message ?: "That didn’t work. Try again." }
+            finally { busy = null }
+        }
+    }
+    val accent = MaterialTheme.colorScheme.primary
+    val shown = tab.coerceIn(0, item.takes.lastIndex)
+    Column(Modifier.fillMaxWidth().drawBehind { drawLine(hair, androidx.compose.ui.geometry.Offset(0f, 1.dp.toPx()), androidx.compose.ui.geometry.Offset(size.width, 1.dp.toPx()), 2.dp.toPx()) }.padding(top = 14.dp), verticalArrangement = gap) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text("Two takes", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            if (keepable || (w.running && latest)) Text("Keep the one you’d like from now on.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        /* Tabs as on the website: a hairline under them, the open one underlined in suō, how long each took beside its name. */
+        Row(Modifier.fillMaxWidth().drawBehind { drawLine(hair, androidx.compose.ui.geometry.Offset(0f, size.height - 0.5.dp.toPx()), androidx.compose.ui.geometry.Offset(size.width, size.height - 0.5.dp.toPx()), 1.dp.toPx()) }) {
+            item.takes.indices.forEach { n ->
+                val on = shown == n
+                val took = ends[n]?.event?.durationMs?.let { elapsedText(it) } ?: if (w.running && latest && n == 1) "…" else null
+                Row(
+                    Modifier.heightIn(min = 44.dp)
+                        .selectable(selected = on, role = androidx.compose.ui.semantics.Role.Tab, onClick = { tab = n })
+                        .drawBehind { if (on) drawLine(accent, androidx.compose.ui.geometry.Offset(0f, size.height - 1.5.dp.toPx()), androidx.compose.ui.geometry.Offset(size.width, size.height - 1.5.dp.toPx()), 3.dp.toPx()) }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(if (n == 0) "First" else "Second", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                    took?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
+        item.takes[shown].forEach { show(it) }
+        if (withTail && shown == item.takes.lastIndex) tail()
+        if (keepable) Seal("Keep this one", compact = true, busy = busy == shown, enabled = busy == null, onClick = { keep(shown) })
+        Problem(problem)
+    }
 }
 
 /** Working, at the end of the conversation: what it's doing, in its own words and ink, and how long. */

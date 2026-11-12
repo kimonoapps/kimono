@@ -293,6 +293,12 @@ sealed interface CodeEvent {
     data class Dropped(val seqs: List<Long>) : CodeEvent
     /** What it is doing right now: working, thinking, writing, tools (with the app, space or sort of tool) or artifact. */
     data class Phase(val phase: String, val tool: String?, val app: String?, val space: String?) : CodeEvent
+    /** One of two takes on the same message begins: what follows, to its Done, is take [n] (0 or 1). */
+    data class Take(val id: String, val n: Int, val of: String?) : CodeEvent
+    /** The person kept take [n]; from then on it answers them that way. */
+    data class TakeKept(val id: String, val n: Int) : CodeEvent
+    /** Take [n] didn't come off: the other stands alone. */
+    data class TakeDropped(val id: String, val n: Int) : CodeEvent
     data object Unknown : CodeEvent
 }
 
@@ -422,6 +428,9 @@ private fun eventOf(o: JsonObject): CodeEvent = when (o.text("kind")) {
     "steered" -> CodeEvent.Steered((o["seqs"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it.jsonPrimitive.longOrNull } ?: emptyList())
     "dropped" -> CodeEvent.Dropped((o["seqs"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { it.jsonPrimitive.longOrNull } ?: emptyList())
     "phase" -> CodeEvent.Phase(o.text("phase") ?: "working", o.text("tool"), o.text("app"), o.text("space"))
+    "take" -> CodeEvent.Take(o.text("id") ?: "", o.long("n")?.toInt() ?: 0, o.text("of"))
+    "take-kept" -> CodeEvent.TakeKept(o.text("id") ?: "", o.long("n")?.toInt() ?: 0)
+    "take-dropped" -> CodeEvent.TakeDropped(o.text("id") ?: "", o.long("n")?.toInt() ?: 0)
     else -> CodeEvent.Unknown
 }
 
@@ -596,6 +605,8 @@ class Code(private val session: Session, private val platform: Platform? = null)
             put("attachments", json.encodeToJsonElement(attachments))
             if (_model.value != "auto") put("effort", _effort.value)
             put("model", _model.value)
+            /* This app shows two takes on an answer, and lets the person keep one. */
+            put("takes", true)
         }))
     }
 
@@ -633,6 +644,11 @@ class Code(private val session: Session, private val platform: Platform? = null)
     /** Answers its request to open some of Drive: "file" (with the one [file]), "chat", "always" or "deny". */
     suspend fun answerAccess(id: String, request: String, choice: String, file: String? = null) {
         session.call("${ws(id)}/access/${request.encodeURLParameter()}", HttpMethod.Post, jsonBody(buildJsonObject { put("choice", choice); if (file != null) put("file", file) }))
+    }
+
+    /** Keeps the first (0) or second (1) of two takes on an answer; the chat carries on from it. */
+    suspend fun keepTake(id: String, take: String, pick: Int) {
+        session.call("${ws(id)}/takes/${take.encodeURLParameter()}", HttpMethod.Post, jsonBody(buildJsonObject { put("pick", pick) }))
     }
 
     /** Answers its questions, one [QuestionReply] per question in order, or skips them all ([answers] null). The server posts it as their message and starts its next turn. */

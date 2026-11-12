@@ -284,8 +284,8 @@ without asking again. Each pair tests one trade-off, a kind:
 
 When: only on Auto, only the owner of a plain chat (not an app's chat), only a
 message that is one of those kinds, no attachments, not an edit or a queued
-message, only from a client that can show the pair (the web sends
-`takes: true`; the phone app doesn't yet), and never twice per kind per person,
+message, only from a client that can show the pair (the web and
+the phone app send `takes: true`), and never twice per kind per person,
 picked or not. Depth goes before voice, one kind per turn. Quick messages never.
 
 How: one turn runs both, one after the other (the node runs one agent per
