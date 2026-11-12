@@ -39,6 +39,8 @@ export function watchConfig(settings: PlatformSettings) {
       key: process.env.KIMONO_WATCH_PACKAGER_KEY?.trim() || "",
       input: (process.env.KIMONO_WATCH_PACKAGER_INPUT_URL || "http://portal:3000").replace(/\/+$/, ""),
     },
+    /* Shows from broadcasters' YouTube uploads (./youtube.ts): off unless KIMONO_WATCH_YOUTUBE=on. */
+    youtube: process.env.KIMONO_WATCH_YOUTUBE === "on",
     /* Age ratings and release dates are read for this country first. */
     region: (value("region") || "US").toUpperCase().slice(0, 2),
     jikanUrl: (value("jikan_url") || "https://api.jikan.moe/v4").replace(/\/+$/, ""),

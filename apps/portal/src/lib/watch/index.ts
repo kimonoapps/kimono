@@ -99,7 +99,10 @@ function seed(stub: Title | null): Title | null {
 
 /** The title in full: fetched the first time, refreshed when stale, the old copy kept if TMDB is down. */
 export async function ensureTitle(cfg: WatchConfig, id: string): Promise<Title> {
-  if (isYoutubeId(id)) return ensureYoutubeTitle(id);
+  if (isYoutubeId(id)) {
+    if (!cfg.youtube) throw new WatchProblem("That isn't a title.", 404);
+    return ensureYoutubeTitle(id);
+  }
   const { kind, tmdbId } = parseTitleId(id);
   const db = watchDb();
   const known = getTitle(db, id);
@@ -483,7 +486,7 @@ export async function search(cfg: WatchConfig, origin: string, query: string) {
   if (!q) return { results: (await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6))).slice(0, 12).map((t) => cardOf(t, origin)) };
   const params = { query: q, include_adult: "false" };
   /* A broadcaster's own uploads (./youtube.ts): older shows TMDB lists often have no other copy. Looked up alongside TMDB. */
-  const fromYoutube = q.length >= 3 ? youtubeSearch(q).catch(() => [] as Title[]) : Promise.resolve([] as Title[]);
+  const fromYoutube = cfg.youtube && q.length >= 3 ? youtubeSearch(q).catch(() => [] as Title[]) : Promise.resolve([] as Title[]);
   /* Films and shows must answer; people only add to them. */
   const [movies, shows, people] = await Promise.all([
     tmdb(cfg.tmdbToken, "/search/movie", params),
@@ -497,8 +500,7 @@ export async function search(cfg: WatchConfig, origin: string, query: string) {
    * late answer is there the next time; with none, it waits for it.
    */
   const named = titles.filter((t) => namedLike(q, t.name)).length;
-  const late = new Promise<Title[]>((done) => setTimeout(() => done([]), named ? 2500 : 15_000));
-  const youtube = await Promise.race([fromYoutube, late]);
+  const youtube = cfg.youtube ? await Promise.race([fromYoutube, new Promise<Title[]>((done) => setTimeout(() => done([]), named ? 2500 : 15_000))]) : [];
   titles = named ? [...titles.slice(0, named), ...youtube.filter((t) => namedLike(q, t.name)), ...titles.slice(named)] : [...youtube, ...titles];
   return { results: titles.slice(0, 30).map((t) => cardOf(t, origin)) };
 }
