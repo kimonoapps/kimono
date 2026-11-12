@@ -290,19 +290,27 @@ picked or not. Depth goes before voice, one kind per turn. Quick messages never.
 
 How: one turn runs both, one after the other (the node runs one agent per
 sandbox). The second take carries the session on from the agent's last message
-before the ask (`--resume-session-at`, the same rewind an edit uses), so both
-read the same chat on the same model and the prompt cache holds; only thinking,
+before the ask in a new session (`--resume-session-at` with `--fork-session`,
+the node's `fork`), so the first take's session stays exactly as it was. Both
+read the same chat on the same model, so the prompt cache holds; only thinking,
 or a line in the message, differs, never the model or the system prompt. The
-first take's answer streams as usual; the second follows. Each ends in its own
-Done, with its own thumbs. The second take is told to give its artifacts names
-ending in `-b`, so the two never write the same file.
+first take streams as usual; once it's done the pair shows, the second filling
+in beside it. Each ends in its own Done, with its own thumbs. The second is told
+to give its artifacts names ending in `-b`, so the two never write the same
+file. A message sent while the first take works skips the second; a second that
+fails or is stopped is dropped, and the first stands alone.
+
+Showing them: side by side where the chat is wide enough (a hairline seam
+between them, "Keep this one" under each), First and Second tabs with how long
+each took where it isn't. Kept, the other folds behind "The other take".
 
 Keeping one: `POST …/takes/<id>` with `{ pick: 0 | 1 }`, only while the pair is
-the chat's latest turn. The chat carries on from the kept take: its session and
-last message become the turn's, and the next turn resumes there. Sending the
-next message without keeping one carries on from the second take and keeps no
-preference. Preferences live in code.db (`ai_leanings`); the Memory page lists
-them with the memories, to forget.
+the chat's latest turn. The chat carries on in the kept take's session (keeping
+the first also makes it the turn's, for an edit after it). Sending the next
+message without keeping one carries on from the second and keeps no preference.
+What they keep is a memory ("Likes explanations thought through first…"), shown
+on their Memory page; `ai_leanings` ties it to the kind, and forgetting the
+memory forgets the preference.
 
 ## Projects
 

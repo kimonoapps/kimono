@@ -2248,7 +2248,15 @@ type Item =
   | { type: "connect"; seq: number; app: string; url: string }
   | { type: "sent"; seq: number; files: Attachment[] }
   | { type: "access"; seq: number; event: Extract<CodeEvent, { kind: "access" }>; answer?: Extract<CodeEvent, { kind: "access-answer" }> }
-  | { type: "question"; seq: number; event: Extract<CodeEvent, { kind: "question" }>; answer?: Extract<CodeEvent, { kind: "question-answer" }> };
+  | { type: "question"; seq: number; event: Extract<CodeEvent, { kind: "question" }>; answer?: Extract<CodeEvent, { kind: "question-answer" }> }
+  /** Two takes on one message, each its own run of items to its Done; which one the person kept, or which didn't come off. */
+  | TakesItem;
+type TakesItem = { type: "takes"; seq: number; id: string; takes: Item[][]; kept?: 0 | 1; dropped?: 0 | 1 };
+
+/** Every item, the takes of a pair in order among them. */
+function flatItems(items: Item[]): Item[] {
+  return items.flatMap((item) => item.type === "takes" ? item.takes.flat() : [item]);
+}
 
 /** Events as the reader sees them: consecutive tool calls fold into one group, each call paired with its result. */
 function itemsOf(events: StoredEvent[]): Item[] {
@@ -2261,40 +2269,57 @@ function itemsOf(events: StoredEvent[]): Item[] {
     if (event.kind === "access-answer") answers.set(event.id, event);
     if (event.kind === "question-answer") replied.set(event.id, event);
   }
+  /* Where items go: the timeline, or the take under way. */
+  let into: Item[] = items;
+  const pairOf = (id: string) => items.findLast((i): i is TakesItem => i.type === "takes" && i.id === id);
   for (const { seq, at, event } of events) {
-    const last = items.at(-1);
+    const last = into.at(-1);
     switch (event.kind) {
-      case "ask": items.push({ type: "ask", seq, at, event }); said = []; break;
+      case "ask": into = items; items.push({ type: "ask", seq, at, event }); said = []; break;
+      case "take": {
+        const pair = event.n === 0 ? undefined : pairOf(event.id);
+        if (pair) { pair.takes[1] = []; into = pair.takes[1]; }
+        else { const fresh: TakesItem = { type: "takes", seq, id: event.id, takes: [[]] }; items.push(fresh); into = fresh.takes[0]; }
+        said = [];
+        break;
+      }
+      case "take-kept": { const pair = pairOf(event.id); if (pair) pair.kept = event.n; break; }
+      case "take-dropped": { const pair = pairOf(event.id); if (pair) pair.dropped = event.n; break; }
       /* sent while it worked: read now, so no longer waiting; or never read, because it was stopped */
       case "steered": case "dropped": for (const item of items) if (item.type === "ask" && event.seqs.includes(item.seq)) {
         if (event.kind === "steered") item.event = { ...item.event, queued: false };
         else item.dropped = true;
       } break;
-      case "text": items.push({ type: "text", seq, text: event.text }); said.push(event.text); break;
+      case "text": into.push({ type: "text", seq, text: event.text }); said.push(event.text); break;
       case "tool": {
         const tool: Tool = { ...event };
         tools.set(event.id, tool);
-        if (last?.type === "tools") last.tools.push(tool); else items.push({ type: "tools", seq, tools: [tool], open: false });
+        if (last?.type === "tools") last.tools.push(tool); else into.push({ type: "tools", seq, tools: [tool], open: false });
         break;
       }
       case "tool-result": { const tool = tools.get(event.id); if (tool) tool.result = event; break; }
       case "tool-cost": { const tool = tools.get(event.id); if (tool) tool.cost = (tool.cost ?? 0) + event.usd; break; }
       case "progress": { const tool = tools.get(event.id); if (tool) tool.probe = event; break; }
-      case "done": items.push({ type: "done", seq, at, event, answer: said.join("\n\n") }); said = []; break;
-      case "published": items.push({ type: "published", seq, event }); break;
-      case "image": if (last?.type === "shots") last.shots.push(event); else items.push({ type: "shots", seq, shots: [event] }); break;
-      case "preview": items.push({ type: "preview", seq, event }); break;
-      case "preview-stopped": items.push({ type: "preview-stopped", seq }); break;
-      case "slept": items.push({ type: "slept", seq, for: event.for }); break;
-      case "disk": items.push({ type: "disk", seq, event }); break;
-      case "compacted": items.push({ type: "compacted", seq, before: event.before }); break;
-      case "access": items.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
-      case "question": items.push({ type: "question", seq, event, answer: replied.get(event.id) }); break;
-      case "remembered": items.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
-      case "skill-made": items.push({ type: "skill-made", seq, event }); break;
-      case "artifact": items.push({ type: "artifact", seq, id: event.id, name: event.name, action: event.action }); break;
-      case "connect": items.push({ type: "connect", seq, app: event.app, url: event.url }); break;
-      case "sent": items.push({ type: "sent", seq, files: event.files }); break;
+      case "done": {
+        into.push({ type: "done", seq, at, event, answer: said.join("\n\n") }); said = [];
+        /* The second take ends at its Done; what follows is the timeline's again. */
+        if (into !== items && items.at(-1)?.type === "takes" && (items.at(-1) as TakesItem).takes[1] === into) into = items;
+        break;
+      }
+      case "published": into.push({ type: "published", seq, event }); break;
+      case "image": if (last?.type === "shots") last.shots.push(event); else into.push({ type: "shots", seq, shots: [event] }); break;
+      case "preview": into.push({ type: "preview", seq, event }); break;
+      case "preview-stopped": into.push({ type: "preview-stopped", seq }); break;
+      case "slept": into.push({ type: "slept", seq, for: event.for }); break;
+      case "disk": into.push({ type: "disk", seq, event }); break;
+      case "compacted": into.push({ type: "compacted", seq, before: event.before }); break;
+      case "access": into.push({ type: "access", seq, event, answer: answers.get(event.id) }); break;
+      case "question": into.push({ type: "question", seq, event, answer: replied.get(event.id) }); break;
+      case "remembered": into.push({ type: "remembered", seq, text: event.text, how: event.how }); break;
+      case "skill-made": into.push({ type: "skill-made", seq, event }); break;
+      case "artifact": into.push({ type: "artifact", seq, id: event.id, name: event.name, action: event.action }); break;
+      case "connect": into.push({ type: "connect", seq, app: event.app, url: event.url }); break;
+      case "sent": into.push({ type: "sent", seq, files: event.files }); break;
     }
   }
   return items;
@@ -2335,7 +2360,8 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   };
   const asking = me ? askingFor(items, ratings) : null;
   /* An artifact still being written has no place in the timeline yet: it is drawn at the end until its call lands. */
-  const placed = new Set(items.flatMap((i) => i.type === "artifact" ? [i.id] : []));
+  const flat = useMemo(() => flatItems(items), [items]);
+  const placed = new Set(flat.flatMap((i) => i.type === "artifact" ? [i.id] : []));
   const writing = Object.entries(drafts.artifacts).filter(([, d]) => !placed.has(d.id));
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -2377,63 +2403,72 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   };
 
   /* Only the turn under way may hold a group open; earlier turns stay as they were left. */
-  const lastAsk = items.findLastIndex((i) => i.type === "ask");
-  const lastTools = items.slice(lastAsk + 1).findLast((i) => i.type === "tools");
-  const lastPreview = items.findLast((i) => i.type === "preview")?.seq;
+  const lastAsk = flat.findLastIndex((i) => i.type === "ask");
+  const lastTools = flat.slice(lastAsk + 1).findLast((i) => i.type === "tools");
+  const lastPreview = flat.findLast((i) => i.type === "preview")?.seq;
   /* Its questions waiting for an answer take the writing bar's place once its turn is over (until then, Stop stays there). */
-  const asked = (items.findLast((i) => i.type === "question" && !i.answer) as Extract<Item, { type: "question" }> | undefined)?.event;
-  const lastContext = (items.findLast((i) => i.type === "done" && i.event.context) as Extract<Item, { type: "done" }> | undefined)?.event.context ?? null;
+  const asked = (flat.findLast((i) => i.type === "question" && !i.answer) as Extract<Item, { type: "question" }> | undefined)?.event;
+  const lastContext = (flat.findLast((i) => i.type === "done" && i.event.context) as Extract<Item, { type: "done" }> | undefined)?.event.context ?? null;
+  /* One item of the timeline, or of a take. */
+  const show = (item: Item): React.ReactNode => {
+    switch (item.type) {
+      case "takes": return <Takes key={`takes-${item.seq}`} workspace={workspace} item={item} show={show} running={running} latest={item === items.at(-1)} tail={item === items.at(-1) && running ? tail : null} />;
+        case "ask": return <Ask key={item.seq} workspace={workspace} item={item} running={running} />;
+        /* Let out once: shown again (another tab, scrolled back, opened again), it just shows. */
+        case "text": return item.seq > liveFrom && (lettedOut.get(`${workspace.id}:${item.seq}`) ?? -1) < item.text.length
+          ? <RevealWords key={item.seq} id={`${workspace.id}:${item.seq}`} text={item.text} className="cd-say" />
+          : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
+        case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
+        case "done": return <Done key={item.seq} at={item.at} answer={item.answer} event={item.event} rating={ratings[item.seq] ?? null} reply={ratings[item.seq] ? replies[item.seq] : undefined} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
+        case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
+        case "sent": return <div key={item.seq} className="cd-sent">
+          {item.files.some(isMedia) ? <MediaGrid workspace={workspace} files={item.files.filter(isMedia)} /> : null}
+          {item.files.filter((f) => !isMedia(f)).map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}
+        </div>;
+        case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
+        case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
+        /* Only a project says it was put to sleep; a plain chat just wakes when opened. */
+        case "slept": return workspace.kind !== "project" ? null : <p key={item.seq} className="cd-note">Put to sleep to make room for &ldquo;{item.for}&rdquo;. It wakes when you open it.</p>;
+        case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
+          ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
+          : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
+        case "skill-made": {
+          const made = item.event;
+          if (made.problem) return <p key={item.seq} className="cd-note"><Icon name="spark" /><span>Couldn&rsquo;t save {made.name}: {made.problem}</span></p>;
+          return <p key={item.seq} className="cd-note cd-skill-made"><Icon name="spark" /><span>
+            {made.updated ? "Changed" : "Made"} <b>{made.name}</b>{made.command ? <> · <code>/{made.command}</code></> : null}{made.published ? " · in the Marketplace" : ""}
+            {owns && made.skill ? <> <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1", page: `skill:${made.skill}` })}>Open</button></> : null}
+          </span></p>;
+        }
+        case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} {owns ? <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>For you</button> : null}</span></p>;
+        case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
+        /* Still waiting, the questions are in the writing bar; answered, a quiet line says what it asked. */
+        case "question": return item.answer ? <p key={item.seq} className="cd-note cd-asked"><Icon name="chat" /><span>Asked {item.event.questions.length > 1 ? item.event.questions.map((q) => q.header ?? q.question).join(" · ") : item.event.questions[0].question}{item.answer.skipped ? " · skipped" : ""}</span></p> : null;
+        case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
+        case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
+        case "connect": return <ConnectCard key={item.seq} app={item.app} url={item.url} />;
+        case "artifact": return keptPages && !keptPages[item.name]
+          ? <p key={`art-${item.id}`} className="cd-note"><Icon name="spark" /><span>{item.action === "edited" ? "Changed" : "Made"} <b>{item.name}</b></span></p>
+          : item.action === "edited"
+          ? <ArtifactChanged key={`art-${item.id}`} name={item.name} />
+          : <ArtifactCard key={`art-${item.id}`} name={item.name} />;
+    }
+  };
+  /* What it's writing now, and that it's working: after the last take while a pair runs, else at the end. */
+  const tail = <>
+    {writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />)}
+    {drafts.text ? <DraftWords text={drafts.text} /> : null}
+    {/* Not while the reply's own words are coming in: those show it's working. */}
+    {running && !drafts.ended && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
+  </>;
+  const tailInPair = running && items.at(-1)?.type === "takes";
   return <div className="cd-chat">
     <Scroller className="cd-scroll" viewClassName="cd-scroll-view" viewRef={scroller} onScroll={onScroll}>
       <ReplyToSelection within={timeline} />
       <div className={cx("cd-timeline", live && "is-live")} ref={timeline} aria-live="polite">
         {items.length === 0 ? <SkeletonChat /> : null}
-        {items.map((item) => {
-          switch (item.type) {
-            case "ask": return <Ask key={item.seq} workspace={workspace} item={item} running={running} />;
-            /* Let out once: shown again (another tab, scrolled back, opened again), it just shows. */
-            case "text": return item.seq > liveFrom && (lettedOut.get(`${workspace.id}:${item.seq}`) ?? -1) < item.text.length
-              ? <RevealWords key={item.seq} id={`${workspace.id}:${item.seq}`} text={item.text} className="cd-say" />
-              : <div key={item.seq} className="cd-say"><Markdown text={item.text} /></div>;
-            case "tools": return <ToolGroup key={item.seq} tools={item.tools} live={running && item === lastTools} />;
-            case "done": return <Done key={item.seq} at={item.at} answer={item.answer} event={item.event} rating={ratings[item.seq] ?? null} reply={ratings[item.seq] ? replies[item.seq] : undefined} asking={asking === item.seq} onRate={rateAnswer.bind(null, item.seq)} />;
-            case "shots": return <Shots key={item.seq} workspace={workspace} shots={item.shots} />;
-            case "sent": return <div key={item.seq} className="cd-sent">
-              {item.files.some(isMedia) ? <MediaGrid workspace={workspace} files={item.files.filter(isMedia)} /> : null}
-              {item.files.filter((f) => !isMedia(f)).map((f) => <SentFile key={f.path} workspace={workspace} file={f} />)}
-            </div>;
-            case "preview": return <PreviewCard key={item.seq} workspace={workspace} url={item.event.url} live={running && workspace.preview?.url === item.event.url && item.seq === lastPreview} />;
-            case "preview-stopped": return <p key={item.seq} className="cd-note">The app&rsquo;s link was taken down.</p>;
-            /* Only a project says it was put to sleep; a plain chat just wakes when opened. */
-            case "slept": return workspace.kind !== "project" ? null : <p key={item.seq} className="cd-note">Put to sleep to make room for &ldquo;{item.for}&rdquo;. It wakes when you open it.</p>;
-            case "disk": return <p key={item.seq} className="cd-note is-failed">{item.event.full
-              ? `Stopped: this chat's files took ${gigabytes(item.event.used)}, past its ${gigabytes(item.event.quota)}. Its app was stopped too. Ask it to free some space.`
-              : `This chat's files take ${gigabytes(item.event.used)} of its ${gigabytes(item.event.quota)}. It was asked to free some space first.`}</p>;
-            case "skill-made": {
-              const made = item.event;
-              if (made.problem) return <p key={item.seq} className="cd-note"><Icon name="spark" /><span>Couldn&rsquo;t save {made.name}: {made.problem}</span></p>;
-              return <p key={item.seq} className="cd-note cd-skill-made"><Icon name="spark" /><span>
-                {made.updated ? "Changed" : "Made"} <b>{made.name}</b>{made.command ? <> · <code>/{made.command}</code></> : null}{made.published ? " · in the Marketplace" : ""}
-                {owns && made.skill ? <> <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1", page: `skill:${made.skill}` })}>Open</button></> : null}
-              </span></p>;
-            }
-            case "remembered": return <p key={item.seq} className="cd-note cd-remembered"><Icon name="chat" /><span>{item.how === "forgot" ? "Forgot" : item.how === "changed" ? "Now remembers" : "Remembered"}: {item.text} {owns ? <button type="button" className="cd-textbutton" onClick={() => goTo({ memory: "1" })}>For you</button> : null}</span></p>;
-            case "access": return <AccessCard key={item.seq} workspace={workspace} event={item.event} answer={item.answer} />;
-            /* Still waiting, the questions are in the writing bar; answered, a quiet line says what it asked. */
-            case "question": return item.answer ? <p key={item.seq} className="cd-note cd-asked"><Icon name="chat" /><span>Asked {item.event.questions.length > 1 ? item.event.questions.map((q) => q.header ?? q.question).join(" · ") : item.event.questions[0].question}{item.answer.skipped ? " · skipped" : ""}</span></p> : null;
-            case "compacted": return <p key={item.seq} className="cd-note cd-compacted"><Icon name="diff" />Compacted the conversation{item.before ? <span className="cd-mono"> · it held {kTokens(item.before)} tokens</span> : null}</p>;
-            case "published": return <p key={item.seq} className="cd-note"><Icon name="pr" />Opened <button type="button" className="cd-textbutton" onClick={() => openOutside(item.event.url)}>pull request #{item.event.number}</button></p>;
-            case "connect": return <ConnectCard key={item.seq} app={item.app} url={item.url} />;
-            case "artifact": return keptPages && !keptPages[item.name]
-              ? <p key={`art-${item.id}`} className="cd-note"><Icon name="spark" /><span>{item.action === "edited" ? "Changed" : "Made"} <b>{item.name}</b></span></p>
-              : item.action === "edited"
-              ? <ArtifactChanged key={`art-${item.id}`} name={item.name} />
-              : <ArtifactCard key={`art-${item.id}`} name={item.name} />;
-          }
-        }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
-        {drafts.text ? <DraftWords text={drafts.text} /> : null}
-        {/* Not while the reply's own words are coming in: those show it's working. */}
-        {running && !drafts.ended && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
+        {items.map(show)}
+        {tailInPair ? null : tail}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
         {typing.length ? <p className="cd-note cd-typing-note" role="status"><TypingWords names={typing} /></p> : null}
       </div>
@@ -2445,6 +2480,55 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   </div>;
 });
 
+
+/* ── two takes on one answer (lib/code/takes.ts) ──
+   Side by side where there's room, one at a time behind two tabs where there isn't; the person keeps one, and
+   from then on it answers them that way. Kept, the other folds away behind a quiet line. */
+
+function Takes({ workspace, item, show, running, latest, tail }: { workspace: Workspace; item: TakesItem; show: (item: Item) => React.ReactNode; running: boolean; latest: boolean; tail: React.ReactNode }) {
+  const { me } = useContext(ViewerContext);
+  const [tab, setTab] = useState<0 | 1>(0);
+  const [other, setOther] = useState(false);
+  const [busy, setBusy] = useState<0 | 1 | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const doneOf = (take: Item[] | undefined) => take?.find((i): i is Extract<Item, { type: "done" }> => i.type === "done");
+  /* The second hasn't begun, or one of them didn't come off: the other is just the answer. */
+  const alone = item.takes.length < 2 ? 0 : item.dropped === 1 ? 0 : item.dropped === 0 ? 1 : null;
+  if (alone !== null) return <>{item.takes[alone].map(show)}{tail}</>;
+  if (item.kept !== undefined) {
+    const away = item.kept === 0 ? 1 : 0;
+    return <>
+      {item.takes[item.kept].map(show)}
+      <p className="cd-note cd-takes-other"><button type="button" className="cd-textbutton" aria-expanded={other} onClick={() => setOther((o) => !o)}>{other ? "Hide the other take" : "The other take"}</button></p>
+      {other ? <div className="cd-takes-aside">{item.takes[away].map(show)}</div> : null}
+    </>;
+  }
+  const ends = item.takes.map(doneOf);
+  const mine = Boolean(me) && me!.toLowerCase() === workspace.owner;
+  const keepable = mine && latest && !running && ends.every((d) => d?.event.ok);
+  const keep = (n: 0 | 1) => {
+    setBusy(n); setProblem(null);
+    code.keepTake(workspace.id, item.id, n).catch((error) => setProblem(error instanceof Error ? error.message : "That didn't work. Try again.")).finally(() => setBusy(null));
+  };
+  const took = (n: number) => { const ms = ends[n]?.event.durationMs; return ms ? elapsed(ms) : null; };
+  return <section className="cd-takes" aria-label="Two takes">
+    <header className="cd-takes-head"><b>Two takes</b>{keepable || (running && latest) ? <span>Keep the one you&rsquo;d like from now on.</span> : null}</header>
+    <div className="cd-takes-tabs" role="tablist" aria-label="Takes">
+      {item.takes.map((_, n) => <button key={n} type="button" role="tab" id={`take-${item.id}-${n}`} aria-controls={`take-${item.id}-${n}-panel`} aria-selected={tab === n} onClick={() => setTab(n as 0 | 1)}>
+        {n === 0 ? "First" : "Second"}{took(n) ? <small>{took(n)}</small> : running && latest && n === 1 ? <small>…</small> : null}
+      </button>)}
+    </div>
+    <div className="cd-takes-cols">
+      {item.takes.map((take, n) => <div key={n} className={cx("cd-take", tab === n && "is-shown")} role="tabpanel" id={`take-${item.id}-${n}-panel`} aria-labelledby={`take-${item.id}-${n}`}>
+        <span className="cd-take-mark" aria-hidden="true">{n === 0 ? "First" : "Second"}</span>
+        {take.map(show)}
+        {n === item.takes.length - 1 ? tail : null}
+        {keepable ? <Seal type="button" compact className="cd-take-keep" busy={busy === n} disabled={busy !== null} onClick={() => keep(n as 0 | 1)}>Keep this one</Seal> : null}
+      </div>)}
+    </div>
+    {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+  </section>;
+}
 
 /* ── sharing a chat, or one artifact (lib/code/sharing.ts) ──
    As in Docs: people in the household, each to read or to write; and a link,

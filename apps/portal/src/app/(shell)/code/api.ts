@@ -74,7 +74,12 @@ export type CodeEvent =
   | { kind: "phase"; phase: Phase; tool?: "web" | "command" | "files" | "helper"; app?: string; space?: string; doing?: string }
   | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" }
   | { kind: "question"; id: string; questions: Question[] }
-  | { kind: "question-answer"; id: string; skipped?: boolean; answers?: QuestionAnswer[] };
+  | { kind: "question-answer"; id: string; skipped?: boolean; answers?: QuestionAnswer[] }
+  /** One of two takes on the same message begins: what follows, to its Done, is take [n]. */
+  | { kind: "take"; id: string; n: 0 | 1; of: "depth" | "voice" | "length" }
+  | { kind: "take-kept"; id: string; n: 0 | 1 }
+  /** Take [n] didn't come off: the other stands alone. */
+  | { kind: "take-dropped"; id: string; n: 0 | 1 };
 /** One of the questions the agent put to the person (kimono-ask). */
 export type Question = { question: string; header?: string; options: { label: string; description?: string }[]; multi: boolean };
 export type QuestionAnswer = { picked: string[]; other?: string };
@@ -190,7 +195,7 @@ export const code = {
   rename: (id: string, title: string) => call<Workspace>(ws(id), json("PATCH", { title })),
   remove: (id: string) => call<void>(ws(id), { method: "DELETE" }),
   archive: (id: string, archived: boolean) => call<Workspace>(ws(id), json("PATCH", { archived })),
-  ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
+  ask: (id: string, text: string, attachments: Attachment[], effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("POST", { text, attachments, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow(), takes: true })),
   /** Changes a message sent earlier and runs it again from there; what came after it goes. */
   editAsk: (id: string, seq: number, text: string, effort?: Effort) => call<StoredEvent>(`${ws(id)}/turns`, json("PATCH", { seq, text, ...(modelNow() === "auto" ? {} : { effort }), model: modelNow() })),
   usage: (chat?: string) => call<Usage>(chat ? `/usage?chat=${encodeURIComponent(chat)}` : "/usage"),
@@ -204,6 +209,8 @@ export const code = {
   report: (id: string, reason: string) => call<void>(`${ws(id)}/report`, json("POST", { reason })),
   answerAccess: (id: string, request: string, choice: "file" | "chat" | "always" | "deny", file?: string) => call<StoredEvent>(`${ws(id)}/access/${encodeURIComponent(request)}`, json("POST", { choice, ...(file ? { file } : {}) })),
   access: () => call<AccessSettings>("/access"),
+  /** Keeps the first (0) or second (1) of two takes on an answer. */
+  keepTake: (id: string, take: string, pick: 0 | 1) => call<StoredEvent>(`${ws(id)}/takes/${encodeURIComponent(take)}`, json("POST", { pick })),
   /** Answers the agent's questions, in order; or skips them. */
   answerQuestions: (id: string, question: string, answers: QuestionAnswer[] | "skip") => call<StoredEvent>(`${ws(id)}/questions/${encodeURIComponent(question)}`, json("POST", answers === "skip" ? { skip: true } : { answers })),
   /** Projects: folders a person keeps chats in. */
