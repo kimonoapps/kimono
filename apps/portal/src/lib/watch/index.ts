@@ -31,7 +31,7 @@ import { meter, recordSpeed, sampleOf, speedsOf } from "./speed";
 import { fillParams, planRows, rowMinimum, tasteOf, type PlannedRow } from "./rows";
 import { ensureProvisioned, hasSources, provisioningOf, type NzbdavAccess } from "./provision";
 import { lastError, noteError, probe, type Probe } from "./status";
-import { fetchDetails, fetchSeason, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
+import { fetchDetails, fetchSeason, searchOrder, seasonsFromTmdb, stubFromTmdb, titleFromTmdb, tmdb, episodesFromTmdb } from "./tmdb";
 import { openStream, sealStream } from "./token";
 import { screensOf } from "./screens";
 import { migrateTogether } from "./together";
@@ -398,8 +398,14 @@ function checkPlayable(cfg: WatchConfig, ids: string[]) {
 export async function search(cfg: WatchConfig, origin: string, query: string) {
   const q = query.trim().slice(0, 100);
   if (!q) return { results: (await tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6))).slice(0, 12).map((t) => cardOf(t, origin)) };
-  const body = await tmdb(cfg.tmdbToken, "/search/multi", { query: q, include_adult: "false" });
-  const titles = ((body.results ?? []) as Record<string, unknown>[]).map((item) => seed(stubFromTmdb(item))).filter((t): t is Title => Boolean(t));
+  const params = { query: q, include_adult: "false" };
+  /* Films and shows must answer; people only add to them. */
+  const [movies, shows, people] = await Promise.all([
+    tmdb(cfg.tmdbToken, "/search/movie", params),
+    tmdb(cfg.tmdbToken, "/search/tv", params),
+    tmdb(cfg.tmdbToken, "/search/person", params).catch(() => ({ results: [] })),
+  ]);
+  const titles = searchOrder(q, movies.results ?? [], shows.results ?? [], people.results ?? []).map((item) => seed(stubFromTmdb(item))).filter((t): t is Title => Boolean(t));
   return { results: titles.slice(0, 30).map((t) => cardOf(t, origin)) };
 }
 

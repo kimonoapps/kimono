@@ -111,6 +111,30 @@ export function stubFromTmdb(item: Json): Title | null {
   };
 }
 
+/** A name as search compares it: no accents, case or punctuation, so "Rachid" and "Rashid" differ but "Amélie" and "amelie" don't. */
+const plain = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/**
+ * One search's titles from TMDB's film, show and people searches. Multi-search
+ * spends most of a page on people for a common first name ("rachid": 4 titles
+ * among 20 results), so films and shows are asked apart. Titles named the
+ * query come first, then those starting with it, then the rest by popularity;
+ * someone the query names in full brings their best-known titles after those.
+ */
+export function searchOrder(query: string, movies: Json[], shows: Json[], people: Json[]): Json[] {
+  const q = plain(query);
+  const nameOf = (item: Json) => plain(String(item.title ?? item.name ?? ""));
+  const closeness = (item: Json) => { const n = nameOf(item); return n === q ? 0 : n.startsWith(q) ? 1 : n.includes(q) ? 2 : 3; };
+  const titles: Json[] = [...movies.map((m): Json => ({ media_type: "movie", ...m })), ...shows.map((s): Json => ({ media_type: "tv", ...s }))]
+    .sort((a, b) => closeness(a) - closeness(b) || Number(b.popularity ?? 0) - Number(a.popularity ?? 0));
+  const person = q.includes(" ") && people.filter((p) => plain(String(p.name ?? "")) === q).sort((a, b) => Number(b.popularity ?? 0) - Number(a.popularity ?? 0))[0];
+  const theirs = ((person ? person.known_for : null) ?? [] as Json[]).filter((t: Json) => t.media_type === "movie" || t.media_type === "tv");
+  const at = titles.findIndex((t) => closeness(t) > 1);
+  const ordered = at < 0 ? [...titles, ...theirs] : [...titles.slice(0, at), ...theirs, ...titles.slice(at)];
+  const seen = new Set<string>();
+  return ordered.filter((t) => { const key = `${t.media_type}-${t.id}`; if (seen.has(key)) return false; seen.add(key); return true; });
+}
+
 /* ───── Requests ───── */
 
 export async function tmdb(token: string, path: string, params: Record<string, string> = {}): Promise<Json> {

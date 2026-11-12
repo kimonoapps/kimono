@@ -1452,3 +1452,12 @@ test('two screens each until an admin approves more; asking twice is one request
   assert.equal(flow.tooMany('sami', 'c', Date.now(), 3), false, 'a third screen when allowed');
   assert.match(flow.tooManyNote(3), /^You're already watching on three screens/);
 });
+
+test("search keeps a common first name's films and shows, and someone named exactly brings their titles", () => {
+  const movies = [{ id: 1, title: 'My Friend Rachid', popularity: 1 }, { id: 2, title: 'Rachid', popularity: 0.5 }, { id: 3, title: 'Fatna, A Woman Named Rachid', popularity: 9 }];
+  const shows = [{ id: 10, name: 'Peut contenir des Rachid', popularity: 2 }];
+  const people = [{ name: 'Rachid Badouri', popularity: 5, known_for: [{ media_type: 'movie', id: 99, title: 'Father Son Therapy' }] }];
+  assert.deepEqual(tmdb.searchOrder('rachid', movies, shows, people).map((t) => `${t.media_type}-${t.id}`), ['movie-2', 'movie-3', 'tv-10', 'movie-1']);
+  const named = tmdb.searchOrder('Rachid Badouri', [{ id: 5, title: 'Rachid Badouri - Rechargé', popularity: 1 }, { id: 99, title: 'Father Son Therapy', popularity: 3 }], [], people);
+  assert.deepEqual(named.map((t) => `${t.media_type}-${t.id}`), ['movie-5', 'movie-99'], 'their best-known titles come after titles named for them, once');
+});
