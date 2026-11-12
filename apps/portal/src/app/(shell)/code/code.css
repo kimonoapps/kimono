@@ -2069,3 +2069,14 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
   .cd-quiz-q { font-size: 16.5px; }
   .cd-quiz-foot .k-seal, .cd-quiz-foot button { min-height: 44px; min-width: 96px; }
 }
+
+/* An open chat on a wide screen gives its height to the conversation: less frame above and below,
+   a tighter title row, and the composer closer to the bottom edge. */
+@media (min-width: 981px) {
+  .cd.has-workspace { padding-top: 12px; padding-bottom: 12px; }
+  .cd.has-workspace .cd-ws { height: calc(100dvh - 24px); }
+  .cd.has-workspace .cd-side { top: 12px; height: calc(100vh - 24px); max-height: calc(100vh - 24px); }
+  .cd-ws-grid.is-chat .cd-ws-head { padding-top: 10px; padding-bottom: 0; }
+  .cd-ws-grid.is-chat .cd-timeline { padding-top: 14px; padding-bottom: 24px; }
+  .cd-ws-grid.is-chat .cd-composer { margin-bottom: 12px; }
+}

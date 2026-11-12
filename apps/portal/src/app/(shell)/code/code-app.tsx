@@ -2348,11 +2348,15 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
   useEffect(() => { if (!any || live) return; const timer = setTimeout(() => { setLive(true); setLiveFrom(lastSeq); }, 500); return () => clearTimeout(timer); }, [any, live, lastSeq]);
   const [away, setAway] = useState(false);
 
+  /* Sending a message means you want to see what comes back: from your own new message on, it follows again. */
+  const lastAskSeq = items.findLast((i) => i.type === "ask")?.seq ?? 0;
+  const seenAsk = useRef(lastAskSeq);
   /* Follows the agent while you're at the bottom; leaves you alone once you scroll up. */
   useLayoutEffect(() => {
     const el = scroller.current;
+    if (lastAskSeq > seenAsk.current) { seenAsk.current = lastAskSeq; pinned.current = true; setAway(false); }
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [items, drafts]);
+  }, [items, drafts, lastAskSeq]);
   /* Pictures and opened tool groups grow the timeline after it renders; stay at the bottom through that too. */
   const timeline = useRef<HTMLDivElement>(null);
   useEffect(() => {
