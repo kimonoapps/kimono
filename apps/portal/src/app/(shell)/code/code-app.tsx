@@ -344,6 +344,7 @@ function UsageRows({ workspace, usage, context, running, blocked, show, onCompac
     {show.five ? <div className="cd-meter"><Ring value={f.five} label="5-hour window" /><span><b>5-hour window</b><small>{f.noFiveHour ? "This plan has no 5-hour limit" : f.five == null ? "Not reported yet" : `${pct(f.five)} ${f.whose}${usage?.fiveHour.resetsAt ? ` · resets ${resetWords(usage.fiveHour.resetsAt)}` : ""}`}</small></span></div> : null}
     {show.week ? <div className="cd-meter"><Ring value={f.week} label="This week" /><span><b>This week</b><small>{f.week == null ? "Not reported yet" : `${pct(f.week)} ${f.whose}${usage?.week.resetsAt ? ` · resets ${resetWords(usage.week.resetsAt)}` : ""}`}</small></span></div> : null}
     {show.tools && media ? <div className="cd-meter"><Ring value={f.tools} label="Pro Tools" /><span><b className="cd-pro"><Icon name="bolt" />Pro Tools</b><small>{media.spent == null ? "Not reported yet" : `${creditNumber(media.spent)} of ${credits(media.budget)} this month${media.chatSpent ? ` · ${creditNumber(media.chatSpent)} in this chat` : ""} · resets ${monthWords(media.resetsAt)}`}</small></span></div> : null}
+    {show.tools && media ? <p className="cd-meter-note">If Pro Tools run out, Kimono AI keeps working. Only Pro Tools stop until {monthWords(media.resetsAt)}.</p> : null}
     {usage && !usage.unlimited && (show.five || show.week) ? <p className="cd-meter-note">Your share is {f.noFiveHour ? `${pct(usage.week.share)} of the week` : `${pct(usage.fiveHour.share)} of each 5-hour window and ${pct(usage.week.share)} of the week`}.</p> : null}
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </>;
@@ -953,22 +954,13 @@ function ConnectionsView({ now, app }: { now: number; app: string | null }) {
       {state === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
       {state && !state.available ? <p className="cd-conn-empty">Connections aren&rsquo;t available on this Kimono yet.</p> : null}
       {state?.available ? <>
-        <ConnectionsExplained pro={Boolean(state.pro?.length)} />
-        {mine.length ? <><h2 className="cd-conn-sub">Connected</h2><YourApps now={now} conn={conn} /></> : null}
-        {state.pro?.length ? <ProApps apps={state.pro} first={false} /> : null}
+        {mine.length ? <><h2 className="cd-conn-sub is-first">Connected</h2><YourApps now={now} conn={conn} /></> : null}
+        {state.pro?.length ? <ProApps apps={state.pro} first={!mine.length} /> : null}
         {mine.length || state.pro?.length ? <h2 className="cd-conn-sub">Add apps</h2> : null}
         <AddApps conn={conn} />
       </> : null}
     </div>
   </section>;
-}
-
-/** What connecting is, and what Pro Tools are: people take the Pro Tools budget for their plan's usage. */
-function ConnectionsExplained({ pro }: { pro: boolean }) {
-  return <div className="cd-conn-explain">
-    <p><Icon name="link" /><span><b>Your apps</b>Sign in to an app like Gmail or Notion and Kimono AI can use it for you, as you. Connecting is free.</span></p>
-    {pro ? <p><Icon name="bolt" /><span><b>Pro Tools</b>Premium tools Kimono AI can use without you signing in, paid from a monthly budget. If it runs out, you can still use Kimono AI as normal: only Pro Tools stop until the budget resets.</span></p> : null}
-  </div>;
 }
 
 type Conn = ReturnType<typeof useConnections>;
@@ -3193,7 +3185,7 @@ const priceOf = (tools: Tool[]) => tools.reduce((sum, t) => sum + (t.cost ?? 0),
 function ProPrice({ usd }: { usd: number }) {
   if (!(usd > 0)) return null;
   const shown = credits(usd);
-  return <span className="cd-pro-price" title={`This used ${shown} of this month's Pro Tools`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg>{shown}</span>;
+  return <span className="cd-pro-price" title={`This used ${shown} of this month's Pro Tools. Running out only stops Pro Tools, never Kimono AI.`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 3 5.5 13.5h6L10.5 21l8-10.5h-6z" /></svg>{shown}</span>;
 }
 
 /** The apps and spaces a group of calls touched, side by side; a gear when it was only the sandbox. */
