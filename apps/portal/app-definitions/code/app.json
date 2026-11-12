@@ -69,6 +69,14 @@
         "description": "Optional. Lets people speak a message instead of typing it."
       },
       {
+        "key": "tavily_api_key",
+        "label": "Tavily API key",
+        "kind": "secret",
+        "group": "agent",
+        "target": "settings",
+        "description": "Optional. Makes web searches much faster."
+      },
+      {
         "key": "git_address",
         "label": "Kimono Git address",
         "kind": "text",

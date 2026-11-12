@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""kimono-search "<query>" ["<query>" …] [--news] [--days N]
+
+Searches the web, every query at once (up to 8), in about a second. Prints each
+query's results: title, link and a passage of the page.
+"""
+import json, os, re, sys, urllib.error, urllib.request
+
+
+def main(args):
+    news, days, queries = False, 0, []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-h", "--help"):
+            print(__doc__.strip()); return
+        if a == "--news":
+            news = True
+        elif a == "--days" and i + 1 < len(args):
+            i += 1
+            days = int(args[i]) if args[i].isdigit() else 0
+        elif a.strip():
+            queries.append(a.strip())
+        i += 1
+    if not queries:
+        sys.exit("kimono-search: say what to search for")
+    base = os.environ.get("ANTHROPIC_BASE_URL", "")
+    token = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not base.endswith("/anthropic") or not token:
+        sys.exit("kimono-search: this computer can't reach Kimono")
+    body = json.dumps({"queries": queries[:8], "news": news, "days": days}).encode()
+    request = urllib.request.Request(base[: -len("/anthropic")] + "/search", data=body, method="POST",
+                                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            found = json.load(response)
+    except urllib.error.HTTPError as error:
+        said = re.search(r'"error"\s*:\s*"([^"]+)"', error.read().decode(errors="replace"))
+        sys.exit(f"kimono-search: {said.group(1) if said else error.reason}")
+    except OSError as error:
+        sys.exit(f"kimono-search: couldn't reach the search ({error})")
+    for answer in found.get("results", []):
+        print(f"## {answer.get('query', '')}")
+        if answer.get("error"):
+            print(f"(no results: {answer['error']})\n"); continue
+        hits = answer.get("results") or []
+        if not hits:
+            print("(nothing found)\n"); continue
+        for n, hit in enumerate(hits, 1):
+            passage = re.sub(r"\s+", " ", hit.get("content") or "").strip()
+            print(f"{n}. {hit.get('title') or hit.get('url')}\n   {hit.get('url')}\n   {passage[:700]}")
+        print()
+
+
+main(sys.argv[1:])

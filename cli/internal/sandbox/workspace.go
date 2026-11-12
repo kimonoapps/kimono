@@ -51,6 +51,8 @@ type ensureRequest struct {
 	Model ModelAuth `json:"model"`
 	// Tools is optional: without it the agent has no outside tools.
 	Tools *ToolsAuth `json:"tools"`
+	// Search is optional: with a key, kimono-search searches the web quickly (search.go).
+	Search SearchAuth `json:"search"`
 	// Owner is the person the task belongs to and Title its name, for the
 	// awake caps and for saying which tasks hold the slots.
 	Owner string `json:"owner"`
@@ -67,6 +69,7 @@ type workspace struct {
 	git        GitAuth
 	model      ModelAuth
 	tools      ToolsAuth
+	search     SearchAuth
 	capability string
 	// ensured is set once the Portal has ensured it since this node started:
 	// its credentials are here. A chat has no repository, so this, not the
@@ -198,7 +201,7 @@ func (s *Server) ensure(ctx context.Context, id string, request ensureRequest) (
 		tools = *request.Tools
 	}
 	w.mu.Lock()
-	w.repo, w.git, w.model, w.tools, w.base = request.Repo, request.Git, request.Model, tools, base
+	w.repo, w.git, w.model, w.tools, w.search, w.base = request.Repo, request.Git, request.Model, tools, request.Search, base
 	w.person = strings.TrimSpace(request.Git.Login)
 	if w.person == "" {
 		w.person = strings.TrimSpace(request.Owner)

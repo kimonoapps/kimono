@@ -70,8 +70,8 @@ func TestAgentSearchesButNeverFetches(t *testing.T) {
 	if !strings.Contains(DefaultAgent, "--disallowedTools WebFetch${") {
 		t.Fatal("the agent must run without WebFetch")
 	}
-	if strings.Contains(DefaultAgent, "WebSearch") {
-		t.Fatal("the agent should have WebSearch")
+	if strings.Contains(DefaultAgent, "WebSearch") && !strings.Contains(DefaultAgent, "${KIMONO_NO_WEBSEARCH:+,WebSearch}") {
+		t.Fatal("the agent should have WebSearch, unless kimono-search takes its place")
 	}
 	if !strings.Contains(SystemPrompt, "not a Composio search tool") {
 		t.Fatal("the agent isn't told to search with WebSearch")

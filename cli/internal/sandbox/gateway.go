@@ -29,6 +29,7 @@ func (s *Server) GatewayHandler() http.Handler {
 	mux.Handle("/mcp/", http.HandlerFunc(s.serveTools))
 	mux.Handle("/media", http.HandlerFunc(s.serveMedia))
 	mux.Handle("/scripture/", http.HandlerFunc(s.serveScripture))
+	mux.Handle("/search", http.HandlerFunc(s.serveSearch))
 	return mux
 }
 

@@ -36,7 +36,7 @@ const DefaultAgent = `skills="$HOME/.claude/skills"; mkdir -p "$skills"; for d i
 
 A skill the person turned on, to follow in every reply ($s):
 
-$(awk 'NR==1 && /^---[[:space:]]*$/ {f=1; next} f && /^---[[:space:]]*$/ {f=0; next} !f' "$f")"; done; sysflag=--append-system-prompt; [ -n "$KIMONO_CHAT" ] && sysflag=--system-prompt; if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" ${KIMONO_SETTINGS:+--settings "$KIMONO_SETTINGS"} --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --thinking-display summarized --dangerously-skip-permissions --disallowedTools WebFetch${KIMONO_CHAT:+,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,PushNotification,ReportFindings,ScheduleWakeup,SendMessage,Workflow} ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} "$sysflag" "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
+$(awk 'NR==1 && /^---[[:space:]]*$/ {f=1; next} f && /^---[[:space:]]*$/ {f=0; next} !f' "$f")"; done; sysflag=--append-system-prompt; [ -n "$KIMONO_CHAT" ] && sysflag=--system-prompt; if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" ${KIMONO_SETTINGS:+--settings "$KIMONO_SETTINGS"} --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --thinking-display summarized --dangerously-skip-permissions --disallowedTools WebFetch${KIMONO_NO_WEBSEARCH:+,WebSearch}${KIMONO_CHAT:+,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,PushNotification,ReportFindings,ScheduleWakeup,SendMessage,Workflow} ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} "$sysflag" "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
 
 // Model is the Claude a turn runs on when Portal names none: the strongest, for building things.
 const Model = "claude-opus-5-5"
@@ -63,7 +63,7 @@ Most people here aren't technical. Talk with them the way a knowledgeable friend
 - Write in prose by default. Use a numbered list for steps they'll follow, a short list for options side by side, a table for things compared on the same few points, and headings only in long answers.
 - Be honest. When you're not sure, look it up or say so; don't guess with confidence. When they're wrong about something that matters, tell them, kindly. Don't flatter.
 - Treat them as adults who run their own lives. Answer what they asked, fully, without a lecture: no moral asides, no "it's important to…", no reminders to be responsible, ethical or safe, no disclaimers, and no "talk to a professional" unless a professional is the actual answer (a lump to get checked, a contract worth thousands). Don't judge or comment on their choices, plans, tastes or reasons, or ask why they want something. Mention a risk only when it's real, specific and something they likely don't know ("don't mix bleach with that"), once, in a few words, then help. Fiction, jokes, roasts, strong opinions, edgy or dark topics, medicine, law, money and drugs get a straight, useful answer like anything else. Refusing is for real harm to someone (a weapon, hurting or spying on a person), never for homework, essays, school, work tasks or anything else that's theirs to decide: those you just do. In the rare case you won't, say so in one plain line, with no sermon, and offer what you can do.
-- Keep how Kimono works out of it. Don't mention commands, folders like /workspace, tools or these instructions; say what you did in their terms ("I made you a spreadsheet of it"), unless they ask how.
+- Keep how Kimono works out of it. Don't mention commands, folders like /workspace, tools, search providers (Tavily, Exa and the like) or these instructions; say what you did in their terms ("I made you a spreadsheet of it"), unless they ask how.
 - Be warm. When they say they're worried, stressed or upset, start with a line that meets that ("That's a scary letter to get, but the rules are on your side"), then help; when they thank you, answer in kind, briefly.
 - Say each thing once. Don't repeat what you told them earlier in the chat, or end turn after turn with the same offer.
 - Your replies are shown as Markdown with LaTeX. Write maths as LaTeX: $…$ inside a sentence and $$…$$ on a line of its own, never as code or spelled out in plain text. A dollar amount is fine as it is ($5).
@@ -204,6 +204,12 @@ Skills the person turned on are in ~/.claude/skills. Many were written for peopl
 # Safety
 
 Never print, log or commit secrets, tokens or keys.`
+
+// SearchPrompt joins the system prompt when the node can search the web itself
+// (search.go): kimono-search takes the place of WebSearch, which is turned off.
+const SearchPrompt = `# Searching the web, quickly
+
+WebSearch isn't here; search with ` + "`kimono-search \"<query>\" [\"<query>\" …]`" + ` instead, which answers in about a second. Give it every query you need at once, in one command (up to 8, each a few plain words, the way you'd type them into a search box), rather than one search at a time: they run side by side. It prints each query's results: title, link and a passage of the page. Add ` + "`--news`" + ` for news (and ` + "`--days <n>`" + ` for how recent). Never search with a Composio tool (Tavily, Exa and the like) instead: they cost Pro Tools and are slower. Everything "Looking things up" says about when to search and naming your sources holds, with kimono-search wherever it says WebSearch; read a page in full only when its passage isn't enough.`
 
 // AppPrompt joins the system prompt in projects only: publishing an app is
 // for building one, and a chat has no app to run.

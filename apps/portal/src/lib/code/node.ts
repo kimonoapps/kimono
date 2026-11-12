@@ -68,6 +68,7 @@ export const sandbox = {
       /* login: the owner's Kimono Git account, which pull requests are opened as. */
       git: { token: workspace.kind === "project" ? await gitToken(config) : "", name: who.name, email: who.email, ...(gitLogin ? { login: gitLogin } : {}) },
       model: { token: config.modelToken },
+      ...(config.tavilyKey ? { search: { key: config.tavilyKey } } : {}),
       ...(tools ? { tools } : {}),
       owner: workspace.owner, title: workspace.title, limits: config.limits,
     }),

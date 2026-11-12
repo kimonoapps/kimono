@@ -97,7 +97,7 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 # What the agent shows people: screenshots (kimono-shot) and a running app
 # behind a link (kimono-serve, kimono-unserve, which run it under supervise).
 # See docs/kimono-code.md.
-COPY bin/kimono-ask bin/kimono-skill bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-link bin/kimono-progress bin/kimono-say bin/kimono-chats bin/kimono-quran bin/kimono-hadith /usr/local/bin/
+COPY bin/kimono-ask bin/kimono-skill bin/kimono-shot bin/kimono-serve bin/kimono-unserve bin/kimono-access bin/kimono-remember bin/kimono-show bin/kimono-send bin/kimono-fetch bin/kimono-link bin/kimono-progress bin/kimono-say bin/kimono-chats bin/kimono-quran bin/kimono-hadith bin/kimono-search /usr/local/bin/
 # How to make artifacts: the kit, scenes and maths (read by the agent; see docs/kimono-ai.md).
 COPY artifacts.md media.md /opt/kimono/
 COPY bin/shot.cjs bin/supervise /usr/local/lib/kimono/

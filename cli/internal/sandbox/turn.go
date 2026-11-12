@@ -162,6 +162,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	limits := s.limitsNow()
 	space.mu.Lock()
 	chat := space.repo.URL == ""
+	fastSearch := space.search.Key != ""
 	space.mu.Unlock()
 	system := s.cfg.SystemPrompt + "\n\n" + limitsPrompt(limits, chat)
 	if request.Context != "" {
@@ -171,6 +172,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 		system += "\n\nThis is a chat, not a project: there is no repository to commit to, push or open a pull request for, and no app to publish (kimono-serve is for projects only, so don't use it or any other way to put a server up). To show something, make an artifact; to hand over a file, kimono-send it; to give a tool a file by link, kimono-link it. /workspace is this chat's own scratch space, and it is kept in the person's Drive."
 	} else {
 		system += "\n\n" + AppPrompt
+	}
+	if fastSearch {
+		system += "\n\n" + SearchPrompt
 	}
 	// The last count will do for the prompt: counting a big workspace again would hold up the
 	// first word, and the check below counts it afresh as soon as the agent is under way.
@@ -182,6 +186,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings, "KIMONO_SKILLS=" + strings.Join(request.Skills, " "), "KIMONO_ALWAYS=" + strings.Join(request.Always, " "),
 		// Every tool is there from the start, so a web search is one step, not a lookup and then the search.
 		"ENABLE_TOOL_SEARCH=false"}
+	if fastSearch {
+		extra = append(extra, "KIMONO_NO_WEBSEARCH=1")
+	}
 	if request.NoThinking {
 		extra = append(extra, "CLAUDE_CODE_DISABLE_THINKING=1")
 	}
