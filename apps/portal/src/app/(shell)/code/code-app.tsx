@@ -14,6 +14,7 @@ import { SkeletonChat, SkeletonRows } from "@/components/skeleton";
 import { swap } from "@/components/motion";
 import { Portrait } from "@/components/portrait";
 import { JointSwitch } from "@/components/joint-switch";
+import { LoadingIndicator } from "@/components/loading-indicator";
 import {
   code, drive, efforts, largestAttachment, modelChoices, modelKey, modelNow, smallAttachment, type ModelChoice, elapsed, gigabytes, isPicture, readableSize, when, type DriveItem, type DriveSpace,
   artifactLinkUrl, chatLinkUrl, setShareLink, type Access, type ArtifactSharing, type ChatSharing, type Person, type SharedArtifact,
@@ -39,8 +40,6 @@ const repoName = (w: Pick<Workspace, "repo">) => `${w.repo.owner}/${w.repo.name}
 /** Kimono Git and attachments open in their own tab; nothing here leaves the page it is on. */
 /* Working is quiet ink, not a colour: its shape is washed in --k-ink-soft. */
 const workingInk = "#5b524d";
-/* Thinking is the same ink, a little toward ai (indigo). */
-const thinkingInk = "#4d5670";
 const openOutside = (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); };
 /** Saves [url] as [name], from this page. */
 const saveAs = (url: string, name: string) => { const link = document.createElement("a"); link.href = url; link.download = name; link.rel = "noopener"; document.body.append(link); link.click(); link.remove(); };
@@ -1226,7 +1225,7 @@ function SendStop({ mode, disabled, busy, onSend, onStop }: { mode: "send" | "st
  * reply back: whatever has arrived is out within about a fifth of a second.
  */
 function DraftWords({ text }: { text: string }) {
-  return <RevealWords text={text} className="cd-say is-draft" />;
+  return <RevealWords text={text} className="cd-say is-draft" trailing />;
 }
 
 /* How far the reply being written has been let out. A finished reply that takes its draft's place
@@ -1236,7 +1235,7 @@ const revealed = { text: "", at: 0 };
 const lettedOut = new Map<string, number>();
 
 /** Lets [text] out a word at a time: at least 150 letters a second, faster the further behind, each word fading in; plain once it's all out. */
-function RevealWords({ text, className, id }: { text: string; className: string; id?: string }) {
+function RevealWords({ text, className, id, trailing }: { text: string; className: string; id?: string; /** A loading indicator just after the last word: more is on its way. */ trailing?: boolean }) {
   const [shown, setShown] = useState(() => {
     const kept = id ? lettedOut.get(id) : undefined;
     if (kept !== undefined && kept <= text.length) return kept;
@@ -1288,8 +1287,22 @@ function RevealWords({ text, className, id }: { text: string; className: string;
       word.dataset.seen = "1";
     });
     seen.current = words.length;
+    /* The indicator sits just after the last word shown, on its line. */
+    const tip = box.current?.querySelector<SVGSVGElement>(":scope > .cd-tip");
+    const last = words.at(-1);
+    if (tip) {
+      if (!last) tip.style.visibility = "hidden";
+      else {
+        const at = last.getBoundingClientRect(), from = box.current!.getBoundingClientRect();
+        tip.style.visibility = "";
+        tip.style.translate = `${at.right - from.left + 6}px ${at.top - from.top + (at.height - tip.getBoundingClientRect().height) / 2}px`;
+      }
+    }
   });
-  return <div ref={box} className={className}><Markdown text={done ? text : text.slice(0, shown)} streaming={!done} /></div>;
+  return <div ref={box} className={className}>
+    <Markdown text={done ? text : text.slice(0, shown)} streaming={!done} />
+    {trailing ? <LoadingIndicator label="Writing" className="cd-tip" /> : null}
+  </div>;
 }
 
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
@@ -2502,7 +2515,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
     {writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />)}
     {drafts.text ? <DraftWords text={drafts.text} /> : null}
     {/* Not while the reply's own words are coming in: those show it's working. */}
-    {running && !drafts.ended && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
+    {running && !drafts.ended && !drafts.text?.trim() ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
   </>;
   const tailInPair = running && items.at(-1)?.type === "takes";
   return <div className="cd-chat">
@@ -2855,34 +2868,15 @@ function ArtifactChanged({ name }: { name: string }) {
 }
 
 /** Working, at the end of the conversation: what it's doing, in its own words and ink, and how long. The one place it shows in a chat. */
-function Working({ since, now: doing, artifact }: { since: number | null; now: Now | null; artifact?: boolean }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
+function Working({ now: doing, artifact }: { since?: number | null; now: Now | null; artifact?: boolean }) {
   const phase = artifact || doing?.phase === "artifact" ? "artifact" : doing?.phase ?? "working";
-  const time = since ? elapsed(Math.max(0, now - since)) : "";
   const app = useAppLook(doing?.app ?? "");
-  const words = workingWords(phase, doing, app.name);
-  return <div className={`cd-thinking is-${phase}`} role="status">
-    <WorkingMark phase={phase} doing={doing} />
-    <span className="cd-now" key={words}><WorkingWords phase={phase} words={words} /></span>
-    {time ? <span className="cd-now-time">{time}</span> : null}
+  /* Only what's worth knowing is said (where it's looking, an app it's using, an artifact on its way); otherwise the shape alone. */
+  const words = phase === "tools" || phase === "artifact" ? workingWords(phase, doing, app.name) : "";
+  return <div className={`cd-thinking is-${phase}`} role="status" aria-label={words || "Working"}>
+    <LoadingIndicator label="" className="cd-loading" />
+    {words ? <span className="cd-now" key={words}>{words}</span> : null}
   </div>;
-}
-
-function WorkingMark({ phase, doing }: { phase: Phase; doing: Now | null }) {
-  if (phase === "tools" && (doing?.app || doing?.space)) {
-    return <span className="cd-now-seal" key={doing.app ?? doing.space} aria-hidden="true">{doing.app ? <AppLogo slug={doing.app} /> : <DriveMark />}</span>;
-  }
-  return <span className="cd-now-ink" aria-hidden="true">
-    <InkLoader ink={phase === "artifact" ? undefined : phase === "thinking" ? thinkingInk : workingInk} label="" className="cd-morph" />
-    {phase === "artifact" ? <><i /><i /><i /></> : null}
-  </span>;
-}
-
-/** Its words for what it's doing; thinking and the magic come in letter by letter, like ink taking. */
-function WorkingWords({ phase, words }: { phase: Phase; words: string }) {
-  if (phase !== "thinking" && phase !== "artifact") return <>{words}</>;
-  return <span aria-label={words}>{[...words].map((c, i) => <span key={i} aria-hidden="true" className="cd-now-letter" style={{ "--i": i } as React.CSSProperties}>{c === " " ? "\u00a0" : c}</span>)}</span>;
 }
 
 /** What it says it's doing; the words fade in again only when they change. */

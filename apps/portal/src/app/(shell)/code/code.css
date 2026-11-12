@@ -1117,44 +1117,16 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-composer-bar { flex-wrap: wrap; row-gap: 6px; }
 @media (max-width: 720px) { .cd-meters { display: none; } }
 
-/* ── waiting: the morphing shape while it works and on a running tool; the wavy bar only for a real percent ── */
-.cd-thinking { display: flex; align-items: center; gap: 10px; color: var(--k-ink-soft); font: 600 13px/1 var(--k-sans); }
-.cd-thinking .cd-morph { width: 20px; height: 20px; }
+/* ── waiting: Material 3's loading indicator, alone while it works (with a few words only for where it's
+   looking or an app it's using), and just after the last word while it writes ── */
+.cd-thinking { display: flex; align-self: start; align-items: center; gap: 10px; min-height: 28px; color: var(--k-on-surface-variant); font: 500 13px/1 var(--k-sans); animation: cd-now-in .18s ease-out both; }
+.cd-thinking .cd-loading { width: 28px; height: 28px; flex: none; color: var(--k-primary); }
 .cd-note-shape { margin: 8px 0; }
-/* What it is doing: thinking takes like ink, a tool presses its seal, the magic writes in suō. */
-.cd-thinking .cd-now { position: relative; display: inline-flex; align-items: center; white-space: nowrap; animation: cd-now-in var(--k-t-seat) var(--k-ease-settle) both; }
-.cd-thinking .cd-now-time { font-variant-numeric: tabular-nums; color: var(--k-faint); font-weight: 500; }
-@keyframes cd-now-in { from { opacity: 0; translate: 0 3px; filter: blur(1.5px); } }
-.cd-now-ink { position: relative; display: grid; place-items: center; width: 20px; height: 20px; flex: none; }
-.cd-now-letter { display: inline-block; }
-.cd-thinking.is-thinking .cd-now-letter { animation: cd-ink-take 1.9s ease-in-out infinite; animation-delay: calc(var(--i) * 85ms); }
-@keyframes cd-ink-take { 0%, 100% { opacity: .34; filter: blur(.4px); } 40% { opacity: 1; filter: none; } }
-.cd-thinking.is-writing .cd-now::after { content: ""; width: 2px; height: 1.05em; margin-left: 4px; border-radius: 1px 1px 2px 2px; background: currentColor; animation: cd-brush-tip 1s ease-in-out infinite; }
-@keyframes cd-brush-tip { 50% { opacity: .15; transform: scaleY(.6); } }
-/* A tool: its app's logo, or Drive's mark, pressed in like a seal, breathing while it works. */
-.cd-now-seal { position: relative; display: grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 8px; background: var(--k-container-high); animation: cd-stamp 460ms var(--k-ease-settle) both, cd-seal-breathe 2.6s 460ms ease-in-out infinite; }
-.cd-now-seal .cd-applogo { width: 16px; height: 16px; }
-.cd-now-seal .cd-drivemark { width: 20px; height: 20px; }
-.cd-now-seal .i { width: 15px; height: 15px; }
-.cd-now-seal::after { content: ""; position: absolute; inset: -3px; border: 1.5px solid var(--k-ink-soft); border-radius: 11px; opacity: 0; animation: cd-seal-ring 2.6s 460ms ease-out infinite; }
-@keyframes cd-stamp { 0% { opacity: 0; transform: scale(1.5) rotate(-12deg); } 60% { opacity: 1; transform: scale(.9) rotate(2deg); } 100% { transform: none; } }
-@keyframes cd-seal-breathe { 50% { transform: scale(.93); } }
-@keyframes cd-seal-ring { 0% { opacity: .45; transform: scale(.85); } 70%, 100% { opacity: 0; transform: scale(1.25); } }
-/* The magic: suō letters rising in turn, a brush stroke drawn under them, ink sparks off the shape. */
-.cd-thinking.is-artifact { color: color-mix(in srgb, var(--k-suo-deep) var(--k-tint), var(--k-night-ink)); }
-.cd-thinking.is-artifact .cd-now-letter { animation: cd-magic 1.7s var(--k-ease-settle) infinite; animation-delay: calc(var(--i) * 55ms); }
-@keyframes cd-magic { 0%, 70%, 100% { transform: none; opacity: 1; } 25% { transform: translateY(-3px) rotate(-3deg); opacity: .7; } }
-.cd-thinking.is-artifact .cd-now::after { content: ""; position: absolute; left: 0; right: 0; bottom: -5px; height: 2px; border-radius: 2px 1px 2px 1px; background: var(--k-suo); opacity: .55; transform-origin: left; animation: cd-stroke 2.2s var(--k-ease-settle) infinite; }
-@keyframes cd-stroke { 0% { transform: scaleX(0); opacity: .6; } 55% { transform: scaleX(1); opacity: .6; } 85%, 100% { transform: scaleX(1); opacity: 0; } }
-.cd-now-ink i { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--k-suo); opacity: 0; animation: cd-spark 1.8s ease-out infinite; }
-.cd-now-ink i:nth-of-type(1) { --x: 13px; --y: -12px; }
-.cd-now-ink i:nth-of-type(2) { --x: -12px; --y: -10px; animation-delay: .6s; width: 3px; height: 3px; }
-.cd-now-ink i:nth-of-type(3) { --x: 4px; --y: 14px; animation-delay: 1.2s; }
-@keyframes cd-spark { 0% { opacity: 0; transform: translate(0, 0) scale(.4); } 20% { opacity: .9; } 100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1); } }
-@media (prefers-reduced-motion: reduce) {
-  .cd-thinking .cd-now, .cd-now-letter, .cd-now-seal, .cd-now-seal::after, .cd-now-ink i, .cd-thinking .cd-now::after { animation: none !important; }
-  .cd-thinking.is-artifact .cd-now::after { transform: none; }
-}
+.cd-thinking .cd-now { white-space: nowrap; animation: cd-now-in .18s ease-out both; }
+@keyframes cd-now-in { from { opacity: 0; } }
+.cd-say.is-draft { position: relative; }
+.cd-say .cd-tip { position: absolute; left: 0; top: 0; width: 18px; height: 18px; color: var(--k-primary); pointer-events: none; transition: translate .12s ease-out; }
+@media (prefers-reduced-motion: reduce) { .cd-thinking, .cd-thinking .cd-now { animation: none; } .cd-say .cd-tip { transition: none; } }
 .cd-morph { width: 16px; height: 16px; color: var(--k-moss); flex: none; }
 .ci .cd-morph { width: 14px; height: 14px; }
 
@@ -1812,8 +1784,8 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
    grows from its corner. What was there when it opened just shows. */
 .cd-w { animation: cd-word-in .55s cubic-bezier(.2, .7, .2, 1) both; }
 @keyframes cd-word-in { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: none; } }
-.cd-timeline.is-live > :not(.cd-say) { transition: opacity .38s var(--k-ease-settle), translate .55s var(--k-spring), scale .5s var(--k-spring); }
-@starting-style { .cd-timeline.is-live > :not(.cd-say) { opacity: 0; translate: 0 12px; } }
+.cd-timeline.is-live > :not(.cd-say, .cd-thinking) { transition: opacity .38s var(--k-ease-settle), translate .55s var(--k-spring), scale .5s var(--k-spring); }
+@starting-style { .cd-timeline.is-live > :not(.cd-say, .cd-thinking) { opacity: 0; translate: 0 12px; } }
 .cd-timeline.is-live > .cd-ask { transform-origin: 100% 100%; }
 @starting-style { .cd-timeline.is-live > .cd-ask { opacity: 0; translate: 0 8px; scale: .92; } }
 @media (prefers-reduced-motion: reduce) {
