@@ -2815,6 +2815,16 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
   const [control, setControl] = useState<SceneControl | null>(null);
   const send = (action: SceneControl["action"], t?: number, name?: string, value?: number) => setControl((c) => ({ n: (c?.n ?? 0) + 1, action, t, name, value }));
   const animated = /<k-scene\b/i.test(content);
+  /* Until its frame has drawn, a loading indicator, not a blank page; one that never does (blocked, or it broke) says so and can be tried again. */
+  const [drawn, setDrawn] = useState(false);
+  const [stuck, setStuck] = useState(false);
+  const [tries, setTries] = useState(0);
+  useEffect(() => {
+    if (drawn || !ready || writing) return;
+    const timer = setTimeout(() => setStuck(true), 12_000);
+    return () => clearTimeout(timer);
+  }, [drawn, ready, writing, tries]);
+  const onDrawn = useCallback(() => { setDrawn(true); setStuck(false); }, []);
   const inline = mode === "inline";
   const open = shared.beside === name;
   /* Folded in the chat to just its title bar; remembered per artifact on this device. */
@@ -2868,7 +2878,12 @@ function ArtifactCard({ name, mode = "inline" }: { name: string; mode?: "inline"
       ? <button type="button" className="cd-artifact-away" onClick={() => shared.setBeside(null)}>Open beside the chat · bring it back here</button>
       : ready
         ? <>
-            <div className={cx("cd-artifact-body", dragging && "is-dragging")} style={shown ? { height: shown } : undefined} hidden={shut}><ArtifactFrame content={content} final={!writing} title={title} media={media} control={control} onHeight={onHeight} onScene={setScene} /></div>
+            <div className={cx("cd-artifact-body", dragging && "is-dragging", !drawn && "is-waiting")} style={shown ? { height: shown } : undefined} hidden={shut}>
+              <ArtifactFrame key={tries} content={content} final={!writing} title={title} media={media} control={control} onHeight={onHeight} onScene={setScene} onDrawn={onDrawn} />
+              {drawn ? null : stuck
+                ? <div className="cd-artifact-wait"><span>Couldn&rsquo;t show this</span><button type="button" className="cd-textbutton" onClick={() => { setStuck(false); setTries((n) => n + 1); }}>Try again</button></div>
+                : <div className="cd-artifact-wait"><LoadingIndicator label="Opening" className="cd-wait" /></div>}
+            </div>
             {inline && !shut ? <div className="cd-artifact-grip" role="separator" aria-orientation="horizontal" aria-label="Resize" title="Drag to resize · double-click to fit" tabIndex={0}
               aria-valuemin={120} aria-valuemax={2400} aria-valuenow={shown}
               onPointerDown={startDrag} onDoubleClick={() => setChosen(null)}
