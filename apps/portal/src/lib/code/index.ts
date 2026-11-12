@@ -26,11 +26,11 @@ import { changeMemory, contextFor, forget, profileOf, remember } from "./memory"
 import { effortFor, modelFor, weigh, type ModelChoice } from "./models";
 import { dropTakes, keepTake, lastTurnEnd, takeOf, leaningsOf, noteTake, startTakes, takeKindFor, takePlan, triedKinds, withNote, type TakeKind } from "./takes";
 export { modelChoices, type ModelChoice } from "./models";
-import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
+import { accessPrompt, answer as answerAccess_, grantedAhead, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
 import { serveTempLink, tempLinkBase, tempLinkKey } from "./temp-links";
 export { efforts, type Effort } from "./node";
-import { markChat, retitle, shotToDrive, syncDrive } from "./drive";
+import { markChat, retitle, shotToDrive, syncDrive, treeAhead } from "./drive";
 import { hasHistory, historyNote, syncHistory } from "./history";
 import { answersOf, answerText, askedId, askNote, isAskCommand, questionsDir, questionsOf } from "./questions";
 import { gitAccountOf, ownProject } from "./forgejo";
@@ -537,7 +537,13 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   const making = new Set<string>();
   try {
     const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
-    await ensure(config, workspace, who(user), { owner: byOwner });
+    /* A sandbox made ready in the last few minutes is still there (the node stops one after 15 quiet minutes):
+       what's in it is read while it's made ready, instead of after, a round trip to the node less before the agent starts. */
+    const warm = Date.now() - (awake.at.get(workspace.id) ?? 0) < 14 * 60_000 && !second;
+    const ahead = warm ? { tree: treeAhead(config, workspace), granted: grantedAhead(db(), config, workspace) } : null;
+    const ready = await ensure(config, workspace, who(user), { owner: byOwner });
+    /* A new, empty sandbox after all: what was read ahead isn't it. */
+    if (ready.fresh && ahead) { ahead.tree = null; ahead.granted = null; }
     timing.ensured = Date.now();
     const session = second ? second.session : workspaceFor(db(), workspace.id, workspace.owner).session;
     /* The person's other chats, for it to look back on (none in a chat shared with others). Each is a file written
@@ -547,9 +553,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const history = hasHistory(db(), workspace);
     /* Whatever a person changed in Drive since last time goes in first, and the agent is told. The task's
        files and the ones the person let it use (.kimono/files) are apart, so both sync at once. */
-    const driveSynced = syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
+    const driveSynced = syncDrive(db(), config, workspace, { tree: ahead?.tree }).catch((error) => console.warn("Code couldn't sync from Drive:", error instanceof Error ? error.message : error));
     /* Files the person let it use follow Drive, and what is no longer allowed goes. */
-    const openedSynced = syncOpened(db(), config, workspace, { readOnly: turnsByOwner(db(), workspace.id, 2)[1] === false }).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
+    const openedSynced = syncOpened(db(), config, workspace, { readOnly: turnsByOwner(db(), workspace.id, 2)[1] === false, tree: ahead?.granted }).catch((error) => { console.warn("Kimono AI couldn't sync opened files:", error instanceof Error ? error.message : error); return [] as string[]; });
     /* With Notes on, the person has a notebook before it is named, so the agent can write to it from the first chat. */
     const [, openedNews, notes] = await Promise.all([driveSynced, openedSynced, byOwner ? notesFor(workspace.owner) : ""]);
     timing.synced = Date.now();

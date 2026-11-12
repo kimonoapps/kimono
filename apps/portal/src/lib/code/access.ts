@@ -149,15 +149,26 @@ const running = new Map<string, Promise<string[]>>();
  * for change, Drive → sandbox only for read; closes what is no longer allowed.
  * Returns the paths Drive changed, which the agent is told about.
  */
-export function syncOpened(db: DatabaseSync, config: CodeConfig, workspace: Workspace, { readOnly = false }: { readOnly?: boolean } = {}): Promise<string[]> {
+export function syncOpened(db: DatabaseSync, config: CodeConfig, workspace: Workspace, { readOnly = false, tree }: { readOnly?: boolean; tree?: Promise<GrantedTree> | null } = {}): Promise<string[]> {
   const before = running.get(workspace.id) ?? Promise.resolve([]);
-  const next = before.catch(() => []).then(() => syncOnce(db, config, workspace, readOnly));
+  const next = before.catch(() => []).then(() => syncOnce(db, config, workspace, readOnly, tree ?? undefined));
   running.set(workspace.id, next);
   void next.finally(() => { if (running.get(workspace.id) === next) running.delete(workspace.id); }).catch(() => {});
   return next;
 }
 
-async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspace, readOnlyAsked: boolean): Promise<string[]> {
+type GrantedTree = Awaited<ReturnType<typeof sandbox.granted>>;
+
+/** The files the chat was let use as the sandbox has them, asked for ahead (see drive.ts treeAhead); null with none open or a sync under way. */
+export function grantedAhead(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<GrantedTree> | null {
+  if (running.has(workspace.id)) return null;
+  if (!db.prepare("SELECT 1 FROM opened WHERE workspace_id = ? LIMIT 1").get(workspace.id)) return null;
+  const tree = sandbox.granted(config, workspace);
+  tree.catch(() => {});
+  return tree;
+}
+
+async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspace, readOnlyAsked: boolean, ahead?: Promise<GrantedTree>): Promise<string[]> {
   const opened = db.prepare("SELECT workspace_id, node_id, space_id, dir FROM opened WHERE workspace_id = ?").all(workspace.id) as Opened[];
   if (!opened.length) return [];
   const owner = workspace.owner;
@@ -165,7 +176,7 @@ async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspa
      else sent changed here is put back from Drive instead. */
   const othersTurn = readOnlyAsked || turnsByOwner(db, workspace.id, 1)[0] === false;
   const grants = grantsOf(db, owner);
-  const { files: tree } = await sandbox.granted(config, workspace);
+  const { files: tree } = await (ahead ?? Promise.reject()).catch(() => sandbox.granted(config, workspace));
   const news: string[] = [];
   for (const o of opened) {
     let node: DriveNode | null = null;

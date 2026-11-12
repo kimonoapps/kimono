@@ -269,9 +269,9 @@ const running = new Map<string, Promise<string[]>>();
  * Brings the task's Drive folder and its sandbox into agreement. Returns the
  * paths that came into the sandbox from Drive, which the agent is told about.
  */
-export function syncDrive(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<string[]> {
+export function syncDrive(db: DatabaseSync, config: CodeConfig, workspace: Workspace, { tree }: { tree?: Promise<SandboxTree> | null } = {}): Promise<string[]> {
   const before = running.get(workspace.id) ?? Promise.resolve([]);
-  const next = before.catch(() => []).then(() => syncOnce(db, config, workspace));
+  const next = before.catch(() => []).then(() => syncOnce(db, config, workspace, tree ?? undefined));
   running.set(workspace.id, next);
   void next.finally(() => { if (running.get(workspace.id) === next) running.delete(workspace.id); }).catch(() => {});
   return next;
@@ -305,11 +305,25 @@ export function noRoomNote(workspaceId: string, shown: string, error: NoRoom, ve
   return leftOutNote(workspaceId, shown, version, `it's ${megabytes(error.size)} and the sandbox has ${megabytes(error.room)} free. Free space and it comes in on the next message`);
 }
 
-async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspace): Promise<string[]> {
+type SandboxTree = Awaited<ReturnType<typeof sandbox.tree>>;
+
+/**
+ * The sandbox's files, asked for now so a turn needn't wait for its sandbox to be made ready first;
+ * null while a sync is under way, whose changes it might not see yet.
+ */
+export function treeAhead(config: CodeConfig, workspace: Workspace): Promise<SandboxTree> | null {
+  if (running.has(workspace.id)) return null;
+  const tree = sandbox.tree(config, workspace);
+  tree.catch(() => {});
+  return tree;
+}
+
+async function syncOnce(db: DatabaseSync, config: CodeConfig, workspace: Workspace, ahead?: Promise<SandboxTree>): Promise<string[]> {
   const place = await taskFolder(db, workspace);
   if (!place) return [];
   const owner = workspace.owner;
-  const { files: tree } = await sandbox.tree(config, workspace);
+  /* Read ahead, or (if that failed) now. */
+  const { files: tree } = await (ahead ?? Promise.reject()).catch(() => sandbox.tree(config, workspace));
   const actions = planSync(syncedRows(db, workspace.id), tree, driveFiles(place.folderId, owner));
   const fromDrive: string[] = [];
   const shaOf = new Map(tree.map((f) => [f.path, f.sha1]));
