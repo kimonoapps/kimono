@@ -2092,3 +2092,10 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
 .cd-artifact-body.is-waiting .cd-artifact-frame { visibility: hidden; }
 .cd-artifact-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--k-on-surface-variant); font: 500 13.5px/1.3 var(--k-sans); }
 .cd-artifact-wait .cd-wait { width: 28px; height: 28px; color: var(--k-primary); }
+
+/* Connections: what connecting is, and what Pro Tools are (and that their budget isn't the plan's usage). */
+.cd-conn-explain { display: grid; gap: 12px; margin: 0 0 8px; padding: 14px 16px; border-radius: var(--k-r-l); background: var(--k-container-low); }
+.cd-conn-explain p, .cd-conn-note { display: flex; align-items: flex-start; gap: 12px; margin: 0; color: var(--k-on-surface-variant); font: 400 14px/1.5 var(--k-sans); }
+.cd-conn-explain svg.i, .cd-conn-note svg.i { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--k-on-surface); }
+.cd-conn-explain b { display: block; color: var(--k-on-surface); font-weight: 600; }
+.cd-conn-note { margin: 4px 0 16px; padding: 12px 14px; border-radius: var(--k-r-m); background: var(--k-container-low); }
