@@ -632,7 +632,7 @@ function ArchivedView({ chats, loaded, now, onChange }: { chats: Workspace[]; lo
       {loaded && !chats.length ? <p className="cd-quiet">Nothing archived.</p> : null}
       {chats.length ? <ul className="cd-archived-list">{chats.map((w) => <li key={w.id} className={cx("cd-archived-row", busy === w.id && "is-busy")}>
         <button type="button" className="cd-archived-open" onClick={() => goTo({ w: w.id })}>
-          <b>{chatTitle(w)}</b>
+          <b><ChatName w={w} /></b>
           <small>{w.kind === "project" ? `${repoName(w)} · ` : w.folder ? `${w.folder.name} · ` : ""}{when(w.updatedAt, now)}</small>
         </button>
         {deleting === w.id
@@ -1362,6 +1362,11 @@ function RevealWords({ text, className, id, trailing }: { text: string; classNam
   </div>;
 }
 
+/** A chat's name, or a shimmer where it's about to be while it's being named. */
+function ChatName({ w }: { w: Pick<Workspace, "title" | "namingUntil"> }) {
+  return chatTitle(w) === w.title ? <>{w.title}</> : <span className="cd-naming" role="img" aria-label="Naming this chat" />;
+}
+
 /** One of the person's apps needs connecting: its logo, and a button that opens Composio's sign-in for it. Says so once it's connected. */
 /* Every card in a chat asks at once: one answer serves them all for a few seconds. */
 let connectionsAsked: { at: number; answer: ReturnType<typeof code.connections> } | null = null;
@@ -1435,9 +1440,9 @@ function ChatTitle({ workspace, onRenamed }: { workspace: Workspace; onRenamed: 
       onChange={(event) => setEditing(event.target.value)} onBlur={() => void save()} onKeyDown={(event) => { if (event.key === "Escape") { setEditing(null); setProblem(null); } }} /></h1>
     {problem ? <span className="cd-faint" role="alert">{problem}</span> : null}
   </form>;
-  const shown = chatTitle(workspace);
-  if (!owns) return <h1 title={shown}>{shown}</h1>;
-  return <h1 title={shown}><button type="button" className="cd-title-button" title="Rename" onClick={() => setEditing(workspace.title)}>{shown}</button></h1>;
+  const waiting = chatTitle(workspace) !== workspace.title;
+  if (!owns || waiting) return <h1 title={waiting ? undefined : workspace.title}><ChatName w={workspace} /></h1>;
+  return <h1 title={workspace.title}><button type="button" className="cd-title-button" title="Rename" onClick={() => setEditing(workspace.title)}>{workspace.title}</button></h1>;
 }
 
 /** A project in the list: its name (rename, remove), a new chat in it, and its chats. */
@@ -1571,7 +1576,7 @@ function ChatRow({ w, current, now }: { w: Workspace; current: string | null; no
   return <div className={cx("cd-row", busy && "is-busy", confirming && "is-confirming")}>
     <button type="button" className="cd-row-open" aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}
       draggable={owns && w.kind === "chat"} onDragStart={(event) => { event.dataTransfer.setData(chatDrag, w.id); event.dataTransfer.effectAllowed = "move"; }}>
-      <b onDoubleClick={owns ? (event) => { event.preventDefault(); event.stopPropagation(); setRenaming(w.title); } : undefined}>{chatTitle(w)}</b>
+      <b onDoubleClick={owns ? (event) => { event.preventDefault(); event.stopPropagation(); setRenaming(w.title); } : undefined}><ChatName w={w} /></b>
       <small>
         {/* A shared chat shows who else is in it. */}
         {w.people?.length ? <span className="cd-row-faces" title={w.people.join(", ")}>{w.people.slice(0, 3).map((who) => <Face key={who} username={who} size={18} />)}{w.people.length > 3 ? <span className="cd-row-more">+{w.people.length - 3}</span> : null}</span> : null}
@@ -1653,7 +1658,7 @@ function SharedWithYou({ chats: allChats, artifacts: allArtifacts, current, now 
     <div className="cd-side-label cd-folders-head"><span>Shared with you</span></div>
     <nav className="cd-list">
       {chats.map((w) => <button type="button" key={w.id} aria-current={w.id === current ? "page" : undefined} onClick={() => goTo({ w: w.id })}>
-        <b>{chatTitle(w)}</b>
+        <b><ChatName w={w} /></b>
         <small><SharedBy username={w.owner ?? ""} />{w.turn?.state === "running" ? <span className="cd-word running">working</span> : <span className="cd-when">{when(w.updatedAt, now)}</span>}</small>
       </button>)}
       {artifacts.map((a) => <button type="button" key={a.token} onClick={() => openOutside(`/ai/a/${a.token}`)}>
@@ -2112,7 +2117,7 @@ function SidePanel({ workspace, others, tab, running, lastSeq }: { workspace: Wo
       <h2>Other running apps</h2>
       <div className="cd-dep-list">{others.map((w) => <button type="button" key={w.id} className="cd-dep-row is-link" onClick={() => goTo({ w: w.id })}>
         <InkBlot className="cd-dep-icon is-live" tint={inkTint.live} seed="app"><Icon name="rocket" /></InkBlot>
-        <span><b>{chatTitle(w)}</b><small className="cd-mono">{w.preview!.url.replace(/^https?:\/\//, "")}</small></span>
+        <span><b><ChatName w={w} /></b><small className="cd-mono">{w.preview!.url.replace(/^https?:\/\//, "")}</small></span>
       </button>)}</div>
     </section> : null}
   </div>;

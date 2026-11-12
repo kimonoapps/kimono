@@ -545,6 +545,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* A new, empty sandbox after all: what was read ahead isn't it. */
     if (ready.fresh && ahead) { ahead.tree = null; ahead.granted = null; }
     timing.ensured = Date.now();
+    /* A new chat is named from its first message as the answer is written, not after it: a message too
+       short to name by itself ("hey") waits for the answer, at the end of the turn, as before. */
+    if (!second) void nameChat(config, workspace, { early: true });
     const session = second ? second.session : workspaceFor(db(), workspace.id, workspace.owner).session;
     /* The person's other chats, for it to look back on (none in a chat shared with others). Each is a file written
        into the sandbox, so a first chat of someone with many would wait seconds for them: the agent starts as they
@@ -787,7 +790,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
 
 const naming = new Set<string>();
 
-async function nameChat(config: CodeConfig, workspace: Workspace) {
+async function nameChat(config: CodeConfig, workspace: Workspace, { early = false } = {}) {
   if (naming.has(workspace.id)) return;
   naming.add(workspace.id);
   try {
@@ -795,6 +798,7 @@ async function nameChat(config: CodeConfig, workspace: Workspace) {
     const events = eventsAfter(db(), workspace.id, 0, 400);
     const first = events.find((e) => e.event.kind === "ask");
     if (!first || first.event.kind !== "ask") return;
+    if (early && first.event.text.trim().split(/\s+/).filter(Boolean).length < 4 && !first.event.attachments.length) return;
     /* Someone renamed it before Kimono could (or before chats were named): theirs stays. */
     const current = workspaceFor(db(), workspace.id, workspace.owner);
     if (current.title !== titleFrom(first.event.text)) { nameWorkspace(db(), workspace.id, null); return; }

@@ -2122,6 +2122,11 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
   .cd-page .cd .cd-unfold { display: inline-grid !important; position: fixed; z-index: 40; top: calc(env(safe-area-inset-top) + 28px); left: 108px; width: 40px; height: 40px; margin: 0; }
   .cd-page .cd :is(.cd-ws-head, .cd-conn-head) { padding-left: 56px; min-height: 0; align-items: center; }
   .cd-page .cd .cd-ws-id, .cd-page .cd .cd-conn-head h1 { display: flex; align-items: center; min-height: 40px; margin: 0; }
+  /* a chat's own buttons (the folder, ···) are pinned top-right, level with ☰; the name sits between, on one line */
+  .cd-page .cd .cd-ws-head > .cd-ws-acts { position: fixed; z-index: 40; top: calc(env(safe-area-inset-top) + 28px); right: 12px; width: auto; margin: 0; flex-wrap: nowrap; gap: 4px; }
+  .cd-page .cd .cd-ws-head { padding-right: 100px; }
+  .cd-page .cd .cd-ws-id { flex: 1; min-width: 0; justify-content: flex-start; }
+  .cd-page .cd .cd-ws-id h1 { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; -webkit-line-clamp: none; line-clamp: none; text-align: left; }
   .cd-page .cd .cd-start-head { min-height: 0; }
   .cd .cd-unfold > svg.i:first-child { display: none; }
   .cd .cd-unfold > svg.i:last-child { display: block; }
@@ -2175,5 +2180,12 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
 }
 @media (max-width: 720px) {
   .cd-page .cd .cd-unfold { left: 12px; top: calc(env(safe-area-inset-top) + 12px); }
+  .cd-page .cd .cd-ws-head > .cd-ws-acts { top: calc(env(safe-area-inset-top) + 12px); right: 12px; }
   .cd-page .cd :is(.cd-ws-head, .cd-conn-head) { padding-top: 12px; }
 }
+
+/* A chat being named: a soft bar where its name is about to be, light passing over it. */
+.cd-naming { display: inline-block; width: min(9em, 60%); height: .62em; vertical-align: middle; border-radius: 999px; background: linear-gradient(90deg, var(--k-container-high) 0 35%, var(--k-container-highest) 50%, var(--k-container-high) 65% 100%) 0 0 / 300% 100%; animation: cd-naming 1.4s ease-in-out infinite; }
+h1 .cd-naming { width: 7em; height: .5em; }
+@keyframes cd-naming { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .cd-naming { animation: none; } }
