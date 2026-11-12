@@ -44,6 +44,8 @@ export type Workspace = {
   /* the last turn, which is what the list shows */
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
   lastSeq: number;
+  /** Until when it may still get a name from its first exchange (shown as "…" until then); null once named. */
+  namingUntil: number | null;
 };
 
 export type StoredEvent = { seq: number; turn: string | null; at: number; event: CodeEvent };
@@ -478,10 +480,11 @@ type WorkspaceRow = {
   id: string; owner: string; title: string; repo_owner: string; repo_name: string; base: string; branch: string;
   session: string | null; pr_url: string | null; pr_number: number | null; preview_url: string | null; preview_port: number | null; preview_name: string | null; preview_kind: string | null; preview_stopped: number; drive_folder: string | null; drive_space: string | null; project_id: string | null; project_name: string | null; archived_at: number | null; last_model: string | null; created_at: number; updated_at: number; last_seq: number;
   turn_id: string | null; turn_state: TurnState | null; turn_started: number | null; turn_ended: number | null;
+  named: number; first_ended: number | null;
 };
 
 const selectWorkspace = `
-  SELECT w.*, (SELECT space_id FROM drive_spaces d WHERE d.owner = w.owner) AS drive_space, (SELECT name FROM projects p WHERE p.id = w.project_id) AS project_name, t.id AS turn_id, t.state AS turn_state, t.started_at AS turn_started, t.ended_at AS turn_ended
+  SELECT w.*, (SELECT MIN(ended_at) FROM turns f WHERE f.workspace_id = w.id) AS first_ended, (SELECT space_id FROM drive_spaces d WHERE d.owner = w.owner) AS drive_space, (SELECT name FROM projects p WHERE p.id = w.project_id) AS project_name, t.id AS turn_id, t.state AS turn_state, t.started_at AS turn_started, t.ended_at AS turn_ended
   FROM workspaces w
   LEFT JOIN turns t ON t.id = (SELECT id FROM turns WHERE workspace_id = w.id ORDER BY started_at DESC LIMIT 1)`;
 
@@ -499,6 +502,8 @@ function toWorkspace(row: WorkspaceRow): Workspace {
     createdAt: row.created_at, updatedAt: row.updated_at, lastSeq: row.last_seq, archivedAt: row.archived_at ?? null,
     lastModel: row.last_model === "fable" || row.last_model === "opus" || row.last_model === "sonnet" || row.last_model === "haiku" ? row.last_model : null,
     turn: row.turn_id ? { id: row.turn_id, state: row.turn_state!, startedAt: row.turn_started!, endedAt: row.turn_ended } : null,
+    /* Named a moment after its first answer; one that wasn't by then (or an old chat from before names) keeps the words it started with. */
+    namingUntil: row.named !== 0 ? null : row.first_ended ? row.first_ended + 60_000 : row.created_at + 3_600_000,
   };
 }
 

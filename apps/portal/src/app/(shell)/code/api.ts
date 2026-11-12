@@ -28,7 +28,11 @@ export type Workspace = {
   /** The model that answered its last message. */
   lastModel?: "fable" | "opus" | "sonnet" | "haiku" | null;
   turn: { id: string; state: TurnState; startedAt: number; endedAt: number | null } | null;
+  /** Until when it may still get a name from its first exchange; null once it has one. */
+  namingUntil?: number | null;
 };
+/** A chat's name as shown: "…" while it waits for the one it's given after its first answer. */
+export const chatTitle = (w: Pick<Workspace, "title" | "namingUntil">, now = Date.now()) => w.namingUntil && now < w.namingUntil ? "…" : w.title;
 export type Repository = { owner: string; name: string; description: string; defaultBranch: string; updatedAt: number; private: boolean };
 /** A file sent with a message. One over 20 MB is a file in the chat's Drive folder (`node`). */
 export type Attachment = { name: string; path: string; size: number; type: string; node?: string };
