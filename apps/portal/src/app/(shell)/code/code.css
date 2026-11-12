@@ -2104,5 +2104,8 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
   .cd-take + .cd-take { padding: 0 0 0 24px; border-left: 1px solid var(--k-hair); }
   .cd-take-mark { display: block; color: var(--k-on-surface-variant); font: 700 12px/1 var(--k-sans); letter-spacing: .08em; text-transform: uppercase; }
 }
+.cd-takes-note { margin: 0; color: var(--k-on-surface-variant); font-size: 13px; }
 .cd-takes-other { margin: -6px 0 0; }
 .cd-takes-aside { display: grid; gap: 16px; padding-left: 16px; border-left: 2px solid var(--k-hair); }
+/* A kept pair on its own (Admin → feedback): the sheet is a flex row, and a size container has no width of its own. */
+.cd-kept-takes { flex: 1 1 auto; width: 100%; }

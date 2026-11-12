@@ -33,7 +33,7 @@ export default async function FeedbackPage() {
     <div className="page admin-page fb-page">
       <div className="topbar">
         <Crossing kind="kakejiku" className="back" href="/admin" aria-label="Back to Admin"><LineIcon name="back" /></Crossing>
-        <span><h1>Kimono AI feedback</h1><p className="sub">Thumbs and reports on its answers, without names.</p></span>
+        <span><h1>Kimono AI feedback</h1><p className="sub">Thumbs, reports and kept takes on its answers, without names.</p></span>
         {/* eslint-disable-next-line no-restricted-syntax -- a file download, not a page change. */}
         <a className="k-seal k-tone-quiet fb-export" href="/api/v1/code/feedback?format=jsonl" download><LineIcon name="download" />JSONL</a>
       </div>

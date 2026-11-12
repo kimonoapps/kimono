@@ -5,15 +5,22 @@ import type { BankEntry } from "@/lib/code/feedback";
 import { Crossing } from "@/components/crossing";
 import { Icon } from "../../code/icons";
 
-type Filter = "todo" | "all" | "down" | "up" | "report" | "noted" | "done" | "ignored";
+type Filter = "todo" | "all" | "down" | "up" | "report" | "picks" | "noted" | "done" | "ignored";
 
 const when = (at: number) => new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const firstLine = (text: string) => text.trim().split("\n").find((l) => l.trim())?.trim() ?? "";
 
+/** What each kind of pair weighed, in words. */
+const pairs: Record<string, [string, string]> = { depth: ["Straight away", "Thought through"], voice: ["Silent", "Narrated"], length: ["Short", "Fuller"] };
+const sideOf = (kind: string, n: 0 | 1) => pairs[kind]?.[n] ?? (n === 0 ? "First" : "Second");
+/** Words to find a note by; a kept pair has none, only its kind and its artifacts' titles. */
+const wordsOf = (entry: BankEntry) => entry.type === "rating" ? entry.note : entry.type === "report" ? entry.reason : "";
+
 function haystack(entry: BankEntry) {
+  if (entry.type === "pick") return [entry.kind, sideOf(entry.kind, 0), sideOf(entry.kind, 1), ...entry.takes.flatMap((t) => t.artifacts.map((a) => a.title))].join("\n").toLowerCase();
   const answers = entry.type === "rating" ? [...entry.before, entry.answer] : entry.chat;
   const words = answers.flatMap((a) => [a.asked, a.model ?? "", a.error ?? "", ...a.steps.map((s) => s.said ?? s.tool ?? s.artifact ?? "")]);
-  return [...words, entry.type === "rating" ? entry.note : entry.reason].join("\n").toLowerCase();
+  return [...words, wordsOf(entry)].join("\n").toLowerCase();
 }
 
 /** The bank as a list to read: filters and a search on top, each entry opening its chat as it was kept. */
@@ -24,31 +31,35 @@ export function FeedbackExplorer({ entries }: { entries: BankEntry[] }) {
   const indexed = useMemo(() => entries.map((entry, i) => ({ entry, i, text: haystack(entry) })), [entries]);
   const up = entries.filter((e) => e.type === "rating" && e.rating === 1).length;
   const down = entries.filter((e) => e.type === "rating" && e.rating === -1).length;
-  const reports = entries.length - up - down;
-  const noted = entries.filter((e) => e.type === "rating" ? e.note.trim() : e.reason.trim()).length;
-  const todo = entries.filter((e) => !e.status).length;
+  const reports = entries.filter((e) => e.type === "report").length;
+  const kept = entries.filter((e) => e.type === "pick");
+  const noted = entries.filter((e) => wordsOf(e).trim()).length;
+  /* A kept pair is something to read, not to answer: never to do. */
+  const todo = entries.filter((e) => !e.status && e.type !== "pick").length;
   const done = entries.filter((e) => e.status === "done").length;
   const ignored = entries.filter((e) => e.status === "ignored").length;
 
   const q = query.trim().toLowerCase();
   const shown = indexed.filter(({ entry, text }) =>
     (filter === "all"
-      || (filter === "todo" && !entry.status)
+      || (filter === "todo" && !entry.status && entry.type !== "pick")
       || (filter === "done" && entry.status === "done")
       || (filter === "ignored" && entry.status === "ignored")
       || (filter === "up" && entry.type === "rating" && entry.rating === 1)
       || (filter === "down" && entry.type === "rating" && entry.rating === -1)
       || (filter === "report" && entry.type === "report")
-      || (filter === "noted" && (entry.type === "rating" ? entry.note.trim() : entry.reason.trim())))
+      || (filter === "picks" && entry.type === "pick")
+      || (filter === "noted" && wordsOf(entry).trim()))
     && (!q || text.includes(q)));
 
-  const filters: [Filter, string, number][] = [["todo", "To do", todo], ["all", "All", entries.length], ["down", "Thumbs down", down], ["up", "Thumbs up", up], ["report", "Reports", reports], ["noted", "With a note", noted], ["done", "Done", done], ["ignored", "Ignored", ignored]];
+  const filters: [Filter, string, number][] = [["todo", "To do", todo], ["all", "All", entries.length], ["down", "Thumbs down", down], ["up", "Thumbs up", up], ["report", "Reports", reports], ["picks", "Two takes", kept.length], ["noted", "With a note", noted], ["done", "Done", done], ["ignored", "Ignored", ignored]];
 
   return <div className="fb">
     <div className="status-grid fb-stats">
       <div className="status-card" style={{ background: "var(--sc)" }}><span className="big" style={{ color: "var(--plum)" }}>{up + down ? `${Math.round((up / (up + down)) * 100)}%` : "—"}</span><b>liked</b><small>{up} up · {down} down</small></div>
       <div className="status-card" style={{ background: "var(--sc)" }}><span className="big" style={{ color: "var(--plum)" }}>{reports}</span><b>{reports === 1 ? "chat reported" : "chats reported"}</b><small>Whole chats, sent with no name</small></div>
       <div className="status-card" style={{ background: "var(--sc)" }}><span className="big" style={{ color: "var(--plum)" }}>{noted}</span><b>with a note</b><small>What people said in words</small></div>
+      <div className="status-card" style={{ background: "var(--sc)" }}><span className="big" style={{ color: "var(--plum)" }}>{kept.length}</span><b>{kept.length === 1 ? "take kept" : "takes kept"}</b><small>{Object.keys(pairs).map((kind) => { const of = kept.filter((e) => e.kind === kind); return of.length ? `${sideOf(kind, 1)} ${of.filter((e) => e.kept === 1).length} of ${of.length}` : null; }).filter(Boolean).join(" · ") || "One of two answers, kept"}</small></div>
     </div>
 
     <div className="fb-tools">
@@ -69,8 +80,9 @@ export function FeedbackExplorer({ entries }: { entries: BankEntry[] }) {
 }
 
 function Entry({ entry }: { entry: BankEntry }) {
+  if (entry.type === "pick") return <PickEntry entry={entry} />;
   const rating = entry.type === "rating";
-  const words = rating ? entry.note.trim() : entry.reason.trim();
+  const words = wordsOf(entry).trim();
   const asked = rating ? firstLine(entry.answer.asked) : firstLine(entry.chat[0]?.asked ?? "");
   const model = rating ? entry.answer.model : entry.chat.find((a) => a.model)?.model;
   const mark = rating ? (entry.rating === 1 ? "up" : "down") : "report";
@@ -92,4 +104,23 @@ function Entry({ entry }: { entry: BankEntry }) {
   return entry.ref
     ? <Crossing kind="kakejiku" href={`/admin/feedback/${entry.ref}`} className={`row fb-entry is-${mark}${entry.status ? " is-handled" : ""}`}>{inner}</Crossing>
     : <div className={`row fb-entry is-${mark}`}>{inner}</div>;
+}
+
+/** A kept pair: which side won, and what the takes drew. */
+function PickEntry({ entry }: { entry: Extract<BankEntry, { type: "pick" }> }) {
+  const titles = [...new Set(entry.takes.flatMap((t) => t.artifacts.map((a) => a.title)))];
+  const inner = <>
+    <span className="fb-mark" title="Two takes"><b>⇄</b></span>
+    <span className="fb-text">
+      <b>Kept {sideOf(entry.kind, entry.kept).toLowerCase()} over {sideOf(entry.kind, entry.kept === 0 ? 1 : 0).toLowerCase()}</b>
+      {titles.length ? <small className="fb-words">{titles.join(" · ")}</small> : null}
+    </span>
+    <span className="fb-meta">
+      <small>{when(entry.at)}{entry.version ? ` · ${entry.version}` : ""}</small>
+      <small>{entry.takes.find((t) => t.model)?.model ?? ""}</small>
+    </span>
+  </>;
+  return entry.ref
+    ? <Crossing kind="kakejiku" href={`/admin/feedback/${entry.ref}`} className="row fb-entry is-pick">{inner}</Crossing>
+    : <div className="row fb-entry is-pick">{inner}</div>;
 }

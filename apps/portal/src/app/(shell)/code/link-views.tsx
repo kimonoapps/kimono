@@ -54,3 +54,8 @@ export const GuestChat = dynamic(() => import("./code-app").then((m) => m.GuestC
 export const KeptChat = dynamic(() => import("./code-app").then((m) => m.KeptChat), {
   loading: () => <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note"><InkLoader label="Opening" className="cd-artifact-loading" /></div></div>,
 });
+
+/** A kept pair of takes, read from Admin → Kimono AI feedback. */
+export const KeptTakes = dynamic(() => import("./code-app").then((m) => m.KeptTakes), {
+  loading: () => <div className="cd cd-guest"><div className="cd-sheet cd-empty cd-link-note"><InkLoader label="Opening" className="cd-artifact-loading" /></div></div>,
+});

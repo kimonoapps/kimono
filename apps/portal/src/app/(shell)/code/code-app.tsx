@@ -24,7 +24,7 @@ import { Markdown } from "./markdown";
 import { ArtifactFrame, SceneBar, type SceneControl, type SceneState } from "./artifact-frame";
 import { Picker } from "./picker";
 import { Dictation, joinSaid } from "./dictation";
-import type { Answer as KeptAnswer } from "@/lib/code/feedback";
+import type { Answer as KeptAnswer, KeptTake as KeptTakeEntry } from "@/lib/code/feedback";
 
 /*
  * 工 Kimono Code on the web. One page: the sidebar of workspaces, and the
@@ -1870,6 +1870,36 @@ export function KeptChat({ title, at, chat }: { title: string; at: number; chat:
 }
 
 /** A kept turn (lib/code/feedback.ts) back as the events it came from, near enough for the chat to draw. */
+/** A kept pair of takes, read from Admin → Kimono AI feedback: each take's artifacts side by side, the kept one marked. Nothing anyone said. */
+export function KeptTakes({ takes, kept, labels }: { takes: KeptTakeEntry[]; kept: 0 | 1; labels: [string, string] }) {
+  const viewer = useMemo<Viewer>(() => ({ me: null, guest: false, peek: true, people: new Map() }), []);
+  const marks = useMemo<Marks>(() => ({ drive: null, spaces: new Map() }), []);
+  const access = useMemo(() => ({ access: "read" as Access, owner: "" }), []);
+  const [tab, setTab] = useState<0 | 1>(kept);
+  const [full, setFull] = useState<string | null>(null);
+  /* Both takes may have named an artifact alike: each keeps its own under its take's place. */
+  const keyOf = (n: number, name: string) => `${n}:${name}`;
+  const pages = useMemo(() => Object.fromEntries(takes.flatMap((t, n) => t.artifacts.map((a) => [keyOf(n, a.name), { title: a.title, content: a.content }] as const))), [takes]);
+  const artifacts = useMemo<ArtifactsShared>(() => ({ workspaceId: "kept", drafts: {}, versions: {}, beside: null, setBeside: setFull, setFull, kept: pages }), [pages]);
+  return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><ChatAccess.Provider value={access}><ArtifactsContext.Provider value={artifacts}><div className="cd-page">
+    <div className="cd cd-guest cd-peek has-workspace"><main className="cd-main"><div className="cd-ws-grid is-chat"><div className="cd-sheet cd-ws"><div className="cd-timeline cd-kept-takes">
+      <section className="cd-takes" aria-label="Two takes">
+        <div className="cd-takes-tabs" role="tablist" aria-label="Takes">
+          {takes.map((_, n) => <button key={n} type="button" role="tab" aria-selected={tab === n} onClick={() => setTab(n as 0 | 1)}>{labels[n]}{n === kept ? <small>kept</small> : null}</button>)}
+        </div>
+        <div className="cd-takes-cols">
+          {takes.map((take, n) => <div key={n} className={cx("cd-take", tab === n && "is-shown")} role="tabpanel">
+            <span className="cd-take-mark">{labels[n]}{n === kept ? " · kept" : ""}{take.durationMs ? ` · ${elapsed(take.durationMs)}` : ""}</span>
+            {take.artifacts.length ? take.artifacts.map((a) => <ArtifactCard key={a.name} name={keyOf(n, a.name)} />) : <p className="cd-note">No artifact</p>}
+          </div>)}
+        </div>
+      </section>
+    </div></div>
+    {full ? <div className="cd-artifact-full" role="dialog" aria-modal="true" aria-label="Artifact"><ArtifactCard name={full} mode="full" /></div> : null}
+    </div></main></div>
+  </div></ArtifactsContext.Provider></ChatAccess.Provider></MarksContext.Provider></ViewerContext.Provider>;
+}
+
 function keptEvents(chat: KeptAnswer[], at: number): StoredEvent[] {
   const out: StoredEvent[] = [];
   const push = (event: CodeEvent) => out.push({ seq: out.length + 1, turn: null, at, event });
@@ -2526,6 +2556,7 @@ function Takes({ workspace, item, show, running, latest, tail }: { workspace: Wo
         {keepable ? <Seal type="button" compact className="cd-take-keep" busy={busy === n} disabled={busy !== null} onClick={() => keep(n as 0 | 1)}>Keep this one</Seal> : null}
       </div>)}
     </div>
+    {keepable && item.takes.some((take) => take.some((i) => i.type === "artifact")) ? <p className="cd-takes-note">Note: this sends the artifact to the admin. None of your chat messages are shared.</p> : null}
     {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
   </section>;
 }

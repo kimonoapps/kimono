@@ -308,6 +308,23 @@ test('two takes: keeping one remembers it, carries the chat on from it, and late
   assert.deepEqual(takes.leaningsOf(db, 'akram'), {}, 'forgetting the memory forgets the preference');
 });
 
+test('a kept pair goes to the bank as its artifacts alone: no ask, no reply, no name, no chat', async () => {
+  const feedback = await import('../src/lib/code/feedback.ts');
+  const { saveArtifact } = await import('../src/lib/code/artifacts.ts');
+  const db = fresh();
+  const w = start(db, 'akram', 'How does the heart work? My doctor said my valve is leaky');
+  saveArtifact(db, w.id, 'heart', '<title>The heart</title><p>four rooms</p>');
+  saveArtifact(db, w.id, 'heart-b', '<title>The heart, thought through</title><p>four rooms, and why</p>');
+  feedback.keepPick(db, w.id, { kind: 'depth', kept: 1, takes: [{ artifacts: ['heart'], model: 'opus', durationMs: 8000 }, { artifacts: ['heart-b', 'heart-b', 'gone'], model: 'opus', durationMs: 41000 }] });
+  const [entry] = feedback.bank(db, 0, true).filter((e) => e.type === 'pick');
+  assert.equal(entry.kind, 'depth');
+  assert.equal(entry.kept, 1);
+  assert.deepEqual(entry.takes.map((t) => t.artifacts.map((a) => a.title)), [['The heart'], ['The heart, thought through']], 'each artifact once, as it is now; one that is gone is left out');
+  assert.doesNotMatch(JSON.stringify(entry), /doctor|leaky|akram|How does/, 'nothing anyone said, and no name');
+  assert.doesNotMatch(JSON.stringify(entry), new RegExp(w.id), 'no link to the chat');
+  assert.equal(feedback.bankEntry(db, entry.ref).takes[1].durationMs, 41000);
+});
+
 test('memory: instructions and what it keeps reach every turn, and only their person sees them', async () => {
   const memory = await import('../src/lib/code/memory.ts');
   const db = fresh();

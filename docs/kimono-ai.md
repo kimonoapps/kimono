@@ -313,6 +313,15 @@ What they keep is a memory ("Likes explanations thought through first…"), show
 on their Memory page; `ai_leanings` ties it to the kind, and forgetting the
 memory forgets the preference.
 
+Keeping one also sends a copy to the feedback bank (`keepPick`, `ai_take_picks`):
+both takes' artifacts as they are then, the kind, which was kept, and each
+take's model and time. Nothing anyone said goes with it, and neither does a name
+or a link to the chat. Under the Keep buttons, a pair with an artifact says so:
+"Note: this sends the artifact to the admin. None of your chat messages are
+shared." Admins read the picks under Two takes on Admin → Kimono AI feedback,
+each pair's artifacts side by side; they're never to do, and the JSONL export
+includes them.
+
 ## Projects
 
 A project is a folder of chats, made by anyone. In Drive, a chat's files live

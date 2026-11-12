@@ -254,7 +254,12 @@ export function report(db: DatabaseSync, workspaceId: string, reason: string, no
   db.prepare("INSERT INTO ai_reports (id, reason, chat, at, version, sandbox_version) VALUES (?, ?, ?, ?, ?, ?)").run(randomUUID(), clip(reason.trim(), 4000), JSON.stringify(turns), now, versions.kimono, versions.sandbox);
 }
 
+/** One take of a kept pair, as the bank keeps it: its artifacts and nothing anyone said. */
+export type KeptTake = { artifacts: { name: string; title: string; content: string }[]; model?: string; durationMs?: number };
+
 export type BankEntry =
+  /** Two takes, which one the person kept (takes.ts): the takes' artifacts alone, with no name, ask or reply. */
+  | { type: "pick"; at: number; version: string | null; sandboxVersion: string | null; kind: string; kept: 0 | 1; takes: [KeptTake, KeptTake]; ref?: string; status?: Status }
   | { type: "rating"; at: number; version: string | null; sandboxVersion: string | null; rating: Rating; note: string; answer: Answer; before: Answer[]; /** Admin's page only: where to open it, the reply given, and where it was left. */ ref?: string; reply?: Reply; status?: Status }
   | { type: "report"; at: number; version: string | null; sandboxVersion: string | null; reason: string; chat: Answer[]; ref?: string; status?: Status };
 
@@ -272,10 +277,29 @@ function reportEntry(r: ReportRow, refs: boolean): BankEntry {
 }
 
 /** Everything in the bank since [since], oldest first, without anyone's name. [refs] gives each the ref Admin opens it by; the export leaves them out. */
+type PickRow = { id: string; kind: string; kept: 0 | 1; takes: string; at: number; version: string | null };
+const pickEntry = (r: PickRow, refs: boolean): BankEntry => ({ type: "pick", at: r.at, version: r.version, sandboxVersion: null, kind: r.kind, kept: r.kept, takes: JSON.parse(r.takes), ...(refs ? { ref: `k${r.id}` } : {}) });
+
+/**
+ * A person kept one of two takes: the bank keeps both takes' artifacts as they are now, and which was kept.
+ * Nothing anyone said goes with them, no ask, no reply, no name and no link to the chat (the person is told so).
+ */
+export function keepPick(db: DatabaseSync, workspaceId: string, input: { kind: string; kept: 0 | 1; takes: [{ artifacts: string[]; model?: string; durationMs?: number }, { artifacts: string[]; model?: string; durationMs?: number }] }, now = Date.now()) {
+  const takes = input.takes.map((take) => ({
+    artifacts: [...new Set(take.artifacts)].flatMap((name) => { const found = artifactOf(db, workspaceId, name); return found ? [{ name, title: found.title, content: clip(found.content, 1_000_000) }] : []; }),
+    ...(take.model ? { model: take.model } : {}), ...(take.durationMs ? { durationMs: take.durationMs } : {}),
+  }));
+  db.prepare("INSERT INTO ai_take_picks (id, kind, kept, takes, at, version) VALUES (?, ?, ?, ?, ?, ?)").run(randomUUID(), input.kind, input.kept, JSON.stringify(takes), now, kimonoVersion());
+}
+
+const picks = (db: DatabaseSync, where: string, ...args: (string | number)[]) =>
+  db.prepare(`SELECT id, kind, kept, takes, at, version FROM ai_take_picks WHERE ${where}`).all(...args) as PickRow[];
+
 export function bank(db: DatabaseSync, since = 0, refs = false): BankEntry[] {
   const ratings = (db.prepare(`SELECT ${ratingCols} FROM ai_ratings WHERE at >= ?`).all(since) as RatingRow[]).map((r) => ratingEntry(r, refs));
   const reports = (db.prepare(`SELECT ${reportCols} FROM ai_reports WHERE at >= ?`).all(since) as ReportRow[]).map((r) => reportEntry(r, refs));
-  return [...ratings, ...reports].sort((a, b) => a.at - b.at);
+  const kept = picks(db, "at >= ?", since).map((r) => pickEntry(r, refs));
+  return [...ratings, ...reports, ...kept].sort((a, b) => a.at - b.at);
 }
 
 /** One entry by its ref, as it was kept. */
@@ -283,6 +307,10 @@ export function bankEntry(db: DatabaseSync, ref: string): BankEntry | null {
   if (/^r\d+$/.test(ref)) {
     const row = db.prepare(`SELECT ${ratingCols} FROM ai_ratings WHERE rowid = ?`).get(Number(ref.slice(1))) as RatingRow | undefined;
     return row ? ratingEntry(row, true) : null;
+  }
+  if (/^k[\w-]+$/.test(ref)) {
+    const row = picks(db, "id = ?", ref.slice(1))[0];
+    return row ? pickEntry(row, true) : null;
   }
   if (/^p[\w-]+$/.test(ref)) {
     const row = db.prepare(`SELECT ${reportCols} FROM ai_reports WHERE id = ?`).get(ref.slice(1)) as ReportRow | undefined;

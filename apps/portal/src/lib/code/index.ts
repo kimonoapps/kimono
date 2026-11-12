@@ -10,7 +10,7 @@ import { stateDir } from "../state";
 import { codeConfig, missing, type CodeConfig } from "./config";
 import { finish, toolHint, translate, type ArtifactCall, type Attachment, type CodeEvent, type SentFile, type TurnResult } from "./events";
 import { typeOf } from "../drive/storage";
-import { backfillRatingFiles, backfillRatings, kimonoVersion, type Versions } from "./feedback";
+import { backfillRatingFiles, backfillRatings, keepPick, kimonoVersion, type Versions } from "./feedback";
 import { islamNoticeNote, isSkillCommand, madeSkillId, madeSkillsDir, noticeSeen, saveMadeSkill, skillsForTurn } from "./skills";
 import { bounded } from "./bounded";
 import { applyEdits, artifactOf, Drafts, maxMediaBytes, mediaNames, saveArtifact } from "./artifacts";
@@ -834,10 +834,29 @@ async function takeSkill(config: CodeConfig, workspace: Workspace, turn: string,
   } catch (error) { console.warn("Kimono AI couldn't save a skill:", error instanceof Error ? error.message : error); }
 }
 
+/** A turn's events, in order. */
+const eventsOfTurn = (workspaceId: string, turn: string) => eventsAfter(db(), workspaceId, 0, 100_000).filter((e) => e.turn === turn);
+
+/** What each of a pair's takes made: its artifacts, and its model and time from its Done. */
+function takesOf(events: StoredEvent[], id: string) {
+  const takes: [{ artifacts: string[]; model?: string; durationMs?: number }, { artifacts: string[]; model?: string; durationMs?: number }] = [{ artifacts: [] }, { artifacts: [] }];
+  let n: 0 | 1 | null = null;
+  for (const { event } of events) {
+    if (event.kind === "take") n = event.id === id ? event.n : null;
+    else if (n === null) continue;
+    else if (event.kind === "artifact" && event.action !== "shown") takes[n].artifacts.push(event.name);
+    else if (event.kind === "done") { takes[n].model = event.model; takes[n].durationMs = event.durationMs; n = null; }
+  }
+  return takes;
+}
+
 /** The person keeps one of two takes (takes.ts): the chat carries on from it, and it answers them that way from now on. */
 export function keepOneTake(workspace: Workspace, user: ApiUser, id: string, n: unknown) {
   const latest = db().prepare("SELECT id, state FROM turns WHERE workspace_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1").get(workspace.id) as { id: string; state: string } | undefined;
   const kept = keepTake(db(), { id, workspace: workspace.id, username: user.username, n, latestTurn: latest?.id ?? null, running: latest?.state === "running" });
+  /* The bank keeps both takes' artifacts and which was kept, nothing anyone said and no name (feedback.ts keepPick). */
+  try { keepPick(db(), workspace.id, { kind: kept.kind, kept: kept.n, takes: takesOf(eventsOfTurn(workspace.id, latest!.id), id) }); }
+  catch (error) { console.warn("Kimono AI couldn't keep a pick for feedback:", error instanceof Error ? error.message : error); }
   const event = record(workspace.id, latest!.id, { kind: "take-kept", id, n: kept.n });
   record(workspace.id, latest!.id, { kind: "remembered", text: kept.remembered });
   return event;

@@ -362,6 +362,8 @@ export function migrate(db: DatabaseSync) {
       a_session TEXT, a_at TEXT, b_session TEXT, b_at TEXT, picked INTEGER, at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS ai_takes_by_person ON ai_takes (username, kind);
+    /* The feedback bank's copy of a kept pair (feedback.ts keepPick): the takes' artifacts, with no name or chat. */
+    CREATE TABLE IF NOT EXISTS ai_take_picks (id TEXT PRIMARY KEY, kind TEXT NOT NULL, kept INTEGER NOT NULL, takes TEXT NOT NULL, at INTEGER NOT NULL, version TEXT);
     CREATE TABLE IF NOT EXISTS ai_leanings (
       username TEXT NOT NULL, kind TEXT NOT NULL, pick TEXT NOT NULL, memory_id TEXT, at INTEGER NOT NULL, PRIMARY KEY (username, kind)
     );

@@ -161,7 +161,7 @@ export function keepTake(db: DatabaseSync, input: { id: string; workspace: strin
     }
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
-  return { n, pick, remembered: memories[take.kind][n] };
+  return { n, pick, kind: take.kind, remembered: memories[take.kind][n] };
 }
 
 /** The last message of the turn before this one, where a second take carries the session on from. */
