@@ -231,6 +231,9 @@ test('Auto keeps a chat on Sonnet until it needs Opus, then stays; a person’s 
   assert.equal(modelFor('auto', { prompt: 'hi' }), 'sonnet');
   assert.equal(modelFor(undefined, { prompt: 'plan a trip to lisbon', attachments: 0 }), 'sonnet');
   assert.equal(modelFor('auto', { prompt: 'build me a website for my bakery' }), 'opus');
+  assert.equal(modelFor('auto', { prompt: 'How do epipens work' }), 'opus', 'how something works gets an animation');
+  assert.equal(modelFor('auto', { prompt: 'how a car engine works?' }), 'opus');
+  assert.equal(modelFor('auto', { prompt: 'how are you' }), 'sonnet');
   assert.equal(modelFor('auto', { prompt: 'thanks', last: 'opus' }), 'opus', 'a chat on Opus stays there');
   assert.equal(modelFor('auto', { prompt: 'thanks', building: true }), 'opus');
   assert.equal(modelFor('gpt-9', { prompt: 'hi' }), 'sonnet', 'an unknown choice is Auto');

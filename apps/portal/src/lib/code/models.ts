@@ -13,6 +13,7 @@ type Message = { prompt?: string; attachments?: number; building?: boolean; last
 const chosen = (choice: unknown): choice is Model => choice === "fable" || choice === "opus" || choice === "sonnet" || choice === "haiku";
 
 /* What Opus does best: building, code, proofs, explainers that move, long writing. */
+const howItWorks = /\bhow (do|does|did|is|are|can)\b.{0,80}\b(work|works|working|made|happen|happens)\b|\bhow .{0,60}\bworks\b/i;
 const opusWork = /\b(build|code|coding|program(ming)?|script|debug|bug|refactor|deploy|app|website|web ?site|html|css|javascript|typescript|python|react|sql|prove|proof|derive|animat\w*|visuali[sz]\w*|diagram|simulat\w*|in 3d|video|essay|story)\b/i;
 
 /* Real work Sonnet does well with some thinking: planning, comparing, files, sums. */
@@ -25,7 +26,8 @@ const work = /\b(solve|calculate|plan|itinerary|report|analy[sz]e|compare|resear
 export function weigh(input: Message): "quick" | "work" | "opus" | "building" {
   if (input.building) return "building";
   const prompt = (input.prompt ?? "").trim();
-  if (opusWork.test(prompt)) return "opus";
+  /* How something works is shown, not told: an animation, which Opus draws best. */
+  if (opusWork.test(prompt) || howItWorks.test(prompt)) return "opus";
   if ((input.attachments ?? 0) > 0 || prompt.length > 280 || prompt.includes("\n\n") || work.test(prompt)) return "work";
   return "quick";
 }
