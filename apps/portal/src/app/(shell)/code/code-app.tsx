@@ -2893,7 +2893,7 @@ function Working({ now: doing, artifact }: { since?: number | null; now: Now | n
   /* Only what's worth knowing is said (where it's looking, an app it's using, an artifact on its way); otherwise the shape alone. */
   const words = phase === "tools" || phase === "artifact" ? workingWords(phase, doing, app.name) : "";
   return <div className={`cd-thinking is-${phase}`} role="status" aria-label={words || "Working"}>
-    <LoadingIndicator label="" className="cd-loading" />
+    <LoadingIndicator label="" className="cd-wait" />
     {words ? <span className="cd-now" key={words}>{words}</span> : null}
   </div>;
 }

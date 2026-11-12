@@ -1119,8 +1119,9 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 
 /* ── waiting: Material 3's loading indicator, alone while it works (with a few words only for where it's
    looking or an app it's using), and just after the last word while it writes ── */
-.cd-thinking { display: flex; align-self: start; align-items: center; gap: 10px; min-height: 28px; color: var(--k-on-surface-variant); font: 500 13px/1 var(--k-sans); animation: cd-now-in .18s ease-out both; }
-.cd-thinking .cd-loading { width: 28px; height: 28px; flex: none; color: var(--k-primary); }
+.cd-thinking { display: flex; align-self: start; align-items: center; gap: 10px; min-height: calc(16px * 1.65); color: var(--k-on-surface-variant); font: 500 13px/1 var(--k-sans); animation: cd-now-in .18s ease-out both; }
+/* The same size as the one that rides after the words, centred on a line of the reply (.cd-say, 16px/1.65): where its first word lands. */
+.cd-thinking .cd-wait { width: 18px; height: 18px; flex: none; color: var(--k-primary); }
 .cd-note-shape { margin: 8px 0; }
 .cd-thinking .cd-now { white-space: nowrap; animation: cd-now-in .18s ease-out both; }
 @keyframes cd-now-in { from { opacity: 0; } }
