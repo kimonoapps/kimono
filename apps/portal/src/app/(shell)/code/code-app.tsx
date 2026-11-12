@@ -1827,7 +1827,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
           <input ref={picker} type="file" multiple hidden onChange={(event) => { hold([...(event.target.files ?? [])]); event.target.value = ""; }} />
           <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
           {slash.menu}
-          {slash.wrap(<textarea ref={field} value={prompt} rows={1} aria-label="Message" maxLength={maxMessage} disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want, in your own words." : "Ask anything, or tell it what to do with your files."}
+          {slash.wrap(<textarea ref={field} value={prompt} rows={1} aria-label="Message" maxLength={maxMessage} disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want" : "Ask anything"}
             onChange={(event) => setPrompt(event.target.value)} onScroll={slash.follow}
             onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); return; }
               const long = pastedText(event, files.map((f) => f.name)); if (long) { event.preventDefault(); hold([long]); } }}
