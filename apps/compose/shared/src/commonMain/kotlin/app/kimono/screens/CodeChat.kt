@@ -738,6 +738,9 @@ private fun TakesBlock(code: Code, w: CodeWorkspace, item: Item.Takes, latest: B
         item.takes[shown].forEach { show(it) }
         if (withTail && shown == item.takes.lastIndex) tail()
         if (keepable) Seal("Keep this one", compact = true, busy = busy == shown, enabled = busy == null, onClick = { keep(shown) })
+        /* Keeping one sends both takes' artifacts to the admins' feedback bank, never what anyone said: it says so. */
+        if (keepable && item.takes.any { take -> take.any { (it as? Item.Plain)?.event is CodeEvent.Artifact } })
+            Text("Note: this sends the artifact to the admin. None of your chat messages are shared.", style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Problem(problem)
     }
 }
