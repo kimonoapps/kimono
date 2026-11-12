@@ -93,7 +93,7 @@ function useNow(running: boolean) {
 
 /** What it is writing right now: never kept, only sent while it writes (lib/code/artifacts.ts, Drafts). */
 type Now = Extract<CodeEvent, { kind: "phase" }>;
-type Drafts = { text: string | null; artifacts: Record<string, { id: string; content: string }>; now: Now | null };
+type Drafts = { text: string | null; artifacts: Record<string, { id: string; content: string }>; now: Now | null; /** Its answer is done, though the chat may not say it has stopped yet. */ ended?: boolean };
 const noDrafts: Drafts = { text: null, artifacts: {}, now: null };
 
 function useTimeline(id: string | null, onDone: () => void) {
@@ -139,14 +139,15 @@ function useTimeline(id: string | null, onDone: () => void) {
           }
           if (event.kind === "draft") drafts.push((d) => ({ ...d, text: event.text }));
           if (event.kind === "artifact-draft") drafts.push((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
-          if (event.kind === "phase") drafts.push((d) => ({ ...d, now: event }));
+          if (event.kind === "phase") drafts.push((d) => ({ ...d, now: event, ended: false }));
           continue;
         }
         if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") drafts.push((d) => d.text === null ? d : { ...d, text: null });
         /* What they typed has arrived: they've stopped typing. */
         if (event.kind === "ask") { const by = event.by.toLowerCase(); setTypers((now) => { if (!(by in now)) return now; const rest = { ...now }; delete rest[by]; return rest; }); }
         if (event.kind === "artifact-saved") drafts.push((d) => { if (!(event.name in d.artifacts)) return d; const rest = { ...d.artifacts }; delete rest[event.name]; return { ...d, artifacts: rest }; });
-        if (event.kind === "done") drafts.push(() => noDrafts);
+        if (event.kind === "done") drafts.push(() => ({ ...noDrafts, ended: true }));
+        if (event.kind === "ask") drafts.push((d) => d.ended ? { ...d, ended: false } : d);
         kept.push(stored);
         if (event.kind === "done" || event.kind === "ask" || event.kind === "published") changed = true;
       }
@@ -2428,7 +2429,7 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
         }).concat(writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />))}
         {drafts.text ? <DraftWords text={drafts.text} /> : null}
         {/* Not while the reply's own words are coming in: those show it's working. */}
-        {running && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
+        {running && !drafts.ended && !drafts.text?.trim() && drafts.now?.phase !== "writing" ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
         {!running && workspace.preview && !workspace.preview.stopped && items.at(-1)?.type !== "ask" ? <AppReady workspace={workspace} url={workspace.preview.url} /> : null}
         {typing.length ? <p className="cd-note cd-typing-note" role="status"><TypingWords names={typing} /></p> : null}
       </div>
@@ -2727,9 +2728,11 @@ function Working({ since, now: doing, artifact }: { since: number | null; now: N
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const phase = artifact || doing?.phase === "artifact" ? "artifact" : doing?.phase ?? "working";
   const time = since ? elapsed(Math.max(0, now - since)) : "";
+  const app = useAppLook(doing?.app ?? "");
+  const words = workingWords(phase, doing, app.name);
   return <div className={`cd-thinking is-${phase}`} role="status">
     <WorkingMark phase={phase} doing={doing} />
-    <span className="cd-now" key={`${phase}:${doing?.app ?? doing?.space ?? doing?.tool ?? ""}`}><WorkingWords phase={phase} doing={doing} /></span>
+    <span className="cd-now" key={words}><WorkingWords phase={phase} words={words} /></span>
     {time ? <span className="cd-now-time">{time}</span> : null}
   </div>;
 }
@@ -2745,12 +2748,17 @@ function WorkingMark({ phase, doing }: { phase: Phase; doing: Now | null }) {
 }
 
 /** Its words for what it's doing; thinking and the magic come in letter by letter, like ink taking. */
-function WorkingWords({ phase, doing }: { phase: Phase; doing: Now | null }) {
-  const app = useAppLook(doing?.app ?? "");
-  const words = phase === "artifact" ? "Working my magic"
+function WorkingWords({ phase, words }: { phase: Phase; words: string }) {
+  if (phase !== "thinking" && phase !== "artifact") return <>{words}</>;
+  return <span aria-label={words}>{[...words].map((c, i) => <span key={i} aria-hidden="true" className="cd-now-letter" style={{ "--i": i } as React.CSSProperties}>{c === " " ? "\u00a0" : c}</span>)}</span>;
+}
+
+/** What it says it's doing; the words fade in again only when they change. */
+function workingWords(phase: Phase, doing: Now | null, appName: string) {
+  return phase === "artifact" ? "Working my magic"
     : phase === "thinking" ? "Thinking"
     : phase === "writing" ? "Writing"
-    : phase === "tools" ? doing?.app ? `Using ${app.name}`
+    : phase === "tools" ? doing?.app ? `Using ${appName}`
       : doing?.space ? `Looking in ${doing.space}`
       : doing?.tool === "web" ? "Searching the web"
       : doing?.tool === "command" ? doing.doing ?? "Running a command"
@@ -2758,8 +2766,6 @@ function WorkingWords({ phase, doing }: { phase: Phase; doing: Now | null }) {
       : doing?.tool === "helper" ? "Asking a helper"
       : "Using tools"
     : "Working";
-  if (phase !== "thinking" && phase !== "artifact") return <>{words}</>;
-  return <span aria-label={words}>{[...words].map((c, i) => <span key={i} aria-hidden="true" className="cd-now-letter" style={{ "--i": i } as React.CSSProperties}>{c === " " ? "\u00a0" : c}</span>)}</span>;
 }
 
 /* ── replying to part of an answer ── */

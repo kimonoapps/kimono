@@ -176,7 +176,8 @@ export class Drafts {
     const index = typeof event.index === "number" ? event.index : -1;
     switch (event.type) {
       /* A new message: whatever tool it called has finished. */
-      case "message_start": this.blocks.clear(); this.phase({ kind: "phase", phase: "working" }); return;
+      /* Only the first says "working": after a tool, what it shows stays until the next thing it does, rather than flickering. */
+      case "message_start": this.blocks.clear(); if (!this.phaseSent.key && !this.phaseNext) this.phase({ kind: "phase", phase: "working" }); return;
       case "content_block_start": {
         const block = event.content_block as Record<string, unknown> | undefined;
         if (block?.type === "thinking" || block?.type === "redacted_thinking") this.phase({ kind: "phase", phase: "thinking" });
@@ -184,7 +185,9 @@ export class Drafts {
         else if (block?.type === "tool_use") {
           const name = String(block.name ?? "");
           this.blocks.set(index, { type: "tool", id: String(block.id ?? ""), name, json: "", text: "", sent: 0 });
-          this.phase({ kind: "phase", phase: "tools", ...this.hint(name, {}) });
+          /* Said once its input is in (content_block_stop), unless its name alone says what it is. */
+          const hint = this.hint(name, {});
+          if (Object.keys(hint).length) this.phase({ kind: "phase", phase: "tools", ...hint });
         }
         return;
       }
