@@ -259,8 +259,11 @@ Auto by default (`lib/code/models.ts`): a chat starts on Sonnet, whose first wor
 comes in about a second (Opus takes three or four), and moves to Opus for good
 the first time a message needs it (building, code, proofs, animations, long
 writing); it never moves back, since switching makes it read the whole chat
-again. A quick message gets no thinking so the answer starts at once; real work
-or attachments think at medium, building an app at high. A chip in the
+again. A quick message gets no thinking so the answer starts at once, and so
+does "how does X work": Opus writes a few lines and draws the animation as it
+goes, where thinking first planned the whole drawing for half a minute or more
+with nothing on screen. Real work or attachments think at medium, building an
+app at high. A chip in the
 composer picks one instead; picking a different model than the chat has been on
 says that it uses more of the plan. The node runs only Fable, Opus, Sonnet or
 Haiku; each Done says which answered.

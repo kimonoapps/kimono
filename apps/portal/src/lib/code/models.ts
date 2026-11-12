@@ -21,13 +21,15 @@ const work = /\b(solve|calculate|plan|itinerary|report|analy[sz]e|compare|resear
 
 /**
  * How much a message needs, on Auto: quick (a short question, a reply, thanks),
- * work (thinking, or files), opus (what Opus does best) or building (an app's chat).
+ * show (how something works, drawn), work (thinking, or files), opus (what Opus
+ * does best) or building (an app's chat).
  */
-export function weigh(input: Message): "quick" | "work" | "opus" | "building" {
+export function weigh(input: Message): "quick" | "show" | "work" | "opus" | "building" {
   if (input.building) return "building";
   const prompt = (input.prompt ?? "").trim();
+  if (opusWork.test(prompt)) return "opus";
   /* How something works is shown, not told: an animation, which Opus draws best. */
-  if (opusWork.test(prompt) || howItWorks.test(prompt)) return "opus";
+  if (howItWorks.test(prompt)) return "show";
   if ((input.attachments ?? 0) > 0 || prompt.length > 280 || prompt.includes("\n\n") || work.test(prompt)) return "work";
   return "quick";
 }
@@ -41,21 +43,24 @@ export function modelFor(choice: unknown, input: Message = {}): Model {
   if (chosen(choice)) return choice;
   if (input.last === "opus") return "opus";
   const weight = weigh(input);
-  return weight === "opus" || weight === "building" ? "opus" : "sonnet";
+  return weight === "opus" || weight === "show" || weight === "building" ? "opus" : "sonnet";
 }
 
 /** Thinking Sonnet and Haiku may be asked for: no more than medium. */
 export const lightEfforts = ["low", "medium"] as const;
 
 /**
- * How hard it thinks: on Auto, not at all for a quick message, medium for work,
- * high while building. Otherwise what the person picked, except that Sonnet and
+ * How hard it thinks: on Auto, not at all for a quick message or for showing how
+ * something works (with thinking it plans the whole drawing before a word shows,
+ * half a minute or more; without, it writes a few lines and draws as it goes),
+ * medium for work, high while building. Otherwise what the person picked, except that Sonnet and
  * Haiku stop at medium.
  */
 export function effortFor<E extends string>(model: Model, input: Message & { choice: unknown; effort?: E }): { effort: E | "low" | "medium" | "high" | undefined; thinking: boolean } {
   if (!chosen(input.choice)) {
     const weight = weigh(input);
     if (weight === "quick") return { effort: "low", thinking: false };
+    if (weight === "show") return { effort: "medium", thinking: false };
     return { effort: weight === "building" && model === "opus" ? "high" : "medium", thinking: true };
   }
   if ((model === "sonnet" || model === "haiku") && input.effort && !(lightEfforts as readonly string[]).includes(input.effort)) return { effort: "medium", thinking: true };

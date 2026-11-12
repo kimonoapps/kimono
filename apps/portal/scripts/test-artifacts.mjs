@@ -94,6 +94,7 @@ test('Auto answers a quick message at once and thinks for real work; Sonnet and 
   assert.deepEqual(effortFor('sonnet', { choice: 'auto', effort: 'xhigh', prompt: 'hey whats the capital of peru' }), { effort: 'low', thinking: false });
   assert.deepEqual(effortFor('sonnet', { choice: 'auto', prompt: 'thanks!' }), { effort: 'low', thinking: false });
   assert.deepEqual(effortFor('sonnet', { choice: 'auto', prompt: 'can you solve this for me' }), { effort: 'medium', thinking: true });
+  assert.deepEqual(effortFor('opus', { choice: 'auto', prompt: 'How do epipens work' }), { effort: 'medium', thinking: false }, 'how something works is drawn straight away');
   assert.deepEqual(effortFor('sonnet', { choice: 'auto', prompt: 'what is this', attachments: 1 }), { effort: 'medium', thinking: true });
   assert.deepEqual(effortFor('opus', { choice: 'auto', prompt: 'make the button blue', building: true }), { effort: 'high', thinking: true });
   assert.deepEqual(effortFor('opus', { choice: 'opus', effort: 'high' }), { effort: 'high', thinking: true });
