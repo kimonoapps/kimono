@@ -247,7 +247,7 @@ test('two takes: only on Auto, for the owner, on an explainer or a words-only ex
   const asked = (prompt, more = {}) => takeKindFor({ weight: weigh({ prompt }), prompt, attachments: 0, byOwner: true, canShow: true, tried: new Set(), ...more });
   assert.equal(asked('How does the heart work?'), 'depth', 'an explainer tries depth first');
   assert.equal(asked('How does the heart work?', { tried: new Set(['depth']) }), 'voice', 'then narration');
-  assert.equal(asked('How does the heart work?', { tried: new Set(['depth', 'voice']) }), null, 'each kind once, picked or not');
+  assert.equal(asked('How does the heart work?', { tried: new Set(['depth', 'voice']) }), null, 'each kind waits before it comes back, picked or not');
   assert.equal(asked('Explain why rates affect inflation'), 'length', 'a words-only explanation tries length');
   assert.equal(asked('Explain why rates affect inflation', { tried: new Set(['length']) }), null);
   assert.equal(asked('thanks!'), null, 'never a quick message');
@@ -282,6 +282,7 @@ test('two takes: keeping one remembers it, carries the chat on from it, and late
   assert.deepEqual(takes.lastTurnEnd(db, w.id, turn), { session: 's1', at: 'u1' }, 'the second take carries on from before the ask');
   const id = takes.startTakes(db, { workspace: w.id, turn, username: 'Akram', kind: 'depth', session: 's1', at: 'u1' });
   assert.deepEqual([...takes.triedKinds(db, 'akram')], ['depth'], 'tried as soon as it starts');
+  assert.deepEqual([...takes.triedKinds(db, 'akram', Date.now() + takes.again + 1)], [], 'and tried again three days on');
   takes.noteTake(db, id, 0, 's1', 'a1');
   takes.noteTake(db, id, 1, 's2', 'b1');
   model.setSession(db, w.id, 's2');

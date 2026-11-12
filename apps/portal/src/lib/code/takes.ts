@@ -5,8 +5,8 @@ import { remember } from "./memory";
 /*
  * Two takes on one answer (docs/kimono-ai.md, "Two takes"): now and then Kimono AI
  * answers twice, side by side, and the person keeps one. What they keep is how it
- * answers them from then on. Each pair tests one trade-off, its kind; a kind is
- * tried once per person, picked or not, and only where the trade-off is real.
+ * answers them from then on. Each pair tests one trade-off, its kind; a kind comes
+ * back to a person every few days (again), picked or not, and only where the trade-off is real.
  */
 
 export const takeKinds = ["depth", "voice", "length"] as const;
@@ -82,9 +82,12 @@ export const withNote = (prompt: string, note: string) => note ? `${prompt}\n\n$
 
 /* ── kept in code.db ── */
 
-/** The kinds tried with a person so far. */
-export function triedKinds(db: DatabaseSync, username: string): Set<TakeKind> {
-  const rows = db.prepare("SELECT DISTINCT kind FROM ai_takes WHERE username = ?").all(username.toLowerCase()) as { kind: TakeKind }[];
+/** How long before a kind is tried with the same person again: more picks, to learn from, without asking often. */
+export const again = 3 * 24 * 60 * 60 * 1000;
+
+/** The kinds tried with a person lately, which wait before they come back. */
+export function triedKinds(db: DatabaseSync, username: string, now = Date.now()): Set<TakeKind> {
+  const rows = db.prepare("SELECT DISTINCT kind FROM ai_takes WHERE username = ? AND at > ?").all(username.toLowerCase(), now - again) as { kind: TakeKind }[];
   return new Set(rows.map((r) => r.kind));
 }
 
