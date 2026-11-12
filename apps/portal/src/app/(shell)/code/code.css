@@ -2118,7 +2118,11 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
   .cd .cd-row-menu { z-index: 60; }
 
   /* the menu button everywhere, where there were backs to the list */
-  .cd .cd-unfold { display: inline-grid !important; }
+  /* ☰ sits in the same place on every screen: the top-left corner of the page, beside the app rail when there is one */
+  .cd-page .cd .cd-unfold { display: inline-grid !important; position: fixed; z-index: 40; top: calc(env(safe-area-inset-top) + 28px); left: 108px; width: 40px; height: 40px; margin: 0; }
+  .cd-page .cd :is(.cd-ws-head, .cd-conn-head) { padding-left: 56px; min-height: 0; align-items: center; }
+  .cd-page .cd .cd-ws-id, .cd-page .cd .cd-conn-head h1 { display: flex; align-items: center; min-height: 40px; margin: 0; }
+  .cd-page .cd .cd-start-head { min-height: 0; }
   .cd .cd-unfold > svg.i:first-child { display: none; }
   .cd .cd-unfold > svg.i:last-child { display: block; }
   .cd-page .cd [aria-label="All chats"], .cd-page .cd .cd-start-back { display: none !important; }
@@ -2168,4 +2172,8 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
   .cd-side .cd-row-more > button svg.i { width: 18px; height: 18px; }
   .cd-side .cd-row-more.is-open > button, .cd-side .cd-row-more > button:hover { opacity: 1; background: var(--k-container-high); }
   .cd-side .cd-row-open { padding-right: 40px; }
+}
+@media (max-width: 720px) {
+  .cd-page .cd .cd-unfold { left: 12px; top: calc(env(safe-area-inset-top) + 12px); }
+  .cd-page .cd :is(.cd-ws-head, .cd-conn-head) { padding-top: 12px; }
 }
