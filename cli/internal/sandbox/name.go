@@ -37,7 +37,19 @@ func (s *Server) handleName(w http.ResponseWriter, r *http.Request, id string) e
 	}
 	ctx, done := context.WithTimeout(r.Context(), 45*time.Second)
 	defer done()
-	extra := []string{"KIMONO_PROMPT=" + truncate(conversation, 4000), "KIMONO_SYSTEM=" + namePrompt, "KIMONO_MODEL=" + Models["haiku"]}
+	// The model answers a sandbox only while a turn runs, and naming comes after one: it gets a key of
+	// its own for this one call (the gateway's naming), gone when it returns. It comes after the
+	// sandbox's own key in the environment, so it's the one Claude Code uses.
+	key := randomToken()
+	s.mu.Lock()
+	s.naming[key] = space
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.naming, key)
+		s.mu.Unlock()
+	}()
+	extra := []string{"KIMONO_PROMPT=" + truncate(conversation, 4000), "KIMONO_SYSTEM=" + namePrompt, "KIMONO_MODEL=" + Models["haiku"], "ANTHROPIC_API_KEY=" + key}
 	output, err := s.docker.run(ctx, nil, s.execArgs(space, extra, false, "sh", "-c", nameAgent)...)
 	if err != nil {
 		s.cfg.Logf("naming %s: %v", id, err)

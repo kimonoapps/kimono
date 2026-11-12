@@ -27,6 +27,8 @@ type Server struct {
 	mu           sync.Mutex
 	spaces       map[string]*workspace
 	byCapability map[string]*workspace
+	// naming holds the one-off keys a chat is named with: each reaches the model only while its naming runs.
+	naming map[string]*workspace
 	// previews are the live apps, by workspace id; kept in StateDir.
 	previews map[string]*preview
 	// records keep each sandbox's repository and last activity; kept in StateDir.
@@ -65,7 +67,7 @@ func New(cfg Config) (*Server, error) {
 	if err := cfg.defaults(); err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, docker: docker{bin: cfg.Docker}, spaces: map[string]*workspace{}, byCapability: map[string]*workspace{}, previews: map[string]*preview{},
+	s := &Server{cfg: cfg, docker: docker{bin: cfg.Docker}, spaces: map[string]*workspace{}, byCapability: map[string]*workspace{}, naming: map[string]*workspace{}, previews: map[string]*preview{},
 		records: map[string]*record{}, wakeLocks: map[string]*sync.Mutex{}, wakings: map[string]*waking{}, now: time.Now}
 	s.started = s.now()
 	cpus, _ := strconv.ParseFloat(s.cfg.CPUs, 64)

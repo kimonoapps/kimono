@@ -79,6 +79,14 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request) {
 		token = bearer(r.Header)
 	}
 	space := s.byToken(token)
+	/* A chat being named has a key of its own, good only while that runs: the gate below stays for everything else. */
+	naming := false
+	if space == nil {
+		s.mu.Lock()
+		space = s.naming[token]
+		s.mu.Unlock()
+		naming = space != nil
+	}
 	if space == nil {
 		writeError(w, 401, "This sandbox has no model access.")
 		return
@@ -86,7 +94,7 @@ func (s *Server) serveModel(w http.ResponseWriter, r *http.Request) {
 	space.mu.Lock()
 	real, busy := space.model.Token, space.busy
 	space.mu.Unlock()
-	if !busy {
+	if !busy && !naming {
 		// The plan and its budget are spent by turns, which Portal counts. A
 		// process left running in the sandbox afterwards gets nothing.
 		writeError(w, 409, "The model answers only while a turn is running.")
