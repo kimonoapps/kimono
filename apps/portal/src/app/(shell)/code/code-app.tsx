@@ -59,6 +59,7 @@ function goTo(to: Record<string, string | null>, replace = false) {
   const url = `${codeHome}${next.size ? `#${next}` : ""}`;
   /* Keep Next.js's own history state, so its back button handling sees this as the same page. */
   if (replace) window.history.replaceState(window.history.state, "", url); else window.history.pushState(window.history.state, "", url);
+  setDrawer(false);
   window.dispatchEvent(new Event(codeNav));
 }
 
@@ -229,6 +230,23 @@ function setFolded(folded: boolean) {
 }
 function useFolded() {
   return useSyncExternalStore((listener) => { foldListeners.add(listener); return () => { foldListeners.delete(listener); }; }, foldedNow, () => false);
+}
+
+/* On a phone or a narrow window the chats are a drawer, as in the phone app: open or shut, never remembered. */
+let drawerOpen = false;
+const drawerListeners = new Set<() => void>();
+function setDrawer(open: boolean) {
+  if (drawerOpen === open) return;
+  drawerOpen = open;
+  drawerListeners.forEach((listener) => listener());
+}
+function useDrawer() {
+  return useSyncExternalStore((listener) => { drawerListeners.add(listener); return () => { drawerListeners.delete(listener); }; }, () => drawerOpen, () => false);
+}
+const phoneWide = "(max-width: 980px)";
+/** The chats: the drawer on a phone, the list unfolded beside the page anywhere else. */
+function showChats() {
+  if (window.matchMedia(phoneWide).matches) setDrawer(true); else setFolded(false);
 }
 
 /* How hard the agent thinks: each person's own choice, remembered in this browser. */
@@ -515,6 +533,17 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
     void code.moveChat(id, folder).then(load, (error) => setProblem(problemText(error)));
   };
   const folded = useFolded();
+  const drawer = useDrawer();
+  useEffect(() => {
+    if (!drawer) return;
+    const shut = (event: KeyboardEvent) => { if (event.key === "Escape") setDrawer(false); };
+    /* going anywhere shuts it, the browser's own back included */
+    const left = () => setDrawer(false);
+    window.addEventListener("keydown", shut);
+    window.addEventListener("hashchange", left);
+    window.addEventListener("popstate", left);
+    return () => { window.removeEventListener("keydown", shut); window.removeEventListener("hashchange", left); window.removeEventListener("popstate", left); };
+  }, [drawer]);
   const running = workspaces?.some((w) => w.turn?.state === "running") ?? false;
   const now = useNow(running);
 
@@ -529,9 +558,10 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
   }, []);
 
   return <ViewerContext.Provider value={viewer}><MarksContext.Provider value={marks}><TypingContext.Provider value={typingInList}><div className="cd-page">
-    <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded")}>
+    <div className={cx("cd", current && "has-workspace", composing && "is-composing", folded && "is-folded", drawer && "is-drawer")}>
+    <div className="cd-scrim" aria-hidden="true" onClick={() => setDrawer(false)} />
     <aside className="cd-side" aria-label="Chats">
-      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span>Chats</span></div>
+      <div className="cd-side-head"><button type="button" className="cd-roundbutton cd-fold" onClick={() => setFolded(true)} aria-label="Hide chats" title="Hide chats"><Icon name="panel" /></button><span className="cd-side-name">Chats</span><span className="cd-side-name is-phone">Kimono AI</span></div>
       <button type="button" className="cd-newchat" onClick={() => goTo({ new: "1" })} aria-keyshortcuts="/" aria-current={!current && !showingConnections && !showingMemory && !showingArchived ? "page" : undefined}><Icon name="plus" /><span>New chat</span></button>
       <label className="cd-conn-search cd-side-search"><Icon name="search" /><input type="search" value={find} placeholder="Search chats" aria-label="Search chats"
         onChange={(event) => setFind(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") setFind(""); }} /></label>
@@ -592,8 +622,8 @@ function ArchivedView({ chats, loaded, now, onChange }: { chats: Workspace[]; lo
   };
   return <section className="cd-sheet cd-conn cd-archived">
     <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={showChats} aria-label="Show chats" title="Show chats"><Icon name="panel" /><Icon name="menu" /></button>
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
-      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
       <h1>Archived</h1>
     </header>
     <div className="cd-conn-body">
@@ -638,8 +668,8 @@ function MemoryView({ now, page }: { now: number; page: string | null }) {
   };
   return <section className="cd-sheet cd-conn cd-memory">
     <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={showChats} aria-label="Show chats" title="Show chats"><Icon name="panel" /><Icon name="menu" /></button>
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
-      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
       <h1>For you</h1>
     </header>
     <div className="cd-conn-body">
@@ -805,8 +835,8 @@ function SkillPage({ id }: { id: string }) {
   const missing = catalog !== null && !creating && !skill?.custom?.mine && !theirs;
   return <section className="cd-sheet cd-conn cd-memory cd-page">
     <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={showChats} aria-label="Show chats" title="Show chats"><Icon name="panel" /><Icon name="menu" /></button>
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({ memory: "1" })} aria-label="For you" title="For you"><Icon name="back" /></button>
-      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
       <span className="cd-page-state" role="status">{problem ? <span className="cd-problem">{problem}</span> : ""}</span>
       <span className="cd-grow" />
       {!creating && (skill?.custom?.mine || (theirs && skill?.custom?.editable)) ? <button type="button" className="cd-roundbutton" aria-label="Delete this skill" title="Delete this skill" disabled={busy} onClick={remove}><Icon name="trash" /></button> : null}
@@ -886,8 +916,8 @@ function MemoryPage({ page, profile, now, onProfile }: { page: string; profile: 
   const missing = profile !== null && !instructions && page !== "new" && !memory && !id;
   return <section className="cd-sheet cd-conn cd-memory cd-page">
     <header className="cd-conn-head">
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={showChats} aria-label="Show chats" title="Show chats"><Icon name="panel" /><Icon name="menu" /></button>
       <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({ memory: "1" })} aria-label="For you" title="For you"><Icon name="back" /></button>
-      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
       <span className="cd-page-state" role="status">{problem ? <span className="cd-problem">{problem}</span> : state === "saving" ? "Saving…" : state === "saved" ? "Saved" : memory ? `${memory.source === "ai" ? "Kimono AI kept this" : "Yours"} · ${when(memory.createdAt, now)}` : ""}</span>
       <span className="cd-grow" />
       {id ? <button type="button" className="cd-roundbutton" aria-label="Forget this page" title="Forget this page" onClick={() => { void code.forget(id).then((next) => { onProfile(next); goTo({ memory: "1" }); }, (error) => setProblem(problemText(error))); }}><Icon name="trash" /></button> : null}
@@ -940,15 +970,15 @@ function useConnections() {
 function ConnectionsView({ now, app }: { now: number; app: string | null }) {
   const conn = useConnections();
   const { state, problem } = conn;
-  const head = (title: string, back: () => void) => <header className="cd-conn-head">
-    <button type="button" className="cd-roundbutton cd-back" onClick={back} aria-label="Back" title="Back"><Icon name="back" /></button>
-    <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
+  const head = (title: string, back: () => void, label = "Back") => <header className="cd-conn-head">
+    <button type="button" className="cd-roundbutton cd-unfold" onClick={showChats} aria-label="Show chats" title="Show chats"><Icon name="panel" /><Icon name="menu" /></button>
+    <button type="button" className="cd-roundbutton cd-back" onClick={back} aria-label={label} title={label}><Icon name="back" /></button>
     <h1>{title}</h1>
   </header>;
   if (app) return <AppPage key={app} slug={app} now={now} conn={conn} head={head} />;
   const mine = state?.connections ?? [];
   return <section className="cd-sheet cd-conn">
-    {head("Connections", () => goTo({}))}
+    {head("Connections", () => goTo({}), "All chats")}
     <div className="cd-conn-body">
       {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
       {state === null && !problem ? <SkeletonRows rows={3} mark={false} /> : null}
@@ -1795,8 +1825,8 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
 
   return <section className="cd-start">
     <div className="cd-start-head">
+      <button type="button" className="cd-roundbutton cd-unfold" onClick={showChats} aria-label="Show chats" title="Show chats"><Icon name="panel" /><Icon name="menu" /></button>
       <button type="button" className="cd-roundbutton cd-start-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
-      <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
     </div>
     <h2 className="cd-hello">{onProject ? "What should we build?" : "What can I do for you?"}</h2>
     <>
@@ -2014,8 +2044,8 @@ function WorkspaceView({ projects, workspace, others, tab: asked, path, blocked,
     <div className="cd-sheet cd-ws">
       <header className="cd-ws-head">
         {guest || peek ? null : <>
+          <button type="button" className="cd-roundbutton cd-unfold" onClick={showChats} aria-label="Show chats" title="Show chats"><Icon name="panel" /><Icon name="menu" /></button>
           <button type="button" className="cd-roundbutton cd-back" onClick={() => goTo({})} aria-label="All chats" title="All chats"><Icon name="back" /></button>
-          <button type="button" className="cd-roundbutton cd-unfold" onClick={() => setFolded(false)} aria-label="Show chats" title="Show chats"><Icon name="panel" /></button>
         </>}
         <div className="cd-ws-id">
           <ChatTitle workspace={workspace} onRenamed={onChange} />

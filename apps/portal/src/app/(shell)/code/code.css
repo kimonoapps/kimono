@@ -2096,3 +2096,76 @@ form.cd-quiz-other input::placeholder { color: var(--k-faint); }
 /* A Pro Tool's page: that it runs on the Pro Tools budget, and that running out never stops Kimono AI. */
 .cd-conn-note { display: flex; align-items: flex-start; gap: 12px; margin: 4px 0 16px; padding: 12px 14px; border-radius: var(--k-r-m); background: var(--k-container-low); color: var(--k-on-surface-variant); font: 400 14px/1.5 var(--k-sans); }
 .cd-conn-note svg.i { flex: none; width: 18px; height: 18px; margin-top: 2px; color: var(--k-on-surface); }
+
+/* ── phone: the chats are a drawer, as in the phone app ──
+   The page is one chat at a time (a new one when nothing's open), and ☰ slides the chats in from the
+   left over a scrim: Kimono AI on top, New chat, Connections, For you, Archived, then Recent, Shared
+   with you and Projects as plain labels over one-line rows, each a full round pill filled where you are. */
+.cd-scrim, .cd-side-name.is-phone, .cd-unfold > svg.i:last-child { display: none; }
+@media (max-width: 980px) {
+  /* nothing open: a new chat, not the list */
+  .cd-page .cd:not(.has-workspace):not(.is-composing) .cd-main { display: block; }
+  .cd-page .cd .cd-side, .cd-page .cd.has-workspace .cd-side, .cd-page .cd.is-composing .cd-side {
+    position: fixed; z-index: 45; inset: 0 auto 0 0; width: min(340px, 86vw); height: 100dvh; max-height: none;
+    display: flex; flex-direction: column; align-content: normal; gap: 0; margin: 0;
+    padding: 18px 12px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain;
+    border-radius: 0 28px 28px 0; background: var(--k-container-low); box-shadow: none;
+    transform: translateX(-104%); visibility: hidden;
+    transition: transform .3s cubic-bezier(.2, 0, 0, 1), visibility 0s .3s;
+  }
+  .cd-page .cd.is-drawer .cd-side { transform: none; visibility: visible; box-shadow: var(--k-shadow-raised); transition: transform .36s cubic-bezier(.05, .7, .1, 1), visibility 0s; }
+  .cd.is-drawer .cd-scrim { display: block; position: fixed; inset: 0; z-index: 44; background: rgb(0 0 0 / .32); animation: mo-fade .22s ease-out; }
+  .cd .cd-row-menu { z-index: 60; }
+
+  /* the menu button everywhere, where there were backs to the list */
+  .cd .cd-unfold { display: inline-grid !important; }
+  .cd .cd-unfold > svg.i:first-child { display: none; }
+  .cd .cd-unfold > svg.i:last-child { display: block; }
+  .cd-page .cd [aria-label="All chats"], .cd-page .cd .cd-start-back { display: none !important; }
+
+  /* head */
+  .cd-side .cd-side-head { padding: 0 4px 10px 8px; }
+  .cd-side .cd-side-head .cd-fold, .cd-side-name:not(.is-phone) { display: none; }
+  .cd-side .cd-side-name.is-phone { display: block; font: 500 22px/1.25 var(--k-sans); color: var(--k-on-surface); }
+  .cd-side .cd-side-rule { display: none; }
+  .cd-side .cd-side-search { margin: 0 0 8px; min-height: 44px; }
+
+  /* places: a row each */
+  .cd-side .cd-newchat, .cd-side .cd-sidenav button {
+    display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; margin: 0; padding: 0 14px 0 16px;
+    border: 0; border-radius: 999px; background: transparent; box-shadow: none; color: var(--k-on-surface);
+    font: 400 16px/1.3 var(--k-sans); text-align: left;
+  }
+  .cd-side .cd-newchat { font-weight: 500; font-size: 14.5px; }
+  .cd-side .cd-newchat svg.i { color: var(--k-primary); }
+  .cd-side .cd-newchat svg.i, .cd-side .cd-sidenav svg.i { width: 20px; height: 20px; flex: none; }
+  .cd-side .cd-newchat[aria-current], .cd-side .cd-sidenav button[aria-current] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+  .cd-side .cd-sidenav { display: grid; gap: 0; padding: 0; }
+  .cd-side .cd-sidenav-count { margin-left: auto; font: 500 12px/1 var(--k-mono); color: var(--k-on-surface-variant); }
+
+  /* groups: a plain label, its rows under it */
+  .cd-side .cd-folder, .cd-side .cd-project { margin: 0; padding: 0; border: 0; background: none; }
+  .cd-side .cd-folder-head, .cd-side .cd-side-label { display: flex; align-items: center; gap: 8px; min-height: 40px; margin: 14px 0 0; padding: 0 4px 0 16px; }
+  .cd-side .cd-folder-head > svg.i, .cd-side .cd-fold-toggle { display: none; }
+  .cd-side .cd-folder-title, .cd-side .cd-side-label > span { flex: 1; font: 500 14px/1.3 var(--k-sans); letter-spacing: .01em; color: var(--k-on-surface-variant); }
+  .cd-side .cd-project-new { width: 36px; height: 36px; }
+
+  /* a chat: one line, its title and when */
+  .cd-side .cd-row { position: relative; display: flex; align-items: center; margin: 0; }
+  .cd-side .cd-row-open {
+    display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; margin: 0; padding: 0 44px 0 16px;
+    border: 0; border-radius: 999px; background: transparent; box-shadow: none; color: var(--k-on-surface); text-align: left;
+  }
+  .cd-side .cd-row-open b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 16px/1.3 var(--k-sans); }
+  .cd-side .cd-row-open small { display: flex; align-items: center; gap: 6px; flex: none; margin: 0; }
+  .cd-side .cd-row-open .cd-when { margin: 0; font: 500 11px/1 var(--k-mono); color: var(--k-on-surface-variant); }
+  .cd-side .cd-row-open[aria-current] { background: var(--k-secondary-container); color: var(--k-on-secondary-container); }
+  .cd-side .cd-row > :not(.cd-row-open) { position: absolute; right: 4px; }
+  .cd-side .cd-row-confirm { position: static; }
+  .cd-side .cd-list { padding: 0; margin: 0; gap: 0; }
+  /* its ··· is quiet, a dot-row not a button, until it's pressed */
+  .cd-side .cd-row-more > button { width: 32px; height: 32px; min-height: 0; border: 0; border-radius: 50%; background: transparent; color: var(--k-on-surface-variant); opacity: .7; }
+  .cd-side .cd-row-more > button svg.i { width: 18px; height: 18px; }
+  .cd-side .cd-row-more.is-open > button, .cd-side .cd-row-more > button:hover { opacity: 1; background: var(--k-container-high); }
+  .cd-side .cd-row-open { padding-right: 40px; }
+}

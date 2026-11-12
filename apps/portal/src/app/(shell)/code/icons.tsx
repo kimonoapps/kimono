@@ -15,6 +15,7 @@ export const icons = {
   chat: '<path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z"/>',
   reply: '<path d="M9.5 6.5 4.5 11.5l5 5"/><path d="M4.5 11.5h9a6 6 0 0 1 6 6v1"/>',
   diff: '<path d="M12 4v8M8 8h8M8 19h8"/>',
+  menu: '<path d="M4 7h16M4 12h10M4 17h16"/>',
   panel: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>',
   rocket: '<path d="M12 3.5c3 2 4.5 5 4.5 8.5l-2 4h-5l-2-4c0-3.5 1.5-6.5 4.5-8.5z"/><circle cx="12" cy="10" r="1.6"/><path d="M9.5 16 7 19.5M14.5 16l2.5 3.5M12 16v4"/>',
   code: '<path d="m8.5 7-5 5 5 5M15.5 7l5 5-5 5"/>',
