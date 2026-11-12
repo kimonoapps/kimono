@@ -736,7 +736,7 @@
       this.timeline?.dispose?.();
       this.timeline = timeline;
       if (timeline.uses3d) this.ensure3d(); else if (was3d) this.drop3d();
-      /* playing as it is written; a finished page opened later waits for Play (frame.ts sets KIMONO_STILL) */
+      /* playing as it is written; a finished page opened later holds still (frame.ts sets KIMONO_STILL) until the chat starts it, the first time it's in view */
       if (!this.complete && !reduced() && !window.KIMONO_STILL) this.playing = true;
       this.size();
     }

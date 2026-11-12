@@ -26,6 +26,27 @@ export function ArtifactFrame({ content, final, title, media, control, onHeight,
     if (!ready.current) return;
     frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final, media: latest.current.media }, "*");
   }, []);
+  /* A finished animation starts by itself the first time it's in view, once: one paused, watched or
+     already playing (as it was written) is left as it is. Not when the person asks for less motion. */
+  const scene = useRef<{ t: number; end: number; playing: boolean; complete: boolean } | null>(null);
+  const seen = useRef(false);
+  const begun = useRef(false);
+  const begin = useCallback(() => {
+    const s = scene.current;
+    if (!s || begun.current) return;
+    if (s.playing || s.t > 0.01) { begun.current = true; return; }
+    if (!seen.current || !s.complete || s.end <= 0) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) { begun.current = true; return; }
+    begun.current = true;
+    frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "scene-control", action: "play" }, "*");
+  }, []);
+  useEffect(() => {
+    const el = frame.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const watch = new IntersectionObserver(([entry]) => { seen.current = entry.isIntersecting; begin(); }, { threshold: 0.5 });
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [begin]);
   useEffect(() => {
     const hear = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
@@ -34,11 +55,12 @@ export function ArtifactFrame({ content, final, title, media, control, onHeight,
       if (m.type === "ready") { ready.current = true; post(); }
       if (m.type === "size" && typeof m.height === "number") heightTo.current?.(m.height);
       if (m.type === "error") console.warn("Artifact:", (m as { message?: string }).message);
+      if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") { scene.current = { t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete) }; begin(); }
       if (m.type === "scene" && typeof m.t === "number" && typeof m.end === "number") sceneTo.current?.({ t: m.t, end: m.end, playing: Boolean(m.playing), complete: Boolean(m.complete), count: m.count ?? 1, voiced: Boolean(m.voiced), muted: Boolean(m.muted), blocked: Boolean(m.blocked), held: Boolean(m.held), volume: typeof m.volume === "number" ? m.volume : 1, params: Array.isArray(m.params) ? m.params.filter((p): p is SceneParam => typeof p?.name === "string" && typeof p.min === "number" && typeof p.max === "number" && typeof p.value === "number").slice(0, 8) : [] });
     };
     window.addEventListener("message", hear);
     return () => window.removeEventListener("message", hear);
-  }, [post]);
+  }, [post, begin]);
   useEffect(() => { latest.current = { content, final, media }; post(); }, [content, final, media, post]);
   /* A frame sent with the page (a link's page) may have loaded, and said it's ready, before this listened: speak first. Posting to one still loading is lost, and its own "ready" asks again. */
   useEffect(() => { frame.current?.contentWindow?.postMessage({ kimono: "artifact", type: "render", content: latest.current.content, final: latest.current.final, media: latest.current.media }, "*"); }, []);
