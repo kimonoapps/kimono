@@ -255,8 +255,10 @@ still name someone; nothing scrubs them.
 
 ## Choosing the model
 
-Auto by default (`lib/code/models.ts`): Opus at medium, every message, so a
-chat stays on one model and stays cached. A chip in the
+Auto by default (`lib/code/models.ts`): Opus, so a chat stays on one model and
+stays cached, thinking as hard as each message needs: low for a quick message so
+the answer starts at once, medium for real work or attachments, high while
+building an app. A chip in the
 composer picks one instead; picking a different model than the chat has been on
 says that it uses more of the plan. The node runs only Fable, Opus, Sonnet or
 Haiku; each Done says which answered.

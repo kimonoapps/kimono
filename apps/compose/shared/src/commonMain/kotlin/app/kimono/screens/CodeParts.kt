@@ -71,7 +71,8 @@ import kotlin.time.Clock
 
 /* What Kimono AI's phone screens share: clocks, marks for apps and spaces, rings, compact choices. */
 
-internal fun now() = Clock.System.now().toEpochMilliseconds()
+/** Now, by the server's clock, since the times we count from are the server's. */
+internal fun now() = app.kimono.data.ServerClock.now()
 
 /** A clock that ticks every second while [running]. */
 @Composable

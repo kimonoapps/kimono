@@ -481,9 +481,10 @@ type Rewound = { at: string } | { before: string };
 
 async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice, rewound?: Rewound) {
   /* Which Claude answers: what the person chose, or on Auto the chat's model, Opus once it builds. */
-  const model = modelFor(choice, { prompt, building: workspace.kind === "project" || Boolean(workspace.preview), last: workspace.lastModel });
-  /* How hard it thinks: on Auto the same every message; Sonnet and Haiku stop at medium. */
-  effort = effortFor(model, { choice, effort });
+  const building = workspace.kind === "project" || Boolean(workspace.preview);
+  const model = modelFor(choice, { prompt, building, last: workspace.lastModel });
+  /* How hard it thinks: on Auto what the message needs; Sonnet and Haiku stop at medium. */
+  effort = effortFor(model, { choice, effort, prompt, attachments: attachments.length, building });
   setLastModel(db(), workspace.id, model);
   /* Someone the chat is shared with writes as themself: the owner's connected
      apps, memories, earlier chats and Drive are the owner's alone. */

@@ -90,8 +90,12 @@ test('drafts follow a Write of an artifact as it streams, and nothing else', () 
   assert.ok(!sent.some((d) => JSON.stringify(d).includes('secret')));
 });
 
-test('Auto thinks at medium; Sonnet and Haiku never think past medium', () => {
-  assert.equal(effortFor('opus', { choice: 'auto', effort: 'xhigh' }), 'medium');
+test('Auto thinks as hard as the message needs; Sonnet and Haiku never think past medium', () => {
+  assert.equal(effortFor('opus', { choice: 'auto', effort: 'xhigh', prompt: 'hey whats the capital of peru' }), 'low');
+  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'thanks!' }), 'low');
+  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'can you solve this for me', attachments: 0 }), 'medium');
+  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'what is this', attachments: 1 }), 'medium');
+  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'make the button blue', building: true }), 'high');
   assert.equal(effortFor('opus', { choice: 'opus', effort: 'high' }), 'high');
   assert.equal(effortFor('haiku', { choice: 'haiku', effort: 'high' }), 'medium');
   assert.equal(effortFor('sonnet', { choice: 'sonnet', effort: 'low' }), 'low');

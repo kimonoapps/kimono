@@ -13,6 +13,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import io.ktor.http.fromHttpToGmtDate
 import io.ktor.http.Parameters
 import io.ktor.http.URLBuilder
 import io.ktor.http.isSuccess
@@ -261,7 +262,7 @@ class Session(private val platform: Platform, private val http: HttpClient) {
             header(HttpHeaders.Authorization, "Bearer $bearer")
             /* Not `configure()`'s neighbour build(): that is the builder's own method. */
             configure()
-        }.execute { response -> if (response.status.value == 401) null else handle(response) }
+        }.execute { response -> ServerClock.heard(response.headers[HttpHeaders.Date]); if (response.status.value == 401) null else handle(response) }
         val first = try { attempt(token()) } catch (problem: KimonoProblem) { throw problem } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel } catch (_: Exception) { throw KimonoProblem(offline) }
         if (first != null) return first
         access = null
@@ -312,3 +313,21 @@ private val REFUSALS = setOf("invalid_grant", "invalid_client", "invalid_scope")
 
 /** What a dropped or missing connection reads as: worth trying again, unlike a refusal. */
 const val OFFLINE = "Kimono isn't answering. Check your connection and try again."
+
+/**
+ * The server's clock, as heard in its replies' Date headers. A phone whose clock is
+ * off would otherwise count a turn's time from the wrong moment (a chat "thinking"
+ * from 40s the moment it starts). Seconds only, so small differences are left alone.
+ */
+object ServerClock {
+    var offset = 0L
+        private set
+
+    fun heard(date: String?) {
+        val server = date?.let { runCatching { it.fromHttpToGmtDate().timestamp + 500 }.getOrNull() } ?: return
+        val off = server - kotlin.time.Clock.System.now().toEpochMilliseconds()
+        offset = if (kotlin.math.abs(off) < 2_000) 0 else off
+    }
+
+    fun now() = kotlin.time.Clock.System.now().toEpochMilliseconds() + offset
+}
