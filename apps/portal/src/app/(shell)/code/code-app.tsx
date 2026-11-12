@@ -1202,6 +1202,32 @@ function pastedText(event: ClipboardEvent<HTMLTextAreaElement>, taken: string[])
   return new File([said], named(), { type: "text/plain" });
 }
 
+/** Sizes a writing field to what's in it, up to a third of the screen. */
+function fitField(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  /* Not laid out yet (a page still coming in): measured as nothing, it would be pinned shut. Left as it is until it is. */
+  if (!el.scrollHeight) { el.style.height = ""; return; }
+  const max = window.innerHeight / 3;
+  el.style.height = `${Math.min(el.scrollHeight, max)}px`;
+  el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+}
+
+/** A field that grows with what's written, and is sized again once it's on screen or its width changes. */
+function useFitField(field: React.RefObject<HTMLTextAreaElement | null>, written: string) {
+  useLayoutEffect(() => { if (field.current) fitField(field.current); }, [field, written]);
+  useEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    let width = -1;
+    const observer = new ResizeObserver(([entry]) => {
+      const now = Math.round(entry.contentRect.width);
+      if (now !== width) { width = now; fitField(el); }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [field]);
+}
+
 /**
  * Send and Stop are one seal: while the agent works and nothing is written it
  * stops it; a word typed turns it back into Send. The arrow lifts away as the
@@ -1732,14 +1758,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   /* Ready to type on a computer; on a phone the keyboard waits for a tap, so it doesn't cover the screen on arrival. */
   useEffect(() => { if (!onTouch()) field.current?.focus(); }, [repos]);
   /* The field grows with what's written, up to a third of the screen, as the chat's does. */
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const max = window.innerHeight / 3;
-    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
-    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
-  }, [prompt]);
+  useFitField(field, prompt);
   const ready = Boolean(prompt.trim()) && (!onProject || Boolean(chosen)) && !sending;
 
   async function send() {
@@ -3591,14 +3610,7 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   const switching = model !== "auto" && workspace.lastModel && model !== workspace.lastModel ? model : null;
 
   /* The field grows with what you type, up to a third of the screen. */
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const max = window.innerHeight / 3;
-    el.style.height = `${Math.min(el.scrollHeight, max)}px`;
-    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
-  }, [text]);
+  useFitField(field, text);
 
   const add = useCallback((files: File[]) => {
     const fresh = files.slice(0, 10).map((file) => ({ file, item: { id: crypto.randomUUID(), name: file.name, size: file.size, ...localPreview(file) } as Pending }));
