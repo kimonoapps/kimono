@@ -967,7 +967,7 @@ function ConnectionsView({ now, app }: { now: number; app: string | null }) {
 function ConnectionsExplained({ pro }: { pro: boolean }) {
   return <div className="cd-conn-explain">
     <p><Icon name="link" /><span><b>Your apps</b>Sign in to an app like Gmail or Notion and Kimono AI can use it for you, as you. Connecting is free.</span></p>
-    {pro ? <p><Icon name="bolt" /><span><b>Pro Tools</b>Apps Kimono AI can use without you signing in. Each use takes a little from a monthly Pro Tools budget, which is separate from your plan&rsquo;s usage limits.</span></p> : null}
+    {pro ? <p><Icon name="bolt" /><span><b>Pro Tools</b>Premium tools Kimono AI can use without you signing in, paid from a monthly budget. If it runs out, you can still use Kimono AI as normal: only Pro Tools stop until the budget resets.</span></p> : null}
   </div>;
 }
 
@@ -996,7 +996,7 @@ function ProApps({ apps, first }: { apps: ConnectableApp[]; first: boolean }) {
   const shown = all ? apps : apps.slice(0, 8);
   return <>
     <div className={cx("cd-conn-prohead", first && "is-first")}>
-      <span><h2 className="cd-conn-sub cd-pro"><Icon name="bolt" />Pro Tools</h2><small>Ready without signing in. Each use comes out of this budget, not your plan&rsquo;s usage.</small></span>
+      <span><h2 className="cd-conn-sub cd-pro"><Icon name="bolt" />Pro Tools</h2><small>If this runs out, Kimono AI keeps working. Only Pro Tools stop until it resets.</small></span>
       {media ? <span className="cd-conn-budget"><b>{media.spent == null ? credits(media.budget) : `${creditNumber(Math.max(0, media.budget - media.spent))} of ${credits(media.budget)} left`}</b><small>Resets {monthWords(media.resetsAt)}</small></span> : null}
     </div>
     <ul className="cd-pro-grid" id="cd-pro-grid">{shown.map((a) => <li key={a.app} className="cd-pro-tile">
@@ -1083,7 +1083,7 @@ function AppPage({ slug, now, conn, head }: { slug: string; now: number; conn: C
             : <>{mine.status === "FAILED" ? <Seal type="button" compact busy={conn.busy === slug} onClick={() => conn.connect(slug)}>Connect again</Seal> : null}<button type="button" className="cd-quietbutton" onClick={() => setConfirming(true)}>Disconnect</button></>}
         </span>
       </div>
-      {pro && !mine ? <p className="cd-conn-note"><Icon name="bolt" /><span>Kimono AI can use {name} without you signing in. Each use comes out of your monthly Pro Tools budget, not your plan&rsquo;s usage. Connect your own account and it uses yours instead, with no budget.</span></p> : null}
+      {pro && !mine ? <p className="cd-conn-note"><Icon name="bolt" /><span>Kimono AI can use {name} without you signing in, from your monthly Pro Tools budget. If the budget runs out, Kimono AI still works; it just can&rsquo;t use Pro Tools until it resets. Connect your own account to use {name} without the budget.</span></p> : null}
       {about === null ? <SkeletonRows rows={3} mark={false} /> : <>
         {about.description ? <p className="cd-app-about">{about.description}</p> : null}
         {about.tools.length ? <>
