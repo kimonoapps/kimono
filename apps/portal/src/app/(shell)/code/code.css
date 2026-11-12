@@ -1312,6 +1312,10 @@ a.cd-spacechip:focus-visible, .cd-drivename:focus-visible { outline: 2px solid v
 .cd-thanks-note { color: var(--k-on-surface-variant); white-space: pre-wrap; overflow-wrap: anywhere; }
 .cd-report textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--k-outline-variant); border-radius: var(--k-r-s); background: var(--k-surface); color: var(--k-on-surface); font: 400 15px/1.45 var(--k-sans); resize: vertical; }
 .cd-report textarea:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
+.cd-newproject { width: min(400px, calc(100vw - 32px)); }
+.cd-newproject form { display: contents; }
+.cd-newproject input { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid var(--k-outline-variant); border-radius: var(--k-r-s); background: var(--k-surface); color: var(--k-on-surface); font: 400 15px/1.4 var(--k-sans); }
+.cd-newproject input:focus-visible { outline: 2px solid var(--k-app-accent); outline-offset: 1px; }
 
 /* a tool call keeps a rounded shape under the pointer, in the middle of the list too */
 .call > summary:hover { border-radius: 14px; }

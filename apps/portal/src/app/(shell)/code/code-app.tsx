@@ -549,9 +549,7 @@ export function CodeApp({ blocked, admin, driveApp, me }: { blocked: string | nu
         actions={<button type="button" className="cd-roundbutton cd-project-new" onClick={() => goTo({ new: "1" })} aria-label="New chat" title="New chat"><Icon name="plus" /></button>} />
       <SharedWithYou chats={chatsOf(shared.chats).concat(shared.chats.filter((w) => w.kind !== "chat"))} artifacts={shared.artifacts} current={current} now={now} />
       <div className="cd-side-label cd-folders-head"><span>Projects</span><button type="button" className="cd-roundbutton cd-project-new is-shown" onClick={() => setNaming({ id: null, name: "" })} aria-label="New project" title="New project"><Icon name="plus" /></button></div>
-      {naming && !naming.id ? <form className="cd-folder-name" onSubmit={(event) => { event.preventDefault(); void saveProject(); }}>
-        <input autoFocus value={naming.name} maxLength={60} placeholder="Project name" aria-label="Project name" onChange={(event) => setNaming({ id: null, name: event.target.value })} onBlur={() => void saveProject()} onKeyDown={(event) => { if (event.key === "Escape") setNaming(null); }} />
-      </form> : null}
+      {naming && !naming.id ? <NewProject onCreate={async (name) => { await code.createProject(name); await load(); }} onClose={() => setNaming(null)} /> : null}
       {groups.map((group) => group.kind === "project"
         ? <FolderGroup key={group.key} gkey={group.key} project={group.project} chats={[...chatsOf(listed).filter((w) => w.folder?.id === group.project.id), ...(repoOf(group.project)?.tasks ?? [])]} current={current} now={now}
             renaming={naming?.id === group.project.id ? naming.name : null} onRename={(name) => setNaming({ id: group.project.id, name })} onSaveName={() => void saveProject()} onCancelName={() => setNaming(null)}
@@ -3334,6 +3332,34 @@ function RateDialog({ rating, onRate, onClose }: { rating: 1 | -1; onRate: (rati
       <Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Skip</Seal>
       <Seal type="button" compact disabled={sending} onClick={send}>{sending ? "Sending" : "Send"}</Seal>
     </footer>
+  </dialog>;
+}
+
+/** Names a new project, in a dialog of its own. */
+function NewProject({ onCreate, onClose }: { onCreate: (name: string) => Promise<unknown>; onClose: () => void }) {
+  const box = useRef<HTMLDialogElement>(null);
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { box.current?.showModal(); }, []);
+  const create = () => {
+    if (!name.trim() || saving) return;
+    setSaving(true); setProblem(null);
+    onCreate(name.trim()).then(() => box.current?.close(), (error) => { setSaving(false); setProblem(problemText(error)); });
+  };
+  return <dialog ref={box} className="cd-share cd-report cd-newproject" aria-labelledby="cd-newproject-title" onClose={onClose} onClick={(event) => { if (event.target === box.current) box.current?.close(); }}>
+    <form method="dialog" onSubmit={(event) => { event.preventDefault(); create(); }}>
+      <header><h2 id="cd-newproject-title">New project</h2></header>
+      <div className="cd-share-body">
+        <input autoFocus value={name} maxLength={60} placeholder="Name" aria-label="Project name" onChange={(event) => setName(event.target.value)} />
+      </div>
+      <footer>
+        {problem ? <p className="cd-problem" role="alert">{problem}</p> : null}
+        <span className="cd-grow" />
+        <Seal type="button" compact tone="quiet" onClick={() => box.current?.close()}>Cancel</Seal>
+        <Seal type="submit" compact disabled={!name.trim() || saving}>{saving ? "Creating" : "Create"}</Seal>
+      </footer>
+    </form>
   </dialog>;
 }
 
