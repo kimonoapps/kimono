@@ -92,7 +92,7 @@ function useNow(running: boolean) {
 
 /** What it is writing right now: never kept, only sent while it writes (lib/code/artifacts.ts, Drafts). */
 type Now = Extract<CodeEvent, { kind: "phase" }>;
-type Drafts = { text: string | null; artifacts: Record<string, { id: string; content: string }>; now: Now | null; /** Its answer is done, though the chat may not say it has stopped yet. */ ended?: boolean };
+type Drafts = { text: string | null; artifacts: Record<string, { id: string; content: string }>; now: Now | null; /** Its answer is done, though the chat may not say it has stopped yet. */ ended?: boolean; /** Its words just landed as a reply, and it hasn't started anything since. */ said?: boolean };
 const noDrafts: Drafts = { text: null, artifacts: {}, now: null };
 
 function useTimeline(id: string | null, onDone: () => void) {
@@ -138,15 +138,16 @@ function useTimeline(id: string | null, onDone: () => void) {
           }
           if (event.kind === "draft") drafts.push((d) => ({ ...d, text: event.text }));
           if (event.kind === "artifact-draft") drafts.push((d) => ({ ...d, artifacts: { ...d.artifacts, [event.name]: { id: event.id, content: event.content } } }));
-          if (event.kind === "phase") drafts.push((d) => ({ ...d, now: event, ended: false }));
+          /* "Writing" can come in after its words have landed (it waits a moment to settle): that starts nothing new. */
+          if (event.kind === "phase") drafts.push((d) => ({ ...d, now: event, ended: false, said: d.said && event.phase === "writing" }));
           continue;
         }
-        if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") drafts.push((d) => d.text === null ? d : { ...d, text: null });
+        if (event.kind === "text" || event.kind === "tool" || event.kind === "artifact") drafts.push((d) => ({ ...d, text: null, said: event.kind === "text" }));
         /* What they typed has arrived: they've stopped typing. */
         if (event.kind === "ask") { const by = event.by.toLowerCase(); setTypers((now) => { if (!(by in now)) return now; const rest = { ...now }; delete rest[by]; return rest; }); }
         if (event.kind === "artifact-saved") drafts.push((d) => { if (!(event.name in d.artifacts)) return d; const rest = { ...d.artifacts }; delete rest[event.name]; return { ...d, artifacts: rest }; });
         if (event.kind === "done") drafts.push(() => ({ ...noDrafts, ended: true }));
-        if (event.kind === "ask") drafts.push((d) => d.ended ? { ...d, ended: false } : d);
+        if (event.kind === "ask") drafts.push((d) => d.ended || d.said ? { ...d, ended: false, said: false } : d);
         kept.push(stored);
         if (event.kind === "done" || event.kind === "ask" || event.kind === "published") changed = true;
       }
@@ -2534,7 +2535,8 @@ const Chat = memo(function Chat({ workspace, events, drafts, running, blocked, t
     {writing.map(([name, d]) => <ArtifactCard key={`art-${d.id}`} name={name} />)}
     {drafts.text ? <DraftWords text={drafts.text} /> : null}
     {/* Not while the reply's own words are coming in: those show it's working. */}
-    {running && !drafts.ended && !drafts.text?.trim() ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
+    {/* Nor once its words have landed as a reply and nothing new has started: that's the end of the turn on its way. */}
+    {running && !drafts.ended && !drafts.said && !drafts.text?.trim() ? <Working since={workspace.turn?.startedAt ?? null} now={drafts.now} artifact={Object.keys(drafts.artifacts).length > 0} /> : null}
   </>;
   const tailInPair = running && items.at(-1)?.type === "takes";
   return <div className="cd-chat">
