@@ -56,11 +56,11 @@ export const lightEfforts = ["low", "medium"] as const;
  * medium for work, high while building. Otherwise what the person picked, except that Sonnet and
  * Haiku stop at medium.
  */
-export function effortFor<E extends string>(model: Model, input: Message & { choice: unknown; effort?: E }): { effort: E | "low" | "medium" | "high" | undefined; thinking: boolean } {
+export function effortFor<E extends string>(model: Model, input: Message & { choice: unknown; effort?: E; /** They kept the take that thought first (takes.ts): their explainers think. */ considered?: boolean }): { effort: E | "low" | "medium" | "high" | undefined; thinking: boolean } {
   if (!chosen(input.choice)) {
     const weight = weigh(input);
     if (weight === "quick") return { effort: "low", thinking: false };
-    if (weight === "show") return { effort: "medium", thinking: false };
+    if (weight === "show") return { effort: "medium", thinking: input.considered === true };
     return { effort: weight === "building" && model === "opus" ? "high" : "medium", thinking: true };
   }
   if ((model === "sonnet" || model === "haiku") && input.effort && !(lightEfforts as readonly string[]).includes(input.effort)) return { effort: "medium", thinking: true };

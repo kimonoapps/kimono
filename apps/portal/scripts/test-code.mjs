@@ -241,6 +241,72 @@ test('Auto keeps a chat on Sonnet until it needs Opus, then stays; a person’s 
   assert.equal(modelFor('opus', { prompt: 'hi' }), 'opus');
 });
 
+test('two takes: only on Auto, for the owner, on an explainer or a words-only explanation, once per kind', async () => {
+  const { takeKindFor, takePlan } = await import('../src/lib/code/takes.ts');
+  const { weigh } = await import('../src/lib/code/models.ts');
+  const asked = (prompt, more = {}) => takeKindFor({ weight: weigh({ prompt }), prompt, attachments: 0, byOwner: true, canShow: true, tried: new Set(), ...more });
+  assert.equal(asked('How does the heart work?'), 'depth', 'an explainer tries depth first');
+  assert.equal(asked('How does the heart work?', { tried: new Set(['depth']) }), 'voice', 'then narration');
+  assert.equal(asked('How does the heart work?', { tried: new Set(['depth', 'voice']) }), null, 'each kind once, picked or not');
+  assert.equal(asked('Explain why rates affect inflation'), 'length', 'a words-only explanation tries length');
+  assert.equal(asked('Explain why rates affect inflation', { tried: new Set(['length']) }), null);
+  assert.equal(asked('thanks!'), null, 'never a quick message');
+  assert.equal(asked('hi how are you'), null);
+  assert.equal(asked('build me a website for my bakery'), null, 'never building');
+  assert.equal(asked('How does the heart work?', { choice: 'opus' }), null, 'only on Auto');
+  assert.equal(asked('How does the heart work?', { choice: 'auto' }), 'depth');
+  assert.equal(asked('How does the heart work?', { byOwner: false }), null, 'only the chat’s owner');
+  assert.equal(asked('How does the heart work?', { canShow: false }), null, 'only where both can be shown');
+  assert.equal(asked('How does the heart work?', { rewound: true }), null, 'never an edit');
+  assert.equal(asked('How does the heart work?', { attachments: 1 }), null);
+  assert.equal(asked('/compact'), null);
+  /* Same model, same system prompt: depth differs in thinking, the others in a line of the message. */
+  assert.deepEqual(takePlan('depth').thinking, [false, true]);
+  assert.equal(takePlan('voice').thinking, undefined);
+  assert.match(takePlan('voice').notes[1], /kimono-say/);
+  assert.doesNotMatch(takePlan('voice').notes[0], /-b/, 'the first take names its artifacts as ever');
+  for (const kind of ['depth', 'voice', 'length']) assert.match(takePlan(kind).notes[1], /end its name with -b/, 'the second never writes over the first’s artifact');
+});
+
+test('two takes: keeping one remembers it, carries the chat on from it, and later explainers follow', async () => {
+  const takes = await import('../src/lib/code/takes.ts');
+  const memory = await import('../src/lib/code/memory.ts');
+  const { effortFor } = await import('../src/lib/code/models.ts');
+  const db = fresh();
+  const w = start(db);
+  const before = model.startTurn(db, w.id);
+  model.noteTurnEnd(db, before, 's1', 'u1');
+  model.endTurn(db, before, 'done');
+  model.setSession(db, w.id, 's1');
+  const turn = model.startTurn(db, w.id, Date.now() + 1);
+  assert.deepEqual(takes.lastTurnEnd(db, w.id, turn), { session: 's1', at: 'u1' }, 'the second take carries on from before the ask');
+  const id = takes.startTakes(db, { workspace: w.id, turn, username: 'Akram', kind: 'depth', session: 's1', at: 'u1' });
+  assert.deepEqual([...takes.triedKinds(db, 'akram')], ['depth'], 'tried as soon as it starts');
+  takes.noteTake(db, id, 0, 's1', 'a1');
+  takes.noteTake(db, id, 1, 's2', 'b1');
+  model.setSession(db, w.id, 's2');
+  model.noteTurnEnd(db, turn, 's2', 'b1');
+  const keep = (more = {}) => takes.keepTake(db, { id, workspace: w.id, username: 'akram', n: 0, latestTurn: turn, running: false, ...more });
+  assert.throws(() => keep({ running: true }), (e) => e.status === 409, 'not while it still works');
+  assert.throws(() => keep({ latestTurn: 'later' }), (e) => e.status === 409, 'not once the chat has moved on');
+  assert.throws(() => keep({ username: 'mina' }), (e) => e.status === 403, 'only the person it asked');
+  assert.throws(() => keep({ n: 2 }), (e) => e.status === 400);
+  assert.equal(keep().pick, 'quick');
+  assert.equal(model.workspaceFor(db, w.id, 'akram').session, 's1', 'the chat carries on in the first take’s session');
+  assert.deepEqual({ ...db.prepare('SELECT session, resume_at FROM turns WHERE id = ?').get(turn) }, { session: 's1', resume_at: 'a1' }, 'and an edit after it rewinds from there');
+  assert.throws(() => keep(), (e) => e.status === 409, 'once');
+  assert.deepEqual(takes.leaningsOf(db, 'akram'), { depth: 'quick' });
+  assert.match(memory.contextFor(db, 'akram'), /start straight away/, 'what they kept is a memory the agent reads');
+  /* Kept the other way next time (say, after forgetting it): later explainers think first. */
+  db.prepare("UPDATE ai_leanings SET pick = 'considered' WHERE username = 'akram'").run();
+  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'How do tides work?', considered: true }).thinking, true);
+  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'How do tides work?' }).thinking, false, 'without it, explainers start straight away');
+  assert.equal(effortFor('sonnet', { choice: 'auto', prompt: 'thanks', considered: true }).thinking, false, 'a quick message never thinks');
+  const kept = memory.profileOf(db, 'akram').memories[0];
+  memory.forget(db, 'akram', kept.id);
+  assert.deepEqual(takes.leaningsOf(db, 'akram'), {}, 'forgetting the memory forgets the preference');
+});
+
 test('memory: instructions and what it keeps reach every turn, and only their person sees them', async () => {
   const memory = await import('../src/lib/code/memory.ts');
   const db = fresh();

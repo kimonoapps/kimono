@@ -268,6 +268,42 @@ composer picks one instead; picking a different model than the chat has been on
 says that it uses more of the plan. The node runs only Fable, Opus, Sonnet or
 Haiku; each Done says which answered.
 
+## Two takes
+
+Sometimes Kimono AI answers twice, side by side, and asks the person to keep one
+(`lib/code/takes.ts`). What they keep becomes how it answers them from then on,
+without asking again. Each pair tests one trade-off, a kind:
+
+- depth: an explainer ("how does X work") with no thinking, words in seconds,
+  against one that thinks at medium first. Kept as `quick` or `considered`; on
+  Auto, `considered` makes later explainers think.
+- voice: a silent animation against one narrated with one `kimono-say` call.
+  Kept as `silent` or `voiced`, a line in the turn's context.
+- length: a words-only explanation kept short against a fuller one. Kept as
+  `short` or `full`, a line in the turn's context.
+
+When: only on Auto, only the owner of a plain chat (not an app's chat), only a
+message that is one of those kinds, no attachments, not an edit or a queued
+message, only from a client that can show the pair (the web sends
+`takes: true`; the phone app doesn't yet), and never twice per kind per person,
+picked or not. Depth goes before voice, one kind per turn. Quick messages never.
+
+How: one turn runs both, one after the other (the node runs one agent per
+sandbox). The second take carries the session on from the agent's last message
+before the ask (`--resume-session-at`, the same rewind an edit uses), so both
+read the same chat on the same model and the prompt cache holds; only thinking,
+or a line in the message, differs, never the model or the system prompt. The
+first take's answer streams as usual; the second follows. Each ends in its own
+Done, with its own thumbs. The second take is told to give its artifacts names
+ending in `-b`, so the two never write the same file.
+
+Keeping one: `POST …/takes/<id>` with `{ pick: 0 | 1 }`, only while the pair is
+the chat's latest turn. The chat carries on from the kept take: its session and
+last message become the turn's, and the next turn resumes there. Sending the
+next message without keeping one carries on from the second take and keeps no
+preference. Preferences live in code.db (`ai_leanings`); the Memory page lists
+them with the memories, to forget.
+
 ## Projects
 
 A project is a folder of chats, made by anyone. In Drive, a chat's files live

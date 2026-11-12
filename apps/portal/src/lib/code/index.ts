@@ -23,7 +23,8 @@ import { ProgressProbe, progressFile } from "./progress-probe";
 import { instantCostOf, toolSession } from "./composio";
 import { guardMediaBudget, holdMediaBudget, lastAllowance, mediaNote, ranAsPro } from "./media";
 import { changeMemory, contextFor, forget, profileOf, remember } from "./memory";
-import { effortFor, modelFor, type ModelChoice } from "./models";
+import { effortFor, modelFor, weigh, type ModelChoice } from "./models";
+import { dropTakes, keepTake, lastTurnEnd, takeOf, leaningsOf, noteTake, startTakes, takeKindFor, takePlan, triedKinds, withNote, type TakeKind } from "./takes";
 export { modelChoices, type ModelChoice } from "./models";
 import { accessPrompt, answer as answerAccess_, onRequest, syncOpened } from "./access";
 import { portalOrigin } from "../account";
@@ -411,7 +412,7 @@ export function checkShare(config: CodeConfig, user: ApiUser) {
 }
 
 /** Sends a message to the agent and returns at once; the turn runs on, recording as it goes. */
-export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[], effort?: Effort, model?: ModelChoice) {
+export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, text: string, attachments: Attachment[], effort?: Effort, model?: ModelChoice, /** The app it was sent from can show two takes side by side. */ canTake = false) {
   const prompt = text.trim();
   if (!prompt && !attachments.length) throw new CodeProblem("Say what to do.");
   if (prompt.length > 32_000) throw new CodeProblem("That message is too long.");
@@ -430,7 +431,7 @@ export function ask(config: CodeConfig, workspace: Workspace, user: ApiUser, tex
   }
   const turn = startTurn(db(), workspace.id);
   const asked = record(workspace.id, turn, { kind: "ask", by: user.username, text: prompt, attachments });
-  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments, effort, model);
+  void run(config, workspace, user, turn, prompt || "Look at the attached files.", attachments, effort, model, undefined, { canTake });
   return asked;
 }
 
@@ -479,21 +480,45 @@ function transcriptOf(events: StoredEvent[], budget = 16_000): string {
 /** How an edited message picks up: carrying the session on from a message of it, or a fresh one told what came before. */
 type Rewound = { at: string } | { before: string };
 
-async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice, rewound?: Rewound) {
+/** How a turn runs besides its message: whether it may answer with two takes, or that it is the second of two. */
+type RunOptions = {
+  canTake?: boolean;
+  /** The second take (takes.ts): the same message, carried on from the same point of the session in a new one. */
+  take?: { id: string; kind: TakeKind; session: string | null; at: string | null; told: string };
+};
+
+async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice, rewound?: Rewound, options: RunOptions = {}) {
   /* Which Claude answers: what the person chose, or on Auto the chat's model, Opus once it builds. */
   const building = workspace.kind === "project" || Boolean(workspace.preview);
   const model = modelFor(choice, { prompt, attachments: attachments.length, building, last: workspace.lastModel });
-  /* How hard it thinks: on Auto what the message needs, and not at all for a quick one; Sonnet and Haiku stop at medium. */
-  const thought = effortFor(model, { choice, effort, prompt, attachments: attachments.length, building });
-  effort = thought.effort;
-  setLastModel(db(), workspace.id, model);
   /* Someone the chat is shared with writes as themself: the owner's connected
      apps, memories, earlier chats and Drive are the owner's alone. */
   const byOwner = user.username.toLowerCase() === workspace.owner;
+  /* Now and then two takes on one message, for the person to keep one (takes.ts): the second carries the
+     session on from where the first began, so both need a point to carry on from (none before a first message). */
+  const second = options.take;
+  let take: { id: string; kind: TakeKind; n: 0 | 1; before?: { session: string | null; at: string | null } } | null = second ? { id: second.id, kind: second.kind, n: 1 } : null;
+  if (!take) {
+    const kind = takeKindFor({ weight: weigh({ prompt, attachments: attachments.length, building }), prompt, choice, attachments: attachments.length, byOwner, canShow: options.canTake === true, rewound: Boolean(rewound), tried: triedKinds(db(), workspace.owner) });
+    const before = kind ? lastTurnEnd(db(), workspace.id, turn) ?? { session: null, at: null } : null;
+    const current = workspaceFor(db(), workspace.id, workspace.owner).session;
+    if (kind && before && (before.session ? before.at && before.session === current : !current)) {
+      take = { id: startTakes(db(), { workspace: workspace.id, turn, username: workspace.owner, kind, session: before.session, at: before.at }), kind, n: 0, before };
+    }
+  }
+  const plan = take ? takePlan(take.kind) : null;
+  /* How hard it thinks: on Auto what the message needs, and not at all for a quick one; Sonnet and Haiku stop at medium. */
+  const thought = effortFor(model, { choice, effort, prompt, attachments: attachments.length, building, considered: byOwner && leaningsOf(db(), workspace.owner).depth === "considered" });
+  if (take && plan?.thinking) thought.thinking = plan.thinking[take.n];
+  effort = thought.effort;
+  setLastModel(db(), workspace.id, model);
   setTurnByOwner(db(), turn, byOwner);
   const controller = new AbortController();
   live.turns.set(turn, controller);
+  if (take) record(workspace.id, turn, { kind: "take", id: take.id, n: take.n, of: take.kind });
   record(workspace.id, turn, { kind: "started" });
+  /* The message as the agent read it, for a second take to read the same. */
+  let told = "";
   let result: TurnResult | null = null;
   let done: { exit?: number; cancelled?: boolean } | null = null;
   let failure: string | undefined;
@@ -514,7 +539,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
     await ensure(config, workspace, who(user), { owner: byOwner });
     timing.ensured = Date.now();
-    const session = workspaceFor(db(), workspace.id, workspace.owner).session;
+    const session = second ? second.session : workspaceFor(db(), workspace.id, workspace.owner).session;
     /* The person's other chats, for it to look back on (none in a chat shared with others). Each is a file written
        into the sandbox, so a first chat of someone with many would wait seconds for them: the agent starts as they
        go in, told they're there (it only looks back when it needs to, and they're in by then). */
@@ -529,23 +554,23 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     const [, openedNews, notes] = await Promise.all([driveSynced, openedSynced, byOwner ? notesFor(workspace.owner) : ""]);
     timing.synced = Date.now();
     /* A command like /compact goes to the agent as it is; the Drive news waits for the next real message. */
-    const changed = prompt.startsWith("/") ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
+    const changed = prompt.startsWith("/") || second ? [] : [...takeDriveNews(db(), workspace.id), ...openedNews];
     const access = prompt.startsWith("/") || !byOwner ? "" : accessPrompt(db(), workspace);
     const news = changed.length ? `Changed in Drive since last time: ${changed.slice(0, 30).join(", ")}${changed.length > 30 ? `, and ${changed.length - 30} more` : ""}.\n\n` : "";
     /* Someone the chat was shared with wrote this: it should know who it's answering. */
     const from = user.username.toLowerCase() !== workspace.owner ? `(This message is from ${who(user).name}, whom ${workspace.owner} shared this chat with.)\n\n` : "";
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
-    const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, thinking: thought.thinking, model, context: [...(byOwner ? [aboutNow(who(user).name), contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []), askNote, noticeSeen(db(), user.username, "islam") ? "" : islamNoticeNote].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
+    told = second ? second.told : `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
+    const input = { prompt: plan && take ? withNote(told, plan.notes[take.n]) : told, ...(second?.session ? { fork: true } : {}), session, attachments: attachments.map((a) => a.path), effort, thinking: thought.thinking, model, context: [...(byOwner ? [aboutNow(who(user).name), contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []), askNote, noticeSeen(db(), user.username, "islam") ? "" : islamNoticeNote].filter(Boolean).join("\n\n"), resumeAt: second ? second.at : rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
     const response = await sandbox.turn(config, workspace, input, controller.signal).catch(async (error) => {
       /* The sandbox lost the chat's session (its container was made again): a new
          one is told the conversation so far, so it never starts from nothing. */
       if (!(error instanceof CodeProblem && error.status === 410)) throw error;
-      setSession(db(), workspace.id, null);
+      if (!second) setSession(db(), workspace.id, null);
       const said = transcriptOf(eventsAfter(db(), workspace.id, 0, 100_000).filter((e) => e.turn !== turn));
       const carried = said ? `(Your earlier messages in this chat were lost, but the conversation so far was kept. What was said before this message:)\n\n${said}\n\n(Their new message:)\n\n` : "";
-      return sandbox.turn(config, workspace, { ...input, prompt: `${access ? `${access}\n\n` : ""}${news}${carried}${from}${prompt}`, session: null, resumeAt: null }, controller.signal);
+      return sandbox.turn(config, workspace, { ...input, prompt: withNote(`${access ? `${access}\n\n` : ""}${news}${carried}${from}${prompt}`, plan && take ? plan.notes[take.n] : ""), session: null, resumeAt: null, fork: false }, controller.signal);
     });
     timing.agent = Date.now();
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
@@ -696,8 +721,30 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
       if (dropped.length) record(workspace.id, turn, { kind: "dropped", seqs: dropped });
     }
     record(workspace.id, turn, outcome);
+    const sessionNow = workspaceFor(db(), workspace.id, workspace.owner).session;
+    if (take) noteTake(db(), take.id, take.n, sessionNow, lastMessage);
+    /* The first of two takes came off and nothing was sent meanwhile: the turn goes on with the second. */
+    if (take?.n === 0) {
+      const movedOn = Boolean(live.queued?.get(workspace.id)?.length) || Boolean(db().prepare(`SELECT 1 FROM events WHERE workspace_id = ? AND turn_id = ? AND data LIKE '%"kind":"steered"%' LIMIT 1`).get(workspace.id, turn));
+      if (outcome.ok && !outcome.cancelled && lastMessage && !movedOn) {
+        noteTurnEnd(db(), turn, sessionNow, lastMessage);
+        void nameChat(config, workspace);
+        void syncDrive(db(), config, workspace).catch((error) => console.warn("Code couldn't sync to Drive:", error instanceof Error ? error.message : error));
+        void run(config, workspace, user, turn, prompt, attachments, effort, choice, undefined, { take: { id: take.id, kind: take.kind, session: take.before?.session ?? null, at: take.before?.at ?? null, told } });
+        return;
+      }
+      dropTakes(db(), take.id);
+    }
+    /* The second take didn't come off: the first stands alone, and the chat carries on from it. */
+    let ended = { session: sessionNow, at: lastMessage };
+    if (take?.n === 1 && (!outcome.ok || outcome.cancelled || !lastMessage)) {
+      const first = takeOf(db(), take.id);
+      if (first?.a.session) { setSession(db(), workspace.id, first.a.session); ended = { session: first.a.session, at: first.a.at }; }
+      dropTakes(db(), take.id);
+      record(workspace.id, turn, { kind: "take-dropped", id: take.id, n: 1 });
+    }
     endTurn(db(), turn, outcome.cancelled ? "cancelled" : outcome.ok ? "done" : "failed");
-    noteTurnEnd(db(), turn, workspaceFor(db(), workspace.id, workspace.owner).session, lastMessage);
+    noteTurnEnd(db(), turn, ended.session, ended.at);
     /* A chat still on the words it started with gets a name from its first exchange. */
     if (outcome.ok) void nameChat(config, workspace);
     /* What the agent made goes to Drive, and what it changed in the person's own files goes back to them. */
@@ -785,6 +832,15 @@ async function takeSkill(config: CodeConfig, workspace: Workspace, turn: string,
     record(workspace.id, turn, { kind: "skill-made", ...made });
     await sandbox.removeFile(config, workspace, path).catch(() => {});
   } catch (error) { console.warn("Kimono AI couldn't save a skill:", error instanceof Error ? error.message : error); }
+}
+
+/** The person keeps one of two takes (takes.ts): the chat carries on from it, and it answers them that way from now on. */
+export function keepOneTake(workspace: Workspace, user: ApiUser, id: string, n: unknown) {
+  const latest = db().prepare("SELECT id, state FROM turns WHERE workspace_id = ? ORDER BY started_at DESC, rowid DESC LIMIT 1").get(workspace.id) as { id: string; state: string } | undefined;
+  const kept = keepTake(db(), { id, workspace: workspace.id, username: user.username, n, latestTurn: latest?.id ?? null, running: latest?.state === "running" });
+  const event = record(workspace.id, latest!.id, { kind: "take-kept", id, n: kept.n });
+  record(workspace.id, latest!.id, { kind: "remembered", text: kept.remembered });
+  return event;
 }
 
 /** The person answers its questions (or skips them): the answers go to it as their message. */

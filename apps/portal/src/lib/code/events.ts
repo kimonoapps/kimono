@@ -72,7 +72,13 @@ export type CodeEvent =
   /** A skill it made with the person (kimono-skill): saved as theirs, and in the Marketplace when published; problem when it couldn't be. */
   | { kind: "skill-made"; skill?: string; name: string; command?: string; published: boolean; updated?: boolean; problem?: string }
   /** How the person answered an access request. */
-  | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" };
+  | { kind: "access-answer"; id: string; state: "allowed" | "denied"; scope?: "file" | "chat" | "always"; need?: "read" | "change" }
+  /** One of two takes on the same message begins (takes.ts): what follows, to its Done, is take [n]. */
+  | { kind: "take"; id: string; n: 0 | 1; of: "depth" | "voice" | "length" }
+  /** The person kept take [n] of a pair. */
+  | { kind: "take-kept"; id: string; n: 0 | 1 }
+  /** Take [n] didn't come off (it failed, or was stopped): the other stands alone. */
+  | { kind: "take-dropped"; id: string; n: 0 | 1 };
 
 const clip = (value: string, max: number) => value.length > max ? `${value.slice(0, max)}\n…` : value;
 

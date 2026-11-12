@@ -34,6 +34,9 @@ type turnRequest struct {
 	// message (its uuid), and what came after is dropped. A person edited an
 	// earlier message, and this turn runs it again from there.
 	ResumeAt string `json:"resumeAt"`
+	// Fork carries the session on in a new one, leaving it as it was: a
+	// second take on the same message, beside the first (Portal's takes.ts).
+	Fork bool `json:"fork"`
 	// Links is where kimono-link's files can be fetched from the internet:
 	// Portal's public address for this workspace's temporary file links.
 	Links string `json:"links"`
@@ -94,6 +97,9 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	}
 	if request.ResumeAt != "" && (request.Session == "" || !namePattern.MatchString(request.ResumeAt)) {
 		return problem(400, "A turn resumes at a message of its session.")
+	}
+	if request.Fork && request.Session == "" {
+		return problem(400, "Only a session can be carried on in a new one.")
 	}
 	if request.Session != "" && !namePattern.MatchString(request.Session) {
 		return problem(400, "That session isn't one Kimono can resume.")
@@ -183,7 +189,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings, "KIMONO_SKILLS=" + strings.Join(request.Skills, " "), "KIMONO_ALWAYS=" + strings.Join(request.Always, " "),
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_FORK=" + chatFlag(request.Fork), "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings, "KIMONO_SKILLS=" + strings.Join(request.Skills, " "), "KIMONO_ALWAYS=" + strings.Join(request.Always, " "),
 		// Every tool is there from the start, so a web search is one step, not a lookup and then the search.
 		"ENABLE_TOOL_SEARCH=false"}
 	if request.NoThinking {

@@ -353,6 +353,19 @@ export function migrate(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS credit_grants_by_person ON credit_grants (username, until);
   `);
+  /* Two takes on one answer (takes.ts): each pair, where each take left the session, and which one the person kept;
+     what they kept, by kind, tied to the memory that says it (forgetting it forgets the preference). */
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ai_takes (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, turn_id TEXT NOT NULL,
+      username TEXT NOT NULL, kind TEXT NOT NULL, before_session TEXT, before_at TEXT,
+      a_session TEXT, a_at TEXT, b_session TEXT, b_at TEXT, picked INTEGER, at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ai_takes_by_person ON ai_takes (username, kind);
+    CREATE TABLE IF NOT EXISTS ai_leanings (
+      username TEXT NOT NULL, kind TEXT NOT NULL, pick TEXT NOT NULL, memory_id TEXT, at INTEGER NOT NULL, PRIMARY KEY (username, kind)
+    );
+  `);
 }
 
 /* ── usage: each person's share of the Claude plan behind Kimono Code ── */
