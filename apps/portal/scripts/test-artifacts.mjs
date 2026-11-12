@@ -90,15 +90,15 @@ test('drafts follow a Write of an artifact as it streams, and nothing else', () 
   assert.ok(!sent.some((d) => JSON.stringify(d).includes('secret')));
 });
 
-test('Auto thinks as hard as the message needs; Sonnet and Haiku never think past medium', () => {
-  assert.equal(effortFor('opus', { choice: 'auto', effort: 'xhigh', prompt: 'hey whats the capital of peru' }), 'low');
-  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'thanks!' }), 'low');
-  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'can you solve this for me', attachments: 0 }), 'medium');
-  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'what is this', attachments: 1 }), 'medium');
-  assert.equal(effortFor('opus', { choice: 'auto', prompt: 'make the button blue', building: true }), 'high');
-  assert.equal(effortFor('opus', { choice: 'opus', effort: 'high' }), 'high');
-  assert.equal(effortFor('haiku', { choice: 'haiku', effort: 'high' }), 'medium');
-  assert.equal(effortFor('sonnet', { choice: 'sonnet', effort: 'low' }), 'low');
+test('Auto answers a quick message at once and thinks for real work; Sonnet and Haiku never think past medium', () => {
+  assert.deepEqual(effortFor('sonnet', { choice: 'auto', effort: 'xhigh', prompt: 'hey whats the capital of peru' }), { effort: 'low', thinking: false });
+  assert.deepEqual(effortFor('sonnet', { choice: 'auto', prompt: 'thanks!' }), { effort: 'low', thinking: false });
+  assert.deepEqual(effortFor('sonnet', { choice: 'auto', prompt: 'can you solve this for me' }), { effort: 'medium', thinking: true });
+  assert.deepEqual(effortFor('sonnet', { choice: 'auto', prompt: 'what is this', attachments: 1 }), { effort: 'medium', thinking: true });
+  assert.deepEqual(effortFor('opus', { choice: 'auto', prompt: 'make the button blue', building: true }), { effort: 'high', thinking: true });
+  assert.deepEqual(effortFor('opus', { choice: 'opus', effort: 'high' }), { effort: 'high', thinking: true });
+  assert.deepEqual(effortFor('haiku', { choice: 'haiku', effort: 'high' }), { effort: 'medium', thinking: true });
+  assert.deepEqual(effortFor('sonnet', { choice: 'sonnet', effort: 'low' }), { effort: 'low', thinking: true });
 });
 
 test('the agent\'s artifact reference names every scene call the kit has', () => {

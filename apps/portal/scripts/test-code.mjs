@@ -226,13 +226,16 @@ test('a call that touches /files names the Drive space', () => {
   assert.equal(call('Read', { file_path: '/workspace/files/notes.md' }).space, undefined, "a project's own files folder is not Drive");
 });
 
-test('Auto is Opus; a person’s own choice wins', async () => {
+test('Auto keeps a chat on Sonnet until it needs Opus, then stays; a person’s own choice wins', async () => {
   const { modelFor } = await import('../src/lib/code/models.ts');
-  assert.equal(modelFor('auto'), 'opus');
-  assert.equal(modelFor(undefined), 'opus');
-  assert.equal(modelFor('gpt-9'), 'opus', 'an unknown choice is Auto');
+  assert.equal(modelFor('auto', { prompt: 'hi' }), 'sonnet');
+  assert.equal(modelFor(undefined, { prompt: 'plan a trip to lisbon', attachments: 0 }), 'sonnet');
+  assert.equal(modelFor('auto', { prompt: 'build me a website for my bakery' }), 'opus');
+  assert.equal(modelFor('auto', { prompt: 'thanks', last: 'opus' }), 'opus', 'a chat on Opus stays there');
+  assert.equal(modelFor('auto', { prompt: 'thanks', building: true }), 'opus');
+  assert.equal(modelFor('gpt-9', { prompt: 'hi' }), 'sonnet', 'an unknown choice is Auto');
   assert.equal(modelFor('haiku'), 'haiku');
-  assert.equal(modelFor('sonnet'), 'sonnet');
+  assert.equal(modelFor('opus', { prompt: 'hi' }), 'opus');
 });
 
 test('memory: instructions and what it keeps reach every turn, and only their person sees them', async () => {

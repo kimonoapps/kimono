@@ -482,9 +482,10 @@ type Rewound = { at: string } | { before: string };
 async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn: string, prompt: string, attachments: Attachment[], effort?: Effort, choice?: ModelChoice, rewound?: Rewound) {
   /* Which Claude answers: what the person chose, or on Auto the chat's model, Opus once it builds. */
   const building = workspace.kind === "project" || Boolean(workspace.preview);
-  const model = modelFor(choice, { prompt, building, last: workspace.lastModel });
-  /* How hard it thinks: on Auto what the message needs; Sonnet and Haiku stop at medium. */
-  effort = effortFor(model, { choice, effort, prompt, attachments: attachments.length, building });
+  const model = modelFor(choice, { prompt, attachments: attachments.length, building, last: workspace.lastModel });
+  /* How hard it thinks: on Auto what the message needs, and not at all for a quick one; Sonnet and Haiku stop at medium. */
+  const thought = effortFor(model, { choice, effort, prompt, attachments: attachments.length, building });
+  effort = thought.effort;
   setLastModel(db(), workspace.id, model);
   /* Someone the chat is shared with writes as themself: the owner's connected
      apps, memories, earlier chats and Drive are the owner's alone. */
@@ -536,7 +537,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
     /* An edited message in a chat from before turns kept their place: a new session, told the conversation so far. */
     const earlier = rewound && "before" in rewound && rewound.before ? `(The person went back and changed one of their messages, so this conversation starts again from it. What was said before it:)\n\n${rewound.before}\n\n(Their changed message:)\n\n` : "";
     const told = `${access ? `${access}\n\n` : ""}${news}${earlier}${from}${prompt}`;
-    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, model, context: [...(byOwner ? [aboutNow(who(user).name), contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []), askNote, noticeSeen(db(), user.username, "islam") ? "" : islamNoticeNote].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
+    const input = { prompt: told, session, attachments: attachments.map((a) => a.path), effort, thinking: thought.thinking, model, context: [...(byOwner ? [aboutNow(who(user).name), contextFor(db(), workspace.owner), notes, history ? historyNote : "", mediaNote(lastAllowance(workspace.owner))] : []), askNote, noticeSeen(db(), user.username, "islam") ? "" : islamNoticeNote].filter(Boolean).join("\n\n"), resumeAt: rewound && "at" in rewound ? rewound.at : null, links: tempLinkBase(portalOrigin(), workspace.id), linkKey: tempLinkKey(workspace.id), ...skillsForTurn(db(), workspace.owner, byOwner) };
     const response = await sandbox.turn(config, workspace, input, controller.signal).catch(async (error) => {
       /* The sandbox lost the chat's session (its container was made again): a new
          one is told the conversation so far, so it never starts from nothing. */

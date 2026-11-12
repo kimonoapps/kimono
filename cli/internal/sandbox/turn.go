@@ -23,6 +23,8 @@ type turnRequest struct {
 	Attachments []string `json:"attachments"`
 	// Effort is how hard the agent thinks: low, medium, high, xhigh or max; empty is Claude Code's default.
 	Effort string `json:"effort"`
+	// NoThinking answers straight away, without thinking first: a quick message on Auto.
+	NoThinking bool `json:"noThinking"`
 	// Model is which Claude runs the turn: fable, opus, sonnet or haiku; empty is opus. Portal chooses.
 	Model string `json:"model"`
 	// Context is the person's own: their instructions and what Kimono remembers
@@ -177,7 +179,12 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	if full != "" {
 		system += "\n\n" + full
 	}
-	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings, "KIMONO_SKILLS=" + strings.Join(request.Skills, " "), "KIMONO_ALWAYS=" + strings.Join(request.Always, " ")}
+	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings, "KIMONO_SKILLS=" + strings.Join(request.Skills, " "), "KIMONO_ALWAYS=" + strings.Join(request.Always, " "),
+		// Every tool is there from the start, so a web search is one step, not a lookup and then the search.
+		"ENABLE_TOOL_SEARCH=false"}
+	if request.NoThinking {
+		extra = append(extra, "CLAUDE_CODE_DISABLE_THINKING=1")
+	}
 	args := s.execArgs(space, extra, false, "setsid", "-w", "sh", "-c", turnWrapper)
 	cmd := exec.Command(s.cfg.Docker, args...)
 	stdout, err := cmd.StdoutPipe()

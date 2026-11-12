@@ -1,42 +1,61 @@
 /*
  * Which Claude answers (docs/kimono-ai.md, "Choosing the model"). People can
- * pick one; Auto is Opus, thinking as hard as each message needs.
+ * pick one; Auto keeps a chat on Sonnet until it needs Opus, answers a quick
+ * message without thinking, and thinks for real work.
  */
 
 export const modelChoices = ["auto", "fable", "opus", "sonnet", "haiku"] as const;
 export type ModelChoice = (typeof modelChoices)[number];
 export type Model = Exclude<ModelChoice, "auto">;
 
-/** What the person chose, or Opus when they chose Auto (or nothing). */
-export function modelFor(choice: unknown, _input?: unknown): Model {
-  return choice === "fable" || choice === "opus" || choice === "sonnet" || choice === "haiku" ? choice : "opus";
+type Message = { prompt?: string; attachments?: number; building?: boolean; last?: Model | null };
+
+const chosen = (choice: unknown): choice is Model => choice === "fable" || choice === "opus" || choice === "sonnet" || choice === "haiku";
+
+/* What Opus does best: building, code, proofs, explainers that move, long writing. */
+const opusWork = /\b(build|code|coding|program(ming)?|script|debug|bug|refactor|deploy|app|website|web ?site|html|css|javascript|typescript|python|react|sql|prove|proof|derive|animat\w*|visuali[sz]\w*|diagram|simulat\w*|in 3d|video|essay|story)\b/i;
+
+/* Real work Sonnet does well with some thinking: planning, comparing, files, sums. */
+const work = /\b(solve|calculate|plan|itinerary|report|analy[sz]e|compare|research|spreadsheet|pdf|document|slides?|deck|chart|graph|step by step|explain)\b/i;
+
+/**
+ * How much a message needs, on Auto: quick (a short question, a reply, thanks),
+ * work (thinking, or files), opus (what Opus does best) or building (an app's chat).
+ */
+export function weigh(input: Message): "quick" | "work" | "opus" | "building" {
+  if (input.building) return "building";
+  const prompt = (input.prompt ?? "").trim();
+  if (opusWork.test(prompt)) return "opus";
+  if ((input.attachments ?? 0) > 0 || prompt.length > 280 || prompt.includes("\n\n") || work.test(prompt)) return "work";
+  return "quick";
+}
+
+/**
+ * What the person chose, or on Auto one model for the chat, since switching makes
+ * it read the whole chat again: Sonnet, whose first word comes in about a second,
+ * until a message needs Opus, and Opus from then on.
+ */
+export function modelFor(choice: unknown, input: Message = {}): Model {
+  if (chosen(choice)) return choice;
+  if (input.last === "opus") return "opus";
+  const weight = weigh(input);
+  return weight === "opus" || weight === "building" ? "opus" : "sonnet";
 }
 
 /** Thinking Sonnet and Haiku may be asked for: no more than medium. */
 export const lightEfforts = ["low", "medium"] as const;
 
-/* A message that asks for real work: something to build, fix, prove, plan or make. */
-const heavy = /\b(build|code|program|script|debug|fix|refactor|deploy|app|website|prove|derive|solve|calculate|plan|itinerary|essay|report|analy[sz]e|compare|research|spreadsheet|pdf|document|slides?|deck|animat\w*|visuali[sz]\w*|diagram|chart|graph|simulat\w*|video|step by step)\b/i;
-
 /**
- * How hard Auto thinks for a message: low for a quick one, so the answer starts at
- * once; medium for real work or anything with files; high while building an app.
- * The system prompt and tools stay cached whichever it picks.
+ * How hard it thinks: on Auto, not at all for a quick message, medium for work,
+ * high while building. Otherwise what the person picked, except that Sonnet and
+ * Haiku stop at medium.
  */
-export function autoEffort(input: { prompt: string; attachments?: number; building?: boolean }): "low" | "medium" | "high" {
-  if (input.building) return "high";
-  const prompt = input.prompt.trim();
-  if ((input.attachments ?? 0) > 0 || prompt.length > 280 || prompt.includes("\n\n") || heavy.test(prompt)) return "medium";
-  return "low";
-}
-
-/**
- * How hard it thinks: on Auto, what the message needs (autoEffort). Otherwise what
- * the person picked, except that Sonnet and Haiku stop at medium.
- */
-export function effortFor<E extends string>(model: Model, input: { choice: unknown; effort?: E; prompt?: string; attachments?: number; building?: boolean }): E | "low" | "medium" | "high" | undefined {
-  const auto = !(input.choice === "fable" || input.choice === "opus" || input.choice === "sonnet" || input.choice === "haiku");
-  if (auto) return autoEffort({ prompt: input.prompt ?? "", attachments: input.attachments, building: input.building });
-  if ((model === "sonnet" || model === "haiku") && input.effort && !(lightEfforts as readonly string[]).includes(input.effort)) return "medium";
-  return input.effort;
+export function effortFor<E extends string>(model: Model, input: Message & { choice: unknown; effort?: E }): { effort: E | "low" | "medium" | "high" | undefined; thinking: boolean } {
+  if (!chosen(input.choice)) {
+    const weight = weigh(input);
+    if (weight === "quick") return { effort: "low", thinking: false };
+    return { effort: weight === "building" && model === "opus" ? "high" : "medium", thinking: true };
+  }
+  if ((model === "sonnet" || model === "haiku") && input.effort && !(lightEfforts as readonly string[]).includes(input.effort)) return { effort: "medium", thinking: true };
+  return { effort: input.effort, thinking: true };
 }
