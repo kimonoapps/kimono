@@ -162,7 +162,7 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	limits := s.limitsNow()
 	space.mu.Lock()
 	chat := space.repo.URL == ""
-	fastSearch := space.search.Key != ""
+	fastSearch := space.tools.URL != ""
 	space.mu.Unlock()
 	system := s.cfg.SystemPrompt + "\n\n" + limitsPrompt(limits, chat)
 	if request.Context != "" {
@@ -186,9 +186,6 @@ func (s *Server) handleTurn(w http.ResponseWriter, r *http.Request, id string) e
 	extra := []string{"KIMONO_PROMPT=" + prompt, "KIMONO_SESSION=" + request.Session, "KIMONO_AGENT=" + s.cfg.Agent, "KIMONO_SYSTEM=" + system, "KIMONO_EFFORT=" + request.Effort, "KIMONO_MODEL=" + Models[request.Model], "KIMONO_RESUME_AT=" + request.ResumeAt, "KIMONO_LINKS=" + linksBase(request.Links), "KIMONO_LINK_KEY=" + linkKey(request.LinkKey), "KIMONO_CHAT=" + chatFlag(chat), "KIMONO_SETTINGS=" + SteerSettings, "KIMONO_SKILLS=" + strings.Join(request.Skills, " "), "KIMONO_ALWAYS=" + strings.Join(request.Always, " "),
 		// Every tool is there from the start, so a web search is one step, not a lookup and then the search.
 		"ENABLE_TOOL_SEARCH=false"}
-	if fastSearch {
-		extra = append(extra, "KIMONO_NO_WEBSEARCH=1")
-	}
 	if request.NoThinking {
 		extra = append(extra, "CLAUDE_CODE_DISABLE_THINKING=1")
 	}

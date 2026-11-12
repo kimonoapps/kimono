@@ -48,7 +48,7 @@ def main(args):
             print("(nothing found)\n"); continue
         for n, hit in enumerate(hits, 1):
             passage = re.sub(r"\s+", " ", hit.get("content") or "").strip()
-            print(f"{n}. {hit.get('title') or hit.get('url')}\n   {hit.get('url')}\n   {passage[:700]}")
+            print(f"{n}. {hit.get('title') or hit.get('url')}\n   {hit.get('url')}\n   {passage[:500]}")
         print()
 
 

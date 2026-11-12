@@ -36,7 +36,7 @@ const DefaultAgent = `skills="$HOME/.claude/skills"; mkdir -p "$skills"; for d i
 
 A skill the person turned on, to follow in every reply ($s):
 
-$(awk 'NR==1 && /^---[[:space:]]*$/ {f=1; next} f && /^---[[:space:]]*$/ {f=0; next} !f' "$f")"; done; sysflag=--append-system-prompt; [ -n "$KIMONO_CHAT" ] && sysflag=--system-prompt; if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" ${KIMONO_SETTINGS:+--settings "$KIMONO_SETTINGS"} --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --thinking-display summarized --dangerously-skip-permissions --disallowedTools WebFetch${KIMONO_NO_WEBSEARCH:+,WebSearch}${KIMONO_CHAT:+,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,PushNotification,ReportFindings,ScheduleWakeup,SendMessage,Workflow} ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} "$sysflag" "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
+$(awk 'NR==1 && /^---[[:space:]]*$/ {f=1; next} f && /^---[[:space:]]*$/ {f=0; next} !f' "$f")"; done; sysflag=--append-system-prompt; [ -n "$KIMONO_CHAT" ] && sysflag=--system-prompt; if [ -n "$KIMONO_SESSION" ] && ! ls "$HOME"/.claude/projects/*/"$KIMONO_SESSION".jsonl >/dev/null 2>&1; then KIMONO_SESSION=; fi; exec claude -p "$KIMONO_PROMPT" ${KIMONO_SETTINGS:+--settings "$KIMONO_SETTINGS"} --model "$KIMONO_MODEL" ${KIMONO_EFFORT:+--effort "$KIMONO_EFFORT"} --output-format stream-json --verbose --include-partial-messages --thinking-display summarized --dangerously-skip-permissions --disallowedTools WebFetch${KIMONO_CHAT:+,CronCreate,CronDelete,CronList,DesignSync,EnterWorktree,ExitWorktree,ListAgents,NotebookEdit,PushNotification,ReportFindings,ScheduleWakeup,SendMessage,Workflow} ${KIMONO_MCP:+--mcp-config "$KIMONO_MCP"} "$sysflag" "$KIMONO_SYSTEM" ${KIMONO_SESSION:+--resume "$KIMONO_SESSION"} ${KIMONO_SESSION:+${KIMONO_RESUME_AT:+--resume-session-at "$KIMONO_RESUME_AT"}}`
 
 // Model is the Claude a turn runs on when Portal names none: the strongest, for building things.
 const Model = "claude-opus-5-5"
@@ -205,11 +205,11 @@ Skills the person turned on are in ~/.claude/skills. Many were written for peopl
 
 Never print, log or commit secrets, tokens or keys.`
 
-// SearchPrompt joins the system prompt when the node can search the web itself
-// (search.go): kimono-search takes the place of WebSearch, which is turned off.
+// SearchPrompt joins the system prompt when the person has a tool session, which
+// kimono-search runs Tavily through (search.go): it takes WebSearch's place.
 const SearchPrompt = `# Searching the web, quickly
 
-WebSearch isn't here; search with ` + "`kimono-search \"<query>\" [\"<query>\" …]`" + ` instead, which answers in about a second. Give it every query you need at once, in one command (up to 8, each a few plain words, the way you'd type them into a search box), rather than one search at a time: they run side by side. It prints each query's results: title, link and a passage of the page. Add ` + "`--news`" + ` for news (and ` + "`--days <n>`" + ` for how recent). Never search with a Composio tool (Tavily, Exa and the like) instead: they cost Pro Tools and are slower. Everything "Looking things up" says about when to search and naming your sources holds, with kimono-search wherever it says WebSearch; read a page in full only when its passage isn't enough.`
+Search the web with ` + "`kimono-search \"<query>\" [\"<query>\" …]`" + ` rather than WebSearch: it answers in a second or two, where WebSearch takes five to seven seconds a query. Use WebSearch only when kimono-search says it can't search. Give it every query you need at once, in one command (up to 8, each a few plain words, the way you'd type them into a search box), rather than one search at a time: they run side by side. It prints each query's results: title, link and a passage of the page. Add ` + "`--news`" + ` for news (and ` + "`--days <n>`" + ` for how recent). Don't search with Composio's tools directly: kimono-search is the same search, faster. Everything "Looking things up" says about when to search and naming your sources holds, with kimono-search wherever it says WebSearch; read a page in full only when its passage isn't enough.`
 
 // AppPrompt joins the system prompt in projects only: publishing an app is
 // for building one, and a chat has no app to run.

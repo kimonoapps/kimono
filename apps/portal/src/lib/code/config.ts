@@ -40,8 +40,6 @@ export function codeConfig(settings: PlatformSettings) {
     /* Composio's Tool Router: one session per person, its MCP reached through the node's gateway. Optional. */
     composioKey: value("composio_api_key"),
     /* OpenRouter, for speaking a message instead of typing it (api/v1/code/dictation, gpt-transcribe). Optional. */
-    /* Tavily, for kimono-search: web searches in about a second instead of WebSearch's five to seven. Optional. */
-    tavilyKey: value("tavily_api_key") || process.env.TAVILY_API_KEY?.trim() || "",
     openrouterKey: value("openrouter_api_key") || process.env.OPENROUTER_API_KEY?.trim() || "",
     /* What each person may spend a month on paid tools (Composio's Instant), in US dollars; 0 is none (lib/code/media.ts). */
     mediaBudget: money(value("media_budget"), 20, 10_000),
