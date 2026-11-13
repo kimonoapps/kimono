@@ -218,3 +218,14 @@ test('the first fetch of a file reports how far it has got, then that it is read
   assert.deepEqual(c.status('slow-fetch:x'), { ready: true, size: 400 });
   files.unregisterFileSource('slow-fetch');
 });
+
+test('a download that is a web page, or not the format it says, is never kept as a book', async () => {
+  const dir = mkdtempSync(joinPath(tmpdir(), 'kb-notbook-'));
+  const sent = { 'odd:page.epub': new TextEncoder().encode('<!DOCTYPE html><html><title>Sign in</title></html>'), 'odd:real.epub': new Uint8Array([0x50, 0x4b, 3, 4, 1, 2]), 'odd:fake.pdf': new TextEncoder().encode('PK not a pdf') };
+  files.registerFileSource({ name: 'odd', async find() { return []; }, async open(id) { return files.sliceOf(sent[`odd:${id}`], id); } });
+  const c = new cache.FileCache(dir, 10_000);
+  assert.equal(await c.fill('odd:page.epub'), null);
+  assert.ok(await c.fill('odd:real.epub'));
+  assert.equal(await c.fill('odd:fake.pdf'), null);
+  files.unregisterFileSource('odd');
+});

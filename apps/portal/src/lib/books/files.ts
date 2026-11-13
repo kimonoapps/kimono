@@ -55,7 +55,8 @@ export class FileProblem extends Error {
 
 /** The file is still being made (a PDF's EPUB): ask again shortly. `progress` is 0–1. */
 export class FilePreparing extends FileProblem {
-  constructor(readonly progress: number) { super("This book is still being prepared.", 202); }
+  /** `stage`: what the making is on, for the person waiting ("fetching" the PDF, "reading" its pages, "structuring", "packing"). */
+  constructor(readonly progress: number, readonly stage: string | null = null) { super("This book is still being prepared.", 202); }
 }
 
 const g = globalThis as unknown as { kimonoBookSources?: Map<string, FileSource> };

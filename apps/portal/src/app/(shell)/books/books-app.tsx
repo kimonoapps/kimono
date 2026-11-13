@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { MorphLoader } from "@kimono/ui";
+import { InkWave, MorphLoader } from "@kimono/ui";
 import Markdown, { type Components } from "react-markdown";
 import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Genre, type GenrePage as GenrePageData, type Home, type Page, type Rating, type ReadingFormat, type ShelfItem, type ShelfState } from "./api";
 import { Book3D } from "./book3d";
@@ -624,6 +624,15 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
  * ink loader; with one, it reads (and a copy can be saved beside it); without
  * one, it stays, and says so when pressed, instead of quietly missing.
  */
+/* What making an EPUB from a PDF is on, in words. */
+const makingNote: Record<string, string> = {
+  waiting: "Waiting its turn to become an EPUB",
+  fetching: "Getting the PDF to make the EPUB from",
+  reading: "Reading the PDF's pages",
+  structuring: "Laying it out as a book",
+  packing: "Putting the EPUB together",
+};
+
 /** A converted EPUB: made by Kimono from the book's PDF. */
 const madeFromPdf = (f: BookFileInfo) => f.source === "converted";
 
@@ -639,7 +648,8 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
   const [missing, setMissing] = useState(false);
   const [asking, setAsking] = useState(false);
   /* The first time anyone opens a file, the server fetches its copy: a bar while it does, then the book. */
-  const [getting, setGetting] = useState<{ fraction: number | null; note: string } | null>(null);
+  const [getting, setGetting] = useState<{ fraction: number | null; note: string; making?: boolean } | null>(null);
+  const cancelled = useRef(false);
   const [failed, setFailed] = useState<string | null>(null);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
@@ -647,11 +657,12 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
     if (getting) return;
     setFailed(null);
     const mb = (n: number) => n >= 1_048_576 ? `${(n / 1_048_576).toFixed(n >= 10_485_760 ? 0 : 1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
-    for (let first = true; alive.current; first = false) {
+    cancelled.current = false;
+    for (let first = true; alive.current && !cancelled.current; first = false) {
       try {
         const s = await booksApi.fetchStatus(file.address);
         if (s.ready) break;
-        if (s.preparing) setGetting({ fraction: s.progress ?? null, note: "Making the EPUB from the PDF" });
+        if (s.preparing) setGetting({ fraction: s.stage === "waiting" ? null : s.progress ?? null, note: makingNote[s.stage ?? ""] ?? "Making the EPUB from the PDF", making: true });
         else setGetting({ fraction: s.size ? (s.got ?? 0) / s.size : null, note: s.size ? `Getting the book · ${mb(s.got ?? 0)} of ${mb(s.size)}` : s.got ? `Getting the book · ${mb(s.got)}` : "Getting the book" });
       } catch (e) {
         setGetting(null);
@@ -660,7 +671,7 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
       }
       await new Promise((r) => setTimeout(r, first ? 300 : 600));
     }
-    if (!alive.current) return;
+    if (!alive.current || cancelled.current) return;
     setGetting(null);
     onRead(file);
   };
@@ -701,9 +712,14 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
         {copy.format.toUpperCase()}{sizeOf(copy)}</button> : null}
     </div>
     {getting ? <div className="kb-getting-line" role="status" aria-live="polite">
-      <span className="kb-getting-bar"><span style={{ width: getting.fraction === null ? undefined : `${Math.max(2, getting.fraction * 100)}%` }} className={getting.fraction === null ? "kb-unknown" : undefined} /></span>
+      <InkWave value={getting.fraction ?? undefined} label={getting.note} className="kb-getting-wave" />
       <span>{getting.note}{getting.fraction !== null ? ` · ${Math.round(getting.fraction * 100)}%` : ""}</span>
-      <span className="kb-getting-hint">Only the first time: after this it opens at once, for everyone here.</span>
+      <span className="kb-getting-hint">{getting.making
+        ? "Kimono is turning the PDF into an EPUB that fits your screen. It takes a few minutes, once; after that it opens at once, for everyone here."
+        : "Only the first time: after this it opens at once, for everyone here."}</span>
+      {getting.making && pdf ? <span className="kb-getting-actions">
+        <button className="kb-btn kb-tonal" onClick={() => { cancelled.current = true; setGetting(null); void open(pdf); }}>Read the PDF meanwhile</button>
+      </span> : null}
     </div> : null}
     {failed ? <p className="kb-format-line kb-failed" role="alert">{failed}</p> : null}
     {best && !asking && !getting && (prefers || !both) ? <p className="kb-format-line">

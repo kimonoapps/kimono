@@ -540,6 +540,9 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
     var prefers by remember(key) { mutableStateOf<String?>(null) }
     var asking by remember(key) { mutableStateOf(false) }
     var gettingNote by remember(key) { mutableStateOf<String?>(null) }
+    /* Making an EPUB from the PDF (minutes, once): you can read the PDF meanwhile. */
+    var making by remember(key) { mutableStateOf(false) }
+    var gettingJob by remember(key) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(key) {
         runCatching { books.book(key) }.onSuccess { page = it }.onFailure { if (page == null) say(it.message ?: "This book didn't open.") }
@@ -562,15 +565,23 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
         /* The first time anyone opens a file the server fetches its copy: a bar while it does. Then an EPUB opens in Kimono's own reader, a part at a time; a PDF in the phone's viewer. */
         fun readFile(f: BookFile) {
             if (fetching != null) return
-            scope.launch {
+            gettingJob = scope.launch {
                 fetching = 0f
                 val kept = runCatching {
                     while (true) {
                         val s = books.fetchStatus(f)
                         if (s.ready) break
                         val size = s.size
+                        making = s.preparing
                         gettingNote = when {
-                            s.preparing -> "Making the EPUB from the PDF"
+                            s.preparing -> when (s.stage) {
+                                "waiting" -> "Waiting its turn to become an EPUB"
+                                "fetching" -> "Getting the PDF to make the EPUB from"
+                                "reading" -> "Reading the PDF's pages"
+                                "structuring" -> "Laying it out as a book"
+                                "packing" -> "Putting the EPUB together"
+                                else -> "Making the EPUB from the PDF"
+                            }
                             size != null && size > 0 -> "Getting the book · ${megabytes(s.got)} of ${megabytes(size)}"
                             else -> "Getting the book"
                         }
@@ -579,6 +590,7 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                     }
                 }.onFailure { say(it.message ?: "That book couldn't be fetched.") }.isSuccess
                 gettingNote = null
+                making = false
                 if (!kept) { fetching = null; return@launch }
                 if (f.format == "epub") { fetching = null; readingFile = f; return@launch }
                 fetching = 0f
@@ -637,12 +649,18 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                 }
             }
             fetching?.let { f -> if (f > 0f || gettingNote != null) Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                Box(Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
-                    Box(Modifier.fillMaxHeight().fillMaxWidth(f.coerceAtLeast(.02f)).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
-                }
+                app.kimono.ui.InkProgress(progress = { f }, modifier = Modifier.fillMaxWidth())
                 gettingNote?.let { note ->
                     Text("$note · ${(f * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
-                    Text("Only the first time: after this it opens at once, for everyone here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f))
+                    Text(if (making) "Kimono is turning the PDF into an EPUB that fits your screen. It takes a few minutes, once; after that it opens at once, for everyone here."
+                        else "Only the first time: after this it opens at once, for everyone here.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .7f))
+                    val pdf = copies.pdf
+                    if (making && pdf != null) Text("Read the PDF meanwhile", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 6.dp).clip(RoundedCornerShape(12.dp)).clickable {
+                            gettingJob?.cancel(); gettingNote = null; making = false; fetching = null
+                            readFile(pdf)
+                        }.padding(vertical = 8.dp))
                 }
             } }
             /* Which copy Read opens, and the other a tap away. */

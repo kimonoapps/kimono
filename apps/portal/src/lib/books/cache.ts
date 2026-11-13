@@ -9,7 +9,7 @@
  * many ask at once).
  */
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, createReadStream, createWriteStream, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -23,6 +23,25 @@ const g = globalThis as unknown as {
   /* How far each download has got, for the bar the first reader sees. */
   kimonoBookFillProgress?: Map<string, { got: number; size: number | null }>;
 };
+
+/**
+ * Whether a downloaded file is what its address says: an EPUB is a zip ("PK"),
+ * a PDF starts "%PDF". A web page (a source's error or sign-in page, say) is
+ * never a book. Answers null when it's fine, else what was found instead.
+ */
+export function notABook(path: string, address: string): string | null {
+  const fd = openSync(path, "r");
+  const head = Buffer.alloc(512);
+  let got = 0;
+  try { got = readSync(fd, head, 0, 512, 0); } finally { closeSync(fd); }
+  const start = head.subarray(0, got);
+  const text = start.toString("latin1").trimStart().slice(0, 200);
+  if (/^<(!doctype|html|\?xml|head|body)|^\{"/i.test(text)) return `a web page or reply, not a book: ${text.replace(/\s+/g, " ").slice(0, 120)}`;
+  const format = /\.(epub|pdf)$/i.exec(address)?.[1]?.toLowerCase();
+  if (format === "epub" && !(start[0] === 0x50 && start[1] === 0x4b)) return "not an EPUB (no zip at its start)";
+  if (format === "pdf" && !start.toString("latin1", 0, Math.min(got, 1024)).includes("%PDF")) return "not a PDF";
+  return null;
+}
 
 /* When each book was last opened: strictly increasing, so two opens in the same millisecond still have an order. */
 let last = 0;
@@ -49,13 +68,21 @@ export class FileCache {
     renameSync(tmp, this.indexPath);
   }
 
-  /** The cached copy of a file, if there is one (and it's still on disk). */
+  /* Copies checked to be books in this run: one kept before the check existed is looked at once. */
+  private checked = new Set<string>();
+
+  /** The cached copy of a file, if there is one (and it's still on disk, and is a book). */
   get(address: string): Entry | null {
     const index = this.read();
     const entry = index[address];
     if (!entry) return null;
     try {
       if (statSync(join(this.dir, entry.file)).size !== entry.size) throw new Error("changed");
+      if (!this.checked.has(address)) {
+        const wrong = notABook(join(this.dir, entry.file), address);
+        if (wrong) { console.warn(`books cache: ${address}: the kept copy is ${wrong}; it goes, and is fetched again`); rmSync(join(this.dir, entry.file), { force: true }); throw new Error("not a book"); }
+        this.checked.add(address);
+      }
     } catch {
       delete index[address];
       this.write(index);
@@ -87,6 +114,8 @@ export class FileCache {
         await pipeline(Readable.fromWeb(opened.body as import("node:stream/web").ReadableStream), counted, createWriteStream(tmp, { mode: 0o600 }));
         const size = statSync(tmp).size;
         if (opened.size !== null && size !== opened.size) throw new Error(`short copy: ${size} of ${opened.size}`);
+        const wrong = notABook(tmp, address);
+        if (wrong) throw new Error(`the source sent ${wrong}`);
         renameSync(tmp, join(this.dir, file));
         const entry: Entry = { file, size, filename: opened.filename, at: tick() };
         const index = this.read();

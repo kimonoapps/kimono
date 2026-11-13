@@ -45,7 +45,7 @@ export const booksApi = {
   setShelf: (key: string, state: ShelfState | null) => call<{ books: ShelfItem[] }>("/shelf", { method: "PUT", body: JSON.stringify({ key, state }) }),
   files: (key: string) => call<{ files: BookFileInfo[]; prefers: ReadingFormat | null }>(`/files?key=${encodeURIComponent(key)}`),
   /** Whether the server has its copy of a file yet (asking starts the one download): poll it for a bar. */
-  fetchStatus: (address: string) => call<{ ready: boolean; got?: number; size?: number | null; preparing?: boolean; progress?: number }>(`/fetch?f=${encodeURIComponent(address)}`),
+  fetchStatus: (address: string) => call<{ ready: boolean; got?: number; size?: number | null; preparing?: boolean; progress?: number; stage?: string | null }>(`/fetch?f=${encodeURIComponent(address)}`),
   setFormat: (format: ReadingFormat | null) => call<{ format: ReadingFormat | null }>("/prefs", { method: "PUT", body: JSON.stringify({ format }) }),
   rate: (key: string, rating: Rating | null) => call<{ shelf: Mine | null }>("/rating", { method: "PUT", body: JSON.stringify({ key, rating }) }),
   review: (key: string, review: string | null) => call<{ shelf: Mine | null }>("/review", { method: "PUT", body: JSON.stringify({ key, review }) }),

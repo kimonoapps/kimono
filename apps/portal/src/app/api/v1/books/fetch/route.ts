@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  * `?f=<address>`: whether the server has its copy of a file yet. The first
  * ask starts the one download from its source; ask again (every half second
  * or so) for `{ ready, got, size }` to draw a bar, then open the file.
- * `{ preparing, progress }` while a PDF's EPUB is still being made.
+ * `{ preparing, progress, stage }` while a PDF's EPUB is still being made.
  */
 export async function GET(request: Request) {
   const user = await apiUser();
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     }
     return apiJson(cache.status(address));
   } catch (error) {
-    if (error instanceof FilePreparing) return apiJson({ ready: false, preparing: true, progress: Math.round(error.progress * 100) / 100 });
+    if (error instanceof FilePreparing) return apiJson({ ready: false, preparing: true, progress: Math.round(error.progress * 100) / 100, stage: error.stage });
     throw error;
   }
 }

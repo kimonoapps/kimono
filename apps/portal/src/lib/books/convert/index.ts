@@ -39,7 +39,7 @@ export type ConvertOptions = {
   dir?: string;
 };
 
-type Job = { stage: "reading" | "structuring" | "packing"; progress: number; done: Promise<void> };
+type Job = { stage: "waiting" | "fetching" | "reading" | "structuring" | "packing"; progress: number; done: Promise<void> };
 type State = { options: ConvertOptions; jobs: Map<string, Job>; queue: Promise<unknown>; seen: Map<string, BookMeta> };
 const g = globalThis as unknown as { kimonoBookConvert?: State };
 
@@ -102,7 +102,7 @@ async function open(id: string, range?: Range): Promise<Opened> {
   if (existsSync(path)) return serve(path, range, key);
   if (failed(hash)) throw new FileProblem("This PDF couldn't be made into an EPUB.", 422);
   const job = start(key, pdf, hash);
-  throw new FilePreparing(job.progress);
+  throw new FilePreparing(job.progress, job.stage);
 }
 
 function serve(path: string, range: Range | undefined, key: string): Opened {
@@ -123,7 +123,8 @@ function start(key: string, pdf: string, hash: string): Job {
   const state = g.kimonoBookConvert!;
   const running = state.jobs.get(hash);
   if (running) return running;
-  const job: Job = { stage: "reading", progress: 0, done: Promise.resolve() };
+  /* Waiting its turn (one book is made at a time), then fetching the PDF, then the making itself. */
+  const job: Job = { stage: "waiting", progress: 0, done: Promise.resolve() };
   state.jobs.set(hash, job);
   job.done = (state.queue = state.queue.then(() => convert(key, pdf, hash, job))).then(() => {})
     .catch(async (error) => {
@@ -146,6 +147,7 @@ export type ConversionReport = PipelineReport;
 
 async function convert(key: string, pdf: string, hash: string, job: Job): Promise<void> {
   const state = g.kimonoBookConvert!;
+  job.stage = "fetching";
   if (!(await hasPoppler())) throw new Error("poppler-utils isn't installed");
   await mkdir(dir(), { recursive: true, mode: 0o700 });
   const work = await mkdtemp(join(dir(), `.work-${hash}-`));
@@ -156,6 +158,7 @@ async function convert(key: string, pdf: string, hash: string, job: Job): Promis
     const opened = await openCached(bookFileCache(), pdf);
     await writeFile(source, Readable.fromWeb(opened.body as import("node:stream/web").ReadableStream));
     job.progress = 0.02;
+    job.stage = "reading";
 
     const book = state.options.bookFor?.(key) ?? state.seen.get(key) ?? null;
     const token = (await state.options.token?.().catch(() => "")) ?? "";

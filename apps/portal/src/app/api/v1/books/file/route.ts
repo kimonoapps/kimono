@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     return new Response(opened.body, { status: 200, headers });
   } catch (error) {
     /* A PDF's EPUB being made: say how far along, and when to ask again, rather than hold the request for minutes. */
-    if (error instanceof FilePreparing) return Response.json({ preparing: true, progress: Math.round(error.progress * 100) / 100 }, { status: 202, headers: { "retry-after": "5", "cache-control": "no-store" } });
+    if (error instanceof FilePreparing) return Response.json({ preparing: true, progress: Math.round(error.progress * 100) / 100, stage: error.stage }, { status: 202, headers: { "retry-after": "5", "cache-control": "no-store" } });
     if (error instanceof FileProblem) return apiError(error.status, error.message);
     if ((error as { status?: number }).status === 416) return apiError(416, "That range isn't in the file.");
     console.error("books file:", error);

@@ -122,9 +122,17 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
     let cancelled = false;
     (async () => {
       try {
+        /* The book's container first, by hand: the EPUB reader waits forever on a book that won't open, so the server's reason is shown instead. */
+        const probe = await fetch(`${partsUrl(file)}META-INF/container.xml`, { cache: "no-store" });
+        if (!probe.ok) {
+          const said = await probe.json().catch(() => null) as { error?: string } | null;
+          if (!cancelled) setProblem(probe.status === 202 ? "This book is still being made. Try again in a few minutes." : said?.error ?? "This book didn't open.");
+          return;
+        }
         const ePub = (await import("epubjs")).default as unknown as (url: string, options?: Record<string, unknown>) => EpubBook;
         book = ePub(partsUrl(file), { openAs: "directory" });
-        await book.ready;
+        /* And a limit, so a book that's damaged inside says so rather than spinning. */
+        await Promise.race([book.ready, new Promise((_, reject) => setTimeout(() => reject(new Error("took too long")), 45_000))]);
         if (cancelled || !stage.current) return;
         const toc = flatten((await book.loaded.navigation).toc ?? []);
         const r = book.renderTo(stage.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto", allowScriptedContent: false });

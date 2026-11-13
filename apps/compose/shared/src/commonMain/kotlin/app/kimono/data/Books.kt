@@ -74,7 +74,7 @@ data class BookFile(val address: String, val source: String, val format: String,
 @Serializable data class Files(val files: List<BookFile> = emptyList(), val prefers: String? = null)
 @Serializable private data class Prefs(val format: String? = null)
 /** Whether the server has its copy of a file yet: bytes so far of how many, or a PDF's EPUB still being made. */
-@Serializable data class FetchStatus(val ready: Boolean = false, val got: Long = 0, val size: Long? = null, val preparing: Boolean = false, val progress: Double? = null)
+@Serializable data class FetchStatus(val ready: Boolean = false, val got: Long = 0, val size: Long? = null, val preparing: Boolean = false, val progress: Double? = null, val stage: String? = null)
 @Serializable private data class Rated(val shelf: Mine? = null)
 @Serializable data class Progressed(val key: String, val state: String, val fraction: Double)
 

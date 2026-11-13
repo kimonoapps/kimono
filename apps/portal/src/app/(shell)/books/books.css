@@ -492,11 +492,10 @@
 .kb .kb-btn.kb-getting{position:relative;overflow:hidden;isolation:isolate}
 .kb .kb-got{position:absolute;inset:0;z-index:-1;transform-origin:left;transform:scaleX(var(--got));background:color-mix(in srgb,#000 16%,transparent);transition:transform .5s var(--ease)}
 .kb .kb-getting-line{display:grid;gap:6px;margin-top:12px;max-width:520px;font-size:13px;color:var(--fg-2);animation:kb-rise .3s var(--ease-out) both}
-.kb .kb-getting-bar{height:6px;border-radius:3px;background:var(--surface-3);overflow:hidden}
-.kb .kb-getting-bar span{display:block;height:100%;border-radius:3px;background:var(--primary);transition:width .5s var(--ease)}
-.kb .kb-getting-bar .kb-unknown{width:30%;animation:kb-sweep 1.2s var(--ease) infinite}
-@keyframes kb-sweep{from{transform:translateX(-100%)}to{transform:translateX(340%)}}
+.kb .kb-getting-wave{width:100%}
 .kb .kb-getting-hint{opacity:.75}
+.kb .kb-getting-actions{display:flex;gap:8px;margin-top:4px}
+.kb .kb-getting-actions .kb-btn{height:40px;padding:0 18px;font-size:14px}
 .kb .kb-failed{color:var(--error,#ffb4ab)}
 /* Which copy this is, and the first-time choice between EPUB and PDF. */
 .kb .kb-format-line{margin:10px 0 0;font-size:13px;color:var(--fg-2);max-width:560px}
