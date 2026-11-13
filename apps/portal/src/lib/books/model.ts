@@ -27,7 +27,9 @@ export type Book = {
 };
 
 export type ShelfState = "want" | "reading" | "read";
-export type ShelfItem = Pick<Book, "key" | "title" | "authors" | "cover" | "year"> & { isbn: string | null; state: ShelfState; fraction: number; updatedAt: string };
+/** How much you liked it: the same three as Watch. */
+export type Rating = "down" | "up" | "love";
+export type ShelfItem = Pick<Book, "key" | "title" | "authors" | "cover" | "year"> & { isbn: string | null; state: ShelfState; fraction: number; rating: Rating | null; updatedAt: string };
 
 export type Row = { id: string; title: string; books: Book[] };
 
@@ -100,17 +102,40 @@ export function cleanDescription(s: unknown): string {
     .replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&")).slice(0, 6000);
 }
 
-/** Subjects good enough to show as genres: short, not a library code. */
-export function genresOf(subjects: string[], max = 8): string[] {
-  const out: string[] = [];
+/* Genres people browse by. Open Library's subjects are a long, unordered
+   list (places, characters, awards…); these are the ones worth showing. */
+const knownGenres = new Map<string, string>([
+  ...["fantasy", "science fiction", "horror", "romance", "mystery", "thriller", "thrillers", "crime", "historical fiction", "literary fiction",
+    "classics", "classic literature", "poetry", "drama", "humor", "humour", "adventure", "dystopian", "magical realism", "graphic novels", "comics",
+    "manga", "young adult", "children's fiction", "juvenile fiction", "picture books", "short stories", "biography", "autobiography", "memoir",
+    "history", "philosophy", "psychology", "self-help", "business", "economics", "politics", "religion", "spirituality", "science", "mathematics",
+    "nature", "travel", "cooking", "art", "music", "essays", "true crime", "war", "western", "erotica", "contemporary", "gothic", "mythology",
+    "fairy tales", "detective and mystery stories", "love stories", "ghost stories", "epic fantasy", "urban fantasy", "space opera", "cyberpunk",
+    "personal finance", "health", "education", "sociology", "anthropology", "technology", "computers", "nonfiction", "non-fiction", "fiction"]
+    .map((g) => [g, g] as [string, string]),
+  ["detective and mystery stories", "mystery"], ["love stories", "romance"], ["juvenile fiction", "children's"], ["children's fiction", "children's"],
+  ["classic literature", "classics"], ["thrillers", "thriller"], ["humour", "humor"], ["non-fiction", "nonfiction"], ["ghost stories", "horror"],
+]);
+
+const titleCase = (g: string) => g.replace(/(^|[\s-])(\p{L})/gu, (_, a: string, b: string) => a + b.toUpperCase()).replace(/\bAnd\b/g, "and");
+
+/**
+ * Genres to show: the recognised ones first (in the source's order), and only
+ * when a source has no recognised ones, its short plain subjects. "Fiction"
+ * goes last: it says little next to anything else.
+ */
+export function genresOf(subjects: string[], max = 6): string[] {
+  const known: string[] = [];
+  const plain: string[] = [];
   for (const s of subjects) {
-    const g = s.replace(/\s*\(.*?\)\s*/g, " ").split(/\s+--\s+|,\s*fiction$/i)[0].trim();
-    if (!g || g.length > 32 || /\d{3}|^nyt:|^award:|^series:|=/i.test(g)) continue;
-    const label = g[0].toUpperCase() + g.slice(1);
-    if (!out.some((o) => o.toLowerCase() === label.toLowerCase())) out.push(label);
-    if (out.length >= max) break;
+    const g = s.replace(/\s*\(.*?\)\s*/g, " ").split(/\s+--\s+/)[0].replace(/,\s*fiction$/i, "").trim().toLowerCase();
+    if (!g || /\d{3}|^nyt:|^award:|^series:|^place:|^person:|^time:|=/.test(g)) continue;
+    const mapped = knownGenres.get(g) ?? knownGenres.get(g.replace(/ fiction$/, ""));
+    if (mapped) { if (!known.includes(mapped)) known.push(mapped); }
+    else if (g.length <= 24 && !plain.includes(g)) plain.push(g);
   }
-  return out;
+  const ordered = known.length ? [...known.filter((g) => g !== "fiction"), ...known.filter((g) => g === "fiction")] : plain.slice(0, 3);
+  return ordered.slice(0, max).map(titleCase);
 }
 
 /* ── One book from several sources ─────────────────────────────────────── */
@@ -118,8 +143,14 @@ export function genresOf(subjects: string[], max = 8): string[] {
 const sameTitle = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").replace(/^(the|a|an) /, "").trim();
 export const identity = (b: Pick<Book, "title" | "authors">) => `${sameTitle(b.title).slice(0, 60)}|${(b.authors[0] ?? "").toLowerCase().split(/\s+/).pop() ?? ""}`;
 
+/* Whose word to take for what a book is about: readers' and publishers'
+   summaries first; Open Library's are often a passage from the book itself. */
+const voice: Record<string, number> = { hc: 0, gb: 1, aa: 2, ol: 3 };
+const rank = (b: Book) => voice[b.key.split(":", 1)[0]] ?? 9;
+
 /** Fills what `into` lacks from `from`: same book, another source. */
 export function merge(into: Book, from: Book): Book {
+  const fromSpeaks = rank(from) < rank(into);
   return {
     ...into,
     subtitle: into.subtitle || from.subtitle,
@@ -129,8 +160,8 @@ export function merge(into: Book, from: Book): Book {
     language: into.language || from.language,
     pages: into.pages ?? from.pages,
     isbns: [...new Set([...into.isbns, ...from.isbns])].slice(0, 60),
-    genres: into.genres.length ? into.genres : from.genres,
-    description: into.description.length >= from.description.length ? into.description : from.description,
+    genres: (fromSpeaks && from.genres.length) || !into.genres.length ? from.genres : into.genres,
+    description: (fromSpeaks && from.description.length > 80) || !into.description ? from.description || into.description : into.description,
     cover: into.cover ?? from.cover,
     rating: into.ratings >= from.ratings ? into.rating ?? from.rating : from.rating ?? into.rating,
     ratings: Math.max(into.ratings, from.ratings),

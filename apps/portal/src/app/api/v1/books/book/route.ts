@@ -1,5 +1,5 @@
 import { apiError, apiJson, apiUser, unauthorized } from "@/lib/api-v1";
-import { bookPage, books, shelfStateOf } from "@/lib/books";
+import { bookPage, books, friendsOnBook, shelfStateOf } from "@/lib/books";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,6 @@ export async function GET(request: Request) {
   if (!key) return apiError(400, "Which book?");
   return books(async (config) => {
     const page = await bookPage(config, key);
-    return apiJson({ ...page, shelf: shelfStateOf(user.username, key) });
+    return apiJson({ ...page, shelf: shelfStateOf(user.username, key), friends: await friendsOnBook(user.username, key) });
   });
 }

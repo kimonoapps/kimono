@@ -8,8 +8,11 @@ import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
 import { annas } from "./annas";
 import { booksConfig, type BooksConfig } from "./config";
-import { BooksProblem, dedupe, emptyBook, identity, merge, normalizeIsbn, sourceOf, type Book, type Row, type ShelfItem, type ShelfState } from "./model";
+import { BooksProblem, dedupe, emptyBook, identity, merge, normalizeIsbn, sourceOf, type Book, type Rating, type Row, type ShelfItem, type ShelfState } from "./model";
 import { googleBooks, hardcover, openLibrary, type LiveSource } from "./sources";
+import { registerTestFiles } from "./test-files";
+
+registerTestFiles();
 
 export * from "./model";
 
@@ -29,11 +32,10 @@ const staleAfter = 30 * DAY;
 const searchFresh = 7 * DAY;
 const retryAfter = (tries: number) => tries <= 1 ? DAY : tries === 2 ? 7 * DAY : 30 * DAY;
 
-export function booksDb(): DatabaseSync {
-  if (!g.kimonoBooks) {
-    mkdirSync(root, { recursive: true, mode: 0o700 });
-    const db = new DatabaseSync(join(root, "books.db"));
-    db.exec(`
+/* The schema, brought up to date whenever new code meets an open database
+   (a hot reload keeps the connection, an update keeps the file). */
+function migrate(db: DatabaseSync) {
+  db.exec(`
 PRAGMA journal_mode = WAL;
 CREATE TABLE IF NOT EXISTS records (
   key TEXT PRIMARY KEY, data TEXT NOT NULL, identity TEXT NOT NULL,
@@ -55,8 +57,19 @@ CREATE TABLE IF NOT EXISTS devices (
   first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, PRIMARY KEY (username, device)
 );
 `);
-    g.kimonoBooks = db;
+  /* Your own verdict, the same three as Watch: not for me, liked it, loved it. */
+  const cols = (db.prepare("PRAGMA table_info(shelf)").all() as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("rating")) db.exec("ALTER TABLE shelf ADD COLUMN rating TEXT");
+  db.exec("UPDATE OR IGNORE shelf SET username = lower(username) WHERE username != lower(username); UPDATE OR IGNORE devices SET username = lower(username) WHERE username != lower(username);");
+}
+
+let migrated = false;
+export function booksDb(): DatabaseSync {
+  if (!g.kimonoBooks) {
+    mkdirSync(root, { recursive: true, mode: 0o700 });
+    g.kimonoBooks = new DatabaseSync(join(root, "books.db"));
   }
+  if (!migrated) { migrate(g.kimonoBooks); migrated = true; }
   return g.kimonoBooks;
 }
 
@@ -218,10 +231,16 @@ export async function bookPage(config: BooksConfig, key: string): Promise<{ book
   /* The same book from the other sources fills in what this one lacks. */
   const twins = (booksDb().prepare("SELECT data FROM records WHERE identity = ? AND key != ?").all(identity(book), key) as { data: string }[]).map((r) => readBook(r.data));
   for (const twin of twins) book = merge(book, twin);
-  if (!book.description && book.isbns[0] && due("fill", key)) {
-    const { books } = await ask(sourcesFor(config).filter((s) => s.name !== "Open Library"), (s) => s.byIsbn(book!.isbns[0]));
+  /* Only Open Library has spoken: ask the others, by title and author, for a
+     proper summary and genres (Open Library's description is often a passage
+     from the book). Once a month at most per book. */
+  const heard = twins.some((t) => /^(hc|gb):/.test(t.key)) || /^(hc|gb):/.test(key);
+  if (!heard && due("fill", key)) {
+    const others = sourcesFor(config).filter((s) => s.name === "Hardcover" || s.name === "Google Books");
+    const q = `${book.title} ${book.authors[0] ?? ""}`.trim();
+    const { books, failed } = others.length ? await ask(others, (s) => s.search(q, 5)) : { books: [], failed: true };
     for (const b of books) if (identity(b) === identity(book)) book = merge(book, b);
-    note("fill", key, Boolean(book.description));
+    if (!failed) note("fill", key, books.some((b) => identity(b) === identity(book!)));
   }
   const large = book.cover?.replace("-M.jpg", "-L.jpg") ?? null;
   const author = book.authors[0];
@@ -275,21 +294,37 @@ export async function homeRows(): Promise<Row[]> {
 
 /* ── Shelves ───────────────────────────────────────────────────────────── */
 
-type ShelfRow = { key: string; state: ShelfState; fraction: number; updated_at: number };
+type ShelfRow = { key: string; state: ShelfState; fraction: number; updated_at: number; rating: Rating | null };
+
+/* Usernames are matched without case, as the rest of Kimono does. */
+const who = (username: string) => username.trim().toLowerCase();
 
 export function listShelf(username: string): ShelfItem[] {
-  const rows = booksDb().prepare("SELECT key, state, fraction, updated_at FROM shelf WHERE username = ? ORDER BY updated_at DESC").all(username) as ShelfRow[];
+  username = who(username);
+  const rows = booksDb().prepare("SELECT key, state, fraction, updated_at, rating FROM shelf WHERE username = ? ORDER BY updated_at DESC").all(username) as ShelfRow[];
   return rows.flatMap((r) => {
     const b = getBook(r.key);
-    return b ? [{ key: r.key, title: b.title, authors: b.authors, cover: b.cover, year: b.year, isbn: b.isbns[0] ?? null, state: r.state, fraction: r.fraction, updatedAt: new Date(r.updated_at).toISOString() }] : [];
+    return b ? [{ key: r.key, title: b.title, authors: b.authors, cover: b.cover, year: b.year, isbn: b.isbns[0] ?? null, state: r.state, fraction: r.fraction, rating: r.rating ?? null, updatedAt: new Date(r.updated_at).toISOString() }] : [];
   });
 }
 
-export function shelfStateOf(username: string, key: string): { state: ShelfState; fraction: number } | null {
-  return booksDb().prepare("SELECT state, fraction FROM shelf WHERE username = ? AND key = ?").get(username, key) as { state: ShelfState; fraction: number } | undefined ?? null;
+export function shelfStateOf(username: string, key: string): { state: ShelfState; fraction: number; rating: Rating | null } | null {
+  username = who(username);
+  const row = booksDb().prepare("SELECT state, fraction, rating FROM shelf WHERE username = ? AND key = ?").get(username, key) as { state: ShelfState; fraction: number; rating: Rating | null } | undefined;
+  return row ? { state: row.state, fraction: row.fraction, rating: row.rating ?? null } : null;
+}
+
+/** How much you liked it. Rating a book you hadn't shelved puts it on Read. */
+export function setRating(username: string, key: string, rating: Rating | null) {
+  username = who(username);
+  if (!getBook(key)) throw new BooksProblem("No such book.", 404);
+  const now = Date.now();
+  booksDb().prepare(`INSERT INTO shelf (username, key, state, fraction, added_at, updated_at, rating) VALUES (?, ?, 'read', 1, ?, ?, ?)
+ON CONFLICT (username, key) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at`).run(username, key, now, now, rating);
 }
 
 export function setShelf(username: string, key: string, state: ShelfState | null) {
+  username = who(username);
   const db = booksDb();
   if (!state) { db.prepare("DELETE FROM shelf WHERE username = ? AND key = ?").run(username, key); return; }
   if (!getBook(key)) throw new BooksProblem("No such book.", 404);
@@ -302,6 +337,7 @@ ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = coa
 
 /** Reading progress, from the web, the phone or the e-reader: reading until the end, then read. */
 export async function setProgress(config: BooksConfig, username: string, ref: { key?: string; isbn?: string }, fraction: number) {
+  username = who(username);
   let key = ref.key && getBook(ref.key) ? ref.key : null;
   if (!key && ref.isbn) key = (await byIsbn(config, ref.isbn))[0]?.key ?? null;
   if (!key) throw new BooksProblem("No such book.", 404);
@@ -314,6 +350,59 @@ ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = exc
   return { key, state, fraction: f };
 }
 
+/* ── Friends ───────────────────────────────────────────────────────────── */
+
+export type FriendOnBook = { username: string; name: string; picture: string | null; state: ShelfState; fraction: number; rating: Rating | null; updatedAt: string };
+export type FriendReading = FriendOnBook & { book: Book };
+
+/** Your friends who keep Books on their profile: only they are shown. */
+async function visibleFriends(viewer: string) {
+  const [{ friendsOfUser, friendsDb, people, personIn }, { hiddenAppsOf }] = await Promise.all([import("../friends"), import("../friends/model")]);
+  const everyone = await people();
+  return friendsOfUser(who(viewer)).filter((u) => !hiddenAppsOf(friendsDb(), u).includes("books")).map((u) => personIn(everyone, u));
+}
+
+type FriendRow = { username: string; key: string; state: ShelfState; fraction: number; rating: Rating | null; updated_at: number };
+
+/** Which of your friends have this book (any edition of it) on their shelf, and what they made of it. */
+export async function friendsOnBook(viewer: string, key: string): Promise<FriendOnBook[]> {
+  const friends = await visibleFriends(viewer);
+  const book = getBook(key);
+  if (!friends.length || !book) return [];
+  const keys = (booksDb().prepare("SELECT key FROM records WHERE identity = ?").all(identity(book)) as { key: string }[]).map((r) => r.key);
+  const marks = `(${keys.map(() => "?").join(",")})`;
+  const names = `(${friends.map(() => "?").join(",")})`;
+  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, updated_at FROM shelf WHERE key IN ${marks} AND username IN ${names} ORDER BY updated_at DESC`)
+    .all(...keys, ...friends.map((f) => f.username)) as FriendRow[];
+  const seen = new Set<string>();
+  return rows.flatMap((r) => {
+    if (seen.has(r.username)) return [];
+    seen.add(r.username);
+    const p = friends.find((f) => f.username === r.username)!;
+    return [{ ...p, state: r.state, fraction: r.fraction, rating: r.rating ?? null, updatedAt: new Date(r.updated_at).toISOString() }];
+  });
+}
+
+/** What your friends have been reading lately, newest first: one entry per book. */
+export async function friendsReading(viewer: string, limit = 24): Promise<FriendReading[]> {
+  const friends = await visibleFriends(viewer);
+  if (!friends.length) return [];
+  const names = `(${friends.map(() => "?").join(",")})`;
+  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, updated_at FROM shelf WHERE username IN ${names} AND state != 'want' AND (rating IS NULL OR rating != 'down') ORDER BY updated_at DESC LIMIT 200`)
+    .all(...friends.map((f) => f.username)) as FriendRow[];
+  const out: FriendReading[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const book = getBook(r.key);
+    if (!book || seen.has(identity(book))) continue;
+    seen.add(identity(book));
+    const p = friends.find((f) => f.username === r.username)!;
+    out.push({ ...p, state: r.state, fraction: r.fraction, rating: r.rating ?? null, updatedAt: new Date(r.updated_at).toISOString(), book });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /* ── Kimono Read devices ───────────────────────────────────────────────── */
 
 export type ReadDevice = { device: string; model: string; firstSeen: string; lastSeen: string };
@@ -324,6 +413,7 @@ export type ReadDevice = { device: string; model: string; firstSeen: string; las
  * which their profile shows with a badge.
  */
 export function noteDevice(request: Request, username: string) {
+  username = who(username);
   const header = request.headers.get("x-kimono-device") ?? "";
   const m = /^kimono-read\/([a-z0-9._-]{1,32})(?:;\s*id=([A-Za-z0-9._:-]{1,64}))?$/i.exec(header.trim());
   if (!m) return;
@@ -334,6 +424,7 @@ ON CONFLICT (username, device) DO UPDATE SET model = excluded.model, last_seen =
 }
 
 export function readDevices(username: string): ReadDevice[] {
+  username = who(username);
   const rows = booksDb().prepare("SELECT device, model, first_seen, last_seen FROM devices WHERE username = ? ORDER BY first_seen").all(username) as { device: string; model: string; first_seen: number; last_seen: number }[];
   return rows.map((r) => ({ device: r.device, model: r.model, firstSeen: new Date(r.first_seen).toISOString(), lastSeen: new Date(r.last_seen).toISOString() }));
 }
