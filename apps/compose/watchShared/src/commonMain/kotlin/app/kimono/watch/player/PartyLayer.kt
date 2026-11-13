@@ -85,7 +85,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun PersonFace(person: Person?, username: String, size: Dp, modifier: Modifier = Modifier) {
     val server = LocalWatch.current.accounts.server.orEmpty()
-    Box(modifier.size(size).clip(RoundedCornerShape(size * .28f)).background(faceColor(username)), contentAlignment = Alignment.Center) {
+    Box(modifier.size(size).clip(CircleShape).background(faceColor(username)), contentAlignment = Alignment.Center) {
         Text((person?.shown ?: username).take(1).uppercase(), style = display((size.value * .44f).toInt(), color = Night.paper))
         person?.picture?.let { pic -> Img(if (pic.startsWith("http")) pic else server + pic, Modifier.fillMaxSize().background(Color.Transparent)) }
     }

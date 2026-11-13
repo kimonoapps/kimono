@@ -103,7 +103,7 @@ private fun FriendBlock(f: Friend, m: FriendsModel, go: Go) {
         Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box {
                 PersonFace(f.person, f.username, 52.dp)
-                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(16.dp).clip(CircleShape).background(Night.surface).padding(2.dp).clip(CircleShape).background(Night.suo))
+                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(1.dp, 1.dp).size(16.dp).clip(CircleShape).background(Night.surface).padding(2.dp).clip(CircleShape).background(Night.suo))
             }
             Column(Modifier.weight(1f)) {
                 Text(f.shown, style = ui(18, FontWeight.Bold), maxLines = 1)
@@ -155,7 +155,7 @@ fun TvHomeFriends(go: Go, modifier: Modifier = Modifier) {
                         Row(Modifier.fillMaxWidth().background(Night.surface, RoundedCornerShape(12.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Box {
                                 PersonFace(f.person, f.username, 44.dp)
-                                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(14.dp).clip(CircleShape).background(Night.surface).padding(2.dp).clip(CircleShape).background(Night.suo))
+                                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(1.dp, 1.dp).size(14.dp).clip(CircleShape).background(Night.surface).padding(2.dp).clip(CircleShape).background(Night.suo))
                             }
                             Column(Modifier.weight(1f)) {
                                 Text(f.shown, style = ui(16, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)

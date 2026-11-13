@@ -222,7 +222,7 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box {
                 PersonFace(f.person, f.username, 44.dp)
-                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(14.dp).clip(CircleShape).background(Night.surface2).padding(2.dp).clip(CircleShape).background(Night.suo))
+                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(1.dp, 1.dp).size(14.dp).clip(CircleShape).background(Night.surface2).padding(2.dp).clip(CircleShape).background(Night.suo))
             }
             Column(Modifier.weight(1f)) {
                 Text(f.shown, style = ui(16, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -300,7 +300,7 @@ fun FriendsAt(friends: List<app.kimono.watch.model.FriendHere>, modifier: Modifi
         val shown = friends.take(3)
         Box(Modifier.width(18.dp + 12.dp * (shown.size - 1)).size(Dp.Unspecified, 18.dp)) {
             shown.forEachIndexed { i, f ->
-                PersonFace(f.person, f.username, 18.dp, Modifier.offset(x = 12.dp * i).border(1.5.dp, Night.bg, RoundedCornerShape(5.dp)))
+                PersonFace(f.person, f.username, 18.dp, Modifier.offset(x = 12.dp * i).border(1.5.dp, Night.bg, CircleShape))
             }
         }
         Text(hereText(friends), style = ui(12, FontWeight.Bold, Night.blush), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -349,7 +349,7 @@ private fun HomeFriendCard(f: Friend, go: Go, m: FriendsModel) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box {
                 PersonFace(f.person, f.username, 36.dp)
-                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(12.dp).clip(CircleShape).background(Night.surface2).padding(2.dp).clip(CircleShape).background(Night.suo))
+                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(1.dp, 1.dp).size(12.dp).clip(CircleShape).background(Night.surface2).padding(2.dp).clip(CircleShape).background(Night.suo))
             }
             Column(Modifier.weight(1f)) {
                 Text(f.shown, style = ui(15, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
