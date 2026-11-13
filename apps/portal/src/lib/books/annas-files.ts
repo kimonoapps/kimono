@@ -147,13 +147,19 @@ function filename(response: Response, url: URL, format: FileFormat): string {
   return `${name.replace(/\.[a-z0-9]{1,8}$/i, "")}.${format}`;
 }
 
+let unsetSaid = 0;
+
 /** Anna's member fast downloads, resolved only when someone opens a file. */
 export function annasFiles(getSettings: () => Promise<Settings | null>): FileSource {
   return {
     name: "annas",
     async find(book) {
       const settings = await getSettings();
-      if (!settings) return [];
+      if (!settings) {
+        /* Said once an hour, so a missing address or key isn't a silent "no copy". */
+        if (Date.now() - unsetSaid > 3_600_000) { unsetSaid = Date.now(); console.warn("books files: Anna's Archive isn't set up: its address (https) and secret key in Books' settings, and whole numbers (or blank) for the two indexes"); }
+        return [];
+      }
       const client = annasClient(settings.url, settings.key);
       /* Searches at once, each one request: by title and author, and by up
          to four of the book's ISBNs (its editions, in whatever language
