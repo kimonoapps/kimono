@@ -92,12 +92,12 @@ fun languageName(code: String) = languages.firstOrNull { it.first == code }?.sec
 /** The player's preferences first (language, quality, anime lead), then the app's. */
 private enum class Part(val title: String, val player: Boolean) {
     Languages("Languages", true), Quality("Quality", true), Anime("Anime", true), Look("Subtitle look", true), Playing("Playing", true),
-    Home("Home", false), Downloads("Downloads", false), Account("Account", false),
+    Home("Home", false), Downloads("Downloads", false), Friends("Friends", false), Account("Account", false),
 }
 
 private fun Part.icon() = when (this) {
     Part.Languages -> Ic.chat; Part.Quality -> Ic.film; Part.Anime -> Ic.eps; Part.Look -> Ic.cc; Part.Playing -> Ic.play
-    Part.Home -> Ic.home; Part.Downloads -> Ic.dl; Part.Account -> Ic.people
+    Part.Home -> Ic.home; Part.Downloads -> Ic.dl; Part.Friends -> Ic.people; Part.Account -> Ic.people
 }
 
 /** What a group is set to now, in a few words, for its row on the settings page. */
@@ -109,6 +109,7 @@ private fun Part.summary(p: Prefs, state: SettingsState, watch: WatchServices): 
     Part.Look -> p.subtitleSize.replaceFirstChar { it.uppercase() } + " · " + when (p.subtitleBackground) { "none" -> "Outline"; "box" -> "Box"; else -> "Shadow" }
     Part.Playing -> listOfNotNull("Next episode".takeIf { p.autoplayNext }, "Skip intros".takeIf { p.skipIntros }).joinToString(" · ").ifEmpty { "All off" }
     Part.Home -> if (p.previews) "Previews on" else "Previews off"
+    Part.Friends -> if (p.shareWatching) "Sharing what you watch" else "Not sharing"
     Part.Downloads -> {
         val wifi by watch.downloads.wifiOnly.collectAsState()
         (if (p.downloadQuality == "higher") "Higher" else "Standard") + if (wifi) " · Wi‑Fi only" else ""
@@ -257,6 +258,9 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
         }
         Part.Home -> {
             Toggle("Previews", p.previews, key = "previews") { on -> store.set("previews", on) { it.copy(previews = on) } }
+        }
+        Part.Friends -> {
+            Toggle("Show friends what I watch", p.shareWatching, key = "shareWatching") { on -> store.set("shareWatching", on) { it.copy(shareWatching = on) } }
         }
         Part.Languages -> {
             Picker("Preferred language", if (p.preferredLanguage == "original") "Original language" else languageName(p.preferredLanguage), listOf("original" to "Original language") + languages, p.preferredLanguage, key = "preferredLanguage") { v ->

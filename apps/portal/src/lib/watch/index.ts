@@ -36,6 +36,7 @@ import { fetchDetails, fetchSeason, namedLike, searchOrder, seasonsFromTmdb, stu
 import { openStream, sealStream } from "./token";
 import { screensOf } from "./screens";
 import { migrateTogether } from "./together";
+import { migrateFriends } from "./friends";
 import { markDead, isDead } from "./dead";
 import { framingOf, noteShape } from "./shape";
 import { asked, endedBefore, endStreams, heard, stopped, streamLifeMs, playbackNeedsSource, tooMany, tooManyNote, tracked, verdict, waitOn, watchKey } from "./flow";
@@ -54,11 +55,12 @@ export function watchDb(): DatabaseSync {
     const opened = new DatabaseSync(join(root, "watch.db"));
     migrate(opened);
     migrateTogether(opened);
+    migrateFriends(opened);
     cache.kimonoWatch = opened;
     migrated = true;
   }
   /* A hot reload keeps the connection but brings new code: bring the schema along. */
-  if (!migrated) { migrate(cache.kimonoWatch); migrateTogether(cache.kimonoWatch); migrated = true; }
+  if (!migrated) { migrate(cache.kimonoWatch); migrateTogether(cache.kimonoWatch); migrateFriends(cache.kimonoWatch); migrated = true; }
   if (!cache.kimonoWatchSwept || Date.now() - cache.kimonoWatchSwept > 60 * 60 * 1000) {
     cache.kimonoWatchSwept = Date.now();
     sweepCache(cache.kimonoWatch);

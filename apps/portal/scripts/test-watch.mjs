@@ -11,6 +11,7 @@ import * as anime from '../src/lib/watch/anime.ts';
 import * as streams from '../src/lib/watch/streams.ts';
 import * as hls from '../src/lib/watch/hls.ts';
 import * as party from '../src/lib/watch/together.ts';
+import * as friends from '../src/lib/watch/friends.ts';
 import * as flow from '../src/lib/watch/flow.ts';
 import * as screens from '../src/lib/watch/screens.ts';
 
@@ -1503,4 +1504,53 @@ test("YouTube thumbnails are images Kimono serves, and a YouTube show isn't 'no 
   assert.equal(images.imageRequest('w500', ['yt', '../x.jpg']), null);
   assert.equal(labels.availability({ id: 'yt-UClozwh5URilIQpDFeXch8qw.1234abcd', kind: 'series', status: 'Returning Series', imdbId: null }, undefined).state, 'ready');
   assert.equal(labels.availability({ id: 'tv-1', kind: 'series', status: 'Ended', imdbId: null }, undefined).state, 'missing');
+});
+
+test('friends: asking, a yes, an ask back, no and unfriending', () => {
+  const db = new DatabaseSync(':memory:');
+  friends.migrateFriends(db);
+  assert.equal(friends.askFriend(db, 'Ana', 'sami', 1), 'asking');
+  assert.equal(friends.linkOf(db, 'sami', 'ana'), 'asked');
+  assert.equal(friends.areFriends(db, 'ana', 'sami'), false);
+  assert.equal(friends.askFriend(db, 'ana', 'sami', 2), 'asking');
+  assert.equal(friends.answerFriend(db, 'sami', 'ana', true, 3), 'friends');
+  assert.deepEqual(friends.friendsOf(db, 'ana'), ['sami']);
+  /* Asking someone who asked you is a yes. */
+  friends.askFriend(db, 'lee', 'ana', 4);
+  assert.equal(friends.askFriend(db, 'ana', 'lee', 5), 'friends');
+  /* No forgets the ask; the asker can't answer their own. */
+  friends.askFriend(db, 'kai', 'ana', 6);
+  assert.equal(friends.answerFriend(db, 'kai', 'ana', true, 7), 'asking');
+  assert.equal(friends.answerFriend(db, 'ana', 'kai', false, 8), null);
+  assert.equal(friends.linkOf(db, 'kai', 'ana'), null);
+  friends.removeFriend(db, 'sami', 'ana');
+  assert.deepEqual(friends.friendsOf(db, 'ana'), ['lee']);
+  assert.throws(() => friends.askFriend(db, 'ana', 'ANA', 9));
+});
+
+test('friends: asking to join waits, is answered once, and a no holds off asking again', () => {
+  const base = { from: 'ana', to: 'sami', titleId: 'tv:1', season: 1, episode: 2 };
+  let { asks, ask } = friends.newAsk([], { ...base, id: 'a', at: 0 }, 0);
+  assert.equal(ask.answer, 'waiting');
+  /* Asking again while one waits is the same ask. */
+  ({ asks, ask } = friends.newAsk(asks, { ...base, id: 'b', at: 10 }, 10));
+  assert.equal(ask.id, 'a');
+  assert.equal(asks.length, 1);
+  /* Only the one asked answers, and a yes needs a party. */
+  assert.equal(friends.answerAsk(asks, 'a', 'ana', true, 'p1', 20).ask, null);
+  assert.equal(friends.answerAsk(asks, 'a', 'sami', true, null, 20).ask, null);
+  ({ asks, ask } = friends.answerAsk(asks, 'a', 'sami', false, null, 20));
+  assert.equal(ask.answer, 'no');
+  assert.equal(friends.answerAsk(asks, 'a', 'sami', true, 'p1', 30).ask, null);
+  assert.equal(friends.newAsk(asks, { ...base, id: 'c', at: 40 }, 40).ask, null);
+  const later = friends.newAsk(asks, { ...base, id: 'd', at: 20 + friends.joinAsks.againAfter + 1 }, 20 + friends.joinAsks.againAfter + 1);
+  assert.equal(later.ask.id, 'd');
+  ({ asks, ask } = friends.answerAsk(later.asks, 'd', 'sami', true, 'p1', 50_000));
+  assert.equal(ask.partyId, 'p1');
+  /* Unanswered asks and old answers are let go. */
+  assert.equal(friends.liveAsks(asks, 50_000 + friends.joinAsks.keepAnswer + 1).length, 0);
+  const waiting = friends.newAsk([], { ...base, id: 'e', at: 0 }, 0).asks;
+  assert.equal(friends.liveAsks(waiting, friends.joinAsks.waitFor + 1).length, 0);
+  assert.equal(friends.cancelAsk(waiting, 'e', 'ana').length, 0);
+  assert.equal(friends.cancelAsk(waiting, 'e', 'sami').length, 1);
 });

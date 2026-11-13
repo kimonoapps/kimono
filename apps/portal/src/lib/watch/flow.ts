@@ -104,6 +104,14 @@ export function endedBefore(username: string, expiresAt: number): boolean {
   return at !== undefined && expiresAt - streamLifeMs < at;
 }
 
+/** What this person (any spelling of their name) is playing now: a player's been heard from on it. */
+export function playingNow(username: string, now = Date.now()): string[] {
+  const u = username.toLowerCase();
+  const out: string[] = [];
+  for (const [who, mine] of flows) if (who.toLowerCase() === u) for (const [what, flow] of mine) if (live(flow, now)) out.push(what);
+  return out;
+}
+
 /** What this person is streaming now, besides `except`. */
 export function streamsOf(username: string, except?: string, now = Date.now()): string[] {
   const mine = flows.get(username);

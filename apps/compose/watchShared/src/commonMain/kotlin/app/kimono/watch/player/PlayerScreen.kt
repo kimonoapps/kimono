@@ -610,6 +610,10 @@ fun PlayerScreen(
 
         if (party != null) Box(Modifier.matchParentSize().zIndex(4f)) { PartyChat(party, chatOpen, tv, { chatOpen = false; show() }, chatFocus) }
 
+        /* A friend asking to join what's on. */
+        JoinAsks(vm.titleId, if (state.isFilm) 0 else state.season, if (state.isFilm) 0 else state.episode, { engine.position }, party, tv, onJoinParty,
+            Modifier.align(Alignment.TopCenter).zIndex(4.5f).padding(horizontal = 16.dp))
+
         when (post) {
             is Post.Next -> NextUp(vm, post, buffering || !playing, ctl, tv, party)
             is Post.Ask -> FillerAsk(vm, post, tv)

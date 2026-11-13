@@ -140,4 +140,25 @@ class WatchApi(
     /** The party's live channel: `state`, `chat`, `react`, `ping`, `ended` events. */
     suspend fun partyEvents(id: String, client: String, onEvent: suspend (String, String) -> Unit) =
         accounts.stream("$base/together/$id?client=${client.encodeURLParameter()}", onEvent)
+
+    /* ───── Friends (/watch/friends) ───── */
+
+    suspend fun friends(): app.kimono.watch.model.FriendsPage = json.decodeFromString(get("/friends"))
+
+    /** [type] "ask", "yes", "no" or "remove". */
+    suspend fun friend(type: String, username: String) { send(HttpMethod.Post, "/friends", buildJsonObject { put("type", type); put("username", username) }) }
+
+    suspend fun asks(): app.kimono.watch.model.Asks = json.decodeFromString(get("/friends/join"))
+
+    /** Asks a friend who's watching whether you can join them. */
+    suspend fun askToJoin(username: String): app.kimono.watch.model.JoinAsk =
+        json.decodeFromString<app.kimono.watch.model.AskAnswer>(send(HttpMethod.Post, "/friends/join", buildJsonObject { put("to", username) })).ask
+            ?: throw app.kimono.watch.model.WatchProblem("That didn't send. Try again.")
+
+    /** Answers an ask to join: yes brings them into [partyId]. */
+    suspend fun answerAsk(id: String, yes: Boolean, partyId: String? = null) {
+        send(HttpMethod.Post, "/friends/join/$id", buildJsonObject { put("yes", yes); partyId?.let { put("partyId", it) } })
+    }
+
+    suspend fun cancelAsk(id: String) { send(HttpMethod.Post, "/friends/join/$id", buildJsonObject { put("cancel", true) }) }
 }

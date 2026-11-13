@@ -176,6 +176,7 @@ private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map
                 if (started) ResumeLine(page)
             }
             page.tracker?.let { Tracker(page) }
+            if (page.friends.isNotEmpty()) FriendsHere(page.friends, t.isFilm)
             Text(t.overview, style = ui(15).copy(lineHeight = 24.sp))
             Actions(page, vm, go, dl, downloads)
         }
@@ -191,6 +192,32 @@ private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map
         Box(Modifier.weight(1.7f)) { main() }
         Box(Modifier.weight(1f)) { side() }
     } else Column(Modifier.padding(horizontal = gutter), verticalArrangement = Arrangement.spacedBy(14.dp)) { main(); side() }
+}
+
+/** Friends' places in this title: who's on it now, where each is, who's finished. */
+@Composable
+private fun FriendsHere(friends: List<app.kimono.watch.model.FriendHere>, film: Boolean) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        friends.take(4).forEach { f ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                app.kimono.watch.player.PersonFace(f.person, f.username, 28.dp)
+                Text(androidx.compose.ui.text.buildAnnotatedString {
+                    pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)); append(f.shown); pop()
+                    pushStyle(androidx.compose.ui.text.SpanStyle(color = Night.fg2))
+                    append(" · ")
+                    append(when {
+                        f.now -> listOfNotNull("watching now", f.label).joinToString(", ")
+                        f.finished && (film || f.label == null) -> "watched it"
+                        f.finished -> "finished ${f.label}"
+                        else -> f.label?.let { "on $it" } ?: "${(f.progress * 100).toInt()}% in"
+                    })
+                    pop()
+                }, style = ui(14, color = if (f.now) Night.fg else Night.fg), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                if (!f.finished) ProgressLine(f.progress.toFloat(), Modifier.width(40.dp).clip(RoundedCornerShape(2.dp)))
+            }
+        }
+        if (friends.size > 4) Text("and ${friends.size - 4} more friends", style = ui(13, color = Night.fg3))
+    }
 }
 
 @Composable

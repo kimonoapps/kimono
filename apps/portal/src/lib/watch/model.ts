@@ -103,8 +103,10 @@ export type Prefs = {
   downloadQuality: "standard" | "higher";
   autoplayNext: boolean;
   skipIntros: boolean;
+  /** Friends see what this person is watching and how far they are (./friends.ts). */
+  shareWatching: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false, shareWatching: true };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -374,6 +376,7 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
     downloadQuality: pick(input.downloadQuality, ["standard", "higher"] as const, base.downloadQuality),
     autoplayNext: typeof input.autoplayNext === "boolean" ? input.autoplayNext : base.autoplayNext,
     skipIntros: typeof input.skipIntros === "boolean" ? input.skipIntros : base.skipIntros,
+    shareWatching: typeof input.shareWatching === "boolean" ? input.shareWatching : base.shareWatching,
   };
 }
 

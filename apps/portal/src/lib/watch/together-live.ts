@@ -68,7 +68,7 @@ function tell(room: Room, event: LiveEvent) { for (const l of room.listeners) l.
 
 /* How each person names a show's episodes (their layout setting), kept a minute per person and title. */
 const namers = new Map<string, { at: number; label: ((season: number, episode: number) => string) | null }>();
-function labelsFor(username: string, titleId: string) {
+export function labelsFor(username: string, titleId: string) {
   const key = `${username.toLowerCase()}|${titleId}`;
   const known = namers.get(key);
   if (known && Date.now() - known.at < 60_000) return known.label;
@@ -170,6 +170,22 @@ export async function partiesOf(username: string, origin: string) {
   }).filter((p) => p.watching.length > 0 || p.host === u);
   /* recent: who they've watched with or asked lately, most recent first, for the invite list. */
   return { parties, people: everyone, recent: recentWith(db, u) };
+}
+
+/** The live party this person has a screen in right now, if any. */
+export function partyWith(username: string, now = Date.now()): Party | null {
+  const u = username.toLowerCase();
+  for (const room of rooms.values()) if (!room.party.ended && room.party.members.some((m) => m.username === u && now - m.seen < 15_000)) return room.party;
+  return null;
+}
+
+/** Invites people to a party `by` hosts or has a screen in (a yes to "can I join?"). False when it's over or not theirs. */
+export function inviteTo(id: string, by: string, usernames: string[]): boolean {
+  const room = roomOf(id);
+  const u = by.toLowerCase();
+  if (!room || (room.party.host !== u && !room.party.members.some((m) => m.username === u))) return false;
+  commit(room, invite(room.party, usernames, Date.now()));
+  return true;
 }
 
 /** The party now, and its chat: what a screen starts from. */

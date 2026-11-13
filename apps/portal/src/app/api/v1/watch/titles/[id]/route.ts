@@ -1,4 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
+import { friendsOn } from "@/lib/watch/friends-live";
 import { ensureTitle, portalOrigin, setListed, setRating, setReminder, setShowLayout, setTracks, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
 
 type Context = { params: Promise<{ id: string }> };
@@ -9,7 +10,13 @@ export async function GET(request: Request, { params }: Context) {
   if (!user) return unauthorized();
   const { id } = await params;
   const season = Number(new URL(request.url).searchParams.get("season")) || undefined;
-  return watch(async (cfg) => apiJson(await titleView(cfg, user.username, portalOrigin(request), id, season)));
+  return watch(async (cfg) => {
+    const origin = portalOrigin(request);
+    const page = await titleView(cfg, user.username, origin, id, season);
+    /* Friends' places in it: a missing one is only less to show. */
+    const friends = await friendsOn(user.username, page.title.id, origin).catch(() => []);
+    return apiJson({ ...page, friends });
+  });
 }
 
 /** This person's marks on it: `{ inList?, rating?, reminding? }`. */

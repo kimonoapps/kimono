@@ -146,6 +146,8 @@ data class TitlePage(
     val episodes: List<EpisodeInfo> = emptyList(),
     /** "single": one season, no season shown anywhere; "continuous": one list numbered from the first; "seasons": the picker. */
     val layout: String = "seasons",
+    /** Friends' places in it, watching it now first. */
+    val friends: List<FriendHere> = emptyList(),
     /** This show's own choice ("seasons" | "continuous"), or null to follow Settings' anime default. */
     val showEpisodes: String? = null,
     /** What it plays in now and the languages to offer; [tracks] set means this show has its own. */
@@ -269,6 +271,8 @@ data class Prefs(
     val downloadQuality: String = "standard",
     val autoplayNext: Boolean = true,
     val skipIntros: Boolean = false,
+    /** Friends see what this person watches and how far they are. */
+    val shareWatching: Boolean = true,
     /** With `?device=`: this device's own quality, null when it follows the person's. */
     val device: DevicePref? = null,
 )
