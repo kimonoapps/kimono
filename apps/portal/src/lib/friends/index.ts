@@ -217,7 +217,7 @@ export function changePrivacy(username: string, body: Record<string, unknown>) {
   return { privacy: privacyOf(db, username), hidden: hiddenAppsOf(db, username) };
 }
 
-const profileRows: Record<string, string[]> = { watch: ["watched", "listed"], books: ["reading", "want", "read"] };
+const profileRows: Record<string, string[]> = { watch: ["watching", "watched", "listed"], books: ["reading", "want", "read"] };
 const rowOf = (raw: Record<string, unknown>) => {
   const app = String(raw.app ?? ""), kind = String(raw.kind ?? ""), id = String(raw.itemId ?? "");
   if (!id) throw new FriendsProblem("Pick a title.");
@@ -234,7 +234,7 @@ export async function removeFromRow(username: string, raw: Record<string, unknow
   const { app, kind, id } = rowOf(raw);
   takeOffProfile(friendsDb(), username, `${app}:${kind}`, id, raw);
   /* A watched title also leaves what Watch shows friends. */
-  if (app === "watch" && kind === "watched") await watchedSeen(username, id, false);
+  if (app === "watch" && (kind === "watched" || kind === "watching")) await watchedSeen(username, id, false);
   return { ok: true, off: offProfileList(friendsDb(), username) };
 }
 
@@ -242,7 +242,7 @@ export async function removeFromRow(username: string, raw: Record<string, unknow
 export async function putBackOnRow(username: string, raw: Record<string, unknown>) {
   const { app, kind, id } = rowOf(raw);
   putBackOnProfile(friendsDb(), username, `${app}:${kind}`, id);
-  if (app === "watch" && kind === "watched") await watchedSeen(username, id, true);
+  if (app === "watch" && (kind === "watched" || kind === "watching")) await watchedSeen(username, id, true);
   return { ok: true, off: offProfileList(friendsDb(), username) };
 }
 

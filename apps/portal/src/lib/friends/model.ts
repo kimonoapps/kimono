@@ -216,7 +216,7 @@ const itemFrom = (r: { app: string; item_id: string; title: string; subtitle: st
 
 /** The rows each app puts on a profile, by kind, so any of them can be kept back before it has anything in it. */
 export const rowsOf: Record<string, [kind: string, title: string][]> = {
-  watch: [["watched", "Watched"], ["listed", "Watchlist"]],
+  watch: [["watching", "Watching"], ["watched", "Watched"], ["listed", "Watchlist"]],
   books: [["reading", "Reading now"], ["want", "Want to read"], ["read", "Read"]],
 };
 

@@ -2,12 +2,13 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import type { WatchConfig } from "./config";
-import { cardOf, ensureTitle, finished, fraction, getTitle, getTitles, prefsOf, watchDb, WatchProblem, type Card, type Progress, type Title } from "./index";
+import { cardOf, ensureTitle, episodesOf, finished, fraction, getTitle, getTitles, prefsOf, watchDb, WatchProblem, type Card, type Progress, type Title } from "./index";
 import { playingNow, watchKey } from "./flow";
 import { answerAsk, cancelAsk, hiddenOf, likedByFriends, watchedByFriends, liveAsks, newAsk, noteWatched, type JoinAsk } from "./friends";
 import { changeFriend as changeKimonoFriend, findPeople as findKimonoPeople, friendsOfUser, invisibleToFriends, linkBetween, linksOfUser, type Section } from "../friends";
 import type { Rating } from "../friends/model";
 import { FriendsProblem, type LinkState } from "../friends/model";
+import { aired } from "./labels";
 import { inviteTo, labelsFor, partyWith, people, type Person } from "./together-live";
 import { watchConfig } from "./config";
 import { getPlatformSettings } from "../settings";
@@ -272,21 +273,47 @@ export async function watchSections(viewer: string, username: string, origin: st
   const hidden = hiddenOf(db, u);
   const item = (t: Title) => ({ app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: cardOf(t, origin).poster, href: `/watch?t=${encodeURIComponent(t.id)}` });
   /* `at`: when each was rated or listed. */
-  const row = (kind: string, title: string, ids: string[], at: Map<string, number | null> = new Map(), rating: Map<string, Rating> = new Map()): Section =>
-    ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map((t) => ({ ...item(t), at: at.get(t.id) ?? null, rating: rating.get(t.id) ?? null })) });
+  type Extra = { at?: number | null; rating?: Rating | null; progress?: number | null; subtitle?: string | null };
+  const row = (kind: string, title: string, ids: string[], extra: (id: string) => Extra = () => ({})): Section =>
+    ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map((t) => { const x = extra(t.id); return { ...item(t), at: x.at ?? null, rating: x.rating ?? null, progress: x.progress ?? null, subtitle: x.subtitle ?? item(t).subtitle }; }) });
   const rows: Section[] = [];
   /* Going invisible on Kimono is the profile's to apply (lib/friends profileFor), so their own profile still shows it all.
-     Watched holds what they watched (while they share it) and what they rated (while they share their taste), each rated one marked. */
+     Watching: a film part-way, or a series with aired episodes still to go, with how far (a series counts its episodes).
+     Watched: what they finished, and what they rated (while they share their taste), each rated one marked. */
   const taste = sharesTasteSet(u);
   const rated = taste ? ratingsOf(u).filter((r) => r.rating === "love" || r.rating === "up" || r.rating === "down") : [];
   const rating = new Map(rated.map((r) => [r.title_id, r.rating as Rating]));
-  const seen = sharingSet(u) ? lastRows(u, 24).map((p) => ({ id: p.titleId, at: p.updatedAt ?? 0 })) : [];
-  /* Latest first, whichever happened last: watching it or rating it. */
-  const order = [...new Set([...seen, ...rated.map((r) => ({ id: r.title_id, at: r.rated_at ?? 0 }))].sort((a, b) => b.at - a.at).map((w) => w.id))];
-  rows.push(row("watched", "Watched", order, new Map(rated.map((r) => [r.title_id, r.rated_at ?? null])), rating));
+  const ratedAt = new Map(rated.map((r) => [r.title_id, r.rated_at ?? null]));
+  const now = Date.now();
+  const watching = new Map<string, { at: number; progress: number | null; subtitle: string | null }>();
+  const finishedAt = new Map<string, number>();
+  for (const p of sharingSet(u) ? lastRows(u, 48) : []) {
+    const t = getTitle(db, p.titleId);
+    if (!t) continue;
+    if (t.kind === "movie") {
+      if (finished(p)) finishedAt.set(p.titleId, p.updatedAt);
+      else watching.set(p.titleId, { at: p.updatedAt, progress: fraction(p), subtitle: null });
+      continue;
+    }
+    const episodes = episodesOf(db, p.titleId).filter((e) => aired(e, now));
+    const done = new Set((db.prepare("SELECT season, episode, position, duration FROM progress WHERE lower(username) = ? AND title_id = ?").all(u, p.titleId) as { season: number; episode: number; position: number; duration: number }[])
+      .filter((r) => finished(r)).map((r) => `${r.season}:${r.episode}`));
+    const seen = episodes.filter((e) => done.has(`${e.season}:${e.number}`)).length;
+    if (episodes.length && seen >= episodes.length) { finishedAt.set(p.titleId, p.updatedAt); continue; }
+    /* Where they are, and how much of what's aired they've seen (part of the one they're on counts too). */
+    const part = finished(p) ? 0 : fraction(p);
+    const label = labelsFor(u, p.titleId)?.(p.season, p.episode) ?? `S${p.season}:E${p.episode}`;
+    watching.set(p.titleId, { at: p.updatedAt, progress: episodes.length ? Math.min(1, (seen + part) / episodes.length) : null, subtitle: label });
+  }
+  rows.push(row("watching", "Watching", [...watching.entries()].sort((a, b) => b[1].at - a[1].at).map(([id]) => id), (id) => ({ ...watching.get(id), rating: rating.get(id) ?? null })));
+  const watched = [...finishedAt.entries()].map(([id, at]) => ({ id, at }))
+    .concat(rated.filter((r) => !watching.has(r.title_id)).map((r) => ({ id: r.title_id, at: r.rated_at ?? 0 })))
+    .sort((a, b) => b.at - a.at);
+  rows.push(row("watched", "Watched", [...new Set(watched.map((w) => w.id))], (id) => ({ at: ratedAt.get(id) ?? finishedAt.get(id) ?? null, rating: rating.get(id) ?? null })));
   if (taste) {
     const list = db.prepare("SELECT title_id, added_at FROM list WHERE lower(username) = ? ORDER BY added_at DESC").all(u) as { title_id: string; added_at: number | null }[];
-    rows.push(row("listed", "Watchlist", list.map((r) => r.title_id), new Map(list.map((r) => [r.title_id, r.added_at]))));
+    const added = new Map(list.map((r) => [r.title_id, r.added_at]));
+    rows.push(row("listed", "Watchlist", list.map((r) => r.title_id), (id) => ({ at: added.get(id) ?? null })));
   }
   return rows.filter((r) => r.items.length > 0);
 }
