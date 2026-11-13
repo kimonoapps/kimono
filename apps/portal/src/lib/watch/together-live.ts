@@ -5,6 +5,7 @@ import { portalOrigin } from "../account";
 import { listAccounts } from "../directory";
 import { picturePaths } from "../pictures";
 import type { WatchConfig } from "./config";
+import { friendsOf } from "./friends";
 import { cardOf, ensureTitle, getTitle, namer, nextUp, prefsOf, watchDb, WatchProblem } from "./index";
 import {
   addChat, cleanClient, command, decline, endForgotten, invite, labelView, leave, loadParty, newParty, parseCommand, partiesFor, reactions, recentWith, report, saveParty, seen, tick, viewOf,
@@ -168,8 +169,12 @@ export async function partiesOf(username: string, origin: string) {
       seq: p.seq,
     };
   }).filter((p) => p.watching.length > 0 || p.host === u);
-  /* recent: who they've watched with or asked lately, most recent first, for the invite list. */
-  return { parties, people: everyone, recent: recentWith(db, u) };
+  /* recent: who they've watched with or asked lately, most recent first, for the invite list.
+     friends: theirs, who watching together suggests before anything is typed, the ones they've watched with lately first. */
+  const recent = recentWith(db, u);
+  const at = (x: string) => { const i = recent.indexOf(x); return i < 0 ? Infinity : i; };
+  const friends = friendsOf(db, u).sort((a, b) => at(a) - at(b) || nameOf(a).localeCompare(nameOf(b)));
+  return { parties, people: everyone, recent, friends };
 }
 
 /** The live party this person has a screen in right now, if any. */

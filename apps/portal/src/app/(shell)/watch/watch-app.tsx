@@ -53,6 +53,8 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
   /* Arriving by a party's link goes straight in: it can only be you. */
   const [profile, setProfile] = useState<Person | null>(() => { try { return !PROFILE_PICKER || readParty() || sessionStorage.getItem(chosenKey) === me.username ? me : null; } catch { return null; } });
   const [people, setPeople] = useState<Person[]>(household);
+  /* Their friends, the ones watched with lately first: what Watch together suggests. */
+  const [friends, setFriends] = useState<string[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [parties, setParties] = useState<Invite[]>([]);
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -219,7 +221,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
   useEffect(() => {
     if (!profile) return;
     let stop = false;
-    const look = () => together.list().then(async (l) => { await circleSettled(); if (stop) return; setPeople(l.people.length ? l.people : household); setInvites(l.parties.filter((p) => p.invited)); setParties(l.parties); }, () => {});
+    const look = () => together.list().then(async (l) => { await circleSettled(); if (stop) return; setPeople(l.people.length ? l.people : household); setFriends(l.friends ?? []); setInvites(l.parties.filter((p) => p.invited)); setParties(l.parties); }, () => {});
     look();
     const timer = setInterval(() => { if (!document.hidden) look(); }, 15_000);
     return () => { stop = true; clearInterval(timer); };
@@ -317,7 +319,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
       {sheetId && profile ? <TitleSheet key={sheetId} id={sheetId} onClose={closeSheet} refreshKey={refreshKey} leaving={sheetLeaving} /> : null}
       <Player ref={player} onExit={exitPlayer} me={me.username} people={people} onTogether={fromPlayer} onParty={onParty} />
       <JoinAsks open={playing} partyOf={() => player.current?.party() ?? null} where={() => player.current?.where() ?? null} onJoin={joinParty} />
-      {asking ? <TogetherDialog people={people.filter((p) => p.username.toLowerCase() !== me.username.toLowerCase())} onStart={(list, copy) => void startParty(list, copy)} onClose={() => setAsking(null)} /> : null}
+      {asking ? <TogetherDialog people={people.filter((p) => p.username.toLowerCase() !== me.username.toLowerCase())} friends={friends} onStart={(list, copy) => void startParty(list, copy)} onClose={() => setAsking(null)} /> : null}
       {arriving && profile && !playing ? <Arriving id={arriving} people={people} onJoin={() => joinParty(arriving)} onClose={() => { setArriving(null); partyInUrl = null; writePlace(readPlace().page, readPlace().title, false); }} /> : null}
       {invite && profile && !playing && !arriving ? <div className="kw-invite" role="status">
         <InviteFace person={people.find((x) => x.username.toLowerCase() === invite.host) ?? { username: invite.host, name: invite.hostName, picture: null }} />
@@ -415,7 +417,7 @@ function copyLater(text: Promise<string>): Promise<void> {
 }
 
 /* Start a party: a link to share, and anyone you look up by name. */
-function TogetherDialog({ people, onStart, onClose }: { people: Person[]; onStart: (usernames: string[], copy: boolean) => void; onClose: () => void }) {
+function TogetherDialog({ people, friends, onStart, onClose }: { people: Person[]; friends: string[]; onStart: (usernames: string[], copy: boolean) => void; onClose: () => void }) {
   const [chosen, setChosen] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [shown, setShown] = useState(false);
@@ -426,7 +428,9 @@ function TogetherDialog({ people, onStart, onClose }: { people: Person[]; onStar
     return () => { cancelAnimationFrame(frame); document.removeEventListener("keydown", key, true); };
   }, [onClose]);
   const q = query.trim().toLowerCase();
-  const found = q ? people.filter((p) => !chosen.includes(p.username.toLowerCase()) && (p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q))).slice(0, 5) : [];
+  /* Before anything is typed, their friends are suggested (the ones watched with lately first); typing finds anyone. */
+  const found = q ? people.filter((p) => !chosen.includes(p.username.toLowerCase()) && (p.name.toLowerCase().includes(q) || p.username.toLowerCase().includes(q))).slice(0, 5)
+    : friends.filter((u) => !chosen.includes(u.toLowerCase())).map((u) => people.find((p) => p.username.toLowerCase() === u.toLowerCase())).filter((p): p is Person => Boolean(p)).slice(0, 5);
   const picked = chosen.map((u) => people.find((p) => p.username.toLowerCase() === u)).filter((p): p is Person => Boolean(p));
   const field = useRef<HTMLInputElement>(null);
   const add = (u: string) => { setChosen((c) => [...c, u]); setQuery(""); field.current?.focus(); };

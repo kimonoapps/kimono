@@ -43,32 +43,32 @@ import app.kimono.watch.ui.clickableScaleClipped
 import kotlinx.coroutines.launch
 
 /**
- * Watch together from a title: who to ask first (the three you've watched
- * with most lately, a search for anyone else), then Start makes the party
- * with them invited and opens the player in it.
+ * Watch together from a title: who to ask first (your friends, the ones
+ * you've watched with lately first; a search for anyone else), then Start
+ * makes the party with them invited and opens the player in it.
  */
 @Composable
 fun TogetherStart(name: String, what: String?, titleId: String, season: Int?, episode: Int?, at: Double, onDismiss: () -> Unit, onStarted: (partyId: String) -> Unit) {
     val watch = LocalWatch.current
     val scope = rememberCoroutineScope()
     var people by remember { mutableStateOf<List<Person>>(emptyList()) }
-    var recent by remember { mutableStateOf<List<String>>(emptyList()) }
+    var friends by remember { mutableStateOf<List<String>>(emptyList()) }
     val picked = remember { mutableStateListOf<String>() }
     var query by remember { mutableStateOf("") }
     var starting by remember { mutableStateOf(false) }
     val me = watch.accounts.active.value?.username.orEmpty()
     LaunchedEffect(Unit) {
-        runCatching { watch.api.parties() }.onSuccess { a -> people = a.people.filter { !it.username.equals(me, true) }; recent = a.recent }
+        runCatching { watch.api.parties() }.onSuccess { a -> people = a.people.filter { !it.username.equals(me, true) }; friends = a.friends.map { it.lowercase() } }
     }
     val q = query.trim()
     val shown = if (q.isNotEmpty()) people.filter { it.shown.contains(q, true) || it.username.contains(q, true) }
-        else (people.filter { it.username.lowercase() in picked } + people.sortedBy { recent.indexOf(it.username.lowercase()).let { i -> if (i < 0) Int.MAX_VALUE else i } }).distinct().take(maxOf(3, picked.size))
+        else (people.filter { it.username.lowercase() in picked } + friends.mapNotNull { f -> people.firstOrNull { it.username.equals(f, true) } }).distinct().take(maxOf(5, picked.size))
 
     app.kimono.watch.ui.Dialog(onDismiss = { if (!starting) onDismiss() }) {
         Text("Watch together", style = ui(18, FontWeight.Bold))
         Text(listOfNotNull(name, what).joinToString(" · "), style = ui(14, color = Night.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp, bottom = 14.dp))
         Text("Who's joining?", style = ui(14, FontWeight.Bold, Night.fg2), modifier = Modifier.padding(bottom = 6.dp))
-        if (people.size > 3) Row(Modifier.padding(bottom = 6.dp).fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).background(Night.surface2)
+        Row(Modifier.padding(bottom = 6.dp).fillMaxWidth().height(44.dp).clip(RoundedCornerShape(10.dp)).background(Night.surface2)
             .border(1.dp, Night.line, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             I(Ic.search, 18.dp, Night.fg3)
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
@@ -77,6 +77,7 @@ fun TogetherStart(name: String, what: String?, titleId: String, season: Int?, ep
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search))
             }
         }
+        if (q.isEmpty() && shown.isEmpty()) Text("Search for someone to invite, or start on your own", style = ui(14, color = Night.fg3), modifier = Modifier.padding(vertical = 8.dp))
         if (q.isNotEmpty() && shown.isEmpty()) Text("No one by that name", style = ui(14, color = Night.fg3), modifier = Modifier.padding(vertical = 8.dp))
         shown.forEach { p ->
             val u = p.username.lowercase()
