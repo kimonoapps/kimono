@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { endAllSessions, endSession, listSessions, type AccountSession } from "@/lib/account";
 import { describeSession as describe } from "@kimono/account";
 import { accountContext } from "../account-frame";
+import { KimonoReaders } from "./kimono-readers";
 
 export const metadata = { title: "Signed-in devices · You" };
 
@@ -53,5 +54,6 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
     })}</div> : null}
     {sessions.length ? <form action={endEverywhere} style={{ marginTop: 28 }}><HoldSeal label="Hold to sign out everywhere" /></form> : null}
     {sessions.length ? <p style={{ textAlign: "center", marginTop: 10, fontSize: 14, color: "var(--on-surface-variant)" }}>Keeps this browser signed in.</p> : null}
+    <KimonoReaders username={session.user.username} />
   </div>;
 }

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { ROUTE_HEADER, ROUTE_KEY_HEADER, routeKey } from "./lib/route-mark";
 
 /**
  * /api/v1 answers the phone app from any origin when it shows a bearer token.
@@ -55,7 +56,11 @@ export function proxy(request: NextRequest) {
     return new NextResponse(null, { status: 204, headers: allow });
   }
   if (!request.headers.has("authorization") && request.nextUrl.pathname !== "/api/v1/sign-in") return NextResponse.next();
-  const response = NextResponse.next();
+  /* Which route a bearer request is for, vouched for by this process (lib/route-mark.ts). */
+  const forwarded = new Headers(request.headers);
+  forwarded.set(ROUTE_HEADER, `${request.method} ${request.nextUrl.pathname}`);
+  forwarded.set(ROUTE_KEY_HEADER, routeKey());
+  const response = NextResponse.next({ request: { headers: forwarded } });
   response.headers.set("Access-Control-Allow-Origin", "*");
   return response;
 }

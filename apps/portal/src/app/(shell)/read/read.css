@@ -1,0 +1,9 @@
+.kimono-read { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
+.kimono-read h1 { margin: 0 0 6px; }
+.kimono-read .lede { color: var(--on-surface-variant); margin: 0 0 22px; }
+.kimono-read ol { padding-left: 22px; display: grid; gap: 14px; margin: 0 0 26px; }
+.kimono-read .code { font: 600 32px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.2em; text-align: center; padding: 14px; border-radius: 14px; background: var(--surface-container, rgba(0,0,0,.05)); margin: 0 0 18px; }
+.kimono-read form { display: grid; gap: 12px; }
+.kimono-read input[type=text] { font: inherit; font-size: 20px; letter-spacing: 0.15em; text-transform: uppercase; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--outline, #bbb); background: transparent; color: inherit; }
+.kimono-read .go { display: block; text-align: center; padding: 14px; border-radius: 999px; background: var(--primary, #a84d63); color: var(--on-primary, #fff); text-decoration: none; font-weight: 600; }
+.kimono-read .note { font-size: 14px; color: var(--on-surface-variant); margin-top: 14px; }

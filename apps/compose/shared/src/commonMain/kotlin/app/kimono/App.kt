@@ -87,6 +87,7 @@ import app.kimono.data.AppUpdate
 import app.kimono.screens.SpaceScreen
 import app.kimono.screens.DevicesScreen
 import app.kimono.screens.PasswordScreen
+import app.kimono.screens.KimonoReadScreen
 import app.kimono.screens.SignInScreen
 import app.kimono.screens.YouScreen
 import app.kimono.screens.usePicture
@@ -364,6 +365,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }
+            composable("kimono-read") { KimonoReadScreen(session) { nav.popBackStack() } }
             composable("app/{id}") { backStack ->
                 val id = backStack.arguments?.read { getStringOrNull("id") } ?: ""
                 model.drive.launcher.collectAsState().value?.firstOrNull { it.id == id }?.let { found -> app.kimono.screens.PhoneAppScreen(found, platform, testflight) { nav.popBackStack() } }

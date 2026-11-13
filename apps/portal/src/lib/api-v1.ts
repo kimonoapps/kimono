@@ -6,6 +6,8 @@ import { unreachable } from "./account";
 import { verifyAppToken } from "./app-tokens";
 import { tooManyGuesses } from "./attempts";
 import { readStanding } from "./directory";
+import { TOKEN_PREFIX, verifyDeviceToken } from "./kimono-read";
+import { ROUTE_HEADER, ROUTE_KEY_HEADER, routeKey } from "./route-mark";
 import { signedOutBefore } from "./session-epochs";
 
 /**
@@ -40,12 +42,34 @@ export async function apiUser(): Promise<ApiUser | null> {
 async function appUser(authorization: string): Promise<ApiUser | null> {
   const bearer = /^Bearer\s+(\S+)$/i.exec(authorization);
   if (!bearer) return null;
+  if (bearer[1].startsWith(TOKEN_PREFIX)) return readerUser(bearer[1]);
   const token = await verifyAppToken(bearer[1]);
   if (!token) return null;
   if (token.signedInAt < await signedOutBefore(token.username)) return null;
   const standing = await readStanding(token.username);
   if (standing && !standing.active) return null;
   return { username: token.username, name: token.name, email: token.email, role: roleFromGroups(standing?.groups ?? token.groups), via: "app" };
+}
+
+/*
+ * A Kimono Read e-reader's device token (lib/kimono-read.ts). It may use Kimono
+ * Books and read Kimono Drive, and nothing else. The route comes from the
+ * proxy (proxy.ts), with a key only this server process knows, so a request
+ * that didn't pass through it (or claims another route) is refused.
+ */
+async function readerUser(raw: string): Promise<ApiUser | null> {
+  const h = await headers();
+  if (h.get(ROUTE_KEY_HEADER) !== routeKey()) return null;
+  const [method = "", path = ""] = (h.get(ROUTE_HEADER) ?? "").split(" ");
+  const books = path.startsWith("/api/v1/books/");
+  const driveRead = (method === "GET" || method === "HEAD") && path.startsWith("/api/v1/drive/");
+  if (!books && !driveRead) return null;
+  const token = verifyDeviceToken(raw);
+  if (!token) return null;
+  if (token.createdAt < await signedOutBefore(token.username)) return null;
+  const standing = await readStanding(token.username);
+  if (standing && !standing.active) return null;
+  return { username: token.username, role: roleFromGroups(standing?.groups ?? []), via: "app" };
 }
 
 /** Whether a request authenticates with the app's bearer token rather than a cookie. */

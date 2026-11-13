@@ -160,6 +160,7 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, friends
                 GroupItem("Name and email", detail = me?.email, icon = "person") { open("details") },
                 GroupItem("Password", icon = "lock") { open("password") },
                 GroupItem("Signed-in devices", icon = "phone") { open("devices") },
+                GroupItem("Set up Kimono Read", icon = "book") { open("kimono-read") },
             ))
             /* Administrators look after the household's apps from here, as under Admin on the website. */
             if (me?.role == "owner" || me?.role == "admin") {
