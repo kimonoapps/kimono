@@ -517,7 +517,9 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
     setSaving(state ?? "off");
     try {
       const { books } = await booksApi.setShelf(page.book.key, state);
-      setPage({ ...page, shelf: state ? { state, fraction: state === "read" ? 1 : state === "want" ? 0 : page.shelf?.fraction ?? 0, rating: page.shelf?.rating ?? null } : null });
+      /* The shelf as the server keeps it: back on Reading, that's the place you'd reached. */
+      const kept = books.find((b) => b.key === page.book.key);
+      setPage({ ...page, shelf: state ? { ...page.shelf, state, fraction: kept?.fraction ?? 0, rating: kept?.rating ?? page.shelf?.rating ?? null } : null });
       onPlaced(books, state ? `${stateLabel[state]} · ${page.book.title}` : "Taken off your shelf");
     } catch (e) {
       onPlaced(null, e instanceof BooksError ? e.message : "That didn't save.");

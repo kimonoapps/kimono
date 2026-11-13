@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS shelf (
 );
 CREATE INDEX IF NOT EXISTS shelf_recent ON shelf (username, updated_at DESC);
 CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, format TEXT);
+CREATE TABLE IF NOT EXISTS places (username TEXT NOT NULL, key TEXT NOT NULL, fraction REAL NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (username, key));
 CREATE TABLE IF NOT EXISTS devices (
   username TEXT NOT NULL, device TEXT NOT NULL, model TEXT NOT NULL,
   first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, PRIMARY KEY (username, device)
@@ -70,6 +71,8 @@ CREATE TABLE IF NOT EXISTS devices (
   if (!cols.includes("rating")) db.exec("ALTER TABLE shelf ADD COLUMN rating TEXT");
   /* And in your own words: a review, which your friends see beside your verdict. */
   if (!cols.includes("review")) db.exec("ALTER TABLE shelf ADD COLUMN review TEXT; ALTER TABLE shelf ADD COLUMN reviewed_at INTEGER;");
+  /* Your place in a book, kept apart from the shelf so moving it between shelves (or off) never loses it. Seeded once from the shelf. */
+  db.exec("INSERT OR IGNORE INTO places (username, key, fraction, updated_at) SELECT lower(username), key, fraction, updated_at FROM shelf WHERE fraction > 0 AND fraction < 0.98");
   db.exec("UPDATE OR IGNORE shelf SET username = lower(username) WHERE username != lower(username); UPDATE OR IGNORE devices SET username = lower(username) WHERE username != lower(username);");
 }
 
@@ -440,16 +443,36 @@ export function setRating(username: string, key: string, rating: Rating | null) 
 ON CONFLICT (username, key) DO UPDATE SET rating = excluded.rating, updated_at = excluded.updated_at`).run(username, key, now, now, rating);
 }
 
+/** Where you got to in a book, whatever shelf it's on now (or none): null if you never opened it. */
+export function placeOf(username: string, key: string): number | null {
+  const row = booksDb().prepare("SELECT fraction FROM places WHERE username = ? AND key = ?").get(who(username), key) as { fraction: number } | undefined;
+  return row ? row.fraction : null;
+}
+
+function keepPlace(username: string, key: string, fraction: number, now = Date.now()) {
+  booksDb().prepare("INSERT INTO places (username, key, fraction, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (username, key) DO UPDATE SET fraction = excluded.fraction, updated_at = excluded.updated_at")
+    .run(who(username), key, fraction, now);
+}
+
+/**
+ * Puts a book on a shelf (or off). Your place is never lost on the way:
+ * Read shows it finished and Want to read shows it unstarted, but back on
+ * Reading it opens where you left off (from the start if you'd finished).
+ */
 export function setShelf(username: string, key: string, state: ShelfState | null) {
   username = who(username);
   const db = booksDb();
+  const current = db.prepare("SELECT fraction FROM shelf WHERE username = ? AND key = ?").get(username, key) as { fraction: number } | undefined;
+  /* A place only the shelf knew (from before places were kept apart) is kept before the shelf moves. */
+  if (current && current.fraction > 0 && current.fraction < 0.98 && placeOf(username, key) === null) keepPlace(username, key, current.fraction);
   if (!state) { db.prepare("DELETE FROM shelf WHERE username = ? AND key = ?").run(username, key); return; }
   if (!getBook(key)) throw new BooksProblem("No such book.", 404);
   const now = Date.now();
-  const fraction = state === "read" ? 1 : state === "want" ? 0 : null;
+  const place = placeOf(username, key) ?? 0;
+  const fraction = state === "read" ? 1 : state === "want" ? 0 : place >= 0.98 ? 0 : place;
   db.prepare(`INSERT INTO shelf (username, key, state, fraction, added_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = coalesce(?, shelf.fraction), updated_at = excluded.updated_at`)
-    .run(username, key, state, fraction ?? 0, now, now, fraction);
+ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = excluded.fraction, updated_at = excluded.updated_at`)
+    .run(username, key, state, fraction, now, now);
 }
 
 /** Reading progress, from the web, the phone or the e-reader: reading until the end, then read. */
@@ -461,6 +484,7 @@ export async function setProgress(config: BooksConfig, username: string, ref: { 
   const f = Math.min(Math.max(fraction, 0), 1);
   const state: ShelfState = f >= 0.98 ? "read" : "reading";
   const now = Date.now();
+  keepPlace(username, key, f, now);
   booksDb().prepare(`INSERT INTO shelf (username, key, state, fraction, added_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = excluded.fraction, updated_at = excluded.updated_at`)
     .run(username, key, state, f, now, now);

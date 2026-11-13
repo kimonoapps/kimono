@@ -608,7 +608,11 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                     page = p.copy(shelf = if (on) null else (before ?: app.kimono.data.Mine(s)).copy(state = s, fraction = if (s == "read") 1.0 else before?.fraction ?: 0.0))
                     scope.launch {
                         runCatching { books.place(key, if (on) null else s) }
-                            .onSuccess { changed(); say(if (on) "Taken off your shelf" else "${Books.stateLabel(s)} · ${b.title}") }
+                            .onSuccess { shelf ->
+                                /* The shelf as the server keeps it: back on Reading, that's the place you'd reached. */
+                                shelf.firstOrNull { it.key == key }?.let { kept -> page = page?.let { pg -> pg.copy(shelf = pg.shelf?.copy(state = kept.state, fraction = kept.fraction)) } }
+                                changed(); say(if (on) "Taken off your shelf" else "${Books.stateLabel(s)} · ${b.title}")
+                            }
                             .onFailure { page = page?.copy(shelf = before); say("That didn't save.") }
                     }
                 }
