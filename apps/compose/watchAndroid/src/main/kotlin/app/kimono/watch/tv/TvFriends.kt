@@ -136,3 +136,41 @@ private fun FriendBlock(f: Friend, m: FriendsModel, go: Go) {
         }
     }
 }
+
+/** Friends on the TV's Home: who's watching now (Ask to join), then who watched lately, as a row. */
+@Composable
+fun TvHomeFriends(go: Go, modifier: Modifier = Modifier) {
+    val m = rememberFriends(go)
+    val shown = m.page?.friends.orEmpty().filter { it.sharing && (it.now != null || it.recent.isNotEmpty()) }.take(10)
+    if (shown.isEmpty()) return
+    Column(modifier.padding(bottom = 28.dp)) {
+        Text(if (shown.any { it.now != null }) "Friends watching now" else "Friends", style = ui(19, FontWeight.Bold), modifier = Modifier.padding(start = gutter, bottom = 10.dp))
+        LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(shown, key = { it.username }) { f ->
+                val now = f.now
+                val last = f.recent.firstOrNull()
+                val title = now?.title ?: last?.title
+                Column(Modifier.width(260.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Pill(onClick = { title?.let(go.open) }, shape = RoundedCornerShape(12.dp), scale = 1.04f) {
+                        Row(Modifier.fillMaxWidth().background(Night.surface, RoundedCornerShape(12.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box {
+                                PersonFace(f.person, f.username, 44.dp)
+                                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(14.dp).clip(CircleShape).background(Night.surface).padding(2.dp).clip(CircleShape).background(Night.suo))
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(f.shown, style = ui(16, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(listOfNotNull(title?.name, now?.label ?: last?.label).joinToString(" · ").ifEmpty { "Watched ${ago(last?.at ?: 0)}" },
+                                    style = ui(13, color = if (now != null) Night.fg else Night.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                    if (now != null) {
+                        val asking = m.askingOf(f)
+                        if (asking != null) TvButton("Asking…", null, { m.cancelAsk(asking) }, tonal = true)
+                        else TvButton("Ask to join", Ic.people, { m.askToJoin(f) })
+                    }
+                }
+            }
+        }
+    }
+}

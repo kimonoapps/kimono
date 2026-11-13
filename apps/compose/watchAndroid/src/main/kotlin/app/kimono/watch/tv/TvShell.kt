@@ -173,6 +173,7 @@ private fun TvHome(profile: Profile, vm: HomeViewModel, go: Go, active: Boolean,
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 64.dp)) {
         item("hero", contentType = "hero") { TvHero(home?.featured, home?.rows.orEmpty(), go, active && top, playFocus, nav, state.shelf) { vm.shelf(it) } }
         item("party") { app.kimono.watch.phone.PartyInvites(go, Modifier.padding(start = gutter, end = gutter, bottom = 24.dp).widthIn(max = 760.dp)) }
+        item("friends") { TvHomeFriends(go) }
         if (home == null) items(3) { TvSkeletonRow() }
         else {
             items(home.rows, key = { it.id + state.shelf }, contentType = { it.kind }) { row -> TvRail(row, profile, go) }

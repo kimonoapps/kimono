@@ -112,7 +112,7 @@ fun PhoneShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: L
     val scrolled by remember { derivedStateOf { homeScroll.firstVisibleItemIndex > 0 || homeScroll.firstVisibleItemScrollOffset > 120 } }
     Box(Modifier.fillMaxSize().background(Night.bg)) {
         when (page) {
-            "home" -> HomePage(profile, home, go, homeScroll, previewing)
+            "home" -> HomePage(profile, home, go, homeScroll, previewing) { page = "friends" }
             "hot" -> HotPage(hot, go)
             "downloads" -> DownloadsPage(go)
             "friends" -> FriendsPage(go)
@@ -165,7 +165,7 @@ private fun BottomBar(page: String, modifier: Modifier, onPage: (String) -> Unit
 /* ───── Home ───── */
 
 @Composable
-private fun HomePage(profile: Profile, vm: HomeViewModel, go: Go, scroll: androidx.compose.foundation.lazy.LazyListState, previewing: Boolean) {
+private fun HomePage(profile: Profile, vm: HomeViewModel, go: Go, scroll: androidx.compose.foundation.lazy.LazyListState, previewing: Boolean, onFriends: () -> Unit) {
     val state by vm.state.collectAsState()
     val home = state.home
     /* The hero's preview stops once Home is scrolled, so the rows have the phone to themselves. */
@@ -173,6 +173,7 @@ private fun HomePage(profile: Profile, vm: HomeViewModel, go: Go, scroll: androi
     LazyColumn(Modifier.fillMaxSize(), state = scroll, contentPadding = PaddingValues(bottom = navBottom + 96.dp)) {
         item("hero", contentType = "hero") { Hero(home?.featured, home?.rows.orEmpty(), go, previewing && top) }
         item("party") { PartyInvites(go, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 22.dp)) }
+        item("friends") { HomeFriends(go, onFriends, Modifier.padding(bottom = 22.dp)) }
         if (home == null) {
             if (state.problem != null) item { Text(state.problem!!, style = ui(15, color = Night.fg3), modifier = Modifier.padding(16.dp)) }
             else items(4) { SkeletonRow() }

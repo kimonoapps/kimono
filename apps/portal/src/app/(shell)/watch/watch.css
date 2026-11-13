@@ -911,3 +911,18 @@
 @keyframes kw-ask-in{from{transform:translate(-50%,-16px);opacity:0}}
 .kw .kw-ask{animation-name:kw-ask-in}
 @media (max-width:520px){.kw .kw-fr-top{flex-wrap:wrap}.kw .kw-fr-top .kw-btn{order:3;flex:1;justify-content:center}}
+/* Friends on Home */
+.kw .kw-home-fr h2{display:flex;align-items:baseline;gap:12px}
+.kw .kw-fr-all{font-size:14px;font-weight:400;color:var(--fg-2)}
+.kw .kw-fr-all:hover{color:var(--fg)}
+.kw .kw-hf{width:248px;display:grid;gap:10px;align-content:start;padding:12px;border-radius:14px;background:var(--surface-2)}
+.kw .kw-hf-body{display:grid;gap:8px;text-align:left;min-width:0}
+.kw .kw-hf-top{display:flex;align-items:center;gap:10px;min-width:0}
+.kw .kw-hf-top .kw-face-s{width:36px;height:36px;font-size:16px;border-radius:10px}
+.kw .kw-hf-top > span:last-child{display:grid;min-width:0}
+.kw .kw-hf-top b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kw .kw-hf-top small{font-size:12px;color:var(--fg-3)}
+.kw .kw-hf-top small.kw-on{color:var(--fg)}
+.kw .kw-hf-what{font-size:13px;color:var(--fg-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kw .kw-hf .kw-bar{position:relative;display:block;border-radius:2px;overflow:hidden}
+.kw .kw-hf .kw-btn{height:36px;font-size:14px;justify-content:center}

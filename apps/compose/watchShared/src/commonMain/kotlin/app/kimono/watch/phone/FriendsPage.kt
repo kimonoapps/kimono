@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -219,7 +220,7 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
     val now = f.now
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Night.surface2).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.clickableScaleClipped(RoundedCornerShape(12.dp), onRemove)) {
+            Box {
                 PersonFace(f.person, f.username, 44.dp)
                 if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(14.dp).clip(CircleShape).background(Night.surface2).padding(2.dp).clip(CircleShape).background(Night.suo))
             }
@@ -236,6 +237,7 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
                 if (asking != null) PaperButton("Asking…", null, { onCancel(asking) }, tonal = true, height = 38.dp)
                 else PaperButton("Ask to join", Ic.people, onAsk, height = 38.dp)
             }
+            FriendMenu(f, onRemove)
         }
         if (now != null) Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Night.bg).clickableScaleClipped(RoundedCornerShape(10.dp), { go.open(now.title) }),
             verticalAlignment = Alignment.CenterVertically) {
@@ -262,6 +264,19 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
             }
         }
         Spacer(Modifier.size(0.dp))
+    }
+}
+
+/** ··· on a friend: Remove (asked again in a dialog). */
+@Composable
+private fun FriendMenu(f: Friend, onRemove: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Box(Modifier.size(36.dp).clickableScaleClipped(CircleShape, { open = true }), contentAlignment = Alignment.Center) { I(Ic.dots, 22.dp, Night.fg2) }
+        androidx.compose.material3.DropdownMenu(open, { open = false }, containerColor = Night.surface3, shape = RoundedCornerShape(12.dp), modifier = Modifier.widthIn(min = 200.dp)) {
+            Text("Remove ${f.shown}", style = ui(15, FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), { open = false; onRemove() }).padding(horizontal = 14.dp, vertical = 12.dp))
+        }
     }
 }
 
@@ -299,5 +314,57 @@ internal fun hereText(friends: List<app.kimono.watch.model.FriendHere>): String 
         friends.size == 1 -> "$first is here"
         friends.size == 2 -> "$first and ${friends[1].shown} are here"
         else -> "$first and ${friends.size - 1} others are here"
+    }
+}
+
+/**
+ * Friends on Home: a row of who's watching now (each with Ask to join), then
+ * who watched lately. Nothing when no friend has watched anything. [onAll]
+ * opens the Friends tab.
+ */
+@Composable
+fun HomeFriends(go: Go, onAll: () -> Unit, modifier: Modifier = Modifier) {
+    val m = rememberFriends(go)
+    val shown = m.page?.friends.orEmpty().filter { it.sharing && (it.now != null || it.recent.isNotEmpty()) }.take(10)
+    if (shown.isEmpty()) return
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            val live = shown.count { it.now != null }
+            Text(if (live > 0) "Friends watching now" else "Friends", style = ui(18, FontWeight.Bold), modifier = Modifier.weight(1f))
+            Text("See all", style = ui(14, color = Night.fg2), modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickableScaleClipped(RoundedCornerShape(8.dp), onAll).padding(horizontal = 8.dp, vertical = 4.dp))
+        }
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(shown, key = { it.username }) { f -> HomeFriendCard(f, go, m) }
+        }
+    }
+}
+
+@Composable
+private fun HomeFriendCard(f: Friend, go: Go, m: FriendsModel) {
+    val now = f.now
+    val last = f.recent.firstOrNull()
+    val title = now?.title ?: last?.title
+    Column(Modifier.width(232.dp).clip(RoundedCornerShape(14.dp)).background(Night.surface2).clickableScaleClipped(RoundedCornerShape(14.dp), { title?.let(go.open) }).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box {
+                PersonFace(f.person, f.username, 36.dp)
+                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(3.dp, 3.dp).size(12.dp).clip(CircleShape).background(Night.surface2).padding(2.dp).clip(CircleShape).background(Night.suo))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(f.shown, style = ui(15, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (now != null) "Watching now" else "Watched ${ago(last?.at ?: 0)}", style = ui(12, color = if (now != null) Night.fg else Night.fg3), maxLines = 1)
+            }
+        }
+        if (title != null) Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(listOfNotNull(title.name, now?.label ?: last?.label).joinToString(" · "), style = ui(13, color = Night.fg2), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val progress = now?.progress ?: last?.progress?.takeIf { !last.finished }
+            if (progress != null) ProgressLine(progress.toFloat(), Modifier.fillMaxWidth().clip(RoundedCornerShape(2.dp)))
+        }
+        if (now != null) {
+            val asking = m.askingOf(f)
+            if (asking != null) PaperButton("Asking…", null, { m.cancelAsk(asking) }, Modifier.fillMaxWidth(), tonal = true, height = 36.dp)
+            else PaperButton("Ask to join", Ic.people, { m.askToJoin(f) }, Modifier.fillMaxWidth(), height = 36.dp)
+        }
     }
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { friendsApi, type Friend, type FriendHere, type FriendsPage as Page, type JoinAsk, type Person } from "./api";
-import { cx, faceOf, Img, initial, useWatch } from "./bits";
+import { cx, faceOf, Img, initial, Rail, useWatch } from "./bits";
 import { PosterCard } from "./home";
 import { Icon } from "./icons";
 import { screenId, together } from "./party";
@@ -39,7 +39,8 @@ export function InvisibleButton() {
   </button>;
 }
 
-export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
+/** Friends' page, asked again every 15 s; an ask to join followed every 2.5 s until answered (a yes goes to [onJoin]). */
+function useFriends(onJoin: (partyId: string) => void) {
   const watch = useWatch();
   const [page, setPage] = useState<Page | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -76,6 +77,11 @@ export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
     friendsApi.change(type, username).catch((error: unknown) => watch.toast(error instanceof Error ? error.message : "That didn't work.")).then(() => load());
   const ask = (f: Friend) => friendsApi.askToJoin(f.username).then(setAsking, (error: unknown) => watch.toast(error instanceof Error ? error.message : "That didn't send."));
   const cancel = (a: JoinAsk) => { setAsking(null); void friendsApi.cancel(a.id).catch(() => {}); };
+  return { page, problem, asking, change, ask, cancel };
+}
+
+export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
+  const { page, problem, asking, change, ask, cancel } = useFriends(onJoin);
 
   return <main className="kw-page kw-friends">
     <div className="kw-fr-head"><h1>Friends</h1><InvisibleButton /></div>
@@ -189,4 +195,31 @@ export function JoinAsks({ open, partyOf, where, onJoin }: { open: boolean; part
     <button className="kw-btn kw-tonal" onClick={() => void answer(false)}>Not now</button>
     <button className="kw-btn kw-primary" onClick={() => void answer(true)}><Icon name="group" />{busy ? "…" : "Let in"}</button>
   </div>;
+}
+
+/** Friends on Home: who's watching now (Ask to join), then who watched lately. Nothing until a friend has watched something. */
+export function HomeFriends({ onJoin, onAll }: { onJoin: (partyId: string) => void; onAll: () => void }) {
+  const watch = useWatch();
+  const { page, asking, ask, cancel } = useFriends(onJoin);
+  const shown = (page?.friends ?? []).filter((f) => f.sharing && (f.now || f.recent.length)).slice(0, 10);
+  if (!shown.length) return null;
+  return <section className="kw-row kw-home-fr">
+    <h2>{shown.some((f) => f.now) ? "Friends watching now" : "Friends"}<button className="kw-fr-all" onClick={onAll}>See all</button></h2>
+    <Rail label="Friends">{shown.map((f) => {
+      const now = f.now, last = f.recent[0];
+      const title = now?.title ?? last?.title;
+      const progress = now ? now.progress : last && !last.finished ? last.progress : null;
+      const mine = asking?.to === f.username ? asking : null;
+      return <div key={f.username} className="kw-hf">
+        <button className="kw-hf-body" onClick={() => title && watch.openTitle(title.id)}>
+          <span className="kw-hf-top"><span className={cx("kw-fr-face", now && "kw-live")}><Face person={f} /></span>
+            <span><b>{f.name || f.username}</b><small className={cx(now && "kw-on")}>{now ? "Watching now" : `Watched ${ago(last?.at ?? 0)}`}</small></span></span>
+          {title ? <span className="kw-hf-what">{[title.name, now?.label ?? last?.label].filter(Boolean).join(" · ")}</span> : null}
+          {progress !== null ? <span className="kw-bar"><i style={{ width: `${progress * 100}%` }} /></span> : null}
+        </button>
+        {now ? (mine ? <button className="kw-btn kw-tonal" onClick={() => cancel(mine)}>Asking…</button>
+          : <button className="kw-btn kw-primary" onClick={() => void ask(f)}><Icon name="group" />Ask to join</button>) : null}
+      </div>;
+    })}</Rail>
+  </section>;
 }

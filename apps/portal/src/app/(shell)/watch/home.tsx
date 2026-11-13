@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { labelOf, watchApi, minutesText, type Card, type ContinueCard, type Home, type Shelf, type TitleView } from "./api";
 import { CardArt, cx, Img, ListButton, RateButton, Rail, SkeletonRows, tagClass, TitleMark, Top10, useWatch } from "./bits";
 import { Icon } from "./icons";
 
 const chips: [Shelf, string][] = [["Series", "Series"], ["Film", "Films"], ["Anime", "Anime"]];
 
-export function HomePage({ home, filter, setFilter, chipsAway, more, onMore }: {
+export function HomePage({ home, filter, setFilter, chipsAway, more, onMore, friends }: {
+  /** Friends' row, under the hero. */
+  friends?: ReactNode;
   home: Home | null; filter: Shelf | null; setFilter: (shelf: Shelf | null) => void; chipsAway: boolean;
   /** The next page of rows is on its way; `onMore` asks for it. */
   more: boolean; onMore: () => void;
@@ -43,6 +45,7 @@ export function HomePage({ home, filter, setFilter, chipsAway, more, onMore }: {
       </> : <div className="kw-hero-card"><div className="kw-sk" style={{ position: "absolute", inset: 0, borderRadius: 0 }} /></div>}
     </section>
     <div className="kw-rows">
+      {friends}
       {!home ? <SkeletonRows count={4} /> : home.rows.map((row, i) => <section key={row.id} className="kw-row" style={{ animationDelay: `${i * 70}ms` }}>
         <h2>{row.kind === "continue" ? `Continue watching for ${watch.firstName}` : row.title}</h2>
         <Rail label={row.title}>
