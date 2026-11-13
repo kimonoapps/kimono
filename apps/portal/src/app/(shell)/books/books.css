@@ -451,14 +451,31 @@
 .kb .kb-reader-stage{height:100%;transition:opacity .18s var(--ease)}
 .kb .kb-reader-stage iframe{background:transparent!important;color-scheme:normal}
 .kb .kb-reader-stage.kb-turning{opacity:.35}
-.kb .kb-turn{height:100%;width:100%;display:grid;place-items:center;color:inherit;opacity:0;transition:opacity .25s var(--ease)}
+/* Always there, quietly: fuller on hover, and they fade with the bars when you've been still a while. */
+.kb .kb-turn{height:100%;width:100%;display:grid;place-items:center;color:inherit;opacity:.45;transition:opacity .25s var(--ease)}
+.kb .kb-calm .kb-turn{opacity:.18}
+.kb .kb-turn:focus-visible{opacity:.85}
 .kb .kb-turn svg{width:44px;height:44px;padding:10px;border-radius:50%;background:color-mix(in srgb,var(--paper-ink) 8%,transparent);fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.kb .kb-turn:hover{opacity:.85}
+.kb .kb-turn:hover,.kb .kb-calm .kb-turn:hover{opacity:.9}
 .kb .kb-reader-wait{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:16px;text-align:center;padding:24px;font-family:var(--display);font-size:17px;opacity:.85}
 .kb .kb-reader-ink{width:56px;height:56px}
 .kb .kb-reader-pdf{width:100%;height:100%;border:0;background:var(--paper)}
-.kb .kb-reader-bar{flex:1;height:3px;border-radius:2px;background:color-mix(in srgb,var(--paper-ink) 14%,transparent);overflow:hidden}
-.kb .kb-reader-bar span{display:block;height:100%;background:currentColor;border-radius:2px;transition:width .5s var(--ease)}
+/* The seek bar: thin until you reach for it, then thicker, with what's there floating above. */
+.kb .kb-seek{position:relative;flex:1;height:28px;display:flex;align-items:center;cursor:pointer;touch-action:none;outline:none}
+.kb .kb-seek-track{position:relative;flex:1;height:3px;border-radius:3px;background:color-mix(in srgb,var(--paper-ink) 14%,transparent);overflow:hidden;transition:height .2s var(--ease)}
+.kb .kb-seeking .kb-seek-track,.kb .kb-seek:focus-visible .kb-seek-track{height:7px}
+.kb .kb-seek-fill{position:absolute;inset:0 auto 0 0;background:currentColor;border-radius:3px;transition:width .35s var(--ease)}
+.kb .kb-seek-ghost{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--paper-ink) 18%,transparent)}
+.kb .kb-seek-thumb{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:currentColor;transform:scale(0);transition:transform .2s var(--spring-soft),left .35s var(--ease)}
+.kb .kb-seeking .kb-seek-thumb,.kb .kb-seek:focus-visible .kb-seek-thumb{transform:scale(1)}
+.kb .kb-seek-peek{position:absolute;bottom:calc(100% + 12px);width:300px;transform:translateX(-50%);padding:12px 14px;border-radius:16px;pointer-events:none;
+  background:var(--paper);color:var(--paper-ink);box-shadow:0 10px 30px rgb(0 0 0 / .28),0 0 0 1px color-mix(in srgb,var(--paper-ink) 10%,transparent);letter-spacing:0;opacity:1;animation:kb-peek .18s var(--ease-out)}
+.kb .kb-seek-peek b{display:flex;justify-content:space-between;gap:12px;font-size:13px;font-weight:700}
+.kb .kb-seek-peek b span{opacity:.6;font-weight:600;flex:none}
+.kb .kb-seek-peek p{margin:6px 0 0;font:400 13px/1.5 "Shippori Mincho",Georgia,serif;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;opacity:.85}
+.kb .kb-seek-wait{min-height:1.5em}
+@keyframes kb-peek{from{opacity:0;translate:0 4px}}
+.kb .kb-reader-foot:has(.kb-seeking){opacity:1}
 @media (max-width:699px){
   .kb .kb-reader-page{grid-template-columns:18px 1fr 18px}
   .kb .kb-turn svg{display:none}

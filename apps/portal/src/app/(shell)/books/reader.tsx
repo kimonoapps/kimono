@@ -28,6 +28,8 @@ type EpubBook = {
   loaded: { navigation: Promise<{ toc: NavItem[] }> };
   renderTo(el: HTMLElement, options: Record<string, unknown>): Rendition;
   locations: { generate(chars: number): Promise<string[]>; percentageFromCfi(cfi: string): number; cfiFromPercentage(p: number): string };
+  spine: { get(target: string): { href: string } | null };
+  getRange(cfi: string): Promise<Range>;
   destroy(): void;
 };
 
@@ -62,6 +64,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const rendition = useRef<Rendition | null>(null);
+  const opened = useRef<{ book: EpubBook; toc: NavItem[] } | null>(null);
   const [fraction, setFraction] = useState(startAt);
   const [chapter, setChapter] = useState("");
   const [ready, setReady] = useState(file.format === "pdf");
@@ -126,6 +129,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
         const toc = flatten((await book.loaded.navigation).toc ?? []);
         const r = book.renderTo(stage.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto", allowScriptedContent: false });
         rendition.current = r;
+        opened.current = { book, toc };
         for (const [name, p] of Object.entries(papers)) {
           r.themes.register(name, {
             html: { background: "transparent" },
@@ -156,7 +160,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
         if (!cancelled) setProblem("This book didn't open. The copy may be damaged; save it and try it elsewhere.");
       }
     })();
-    return () => { cancelled = true; rendition.current?.destroy(); rendition.current = null; book?.destroy(); };
+    return () => { cancelled = true; rendition.current?.destroy(); rendition.current = null; opened.current = null; book?.destroy(); };
   }, [file, opening, keys]);
 
   useEffect(() => {
@@ -171,6 +175,32 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
     document.body.style.overflow = "hidden";
     return () => { removeEventListener("keyup", keys); document.body.style.overflow = lock; };
   }, [keys]);
+
+  /* Seeking: what's at a point in the book (its chapter and a line of it), and going there. */
+  const peek = useCallback(async (f: number): Promise<{ chapter: string; text: string } | null> => {
+    const o = opened.current;
+    if (!o) return null;
+    const cfi = o.book.locations.cfiFromPercentage(Math.min(0.999, Math.max(0, f)));
+    if (!cfi) return null;
+    const href = o.book.spine.get(cfi)?.href?.split("#")[0] ?? "";
+    const chapter = o.toc.filter((t) => t.href.split("#")[0].endsWith(href) || href.endsWith(t.href.split("#")[0])).at(0)?.label.trim() ?? "";
+    let text = "";
+    try {
+      const range = await o.book.getRange(cfi);
+      const node = range.startContainer;
+      const el = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node as Element)?.closest("p, li, blockquote, h1, h2, h3, h4, div");
+      text = (el?.textContent ?? node.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
+    } catch { /* the line is a nicety */ }
+    return { chapter, text };
+  }, []);
+  const seek = useCallback((f: number) => {
+    const o = opened.current, r = rendition.current;
+    if (!o || !r) return;
+    // eslint-disable-next-line react-hooks/immutability -- only ever called from the seek bar's pointer and key handlers, never while rendering
+    moved.current = true;
+    const cfi = o.book.locations.cfiFromPercentage(Math.min(0.999, Math.max(0, f)));
+    if (cfi) void r.display(cfi);
+  }, []);
 
   const touch = useRef<number | null>(null);
   const paper = papers[look.paper];
@@ -211,9 +241,55 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
         {problem ? <div className="kb-reader-wait"><p>{problem}</p></div> : null}
       </div>}
     {file.format === "epub" ? <footer className="kb-reader-foot">
-      <span className="kb-reader-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)}><span style={{ width: `${fraction * 100}%` }} /></span>
+      <SeekBar fraction={fraction} ready={ready} peek={peek} onSeek={seek} />
       <span>{Math.round(fraction * 100)}%</span>
     </footer> : null}
   </div>;
   return host ? createPortal(view, host) : view;
+}
+
+/**
+ * The book's length as a bar you can use: hover anywhere for the chapter
+ * there and a line of it, click or drag to go. Arrow keys step it too.
+ */
+function SeekBar({ fraction, ready, peek, onSeek }: {
+  fraction: number; ready: boolean; peek: (f: number) => Promise<{ chapter: string; text: string } | null>; onSeek: (f: number) => void;
+}) {
+  const bar = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<{ f: number; x: number; w: number } | null>(null);
+  const [shown, setShown] = useState<{ f: number; chapter: string; text: string } | null>(null);
+  const [drag, setDrag] = useState<number | null>(null);
+  const asked = useRef(0);
+  const at = (clientX: number) => {
+    const box = bar.current?.getBoundingClientRect();
+    if (!box) return null;
+    const f = Math.min(1, Math.max(0, (clientX - box.left) / box.width));
+    return { f, x: f * box.width, w: box.width };
+  };
+  /* What's there, a beat after the pointer settles (each look loads a chapter, so not on every pixel). */
+  useEffect(() => {
+    if (!hover || !ready) return;
+    const ask = ++asked.current;
+    const t = setTimeout(() => { void peek(hover.f).then((p) => { if (p && ask === asked.current) setShown({ f: hover.f, ...p }); }); }, 90);
+    return () => clearTimeout(t);
+  }, [hover, ready, peek]);
+  const shownHere = shown && hover && Math.abs(shown.f - hover.f) < 0.03 ? shown : null;
+  const left = hover ? Math.min(Math.max(hover.x, 150), Math.max(150, hover.w - 150)) : 0;
+  const filled = drag ?? fraction;
+  return <div ref={bar} className={`kb-seek${hover ? " kb-seeking" : ""}`} role="slider" tabIndex={0} aria-label="Place in the book"
+    aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)} aria-valuetext={`${Math.round(fraction * 100)}%`}
+    onPointerMove={(e) => { const p = at(e.clientX); if (!p) return; setHover(p); if (drag !== null) setDrag(p.f); }}
+    onPointerLeave={() => { if (drag === null) { setHover(null); setShown(null); } }}
+    onPointerDown={(e) => { const p = at(e.clientX); if (!p) return; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* dragging just ends at the bar's edge */ } setDrag(p.f); setHover(p); }}
+    onPointerUp={(e) => { const p = at(e.clientX); if (p && drag !== null) onSeek(p.f); setDrag(null); if (e.pointerType !== "mouse") { setHover(null); setShown(null); } }}
+    onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); onSeek(fraction + (e.key === "ArrowRight" ? 0.02 : -0.02)); } }}>
+    <span className="kb-seek-track"><span className="kb-seek-fill" style={{ width: `${filled * 100}%` }} />
+      {hover ? <span className="kb-seek-ghost" style={{ width: `${hover.f * 100}%` }} /> : null}
+    </span>
+    <span className="kb-seek-thumb" style={{ left: `${filled * 100}%` }} />
+    {hover ? <div className="kb-seek-peek" style={{ left }}>
+      <b>{shownHere?.chapter || "\u00a0"}<span>{Math.round(hover.f * 100)}%</span></b>
+      {shownHere?.text ? <p>{shownHere.text}</p> : <p className="kb-seek-wait">{ready ? "\u2026" : ""}</p>}
+    </div> : null}
+  </div>;
 }
