@@ -4,6 +4,7 @@ package app.kimono.watch.data
 
 import app.kimono.watch.model.AccountProfile
 import app.kimono.watch.model.ApiFailure
+import app.kimono.watch.model.DeviceAnswer
 import app.kimono.watch.model.Discovery
 import app.kimono.watch.model.SignInConfig
 import app.kimono.watch.model.TokenAnswer
@@ -23,6 +24,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.Parameters
 import io.ktor.http.URLBuilder
 import io.ktor.http.isSuccess
+import io.ktor.http.takeFrom
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,6 +63,22 @@ data class Profile(
     val key get() = "$server|$username"
     val shown get() = name.ifBlank { username }
 }
+
+/**
+ * A TV waiting to be signed in from a phone: [code] is what the person enters
+ * at [address] ([link] already holds it, for the QR code).
+ */
+class Pairing internal constructor(
+    val server: String,
+    val code: String,
+    val address: String,
+    val link: String,
+    val expiresAt: Long,
+    internal val interval: Long,
+    internal val deviceCode: String,
+    internal val config: SignInConfig,
+    internal val tokenEndpoint: String,
+)
 
 sealed interface SignInNext {
     data object Done : SignInNext
@@ -135,18 +153,68 @@ class Accounts(val keeper: Keeper, val http: HttpClient) {
     private class Pending(val flow: SignInFlow, val server: String, val config: SignInConfig, val tokenEndpoint: String, val verifier: String, val state: String, val username: String, val password: String)
     private var pending: Pending? = null
 
-    /** Signs someone in with the username and password they typed; an authenticator app asks for its code next. */
-    suspend fun signIn(address: String, username: String, password: String): SignInNext {
+    private fun serverOf(address: String): String {
         val trimmed = address.trim().trimEnd('/')
         if (trimmed.isEmpty()) throw WatchProblem("Enter your Kimono's address.")
+        return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "https://$trimmed"
+    }
+
+    private suspend fun configOf(server: String): SignInConfig = try {
+        val response = http.get("$server/api/v1/sign-in")
+        if (!response.status.isSuccess()) throw WatchProblem(failureOf(response, "There's no Kimono at that address."))
+        json.decodeFromString<SignInConfig>(response.bodyAsText())
+    } catch (problem: WatchProblem) { throw problem } catch (_: Exception) { throw WatchProblem("There's no Kimono at that address.") }
+
+    /**
+     * Asks for a code a TV shows, so the person signs it in from their phone
+     * instead of typing a password with a remote.
+     */
+    suspend fun pair(address: String): Pairing {
+        val server = serverOf(address)
+        val config = configOf(server)
+        val discovery = try { discover(config.issuer) } catch (_: Exception) { throw WatchProblem("Kimono isn't answering. Try again in a moment.") }
+        val endpoint = discovery.deviceEndpoint ?: URLBuilder(config.issuer).takeFrom("/application/o/device/").buildString()
+        val got = try {
+            val response = http.submitForm(endpoint, Parameters.build {
+                append("client_id", config.clientId); append("scope", config.scopes.joinToString(" "))
+            })
+            if (response.status.value == 429) throw WatchProblem("Too many codes for now. Try again in a few minutes.")
+            json.decodeFromString<DeviceAnswer>(response.bodyAsText())
+        } catch (problem: WatchProblem) { throw problem } catch (_: Exception) { throw WatchProblem("Kimono isn't answering. Try again in a moment.") }
+        val code = got.userCode; val device = got.deviceCode
+        if (code == null || device == null) throw WatchProblem("This Kimono can't sign in a TV yet. Sign in with a password instead.")
+        val address = "${server.substringAfter("://")}/tv"
+        return Pairing(server, code, address, "$server/tv?code=$code", now() + got.expiresIn * 1000, got.interval.coerceIn(2, 30), device, config, discovery.tokenEndpoint)
+    }
+
+    /**
+     * Asks once whether the TV's code has been approved: true once it has
+     * and the person is signed in here, false while it's still waiting.
+     * Throws when the code ran out or was turned down.
+     */
+    suspend fun pairCheck(pairing: Pairing): Boolean {
+        val got = try {
+            tokens(pairing.tokenEndpoint, mapOf("grant_type" to "urn:ietf:params:oauth:grant-type:device_code", "client_id" to pairing.config.clientId, "device_code" to pairing.deviceCode))
+        } catch (_: Exception) { return false }
+        when (got.error) {
+            null -> {}
+            "authorization_pending", "slow_down" -> return false
+            "access_denied" -> throw WatchProblem("That sign-in was turned down.")
+            else -> throw WatchProblem("That code ran out.")
+        }
+        welcome(pairing.server, pairing.config, got)
+        return true
+    }
+
+    /** How often to ask while a TV waits. */
+    fun pairInterval(pairing: Pairing): Long = pairing.interval * 1000
+
+
+    suspend fun signIn(address: String, username: String, password: String): SignInNext {
+        val server = serverOf(address)
         if (username.isBlank()) throw WatchProblem("Enter your username.")
         if (password.isEmpty()) throw WatchProblem("Enter your password.")
-        val server = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) trimmed else "https://$trimmed"
-        val config = try {
-            val response = http.get("$server/api/v1/sign-in")
-            if (!response.status.isSuccess()) throw WatchProblem(failureOf(response, "There's no Kimono at that address."))
-            json.decodeFromString<SignInConfig>(response.bodyAsText())
-        } catch (problem: WatchProblem) { throw problem } catch (_: Exception) { throw WatchProblem("There's no Kimono at that address.") }
+        val config = configOf(server)
         val discovery = try { discover(config.issuer) } catch (_: Exception) { throw WatchProblem("Kimono isn't answering. Try again in a moment.") }
         val b64 = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
         val verifier = b64.encode(keeper.randomBytes(32))
@@ -190,16 +258,21 @@ class Accounts(val keeper: Keeper, val http: HttpClient) {
         val got = try {
             tokens(waiting.tokenEndpoint, mapOf("grant_type" to "authorization_code", "client_id" to waiting.config.clientId, "code" to code, "redirect_uri" to REDIRECT, "code_verifier" to waiting.verifier))
         } catch (_: Exception) { throw WatchProblem("Signing in didn't finish. Try again.") }
+        welcome(waiting.server, waiting.config, got, waiting.username)
+    }
+
+    /** Keeps a new sign-in's tokens as a profile on this device and makes it the one watching. */
+    private suspend fun welcome(server: String, config: SignInConfig, got: TokenAnswer, typed: String? = null) {
         val refresh = got.refreshToken
         val token = got.accessToken
         if (token == null || refresh == null) throw WatchProblem("Signing in didn't finish. Try again.")
-        var profile = Profile(waiting.server, waiting.config.issuer, waiting.config.clientId, refresh, waiting.username)
-        access[profile.key] = token to now() + got.expiresIn * 1000
+        val me = runCatching {
+            json.decodeFromString<AccountProfile>(http.get("$server/api/v1/me") { header(HttpHeaders.Authorization, "Bearer $token") }.bodyAsText())
+        }.getOrNull()
+        /* A TV never saw a username: without its name, the sign-in can't be told apart from anyone else's. */
+        val username = me?.username ?: typed ?: throw WatchProblem("Signing in didn't finish. Try again.")
         /* Their name and portrait, for the face on "Who's watching?". */
-        runCatching {
-            val me = json.decodeFromString<AccountProfile>(http.get("${waiting.server}/api/v1/me") { header(HttpHeaders.Authorization, "Bearer $token") }.bodyAsText())
-            profile = profile.copy(username = me.username, name = me.name, picture = me.picture)
-        }
+        val profile = Profile(server, config.issuer, config.clientId, refresh, username, me?.name ?: "", me?.picture)
         access[profile.key] = token to now() + got.expiresIn * 1000
         save(_profiles.value.orEmpty().filter { it.key != profile.key } + profile)
         choose(profile)

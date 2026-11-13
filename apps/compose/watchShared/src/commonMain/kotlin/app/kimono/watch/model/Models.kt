@@ -301,6 +301,17 @@ data class Discovery(
     @SerialName("authorization_endpoint") val authorizationEndpoint: String,
     @SerialName("token_endpoint") val tokenEndpoint: String,
     @SerialName("revocation_endpoint") val revocationEndpoint: String? = null,
+    @SerialName("device_authorization_endpoint") val deviceEndpoint: String? = null,
+)
+
+/** A TV's code, as the identity provider hands it out. */
+@Serializable
+data class DeviceAnswer(
+    @SerialName("device_code") val deviceCode: String? = null,
+    @SerialName("user_code") val userCode: String? = null,
+    @SerialName("expires_in") val expiresIn: Long = 600,
+    val interval: Long = 5,
+    val error: String? = null,
 )
 
 @Serializable

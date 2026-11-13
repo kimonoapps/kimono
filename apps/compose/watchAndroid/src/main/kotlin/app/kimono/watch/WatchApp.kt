@@ -61,7 +61,14 @@ class WatchApp : Application() {
             runCatching { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }, version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull().orEmpty(),
             /* "Remove animations" in Android's accessibility settings sets the animator scale to 0. */
-            reducedMotion = { android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f })
+            reducedMotion = { android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f },
+            /* The TV's sign-in QR code; the quiet zone is drawn by the paper around it. */
+            qr = { text ->
+                runCatching {
+                    val matrix = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, 0, 0, mapOf(com.google.zxing.EncodeHintType.MARGIN to 0))
+                    List(matrix.height) { y -> BooleanArray(matrix.width) { x -> matrix.get(x, y) } }
+                }.getOrNull()
+            })
     }
 
     private fun onMobileData(): Boolean {

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -65,7 +66,16 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.sp
 import app.kimono.watch.data.Accounts
+import app.kimono.watch.data.Pairing
+import app.kimono.watch.nowMs
+import kotlinx.coroutines.delay
 import app.kimono.watch.data.Profile
 import app.kimono.watch.data.SignInNext
 import app.kimono.watch.ink.InkLoader
@@ -170,7 +180,13 @@ fun Dialog(onDismiss: () -> Unit, content: @Composable () -> Unit) {
  * Kimono a connect link named ([server]); then a code if the account uses one.
  */
 @Composable
-fun SignInScreen(accounts: Accounts, tv: Boolean, server: String?, onDone: (Profile) -> Unit, onCancel: (() -> Unit)?) {
+fun SignInScreen(accounts: Accounts, tv: Boolean, server: String?, qr: (String) -> List<BooleanArray>? = { null }, onDone: (Profile) -> Unit, onCancel: (() -> Unit)?) {
+    /* A TV signs in from a phone: nobody should type a password with a remote. */
+    var withPassword by remember { mutableStateOf(!tv) }
+    if (!withPassword) {
+        TvSignIn(accounts, server, qr, onDone, onCancel, onPassword = { withPassword = true })
+        return
+    }
     val remembered = server ?: accounts.profiles.value.orEmpty().lastOrNull()?.server
     var custom by remember(server) { mutableStateOf(remembered != null && remembered.trimEnd('/') != DEFAULT_SERVER) }
     var address by remember(server) { mutableStateOf(remembered?.takeIf { custom }?.removePrefix("https://") ?: "") }
@@ -218,11 +234,117 @@ fun SignInScreen(accounts: Accounts, tv: Boolean, server: String?, onDone: (Prof
             }
             if (needCode) Quiet("Start again") { accounts.cancelSignIn(); needCode = false; problem = null }
             else Quiet(if (custom) "Use kimonolabs.dev" else "Use a different address") { custom = !custom; problem = null }
+            if (tv) Quiet("Sign in with your phone") { accounts.cancelSignIn(); withPassword = false; problem = null }
             if (onCancel != null) Quiet("Cancel") { accounts.cancelSignIn(); onCancel() }
             Text("Only the people on your Kimono can sign in.", style = ui(13, color = Night.fg3), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 18.dp))
         }
     }
     LaunchedEffect(needCode, custom) { runCatching { firstField.requestFocus() } }
+}
+
+/**
+ * A TV's sign-in: a QR code and a short code, approved on the person's phone
+ * (the Portal's /tv), while the TV waits and picks up its own sign-in. A new
+ * code comes by itself when one runs out.
+ */
+@Composable
+private fun TvSignIn(accounts: Accounts, server: String?, qr: (String) -> List<BooleanArray>?, onDone: (Profile) -> Unit, onCancel: (() -> Unit)?, onPassword: () -> Unit) {
+    val remembered = server ?: accounts.profiles.value.orEmpty().lastOrNull()?.server
+    var target by remember(server) { mutableStateOf(remembered ?: DEFAULT_SERVER) }
+    var typing by remember { mutableStateOf(false) }
+    var address by remember { mutableStateOf("") }
+    var pairing by remember { mutableStateOf<Pairing?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableStateOf(0) }
+    val firstAction = remember { FocusRequester() }
+    val addressField = remember { FocusRequester() }
+    LaunchedEffect(target, attempt, typing) {
+        pairing = null; problem = null
+        if (typing) return@LaunchedEffect
+        try {
+            var current = accounts.pair(target)
+            pairing = current
+            while (true) {
+                delay(accounts.pairInterval(current))
+                if (nowMs() > current.expiresAt - 5_000) { current = accounts.pair(target); pairing = current; continue }
+                if (accounts.pairCheck(current)) { accounts.active.value?.let(onDone); return@LaunchedEffect }
+            }
+        } catch (e: WatchProblem) { problem = e.message }
+    }
+    Box(Modifier.fillMaxSize().background(Night.bg).systemBarsPadding(), contentAlignment = Alignment.Center) {
+        Row(Modifier.padding(horizontal = 48.dp, vertical = 32.dp), horizontalArrangement = Arrangement.spacedBy(56.dp), verticalAlignment = Alignment.CenterVertically) {
+            /* The QR code on paper, or the bloom while there's none to show. */
+            Box(Modifier.size(260.dp).clip(RoundedCornerShape(16.dp)).background(if (pairing != null && !typing) Night.paper else Night.surface), contentAlignment = Alignment.Center) {
+                val modules = remember(pairing?.link) { pairing?.link?.let(qr) }
+                when {
+                    typing -> WatchBloom(96.dp)
+                    modules != null -> QrCode(modules, Modifier.size(228.dp))
+                    pairing != null -> WatchBloom(96.dp)
+                    problem == null -> InkLoader(size = 48.dp)
+                    else -> WatchBloom(96.dp)
+                }
+            }
+            Column(Modifier.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Brand(size = 30, bloom = 0.dp)
+                Spacer(Modifier.height(4.dp))
+                if (typing) {
+                    Text("Your Kimono’s address", style = ui(18, color = Night.fg2))
+                    Field(address, { address = it }, "Address", KeyboardType.Uri, done = { if (address.isNotBlank()) { target = address.trim(); typing = false } }, modifier = Modifier.focusRequester(addressField))
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PaperButton("Continue", null, { if (address.isNotBlank()) { target = address.trim(); typing = false } })
+                        PaperButton("Back", null, { typing = false }, tonal = true)
+                    }
+                } else {
+                    Text("Scan with your phone’s camera, or go to", style = ui(18, color = Night.fg2))
+                    val p = pairing
+                    Text(p?.address ?: "${target.substringAfter("://").trimEnd('/')}/tv", style = display(26, FontWeight.SemiBold))
+                    Text("and enter", style = ui(18, color = Night.fg2))
+                    Text(p?.code?.chunked(3)?.joinToString(" ") ?: "··· ··· ···", style = display(48, FontWeight.Bold, Night.blush).copy(letterSpacing = 2.sp))
+                    Spacer(Modifier.height(2.dp))
+                    val trouble = problem
+                    if (trouble != null) Text(trouble, style = ui(15, color = Night.blush))
+                    else if (p != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        InkLoader(size = 18.dp)
+                        Text("Waiting for your phone", style = ui(14, color = Night.fg3))
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.offset(x = (-12).dp)) {
+                        if (problem != null) Quiet("Try again", Modifier.focusRequester(firstAction)) { attempt++ }
+                        Quiet("Sign in with a password", if (problem == null) Modifier.focusRequester(firstAction) else Modifier) { onPassword() }
+                        Quiet(if (target.trimEnd('/') == DEFAULT_SERVER) "Use a different address" else "Use kimonolabs.dev") {
+                            if (target.trimEnd('/') == DEFAULT_SERVER) { address = ""; typing = true } else target = DEFAULT_SERVER
+                        }
+                        if (onCancel != null) Quiet("Cancel") { onCancel() }
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(typing, problem != null) { runCatching { if (typing) addressField.requestFocus() else firstAction.requestFocus() } }
+}
+
+/** A QR code, its modules square on paper. */
+@Composable
+private fun QrCode(modules: List<BooleanArray>, modifier: Modifier) {
+    Canvas(modifier) {
+        val n = modules.size
+        val cell = kotlin.math.floor(size.minDimension / n)
+        val start = kotlin.math.floor((size.minDimension - cell * n) / 2)
+        /* One path on whole pixels: squares drawn one by one leave hairlines between them. */
+        val path = Path()
+        modules.forEachIndexed { y, row ->
+            row.forEachIndexed { x, dark ->
+                if (dark) path.addRect(Rect(Offset(start + x * cell, start + y * cell), Size(cell, cell)))
+            }
+        }
+        drawPath(path, Night.ink)
+    }
+}
+
+@Composable
+private fun Quiet(label: String, modifier: Modifier, onClick: () -> Unit) {
+    Text(label, style = ui(14, FontWeight.Medium, Night.fg2), modifier = modifier.clickableScaleClipped(RoundedCornerShape(8.dp), onClick).padding(horizontal = 12.dp, vertical = 8.dp))
 }
 
 @Composable

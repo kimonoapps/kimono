@@ -76,4 +76,6 @@ dependencies {
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
     /* libass: anime subtitles drawn with their styles, signs and karaoke. */
     implementation("io.github.peerless2012:ass-media:0.5.1")
+    /* The TV's sign-in QR code. */
+    implementation("com.google.zxing:core:3.5.3")
 }

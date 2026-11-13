@@ -25,7 +25,13 @@ entries:
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       client_type: public
       client_id: kimono-app
-      grant_types: [authorization_code, refresh_token]
+      # The device code grant signs in a TV: it shows a code and a QR code,
+      # and the person approves it on their phone, so nobody types a password
+      # with a remote.
+      grant_types: [authorization_code, refresh_token, "urn:ietf:params:oauth:grant-type:device_code"]
+      # How long a TV's code (and a sign-in's authorisation code) stays good:
+      # long enough to find a phone and sign in on it.
+      access_code_validity: minutes=10
       # The Portal checks the app's access tokens against this provider's keys.
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
       # Short access, long refresh: a lost phone stops working within minutes

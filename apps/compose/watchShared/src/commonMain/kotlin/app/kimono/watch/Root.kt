@@ -134,7 +134,7 @@ fun WatchRoot(services: WatchServices, resumed: Int, connect: String?, tvShell: 
                 when (p) {
                     Phase.Loading -> Starting()
                     Phase.Profiles -> ProfilesScreen(accounts, services.tv, onChosen = { phase = Phase.Shell(it) }, onAdd = { phase = Phase.SignIn(false) })
-                    is Phase.SignIn -> SignInScreen(accounts, services.tv, p.server, onDone = { phase = Phase.Shell(it) }, onCancel = if (p.first) null else ({ phase = (p.back?.let { Phase.Shell(it) } ?: Phase.Profiles) }))
+                    is Phase.SignIn -> SignInScreen(accounts, services.tv, p.server, services.qr, onDone = { phase = Phase.Shell(it) }, onCancel = if (p.first) null else ({ phase = (p.back?.let { Phase.Shell(it) } ?: Phase.Profiles) }))
                     is Phase.Shell -> Signed(services, p.profile, resumed, tvShell, play, onProfiles = {
                         phase = when {
                             accounts.profiles.value.orEmpty().isEmpty() -> Phase.SignIn(true)

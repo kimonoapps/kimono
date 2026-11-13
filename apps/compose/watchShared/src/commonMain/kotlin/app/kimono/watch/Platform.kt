@@ -163,6 +163,8 @@ class WatchServices(
     val version: String = "",
     /** The device asks for less motion (Android's animation scale at 0, iOS's Reduce Motion). */
     val reducedMotion: () -> Boolean = { false },
+    /** A QR code's modules, row by row (true is dark), or null where the device can't make one. */
+    val qr: (String) -> List<BooleanArray>? = { null },
 ) {
     /** The person's preferences, read once signed in and kept as they change them. */
     val prefs = app.kimono.watch.ui.PrefsStore(api)

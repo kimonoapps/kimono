@@ -13,6 +13,20 @@ entries:
         name: Default - Authentication flow
       required: true
 
+  # Where a TV's code is entered (the Portal's /tv sends people here). It has
+  # no stages of its own: Authentik adds the code entry, then runs the app's
+  # consent, so the person sees what they're signing in before it does.
+  - id: kimono-device-code-flow
+    model: authentik_flows.flow
+    state: present
+    identifiers:
+      slug: kimono-device-code
+    attrs:
+      name: Kimono - Sign in a TV
+      title: Sign in on your TV
+      designation: stage_configuration
+      authentication: require_authenticated
+
   - id: kimono-local-brand
     model: authentik_brands.brand
     state: present
@@ -30,6 +44,7 @@ entries:
       flow_recovery: !Find [authentik_flows.flow, [slug, default-recovery-flow]]
       flow_unenrollment: !Find [authentik_flows.flow, [slug, default-unenrollment-flow]]
       flow_user_settings: !Find [authentik_flows.flow, [slug, default-user-settings-flow]]
+      flow_device_code: !KeyOf kimono-device-code-flow
       attributes:
         settings:
           locale: en
