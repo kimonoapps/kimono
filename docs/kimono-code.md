@@ -192,7 +192,7 @@ its state directory. A sandbox with a live preview sleeps like any other (see
 A node is shared with the Portal and the rest of the house, so each sandbox
 gets a share and only so many are awake at once. The node's flags set the
 defaults (`--cpus 1 --memory 2g --pids 1024 --awake-per-person 6
---awake-per-node 16 --disk-gb 10`); Code's settings in Applications override
+--awake-per-node 12 --disk-gb 10`); Code's settings in Applications override
 them, sent with every ensure.
 
 - **Each sandbox:** CPUs, memory with no swap on top (`--memory-swap` equals

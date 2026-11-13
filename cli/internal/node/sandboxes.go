@@ -442,7 +442,7 @@ func (m *Manager) sandboxesServe(args []string) error {
 	memory := flags.String("memory", "2g", "memory per sandbox, with no swap on top (Code's settings can change it)")
 	pids := flags.Int("pids", 1024, "processes per sandbox")
 	awakePerPerson := flags.Int("awake-per-person", 6, "sandboxes one person may have running or paused at once (Code's settings can change it)")
-	awakePerNode := flags.Int("awake-per-node", 16, "sandboxes running or paused at once on this node (Code's settings can change it)")
+	awakePerNode := flags.Int("awake-per-node", 12, "sandboxes running or paused at once on this node (Code's settings can change it)")
 	diskGB := flags.Int("disk-gb", 10, "disk each sandbox may use, in GB (Code's settings can change it)")
 	pauseAfter := flags.Duration("pause-after", time.Minute, "pause a sandbox after this long without use (it resumes instantly)")
 	stopAfter := flags.Duration("stop-after", 5*time.Minute, "stop a sandbox after this long without use (frees its memory; files kept)")

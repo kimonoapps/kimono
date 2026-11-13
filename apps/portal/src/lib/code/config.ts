@@ -52,7 +52,7 @@ export function codeConfig(settings: PlatformSettings) {
       cpus: whole(value("sandbox_cpus"), 1, 64, 0.25),
       memoryMb: Math.round(whole(value("sandbox_memory_gb"), 2, 256, 0.25) * 1024),
       awakePerPerson: Math.round(whole(value("awake_per_person"), 6, 100)),
-      awakePerNode: Math.round(whole(value("awake_per_node"), 16, 200)),
+      awakePerNode: Math.round(whole(value("awake_per_node"), 12, 200)),
       diskGb: Math.round(whole(value("sandbox_disk_gb"), 10, 4096)),
     },
     colors: instance?.colors,

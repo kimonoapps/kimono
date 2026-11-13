@@ -306,7 +306,7 @@ func (c *Config) defaults() error {
 		c.AwakePerPerson = 6
 	}
 	if c.AwakePerNode <= 0 {
-		c.AwakePerNode = 16
+		c.AwakePerNode = 12
 	}
 	if c.DiskGB <= 0 {
 		c.DiskGB = 10
