@@ -64,6 +64,10 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
   const [look, setLook] = useState(prefs.read);
   const [calm, setCalm] = useState(false);
   const [turning, setTurning] = useState(false);
+  /* Where to open, taken once: saving your place updates the shelf, and the
+     shelf's new place must not reopen the book (that looped, re-fetching the
+     file and jumping back each time). */
+  const [opening] = useState(startAt);
   const saved = useRef(startAt);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
@@ -129,7 +133,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
         r.themes.fontSize(`${now.size}%`);
         await book.locations.generate(1200);
         if (cancelled) return;
-        await r.display(startAt > 0 && startAt < 1 ? book.locations.cfiFromPercentage(startAt) : undefined);
+        await r.display(opening > 0 && opening < 1 ? book.locations.cfiFromPercentage(opening) : undefined);
         r.on("relocated", (...args: unknown[]) => {
           const loc = args[0] as { start?: { cfi?: string; href?: string }; atEnd?: boolean };
           if (!book || !loc.start?.cfi) return;
@@ -145,7 +149,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
       }
     })();
     return () => { cancelled = true; rendition.current?.destroy(); rendition.current = null; book?.destroy(); };
-  }, [file, startAt, keys]);
+  }, [file, opening, keys]);
 
   useEffect(() => {
     rendition.current?.themes.select(look.paper);
