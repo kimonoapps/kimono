@@ -109,19 +109,19 @@
 
 /* ═══════════════ The book ═══════════════ */
 /* Drawn in book3d.css, beside book3d.tsx, so a book looks the same wherever Kimono shows one. What follows is how it moves here. */
-/* Hover or focus: it turns to you and lifts. (The cover stays shut: swung open, the page showed past it like a misprint.) */
+/* Hover or focus: it turns to you, lifts, and its cover opens on the first page. */
 @media (hover:hover){
-  .kb button.kb-book:hover{--turn:0deg;--lift:-10px}
+  .kb button.kb-book:hover{--turn:0deg;--lift:-10px;--open:-28deg;--b-shade:1}
   .kb button.kb-book:hover::after{transform:translateX(0) scaleX(1.05);opacity:.75}
 }
-.kb button.kb-book:focus-visible{--turn:0deg;--lift:-10px;outline-offset:8px}
+.kb button.kb-book:focus-visible{--turn:0deg;--lift:-10px;--open:-22deg;--b-shade:1;outline-offset:8px}
 .kb button.kb-book:active{--lift:-4px}
 .kb .kb-still{--turn:14deg}
 .kb .kb-stage .kb-still{--turn:20deg}
 .kb .kb-hero-book button.kb-book{--turn:22deg}
 @media (prefers-reduced-motion:reduce){
   .kb .kb-book-body,.kb .kb-cover,.kb .kb-book::after{transition:none}
-  .kb button.kb-book:hover,.kb button.kb-book:focus-visible{--lift:0px}
+  .kb button.kb-book:hover,.kb button.kb-book:focus-visible{--open:0deg;--lift:0px;--b-shade:0}
 }
 
 /* ───── Shelves ───── */

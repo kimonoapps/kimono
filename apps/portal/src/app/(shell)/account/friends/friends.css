@@ -257,9 +257,9 @@ a.fr-tag { text-decoration: none; margin-top: 4px; }
 .fr-rated-up svg, .fr-rated-down svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .fr-rated-down { background: var(--sc-highest); color: var(--on-surface-variant); }
 
-/* Books on a profile are the books Books shows (book3d.css): standing turned on the shelf, turning to you on hover. */
+/* Books on a profile are the books Books shows (book3d.css): standing turned on the shelf, turning to you on hover with its cover opening. */
 .fr-tile .kb-book { --w: 132px; margin: 4px 0 10px; }
 .fr-tile .kb-book + .fr-rated { bottom: 16px; }
-@media (hover: hover) { .fr-tile > a:hover .kb-book { --turn: 0deg; --lift: -8px; } .fr-tile > a:hover .kb-book::after { transform: translateX(0) scaleX(1.05); opacity: .75; } }
+@media (hover: hover) { .fr-tile > a:hover .kb-book { --turn: 0deg; --lift: -8px; --open: -28deg; --b-shade: 1; } .fr-tile > a:hover .kb-book::after { transform: translateX(0) scaleX(1.05); opacity: .75; } }
 @media (max-width: 600px) { .fr-tile .kb-book { --w: 116px; } }
-@media (prefers-reduced-motion: reduce) { .fr-tile > a:hover .kb-book { --lift: 0px; } }
+@media (prefers-reduced-motion: reduce) { .fr-tile > a:hover .kb-book { --lift: 0px; --open: 0deg; --b-shade: 0; } }

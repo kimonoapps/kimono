@@ -3,6 +3,7 @@
  * 3D. Books shows it on its shelves, profiles on theirs. Its colours are its
  * own, so it looks the same on any page; Books adds how it turns and lifts.
  */
+@property --b-shade{syntax:"<number>";inherits:true;initial-value:0}
 .kb-book{--b-page:#FBF6EA;--b-page-ink:#3A3A30;--b-shadow:40 30 28;--b-spring:cubic-bezier(.3,1.25,.5,1);
   --b-display:var(--k-display,"Shippori Mincho",Georgia,serif);--b-ribbon:#A8475F;--b-mark:var(--k-app-accent,#5b6b3f);--b-on-mark:var(--k-on-accent,#fff)}
 .kb-book *,.kb-book *::before,.kb-book *::after{box-sizing:border-box}
@@ -31,7 +32,11 @@
   transform:translateX(calc(var(--d) / 2 - 3px)) rotateY(90deg);
   background:var(--b-page);background-image:repeating-linear-gradient(90deg,transparent 0 2px,rgb(0 0 0 / .07) 2px 3px)}
 /* The first page, found when the cover swings open. */
-.kb-leaf{transform:translateZ(calc(var(--d) / 2 - 1px));inset:3px 3px 3px 0;background:var(--b-page);color:var(--b-page-ink);
+/* The first page: set well back from the cover (a pixel apart, the two fought over which was in front), with the
+   block of pages showing at its edge and the cover's shadow falling on it as it opens. */
+.kb-leaf{transform:translateZ(calc(var(--d) / 2 - 4px));inset:3px 3px 3px 0;color:var(--b-page-ink);
+  background:linear-gradient(90deg,rgb(0 0 0 / calc(var(--b-shade,0) * .22)),transparent 45%),linear-gradient(270deg,rgb(0 0 0 / .1),transparent 7px),var(--b-page);
+  box-shadow:1px 0 0 rgb(0 0 0 / .1),2px 0 0 var(--b-page),3px 0 0 rgb(0 0 0 / .1),4px 0 0 var(--b-page);transition:--b-shade .7s;
   display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;padding:14% 12%;text-align:center}
 .kb-leaf-title{font-family:var(--b-display);font-weight:700;font-size:calc(var(--w) * .095);line-height:1.15;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .kb-leaf-author{font-size:calc(var(--w) * .07);opacity:.7}
