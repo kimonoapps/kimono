@@ -116,16 +116,17 @@ test('profiles: an app kept off your profile is hidden from friends, still shown
 });
 
 test('profiles: Books rows from the shelf — reading with how far, want to read, read', () => {
-  const book = (key, state, updatedAt, fraction = 0) => ({ key, title: key, authors: ['Sōseki'], cover: null, year: 1914, isbn: null, state, fraction, updatedAt });
+  const book = (key, state, updatedAt, fraction = 0, rating = null) => ({ key, title: key, authors: ['Sōseki'], cover: null, year: 1914, isbn: null, state, fraction, updatedAt, rating });
   const rows = booksSection.booksSectionsFrom([
-    book('ol:1', 'read', '2026-01-01'), book('ol:2', 'reading', '2026-02-01', .4), book('ol:3', 'read', '2026-03-01'), book('ol:4', 'want', '2026-01-05'),
+    book('ol:1', 'read', '2026-01-01', 1, 'love'), book('ol:5', 'read', '2026-01-02', 1, 'down'), book('ol:2', 'reading', '2026-02-01', .4), book('ol:3', 'read', '2026-03-01'), book('ol:4', 'want', '2026-01-05'),
   ]);
-  assert.deepEqual(rows.map((r) => r.kind), ['reading', 'want', 'read']);
+  assert.deepEqual(rows.map((r) => r.kind), ['reading', 'want', 'read', 'loved']);
+  assert.deepEqual(rows[3].items.map((i) => i.itemId), ['ol:1']);
   assert.equal(rows[0].items[0].href, '/books?b=ol%3A2');
   assert.equal(rows[1].items[0].progress, null);
   assert.equal(rows[0].items[0].progress, .4);
   assert.equal(rows[0].items[0].subtitle, 'Sōseki · 1914');
-  assert.deepEqual(rows[2].items.map((i) => i.itemId), ['ol:3', 'ol:1']);
+  assert.deepEqual(rows[2].items.map((i) => i.itemId), ['ol:3', 'ol:5', 'ol:1']);
 });
 
 test('recommendations: to friends only, again brings it back, put away or taken back', () => {

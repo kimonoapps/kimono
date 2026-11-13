@@ -8,10 +8,14 @@ import type { Section } from "./model";
  */
 export function booksSectionsFrom(shelf: ShelfItem[]): Section[] {
   const latest = [...shelf].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  const rows: [ShelfItem["state"], string][] = [["reading", "Reading now"], ["want", "Want to read"], ["read", "Read"]];
-  return rows.map(([state, title]) => ({
+  /* What they're on, then what they want, have read, and loved or liked (as Watch's rows are). */
+  const rows: [string, string, (b: ShelfItem) => boolean][] = [
+    ["reading", "Reading now", (b) => b.state === "reading"], ["want", "Want to read", (b) => b.state === "want"], ["read", "Read", (b) => b.state === "read"],
+    ["loved", "Loved", (b) => b.rating === "love"], ["liked", "Liked", (b) => b.rating === "up"],
+  ];
+  return rows.map(([state, title, has]) => ({
     app: "books", appName: "Books", kind: state, title,
-    items: latest.filter((b) => b.state === state).slice(0, 24).map((b) => ({
+    items: latest.filter(has).slice(0, 24).map((b) => ({
       app: "books", itemId: b.key, title: b.title,
       subtitle: [b.authors[0], b.year].filter(Boolean).join(" · ") || null,
       cover: b.cover, href: `/books?b=${encodeURIComponent(b.key)}`,
