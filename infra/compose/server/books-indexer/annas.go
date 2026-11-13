@@ -236,9 +236,9 @@ func openAAC(r io.Reader, name string) (io.ReadCloser, error) {
 }
 
 type aaRecord struct {
-	ID, Title, Publisher, Language string
-	Authors, ISBNs                 []string
-	Year                           int
+	ID, Title, Publisher, Language, Description string
+	Authors, ISBNs                              []string
+	Year                                        int
 }
 
 var yearPattern = regexp.MustCompile(`\b(1[4-9]\d\d|20\d\d)\b`)
@@ -255,7 +255,13 @@ func parseAACRecord(line []byte) (aaRecord, bool) {
 	if err := json.Unmarshal(line, &v); err != nil || v.AACID == "" || v.Metadata == nil {
 		return aaRecord{}, false
 	}
-	r := aaRecord{ID: clean(v.AACID)}
+	return pickBibliographic(clean(v.AACID), v.Metadata)
+}
+
+// pickBibliographic finds the usual bibliographic keys a few levels down
+// any record Anna's Archive serves. Only those keys are read.
+func pickBibliographic(id string, metadata map[string]any) (aaRecord, bool) {
+	r := aaRecord{ID: id}
 	seenISBN := map[string]bool{}
 	var walk func(m map[string]any, depth int)
 	walk = func(m map[string]any, depth int) {
@@ -276,6 +282,10 @@ func parseAACRecord(line []byte) (aaRecord, bool) {
 			case key == "author" || key == "authors" || key == "creator" || key == "creators" || key == "author_name" || key == "author_best":
 				if len(r.Authors) == 0 {
 					r.Authors = cleanAll(stringsOf(val))
+				}
+			case key == "description" || key == "stripped_description_best" || key == "synopsis" || key == "overview":
+				if r.Description == "" {
+					r.Description = truncate(first(val), 8000)
 				}
 			case key == "publisher" || key == "publishers" || key == "publisher_best":
 				if r.Publisher == "" {
@@ -298,7 +308,7 @@ func parseAACRecord(line []byte) (aaRecord, bool) {
 			}
 		}
 	}
-	walk(v.Metadata, 0)
+	walk(metadata, 0)
 	r.Title = truncate(r.Title, 2000)
 	if r.Title == "" && len(r.ISBNs) == 0 {
 		return aaRecord{}, false

@@ -337,6 +337,17 @@ services:
       KIMONO_PORTAL_URL: http://portal:3000
       KIMONO_BOOKS_AA_TORRENTS_URL: ${BOOKS_AA_TORRENTS_URL:-}
       KIMONO_BOOKS_AA_GROUPS: ${BOOKS_AA_GROUPS:-}
+      # Live lookups when the catalog has nothing (or nothing fresh) for a
+      # book. Open Library always; the rest only when set. The Anna's Archive
+      # cookie is a member's session, for metadata pages without bot checks.
+      KIMONO_BOOKS_GOOGLE_KEY: ${BOOKS_GOOGLE_KEY:-}
+      KIMONO_BOOKS_HARDCOVER_TOKEN: ${BOOKS_HARDCOVER_TOKEN:-}
+      KIMONO_BOOKS_AA_BASE: ${BOOKS_AA_BASE:-}
+      KIMONO_BOOKS_AA_COOKIE: ${BOOKS_AA_COOKIE:-}
+      KIMONO_BOOKS_AA_RECORD_PATH: ${BOOKS_AA_RECORD_PATH:-}
+      # "off" skips the monthly Open Library dump (~150 GB): the catalog then
+      # grows only from what people look up.
+      KIMONO_BOOKS_OPENLIBRARY_DUMP: ${BOOKS_OPENLIBRARY_DUMP:-on}
     depends_on:
       books-db:
         condition: service_healthy

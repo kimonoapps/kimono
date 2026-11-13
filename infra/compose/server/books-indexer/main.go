@@ -23,6 +23,10 @@ type config struct {
 	DatabaseURL, Key, Dir, PortalURL, AATorrentsURL string
 	AAGroups                                        []string
 	Every                                           time.Duration
+	// Live lookups (live.go): each source is used only when it is set up.
+	GoogleKey, HardcoverToken      string
+	AABase, AACookie, AARecordPath string
+	OpenLibraryDump                bool
 }
 
 func env(key, fallback string) string {
@@ -47,15 +51,26 @@ func loadConfig() config {
 		PortalURL:   strings.TrimRight(env("KIMONO_PORTAL_URL", "http://portal:3000"), "/"),
 		// Anna's Archive moves between domains; set this when it does. Empty
 		// leaves Anna's Archive out.
-		AATorrentsURL: env("KIMONO_BOOKS_AA_TORRENTS_URL", ""),
-		AAGroups:      groups,
-		Every:         time.Duration(max(hours, 1)) * time.Hour,
+		AATorrentsURL:  env("KIMONO_BOOKS_AA_TORRENTS_URL", ""),
+		AAGroups:       groups,
+		Every:          time.Duration(max(hours, 1)) * time.Hour,
+		GoogleKey:      env("KIMONO_BOOKS_GOOGLE_KEY", ""),
+		HardcoverToken: env("KIMONO_BOOKS_HARDCOVER_TOKEN", ""),
+		// A member's session cookie for Anna's Archive, so its pages answer
+		// without bot checks. The path is where it serves an ISBN's record as JSON.
+		AABase:       strings.TrimRight(env("KIMONO_BOOKS_AA_BASE", ""), "/"),
+		AACookie:     env("KIMONO_BOOKS_AA_COOKIE", ""),
+		AARecordPath: env("KIMONO_BOOKS_AA_RECORD_PATH", "/db/aarecord_elasticsearch/isbndb:{isbn}.json"),
+		// The Open Library dump is a fast local base; off, the catalog grows
+		// only from what people look up.
+		OpenLibraryDump: env("KIMONO_BOOKS_OPENLIBRARY_DUMP", "on") == "on",
 	}
 }
 
 func main() {
 	once := flag.Bool("once", false, "check every source once, then exit")
 	list := flag.Bool("list", false, "list Anna's Archive metadata collections and exit")
+	probe := flag.String("probe", "", "ask every live source about an ISBN (or a search) and print what each answers")
 	flag.Parse()
 	cfg := loadConfig()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -66,6 +81,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		return
+	}
+	if *probe != "" {
+		probeSources(ctx, cfg, *probe)
 		return
 	}
 	if cfg.DatabaseURL == "" || cfg.Key == "" {
@@ -79,12 +98,18 @@ func main() {
 	}
 	defer pool.Close()
 	st := &status{Phase: "starting", Since: time.Now()}
+	lv, err := newLive(ctx, pool, cfg)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	if *once {
 		cycle(ctx, pool, cfg, st)
 		return
 	}
-	server := &http.Server{Addr: ":8080", Handler: routes(pool, cfg, st), ReadHeaderTimeout: 10 * time.Second}
+	go lv.heal(ctx)
+	server := &http.Server{Addr: ":8080", Handler: routes(pool, lv, cfg, st), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -128,8 +153,10 @@ func connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
 
 // cycle brings every source up to date, one at a time.
 func cycle(ctx context.Context, pool *pgxpool.Pool, cfg config, st *status) {
-	if err := syncOpenLibrary(ctx, pool, cfg, st); err != nil && ctx.Err() == nil {
-		st.fail(fmt.Errorf("Open Library: %w", err))
+	if cfg.OpenLibraryDump {
+		if err := syncOpenLibrary(ctx, pool, cfg, st); err != nil && ctx.Err() == nil {
+			st.fail(fmt.Errorf("Open Library: %w", err))
+		}
 	}
 	if cfg.AATorrentsURL != "" {
 		if err := syncAnnasArchive(ctx, pool, cfg, st); err != nil && ctx.Err() == nil {
@@ -230,7 +257,7 @@ func listCollections(ctx context.Context, cfg config) error {
 	return nil
 }
 
-func routes(pool *pgxpool.Pool, cfg config, st *status) http.Handler {
+func routes(pool *pgxpool.Pool, lv *live, cfg config, st *status) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
 	authed := func(h http.HandlerFunc) http.HandlerFunc {
@@ -269,11 +296,11 @@ func routes(pool *pgxpool.Pool, cfg config, st *status) http.Handler {
 			return
 		}
 		if isbn := normalizeISBN(q); isbn != "" {
-			books, err := byISBN(r.Context(), pool, isbn)
+			books, err := lookupISBN(r.Context(), pool, lv, isbn)
 			respond(w, map[string]any{"books": books}, err)
 			return
 		}
-		books, err := search(r.Context(), pool, q, min(max(limit, 1), 50))
+		books, err := searchAll(r.Context(), pool, lv, q, min(max(limit, 1), 50))
 		respond(w, map[string]any{"books": books}, err)
 	}))
 	mux.HandleFunc("GET /isbn/{isbn}", authed(func(w http.ResponseWriter, r *http.Request) {
@@ -282,7 +309,7 @@ func routes(pool *pgxpool.Pool, cfg config, st *status) http.Handler {
 			http.Error(w, "not an ISBN", http.StatusBadRequest)
 			return
 		}
-		books, err := byISBN(r.Context(), pool, isbn)
+		books, err := lookupISBN(r.Context(), pool, lv, isbn)
 		respond(w, map[string]any{"books": books}, err)
 	}))
 	return mux

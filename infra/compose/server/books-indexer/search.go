@@ -11,16 +11,46 @@ import (
 // book is one search result: an Open Library work, or a record from one of
 // Anna's Archive's catalog collections (source "aa:<collection>").
 type book struct {
-	Source    string   `json:"source"`
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	Subtitle  string   `json:"subtitle,omitempty"`
-	Authors   []string `json:"authors"`
-	Year      string   `json:"year,omitempty"`
-	Publisher string   `json:"publisher,omitempty"`
-	ISBNs     []string `json:"isbns,omitempty"`
-	Cover     string   `json:"cover,omitempty"`
-	Editions  int      `json:"editions,omitempty"`
+	Source      string   `json:"source"`
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Subtitle    string   `json:"subtitle,omitempty"`
+	Authors     []string `json:"authors"`
+	Year        string   `json:"year,omitempty"`
+	Publisher   string   `json:"publisher,omitempty"`
+	ISBNs       []string `json:"isbns,omitempty"`
+	Cover       string   `json:"cover,omitempty"`
+	Editions    int      `json:"editions,omitempty"`
+	Genres      []string `json:"genres,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Pages       int      `json:"pages,omitempty"`
+	Rating      float64  `json:"rating,omitempty"`
+	Ratings     int      `json:"ratings,omitempty"`
+	Readers     int      `json:"readers,omitempty"`
+}
+
+// searchAll answers from what is stored, and asks the live sources first
+// when that is thin; what they find is kept for next time.
+func searchAll(ctx context.Context, pool *pgxpool.Pool, lv *live, q string, limit int) ([]book, error) {
+	stored, _ := search(ctx, pool, q, limit) // no dump loaded is fine
+	cached, _ := cachedSearch(ctx, pool, q, limit)
+	if lv != nil {
+		lv.lookupSearch(ctx, q, limit, len(stored)+len(cached))
+		cached, _ = cachedSearch(ctx, pool, q, limit)
+	}
+	// Live records first: they carry ratings, readers and genres.
+	return append(cached, stored...), nil
+}
+
+// lookupISBN is byISBN plus the live sources on a miss or a stale record.
+func lookupISBN(ctx context.Context, pool *pgxpool.Pool, lv *live, isbn string) ([]book, error) {
+	stored, _ := byISBN(ctx, pool, isbn)
+	cached, _ := cachedByISBN(ctx, pool, isbn)
+	if lv != nil {
+		lv.lookupISBN(ctx, isbn, len(stored)+len(cached))
+		cached, _ = cachedByISBN(ctx, pool, isbn)
+	}
+	return append(cached, stored...), nil
 }
 
 func coverURL(id *int64) string {
