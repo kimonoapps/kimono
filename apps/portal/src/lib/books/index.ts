@@ -1,0 +1,392 @@
+import "server-only";
+
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { apiError } from "../api-v1";
+import { getPlatformSettings } from "../settings";
+import { stateDir } from "../state";
+import { annas } from "./annas";
+import { booksConfig, type BooksConfig } from "./config";
+import { BooksProblem, dedupe, emptyBook, identity, merge, normalizeIsbn, sourceOf, type Book, type Row, type ShelfItem, type ShelfState } from "./model";
+import { googleBooks, hardcover, openLibrary, type LiveSource } from "./sources";
+
+export * from "./model";
+
+/*
+ * 本 Kimono Books, server side. Nothing is downloaded in bulk: a book is
+ * looked up live the first time anyone needs it (Open Library, Google Books,
+ * Hardcover, Anna's Archive's metadata), kept in books.db, and kept fresh:
+ * records are checked again after a month, and a lookup that found nothing
+ * is tried again after a day, a week, then monthly.
+ */
+
+const root = join(stateDir, "books");
+const g = globalThis as unknown as { kimonoBooks?: DatabaseSync };
+
+const DAY = 24 * 60 * 60 * 1000;
+const staleAfter = 30 * DAY;
+const searchFresh = 7 * DAY;
+const retryAfter = (tries: number) => tries <= 1 ? DAY : tries === 2 ? 7 * DAY : 30 * DAY;
+
+export function booksDb(): DatabaseSync {
+  if (!g.kimonoBooks) {
+    mkdirSync(root, { recursive: true, mode: 0o700 });
+    const db = new DatabaseSync(join(root, "books.db"));
+    db.exec(`
+PRAGMA journal_mode = WAL;
+CREATE TABLE IF NOT EXISTS records (
+  key TEXT PRIMARY KEY, data TEXT NOT NULL, identity TEXT NOT NULL,
+  readers INTEGER NOT NULL DEFAULT 0, checked_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS records_identity ON records (identity);
+CREATE INDEX IF NOT EXISTS records_checked ON records (checked_at);
+CREATE TABLE IF NOT EXISTS isbns (isbn TEXT NOT NULL, key TEXT NOT NULL, PRIMARY KEY (isbn, key));
+CREATE VIRTUAL TABLE IF NOT EXISTS records_fts USING fts5 (key UNINDEXED, title, authors, genres, tokenize = 'unicode61 remove_diacritics 2');
+CREATE TABLE IF NOT EXISTS genres (key TEXT NOT NULL, genre TEXT NOT NULL, PRIMARY KEY (genre, key));
+CREATE TABLE IF NOT EXISTS lookups (kind TEXT NOT NULL, query TEXT NOT NULL, found INTEGER NOT NULL, tries INTEGER NOT NULL, next_try INTEGER NOT NULL, PRIMARY KEY (kind, query));
+CREATE TABLE IF NOT EXISTS shelf (
+  username TEXT NOT NULL, key TEXT NOT NULL, state TEXT NOT NULL, fraction REAL NOT NULL DEFAULT 0,
+  added_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (username, key)
+);
+CREATE INDEX IF NOT EXISTS shelf_recent ON shelf (username, updated_at DESC);
+CREATE TABLE IF NOT EXISTS devices (
+  username TEXT NOT NULL, device TEXT NOT NULL, model TEXT NOT NULL,
+  first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, PRIMARY KEY (username, device)
+);
+`);
+    g.kimonoBooks = db;
+  }
+  return g.kimonoBooks;
+}
+
+/* ── Keeping records ───────────────────────────────────────────────────── */
+
+const readBook = (data: string): Book => ({ ...emptyBook("", ""), ...JSON.parse(data) as Book });
+
+export function getBook(key: string): Book | null {
+  const row = booksDb().prepare("SELECT data FROM records WHERE key = ?").get(key) as { data: string } | undefined;
+  return row ? readBook(row.data) : null;
+}
+
+function checkedAt(key: string): number {
+  const row = booksDb().prepare("SELECT checked_at FROM records WHERE key = ?").get(key) as { checked_at: number } | undefined;
+  return row?.checked_at ?? 0;
+}
+
+/** Keeps what a source said, filling in what was already known about the book. */
+export function save(books: Book[]) {
+  const db = booksDb();
+  const now = Date.now();
+  const put = db.prepare("INSERT INTO records (key, data, identity, readers, checked_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (key) DO UPDATE SET data = excluded.data, identity = excluded.identity, readers = excluded.readers, checked_at = excluded.checked_at");
+  const dropFts = db.prepare("DELETE FROM records_fts WHERE key = ?");
+  const putFts = db.prepare("INSERT INTO records_fts (key, title, authors, genres) VALUES (?, ?, ?, ?)");
+  const putIsbn = db.prepare("INSERT OR IGNORE INTO isbns (isbn, key) VALUES (?, ?)");
+  const dropGenres = db.prepare("DELETE FROM genres WHERE key = ?");
+  const putGenre = db.prepare("INSERT OR IGNORE INTO genres (key, genre) VALUES (?, ?)");
+  db.exec("BEGIN");
+  try {
+    for (const fresh of books) {
+      const known = getBook(fresh.key);
+      const book = known ? { ...merge(fresh, known), description: fresh.description || known.description } : fresh;
+      put.run(book.key, JSON.stringify(book), identity(book), book.readers, now);
+      dropFts.run(book.key);
+      putFts.run(book.key, `${book.title} ${book.subtitle}`, book.authors.join(" "), book.genres.join(" "));
+      for (const isbn of book.isbns) putIsbn.run(isbn, book.key);
+      dropGenres.run(book.key);
+      for (const genre of book.genres) putGenre.run(book.key, genre.toLowerCase());
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/* ── Sources ───────────────────────────────────────────────────────────── */
+
+export function sourcesFor(config: BooksConfig): LiveSource[] {
+  const out: LiveSource[] = [openLibrary];
+  if (config.googleKey) out.push(googleBooks(config.googleKey));
+  if (config.hardcoverToken) out.push(hardcover(config.hardcoverToken));
+  if (config.annas) out.push(annas(config.annas.url, config.annas.key));
+  return out;
+}
+
+/** Asks every source at once; what any of them finds is kept. */
+async function ask(sources: LiveSource[], call: (s: LiveSource) => Promise<Book[]>): Promise<{ books: Book[]; failed: boolean }> {
+  const results = await Promise.allSettled(sources.map((s) => call(s)));
+  const books: Book[] = [];
+  let failures = 0;
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") books.push(...r.value);
+    else { failures++; console.warn(`books: ${sources[i].name}: ${r.reason instanceof Error ? r.reason.message : r.reason}`); }
+  });
+  if (books.length) save(books);
+  return { books, failed: failures === sources.length };
+}
+
+function due(kind: string, query: string): boolean {
+  const row = booksDb().prepare("SELECT next_try FROM lookups WHERE kind = ? AND query = ?").get(kind, query) as { next_try: number } | undefined;
+  return !row || Date.now() >= row.next_try;
+}
+
+function note(kind: string, query: string, found: boolean) {
+  const db = booksDb();
+  const row = db.prepare("SELECT tries FROM lookups WHERE kind = ? AND query = ?").get(kind, query) as { tries: number } | undefined;
+  const tries = found ? 0 : (row?.tries ?? 0) + 1;
+  const wait = found ? (kind === "search" ? searchFresh : staleAfter) : retryAfter(tries);
+  db.prepare("INSERT INTO lookups (kind, query, found, tries, next_try) VALUES (?, ?, ?, ?, ?) ON CONFLICT (kind, query) DO UPDATE SET found = excluded.found, tries = excluded.tries, next_try = excluded.next_try")
+    .run(kind, query, found ? 1 : 0, tries, Date.now() + wait);
+}
+
+/* ── Lookups ───────────────────────────────────────────────────────────── */
+
+function keysForIsbn(isbn: string): string[] {
+  return (booksDb().prepare("SELECT key FROM isbns WHERE isbn = ?").all(isbn) as { key: string }[]).map((r) => r.key);
+}
+
+/** Every book with this ISBN, asking the sources when nothing kept is fresh. */
+export async function byIsbn(config: BooksConfig, raw: string): Promise<Book[]> {
+  const isbn = normalizeIsbn(raw);
+  if (!isbn) throw new BooksProblem("That isn't an ISBN.", 400);
+  const keys = keysForIsbn(isbn);
+  const fresh = keys.some((k) => Date.now() - checkedAt(k) < staleAfter);
+  if (!fresh && due("isbn", isbn)) {
+    const { books, failed } = await ask(sourcesFor(config), (s) => s.byIsbn(isbn).then((found) => found.map((b) => ({ ...b, isbns: [...new Set([isbn, ...b.isbns])] }))));
+    if (!failed) note("isbn", isbn, books.length + keys.length > 0);
+  }
+  return dedupe(keysForIsbn(isbn).map(getBook).filter((b): b is Book => Boolean(b)));
+}
+
+const ftsQuery = (q: string) => q.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 0).slice(0, 8).map((w) => `"${w}"*`).join(" ");
+
+function searchKept(q: string, limit: number): Book[] {
+  const match = ftsQuery(q);
+  if (!match) return [];
+  const rows = booksDb().prepare(`SELECT r.data FROM records_fts f JOIN records r ON r.key = f.key
+WHERE records_fts MATCH ? ORDER BY (bm25(records_fts, 0, 10, 4, 1) - log(r.readers + 2)) LIMIT ?`).all(match, limit * 3) as { data: string }[];
+  return rows.map((r) => readBook(r.data));
+}
+
+/** Search: what's kept, plus the sources when that's thin or a week old. */
+export async function search(config: BooksConfig, q: string, limit = 30): Promise<Book[]> {
+  const query = q.trim().slice(0, 200);
+  if (!query) return [];
+  if (normalizeIsbn(query)) return byIsbn(config, query);
+  const kept = dedupe(searchKept(query, limit));
+  const key = query.toLowerCase();
+  if (kept.length < limit / 2 || due("search", key)) {
+    /* Anna's search is for the books nothing else knows: only when the rest found few. */
+    const sources = sourcesFor(config);
+    const first = sources.filter((s) => s.name !== "Anna's Archive");
+    let { books, failed } = await ask(first, (s) => s.search(query, limit));
+    const annasSource = sources.find((s) => s.name === "Anna's Archive");
+    if (annasSource && books.length < 3) {
+      const more = await ask([annasSource], (s) => s.search(query, 8));
+      books = [...books, ...more.books];
+      failed = failed && more.failed;
+    }
+    if (!failed) note("search", key, books.length > 0);
+  }
+  return dedupe(searchKept(query, limit)).filter((b) => b.cover || b.isbns.length || b.authors.length).slice(0, limit);
+}
+
+/** A book's page: the record, filled in from its source when it's thin, and more like it. */
+export async function bookPage(config: BooksConfig, key: string): Promise<{ book: Book; byAuthor: Book[]; similar: Book[] }> {
+  if (!sourceOf(key)) throw new BooksProblem("No such book.", 404);
+  let book = getBook(key);
+  if (!book) {
+    /* An address from elsewhere (a link, the e-reader): look it up by what the key says. */
+    if (key.startsWith("ol:")) {
+      const found = await openLibrary.query({ q: `key:/works/${key.slice(3)}`, limit: "1" }).catch(() => []);
+      if (found.length) save(found);
+    } else if (key.startsWith("aa:isbndb:")) {
+      await byIsbn(config, key.slice("aa:isbndb:".length)).catch(() => []);
+    }
+    book = getBook(key);
+    if (!book) throw new BooksProblem("No such book.", 404);
+  }
+  /* Thin: no description or genres yet. Open Library's work page has both. */
+  if (key.startsWith("ol:") && (!book.description || !book.genres.length)) {
+    const work = await openLibrary.work(key.slice(3)).catch(() => null);
+    if (work) {
+      book = { ...book, description: book.description || work.description, genres: book.genres.length ? book.genres : work.genres, cover: book.cover ?? work.cover };
+      save([book]);
+    }
+  }
+  /* The same book from the other sources fills in what this one lacks. */
+  const twins = (booksDb().prepare("SELECT data FROM records WHERE identity = ? AND key != ?").all(identity(book), key) as { data: string }[]).map((r) => readBook(r.data));
+  for (const twin of twins) book = merge(book, twin);
+  if (!book.description && book.isbns[0] && due("fill", key)) {
+    const { books } = await ask(sourcesFor(config).filter((s) => s.name !== "Open Library"), (s) => s.byIsbn(book!.isbns[0]));
+    for (const b of books) if (identity(b) === identity(book)) book = merge(book, b);
+    note("fill", key, Boolean(book.description));
+  }
+  const large = book.cover?.replace("-M.jpg", "-L.jpg") ?? null;
+  const author = book.authors[0];
+  const byAuthor = author ? dedupe(searchKept(author, 20)).filter((b) => b.key !== key && identity(b) !== identity(book!) && b.authors.includes(author) && b.cover).slice(0, 12) : [];
+  const genre = book.genres[0]?.toLowerCase();
+  const similar = genre ? dedupe((booksDb().prepare(`SELECT r.data FROM genres x JOIN records r ON r.key = x.key WHERE x.genre = ? AND x.key != ? ORDER BY r.readers DESC LIMIT 40`).all(genre, key) as { data: string }[])
+    .map((r) => readBook(r.data))).filter((b) => b.cover && !b.authors.some((a) => book!.authors.includes(a)) && identity(b) !== identity(book!)).slice(0, 16) : [];
+  return { book: { ...book, cover: large }, byAuthor, similar };
+}
+
+/* ── Home ──────────────────────────────────────────────────────────────── */
+
+const shelves: { id: string; title: string; subject: string }[] = [
+  { id: "fantasy", title: "Fantasy", subject: "fantasy" },
+  { id: "science-fiction", title: "Science fiction", subject: "science_fiction" },
+  { id: "mystery", title: "Mystery & crime", subject: "mystery_and_detective_stories" },
+  { id: "romance", title: "Romance", subject: "romance" },
+  { id: "thriller", title: "Thrillers", subject: "thrillers" },
+  { id: "classics", title: "Classics", subject: "classic_literature" },
+  { id: "history", title: "History", subject: "history" },
+  { id: "lives", title: "Lives", subject: "biography" },
+  { id: "manga", title: "Manga", subject: "manga" },
+  { id: "philosophy", title: "Philosophy", subject: "philosophy" },
+  { id: "poetry", title: "Poetry", subject: "poetry" },
+  { id: "young-adult", title: "Young adult", subject: "young_adult_fiction" },
+];
+
+const homeCache = globalThis as unknown as { kimonoBooksHome?: { rows: Row[]; at: number } };
+const homeFresh = 6 * 60 * 60 * 1000;
+
+/** Home's shelves: trending this week, then genres, most read first. A book sits on one genre shelf. */
+export async function homeRows(): Promise<Row[]> {
+  const cached = homeCache.kimonoBooksHome;
+  if (cached && Date.now() - cached.at < homeFresh) return cached.rows;
+  const [trending, ...byGenre] = await Promise.allSettled([openLibrary.trending(), ...shelves.map((s) => openLibrary.subject(s.subject, 30))]);
+  const rows: Row[] = [];
+  const all: Book[] = [];
+  if (trending.status === "fulfilled") { all.push(...trending.value); rows.push({ id: "trending", title: "Trending this week", books: dedupe(trending.value).slice(0, 24) }); }
+  const seen = new Set<string>();
+  byGenre.forEach((r, i) => {
+    if (r.status !== "fulfilled") return;
+    all.push(...r.value);
+    const books = dedupe(r.value).filter((b) => b.cover && !seen.has(identity(b)));
+    for (const b of books) seen.add(identity(b));
+    if (books.length >= 6) rows.push({ id: shelves[i].id, title: shelves[i].title, books: books.slice(0, 24) });
+  });
+  if (all.length) save(all);
+  if (rows.length) homeCache.kimonoBooksHome = { rows, at: Date.now() };
+  return rows.length ? rows : cached?.rows ?? [];
+}
+
+/* ── Shelves ───────────────────────────────────────────────────────────── */
+
+type ShelfRow = { key: string; state: ShelfState; fraction: number; updated_at: number };
+
+export function listShelf(username: string): ShelfItem[] {
+  const rows = booksDb().prepare("SELECT key, state, fraction, updated_at FROM shelf WHERE username = ? ORDER BY updated_at DESC").all(username) as ShelfRow[];
+  return rows.flatMap((r) => {
+    const b = getBook(r.key);
+    return b ? [{ key: r.key, title: b.title, authors: b.authors, cover: b.cover, year: b.year, isbn: b.isbns[0] ?? null, state: r.state, fraction: r.fraction, updatedAt: new Date(r.updated_at).toISOString() }] : [];
+  });
+}
+
+export function shelfStateOf(username: string, key: string): { state: ShelfState; fraction: number } | null {
+  return booksDb().prepare("SELECT state, fraction FROM shelf WHERE username = ? AND key = ?").get(username, key) as { state: ShelfState; fraction: number } | undefined ?? null;
+}
+
+export function setShelf(username: string, key: string, state: ShelfState | null) {
+  const db = booksDb();
+  if (!state) { db.prepare("DELETE FROM shelf WHERE username = ? AND key = ?").run(username, key); return; }
+  if (!getBook(key)) throw new BooksProblem("No such book.", 404);
+  const now = Date.now();
+  const fraction = state === "read" ? 1 : state === "want" ? 0 : null;
+  db.prepare(`INSERT INTO shelf (username, key, state, fraction, added_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = coalesce(?, shelf.fraction), updated_at = excluded.updated_at`)
+    .run(username, key, state, fraction ?? 0, now, now, fraction);
+}
+
+/** Reading progress, from the web, the phone or the e-reader: reading until the end, then read. */
+export async function setProgress(config: BooksConfig, username: string, ref: { key?: string; isbn?: string }, fraction: number) {
+  let key = ref.key && getBook(ref.key) ? ref.key : null;
+  if (!key && ref.isbn) key = (await byIsbn(config, ref.isbn))[0]?.key ?? null;
+  if (!key) throw new BooksProblem("No such book.", 404);
+  const f = Math.min(Math.max(fraction, 0), 1);
+  const state: ShelfState = f >= 0.98 ? "read" : "reading";
+  const now = Date.now();
+  booksDb().prepare(`INSERT INTO shelf (username, key, state, fraction, added_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = excluded.fraction, updated_at = excluded.updated_at`)
+    .run(username, key, state, f, now, now);
+  return { key, state, fraction: f };
+}
+
+/* ── Kimono Read devices ───────────────────────────────────────────────── */
+
+export type ReadDevice = { device: string; model: string; firstSeen: string; lastSeen: string };
+
+/**
+ * A Kimono Read e-reader says so on every call: `X-Kimono-Device:
+ * kimono-read/<model>; id=<device id>`. Whoever it's signed in as owns one,
+ * which their profile shows with a badge.
+ */
+export function noteDevice(request: Request, username: string) {
+  const header = request.headers.get("x-kimono-device") ?? "";
+  const m = /^kimono-read\/([a-z0-9._-]{1,32})(?:;\s*id=([A-Za-z0-9._:-]{1,64}))?$/i.exec(header.trim());
+  if (!m) return;
+  const now = Date.now();
+  booksDb().prepare(`INSERT INTO devices (username, device, model, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (username, device) DO UPDATE SET model = excluded.model, last_seen = excluded.last_seen`)
+    .run(username, m[2] ?? m[1], m[1].toLowerCase(), now, now);
+}
+
+export function readDevices(username: string): ReadDevice[] {
+  const rows = booksDb().prepare("SELECT device, model, first_seen, last_seen FROM devices WHERE username = ? ORDER BY first_seen").all(username) as { device: string; model: string; first_seen: number; last_seen: number }[];
+  return rows.map((r) => ({ device: r.device, model: r.model, firstSeen: new Date(r.first_seen).toISOString(), lastSeen: new Date(r.last_seen).toISOString() }));
+}
+
+/** For the profile's badge: since when this person has had a Kimono Read, or null. */
+export function kimonoReadSince(username: string): string | null {
+  return readDevices(username)[0]?.firstSeen ?? null;
+}
+
+/* ── Keeping it fresh ──────────────────────────────────────────────────── */
+
+const healing = globalThis as unknown as { kimonoBooksHealed?: number };
+
+/**
+ * A little upkeep on the back of requests (at most hourly): month-old records
+ * on someone's shelf are checked again, and misses whose wait is over are retried.
+ */
+export function heal(config: BooksConfig) {
+  if (healing.kimonoBooksHealed && Date.now() - healing.kimonoBooksHealed < 60 * 60 * 1000) return;
+  healing.kimonoBooksHealed = Date.now();
+  const db = booksDb();
+  const stale = db.prepare(`SELECT DISTINCT r.key, r.data FROM records r JOIN shelf s ON s.key = r.key WHERE r.checked_at < ? LIMIT 25`).all(Date.now() - staleAfter) as { key: string; data: string }[];
+  const misses = db.prepare("SELECT query FROM lookups WHERE kind = 'isbn' AND found = 0 AND next_try < ? LIMIT 25").all(Date.now()) as { query: string }[];
+  void (async () => {
+    for (const { data } of stale) {
+      const book = readBook(data);
+      if (book.isbns[0]) { db.prepare("UPDATE records SET checked_at = 0 WHERE key = ?").run(book.key); await byIsbn(config, book.isbns[0]).catch(() => []); }
+      db.prepare("UPDATE records SET checked_at = ? WHERE key = ? AND checked_at = 0").run(Date.now(), book.key);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    for (const { query } of misses) {
+      await byIsbn(config, query).catch(() => []);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  })();
+}
+
+/* ── Requests ──────────────────────────────────────────────────────────── */
+
+export async function booksSettings(): Promise<BooksConfig> {
+  return booksConfig(await getPlatformSettings());
+}
+
+/** Runs a Books request, turning refusals into the JSON errors /api/v1 answers with. */
+export async function books(work: (config: BooksConfig) => Promise<Response> | Response): Promise<Response> {
+  try {
+    const config = await booksSettings();
+    if (!config.enabled) return apiError(404, "Books isn't switched on.");
+    heal(config);
+    return await work(config);
+  } catch (error) {
+    if (error instanceof BooksProblem) return apiError(error.status, error.message);
+    console.error("books:", error);
+    return apiError(502, "Books couldn't reach its sources. Try again in a moment.");
+  }
+}

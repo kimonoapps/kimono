@@ -1,0 +1,65 @@
+{
+  "apiVersion": "apps.kimono.dev/v1alpha1",
+  "kind": "AppDefinition",
+  "metadata": {
+    "id": "kimono-books",
+    "name": "Kimono Books",
+    "shortName": "Books",
+    "description": "Find books, keep what you're reading, and see what friends read.",
+    "category": "Media",
+    "version": "0.1.0",
+    "icon": "icon.svg",
+    "colors": [
+      "#5b6b3f",
+      "#1f2416",
+      "#c9d6a8"
+    ],
+    "glyph": "book"
+  },
+  "spec": {
+    "integration": "native",
+    "portalPath": "/books",
+    "services": [],
+    "volumes": [],
+    "configuration": [
+      {
+        "key": "google_key",
+        "label": "Google Books key",
+        "kind": "secret",
+        "group": "sources",
+        "target": "settings",
+        "description": "From Google Cloud \u2192 APIs & Services \u2192 Credentials, with the Books API enabled. Finds more books, especially smaller and foreign ones."
+      },
+      {
+        "key": "hardcover_token",
+        "label": "Hardcover token",
+        "kind": "secret",
+        "group": "sources",
+        "target": "settings",
+        "description": "From hardcover.app \u2192 Settings \u2192 API. Adds readers' ratings and genres."
+      },
+      {
+        "key": "annas_url",
+        "label": "Anna's Archive address",
+        "kind": "text",
+        "group": "sources",
+        "target": "settings",
+        "description": "The address you use for Anna's Archive, such as https://annas-archive.example. For books nothing else knows."
+      },
+      {
+        "key": "annas_key",
+        "label": "Anna's Archive secret key",
+        "kind": "secret",
+        "group": "sources",
+        "target": "settings",
+        "description": "Your member account's secret key."
+      }
+    ],
+    "managedEnvironment": [],
+    "defaultNetworkPolicy": {
+      "internetAccess": true,
+      "allowedApps": []
+    },
+    "setupReady": true
+  }
+}
