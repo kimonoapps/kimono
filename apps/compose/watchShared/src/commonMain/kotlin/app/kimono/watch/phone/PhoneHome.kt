@@ -98,6 +98,8 @@ class Go(
     /** Watch Together: start a party on this title (from [at] seconds), or join one. */
     val together: (id: String, season: Int?, episode: Int?, at: Double) -> Unit = { _, _, _, _ -> },
     val join: (partyId: String) -> Unit = {},
+    /** A friend's list and ratings. */
+    val friend: (app.kimono.watch.model.Person) -> Unit = {},
 )
 
 val statusTop @Composable get() = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()

@@ -69,6 +69,7 @@ import app.kimono.watch.data.Profile
 import app.kimono.watch.model.Card
 import app.kimono.watch.model.Row as WatchRow
 import app.kimono.watch.phone.ComingArticle
+import app.kimono.watch.phone.FriendTasteScreen
 import app.kimono.watch.phone.Go
 import app.kimono.watch.phone.RankLine
 import app.kimono.watch.phone.SearchScreen
@@ -130,6 +131,7 @@ fun TvShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: List
                 is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(app.api, app.toasts, s.id) }, go, s.top, onClose = onBack, downloads = app.downloads, wide = true)
                 Screen.Search -> SearchScreen(entry.vm { SearchViewModel(app.api) }, go, onClose = onBack, tv = true)
                 Screen.Settings -> SettingsScreen(onClose = onBack, onProfiles = onProfiles, tv = true)
+                is Screen.Friend -> FriendTasteScreen(s, go, onClose = onBack, wide = true)
                 null -> Box(Modifier) {}
             }
         }

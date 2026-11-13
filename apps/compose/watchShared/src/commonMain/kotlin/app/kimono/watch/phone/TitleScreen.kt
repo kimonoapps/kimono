@@ -177,6 +177,7 @@ private fun Head(page: TitlePage, vm: TitleViewModel, go: Go, top: Int?, dl: Map
             }
             page.tracker?.let { Tracker(page) }
             if (page.friends.isNotEmpty()) FriendsHere(page.friends, t.isFilm)
+            FriendRatingsLine(page.friendRatings)
             Text(t.overview, style = ui(15).copy(lineHeight = 24.sp))
             Actions(page, vm, go, dl, downloads)
         }

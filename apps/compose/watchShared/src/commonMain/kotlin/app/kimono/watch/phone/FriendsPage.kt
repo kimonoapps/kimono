@@ -249,6 +249,9 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
     val now = f.now
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Night.surface2).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            /* Their face and name open their list and ratings. */
+            Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).clickableScaleClipped(RoundedCornerShape(10.dp), { go.friend(f.person) }),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box {
                 PersonFace(f.person, f.username, 44.dp)
                 if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(1.dp, 1.dp).size(14.dp).clip(CircleShape).background(Night.surface2).padding(2.dp).clip(CircleShape).background(Night.suo))
@@ -262,11 +265,12 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
                     else -> "Hasn't watched anything yet"
                 }, style = ui(13, color = if (now != null) Night.fg else Night.fg3), maxLines = 1)
             }
+            }
             if (now != null) {
                 if (asking != null) PaperButton("Asking…", null, { onCancel(asking) }, tonal = true, height = 38.dp)
                 else PaperButton("Ask to join", Ic.people, onAsk, height = 38.dp)
             }
-            FriendMenu(f, onRemove)
+            FriendMenu(f, { go.friend(f.person) }, onRemove)
         }
         if (now != null) Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Night.bg).clickableScaleClipped(RoundedCornerShape(10.dp), { go.open(now.title) }),
             verticalAlignment = Alignment.CenterVertically) {
@@ -296,13 +300,15 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
     }
 }
 
-/** ··· on a friend: Remove (asked again in a dialog). */
+/** ··· on a friend: their list and ratings, and Remove (asked again in a dialog). */
 @Composable
-private fun FriendMenu(f: Friend, onRemove: () -> Unit) {
+private fun FriendMenu(f: Friend, onTaste: () -> Unit, onRemove: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         Box(Modifier.size(36.dp).clickableScaleClipped(CircleShape, { open = true }), contentAlignment = Alignment.Center) { I(Ic.dots, 22.dp, Night.fg2) }
         androidx.compose.material3.DropdownMenu(open, { open = false }, containerColor = Night.surface3, shape = RoundedCornerShape(12.dp), modifier = Modifier.widthIn(min = 200.dp)) {
+            Text("List and ratings", style = ui(15, FontWeight.Medium), maxLines = 1,
+                modifier = Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), { open = false; onTaste() }).padding(horizontal = 14.dp, vertical = 12.dp))
             Text("Remove ${f.shown}", style = ui(15, FontWeight.Medium), maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(8.dp), { open = false; onRemove() }).padding(horizontal = 14.dp, vertical = 12.dp))
         }
@@ -412,7 +418,8 @@ fun FriendCardDialog(f: Friend, m: FriendsModel, go: Go, onDismiss: () -> Unit) 
     val last = f.recent.firstOrNull()
     val title = now?.title ?: last?.title
     app.kimono.watch.ui.Dialog(onDismiss = onDismiss) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        /* Their face and name open their list and ratings. */
+        Row(Modifier.fillMaxWidth().clickableScaleClipped(RoundedCornerShape(10.dp), { onDismiss(); go.friend(f.person) }), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RingFace(f.person, 56.dp, now != null, Night.surface2)
             Column(Modifier.weight(1f)) {
                 Text(f.shown, style = ui(18, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)

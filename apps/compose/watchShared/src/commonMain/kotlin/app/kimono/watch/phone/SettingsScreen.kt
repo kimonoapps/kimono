@@ -262,6 +262,7 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
         Part.Friends -> {
             Toggle("Show friends what I watch", p.shareWatching, key = "shareWatching") { on -> store.set("shareWatching", on) { it.copy(shareWatching = on) } }
             if (p.shareWatching) Toggle("Invisible for now", p.invisible, key = "invisible") { on -> store.set("invisible", on) { it.copy(invisible = on) } }
+            Toggle("Share my list and ratings", p.shareTaste, key = "shareTaste") { on -> store.set("shareTaste", on) { it.copy(shareTaste = on) } }
             Toggle("Friends on Home", p.friendsOnHome, key = "friendsOnHome") { on -> store.set("friendsOnHome", on) { it.copy(friendsOnHome = on) } }
         }
         Part.Languages -> {

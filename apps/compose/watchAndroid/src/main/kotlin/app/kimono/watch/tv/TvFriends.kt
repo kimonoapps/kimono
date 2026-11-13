@@ -125,6 +125,7 @@ private fun FriendBlock(f: Friend, m: FriendsModel, go: Go) {
                 if (asking != null) TvButton("Asking…", null, { m.cancelAsk(asking) }, tonal = true)
                 else TvButton("Ask to join", Ic.people, { m.askToJoin(f) })
             }
+            TvButton("List and ratings", null, { go.friend(f.person) }, tonal = true)
             TvButton("Remove", null, { m.remove(f.username) }, tonal = true)
         }
         val cards = listOfNotNull(now?.title) + f.recent.filter { it.title.id != now?.title?.id }.map { it.title }

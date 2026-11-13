@@ -108,3 +108,33 @@ data class FriendHere(
     val person get() = Person(username, name, picture)
     val shown get() = name.ifBlank { username }
 }
+
+/** A friend's taste: what they loved, liked and didn't, and their list. All empty when [sharing] is off. */
+@Serializable
+data class FriendTaste(
+    val username: String,
+    val name: String = "",
+    val picture: String? = null,
+    val sharing: Boolean = true,
+    val loved: List<Card> = emptyList(),
+    val liked: List<Card> = emptyList(),
+    val disliked: List<Card> = emptyList(),
+    val list: List<Card> = emptyList(),
+) {
+    val person get() = Person(username, name, picture)
+    val shown get() = name.ifBlank { username }
+    val empty get() = loved.isEmpty() && liked.isEmpty() && disliked.isEmpty() && list.isEmpty()
+}
+
+/** What one friend thought of a title, for its page: [rating] "love", "up", "down" or null, and whether it's on their list. */
+@Serializable
+data class FriendRating(
+    val username: String,
+    val name: String = "",
+    val picture: String? = null,
+    val rating: String? = null,
+    val listed: Boolean = false,
+) {
+    val person get() = Person(username, name, picture)
+    val shown get() = name.ifBlank { username }
+}

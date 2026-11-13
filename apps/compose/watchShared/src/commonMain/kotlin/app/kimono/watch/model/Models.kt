@@ -148,6 +148,8 @@ data class TitlePage(
     val layout: String = "seasons",
     /** Friends' places in it, watching it now first. */
     val friends: List<FriendHere> = emptyList(),
+    /** What friends thought of it, or that it's on their list: loved first, then liked, didn't like, just listed. */
+    val friendRatings: List<FriendRating> = emptyList(),
     /** This show's own choice ("seasons" | "continuous"), or null to follow Settings' anime default. */
     val showEpisodes: String? = null,
     /** What it plays in now and the languages to offer; [tracks] set means this show has its own. */
@@ -277,6 +279,8 @@ data class Prefs(
     val invisible: Boolean = false,
     /** The friends row on Home. */
     val friendsOnHome: Boolean = true,
+    /** Friends see this person's list and what they loved, liked and didn't. */
+    val shareTaste: Boolean = true,
     /** With `?device=`: this device's own quality, null when it follows the person's. */
     val device: DevicePref? = null,
 )

@@ -253,7 +253,13 @@ class TitleViewModel(private val api: WatchApi, private val toasts: Toasts, val 
     /* A PUT answers with the season someone is on: keep the one on screen. */
     private fun keepSeason(fresh: TitlePage): TitlePage {
         val shown = _state.value.page ?: return fresh
-        return if (fresh.season != shown.season) fresh.copy(season = shown.season, episodes = shown.episodes) else fresh
+        return keepFriends(if (fresh.season != shown.season) fresh.copy(season = shown.season, episodes = shown.episodes) else fresh)
+    }
+
+    /** A change's answer leaves friends out (only the page's own load asks for them), so the ones shown stay. */
+    private fun keepFriends(fresh: TitlePage): TitlePage {
+        val shown = _state.value.page ?: return fresh
+        return fresh.copy(friends = fresh.friends.ifEmpty { shown.friends }, friendRatings = fresh.friendRatings.ifEmpty { shown.friendRatings })
     }
 
     /** This show by season or as one list ([value]), or back to the default (null): the episode list is laid out again. */
@@ -262,7 +268,7 @@ class TitleViewModel(private val api: WatchApi, private val toasts: Toasts, val 
         _state.value = _state.value.copy(page = page.copy(showEpisodes = value), seasonLoading = true)
         viewModelScope.launch {
             try {
-                val fresh = api.showEpisodes(id, value)
+                val fresh = keepFriends(api.showEpisodes(id, value))
                 _state.value = _state.value.copy(page = fresh, season = fresh.season ?: _state.value.season, seasonLoading = false)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(page = page, seasonLoading = false); toasts.show(problemOf(e))

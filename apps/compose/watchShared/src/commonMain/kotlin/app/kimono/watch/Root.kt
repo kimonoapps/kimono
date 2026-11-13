@@ -179,7 +179,8 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
     val stack = remember(profile.key) { mutableStateListOf<Entry>() }
     fun push(s: Screen) { stack.add(Entry(s)) }
     fun pop() { stack.removeLastOrNull()?.store?.clear() }
-    val go = remember(profile.key) { Go(open = { c: Card -> push(Screen.Title(c.id, c.top)) }, play = play::play, together = play::together, join = play::join) }
+    val go = remember(profile.key) { Go(open = { c: Card -> push(Screen.Title(c.id, c.top)) }, play = play::play, together = play::together, join = play::join,
+        friend = { p -> push(Screen.Friend(p.username, p.name, p.picture)) }) }
     LaunchedEffect(profile.key) { services.prefs.load() }
     LaunchedEffect(resumed) {
         if (resumed > 0) {
@@ -203,6 +204,7 @@ private fun Signed(services: WatchServices, profile: Profile, resumed: Int, tvSh
                 is Screen.Title -> TitleScreen(entry.vm { TitleViewModel(services.api, services.toasts, s.id) }, go, s.top, onClose = ::pop, downloads = services.downloads)
                 Screen.Search -> SearchScreen(entry.vm { SearchViewModel(services.api) }, go, onClose = ::pop)
                 Screen.Settings -> SettingsScreen(onClose = ::pop, onProfiles = onProfiles)
+                is Screen.Friend -> app.kimono.watch.phone.FriendTasteScreen(s, go, onClose = ::pop)
                 null -> Box(Modifier) {}
             }
         }
