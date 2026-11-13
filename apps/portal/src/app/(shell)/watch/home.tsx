@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { labelOf, watchApi, minutesText, type Card, type ContinueCard, type Home, type Shelf, type TitleView } from "./api";
+import { createPortal } from "react-dom";
+import { labelOf, watchApi, minutesText, type Card, type ContinueCard, type Home, type Rating, type Shelf, type TitleView } from "./api";
 import { CardArt, cx, Img, ListButton, RateButton, Rail, SkeletonRows, tagClass, TitleMark, Top10, useWatch } from "./bits";
 import { Icon } from "./icons";
 
@@ -86,8 +87,54 @@ function ContinueTile({ card }: { card: ContinueCard }) {
     </button>
     <div className="kw-bar"><i style={{ width: `${Math.max(4, card.fraction * 100)}%` }} /></div>
     <div className="kw-meta"><div><b>{card.name}</b>{label}</div><button className="kw-iconbtn" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}><Icon name="play" /></button>
-      <button className="kw-iconbtn kw-cw-forget" aria-label={`Remove ${card.name} from history`} title="Remove from history" onClick={() => void watch.forget(card.id)}><Icon name="close" /></button></div>
+      <TileMenu card={card} /></div>
   </div>;
+}
+
+/**
+ * ⋮ on a Continue watching tile: rate it with a row of round buttons, My list, Details, and Remove from
+ * history at the bottom, a step away so it isn't hit by mistake. Opens above the page (the rail clips the tile).
+ */
+function TileMenu({ card }: { card: ContinueCard }) {
+  const watch = useWatch();
+  const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ top: number; left: number; root: Element } | null>(null);
+  const [shown, setShown] = useState(false);
+  const close = () => { setShown(false); setAt(null); };
+  useEffect(() => {
+    if (!at) return;
+    const frame = requestAnimationFrame(() => setShown(true));
+    const away = (event: Event) => { if (!menu.current?.contains(event.target as Node) && !button.current?.contains(event.target as Node)) close(); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", key);
+    window.addEventListener("scroll", close, true);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key); window.removeEventListener("scroll", close, true); };
+  }, [at]);
+  const open = () => {
+    const box = button.current?.getBoundingClientRect();
+    const root = button.current?.closest(".kw");
+    if (!box || !root) return;
+    const width = 240;
+    setAt({ top: Math.min(box.bottom + 6, window.innerHeight - 280), left: Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8)), root });
+  };
+  const marks = watch.marksOf(card.id);
+  const rate = (r: Rating) => { watch.rate(card.id, marks.rating === r ? null : r); };
+  return <>
+    <button ref={button} className="kw-iconbtn kw-cw-more" aria-label={`More for ${card.name}`} aria-haspopup="menu" aria-expanded={Boolean(at)} onClick={() => (at ? close() : open())}><Icon name="dots" /></button>
+    {at ? createPortal(<div ref={menu} className={cx("kw-smenu kw-tilemenu", shown && "kw-on")} role="menu" style={{ position: "fixed", top: at.top, left: at.left }}>
+      <div className="kw-tm-rate" role="group" aria-label="Rate it">
+        {([["down", "Not for me"], ["up", "I like this"], ["love", "Love this"]] as const).map(([r, label]) =>
+          <button key={r} className={cx(marks.rating === r && "kw-on")} aria-label={label} aria-pressed={marks.rating === r} title={label} onClick={() => rate(r)}><Icon name={r} /></button>)}
+      </div>
+      <div className="kw-menu-rule" />
+      <button role="menuitem" onClick={() => { watch.setListed(card.id, !marks.inList); close(); }}><Icon name={marks.inList ? "check" : "add"} /><b>{marks.inList ? "In My list" : "My list"}</b><span /></button>
+      <button role="menuitem" onClick={() => { close(); watch.openTitle(card.id); }}><Icon name="info" /><b>Details</b><span /></button>
+      <div className="kw-menu-rule" />
+      <button role="menuitem" onClick={() => { close(); void watch.forget(card.id); }}><Icon name="close" /><b>Remove from history</b><span /></button>
+    </div>, at.root) : null}
+  </>;
 }
 
 /* ───── The hover card: wide screens with a mouse, after a moment on a card ───── */

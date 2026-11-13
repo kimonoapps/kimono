@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -280,8 +282,6 @@ fun PosterCard(card: Card, go: Go, width: Dp = 112.dp, plain: Boolean = false, m
 
 @Composable
 private fun ContinueCard(card: Card, go: Go) {
-    val watch = LocalWatch.current
-    val scope = rememberCoroutineScope()
     Column(Modifier.width(168.dp).clip(RoundedCornerShape(8.dp)).background(Night.surface)) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickableScale({ go.open(card) })) {
             Img(card.backdrop ?: card.poster, Modifier.fillMaxSize())
@@ -294,8 +294,62 @@ private fun ContinueCard(card: Card, go: Go) {
                 Text("$label · ${card.left ?: 0}m left", style = ui(13, color = Night.fg2), maxLines = 1)
             }
             Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ go.play(card.id, card.season?.takeIf { it > 0 }, card.episode?.takeIf { it > 0 }) }), contentAlignment = Alignment.Center) { I(Ic.play) }
-            Box(Modifier.size(32.dp).clip(CircleShape).clickableScale({ scope.launch { runCatching { watch.api.forget(card.id) }.onSuccess { watch.toasts.show("Removed from history") }.onFailure { watch.toasts.show("That didn't work. Try again.") } } }), contentAlignment = Alignment.Center) { I(Ic.close, 18.dp, Night.fg3) }
+            TileMenu(card, go)
         }
+    }
+}
+
+/**
+ * ⋮ on a Continue watching tile: rate it with a row of round buttons, My list, Details, and Remove from
+ * history at the bottom, a step away so it isn't hit by mistake. Its marks are read as it opens.
+ */
+@Composable
+private fun TileMenu(card: Card, go: Go) {
+    val watch = LocalWatch.current
+    val scope = rememberCoroutineScope()
+    var open by remember { mutableStateOf(false) }
+    var inList by remember { mutableStateOf<Boolean?>(null) }
+    var rating by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(open) { if (open) runCatching { watch.api.title(card.id) }.onSuccess { inList = it.inList; rating = it.rating } }
+    fun rate(r: String) {
+        val next = if (rating == r) null else r
+        rating = next
+        watch.toasts.show(when (next) { "down" -> "Got it. We'll show you less like this."; "up" -> "Thanks. Rated."; "love" -> "Love it. We'll find more."; else -> "Rating removed" })
+        scope.launch { runCatching { if (next == null) watch.api.mark(card.id, clearRating = true) else watch.api.mark(card.id, rating = next) } }
+    }
+    Box {
+        Box(Modifier.size(32.dp).clip(CircleShape).clickableScale({ open = true }), contentAlignment = Alignment.Center) { I(Ic.dots, 20.dp, Night.fg3, Modifier.rotate(90f)) }
+        androidx.compose.material3.DropdownMenu(open, { open = false }, containerColor = Night.surface3, shape = RoundedCornerShape(12.dp), modifier = Modifier.widthIn(min = 220.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)) {
+                listOf("down" to Ic.down, "up" to Ic.up, "love" to Ic.love).forEach { (r, icon) ->
+                    val on = rating == r
+                    Box(Modifier.size(44.dp).clip(CircleShape).background(if (on) Night.fg else Night.surface3).border(1.dp, if (on) Night.fg else Night.line, CircleShape).clickableScale({ rate(r) }), contentAlignment = Alignment.Center) {
+                        I(icon, 22.dp, if (on) Night.bg else Night.fg2)
+                    }
+                }
+            }
+            Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(Night.line))
+            MenuLine(if (inList == true) Ic.check else Ic.add, if (inList == true) "In My list" else "My list") {
+                val on = inList != true
+                inList = on; open = false
+                watch.toasts.show(if (on) "Added to My list" else "Removed from My list")
+                scope.launch { runCatching { watch.api.mark(card.id, inList = on) } }
+            }
+            MenuLine(Ic.info, "Details") { open = false; go.open(card) }
+            Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(Night.line))
+            MenuLine(Ic.close, "Remove from history") {
+                open = false
+                scope.launch { runCatching { watch.api.forget(card.id) }.onSuccess { watch.toasts.show("Removed from history") }.onFailure { watch.toasts.show("That didn't work. Try again.") } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MenuLine(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickableScale(onClick).padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        I(icon, 20.dp, Night.fg2)
+        Text(label, style = ui(15, FontWeight.Medium), maxLines = 1)
     }
 }
 

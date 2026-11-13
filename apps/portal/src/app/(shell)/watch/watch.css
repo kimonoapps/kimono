@@ -150,9 +150,14 @@
 .kw .kw-cw .kw-meta{display:flex;align-items:center;gap:8px;padding:8px 6px 8px 12px;font-size:13px;color:var(--fg-2)}
 .kw .kw-cw .kw-meta b{color:var(--fg);font-weight:700;display:block;font-size:14px}
 .kw .kw-cw .kw-meta div{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kw .kw-cw .kw-cw-forget{width:32px;height:32px;margin-left:-6px;color:var(--fg-3)}
-.kw .kw-cw .kw-cw-forget svg{width:18px;height:18px}
-@media (hover:hover){.kw .kw-cw .kw-cw-forget{opacity:0;transition:opacity .2s}.kw .kw-cw:hover .kw-cw-forget,.kw .kw-cw .kw-cw-forget:focus-visible{opacity:1}}
+.kw .kw-cw .kw-cw-more{width:32px;height:32px;margin-left:-6px;color:var(--fg-3)}
+.kw .kw-cw .kw-cw-more svg{width:20px;height:20px}
+.kw .kw-tilemenu{z-index:70;width:240px}
+.kw .kw-tm-rate{display:flex;justify-content:center;gap:12px;padding:6px 0 4px}
+.kw .kw-smenu .kw-tm-rate button{display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;border:1px solid var(--line);color:var(--fg-2)}
+.kw .kw-smenu .kw-tm-rate button.kw-on{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.kw .kw-smenu.kw-tilemenu button .kw-ic{opacity:1;color:var(--fg-2);width:20px;height:20px}
+.kw .kw-smenu.kw-tilemenu .kw-tm-rate button .kw-ic{width:22px;height:22px;color:inherit}
 @media (max-width:899px){.kw .kw-cw{width:clamp(150px,42vw,220px)}}
 
 .kw .kw-t10{display:flex;align-items:flex-end;width:auto}
