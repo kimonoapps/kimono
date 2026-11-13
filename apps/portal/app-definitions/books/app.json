@@ -52,7 +52,27 @@
         "kind": "secret",
         "group": "sources",
         "target": "settings",
-        "description": "Your member account's secret key."
+        "description": "Your member account's secret key. Used for metadata and fast downloads, and never sent to the browser."
+      },
+      {
+        "key": "annas_path_index",
+        "label": "Anna's Archive collection index",
+        "kind": "number",
+        "group": "sources",
+        "target": "settings",
+        "default": "0",
+        "advanced": true,
+        "description": "The collection to download from when a file belongs to more than one. 0 is the first."
+      },
+      {
+        "key": "annas_domain_index",
+        "label": "Anna's Archive download server index",
+        "kind": "number",
+        "group": "sources",
+        "target": "settings",
+        "default": "0",
+        "advanced": true,
+        "description": "The member download server to use. 0 is Fast Partner Server #1."
       }
     ],
     "managedEnvironment": [],

@@ -4,10 +4,10 @@
  * title and authors) and opens one, whole or a byte range at a time, so the
  * reader can stream and seek and a download can resume.
  *
- * No source is registered here: the household adds its own with
- * registerFileSource (e.g. from instrumentation.ts), and the reader and the
- * download use whatever is registered. Pure, so scripts/test-books.mjs can
- * check it with a source of its own.
+ * Sources register themselves here (the built-ins from books/index.ts, a
+ * household's own from instrumentation.ts), and the reader and download use
+ * whatever is registered. Pure, so scripts/test-books.mjs can check it with
+ * a source of its own.
  */
 import type { Book } from "./model";
 

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as model from '../src/lib/books/model.ts';
 import * as files from '../src/lib/books/files.ts';
+import { annasFiles, md5IdsIn } from '../src/lib/books/annas-files.ts';
 
 test('ISBNs read in any form, and bad ones are refused', () => {
   assert.equal(model.normalizeIsbn('0-306-40615-2'), '9780306406157');
@@ -58,4 +59,125 @@ test('file sources: found across sources, best first, and opened by range', asyn
   assert.throws(() => files.registerFileSource({ name: 'Bad Name', find: async () => [], open: async () => { throw new Error(); } }));
   for (const n of ['slow', 'fake', 'broken']) files.unregisterFileSource(n);
   assert.equal(files.fileSources().length, 0);
+});
+
+test('Anna fast downloads: discover a file, resolve it privately, and stream a range', async (t) => {
+  const md5 = 'd6e1dc51a50726f00ec438af21952a45';
+  const bytes = new TextEncoder().encode('0123456789abcdef');
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (input, init = {}) => {
+    const url = new URL(String(input));
+    requests.push({ url, init });
+    if (url.origin === 'https://books.example') {
+      if (url.pathname === '/account/') return new Response(null, { headers: { 'set-cookie': 'aa_account_id2=test; Path=/' } });
+      if (url.pathname === '/search') return new Response(`<a href="/md5/${md5.toUpperCase()}">EPUB</a><a href="/md5/${md5}">duplicate</a>`);
+      if (url.pathname === `/db/aarecord_elasticsearch/md5:${md5}.json`) return Response.json({ file_unified_data: {
+        title_best: 'The Book', author_best: 'Writer, A.', extension_best: 'epub', filesize_best: 16, language_codes: ['en'],
+      } });
+      if (url.pathname === '/dyn/api/fast_download.json') {
+        if (url.searchParams.get('md5') === '0'.repeat(32)) return Response.json({ download_url: null, error: 'Invalid md5' }, { status: 400 });
+        return Response.json({ download_url: 'https://cdn.example/member/The%20Book.epub', account_fast_download_info: {} });
+      }
+    }
+    if (url.origin === 'https://cdn.example') return new Response(bytes.subarray(4, 8), { status: 206, headers: {
+      'content-range': 'bytes 4-7/16', 'content-length': '4', 'content-disposition': 'attachment; filename="The Book.epub"',
+    } });
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  const source = annasFiles(async () => ({ url: 'https://books.example', key: 'member-secret', pathIndex: 2, domainIndex: 1 }));
+  const book = { ...model.emptyBook('ol:OL1W', 'The Book'), authors: ['A. Writer'], isbns: ['9780306406157'] };
+  const found = await source.find(book);
+  assert.deepEqual(md5IdsIn(`<a href="/md5/${md5}">one</a><a href="/md5/${md5}">again</a>`), [md5]);
+  assert.equal(found.length, 1);
+  assert.deepEqual(found[0], { id: `${md5}.2.1.epub`, format: 'epub', size: 16, label: null, language: 'en', sample: false });
+  assert.equal(requests.find((r) => r.url.pathname === '/search').url.searchParams.get('q'), '9780306406157');
+
+  const opened = await source.open(found[0].id, { start: 4, end: 7 });
+  assert.equal(opened.size, 16);
+  assert.deepEqual(opened.range, { start: 4, end: 7 });
+  assert.equal(opened.filename, 'The Book.epub');
+  assert.equal(await new Response(opened.body).text(), '4567');
+  const api = requests.find((r) => r.url.pathname === '/dyn/api/fast_download.json');
+  assert.equal(api.url.searchParams.get('md5'), md5);
+  assert.equal(api.url.searchParams.get('key'), 'member-secret');
+  assert.equal(api.url.searchParams.get('path_index'), '2');
+  assert.equal(api.url.searchParams.get('domain_index'), '1');
+  const download = requests.find((r) => r.url.origin === 'https://cdn.example');
+  assert.equal(download.url.searchParams.get('key'), null);
+  assert.equal(download.init.headers.get('range'), 'bytes=4-7');
+
+  await assert.rejects(source.open(`${'0'.repeat(32)}.0.0.epub`), (e) => e.status === 400 && e.message === "Anna's Archive: Invalid md5");
+  await assert.rejects(source.open('not-an-md5'), (e) => e.status === 404);
+  const unconfigured = annasFiles(async () => null);
+  assert.deepEqual(await unconfigured.find(book), []);
+  await assert.rejects(unconfigured.open(`${md5}.0.0.epub`), (e) => e.status === 404);
+});
+
+import { mkdtempSync, writeFileSync as writeFs, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
+import * as cache from '../src/lib/books/cache.ts';
+import * as parts from '../src/lib/books/epub-parts.ts';
+
+/* A small zip, written by hand: stored and deflated parts, as EPUBs have. */
+function zip(entries) {
+  const locals = []; const central = []; let offset = 0;
+  for (const [name, text, deflate] of entries) {
+    const raw = Buffer.from(text); const data = deflate ? deflateRawSync(raw) : raw; const n = Buffer.from(name);
+    const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(deflate ? 8 : 0, 8);
+    local.writeUInt32LE(data.length, 18); local.writeUInt32LE(raw.length, 22); local.writeUInt16LE(n.length, 26);
+    const cd = Buffer.alloc(46); cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(deflate ? 8 : 0, 10);
+    cd.writeUInt32LE(data.length, 20); cd.writeUInt32LE(raw.length, 24); cd.writeUInt16LE(n.length, 28); cd.writeUInt32LE(offset, 42);
+    locals.push(local, n, data); central.push(cd, n); offset += 30 + n.length + data.length;
+  }
+  const dir = Buffer.concat(central); const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(dir.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, dir, end]);
+}
+
+test('an EPUB is read a part at a time, and nothing outside it', () => {
+  const dir = mkdtempSync(joinPath(tmpdir(), 'kb-'));
+  const path = joinPath(dir, 'book.epub');
+  writeFs(path, zip([['mimetype', 'application/epub+zip', false], ['META-INF/container.xml', '<container>c</container>', true], ['OEBPS/Ch 1.xhtml', '<p>' + 'words '.repeat(500) + '</p>', true]]));
+  assert.equal(parts.directoryOf(path).parts.size, 3);
+  assert.equal(parts.readPart(path, 'mimetype').bytes.toString(), 'application/epub+zip');
+  assert.equal(parts.readPart(path, 'META-INF/container.xml').bytes.toString(), '<container>c</container>');
+  assert.match(parts.readPart(path, 'OEBPS/Ch%201.xhtml').bytes.toString(), /^<p>words words/);
+  assert.match(parts.readPart(path, 'oebps/ch 1.XHTML').bytes.toString(), /^<p>/); // case differs: still found
+  assert.throws(() => parts.readPart(path, '../../etc/passwd'), (e) => e.status === 404);
+  assert.throws(() => parts.readPart(path, 'OEBPS/missing.xhtml'), (e) => e.status === 404);
+  assert.equal(parts.typeOfPart('a/b.XHTML'), 'application/xhtml+xml; charset=utf-8');
+  assert.equal(parts.addressOfPathId(parts.bookPathId('test:9780141439471.epub')), 'test:9780141439471.epub');
+});
+
+test('the file cache: first from the source, then from disk; one copy at a time; old books make room', async () => {
+  const dir = mkdtempSync(joinPath(tmpdir(), 'kb-cache-'));
+  let opened = 0;
+  const bytes = (n, c) => new Uint8Array(n).fill(c);
+  const books = { 'fake:a': bytes(400, 1), 'fake:b': bytes(400, 2), 'fake:c': bytes(400, 3) };
+  files.registerFileSource({ name: 'fake', async find() { return []; }, async open(id, range) { opened++; await new Promise((r) => setTimeout(r, 20)); return files.sliceOf(books[`fake:${id}`], `${id}.epub`, range); } });
+  const c = new cache.FileCache(dir, 1000);
+  /* First opening: from the source, and the copy fills behind it, once even when asked three times. */
+  const first = await cache.openCached(c, 'fake:a', { start: 0, end: 9 });
+  assert.equal((await new Response(first.body).arrayBuffer()).byteLength, 10);
+  await Promise.all([c.fill('fake:a'), c.fill('fake:a')]);
+  const afterFill = opened;
+  assert.ok(afterFill <= 2, `the source was opened ${afterFill} times`);
+  /* Then from disk: the source isn't asked again, and ranges come from the copy. */
+  const again = await cache.openCached(c, 'fake:a', { start: 390 });
+  assert.equal(opened, afterFill);
+  assert.deepEqual(again.range, { start: 390, end: 399 });
+  assert.equal((await new Response(again.body).arrayBuffer()).byteLength, 10);
+  /* Past the cap (1000 bytes), the least recently opened goes. */
+  await c.fill('fake:b');
+  c.get('fake:a'); // a was opened more recently than b
+  await c.fill('fake:c');
+  assert.ok(c.get('fake:a'), 'a stays');
+  assert.equal(c.get('fake:b'), null, 'b made room');
+  assert.ok(c.get('fake:c'));
+  assert.ok(!readdirSync(dir).some((f) => f.endsWith('.part')), 'no half copies left');
+  files.unregisterFileSource('fake');
 });

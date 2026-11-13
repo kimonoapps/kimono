@@ -14,7 +14,7 @@
     "test:account": "node --test scripts/test-account.mjs",
     "test:drive": "node --test scripts/test-drive.mjs",
     "test:watch": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-watch.mjs scripts/test-watch-sources.mjs",
-    "test:books": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-books.mjs",
+    "test:books": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-books.mjs",
     "test:books-convert": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-books-convert.mjs",
     "test:friends": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-friends.mjs",
     "test:notes": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-notes.mjs",

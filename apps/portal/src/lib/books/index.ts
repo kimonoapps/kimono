@@ -7,9 +7,11 @@ import { apiError } from "../api-v1";
 import { getPlatformSettings } from "../settings";
 import { stateDir } from "../state";
 import { annas } from "./annas";
+import { annasFiles } from "./annas-files";
 import { booksConfig, type BooksConfig } from "./config";
 import { BooksProblem, dedupe, emptyBook, identity, merge, normalizeIsbn, sourceOf, type Book, type Rating, type Row, type ShelfItem, type ShelfState } from "./model";
 import { googleBooks, hardcover, openLibrary, type LiveSource } from "./sources";
+import { registerFileSource } from "./files";
 import { registerTestFiles } from "./test-files";
 import { registerConversions } from "./convert";
 import { codeConfig } from "../code/config";
@@ -17,6 +19,7 @@ import { codeConfig } from "../code/config";
 registerTestFiles();
 /* A PDF is also offered as an EPUB, made with Kimono AI's Claude token when there is one (lib/books/convert). */
 registerConversions({ bookFor: (key) => getBook(key), token: async () => codeConfig(await getPlatformSettings()).modelToken });
+registerFileSource(annasFiles(async () => (await booksSettings()).annas));
 
 export * from "./model";
 

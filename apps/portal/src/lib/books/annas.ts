@@ -1,7 +1,8 @@
 import "server-only";
 
-import { BooksProblem, clean, cleanAll, cleanDescription, emptyBook, isbnsOf, normalizeIsbn, yearOf, type Book } from "./model";
-import { userAgent, type LiveSource } from "./sources";
+import { annasClient } from "./annas-client";
+import { clean, cleanAll, cleanDescription, emptyBook, isbnsOf, normalizeIsbn, yearOf, type Book } from "./model";
+import type { LiveSource } from "./sources";
 
 /*
  * Anna's Archive, for books nothing else knows: its metadata-only records
@@ -9,9 +10,9 @@ import { userAgent, type LiveSource } from "./sources";
  * merged per book). Signed in with a member's secret key, so pages answer
  * without bot checks.
  *
- * Only metadata: the search is its "metadata" index, which lists records,
- * never files, and only bibliographic fields are read from a record. The
- * membership's download API is never called.
+ * Only metadata here: the search is its "metadata" index, which lists records,
+ * never files, and only bibliographic fields are read from a record. Member
+ * fast downloads are the separate file source in annas-files.ts.
  *
  * Its address is whatever the household sets (it moves, and lookalike
  * domains abound); the key is never sent anywhere else.
@@ -22,10 +23,6 @@ type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
 /* Record kinds that describe a book rather than a file. */
 const metadataKinds = ["isbndb", "oclc", "ol", "goodreads", "isbngrp", "libby", "rgb", "edsebk", "cerlalc", "czech_oo42hcks", "gbooks", "duxiu_ssid", "cadal_ssno"] as const;
 const fileish = /^(md5|aacid|doi|nexusstc|zlib|lgli|lgrs|ia|scihub|trantor|magzdb)/;
-
-type Session = { cookie: string; at: number };
-const sessions = new Map<string, Session>();
-const sessionLife = 6 * 60 * 60 * 1000;
 
 /**
  * Picks the bibliographic fields out of any record Anna's Archive serves, a
@@ -109,37 +106,7 @@ export function recordIdsIn(html: string, max = 12): string[] {
 }
 
 export function annas(base: string, secret: string): LiveSource {
-  const origin = new URL(base).origin;
-
-  async function session(): Promise<string> {
-    const known = sessions.get(origin);
-    if (known && Date.now() - known.at < sessionLife) return known.cookie;
-    /* Signing in with the secret key: the form on its account page. */
-    const res = await fetch(`${origin}/account/`, {
-      method: "POST",
-      headers: { "user-agent": userAgent, "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ key: secret }),
-      redirect: "manual",
-      signal: AbortSignal.timeout(12000),
-    });
-    const cookies = res.headers.getSetCookie().map((c) => c.split(";", 1)[0]).filter(Boolean);
-    if (!cookies.some((c) => c.startsWith("aa_account_id2="))) throw new BooksProblem(`Anna's Archive didn't sign in (${res.status}). Check its address and key.`);
-    const cookie = cookies.join("; ");
-    sessions.set(origin, { cookie, at: Date.now() });
-    return cookie;
-  }
-
-  async function get(path: string, json: boolean): Promise<string | Json | null> {
-    const res = await fetch(`${origin}${path}`, {
-      headers: { "user-agent": userAgent, cookie: await session(), accept: json ? "application/json" : "text/html" },
-      signal: AbortSignal.timeout(12000),
-      cache: "no-store",
-    });
-    if (res.status === 404) return null;
-    if (res.status === 401 || res.status === 403) { sessions.delete(origin); throw new BooksProblem(`Anna's Archive refused (${res.status}).`); }
-    if (!res.ok) throw new BooksProblem(`Anna's Archive: ${res.status}`);
-    return json ? await res.json() as Json : await res.text();
-  }
+  const { get } = annasClient(base, secret);
 
   /* A record as JSON. */
   async function record(id: string): Promise<Book | null> {
