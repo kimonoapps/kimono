@@ -1,13 +1,17 @@
 "use client";
 
 import { Seal } from "@kimono/ui";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { closeImpersonationNotice, stopImpersonating } from "@/app/(shell)/impersonation-actions";
+import { closeImpersonationNotice, noteImpersonatedVisit, stopImpersonating } from "@/app/(shell)/impersonation-actions";
 import type { ImpersonationNotice } from "@/lib/impersonation";
 
 /** Across the top of every page while an administrator is signed in as someone else. */
 export function ImpersonationStrip({ name, identity }: { name: string; identity: string | null }) {
   const [pending, start] = useTransition();
+  /* Each place opened while signed in as them is written down, for them to see later. */
+  const pathname = usePathname();
+  useEffect(() => { void noteImpersonatedVisit(pathname).catch(() => {}); }, [pathname]);
   const stop = () => start(async () => {
     /* The identity provider keeps the switch in this browser's sign-in there, so the browser ends it. */
     if (identity) await fetch(`${identity}/api/v3/core/users/impersonate_end/`, { mode: "no-cors", credentials: "include" }).catch(() => {});
@@ -39,10 +43,23 @@ export function ImpersonationNoticeDialog({ notices }: { notices: ImpersonationN
       {notices.map((notice) => <li key={notice.id}>
         <b>{people.length === 1 ? when.format(new Date(notice.at)) : `${notice.by} · ${when.format(new Date(notice.at))}`}</b>
         {notice.reason && <span>“{notice.reason}”</span>}
+        {accessed(notice) && <span>Opened {accessed(notice)}</span>}
       </li>)}
     </ul>
     <footer className="k-tutorial-footer">
       <Seal onClick={close}>OK</Seal>
     </footer>
   </dialog>;
+}
+
+/** "Kimono (Home, Drive), Photos": the apps signed in to, with the places in Kimono opened beside its name. */
+function accessed(notice: ImpersonationNotice) {
+  const places = notice.places || [];
+  const apps = notice.apps || [];
+  const kimono = apps.find((app) => /^kimono( portal)?$/i.test(app)) || (places.length ? "Kimono" : undefined);
+  const parts = [
+    ...(kimono ? [places.length ? `${kimono} (${places.join(", ")})` : kimono] : []),
+    ...apps.filter((app) => app !== kimono),
+  ];
+  return parts.join(", ");
 }

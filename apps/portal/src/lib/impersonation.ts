@@ -18,13 +18,29 @@ import { stateDir } from "./state";
  */
 
 type EventUser = { username?: string; on_behalf_of?: { username?: string } };
-type IdentityEvent = { pk: string; action: string; created: string; user?: EventUser; context?: { message?: string; reason?: string } };
+type IdentityEvent = {
+  pk: string;
+  action: string;
+  created: string;
+  user?: EventUser;
+  context?: { message?: string; reason?: string; authorized_application?: { name?: string } };
+};
 
 export type Impersonator = { username: string; name: string };
-export type ImpersonationNotice = { id: string; at: string; by: string; reason: string };
+export type ImpersonationNotice = {
+  id: string;
+  at: string;
+  by: string;
+  reason: string;
+  /** The apps signed in to as this person, from the identity provider. */
+  apps?: string[];
+  /** The places in Kimono itself that were opened. */
+  places?: string[];
+};
 
-async function recentEvents(action: string, pageSize: number): Promise<IdentityEvent[]> {
-  const response = await identityRequest(`/api/v3/events/events/?action=${action}&ordering=-created&page_size=${pageSize}`);
+async function recentEvents(action: string, pageSize: number, username?: string): Promise<IdentityEvent[]> {
+  const who = username ? `&username=${encodeURIComponent(username)}` : "";
+  const response = await identityRequest(`/api/v3/events/events/?action=${action}&ordering=-created&page_size=${pageSize}${who}`);
   const payload = await response.json() as { results?: IdentityEvent[] };
   return payload.results || [];
 }
@@ -71,21 +87,79 @@ async function writeNotices(notices: Notices) {
   await writeFileAtomic(noticePath, `${JSON.stringify(notices, null, 2)}\n`, 0o600);
 }
 
+/* ── What was opened while signed in as someone ─────────────── */
+
+const visitPath = join(stateDir, "impersonation-visits.json");
+type Visit = { by: string; at: string; place: string };
+type Visits = Record<string, Visit[]>;
+
+async function readVisits(): Promise<Visits> {
+  try {
+    const parsed = JSON.parse(await readFile(visitPath, "utf8")) as unknown;
+    return parsed && typeof parsed === "object" ? parsed as Visits : {};
+  } catch {
+    return {};
+  }
+}
+
+/** [by], signed in as [username], opened [place] in Kimono. The same place again in a row is one visit. */
+export function recordImpersonatedVisit(username: string, by: string, place: string) {
+  const key = username.toLowerCase();
+  return serialize(visitPath, async () => {
+    const visits = await readVisits();
+    const list = visits[key] || [];
+    const last = list[list.length - 1];
+    if (last && last.by === by && last.place === place) return;
+    visits[key] = [...list, { by: by.toLowerCase(), at: new Date().toISOString(), place }].slice(-500);
+    await mkdir(stateDir, { recursive: true, mode: 0o700 });
+    await writeFileAtomic(visitPath, `${JSON.stringify(visits, null, 2)}\n`, 0o600);
+  });
+}
+
+const unique = (items: string[]) => [...new Set(items.filter(Boolean))];
+
 /**
  * Called when [username] signs in themselves: every time someone signed in as
- * them since they were last told is set aside, to be shown until they close it.
+ * them since they were last told is set aside, with what they opened, to be
+ * shown until they close it. One time lasts from its start until that
+ * administrator stopped or started signing in as someone again.
  */
 export async function noteImpersonationsOf(username: string) {
   const key = username.toLowerCase();
-  const events = (await recentEvents("impersonation_started", 200))
-    .filter((event) => same(event.user?.on_behalf_of?.username, key) && event.user?.username && !same(event.user.username, key));
+  const started = await recentEvents("impersonation_started", 200);
+  const events = started.filter((event) => same(event.user?.on_behalf_of?.username, key) && event.user?.username && !same(event.user.username, key));
   if (!events.length) return;
-  const found = await Promise.all(events.map(async (event): Promise<ImpersonationNotice> => ({
-    id: event.pk,
-    at: event.created,
-    by: await nameOf(event.user!.username!),
-    reason: (event.context?.reason || event.context?.message || "").trim(),
-  })));
+  const admins = unique(events.map((event) => event.user!.username!.toLowerCase()));
+  const [trail, visits] = await Promise.all([
+    Promise.all(admins.map(async (admin) => {
+      const [ended, opened] = await Promise.all([recentEvents("impersonation_ended", 200, admin), recentEvents("authorize_application", 500, admin)]);
+      return [admin, { ended, opened }] as const;
+    })).then((entries) => new Map(entries)),
+    readVisits().then((all) => all[key] || []),
+  ]);
+  const found = await Promise.all(events.map(async (event): Promise<ImpersonationNotice> => {
+    const admin = event.user!.username!.toLowerCase();
+    const from = Date.parse(event.created);
+    const { ended, opened } = trail.get(admin)!;
+    const after = (item: { created: string }) => Date.parse(item.created) > from;
+    const until = Math.min(
+      ...ended.filter(after).map((item) => Date.parse(item.created)),
+      ...started.filter((item) => same(item.user?.username, admin) && after(item)).map((item) => Date.parse(item.created)),
+      Date.now(),
+    );
+    const within = (at: string) => { const ms = Date.parse(at); return ms >= from && ms <= until; };
+    return {
+      id: event.pk,
+      at: event.created,
+      by: await nameOf(admin),
+      reason: (event.context?.reason || event.context?.message || "").trim(),
+      apps: unique(opened
+        .filter((item) => within(item.created) && same(item.user?.on_behalf_of?.username, key))
+        .reverse()
+        .map((item) => item.context?.authorized_application?.name?.trim() || "")),
+      places: unique(visits.filter((visit) => visit.by === admin && within(visit.at)).map((visit) => visit.place)),
+    };
+  }));
   await serialize(noticePath, async () => {
     const notices = await readNotices();
     const seen = notices.seen[key] ? Date.parse(notices.seen[key]) : 0;
