@@ -20,6 +20,10 @@ type Index = Record<string, Entry>;
 
 const g = globalThis as unknown as { kimonoBookFilling?: Map<string, Promise<Entry | null>>; kimonoBookIndex?: { dir: string; index: Index } };
 
+/* When each book was last opened: strictly increasing, so two opens in the same millisecond still have an order. */
+let last = 0;
+const tick = () => (last = Math.max(Date.now(), last + 1));
+
 export class FileCache {
   constructor(readonly dir: string, readonly capBytes: number) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -53,7 +57,7 @@ export class FileCache {
       this.write(index);
       return null;
     }
-    entry.at = Date.now();
+    entry.at = tick();
     return entry;
   }
 
@@ -73,7 +77,7 @@ export class FileCache {
         const size = statSync(tmp).size;
         if (opened.size !== null && size !== opened.size) throw new Error(`short copy: ${size} of ${opened.size}`);
         renameSync(tmp, join(this.dir, file));
-        const entry: Entry = { file, size, filename: opened.filename, at: Date.now() };
+        const entry: Entry = { file, size, filename: opened.filename, at: tick() };
         const index = this.read();
         index[address] = entry;
         this.evict(index);

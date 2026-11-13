@@ -3,8 +3,8 @@ import "server-only";
 import { authorNames } from "./annas";
 import { annasClient } from "./annas-client";
 import type { BooksConfig } from "./config";
-import { clean, identity, type Book } from "./model";
-import { FileProblem, type BookFile, type FileFormat, type FileSource, type Opened, type Range } from "./files";
+import { clean, type Book } from "./model";
+import { FileProblem, type FileFormat, type FileSource, type Opened, type Range } from "./files";
 import { userAgent } from "./sources";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -41,23 +41,62 @@ const byteSize = (value: unknown) => {
   return Number.isSafeInteger(size) && size > 0 ? size : null;
 };
 
-function fromRecord(md5: string, record: Json, book: BookRef, settings: Settings): Omit<BookFile, "source"> | null {
-  const unified = record.file_unified_data;
-  if (!unified || typeof unified !== "object") return null;
-  const format = clean(unified.extension_best ?? unified.extension).toLowerCase() as FileFormat;
-  if (!formats.has(format)) return null;
-  const title = clean(unified.title_best);
-  const authors = authorNames(clean(unified.author_best));
-  if (!title || identity({ title, authors: [] }) !== identity({ title: book.title, authors: [] })) return null;
-  if (book.authors.length && authors.length && identity({ title, authors }) !== identity(book)) return null;
-  return {
-    id: fileId(md5, settings, format), format,
-    size: byteSize(unified.filesize_best ?? unified.filesize),
-    label: clean(unified.edition_best) || null,
-    language: clean((unified.language_codes ?? [])[0]) || book.language || null,
-    sample: false,
-  };
+type ListedFile = { md5: string; title: string; authors: string[]; format: FileFormat; size: number | null; language: string; year: number | null };
+
+const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'", nbsp: " " };
+const text = (html: string) => clean(html.replace(/<[^>]+>/g, "").replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e: string) =>
+  e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : entities[e.toLowerCase()] ?? m));
+
+/** The files on an ordinary search page, as the page lists them: title, author, language, format and size are all there. */
+export function fileResultsIn(html: string, max = 50): ListedFile[] {
+  const out: ListedFile[] = [];
+  for (const block of html.split(/<div class="flex\s+pt-3\s+pb-3\s+border-b\b/).slice(1)) {
+    const md5 = /href="\/md5\/([a-f0-9]{32})"/.exec(block)?.[1];
+    if (!md5 || out.some((f) => f.md5 === md5)) continue;
+    const title = text(/<a href="\/md5\/[^"]+"[^>]*\btext-lg\b[^>]*>([\s\S]*?)<\/a>/.exec(block)?.[1] ?? "");
+    const by = /mdi--user-edit[^>]*><\/span>([\s\S]*?)<\/a>/.exec(block)?.[1];
+    const line = text(/<div class="[^"]*\bfont-semibold\s+text-sm\b[^"]*">([\s\S]*?)<\/div>/.exec(block)?.[1] ?? "");
+    const parts = line.split("·").map((p) => p.trim());
+    const format = parts.map((p) => p.toLowerCase()).find((p) => formats.has(p as FileFormat)) as FileFormat | undefined;
+    if (!title || !format) continue;
+    const sized = parts.map((p) => /^([\d.]+)\s*(KB|MB|GB)$/i.exec(p)).find(Boolean);
+    const size = sized ? Math.round(Number(sized[1]) * ({ kb: 1024, mb: 1_048_576, gb: 1_073_741_824 } as Record<string, number>)[sized[2].toLowerCase()]) : null;
+    out.push({
+      md5, title, authors: by ? authorNames(text(by)) : [], format, size: size && Number.isFinite(size) ? size : null,
+      language: /\[([a-z]{2,3})(?:-[A-Za-z]+)?\]/.exec(parts[0] ?? "")?.[1] ?? "",
+      year: Number(parts.find((p) => /^(1[4-9]\d\d|20\d\d)$/.test(p))) || null,
+    });
+    if (out.length >= max) break;
+  }
+  return out;
 }
+
+const little = new Set(["the", "a", "an", "of", "and", "o", "os", "a", "as", "el", "la", "los", "las", "le", "les", "l", "de", "des", "du", "der", "die", "das", "il", "lo", "un", "une", "y", "e", "et"]);
+const words = (s: string) => new Set(s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1 && !little.has(w)));
+const surname = (a: string) => [...words(a)].pop() ?? "";
+
+/**
+ * How well a listed file fits the book (0: not this book). The author's
+ * surname has to agree when both are known; then the title has to share its
+ * words, unless the file came up for the book's own ISBN (an edition may be
+ * titled in another language).
+ */
+function matchOf(file: ListedFile, book: BookRef, byIsbn: boolean): number {
+  const theirs = book.authors.map(surname).filter(Boolean);
+  const authorAgrees = !theirs.length || !file.authors.length || file.authors.some((a) => theirs.includes(surname(a)));
+  if (!authorAgrees) return 0;
+  /* Titles without their subtitles ("…: A Fable", "(Book 1)"), compared both ways, so another book that names this one doesn't pass. */
+  const want = words(book.title.split(/[:(\[]/)[0]);
+  const have = words(file.title.split(/[:(\[]/)[0]);
+  const shared = [...want].filter((w) => have.has(w)).length;
+  const covers = want.size ? shared / want.size : 0;
+  const keeps = have.size ? shared / have.size : 0;
+  if (!byIsbn && (covers < 0.5 || keeps < 0.5)) return 0;
+  return (byIsbn ? 1 : 0) + covers + keeps / 2 + (file.format === "epub" ? 0.1 : 0);
+}
+
+const languageNames = (() => { try { return new Intl.DisplayNames(["en"], { type: "language" }); } catch { return null; } })();
+const languageName = (code: string) => { try { return languageNames?.of(code) ?? code; } catch { return code; } };
 
 async function resolve(settings: Settings, file: FileId): Promise<URL> {
   const origin = new URL(settings.url).origin;
@@ -108,16 +147,31 @@ export function annasFiles(getSettings: () => Promise<Settings | null>): FileSou
     async find(book) {
       const settings = await getSettings();
       if (!settings) return [];
-      const query = book.isbns[0] ?? `${book.title} ${book.authors[0] ?? ""}`.trim();
-      if (!query) return [];
       const client = annasClient(settings.url, settings.key);
-      const html = await client.get(`/search?q=${encodeURIComponent(query)}`, false);
-      if (!html) return [];
-      const records = await Promise.all(md5IdsIn(html).map(async (md5) => {
-        const record = await client.get(`/db/aarecord_elasticsearch/md5:${md5}.json`, true).catch(() => null);
-        return record ? fromRecord(md5, record, book, settings) : null;
+      /* Searches at once, each one request: by title and author, and by up
+         to four of the book's ISBNs (its editions, in whatever language
+         they're titled: an "O Alquimista" record names "The Alchemist"'s
+         ISBNs too). Files are read off the result pages. */
+      const named = `${book.title} ${book.authors[0] ?? ""}`.trim();
+      const queries = [named, ...book.isbns.slice(0, 4)].filter((q): q is string => Boolean(q));
+      const pages = await Promise.all(queries.map((q) =>
+        client.get(`/search?q=${encodeURIComponent(q)}&ext=epub&ext=pdf`, false).catch(() => null)));
+      const seen = new Set<string>();
+      const found: (ListedFile & { score: number })[] = [];
+      pages.forEach((html, i) => {
+        for (const file of fileResultsIn(html ?? "")) {
+          if (seen.has(file.md5) || (file.format !== "epub" && file.format !== "pdf")) continue;
+          const score = matchOf(file, book, queries[i] !== named);
+          if (score <= 0) continue;
+          seen.add(file.md5);
+          found.push({ ...file, score });
+        }
+      });
+      return found.sort((a, b) => b.score - a.score).slice(0, 8).map((f) => ({
+        id: fileId(f.md5, settings, f.format), format: f.format, size: f.size,
+        label: [f.title !== book.title ? f.title : "", f.language ? languageName(f.language) : "", f.year ? String(f.year) : ""].filter(Boolean).join(" · ") || null,
+        language: f.language || book.language || null, sample: false,
       }));
-      return records.filter((file): file is Omit<BookFile, "source"> => Boolean(file));
     },
     async open(id, range?: Range): Promise<Opened> {
       const file = readFileId(id);

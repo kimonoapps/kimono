@@ -70,7 +70,17 @@ test('Anna fast downloads: discover a file, resolve it privately, and stream a r
     requests.push({ url, init });
     if (url.origin === 'https://books.example') {
       if (url.pathname === '/account/') return new Response(null, { headers: { 'set-cookie': 'aa_account_id2=test; Path=/' } });
-      if (url.pathname === '/search') return new Response(`<a href="/md5/${md5.toUpperCase()}">EPUB</a><a href="/md5/${md5}">duplicate</a>`);
+      if (url.pathname === '/search') {
+        /* As Anna's lists files: one result per block, the details on the page itself. */
+        const result = (hash, title, author, line) => `<div class="flex  pt-3 pb-3 border-b last:border-b-0 border-gray-100"><a href="/md5/${hash}" class="custom-a"></a>
+          <div><a href="/md5/${hash}" class="line-clamp-[3] custom-a font-semibold text-lg leading-[1.2]">${title}</a><a href="/search?q=x" class="text-sm"><span class="icon-[mdi--user-edit] text-base align-sub"></span> ${author}</a></div>
+          <div class="text-gray-800 dark:text-slate-400 font-semibold text-sm leading-[1.2] mt-2">${line}</div></div>`;
+        return new Response([
+          result(md5, 'The Book', 'Writer, A.', 'English [en] · EPUB · 16 KB · 2020 · 📗 Book'),
+          result('a'.repeat(32), 'Another Book Entirely', 'Someone Else', 'English [en] · EPUB · 1.0MB · 2019'),
+          result('b'.repeat(32), 'The Book', 'Writer, A.', 'English [en] · MOBI · 1.0MB · 2019'),
+        ].join(''));
+      }
       if (url.pathname === `/db/aarecord_elasticsearch/md5:${md5}.json`) return Response.json({ file_unified_data: {
         title_best: 'The Book', author_best: 'Writer, A.', extension_best: 'epub', filesize_best: 16, language_codes: ['en'],
       } });
@@ -90,8 +100,9 @@ test('Anna fast downloads: discover a file, resolve it privately, and stream a r
   const found = await source.find(book);
   assert.deepEqual(md5IdsIn(`<a href="/md5/${md5}">one</a><a href="/md5/${md5}">again</a>`), [md5]);
   assert.equal(found.length, 1);
-  assert.deepEqual(found[0], { id: `${md5}.2.1.epub`, format: 'epub', size: 16, label: null, language: 'en', sample: false });
-  assert.equal(requests.find((r) => r.url.pathname === '/search').url.searchParams.get('q'), '9780306406157');
+  assert.deepEqual(found[0], { id: `${md5}.2.1.epub`, format: 'epub', size: 16 * 1024, label: 'English · 2020', language: 'en', sample: false });
+  const searched = requests.filter((r) => r.url.pathname === '/search').map((r) => r.url.searchParams.get('q'));
+  assert.deepEqual(searched.sort(), ['9780306406157', 'The Book A. Writer']);
 
   const opened = await source.open(found[0].id, { start: 4, end: 7 });
   assert.equal(opened.size, 16);
