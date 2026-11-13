@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InkBlot, InkPortraitFrame, Seal } from "@kimono/ui";
-import { Crossing } from "@/components/crossing";
+import { Crossing, CrossingSeal } from "@/components/crossing";
 import { InkSheet } from "@/components/ink-sheet";
 import { JointSwitch } from "@/components/joint-switch";
 import { LineIcon } from "@/components/line-icon";
@@ -213,11 +213,6 @@ export function ProfileView({ username, home = false }: { username: string; home
   /* Kept from friends: the whole app, or one row of it. */
   const appKept = (app: string) => p.open && (p.hidden?.includes(app) ?? false);
   const rowKept = (app: string, kind: string) => appKept(app) || (p.open && (p.kept?.includes(`${app}:${kind}`) ?? false));
-  const seenOf = (app: string) => {
-    if (appKept(app)) return "Only you";
-    const rows = privacy?.apps.find((a) => a.app === app)?.rows ?? [];
-    return rows.some((r) => !r.shown) ? "Friends see some" : "Friends see this";
-  };
   /* Your own: one title off one row, as its app would (lib/friends removeFromRow); it leaves at once and comes back if that fails. */
   const drop = (s: Section, i: Item) => {
     if (!p.open) return;
@@ -226,62 +221,84 @@ export function ProfileView({ username, home = false }: { username: string; home
       .then(() => setToast(`Off ${s.title}`), (e) => { setProblem(message(e)); void load(); });
   };
   const friendsKept = p.open && p.you && (invisible || privacy?.friends === false);
+  /* What friends see of a part of you, one tag everywhere; it opens Who sees what. */
+  const tag = (kept: boolean, some = false) => <button type="button" className={`fr-tag${kept ? " is-only" : ""}`} onClick={() => setPrivacyOpen(true)}>
+    <LineIcon name={kept ? "lock" : "eye"} />{kept ? "Only you" : some ? "Friends see some" : "Friends see this"}</button>;
+  const friendList = p.open ? p.friendList ?? [] : [];
 
-  return <div className="you fr">
-    <div className="fr-top">
-      {home ? null : <Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing>}
-      {home ? <Crossing kind="kakejiku" className="fr-back fr-gear" href="/account/settings" aria-label="Settings"><LineIcon name="gear" /></Crossing> : null}
-    </div>
-    <div className="stack you-head">
-      <span className="you-picture"><Face person={p} size={112} />
-        {p.you ? <Crossing kind="kakejiku" className="you-camera" href="/account?sheet=picture" aria-label="Change your picture"><LineIcon name="camera" /></Crossing> : null}</span>
-      {p.you ? <NameField name={p.name} onSaved={(name) => setProfile({ ...p, name })} onProblem={setProblem} /> : <h1>{p.name}</h1>}
-      <p>@{p.username}{p.open ? ` · ${p.friends === 1 ? "1 friend" : `${p.friends} friends`}` : ""}</p>
-      {invisible ? <button type="button" className="fr-invisible" onClick={() => setPrivacyOpen(true)}><LineIcon name="lock" />Invisible to friends</button> : null}
-      {p.open && p.kimonoRead ? <SilkscreenBadge since={p.kimonoRead.since} you={p.you} name={p.name || p.username} /> : null}
-      {p.open && p.you ? <BioField bio={p.bio} onSaved={(bio) => setProfile({ ...p, bio })} onProblem={setProblem} />
-        : p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
-      <div className="fr-actions">{action}</div>
-    </div>
-    {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
+  return <div className={`you fr fr-profile${p.open ? "" : " is-closed"}`}>
+    {home ? null : <div className="fr-top"><Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing></div>}
+    <aside className="fr-side">
+      <div className="stack you-head">
+        {p.you ? <Crossing kind="kakejiku" className="you-picture" href="/account?sheet=picture" aria-label="Change your picture">
+          <Face person={p} size={120} /><span className="you-camera"><LineIcon name="camera" /></span></Crossing>
+          : <span className="you-picture"><Face person={p} size={120} /></span>}
+        {p.you ? <NameField name={p.name} onSaved={(name) => setProfile({ ...p, name })} onProblem={setProblem} /> : <h1>{p.name}</h1>}
+        <p className="fr-handle">@{p.username}{p.open ? ` · ${p.friends === 1 ? "1 friend" : `${p.friends} friends`}` : ""}</p>
+        {p.open && p.kimonoRead ? <SilkscreenBadge since={p.kimonoRead.since} you={p.you} name={p.name || p.username} /> : null}
+        {p.open && p.you ? <BioField bio={p.bio} onSaved={(bio) => setProfile({ ...p, bio })} onProblem={setProblem} />
+          : p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
+        <div className={`fr-actions${p.you ? " fr-doors" : ""}`}>{p.you ? <>
+          <Seal tone={invisible ? "primary" : "quiet"} compact onClick={() => setPrivacyOpen(true)}><LineIcon name="lock" />{invisible ? "Invisible" : "Who sees what"}</Seal>
+          <CrossingSeal tone="quiet" compact href="/account/settings"><LineIcon name="cog" />Settings</CrossingSeal>
+        </> : action}</div>
+      </div>
+      {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
 
-    {p.open && p.recommendations.length ? <section className="fr-group">
-      <div className="label">Recommends</div>
-      <div className="fr-shelf k-inkbar">{p.recommendations.map((r) => <Tile key={r.id} item={r}>
-        {r.note ? <q className="fr-tile-note">{r.note}</q> : null}
-        {p.you ? <button type="button" className="fr-away" aria-label={`Take ${r.title} off your profile`} onClick={() => void takeBack(r)}><LineIcon name="trash" /></button>
-          : <button type="button" className="fr-away" aria-label={`Recommend ${r.title}`} onClick={() => setRecommending(r)}><LineIcon name="send" /></button>}
-      </Tile>)}</div>
-    </section> : null}
-
-    {p.open && (p.friendList?.length || p.you) ? <section className={`fr-group${friendsKept ? " is-kept" : ""}`}>
-      <div className="label fr-label">Friends{friendsKept ? <span className="fr-only">Only you</span> : null}
-        {p.you && (p.friendList?.length || asked) ? <Crossing kind="kakejiku" className="fr-all" href="/account/friends">{asked ? <><i className="fr-new" />{asked} asking</> : "All friends"}</Crossing> : null}</div>
-      {p.friendList?.length ? <div className="fr-shelf fr-people k-inkbar">{p.friendList.map((f) =>
-        <Crossing key={f.username} kind="kakejiku" className="fr-person" href={`/account/people/${encodeURIComponent(f.username)}`}>
-          <Face person={f} size={64} /><span>{first(f)}</span>
-        </Crossing>)}</div>
-        : <p className="fr-quiet fr-pad">No friends yet. <Crossing kind="kakejiku" href="/account/friends">Find friends</Crossing></p>}
-    </section> : null}
-
-    {p.open ? groups.map((rows) => {
-      const app = rows[0].app;
-      const kept = appKept(app);
-      return <section key={app} className={`fr-group${kept ? " is-kept" : ""}`}>
+      {p.open && (friendList.length || p.you) ? <section className={`fr-group fr-friends${friendsKept ? " is-kept" : ""}`}>
         <div className="fr-app-head">
-          <InkBlot tint={app === "books" ? "#5c7150" : "#a84d63"} seed={`app:${app}`}><LineIcon name={app === "books" ? "book" : "film"} /></InkBlot>
-          <h2>{rows[0].appName}</h2>
-          {p.you ? <button type="button" className="fr-see" onClick={() => setPrivacyOpen(true)}><LineIcon name={kept ? "lock" : "people"} />{seenOf(app)}</button> : null}
+          <InkBlot tint="#74565c" seed="friends"><LineIcon name="people" /></InkBlot>
+          <h2>Friends</h2>
+          {p.you ? tag(friendsKept) : null}
         </div>
-        {rows.map((s) => <div key={`${s.app}:${s.kind}`} className={!kept && p.you && rowKept(app, s.kind) ? "is-kept" : undefined}>
-          <div className="label fr-label">{s.title}{!kept && p.you && rowKept(app, s.kind) ? <span className="fr-only">Only you</span> : null}</div>
-          <div className="fr-shelf k-inkbar">{s.items.map((i) => <Tile key={i.itemId} item={i}>
-            <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>
-            {p.you ? <button type="button" className="fr-away fr-drop" aria-label={`Take ${i.title} off ${s.title}`} onClick={() => void drop(s, i)}><LineIcon name="close" /></button> : null}
-          </Tile>)}</div>
-        </div>)}
-      </section>;
-    }) : null}
+        {friendList.length ? <div className="fr-shelf fr-people k-inkbar">{friendList.slice(0, 8).map((f) =>
+          <Crossing key={f.username} kind="kakejiku" className="fr-person" href={`/account/people/${encodeURIComponent(f.username)}`}>
+            <Face person={f} size={64} /><span>{first(f)}</span>
+          </Crossing>)}</div> : null}
+        {p.you ? <div className="fr-more">
+          {asked ? <CrossingSeal compact href="/account/friends"><i className="fr-new" />{asked} asking</CrossingSeal> : null}
+          {friendList.length ? <CrossingSeal tone="quiet" compact href="/account/friends">All friends</CrossingSeal>
+            : <CrossingSeal compact href="/account/friends"><LineIcon name="search" />Find friends</CrossingSeal>}
+        </div> : null}
+      </section> : null}
+    </aside>
+
+    <div className="fr-main">
+      {p.open && p.recommendations.length ? <section className="fr-group">
+        <div className="fr-app-head">
+          <InkBlot tint="#a84d63" seed="recommends"><LineIcon name="send" /></InkBlot>
+          <h2>Recommends</h2>
+        </div>
+        <div className="fr-shelf k-inkbar">{p.recommendations.map((r) => <Tile key={r.id} item={r}>
+          {r.note ? <q className="fr-tile-note">{r.note}</q> : null}
+          {p.you ? <button type="button" className="fr-away" aria-label={`Take ${r.title} off your profile`} onClick={() => void takeBack(r)}><LineIcon name="close" /></button>
+            : <button type="button" className="fr-away" aria-label={`Recommend ${r.title}`} onClick={() => setRecommending(r)}><LineIcon name="send" /></button>}
+        </Tile>)}</div>
+      </section> : null}
+
+      {p.open ? groups.map((rows) => {
+        const app = rows[0].app;
+        const kept = appKept(app);
+        const some = (privacy?.apps.find((a) => a.app === app)?.rows ?? []).some((r) => !r.shown);
+        return <section key={app} className={`fr-group${kept ? " is-kept" : ""}`}>
+          <div className="fr-app-head">
+            <InkBlot tint={app === "books" ? "#5c7150" : "#a84d63"} seed={`app:${app}`}><LineIcon name={app === "books" ? "book" : "film"} /></InkBlot>
+            <h2>{rows[0].appName}</h2>
+            {p.you ? tag(kept, some) : null}
+          </div>
+          {rows.map((s) => {
+            const only = !kept && p.you && rowKept(app, s.kind);
+            return <div key={`${s.app}:${s.kind}`} className={only ? "is-kept" : undefined}>
+              <div className="label fr-label">{s.title}{only ? tag(true) : null}</div>
+              <div className="fr-shelf k-inkbar">{s.items.map((i) => <Tile key={i.itemId} item={i}>
+                {p.you ? <button type="button" className="fr-away" aria-label={`Take ${i.title} off ${s.title}`} onClick={() => void drop(s, i)}><LineIcon name="close" /></button>
+                  : <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>}
+              </Tile>)}</div>
+            </div>;
+          })}
+        </section>;
+      }) : null}
+    </div>
 
     {privacyOpen && privacy ? <PrivacySheet privacy={privacy} onClose={() => setPrivacyOpen(false)}
       onChanged={(r) => { if (p.open) setProfile({ ...p, privacy: r.privacy, hidden: r.hidden, kept: keptFrom(r.privacy) }); }} /> : null}
@@ -342,9 +359,10 @@ function NameField({ name, onSaved, onProblem }: { name: string; onSaved: (name:
     call<{ name: string }>("/api/v1/me", "PATCH", { name: next })
       .then((r) => { onSaved(r.name); onProblem(null); router.refresh(); }, (e) => { setText(name); onProblem(message(e)); });
   };
-  return <h1 className="fr-edit-name"><input ref={field} aria-label="Your name" value={text} maxLength={80} autoComplete="name" spellCheck={false}
+  return <h1 className="fr-edit-name fr-editable"><input ref={field} aria-label="Your name" value={text} maxLength={80} autoComplete="name" spellCheck={false}
     size={Math.max(4, [...text].length)} onChange={(e) => setText(e.target.value)} onBlur={save}
-    onKeyDown={(e) => { if (e.key === "Enter") field.current?.blur(); if (e.key === "Escape") { setText(name); requestAnimationFrame(() => field.current?.blur()); } }} /></h1>;
+    onKeyDown={(e) => { if (e.key === "Enter") field.current?.blur(); if (e.key === "Escape") { setText(name); requestAnimationFrame(() => field.current?.blur()); } }} />
+    <LineIcon name="brush" className="fr-brush" /></h1>;
 }
 
 /** Your bio, written where friends read it; it saves when you leave it. */
@@ -355,7 +373,8 @@ function BioField({ bio, onSaved, onProblem }: { bio: string; onSaved: (bio: str
     call<{ bio: string }>("/api/v1/profile", "PATCH", { bio: text })
       .then((r) => { onSaved(r.bio); onProblem(null); }, (e) => { setText(bio); onProblem(message(e)); });
   };
-  return <textarea className="fr-bio fr-edit-bio" aria-label="About you" placeholder="A few words about you" rows={1} maxLength={280}
+  return <span className="fr-editable fr-edit-bio-wrap"><textarea className="fr-bio fr-edit-bio" aria-label="About you" placeholder="A few words about you" rows={1} maxLength={280}
     value={text} onChange={(e) => setText(e.target.value)} onBlur={save}
-    onKeyDown={(e) => { if (e.key === "Escape") { const field = e.currentTarget; setText(bio); requestAnimationFrame(() => field.blur()); } }} />;
+    onKeyDown={(e) => { if (e.key === "Escape") { const field = e.currentTarget; setText(bio); requestAnimationFrame(() => field.blur()); } }} />
+    <LineIcon name="brush" className="fr-brush" /></span>;
 }
