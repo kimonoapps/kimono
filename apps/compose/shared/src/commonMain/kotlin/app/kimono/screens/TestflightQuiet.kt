@@ -1,6 +1,16 @@
 package app.kimono.screens
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
@@ -41,5 +51,43 @@ fun TestflightQuiet(server: String?, platform: Platform, link: String = "itms-be
             Modifier.width(200.dp).aspectRatio(590f / 1278f).clip(shape).border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
         )
         Seal("Open TestFlight", onClick = { platform.openUrl(link) }, tone = SealTone.Quiet, compact = true)
+    }
+}
+
+private const val UNDERSTOOD = "kimono.appleEmails.understood"
+
+/**
+ * On Home, an iPhone's banner about Apple's TestFlight emails, with the clip of turning them off.
+ * "I understand" puts it away for good; Settings keeps the same clip.
+ */
+@Composable
+fun TestflightBanner(server: () -> String?, platform: Platform) {
+    if (platform.os != "ios") return
+    /* The clip's address once it's known not to be put away: read after the kept answer, as the sign-in may still be settling. */
+    var clip by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { if (platform.readKept(UNDERSTOOD) == null) clip = server()?.trimEnd('/')?.plus(CLIP) }
+    val url = clip ?: return
+    Card(
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("How do I make Apple stop sending me emails?", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth())
+            Text(
+                "In TestFlight, open Kimono, then Notifications, and turn both off. Kimono still tells you when an update is ready.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            val shape = RoundedCornerShape(22.dp)
+            platform.LoopingVideo(
+                url,
+                Modifier.width(180.dp).aspectRatio(590f / 1278f).clip(shape).border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Seal("I understand", onClick = { clip = null; scope.launch { platform.keep(UNDERSTOOD, "yes") } }, compact = true)
+                Seal("Open TestFlight", onClick = { platform.openUrl("itms-beta://") }, tone = SealTone.Quiet, compact = true)
+            }
+        }
     }
 }

@@ -163,6 +163,8 @@ fun HomeScreen(
                 }
             }
             if (update != null) item(key = "update") { UpdateCard(update, platform, onLater) }
+            /* An iPhone gets Apple's TestFlight emails for every build: how to stop them, until they say they've got it. */
+            item(key = "apple-emails") { TestflightBanner({ friends.server }, platform) }
 
             /* ── Your apps ── */
             if (pinned.isNotEmpty() || apps != null) item(key = "mine-label") { Part("Your apps") }
