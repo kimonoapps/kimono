@@ -175,3 +175,41 @@ test('recommendations: on your profile with no one to send to; gone with the fri
   assert.equal(db.prepare('SELECT count(*) AS n FROM recommendations WHERE to_user IS NOT NULL').get().n, 0);
   assert.equal(friends.onProfile(db, 'ana').length, 1);
 });
+
+test('privacy: rows kept back, the friends list, and going invisible', () => {
+  const db = fresh();
+  friends.askFriend(db, 'ana', 'sami', 1); friends.askFriend(db, 'sami', 'ana', 2);
+  friends.askFriend(db, 'ana', 'lee', 3); friends.askFriend(db, 'lee', 'ana', 4);
+  const rows = () => [
+    { app: 'watch', appName: 'Watch', kind: 'watched', title: 'Watched', items: [film] },
+    { app: 'watch', appName: 'Watch', kind: 'listed', title: 'Watchlist', items: [film] },
+    { app: 'books', appName: 'Books', kind: 'read', title: 'Read', items: [film] },
+  ];
+  const seen = (viewer) => friends.profileFor(db, viewer, { username: 'ana' }, rows);
+  friends.setKept(db, 'ana', 'watch:listed', true);
+  assert.deepEqual(seen('sami').sections.map((s) => s.kind), ['watched', 'read']);
+  /* Her own profile keeps it all, and says what's kept. */
+  assert.deepEqual(seen('ana').sections.map((s) => s.kind), ['watched', 'listed', 'read']);
+  assert.deepEqual(seen('ana').kept, ['watch:listed']);
+  assert.equal(seen('ana').privacy.apps.find((a) => a.app === 'watch').rows.find((r) => r.kind === 'listed').shown, false);
+  assert.throws(() => friends.setKept(db, 'ana', 'watch:nope', true));
+  /* The friends list: there until kept back. */
+  assert.deepEqual(seen('sami').friendList, ['lee', 'sami']);
+  friends.setKept(db, 'ana', 'friends', true);
+  assert.equal(seen('sami').friendList, null);
+  assert.deepEqual(seen('ana').friendList, ['lee', 'sami']);
+  /* Invisible: friends see a closed profile, every app counts as hidden (Books reads that), and her own switches are kept. */
+  friends.setInvisible(db, 'ana', true);
+  assert.equal(seen('sami').open, false);
+  assert.equal(seen('sami').link, 'friends');
+  assert.deepEqual(friends.hiddenAppsOf(db, 'ana'), ['books', 'watch']);
+  assert.equal(seen('ana').open, true);
+  assert.equal(seen('ana').privacy.invisible, true);
+  assert.deepEqual(seen('ana').privacy.apps.map((a) => a.shown), [true, true]);
+  /* Someone invisible isn't listed among a friend's friends. */
+  friends.askFriend(db, 'lee', 'sami', 5); friends.askFriend(db, 'sami', 'lee', 6);
+  assert.deepEqual(friends.profileFor(db, 'lee', { username: 'sami' }, () => []).friendList, ['lee']);
+  friends.setInvisible(db, 'ana', false);
+  assert.equal(seen('sami').open, true);
+  assert.deepEqual(friends.hiddenAppsOf(db, 'ana'), []);
+});

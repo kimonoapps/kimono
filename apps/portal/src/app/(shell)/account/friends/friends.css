@@ -85,11 +85,41 @@
 
 /* a profile's apps: each one's rows together under its name */
 .fr-group { margin-top: 12px; transition: opacity .3s; }
-.fr-group.is-kept .fr-shelf { opacity: .5; }
+.fr-group.is-kept .fr-shelf, .fr-group .is-kept .fr-shelf { opacity: .5; }
 .fr-app-head { display: flex; align-items: center; gap: 12px; margin: 28px 8px 0; }
 .fr-app-head .k-ink-blot { width: 40px; height: 40px; }
 .fr-app-head h2 { flex: 1; font-size: 24px; }
-.fr-see { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--on-surface-variant); }
+.fr-see { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px 0 12px; border: 0; border-radius: 12px 8px 12px 8px; background: var(--sc-high); font: 500 14px var(--sans); color: var(--on-surface-variant); cursor: pointer; }
+.fr-see:hover { background: var(--sc-highest); color: var(--on-surface); }
+.fr-see .line-icon { width: 18px; height: 18px; }
+.fr-label { display: flex; align-items: center; gap: 10px; }
+.fr-only { font: 500 12px var(--sans); letter-spacing: 0; text-transform: none; padding: 2px 8px; border-radius: 8px; background: var(--sc-high); color: var(--on-surface-variant); }
+.fr-all { margin-left: auto; font: 500 14px var(--sans); letter-spacing: 0; text-transform: none; color: var(--plum) !important; }
+.fr-invisible { display: inline-flex; align-items: center; gap: 6px; margin: 2px auto 0; padding: 4px 12px; border: 0; border-radius: 10px; background: var(--sc-high); font: 500 13px var(--sans); color: var(--on-surface-variant); cursor: pointer; }
+.fr-invisible .line-icon { width: 16px; height: 16px; }
+
+/* a profile's friends: portraits in a row */
+.fr-people { grid-auto-columns: 84px; gap: 6px; }
+.fr-person { display: grid; justify-items: center; gap: 6px; padding: 8px 2px; border-radius: 18px; color: var(--on-surface) !important; text-decoration: none; font-size: 13.5px; transition: background-color .2s, border-radius .35s var(--spring); }
+.fr-person:hover { background: var(--sc-high); border-radius: 22px; }
+.fr-person .k-ink-portrait { width: 64px; height: 64px; }
+.fr-person .k-ink-portrait .portrait { width: 54px; height: 54px; font-size: 24px; }
+.fr-person > span { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* who sees what */
+.fr-privacy { display: grid; gap: 14px; }
+.fr-privacy .fr-toggle > span { display: grid; gap: 2px; }
+.fr-privacy small { font-size: 13.5px; color: var(--on-surface-variant); }
+.fr-priv-main { padding-bottom: 12px; border-bottom: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent); }
+.fr-priv-parts { display: grid; gap: 14px; transition: opacity .25s; }
+.fr-priv-app { display: grid; gap: 10px; }
+.fr-priv-rows { display: grid; gap: 8px; padding-left: 18px; border-left: 2px solid color-mix(in srgb, var(--on-surface) 10%, transparent); margin-left: 4px; transition: opacity .25s; }
+.fr-priv-rows .fr-toggle { font-size: 15px; }
+.fr-priv-parts.is-off, .fr-priv-rows.is-off { opacity: .45; }
+
+/* a shelf's scrollbar sits on a faint ruled rail the shelf's width, so the ink thumb reads as where you are, not a stray mark */
+.fr-shelf::-webkit-scrollbar-track { margin-inline: 4px; background: linear-gradient(transparent 6px, color-mix(in srgb, var(--k-ink) 12%, transparent) 6px 8px, transparent 8px); }
+@supports not selector(::-webkit-scrollbar) { .fr-shelf { scrollbar-width: thin; scrollbar-color: var(--k-scroll-thumb) color-mix(in srgb, var(--k-ink) 8%, transparent); } }
 .fr-group .label { margin-top: 14px; }
 .fr-progress { display: block; height: 4px; margin-top: 2px; border-radius: 2px; background: var(--sc-highest); overflow: hidden; }
 .fr-progress i { display: block; height: 100%; border-radius: 2px; background: var(--primary); }

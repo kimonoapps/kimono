@@ -5,7 +5,7 @@ import type { WatchConfig } from "./config";
 import { cardOf, ensureTitle, finished, fraction, getTitle, getTitles, prefsOf, watchDb, WatchProblem, type Card, type Progress, type Title } from "./index";
 import { playingNow, watchKey } from "./flow";
 import { answerAsk, cancelAsk, hiddenOf, likedByFriends, watchedByFriends, liveAsks, newAsk, noteWatched, type JoinAsk } from "./friends";
-import { changeFriend as changeKimonoFriend, findPeople as findKimonoPeople, friendsOfUser, linkBetween, linksOfUser, type Section } from "../friends";
+import { changeFriend as changeKimonoFriend, findPeople as findKimonoPeople, friendsOfUser, invisibleToFriends, linkBetween, linksOfUser, type Section } from "../friends";
 import { FriendsProblem, type LinkState } from "../friends/model";
 import { inviteTo, labelsFor, partyWith, people, type Person } from "./together-live";
 import { watchConfig } from "./config";
@@ -60,10 +60,17 @@ function nowOf(viewer: string, username: string, origin: string, now = Date.now(
   return spot && { ...spot, position: latest.position, duration: latest.duration, partyId: party?.timeline.titleId === latest.titleId ? party.id : null };
 }
 
-const sharing = (username: string) => prefsOf(watchDb(), username.toLowerCase()).shareWatching !== false;
-const invisible = (username: string) => prefsOf(watchDb(), username.toLowerCase()).invisible === true;
-/** Whether friends see their list and ratings (Settings › Friends). */
-const sharesTaste = (username: string) => prefsOf(watchDb(), username.toLowerCase()).shareTaste !== false;
+/* Gone invisible on their Kimono profile: Watch shows friends nothing of them, as if every switch below were off. */
+const quiet = (username: string) => { try { return invisibleToFriends(username); } catch { return false; } };
+/* Their own switches (Settings › Friends), as they set them… */
+const sharingSet = (username: string) => prefsOf(watchDb(), username.toLowerCase()).shareWatching !== false;
+const invisibleSet = (username: string) => prefsOf(watchDb(), username.toLowerCase()).invisible === true;
+const sharesTasteSet = (username: string) => prefsOf(watchDb(), username.toLowerCase()).shareTaste !== false;
+/* …and what friends get. */
+const sharing = (username: string) => sharingSet(username) && !quiet(username);
+const invisible = (username: string) => invisibleSet(username) || quiet(username);
+/** Whether friends see their list and ratings. */
+const sharesTaste = (username: string) => sharesTasteSet(username) && !quiet(username);
 type RatingRow = { title_id: string; rating: "down" | "up" | "love"; rated_at: number | null };
 const ratingsOf = (username: string) => watchDb().prepare("SELECT title_id, rating, rated_at FROM ratings WHERE lower(username) = ? ORDER BY coalesce(rated_at, 0) DESC").all(username.toLowerCase()) as RatingRow[];
 
@@ -108,8 +115,8 @@ export async function friendsPage(username: string, origin: string) {
   /* Watching now first, then whoever watched most lately. */
   friends.sort((a, b) => Number(!!b.now) - Number(!!a.now) || (b.recent[0]?.at ?? 0) - (a.recent[0]?.at ?? 0));
   return {
-    sharing: sharing(u),
-    invisible: invisible(u),
+    sharing: sharingSet(u),
+    invisible: invisibleSet(u),
     friends,
     asked: links.filter((l) => l.state === "asked").map((l) => person(l.username)),
     asking: links.filter((l) => l.state === "asking").map((l) => person(l.username)),
@@ -265,8 +272,9 @@ export async function watchSections(viewer: string, username: string, origin: st
   const item = (t: Title) => ({ app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: cardOf(t, origin).poster, href: `/watch?t=${encodeURIComponent(t.id)}` });
   const row = (kind: string, title: string, ids: string[]): Section => ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map(item) });
   const rows: Section[] = [];
-  if (sharing(u)) rows.push(row("watched", "Watched", lastRows(u, 24).map((p) => p.titleId)));
-  if (sharesTaste(u)) {
+  /* Going invisible on Kimono is the profile's to apply (lib/friends profileFor), so their own profile still shows it all. */
+  if (sharingSet(u)) rows.push(row("watched", "Watched", lastRows(u, 24).map((p) => p.titleId)));
+  if (sharesTasteSet(u)) {
     const rated = ratingsOf(u);
     rows.push(row("loved", "Loved", rated.filter((r) => r.rating === "love").map((r) => r.title_id)));
     rows.push(row("liked", "Liked", rated.filter((r) => r.rating === "up").map((r) => r.title_id)));

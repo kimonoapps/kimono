@@ -10,8 +10,8 @@ import { listAccounts } from "../directory";
 import { picturePaths } from "../pictures";
 import { stateDir } from "../state";
 import {
-  answerFriend, apps, askFriend, bioOf, dropRecommendation, FriendsProblem, friendsOf, importFriends, linkOf, linksOf, markSeen, migrateSocial, onProfile,
-  profileFor, receivedBy, recommend, recommendedTo, removeFriend, seesProfile, sentBy, setAppHidden, setBio, unseenCount,
+  answerFriend, apps, askFriend, hiddenAppsOf, bioOf, dropRecommendation, FriendsProblem, friendsOf, importFriends, linkOf, linksOf, markSeen, migrateSocial, onProfile,
+  isInvisible, privacyOf, profileFor, receivedBy, recommend, recommendedTo, removeFriend, seesProfile, sentBy, setAppHidden, setBio, setInvisible, setKept, unseenCount,
   type LinkState, type Recommendation, type Section,
 } from "./model";
 
@@ -184,11 +184,29 @@ export async function profileOf(viewer: string, username: string, origin: string
   const everyone = await people();
   /* Badges are for friends too: a Kimono Read shows even when their Books rows don't. */
   const kimonoRead = await import("./books-section").then((m) => m.kimonoReadOf(person.username)).catch(() => null);
-  return { ...profile, recommendations: profile.recommendations.map((r) => viewOf(r, everyone)), kimonoRead };
+  const friendList = profile.friendList?.map((f) => personIn(everyone, f)).sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username)) ?? null;
+  return { ...profile, friendList, recommendations: profile.recommendations.map((r) => viewOf(r, everyone)), kimonoRead };
 }
 
 export const saveBio = (username: string, bio: unknown) => setBio(friendsDb(), username, bio);
 export const showApp = (username: string, app: string, shown: boolean) => setAppHidden(friendsDb(), username, app, !shown);
+
+/**
+ * What friends see of you: `{ invisible }`, `{ app, shown }` (an app's activity), or `{ keep: "watch:listed" | "friends", shown }`
+ * (one row, or your friends list). Answers it all as it is now.
+ */
+export function changePrivacy(username: string, body: Record<string, unknown>) {
+  const db = friendsDb();
+  const shown = body.shown !== false;
+  if (typeof body.invisible === "boolean") setInvisible(db, username, body.invisible);
+  else if (typeof body.keep === "string") setKept(db, username, body.keep, !shown);
+  else if (typeof body.app === "string") setAppHidden(db, username, body.app, !shown);
+  else throw new FriendsProblem("Pick what friends see.");
+  return { privacy: privacyOf(db, username), hidden: hiddenAppsOf(db, username) };
+}
+
+/** Whether someone has gone invisible to friends (Kimono's switch, on their profile): apps keep what they do from friends while it's on. */
+export const invisibleToFriends = (username: string) => isInvisible(friendsDb(), username);
 
 /* ───── Recommendations ───── */
 

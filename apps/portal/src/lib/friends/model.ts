@@ -9,7 +9,9 @@
  * portrait, enough to ask. Friends see the bio, what someone recommends, and
  * each app's activity (Watch: watched, loved, liked, My list; Books: reading,
  * read, want to read), worked out from that app's own data. Anyone can keep an
- * app's activity off their profile.
+ * app's activity off their profile, or just some of its rows (their Watchlist,
+ * what they loved), or their friends list; or go invisible, when friends see
+ * only their name and portrait and no app shows them what they're doing.
  *
  * A recommendation is one title from one app (`app` + `itemId`, with a small
  * snapshot of its name and cover so it shows without that app), sent to a
@@ -30,6 +32,9 @@ export function migrateSocial(db: DatabaseSync) {
   const columns = (db.prepare("PRAGMA table_info(profiles)").all() as { name: string }[]).map((c) => c.name);
   /* Apps whose activity someone keeps off their profile, comma-separated. */
   if (!columns.includes("hidden")) db.exec("ALTER TABLE profiles ADD COLUMN hidden TEXT NOT NULL DEFAULT ''");
+  /* Rows of a profile someone keeps to themselves ("watch:listed", "friends"), comma-separated; and whether they've gone invisible. */
+  if (!columns.includes("kept")) db.exec("ALTER TABLE profiles ADD COLUMN kept TEXT NOT NULL DEFAULT ''");
+  if (!columns.includes("invisible")) db.exec("ALTER TABLE profiles ADD COLUMN invisible INTEGER NOT NULL DEFAULT 0");
 }
 
 export class FriendsProblem extends Error {
@@ -159,29 +164,83 @@ export function itemOf(raw: Record<string, unknown>): Item {
 const itemFrom = (r: { app: string; item_id: string; title: string; subtitle: string | null; cover: string | null }): Item =>
   ({ app: r.app, itemId: r.item_id, title: r.title, subtitle: r.subtitle ?? null, cover: r.cover ?? null });
 
-/** The apps someone keeps off their profile. */
+/** The rows each app puts on a profile, by kind, so any of them can be kept back before it has anything in it. */
+export const rowsOf: Record<string, [kind: string, title: string][]> = {
+  watch: [["watched", "Watched"], ["loved", "Loved"], ["liked", "Liked"], ["listed", "Watchlist"]],
+  books: [["reading", "Reading now"], ["want", "Want to read"], ["read", "Read"], ["loved", "Loved"], ["liked", "Liked"]],
+};
+
+type PrivacyRow = { hidden?: string; kept?: string; invisible?: number };
+const privacyRow = (db: DatabaseSync, username: string) =>
+  db.prepare("SELECT hidden, kept, invisible FROM profiles WHERE username = ?").get(username.toLowerCase()) as PrivacyRow | undefined;
+
+/** Whether someone has gone invisible: friends see their name and portrait, and no app shows them what they do. */
+export const isInvisible = (db: DatabaseSync, username: string) => Number(privacyRow(db, username)?.invisible ?? 0) === 1;
+
+/** The apps whose activity someone keeps off their profile: every one while they're invisible. */
 export function hiddenAppsOf(db: DatabaseSync, username: string): string[] {
-  const row = db.prepare("SELECT hidden FROM profiles WHERE username = ?").get(username.toLowerCase()) as { hidden?: string } | undefined;
+  const row = privacyRow(db, username);
+  if (Number(row?.invisible ?? 0) === 1) return Object.keys(apps).sort();
   return (row?.hidden ?? "").split(",").filter((a) => apps[a]);
 }
 
-/** Shows or keeps one app's activity off your profile. */
+/** The app rows ("watch:listed") and parts ("friends") someone keeps to themselves, with their apps still shown. */
+export function keptOf(db: DatabaseSync, username: string): string[] {
+  return (privacyRow(db, username)?.kept ?? "").split(",").filter((k) => k === "friends" || (k.includes(":") && rowsOf[k.split(":")[0]]?.some(([kind]) => kind === k.split(":")[1])));
+}
+
+const saveProfile = (db: DatabaseSync, u: string, column: "hidden" | "kept" | "invisible", value: string | number, now: number) =>
+  db.prepare(`INSERT INTO profiles (username, bio, updated_at, ${column}) VALUES (?, '', ?, ?) ON CONFLICT (username) DO UPDATE SET ${column} = excluded.${column}, updated_at = excluded.updated_at`).run(u, now, value);
+
+/** Shows or keeps one app's activity off your profile. Answers the apps kept off as you set them (going invisible doesn't change these). */
 export function setAppHidden(db: DatabaseSync, username: string, app: string, hidden: boolean, now = Date.now()): string[] {
   if (!apps[app]) throw new FriendsProblem("That app isn't on profiles.");
   const u = username.toLowerCase();
-  const next = [...new Set([...hiddenAppsOf(db, u).filter((a) => a !== app), ...(hidden ? [app] : [])])].sort();
-  db.prepare("INSERT INTO profiles (username, bio, updated_at, hidden) VALUES (?, '', ?, ?) ON CONFLICT (username) DO UPDATE SET hidden = excluded.hidden, updated_at = excluded.updated_at").run(u, now, next.join(","));
+  const was = (privacyRow(db, u)?.hidden ?? "").split(",").filter((a) => apps[a]);
+  const next = [...new Set([...was.filter((a) => a !== app), ...(hidden ? [app] : [])])].sort();
+  saveProfile(db, u, "hidden", next.join(","), now);
   return next;
 }
 
-/** Whether [viewer] sees [username]'s whole profile: their own, or a friend's. */
+/** Shows or keeps one row ("watch:listed") or part ("friends") of your profile from friends. */
+export function setKept(db: DatabaseSync, username: string, key: string, kept: boolean, now = Date.now()): string[] {
+  const [app, kind] = key.split(":");
+  if (key !== "friends" && !rowsOf[app]?.some(([k]) => k === kind)) throw new FriendsProblem("That isn't on profiles.");
+  const u = username.toLowerCase();
+  const next = [...new Set([...keptOf(db, u).filter((k) => k !== key), ...(kept ? [key] : [])])].sort();
+  saveProfile(db, u, "kept", next.join(","), now);
+  return next;
+}
+
+export function setInvisible(db: DatabaseSync, username: string, invisible: boolean, now = Date.now()): boolean {
+  saveProfile(db, username.toLowerCase(), "invisible", invisible ? 1 : 0, now);
+  return invisible;
+}
+
+/** What you let friends see, for your own profile: going invisible, and each app and its rows, and your friends list. */
+export function privacyOf(db: DatabaseSync, username: string) {
+  const row = privacyRow(db, username);
+  const hidden = (row?.hidden ?? "").split(",");
+  const kept = keptOf(db, username);
+  return {
+    invisible: Number(row?.invisible ?? 0) === 1,
+    friends: !kept.includes("friends"),
+    apps: Object.entries(apps).map(([app, { name }]) => ({
+      app, name, shown: !hidden.includes(app),
+      rows: (rowsOf[app] ?? []).map(([kind, title]) => ({ kind, title, shown: !kept.includes(`${app}:${kind}`) })),
+    })),
+  };
+}
+export type Privacy = ReturnType<typeof privacyOf>;
+
+/** Whether [viewer] sees [username]'s whole profile: their own, or a friend's who isn't invisible. */
 export const seesProfile = (db: DatabaseSync, viewer: string, username: string) =>
-  viewer.toLowerCase() === username.toLowerCase() || areFriends(db, viewer, username);
+  viewer.toLowerCase() === username.toLowerCase() || (areFriends(db, viewer, username) && !isInvisible(db, username));
 
 /**
- * Someone's profile as [viewer] sees it. Not friends: their name and portrait and how you're linked, nothing more.
- * Friends: the bio, what they recommend, and each app's activity, less the apps they keep to themselves.
- * Their own: everything, with the kept-back apps' activity still there and `hidden` saying which they are.
+ * Someone's profile as [viewer] sees it. Not friends (or they're invisible): their name and portrait and how you're linked, nothing more.
+ * Friends: the bio, what they recommend, their friends, and each app's activity, less the apps and rows they keep to themselves.
+ * Their own: everything, with what's kept back still there and `hidden`, `kept` and `privacy` saying what it is.
  * [sections] is only asked for when it will be shown.
  */
 export function profileFor<P extends { username: string }>(db: DatabaseSync, viewer: string, person: P, sections: () => Section[]) {
@@ -190,13 +249,17 @@ export function profileFor<P extends { username: string }>(db: DatabaseSync, vie
   const link = you ? null : linkOf(db, v, u);
   if (!seesProfile(db, v, u)) return { ...person, you, link, open: false as const };
   const hidden = hiddenAppsOf(db, u);
+  const kept = keptOf(db, u);
+  const friends = friendsOf(db, u);
   return {
     ...person, you, link, open: true as const,
     bio: bioOf(db, u),
-    sections: sections().filter((s) => you || !hidden.includes(s.app)),
+    sections: sections().filter((s) => you || (!hidden.includes(s.app) && !kept.includes(`${s.app}:${s.kind}`))),
     recommendations: onProfile(db, u),
-    friends: friendsOf(db, u).length,
-    ...(you ? { hidden } : {}),
+    friends: friends.length,
+    /* Who they're friends with, unless they keep it to themselves; never those who've gone invisible, but to themselves. */
+    friendList: you || !kept.includes("friends") ? friends.filter((f) => you || f === v || !isInvisible(db, f)) : null,
+    ...(you ? { hidden, kept, privacy: privacyOf(db, u) } : {}),
   };
 }
 
