@@ -77,5 +77,5 @@ entries:
       name: Kimono Portal
       provider: !KeyOf kimono-portal-provider
       meta_description: Your household, thoughtfully connected.
-      meta_launch_url: http://localhost:3000
+      meta_launch_url: http://localhost:3000/login/switch
       open_in_new_tab: true

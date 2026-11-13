@@ -64,7 +64,7 @@ function identityEndpoint() {
   return (process.env.KIMONO_IDENTITY_API_URL || "http://authentik-server:9000").replace(/\/+$/, "");
 }
 
-async function identityRequest(path: string, init?: RequestInit) {
+export async function identityRequest(path: string, init?: RequestInit) {
   const token = process.env.KIMONO_IDENTITY_API_TOKEN;
   if (!token) throw new Error("Kimono cannot reach the account directory yet.");
   const response = await fetch(`${identityEndpoint()}${path}`, {

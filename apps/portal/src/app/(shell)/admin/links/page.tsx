@@ -27,7 +27,7 @@ function identityDestinations(identityDomain: string): Destination[] {
     },
     {
       name: "People",
-      description: "Everyone who can sign in. Reset a password, deactivate an account, or change a name.",
+      description: "Everyone who can sign in. Reset a password, deactivate an account, change a name, or sign in as someone to see what they see.",
       href: `${admin}/identity/users`,
       icon: "user",
     },

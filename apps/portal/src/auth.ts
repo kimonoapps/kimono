@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { honouredSince, isRevoked } from "@/lib/session-epochs";
 import { readIdentityProfile, readStanding } from "@/lib/directory";
 import { roleFromGroups } from "@/lib/roles";
+import { impersonatorOf, noteImpersonationsOf } from "@/lib/impersonation";
 
 const authentikIssuer = process.env.AUTHENTIK_ISSUER?.replace(/\/*$/, "/");
 
@@ -35,6 +36,20 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
         token.identityId = profile.sub;
         token.username = profile.preferred_username;
         token.role = roleFromGroups(profile.groups);
+        /* An administrator signed in as this person from the People page: the
+           session is theirs, with who is really there kept beside it. Someone
+           signing in as themselves is told about any such time since they
+           were last told. Neither waits on, nor fails, an unreachable directory. */
+        const who = typeof token.username === "string" ? token.username : "";
+        const by = who ? await impersonatorOf(who).catch((error) => {
+          console.warn("Could not tell who is signing in:", error instanceof Error ? error.message : error);
+          return null;
+        }) : null;
+        if (by) token.impersonatedBy = by;
+        else {
+          delete token.impersonatedBy;
+          if (who) void noteImpersonationsOf(who).catch((error) => console.warn("Could not check who signed in as this account:", error instanceof Error ? error.message : error));
+        }
       }
       /* Signed out everywhere after this session began: it is no longer honoured. */
       if (typeof token.sessionId === "string" && await isRevoked(token.sessionId)) return null;
@@ -69,6 +84,7 @@ export const { auth, handlers, signIn, signOut, unstable_update: updateSession }
         session.user.username = String(token.username ?? "");
         session.user.role = String(token.role ?? "member") as typeof session.user.role;
         session.user.sessionId = typeof token.sessionId === "string" ? token.sessionId : undefined;
+        session.user.impersonatedBy = token.impersonatedBy as typeof session.user.impersonatedBy;
       }
       return session;
     },

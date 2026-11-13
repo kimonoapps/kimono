@@ -361,3 +361,16 @@ html, body, .app-frame { overflow-x: clip; }
 @keyframes k-filedrop-in { from { opacity: 0; transform: scale(.985); } }
 @media (max-width: 720px) { .k-filedrop { inset: 12px 12px 88px; } .k-filedrop b { font-size: 22px; } }
 @media (prefers-reduced-motion: reduce) { .k-filedrop { animation: none; } }
+
+/* ── Signed in as someone else ─────────────────────────────── */
+.impersonation-strip {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center; gap: var(--k-space-3);
+  padding: 6px var(--k-space-4);
+  background: var(--k-plum); color: var(--k-sheet);
+  font-size: 14px;
+}
+.impersonation-strip .k-seal { color: inherit; border-color: currentColor; }
+.impersonation-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--k-space-3); }
+.impersonation-list li { display: grid; gap: 2px; }
+.impersonation-list span { color: var(--k-ink-soft); }

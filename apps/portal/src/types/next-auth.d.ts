@@ -9,6 +9,8 @@ declare module "next-auth" {
       role: KimonoRole;
       /** This one session, so signing everyone else out can keep it. */
       sessionId?: string;
+      /** An administrator signed in as this person: who is really there. */
+      impersonatedBy?: { username: string; name: string };
     } & DefaultSession["user"];
   }
 }
@@ -22,5 +24,7 @@ declare module "@auth/core/jwt" {
     signedInAt?: number;
     /** Identifies this one session so signing out can refuse it. */
     sessionId?: string;
+    /** An administrator signed in as this person: who is really there. */
+    impersonatedBy?: { username: string; name: string };
   }
 }

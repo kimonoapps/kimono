@@ -52,6 +52,9 @@ entries:
         - authentik_core.view_authenticatedsession
         - authentik_core.delete_authenticatedsession
         - authentik_core.reset_user_password
+        # Who signed in as whom: an administrator signing in as someone from
+        # People is shown in Kimono, and the person is told when they next sign in.
+        - authentik_events.view_event
 
   - model: authentik_core.group
     state: present
@@ -196,5 +199,7 @@ entries:
       name: Kimono
       provider: !KeyOf kimono-portal-provider
       meta_description: Your household, thoughtfully connected.
-      meta_launch_url: !Env KIMONO_PORTAL_URL
+      # Signs in afresh, so an administrator who has just signed in as someone
+      # from People arrives in Kimono as them rather than as themselves.
+      meta_launch_url: !Format ["%s/login/switch", !Env KIMONO_PORTAL_URL]
       open_in_new_tab: true
