@@ -408,6 +408,49 @@ export function warm(config: CodeConfig, workspace: Workspace, user: ApiUser) {
   awake.going.set(workspace.id, going);
 }
 
+/* ── a new chat's sandbox, made while its first message is written ── */
+
+/* Each person's chat to be: its id, and when its sandbox goes if no message comes. Kept across dev reloads. */
+const reserved = ((globalThis as { __kimonoReserved?: Map<string, { id: string; drop: ReturnType<typeof setTimeout> }> }).__kimonoReserved ??= new Map());
+const reservedFor = 15 * 60_000;
+
+/** A chat not made yet, as far as readying its sandbox needs: one with no repository. */
+const chatToBe = (id: string, owner: string) => ({ id, owner: owner.toLowerCase(), title: "New chat", kind: "chat", folder: null, repo: { owner: "", name: "" }, base: "", branch: "", session: null, pullRequest: null, preview: null, previewName: null }) as unknown as Workspace;
+
+/**
+ * The person started writing a new chat: an id is kept for it and its sandbox made now, so its first
+ * message doesn't wait for that (the chat takes the id when it's sent: takeReserved). Unsent for
+ * 15 minutes, the sandbox goes.
+ */
+export function reserveNewChat(config: CodeConfig, user: ApiUser) {
+  const key = user.username.toLowerCase();
+  let kept = reserved.get(key);
+  if (kept) clearTimeout(kept.drop);
+  else kept = { id: newId(), drop: undefined as unknown as ReturnType<typeof setTimeout> };
+  const { id } = kept;
+  kept.drop = setTimeout(() => {
+    if (reserved.get(key)?.id !== id) return;
+    reserved.delete(key);
+    awake.at.delete(id);
+    void sandbox.remove(config, chatToBe(id, key)).catch(() => {});
+  }, reservedFor);
+  reserved.set(key, kept);
+  if (Date.now() - (awake.at.get(id) ?? 0) < awakeFor || awake.going.has(id)) return;
+  const going = ensure(config, chatToBe(id, key), who(user))
+    .catch((error) => console.warn("Kimono AI couldn't make a new chat's sandbox ahead:", error instanceof Error ? error.message : error))
+    .finally(() => awake.going.delete(id));
+  awake.going.set(id, going);
+}
+
+/** The id kept for this person's new chat, if any: it's the chat's now, and nothing else takes it. */
+export function takeReserved(username: string): string | null {
+  const kept = reserved.get(username.toLowerCase());
+  if (!kept) return null;
+  clearTimeout(kept.drop);
+  reserved.delete(username.toLowerCase());
+  return kept.id;
+}
+
 const who = (user: ApiUser) => ({ name: user.name || user.username, email: user.email || `${user.username}@users.kimono` });
 
 /** Who it's talking with and what day it is: the model knows neither by itself. */

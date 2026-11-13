@@ -523,7 +523,11 @@ export function branchFor(title: string, suffix = newId(2)) {
 }
 
 /** A new chat; with a repository named, a project on it. */
-export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOwner?: unknown; repoName?: unknown; base?: unknown; prompt: unknown; folder?: unknown }, now = Date.now()): Workspace {
+/**
+ * [input.id]: an id kept for this chat while its first message was written, its sandbox made ahead
+ * under it (lib/code reserveNewChat); one that's taken or isn't an id is passed over for a new one.
+ */
+export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOwner?: unknown; repoName?: unknown; base?: unknown; prompt: unknown; folder?: unknown; id?: string | null }, now = Date.now()): Workspace {
   const repoOwner = String(input.repoOwner ?? "");
   const repoName = String(input.repoName ?? "");
   const base = String(input.base ?? "");
@@ -533,7 +537,8 @@ export function createWorkspace(db: DatabaseSync, owner: string, input: { repoOw
   if (project && !branchPattern.test(base)) throw new CodeProblem("Choose a branch.");
   if (!prompt) throw new CodeProblem("Say what to do.");
   const folder = input.folder ? projectFor(db, String(input.folder), owner).id : null;
-  const id = newId();
+  const kept = input.id && /^[0-9a-f]{16}$/.test(input.id) && !db.prepare("SELECT 1 FROM workspaces WHERE id = ?").get(input.id) ? input.id : null;
+  const id = kept ?? newId();
   const title = titleFrom(prompt);
   db.prepare(`INSERT INTO workspaces (id, owner, title, repo_owner, repo_name, base, branch, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, owner.toLowerCase(), title, repoOwner, repoName, project ? base : "", project ? branchFor(title) : "", folder, now, now);

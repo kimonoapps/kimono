@@ -1,6 +1,6 @@
 import { apiError, apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { projectMissing } from "@/lib/code/config";
-import { ask, checkShare, code, requireProject, createWorkspace, db, efforts, modelChoices, taskFolder, workspaceFor, workspacesOf, sharedWithMe, artifactsSharedWith, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
+import { ask, checkShare, code, requireProject, createWorkspace, takeReserved, db, efforts, modelChoices, taskFolder, workspaceFor, workspacesOf, sharedWithMe, artifactsSharedWith, type Attachment, type Effort, type ModelChoice } from "@/lib/code";
 import { peopleIn } from "@/lib/code/sharing";
 
 /** Your workspaces, the most recently active first. */
@@ -44,7 +44,8 @@ export async function POST(request: Request) {
       const blocked = projectMissing(config);
       if (blocked) return apiError(409, blocked);
     }
-    const made = createWorkspace(db(), user.username, { repoOwner: body.owner, repoName: body.name, base: body.base, prompt: body.prompt, folder: body.folder });
+    /* A chat whose sandbox was made as its first message was written (warm) takes the id it was made under. */
+    const made = createWorkspace(db(), user.username, { repoOwner: body.owner, repoName: body.name, base: body.base, prompt: body.prompt, folder: body.folder, id: body.owner || body.name ? null : takeReserved(user.username) });
     if (body.hold !== true) ask(config, made, user, String(body.prompt), [] as Attachment[], efforts.includes(body.effort as Effort) ? body.effort as Effort : undefined, modelChoices.includes(body.model as ModelChoice) ? body.model as ModelChoice : undefined);
     void taskFolder(db(), made).catch((error) => console.warn("Code couldn't make a Drive folder:", error instanceof Error ? error.message : error));
     return apiJson(workspaceFor(db(), made.id, user.username), 201);

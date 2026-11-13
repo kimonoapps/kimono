@@ -1798,6 +1798,13 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
   /* The field grows with what's written, up to a third of the screen, as the chat's does. */
   useFitField(field, prompt);
   const ready = Boolean(prompt.trim()) && (!onProject || Boolean(chosen)) && !sending;
+  /* Writing a new chat makes its sandbox now, so its first message doesn't wait for it; at most every 45 seconds. */
+  const lastWarmed = useRef(0);
+  const warmNew = (value: string) => {
+    if (onProject || !value.trim() || Date.now() - lastWarmed.current < 45_000) return;
+    lastWarmed.current = Date.now();
+    void code.warmNew().catch(() => {});
+  };
 
   async function send() {
     if (!ready) return;
@@ -1866,7 +1873,7 @@ function Start({ blocked, admin, folder, repoAsked, onStarted }: { blocked: stri
           <AttachMenu disabled={Boolean(blocked)} onDevice={() => picker.current?.click()} onDrive={drivePresent ? () => setChoosing(true) : undefined} />
           {slash.menu}
           {slash.wrap(<textarea ref={field} value={prompt} rows={1} aria-label="Message" maxLength={maxMessage} disabled={Boolean(blocked)} placeholder={onProject ? "Describe what you want" : "Ask anything"}
-            onChange={(event) => setPrompt(event.target.value)} onScroll={slash.follow}
+            onChange={(event) => { setPrompt(event.target.value); warmNew(event.target.value); }} onScroll={slash.follow}
             onPaste={(event) => { const pasted = [...event.clipboardData.files]; if (pasted.length) { event.preventDefault(); hold(pasted); return; }
               const long = pastedText(event, files.map((f) => f.name)); if (long) { event.preventDefault(); hold([long]); } }}
             onKeyDown={(event) => { if (slash.onKeyDown(event)) return; if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }} />)}

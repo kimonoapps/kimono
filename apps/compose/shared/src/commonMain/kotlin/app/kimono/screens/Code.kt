@@ -617,7 +617,8 @@ fun NewChatScreen(code: Code, drive: Drive, platform: Platform, admin: Boolean, 
                             onPhotos = if (platform.photoPicker) ({ hold { platform.pickMedia() } }) else null,
                         )
                         MessageField(
-                            code, prompt, { prompt = it.take(MAX_MESSAGE) },
+                            /* Writing a new chat makes its sandbox now, so its first message doesn't wait for it. */
+                            code, prompt, { prompt = it.take(MAX_MESSAGE); if (!onProject && prompt.isNotBlank()) scope.launch { code.warmNew() } },
                             maxLines = 10,
                             onLongPaste = { said -> hold { listOf(PastedText(said, held.map { it.name })) } },
                             modifier = Modifier.weight(1f).heightIn(min = 44.dp).focusRequester(field).padding(horizontal = 4.dp, vertical = 11.dp),
