@@ -48,6 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -300,6 +303,22 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
     }
 
     /* Edge to edge: the page runs under the status bar and home indicator, its bars keep clear of them. */
+    /* Jumps to a point in the book (0–1): the chapter it falls in, then how far through it. */
+    fun seek(f: Float) {
+        val epub = book ?: return
+        moved = true
+        val n = epub.chapters.size
+        val i = (f * n).toInt().coerceIn(0, n - 1)
+        val within = f * n - i
+        scope.launch {
+            runCatching { chapter(i) }.onSuccess { blocks ->
+                at = i
+                list.scrollToItem((within * blocks.size).toInt().coerceIn(0, (blocks.size - 1).coerceAtLeast(0)))
+                if (i + 1 < n) launch { runCatching { chapter(i + 1) } }
+            }
+        }
+    }
+
     Dialog(onDismissRequest = onClose, properties = app.kimono.ui.edgeToEdgeDialog()) {
         Box(Modifier.fillMaxSize().background(paper.bg)) {
             val epub = book
@@ -310,8 +329,18 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                     InkLoader(size = 56.dp)
                     Text("Opening $title", color = paper.ink.copy(alpha = .8f), fontSize = 17.sp, modifier = Modifier.padding(top = 16.dp))
                 }
-                else -> LazyColumn(state = list, modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 96.dp, bottom = 120.dp)) {
+                /* Taps on the page itself (scrolling stays the page's): an edge turns the page, the middle shows and hides the bars. */
+                else -> LazyColumn(state = list, modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+                    val wide = this.size.width.toFloat()
+                    detectTapGestures { o ->
+                        when {
+                            o.x < wide * .25f -> turn(false)
+                            o.x > wide * .75f -> turn(true)
+                            else -> chrome = !chrome
+                        }
+                    }
+                },
+                    contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 112.dp, bottom = 96.dp)) {
                     itemsIndexed(blocks) { _, block ->
                         when (block) {
                             is Block.Heading -> Text(block.text, color = paper.ink, fontWeight = FontWeight.Bold, fontSize = (size + (7 - block.level.coerceIn(1, 6)) * 2.5f).sp,
@@ -335,13 +364,8 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                     }
                 }
             }
-            /* Tap the left or right edge to turn the page; the middle shows and hides the bars. */
-            if (epub != null && blocks != null) Row(Modifier.fillMaxSize()) {
-                val quiet = remember { MutableInteractionSource() }
-                Box(Modifier.weight(.28f).fillMaxHeight().clickable(quiet, null) { turn(false) })
-                Box(Modifier.weight(.44f).fillMaxHeight().clickable(quiet, null) { chrome = !chrome })
-                Box(Modifier.weight(.28f).fillMaxHeight().clickable(quiet, null) { turn(true) })
-            }
+            /* The status bar always sits on the paper, never on the text. */
+            Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(paper.bg).statusBarsPadding())
             /* The bars: back, the chapter, contents and the page's look; how far in at the foot. */
             AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
                 Row(Modifier.fillMaxWidth().background(paper.bg.copy(alpha = .94f)).statusBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -360,14 +384,34 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                 }
             }
             if (epub != null) {
-                val shown by animateFloatAsState(if (chrome) 1f else .35f)
                 val within = if (list.layoutInfo.totalItemsCount > 1) list.firstVisibleItemIndex.toFloat() / (list.layoutInfo.totalItemsCount - 1) else 0f
                 val fraction = ((at + within) / epub.chapters.size).coerceIn(0f, 1f)
-                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(paper.bg.copy(alpha = .94f)).navigationBarsPadding().padding(horizontal = 28.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(paper.ink.copy(alpha = .12f * shown))) {
-                        Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceAtLeast(.01f)).background(paper.ink.copy(alpha = .7f * shown)))
+                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(paper.bg.copy(alpha = if (chrome) .97f else 0f)).navigationBarsPadding()) {
+                    AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut()) {
+                        /* With the bars up, one compact row: turn back, a bar to jump anywhere, turn on; where you are above it. */
+                        Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 2.dp)) {
+                            var seeking by remember { mutableStateOf<Float?>(null) }
+                            val showing = seeking ?: fraction
+                            val chapterAt = ((showing * epub.chapters.size).toInt().coerceIn(0, epub.chapters.size - 1))
+                            Text(if (seeking != null) epub.chapters[chapterAt].title else "Chapter ${chapterAt + 1} of ${epub.chapters.size} · ${(showing * 100).toInt()}%",
+                                color = paper.ink.copy(alpha = .7f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TurnButton(forward = false, ink = paper.ink) { turn(false) }
+                                androidx.compose.material3.Slider(showing, { seeking = it }, onValueChangeFinished = { seeking?.let { seek(it) }; seeking = null },
+                                    colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = paper.ink, activeTrackColor = paper.ink.copy(alpha = .7f), inactiveTrackColor = paper.ink.copy(alpha = .15f)),
+                                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp).height(32.dp))
+                                TurnButton(forward = true, ink = paper.ink) { turn(true) }
+                            }
+                        }
                     }
-                    Text("${(fraction * 100).toInt()}%", color = paper.ink.copy(alpha = .7f * shown), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 12.dp))
+                    /* Always: a thin line for how far in. */
+                    if (!chrome) Row(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(paper.ink.copy(alpha = .1f))) {
+                            Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceAtLeast(.01f)).background(paper.ink.copy(alpha = .4f)))
+                        }
+                        Text("${(fraction * 100).toInt()}%", color = paper.ink.copy(alpha = .45f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 12.dp))
+                    }
                 }
             }
         }
@@ -383,6 +427,15 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                 }
             }
         }
+    }
+}
+
+/** A big round button to turn the page. */
+@Composable
+private fun TurnButton(forward: Boolean, ink: Color, onClick: () -> Unit) {
+    Box(Modifier.size(44.dp).clip(CircleShape).background(ink.copy(alpha = .08f)).clickable(onClick = onClick)
+        .semantics { contentDescription = if (forward) "Next page" else "Previous page" }, contentAlignment = Alignment.Center) {
+        Icon(inkIcon("back"), null, Modifier.size(20.dp).graphicsLayer { if (forward) rotationZ = 180f }, tint = ink)
     }
 }
 
