@@ -2,6 +2,8 @@
 
 package app.kimono.screens
 
+import app.kimono.data.Book
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -121,6 +123,8 @@ private fun Cover(item: ShareItem, modifier: Modifier = Modifier, tinted: Boolea
     }
 }
 
+private fun ShareItem.asBook() = Book(key = itemId, title = title, authors = subtitle?.substringBefore(" · ")?.trim()?.takeIf { it.isNotEmpty() }?.let { listOf(it) } ?: emptyList(), cover = cover)
+
 /** How they rated it, as a mark on the cover's lower corner: loved, liked or didn't like. */
 @Composable
 private fun RatingMark(rating: String, modifier: Modifier = Modifier) {
@@ -141,7 +145,11 @@ private fun <T> Shelf(items: List<T>, key: (T) -> String, item: (T) -> ShareItem
             val shown = item(entry)
             Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box {
-                    HoldMenu(menu(entry), onClick = { menu(entry).firstOrNull()?.onClick?.invoke() }) { Cover(shown, Modifier.fillMaxWidth(), tinted) }
+                    HoldMenu(menu(entry), onClick = { menu(entry).firstOrNull()?.onClick?.invoke() }) {
+                        /* A book stands as Books draws it, in 3D, with a cloth binding when there's no cover. */
+                        if (shown.app == "books") Book3D(shown.asBook(), 104.dp, Modifier.padding(top = 4.dp, bottom = 10.dp))
+                        else Cover(shown, Modifier.fillMaxWidth(), tinted)
+                    }
                     shown.rating?.let { RatingMark(it, Modifier.align(Alignment.BottomEnd).padding(6.dp)) }
                     /* On your own profile: one tap takes it off the row. */
                     if (drop != null) Box(
