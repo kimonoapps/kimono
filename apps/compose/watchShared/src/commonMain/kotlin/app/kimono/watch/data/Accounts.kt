@@ -78,7 +78,7 @@ private val REFUSALS = setOf("invalid_grant", "invalid_client", "invalid_scope")
  * (shared/data/Session.kt): the same Portal-named provider, PKCE, the flow
  * answered in-app, only refresh tokens kept, access tokens in memory.
  */
-class Accounts(private val keeper: Keeper, val http: HttpClient) {
+class Accounts(val keeper: Keeper, val http: HttpClient) {
     private val json = Json { ignoreUnknownKeys = true }
     private val _profiles = MutableStateFlow<List<Profile>?>(null)
     /** Null until read from the device. */

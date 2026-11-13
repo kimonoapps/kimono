@@ -4,6 +4,7 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, u
 import { airText, clock, deviceOf, labelOf, languageName, longLabel, twoLetter, shownNumber, watchApi, type Episode, type FriendHere, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, Spinner, TitleMark, useTabTitle, useWatch } from "./bits";
 import { subtitleClass } from "./settings";
+import { expectedOf, loadStarts, noteStep, ringValue } from "./start";
 import { FriendsAt } from "./friends";
 import { InkRing } from "@kimono/ui";
 import { Icon, SeekIcon } from "./icons";
@@ -169,6 +170,27 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
 
   /* ───── Loading an episode or a film ───── */
   const pctTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  /* The start ring by time (./start.ts): which step, since when, the buffer's fill, and how long steps take here. */
+  const ring = useRef<{ step: number; since: number; fill: number; history: number[][] | null }>({ step: 3, since: 0, fill: 0, history: null });
+  const startRing = useCallback(() => {
+    const r = ring.current;
+    r.history ??= loadStarts();
+    Object.assign(r, { step: 0, since: performance.now(), fill: 0 });
+    setPct(0);
+    clearInterval(pctTimer.current);
+    pctTimer.current = setInterval(() => {
+      const now = ring.current;
+      setPct((p) => Math.max(p, Math.round(100 * ringValue(now.step, performance.now() - now.since, now.fill, expectedOf(now.history ?? [[], [], []])))));
+    }, 100);
+  }, []);
+  const stepTo = useCallback((step: number) => {
+    const r = ring.current;
+    if (step <= r.step) return;
+    const at = performance.now();
+    r.history = noteStep(r.history ?? loadStarts(), r.step, at - r.since);
+    Object.assign(r, { step, since: at });
+    if (step >= 3) { clearInterval(pctTimer.current); setPct(100); }
+  }, []);
   const retry = useRef<((id: string, at: Ref | null, opts?: { version?: number; avoid?: string[]; startAt?: number }) => Promise<void>) | null>(null);
   /* A quality picked in the player becomes this browser's own (saved for next time too); this holds it until the save lands. */
   const oneOff = useRef<string | null>(null);
@@ -180,15 +202,14 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
     v.pause();
     setLoading(true); setProblem(null); setPost(null); setPostOut(false); setSkip(null); setCue(""); setPinfo(false); setSheet(null);
     setTime(0); setDuration(0); setBuffered(0); setCtl(true); setEnded(false);
-    /* Real stages, not a timer: the title is known; the stream, opening it, then buffering fill the rest. */
-    setPct(10);
-    clearInterval(pctTimer.current);
+    /* A new start (not the one open() just began): the ring from the top. */
+    if (ring.current.step !== 0) startRing();
     try {
       const device = await deviceOf();
       const p = await watchApi.play({ titleId: id, ...(at ? { season: at.season, episode: at.episode } : {}), ...(opts.version !== undefined ? { version: opts.version } : {}), ...(opts.avoid?.length ? { avoid: opts.avoid } : {}), ...(oneOff.current ? { quality: oneOff.current } : {}), ...(opts.startAt !== undefined ? { startAt: opts.startAt } : {}), device });
       if (token !== live.current.token) return;
       setPlay(p); live.current.play = p;
-      setPct(30);
+      stepTo(1);
       setChoice(null);
       attached.current?.detach();
       thumbDetach.current?.(); thumbDetach.current = null;
@@ -211,15 +232,16 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
         v.addEventListener("kw-fatal", bad, { once: true });
       });
       if (token !== live.current.token) return;
-      setPct(50);
+      stepTo(2);
       if (startAt > 0 && startAt < v.duration - 5) v.currentTime = startAt;
       v.playbackRate = speed;
       /* The second half: how much of the few seconds it needs to start are in. */
-      pctTimer.current = setInterval(() => {
+      const fillTimer = setInterval(() => {
+        if (token !== live.current.token || ring.current.step !== 2) { clearInterval(fillTimer); return; }
         const t = v.currentTime;
         let ahead = 0;
         for (let i = 0; i < v.buffered.length; i++) if (v.buffered.start(i) <= t + .5 && v.buffered.end(i) > t) ahead = v.buffered.end(i) - t;
-        setPct((now) => Math.max(now, Math.min(99, 50 + 50 * Math.min(1, ahead / 4))));
+        ring.current.fill = Math.min(1, ahead / 4);
       }, 150);
       /* In a party the timeline says when to play (the follow loop): here it's ready once it can play. */
       if (!live.current.link) await v.play().catch(() => { /* blocked: the big play button starts it */ });
@@ -229,7 +251,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
         v.addEventListener("canplay", () => { clearTimeout(t); done(); }, { once: true });
       });
       if (token !== live.current.token) return;
-      clearInterval(pctTimer.current); setPct(100);
+      stepTo(3);
       setTimeout(() => { if (token === live.current.token) { setLoading(false); live.current.loading = false; showCtl(); } }, 180);
     } catch (error) {
       if (token !== live.current.token) return;
@@ -244,14 +266,14 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       }
       setProblem(error instanceof Error && error.message !== "media" ? error.message : "This one doesn't play in a browser yet.");
     }
-  }, [showCtl, speed]);
+  }, [showCtl, speed, startRing, stepTo]);
 
   useLayoutEffect(() => { retry.current = loadEpisode; }, [loadEpisode]);
 
   const open = useCallback(async (id: string, at?: Ref) => {
     live.current.tries = 0; live.current.changed = false; oneOff.current = null;
     setLoading(true); setProblem(null); setView(null); setEp(null); setPlay(null);
-    setPct(0); clearInterval(pctTimer.current);
+    startRing();
     try {
       let v = await watchApi.title(id, at?.season);
       watch.noteView(v);
@@ -269,7 +291,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       clearInterval(pctTimer.current);
       setProblem(error instanceof Error ? error.message : "That didn't work.");
     }
-  }, [loadEpisode, watch]);
+  }, [loadEpisode, watch, startRing]);
 
   const begin = useCallback((id: string, at?: Ref) => {
     const v = video.current;

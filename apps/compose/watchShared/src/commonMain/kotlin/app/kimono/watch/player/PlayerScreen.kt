@@ -895,11 +895,12 @@ private fun PauseCard(on: Boolean, state: app.kimono.watch.ui.PlayerState, modif
  */
 @Composable
 private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel, fill: Float, onExit: () -> Unit) {
+    val stage = when { state.finding -> 0; fill <= 0f -> 1; else -> 2 }
+    /* The ring by time, step by step, as long as each step usually takes here (./StartClock.kt). */
+    val ring = rememberStartRing(state.starts, if (!state.loading && state.problem == null) 3 else stage, fill)
     if (!state.loading && state.problem == null) return
     val page = state.page
     val ep = state.current
-    val stage = when { state.finding -> 0; fill <= 0f -> 1; else -> 2 }
-    val value = when (stage) { 0 -> 0f; 1 -> .35f; else -> .35f + .65f * fill.coerceIn(0f, 1f) }
     var waited by remember(state.loads, state.finding) { mutableIntStateOf(0) }
     LaunchedEffect(state.loads, state.finding) { while (true) { delay(1000); waited++ } }
     /* Over the play button row and everything else on the player (zIndex 3–4), never under it. */
@@ -912,7 +913,7 @@ private fun Loading(state: app.kimono.watch.ui.PlayerState, vm: PlayerViewModel,
                     if (!state.isFilm) Text(state.label + (ep?.let { " · ${it.name}" } ?: ""), style = ui(15, color = Night.fg2))
                 }
                 Spacer(Modifier.size(8.dp))
-                InkRing({ value }, size = 96.dp)
+                InkRing(ring, size = 96.dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     listOf("Find", "Choose", "Buffer").forEachIndexed { i, word ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {

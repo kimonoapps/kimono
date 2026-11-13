@@ -12,6 +12,7 @@ import * as streams from '../src/lib/watch/streams.ts';
 import * as hls from '../src/lib/watch/hls.ts';
 import * as party from '../src/lib/watch/together.ts';
 import * as friends from '../src/lib/watch/friends.ts';
+import * as startRing from '../src/app/(shell)/watch/start.ts';
 import * as flow from '../src/lib/watch/flow.ts';
 import * as screens from '../src/lib/watch/screens.ts';
 
@@ -1563,4 +1564,26 @@ test('friends: what is watched while invisible stays hidden until watched visibl
   assert.deepEqual([...friends.hiddenOf(db, 'ana')], ['tv:1']);
   friends.noteWatched(db, 'ana', 'tv:1', false);
   assert.equal(friends.hiddenOf(db, 'ana').size, 0);
+});
+
+test('start ring: shared out by how long each step takes, moving steadily, never back or full early', () => {
+  const expected = [2000, 16000, 2000];
+  const s = startRing.shares(expected);
+  assert.ok(Math.abs(s.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+  assert.ok(s[1] > 0.7 && s[0] >= 0.09 && s[2] >= 0.09);
+  /* The long middle step moves the ring through most of the circle, at its usual pace. */
+  const at = (step, ms, fill = 0) => startRing.ringValue(step, ms, fill, expected);
+  assert.ok(at(1, 8000) > at(1, 4000) + 0.15);
+  assert.ok(at(1, 16000) < s[0] + s[1]);
+  /* Overrunning creeps, never past the step's share; finishing moves on. */
+  assert.ok(at(1, 60000) < s[0] + s[1] && at(1, 60000) > at(1, 16000));
+  assert.ok(at(2, 0) >= at(1, 60000) - 0.05);
+  assert.ok(at(2, 0, 1) > 0.98 && at(2, 0, 1) <= 0.99);
+  assert.equal(at(3, 0), 1);
+  /* What a step took is kept, at most seven of each; a step already done (under 50 ms) isn't. */
+  let h = [[], [], []];
+  for (let i = 0; i < 9; i++) h = startRing.noteStep(h, 1, 1000 * (i + 1));
+  assert.equal(h[1].length, 7);
+  assert.deepEqual(startRing.noteStep(h, 0, 10), h);
+  assert.deepEqual(startRing.expectedOf(h).slice(1, 2), [6000]);
 });

@@ -53,6 +53,8 @@ data class PlayerState(
     val recs: List<Card> = emptyList(),
     /** Waiting for the server to find and pick a copy (the ring's first stages). */
     val finding: Boolean = true,
+    /** Counts starts (a new episode, another copy): the start ring begins again with each. */
+    val starts: Int = 0,
 ) {
     val isFilm get() = page?.title?.isFilm == true
     /** All of this person's screens are in use elsewhere (the server's 429). */
@@ -126,7 +128,7 @@ class PlayerViewModel(
 
     private suspend fun load(season: Int, episode: Int, version: Int? = null, at: Double? = null, quality: String? = null, avoid: List<String> = emptyList()) {
         tried = avoid
-        _state.value = _state.value.copy(season = season, episode = episode, loading = true, finding = true, problem = null, skip = null, post = Post.None)
+        _state.value = _state.value.copy(season = season, episode = episode, loading = true, finding = true, starts = _state.value.starts + 1, problem = null, skip = null, post = Post.None)
         prepared = false; autoSkipped = false; skipFrom = null; creditsDone = false; lastSaved = -100.0
         val page = _state.value.page
         if (page != null && !page.title.isFilm && page.bySeason && page.season != season) {
