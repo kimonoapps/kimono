@@ -118,6 +118,13 @@ class Friends(private val session: Session) {
     suspend fun showAppOf(app: String, shown: Boolean): PrivacyNow = privacy(buildJsonObject { put("app", app); put("shown", shown) }.toString())
     /** Shows or keeps one row ("watch:listed") or your friends list ("friends") from friends. */
     suspend fun showPart(key: String, shown: Boolean): PrivacyNow = privacy(buildJsonObject { put("keep", key); put("shown", shown) }.toString())
+    /** Takes one title off one row of your own profile ("watch" + "listed", "books" + "read"…), as its app would. */
+    suspend fun removeFromRow(app: String, kind: String, itemId: String) {
+        session.call("/api/v1/profile", HttpMethod.Patch) {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("remove", buildJsonObject { put("app", app); put("kind", kind); put("itemId", itemId) }) }.toString())
+        }
+    }
     private suspend fun privacy(body: String): PrivacyNow = json.decodeFromString(session.call("/api/v1/profile", HttpMethod.Patch) {
         contentType(ContentType.Application.Json); setBody(body)
     })

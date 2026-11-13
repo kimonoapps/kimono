@@ -205,6 +205,32 @@ export function changePrivacy(username: string, body: Record<string, unknown>) {
   return { privacy: privacyOf(db, username), hidden: hiddenAppsOf(db, username) };
 }
 
+/**
+ * Takes one title off one row of your own profile, as its app would: off your Watchlist, a Loved or Liked
+ * taken back, a book off your shelf; what you watched is kept off your profile until you watch it again.
+ */
+export async function removeFromRow(username: string, raw: Record<string, unknown>) {
+  const app = String(raw.app ?? ""), kind = String(raw.kind ?? ""), id = String(raw.itemId ?? "");
+  if (!id) throw new FriendsProblem("Pick something to take off.");
+  if (app === "watch") {
+    const [{ watchDb, setListed, setRating }, { noteWatched }] = await Promise.all([import("../watch"), import("../watch/friends")]);
+    const db = watchDb();
+    if (kind === "listed") setListed(db, username, id, false);
+    else if (kind === "loved" || kind === "liked") setRating(db, username, id, null);
+    else if (kind === "watched") noteWatched(db, username, id, true);
+    else throw new FriendsProblem("That isn't on profiles.");
+    return { ok: true };
+  }
+  if (app === "books") {
+    const { setRating, setShelf } = await import("../books");
+    if (kind === "loved" || kind === "liked") setRating(username, id, null);
+    else if (kind === "reading" || kind === "want" || kind === "read") setShelf(username, id, null);
+    else throw new FriendsProblem("That isn't on profiles.");
+    return { ok: true };
+  }
+  throw new FriendsProblem("That app isn't on profiles.");
+}
+
 /** Whether someone has gone invisible to friends (Kimono's switch, on their profile): apps keep what they do from friends while it's on. */
 export const invisibleToFriends = (username: string) => isInvisible(friendsDb(), username);
 

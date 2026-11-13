@@ -210,6 +210,13 @@ export function ProfileView({ username }: { username: string }) {
     const rows = privacy?.apps.find((a) => a.app === app)?.rows ?? [];
     return rows.some((r) => !r.shown) ? "Friends see some" : "Friends see this";
   };
+  /* Your own: one title off one row, as its app would (lib/friends removeFromRow); it leaves at once and comes back if that fails. */
+  const drop = (s: Section, i: Item) => {
+    if (!p.open) return;
+    setProfile({ ...p, sections: p.sections.map((x) => (x === s ? { ...x, items: x.items.filter((y) => y.itemId !== i.itemId) } : x)).filter((x) => x.items.length > 0) });
+    return call("/api/v1/profile", "PATCH", { remove: { app: s.app, kind: s.kind, itemId: i.itemId } })
+      .then(() => setToast(`Off ${s.title}`), (e) => { setProblem(message(e)); void load(); });
+  };
   const friendsKept = p.open && p.you && (invisible || privacy?.friends === false);
 
   return <div className="you fr">
@@ -257,6 +264,7 @@ export function ProfileView({ username }: { username: string }) {
           <div className="label fr-label">{s.title}{!kept && p.you && rowKept(app, s.kind) ? <span className="fr-only">Only you</span> : null}</div>
           <div className="fr-shelf k-inkbar">{s.items.map((i) => <Tile key={i.itemId} item={i}>
             <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>
+            {p.you ? <button type="button" className="fr-away fr-drop" aria-label={`Take ${i.title} off ${s.title}`} onClick={() => void drop(s, i)}><LineIcon name="close" /></button> : null}
           </Tile>)}</div>
         </div>)}
       </section>;

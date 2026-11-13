@@ -37,6 +37,8 @@
 .fr-away { position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--plum); cursor: pointer; }
 .fr-away .line-icon { width: 18px; height: 18px; }
 .fr-away:hover { background: var(--surface); }
+/* taking one off a row of your own profile: the other corner */
+.fr-drop { right: auto; left: 6px; }
 
 /* finding people */
 .fr-find { cursor: text !important; }

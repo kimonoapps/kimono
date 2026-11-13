@@ -117,12 +117,20 @@ private fun Cover(item: ShareItem, modifier: Modifier = Modifier) {
 
 /** A shelf of covers that scrolls sideways; each can say more under it. */
 @Composable
-private fun <T> Shelf(items: List<T>, key: (T) -> String, item: (T) -> ShareItem, menu: (T) -> List<MenuChoice>, under: @Composable (T) -> Unit = {}) {
+private fun <T> Shelf(items: List<T>, key: (T) -> String, item: (T) -> ShareItem, menu: (T) -> List<MenuChoice>, drop: ((T) -> Unit)? = null, under: @Composable (T) -> Unit = {}) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         items(items, key = key) { entry ->
             val shown = item(entry)
             Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                HoldMenu(menu(entry), onClick = { menu(entry).firstOrNull()?.onClick?.invoke() }) { Cover(shown, Modifier.fillMaxWidth()) }
+                Box {
+                    HoldMenu(menu(entry), onClick = { menu(entry).firstOrNull()?.onClick?.invoke() }) { Cover(shown, Modifier.fillMaxWidth()) }
+                    /* On your own profile: one tap takes it off the row. */
+                    if (drop != null) Box(
+                        Modifier.padding(6.dp).size(34.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = .88f))
+                            .clickable { drop(entry) }.semantics { contentDescription = "Take ${shown.title} off" },
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(kimonoIcon("close"), null, tint = Kata.plum, modifier = Modifier.size(18.dp)) }
+                }
                 Text(shown.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 shown.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
                 under(entry)
@@ -301,7 +309,11 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                         val rowKept = !kept && p.you && "${s.app}:${s.kind}" in p.kept
                         KeptLabel(s.title, rowKept)
                         Box(Modifier.alpha(if (kept || rowKept) .5f else 1f)) {
-                            Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }) { item ->
+                            Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }, drop = if (p.you) { item ->
+                                /* Off the row at once (as its app would take it off); back if that fails. */
+                                profile = p.copy(sections = p.sections.map { x -> if (x === s) x.copy(items = x.items.filter { it.itemId != item.itemId }) else x }.filter { it.items.isNotEmpty() })
+                                scope.launch { try { friends.removeFromRow(s.app, s.kind, item.itemId) } catch (e: KimonoProblem) { problem = e.message; load() } }
+                            } else null) { item ->
                                 item.progress?.let { f -> androidx.compose.material3.LinearProgressIndicator(progress = { f.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) }
                             }
                         }
