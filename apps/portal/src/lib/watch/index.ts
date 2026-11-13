@@ -376,6 +376,44 @@ export function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof p
   return { layout, label, named };
 }
 
+/** An episode out in the last day or so, for Home's New episodes row. */
+type Fresh = { titleId: string; season: number; episode: number; airDate: string; still: string | null; name: string };
+
+/**
+ * The most popular anime and series with an episode out today or yesterday
+ * (TMDB's days), most popular first: discover by air date, then each show's
+ * last aired episode. Kept a couple of hours.
+ */
+async function freshEpisodes(cfg: WatchConfig): Promise<{ titles: Title[]; episodes: Fresh[] }> {
+  const db = watchDb();
+  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const [today, yesterday] = [day(0), day(-1)];
+  const key = `fresh:${today}`;
+  const known = cached<Fresh[]>(db, key);
+  if (known) return { titles: getTitles(db, known.map((f) => f.titleId)), episodes: known };
+  return shared(freshLooks, key, async () => {
+    const window = { "air_date.gte": yesterday, "air_date.lte": today, sort_by: "popularity.desc" };
+    const [anime, series] = await Promise.all([
+      tmdbList(cfg, `discover:fresh-anime:${today}`, "/discover/tv", { ...window, with_genres: "16", with_origin_country: "JP", "vote_count.gte": "20" }, hours(3)),
+      tmdbList(cfg, `discover:fresh-series:${today}`, "/discover/tv", { ...window, "vote_count.gte": "300", without_genres: "10763,10764,10766,10767,16" }, hours(3)),
+    ]);
+    const shows = [...anime.slice(0, 12), ...series.slice(0, 12)].sort((a, b) => b.popularity - a.popularity);
+    const found = await Promise.all(shows.map(async (t) => {
+      const details = await tmdb(cfg.tmdbToken, `/tv/${t.tmdbId}`).catch(() => null);
+      const last = details?.last_episode_to_air;
+      if (!last?.air_date || last.air_date < yesterday || !last.season_number) return null;
+      return { titleId: t.id, season: Number(last.season_number), episode: Number(last.episode_number), airDate: String(last.air_date), still: last.still_path ?? null, name: String(last.name ?? "") } satisfies Fresh;
+    }));
+    const episodes = found.filter((f): f is Fresh => Boolean(f));
+    keep(db, key, episodes, hours(2));
+    return { titles: shows.filter((t) => episodes.some((f) => f.titleId === t.id)), episodes };
+  });
+}
+/* A show whose seasons aren't stored yet reads as one season ("E5"); a later season says so. */
+const freshLabel = (names: ReturnType<typeof namer>, f: Fresh) =>
+  names.layout === "single" && f.season > 1 ? `S${f.season}:E${f.episode}` : names.label(f.season, f.episode);
+const freshLooks = new Map<string, Promise<{ titles: Title[]; episodes: Fresh[] }>>();
+
 /** Rows Home serves per page while scrolling; a page stops early rather than wait on too many lists. */
 const pageRows = 8;
 const pageTries = 16;
@@ -434,19 +472,28 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
     const label = t.kind === "series" ? namer(db, t, prefs, username).label(p.season, p.episode) : null;
     return [{ ...cardOf(t, origin), season: p.season, episode: p.episode, label, fraction: fraction(p), left: Math.max(0, Math.round((p.duration - p.position) / 60)) }];
   }).slice(0, 12);
-  const [trending, anime, films, series] = await Promise.all([
+  const [trending, anime, films, series, fresh] = await Promise.all([
     tmdbList(cfg, "trending:all:week", "/trending/all/week", {}, hours(6)),
     tmdbList(cfg, "discover:anime", "/discover/tv", { with_genres: "16", with_origin_country: "JP", sort_by: "popularity.desc" }, hours(12)),
     tmdbList(cfg, "trending:movie:week", "/trending/movie/week", {}, hours(6)),
     /* Popular series without talk, news, reality and soap shows (TMDB's trending TV is mostly those), which have nothing to stream. */
     tmdbList(cfg, "discover:popular-series", "/discover/tv", { sort_by: "popularity.desc", "vote_count.gte": "200", without_genres: "10763,10764,10766,10767,16" }, hours(12)),
+    freshEpisodes(cfg).catch(() => ({ titles: [] as Title[], episodes: [] as Fresh[] })),
   ]);
+  /* New episodes: each card says which episode, in this person's numbering, and when. */
+  const freshCards = fresh.episodes.flatMap((f) => {
+    const t = fresh.titles.find((x) => x.id === f.titleId);
+    if (!t || !ok(t)) return [];
+    const when = f.airDate >= new Date().toISOString().slice(0, 10) ? "Today" : "Yesterday";
+    return [{ ...cardOf(t, origin, { badge: "New episode" }), season: f.season, episode: f.episode, label: freshLabel(namer(db, t, prefs, username), f), when, still: imageUrl(origin, f.still, "w780") }];
+  }).slice(0, 16);
   /* Rows from TMDB leave out what is known not to play; someone's own rows show everything they chose. */
   checkPlayable(cfg, [...trending, ...series, ...anime, ...films, ...fetched].filter(ok).map((t) => t.id));
   const top = plays(trending).slice(0, 10);
   const lead = [
     continuing.length ? { id: "continue", title: "Continue watching", kind: "continue", items: continuing } : null,
     top.length ? { id: "top", title: "Top 10 today", kind: "top", items: top.map((t, i) => cardOf(t, origin, { top: i + 1 })) } : null,
+    freshCards.length ? { id: "fresh", title: "Just out", kind: "fresh", items: freshCards } : null,
     ...rows.slice(0, 3),
     !shelf || shelf === "Series" ? cards("series", "Popular series", series) : null,
     ...rows.slice(3, 5),
@@ -456,8 +503,11 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
     ...rows.slice(5),
   ].filter((row): row is Row => Boolean(row) && row!.items.length > 0);
 
-  const featured = top.find((t) => t.backdrop) ?? null;
-  return { featured: featured ? { ...cardOf(featured, origin), backdropLarge: imageUrl(origin, featured.backdrop, "w1280"), overview: featured.overview } : null, rows: lead, next };
+  /* The hero: the day's most popular new episode, else the top of the Top 10. */
+  const dropped = freshCards.find((c) => fresh.titles.find((t) => t.id === c.id)?.backdrop);
+  const featured = (dropped && fresh.titles.find((t) => t.id === dropped.id)) || top.find((t) => t.backdrop) || null;
+  const episode = dropped && featured?.id === dropped.id ? { season: dropped.season, episode: dropped.episode, label: dropped.label, when: dropped.when } : null;
+  return { featured: featured ? { ...cardOf(featured, origin), backdropLarge: imageUrl(origin, featured.backdrop, "w1280"), overview: featured.overview, fresh: episode } : null, rows: lead, next };
 }
 
 /**

@@ -9,9 +9,11 @@ export type Card = {
   poster: string | null; backdrop: string | null; logo: string | null; badge?: string | null; top?: number;
 };
 export type ContinueCard = Card & { season: number; episode: number; fraction: number; left: number; label?: string };
-export type Row = { id: string; title: string; kind: "continue" | "top" | "cards" | string; items: (Card | ContinueCard)[] };
+/** An episode out today or yesterday, on Home's New episodes row. */
+export type FreshCard = Card & { season: number; episode: number; label: string; when: string; still: string | null };
+export type Row = { id: string; title: string; kind: "continue" | "top" | "fresh" | "cards" | string; items: (Card | ContinueCard | FreshCard)[] };
 /** A page of Home: the first has the hero; `next` asks for the page after it, null at the end. */
-export type Home = { featured: (Card & { backdropLarge: string | null; overview: string }) | null; rows: Row[]; next?: string | null };
+export type Home = { featured: (Card & { backdropLarge: string | null; overview: string; fresh?: { season: number; episode: number; label: string; when: string } | null }) | null; rows: Row[]; next?: string | null };
 
 export type Layout = "single" | "continuous" | "seasons";
 export type Rating = "down" | "up" | "love";

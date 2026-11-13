@@ -152,6 +152,8 @@
 .kw .kw-cw .kw-meta div{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kw .kw-cw .kw-cw-more{width:32px;height:32px;margin-left:-6px;color:var(--fg-3)}
 .kw .kw-cw .kw-cw-more svg{width:20px;height:20px}
+.kw .kw-fresh-mark{background:var(--suo-deep);color:var(--paper);font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:.04em;text-transform:uppercase}
+.kw .kw-fresh .kw-fresh-tag{position:absolute;left:12px;top:0;background:var(--suo-deep);color:var(--paper);font-size:11px;font-weight:700;padding:3px 9px;border-radius:0 0 6px 6px;letter-spacing:.02em}
 .kw .kw-tilemenu{z-index:70;width:240px}
 .kw .kw-tm-rate{display:flex;justify-content:center;gap:12px;padding:6px 0 4px}
 .kw .kw-smenu .kw-tm-rate button{display:grid;place-items:center;width:44px;height:44px;padding:0;border-radius:50%;border:1px solid var(--line);color:var(--fg-2)}

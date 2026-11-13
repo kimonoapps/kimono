@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { labelOf, watchApi, minutesText, type Card, type ContinueCard, type Home, type Rating, type Shelf, type TitleView } from "./api";
+import { labelOf, watchApi, minutesText, type Card, type ContinueCard, type FreshCard, type Home, type Rating, type Shelf, type TitleView } from "./api";
 import { CardArt, cx, Img, ListButton, RateButton, Rail, SkeletonRows, tagClass, TitleMark, Top10, useWatch } from "./bits";
 import { Icon } from "./icons";
 
@@ -34,10 +34,11 @@ export function HomePage({ home, filter, setFilter, chipsAway, more, onMore, fri
           </picture>
           <div className="kw-hero-body">
             <TitleMark name={featured.name} logo={featured.logo} />
-            {rank >= 0 ? <div className="kw-rank"><Top10 />#{rank + 1}{filter ? ` in ${filter === "Film" ? "Films" : filter}` : ""} today</div> : null}
+            {featured.fresh ? <div className="kw-rank"><span className="kw-fresh-mark">New</span>{featured.fresh.label} out {featured.fresh.when.toLowerCase()}</div>
+              : rank >= 0 ? <div className="kw-rank"><Top10 />#{rank + 1}{filter ? ` in ${filter === "Film" ? "Films" : filter}` : ""} today</div> : null}
             <p className="kw-tagline">{featured.overview}</p>
             <div className="kw-btns">
-              <button className="kw-btn kw-primary" onClick={() => watch.play(featured.id)}><Icon name="play" />{resumable ? "Resume" : "Play"}</button>
+              <button className="kw-btn kw-primary" onClick={() => watch.play(featured.id, featured.fresh ? { season: featured.fresh.season, episode: featured.fresh.episode } : undefined)}><Icon name="play" />{featured.fresh ? `Play ${featured.fresh.label}` : resumable ? "Resume" : "Play"}</button>
               <button className="kw-btn kw-tonal" onClick={() => watch.openTitle(featured.id)}><Icon name="info" />More info</button>
             </div>
           </div>
@@ -52,6 +53,8 @@ export function HomePage({ home, filter, setFilter, chipsAway, more, onMore, fri
         <Rail label={row.title}>
           {row.items.map((card) => row.kind === "continue"
             ? <ContinueTile key={card.id} card={card as ContinueCard} />
+            : row.kind === "fresh"
+              ? <FreshTile key={card.id} card={card as FreshCard} />
             : row.kind === "top"
               ? <div key={card.id} className="kw-t10"><span className="kw-n">{card.top}</span><PosterCard card={card} plain poster /></div>
               : <PosterCard key={card.id} card={card} />)}
@@ -88,6 +91,19 @@ function ContinueTile({ card }: { card: ContinueCard }) {
     <div className="kw-bar"><i style={{ width: `${Math.max(4, card.fraction * 100)}%` }} /></div>
     <div className="kw-meta"><div><b>{card.name}</b>{label}</div><button className="kw-iconbtn" aria-label={`Resume ${card.name}`} onClick={() => watch.play(card.id, series ? { season: card.season, episode: card.episode } : undefined)}><Icon name="play" /></button>
       <TileMenu card={card} /></div>
+  </div>;
+}
+
+/** A new episode: its still, the show, which episode and when it came out; ▶ plays that episode. */
+function FreshTile({ card }: { card: FreshCard }) {
+  const watch = useWatch();
+  return <div className="kw-cw kw-fresh">
+    <button className="kw-shot" aria-label={card.name} onClick={() => watch.openTitle(card.id)}>
+      <Img src={card.still ?? card.backdrop ?? card.poster} />
+      <span className="kw-fresh-tag">{card.when === "Today" ? "New today" : "New"}</span>
+    </button>
+    <div className="kw-meta"><div><b>{card.name}</b>{card.label} · {card.when}</div>
+      <button className="kw-iconbtn" aria-label={`Play ${card.name} ${card.label}`} onClick={() => watch.play(card.id, { season: card.season, episode: card.episode })}><Icon name="play" /></button></div>
   </div>;
 }
 
