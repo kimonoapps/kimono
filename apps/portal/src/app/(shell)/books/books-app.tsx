@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { MorphLoader } from "@kimono/ui";
 import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Home, type Page, type Rating, type ShelfItem, type ShelfState } from "./api";
 import { Book3D } from "./book3d";
 import { Reader } from "./reader";
@@ -410,7 +411,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
           </div>
         </div>
         {page.byAuthor.length ? <Shelf title={`More by ${b.authors[0]}`}>{page.byAuthor.map((x) => <div key={x.key} className="kb-slot"><Book3D book={x} size="sm" onOpen={() => onOpen(x.key)} /><BookCaption book={x} /></div>)}</Shelf> : null}
-        {reading ? <Reader bookKey={b.key} title={b.title} file={reading} startAt={page.shelf?.state === "reading" ? page.shelf.fraction : 0}
+        {reading ? <Reader bookKey={b.key} title={b.title} author={b.authors[0] ?? ""} file={reading} startAt={page.shelf?.state === "reading" ? page.shelf.fraction : 0}
           onClose={() => setReading(null)} onProgress={(fraction) => { setPage((p) => p ? { ...p, shelf: { state: fraction >= 0.98 ? "read" : "reading", fraction, rating: p.shelf?.rating ?? null } } : p); booksApi.shelf().then((r) => onPlaced(r.books)).catch(() => {}); }} /> : null}
         {page.similar.length ? <Shelf title="If you like this">{page.similar.map((x) => <div key={x.key} className="kb-slot"><Book3D book={x} size="sm" onOpen={() => onOpen(x.key)} /><BookCaption book={x} /></div>)}</Shelf> : null}
       </>}
@@ -418,20 +419,34 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
   </div>;
 }
 
-/** Read it here, or download it: shown only when a file source has the book. */
+/**
+ * Reading it here. While Books looks for a copy, the button carries Kimono's
+ * ink loader; with one, it reads (and a copy can be saved beside it); without
+ * one, it stays, and says so when pressed, instead of quietly missing.
+ */
 function FileActions({ files, onRead }: { files: BookFileInfo[] | null; onRead: (f: BookFileInfo) => void }) {
-  if (!files?.length) return null;
-  const best = files.find((f) => f.readable);
-  const other = files.find((f) => f !== best);
+  const [missing, setMissing] = useState(false);
+  const best = files?.find((f) => f.readable) ?? null;
+  const copy = files?.find((f) => f !== best) ?? best;
   const sizeOf = (f: BookFileInfo) => f.size ? ` · ${f.size > 1_048_576 ? `${(f.size / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1024))} KB`}` : "";
-  return <div className="kb-btns kb-files">
-    {best ? <button className="kb-btn kb-filled" onClick={() => onRead(best)}>
-      <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Zm0 0V19.5" /></svg>
-      {best.sample ? "Preview" : "Read"}</button> : null}
-    {(other ?? best) ? <button className="kb-btn kb-tonal" onClick={() => { const f = (other ?? best)!; location.href = `/api/v1/books/file?f=${encodeURIComponent(f.address)}&format=${f.format}&download=1`; }}>
-      <svg viewBox="0 0 24 24" aria-hidden><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M5 19h14" /></svg>
-      {(other ?? best)!.format.toUpperCase()}{sizeOf((other ?? best)!)}</button> : null}
-  </div>;
+  const looking = files === null;
+  return <>
+    <div className="kb-btns kb-files">
+      <button className={cx("kb-btn", best ? "kb-filled" : "kb-tonal", looking && "kb-looking", !looking && !best && "kb-absent")}
+        aria-busy={looking} onClick={() => { if (best) onRead(best); else if (!looking) setMissing(true); }}>
+        {looking ? <MorphLoader ink="#7d8f58" label="Looking for a copy" className="kb-ink" /> : <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Zm0 0V19.5" /></svg>}
+        {best?.sample ? "Preview" : "Read"}
+      </button>
+      {copy ? <button className="kb-btn kb-tonal" title="Save a copy" onClick={() => { location.href = `/api/v1/books/file?f=${encodeURIComponent(copy.address)}&format=${copy.format}&download=1`; }}>
+        <svg viewBox="0 0 24 24" aria-hidden><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M5 19h14" /></svg>
+        {copy.format.toUpperCase()}{sizeOf(copy)}</button> : null}
+    </div>
+    {missing ? <div className="kb-missing" role="status">
+      <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Z" /><path d="m9 10 6 6m0-6-6 6" /></svg>
+      <span><b>Not here to read yet.</b> Kimono has no copy of this book. Put it on your shelf and it&apos;ll be ready to open when one turns up.</span>
+      <button className="kb-missing-x" aria-label="Dismiss" onClick={() => setMissing(false)}><svg viewBox="0 0 24 24" aria-hidden><path d="m7 7 10 10M17 7 7 17" /></svg></button>
+    </div> : null}
+  </>;
 }
 
 /** Want to read · Reading · Read: an expressive segmented choice; the chosen one rounds out. */
