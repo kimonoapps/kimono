@@ -47,6 +47,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -230,6 +232,7 @@ fun ProfileScreen(friends: Friends, username: String, open: (String) -> Unit, ba
                     Portrait(p.picture, p.name, p.username, 128.dp)
                     Text(p.name.ifBlank { p.username }, style = MaterialTheme.typography.headlineMedium, color = Kata.plum, textAlign = TextAlign.Center)
                     Text("@${p.username}" + if (p.open) " · ${if (p.friends == 1) "1 friend" else "${p.friends} friends"}" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    p.kimonoRead?.let { KimonoReadBadge(it.since) }
                     if (p.open && p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                         when {
@@ -283,6 +286,26 @@ fun ProfileScreen(friends: Friends, username: String, open: (String) -> Unit, ba
         action = "Remove", danger = true, icon = "people", onDismiss = { removing = false }, onConfirm = { removing = false; change("remove") },
     )
     recommending?.let { item -> RecommendDialog(friends, item, onDismiss = { recommending = null }) }
+}
+
+private val Moss = androidx.compose.ui.graphics.Color(0xFF5B6B3F)
+private val months = listOf("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+/** 本 They read on a Kimono Read: Books' moss, tonal, set apart from the apps' rows. */
+@Composable
+private fun KimonoReadBadge(since: String) {
+    val month = Regex("^(\\d{4})-(\\d{2})").find(since)?.destructured?.let { (y, m) -> "${months.getOrNull(m.toInt() - 1) ?: ""} $y".trim() }
+    val ink = androidx.compose.ui.graphics.lerp(Moss, MaterialTheme.colorScheme.onSurface, if (app.kimono.theme.LocalNight.current) .55f else .15f)
+    Row(
+        Modifier.padding(top = 2.dp).clip(RoundedCornerShape(14.dp)).background(androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surface, Moss, .16f))
+            .padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp)
+            .semantics(mergeDescendants = true) { contentDescription = "Reads on Kimono Read" + (month?.let { " since $it" } ?: "") },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(kimonoIcon("reader"), null, tint = ink, modifier = Modifier.size(20.dp))
+        Text("Kimono Read", style = MaterialTheme.typography.labelLarge, color = ink)
+        month?.let { Text("since $it", style = MaterialTheme.typography.bodySmall, color = ink.copy(alpha = .75f)) }
+    }
 }
 
 @Composable

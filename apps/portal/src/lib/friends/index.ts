@@ -182,7 +182,9 @@ export async function profileOf(viewer: string, username: string, origin: string
   const profile = profileFor(db, viewer, person, () => sections);
   if (!profile.open) return profile;
   const everyone = await people();
-  return { ...profile, recommendations: profile.recommendations.map((r) => viewOf(r, everyone)) };
+  /* Badges are for friends too: a Kimono Read shows even when their Books rows don't. */
+  const kimonoRead = await import("./books-section").then((m) => m.kimonoReadOf(person.username)).catch(() => null);
+  return { ...profile, recommendations: profile.recommendations.map((r) => viewOf(r, everyone)), kimonoRead };
 }
 
 export const saveBio = (username: string, bio: unknown) => setBio(friendsDb(), username, bio);

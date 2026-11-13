@@ -44,7 +44,12 @@ data class KimonoProfile(
     val sections: List<ProfileSection> = emptyList(), val recommendations: List<Recommendation> = emptyList(), val friends: Int = 0,
     /** On your own profile: the apps you keep from friends. */
     val hidden: List<String> = emptyList(),
+    /** They read on a Kimono Read, since this ISO date. */
+    val kimonoRead: KimonoRead? = null,
 )
+
+@Serializable
+data class KimonoRead(val since: String)
 
 @Serializable
 private data class Hidden(val hidden: List<String> = emptyList())

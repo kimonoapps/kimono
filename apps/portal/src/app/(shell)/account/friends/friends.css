@@ -94,3 +94,14 @@
 .fr-progress { display: block; height: 4px; margin-top: 2px; border-radius: 2px; background: var(--sc-highest); overflow: hidden; }
 .fr-progress i { display: block; height: 100%; border-radius: 2px; background: var(--primary); }
 .fr-note textarea { min-height: 64px; }
+
+/* 本 the Kimono Read badge: Books' moss, tonal, an M3 expressive rounded square rather than a pill */
+.fr-read-badge { --moss: #5b6b3f; display: inline-flex; align-items: center; gap: 8px; margin-top: 2px; padding: 6px 14px 6px 10px; border-radius: 14px;
+  background: color-mix(in srgb, var(--moss) 16%, var(--surface)); color: color-mix(in srgb, var(--moss) 82%, var(--on-surface)); font-size: 14px; }
+.fr-read-badge .line-icon { width: 20px; height: 20px; color: inherit; }
+.fr-read-badge b { font-weight: 700; }
+.fr-read-badge small { color: color-mix(in srgb, var(--moss) 55%, var(--on-surface-variant)); font-size: 13px; }
+/* by night the moss deepens behind and the lettering lightens, so it still stands out */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fr-read-badge { background: color-mix(in srgb, var(--moss) 46%, var(--surface)); color: #e4ebcf; } :root:not([data-theme="light"]) .fr-read-badge small { color: #c3cca8; } }
+:root[data-theme="dark"] .fr-read-badge { background: color-mix(in srgb, var(--moss) 46%, var(--surface)); color: #e4ebcf; }
+:root[data-theme="dark"] .fr-read-badge small { color: #c3cca8; }

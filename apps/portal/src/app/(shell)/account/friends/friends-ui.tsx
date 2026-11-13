@@ -21,7 +21,7 @@ export type Section = { app: string; appName: string; kind: string; title: strin
 /** Private until you're friends: then only `open: false` and who they are comes back (lib/friends/model.ts profileFor). */
 export type Profile = Person & { you: boolean; link: "friends" | "asked" | "asking" | null } & (
   | { open: false }
-  | { open: true; bio: string; sections: Section[]; recommendations: Recommendation[]; friends: number; hidden?: string[] }
+  | { open: true; bio: string; sections: Section[]; recommendations: Recommendation[]; friends: number; hidden?: string[]; kimonoRead?: { since: string } | null }
 );
 type FriendsList = { friends: (Person & { bio: string })[]; asked: Person[]; asking: Person[]; unseen: number };
 type Inbox = { received: Recommendation[]; sent: Recommendation[]; profile: Recommendation[] };
@@ -205,6 +205,7 @@ export function ProfileView({ username }: { username: string }) {
       <span className="you-picture"><Face person={p} size={112} /></span>
       <h1>{p.name}</h1>
       <p>@{p.username}{p.open ? ` · ${p.friends === 1 ? "1 friend" : `${p.friends} friends`}` : ""}</p>
+      {p.open && p.kimonoRead ? <KimonoReadBadge since={p.kimonoRead.since} /> : null}
       {p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
       <div className="fr-actions">{action}</div>
     </div>
@@ -246,6 +247,14 @@ export function ProfileView({ username }: { username: string }) {
     {recommending ? <RecommendSheet item={recommending} onClose={() => setRecommending(null)} onSent={setToast} /> : null}
     {toast ? <div className="fr-toast" role="status">{toast}</div> : null}
   </div>;
+}
+
+/** 本 They read on a Kimono Read: Books' moss, set apart from the apps' rows. */
+function KimonoReadBadge({ since }: { since: string }) {
+  const when = new Date(since).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  return <span className="fr-read-badge" title={`Reads on Kimono Read since ${when}`}>
+    <LineIcon name="reader" /><b>Kimono Read</b><small>since {when}</small>
+  </span>;
 }
 
 function BioSheet({ bio, onClose, onSaved }: { bio: string; onClose: () => void; onSaved: (bio: string) => void }) {
