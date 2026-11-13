@@ -226,6 +226,11 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
     val list = rememberLazyListState()
     /* Where you opened, taken once: saving your place mustn't reopen the book. */
     val opening = remember { startAt }
+    /* Your place is only saved once you've turned a page or scrolled: opening a book never moves it. */
+    var moved by remember { mutableStateOf(false) }
+    /* Set once the book has opened at your place; the jump there isn't you scrolling. */
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(list) { snapshotFlow { list.isScrollInProgress }.collect { if (it && settled) moved = true } }
 
     suspend fun chapter(i: Int): List<Block> {
         chapters[i]?.let { return it }
@@ -246,17 +251,19 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
             val within = opening * epub.chapters.size - start
             val blocks = chapters[start].orEmpty()
             if (within > 0 && blocks.isNotEmpty()) list.scrollToItem((within * blocks.size).toInt().coerceIn(0, blocks.size - 1))
+            settled = true
             /* The next chapter, ahead of you. */
             if (start + 1 < epub.chapters.size) launch { runCatching { chapter(start + 1) } }
         }.onFailure { problem = it.message ?: "This book didn't open." }
     }
 
     /* Your place, a moment after the page settles: chapter, then how far through it. */
-    LaunchedEffect(book, at) {
+    LaunchedEffect(book, at, moved) {
         val epub = book ?: return@LaunchedEffect
         snapshotFlow { list.firstVisibleItemIndex to list.layoutInfo.totalItemsCount }
             .debounce(1500)
             .collect { (first, total) ->
+                if (!moved || total == 0) return@collect
                 val within = if (total > 1) first.toDouble() / (total - 1) else 0.0
                 val fraction = ((at + within) / epub.chapters.size).coerceIn(0.0, 1.0)
                 runCatching { books.progress(bookKey, fraction) }.onSuccess { onProgress(it.fraction) }
@@ -265,6 +272,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
 
     fun go(i: Int) {
         val epub = book ?: return
+        moved = true
         if (i !in epub.chapters.indices) return
         scope.launch {
             runCatching { chapter(i) }.onSuccess {
@@ -276,6 +284,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
     }
 
     fun turn(forward: Boolean) {
+        moved = true
         scope.launch {
             val info = list.layoutInfo
             val page = (info.viewportEndOffset - info.viewportStartOffset) * .9f

@@ -80,6 +80,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
   const turn = useCallback((dir: 1 | -1) => {
     const r = rendition.current;
     if (!r) return;
+    moved.current = true;
     setTurning(true);
     void (dir > 0 ? r.next() : r.prev()).finally(() => setTimeout(() => setTurning(false), 60));
   }, []);
@@ -91,9 +92,11 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
     if (e.key === "Escape") onCloseRef.current();
   }, [turn]);
 
-  /* Keep the place: a moment after the page settles. */
+  /* Keep the place: a moment after the page settles, and only once you've
+     turned a page (opening a book, or failing to find your place, never moves it). */
+  const moved = useRef(false);
   useEffect(() => {
-    if (Math.abs(fraction - saved.current) < 0.005) return;
+    if (!moved.current || Math.abs(fraction - saved.current) < 0.005) return;
     const t = setTimeout(() => {
       saved.current = fraction;
       booksApi.progress(bookKey, fraction).then((r) => onProgress(r.fraction)).catch(() => {});
