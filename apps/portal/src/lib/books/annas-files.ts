@@ -1,11 +1,10 @@
 import "server-only";
 
 import { authorNames } from "./annas";
-import { annasClient } from "./annas-client";
+import { annasClient, annasUserAgent } from "./annas-client";
 import type { BooksConfig } from "./config";
 import { clean, otherVolume, volumeMarks, type Book } from "./model";
 import { FileProblem, type FileFormat, type FileSource, type Opened, type Range } from "./files";
-import { userAgent } from "./sources";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Settings = NonNullable<BooksConfig["annas"]>;
@@ -109,7 +108,7 @@ async function resolve(settings: Settings, file: FileId): Promise<URL> {
   const origin = new URL(settings.url).origin;
   const query = new URLSearchParams({ md5: file.md5, key: settings.key, path_index: String(file.pathIndex), domain_index: String(file.domainIndex) });
   const res = await fetch(`${origin}/dyn/api/fast_download.json?${query}`, {
-    headers: { "user-agent": userAgent, accept: "application/json" },
+    headers: { "user-agent": annasUserAgent, accept: "application/json" },
     signal: AbortSignal.timeout(12000), cache: "no-store",
   });
   const body = res.status === 204 ? null : await res.json().catch(() => null) as Json | null;
@@ -194,7 +193,7 @@ export function annasFiles(getSettings: () => Promise<Settings | null>): FileSou
       const settings = await getSettings();
       if (!settings) throw new FileProblem("Anna's Archive isn't configured.");
       const url = await resolve(settings, file);
-      const headers = new Headers({ "user-agent": userAgent, accept: "application/octet-stream" });
+      const headers = new Headers({ "user-agent": annasUserAgent, accept: "application/octet-stream" });
       if (range) headers.set("range", `bytes=${range.start}-${range.end ?? ""}`);
       const res = await fetch(url, { headers, cache: "no-store" });
       if (!res.ok || !res.body) {

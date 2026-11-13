@@ -1,9 +1,11 @@
 import "server-only";
 
 import { BooksProblem } from "./model";
-import { userAgent } from "./sources";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/* Anna's turns away requests that name themselves as an app (from a server's address, at least), so it's asked as a browser would. */
+export const annasUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 type Session = { cookie: string; at: number };
 const sessions = new Map<string, Session>();
@@ -18,7 +20,7 @@ export function annasClient(base: string, secret: string) {
     if (known && Date.now() - known.at < sessionLife) return known.cookie;
     const res = await fetch(`${origin}/account/`, {
       method: "POST",
-      headers: { "user-agent": userAgent, "content-type": "application/x-www-form-urlencoded" },
+      headers: { "user-agent": annasUserAgent, "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ key: secret }),
       redirect: "manual",
       signal: AbortSignal.timeout(12000),
@@ -34,7 +36,7 @@ export function annasClient(base: string, secret: string) {
   async function get(path: string, json: false): Promise<string | null>;
   async function get(path: string, json: boolean): Promise<string | Json | null> {
     const res = await fetch(`${origin}${path}`, {
-      headers: { "user-agent": userAgent, cookie: await session(), accept: json ? "application/json" : "text/html" },
+      headers: { "user-agent": annasUserAgent, cookie: await session(), accept: json ? "application/json" : "text/html" },
       signal: AbortSignal.timeout(12000),
       cache: "no-store",
     });
