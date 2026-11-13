@@ -60,10 +60,13 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
   const [arriving, setArriving] = useState<string | null>(() => readParty());
   const [picking, setPicking] = useState<string | null>(null);
   const [page, setPage] = useState<Page>(() => readPlace().page);
+  const [sheetLeaving, setSheetLeaving] = useState(false);
   const [filter, setFilter] = useState<Shelf | null>(null);
   const [home, setHome] = useState<Home | null>(null);
   const [all, setAll] = useState<Home | null>(null);
   const [sheetId, setSheetId] = useState<string | null>(() => readPlace().title);
+  const sheetIdRef = useRef(sheetId);
+  useLayoutEffect(() => { sheetIdRef.current = sheetId; }, [sheetId]);
   const [searching, setSearching] = useState(false);
   const [toast, setToast] = useState<{ text: string; at: number } | null>(null);
   const [marks, setMarks] = useState<Record<string, Marks>>({});
@@ -81,7 +84,13 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
   /* ───── Who's watching ───── */
   const say = useCallback((text: string) => setToast({ text, at: Date.now() }), []);
   useEffect(() => {
-    const back = () => { const p = readPlace(); setPage(p.page); setSheetId(p.title); };
+    const back = () => {
+      const p = readPlace();
+      setPage(p.page);
+      /* Back from a title's page: it closes the way its × does, then goes. */
+      if (sheetIdRef.current && !p.title) setSheetLeaving(true);
+      else { setSheetLeaving(false); setSheetId(p.title); }
+    };
     window.addEventListener("popstate", back);
     return () => window.removeEventListener("popstate", back);
   }, []);
@@ -174,7 +183,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
     firstName: (me.name.trim() || me.username).split(" ")[0],
     accent,
     toast: say,
-    openTitle: (id) => { setSheetId(id); writePlace(readPlace().page, id, true); },
+    openTitle: (id) => { setSheetLeaving(false); setSheetId(id); writePlace(readPlace().page, id, true); },
     prefs,
     updatePrefs: async (change) => {
       const before = prefsRef.current;
@@ -252,7 +261,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
     if (changed) { void loadHome(filterRef.current); setRefreshKey(Date.now()); }
   }, [loadHome]);
 
-  const closeSheet = () => { setSheetId(null); writePlace(readPlace().page, null, false); };
+  const closeSheet = () => { setSheetLeaving(false); setSheetId(null); writePlace(readPlace().page, null, false); };
   const locked = Boolean(sheetId || searching || playing);
 
   const hotIds = all ? [...new Set(all.rows.filter((r) => r.id === "continue" || r.id === "list").flatMap((r) => r.items.filter((c) => c.kind === "series").map((c) => c.id)))] : null;
@@ -305,7 +314,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
         </nav>
       </div>}
       {searching ? <SearchPage onClose={() => setSearching(false)} /> : null}
-      {sheetId && profile ? <TitleSheet key={sheetId} id={sheetId} onClose={closeSheet} refreshKey={refreshKey} /> : null}
+      {sheetId && profile ? <TitleSheet key={sheetId} id={sheetId} onClose={closeSheet} refreshKey={refreshKey} leaving={sheetLeaving} /> : null}
       <Player ref={player} onExit={exitPlayer} me={me.username} people={people} onTogether={fromPlayer} onParty={onParty} />
       <JoinAsks open={playing} partyOf={() => player.current?.party() ?? null} where={() => player.current?.where() ?? null} onJoin={joinParty} />
       {asking ? <TogetherDialog people={people.filter((p) => p.username.toLowerCase() !== me.username.toLowerCase())} onStart={(list, copy) => void startParty(list, copy)} onClose={() => setAsking(null)} /> : null}

@@ -9,7 +9,7 @@ import { FriendsAt, FriendsHere } from "./friends";
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
 
 /** A title's page, over whatever opened it: Home, a list, or search. */
-export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: () => void; refreshKey: number }) {
+export function TitleSheet({ id, onClose, refreshKey, leaving = false }: { id: string; onClose: () => void; refreshKey: number; leaving?: boolean }) {
   const watch = useWatch();
   const [view, setView] = useState<TitleView | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -35,6 +35,13 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
   useEffect(() => { if (refreshKey && shown.current !== refreshKey) { shown.current = refreshKey; void load(view?.season); } }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = () => { setOn(false); setTimeout(onClose, 250); };
+  /* Back in the browser: the same way out as the ×. */
+  useEffect(() => {
+    if (!leaving) return;
+    const frame = requestAnimationFrame(() => setOn(false));
+    const timer = setTimeout(onClose, 250);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, [leaving]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape" && !document.querySelector(".kw-player:not([hidden])")) close(); };
     document.addEventListener("keydown", key);
