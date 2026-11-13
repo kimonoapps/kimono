@@ -368,7 +368,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
             Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().background(paper.bg).statusBarsPadding())
             /* The bars: back, the chapter, contents and the page's look; how far in at the foot. */
             AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter)) {
-                Row(Modifier.fillMaxWidth().background(paper.bg.copy(alpha = .94f)).statusBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().background(paper.bg).statusBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     ReaderButton("back", "Close the book", paper.ink, onClose)
                     Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
                         Text(epub?.title ?: title, color = paper.ink, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -386,7 +386,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
             if (epub != null) {
                 val within = if (list.layoutInfo.totalItemsCount > 1) list.firstVisibleItemIndex.toFloat() / (list.layoutInfo.totalItemsCount - 1) else 0f
                 val fraction = ((at + within) / epub.chapters.size).coerceIn(0f, 1f)
-                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(paper.bg.copy(alpha = if (chrome) .97f else 0f)).navigationBarsPadding()) {
+                Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(if (chrome) paper.bg else Color.Transparent).navigationBarsPadding()) {
                     AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut()) {
                         /* With the bars up, one compact row: turn back, a bar to jump anywhere, turn on; where you are above it. */
                         Column(Modifier.padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 2.dp)) {
