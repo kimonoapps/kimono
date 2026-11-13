@@ -11,6 +11,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
@@ -158,8 +160,8 @@ fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Doubl
                 .then(if (onOpen != null) Modifier.clickable(interactionSource = press, indication = null, role = Role.Button, onClick = onOpen).semantics { contentDescription = "${book.title}${if (book.author.isNotBlank()) ", ${book.author}" else ""}" } else Modifier),
         ) {
             /* Its shadow on the shelf, wider as it lifts. */
-            Box(Modifier.align(Alignment.BottomCenter).offset(y = 10.dp).width(width * (.8f + open * .15f)).height(10.dp)
-                .graphicsLayer { alpha = .5f - open * .2f }.clip(CircleShape).background(Color.Black.copy(alpha = .45f)))
+            Box(Modifier.align(Alignment.BottomCenter).offset(y = 8.dp).width(width * (.75f + open * .15f)).height(12.dp)
+                .blur(10.dp, BlurredEdgeTreatment.Unbounded).graphicsLayer { alpha = .55f - open * .25f }.clip(CircleShape).background(Color.Black.copy(alpha = .6f)))
             Row(Modifier.fillMaxSize()) {
                 /* The spine: darker cloth, the title down it, a lighter edge where it turns the corner. */
                 Box(Modifier.width(spine).fillMaxHeight().clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp)).background(lerpColor(cloth, Color.Black, .28f)), contentAlignment = Alignment.Center) {
@@ -197,7 +199,7 @@ fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Doubl
                 }
             }
             if (progress != null && progress > 0) Box(
-                Modifier.align(Alignment.TopEnd).padding(end = width * .16f).width(8.dp).height((width.value * 1.5f * progress.toFloat() * .5f + 12f).dp)
+                Modifier.align(Alignment.TopEnd).padding(end = width * .07f).width(7.dp).height((width.value * 1.5f * progress.toFloat() * .5f + 12f).dp)
                     .clip(RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).background(Color(0xFFA8475F)),
             )
         }
@@ -545,7 +547,10 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                     val on = p.shelf?.rating == r
                     val corner by animateDpAsState(if (on) 16.dp else 26.dp, spring(dampingRatio = .55f))
                     Surface(onClick = {
-                        scope.launch { runCatching { books.rate(key, if (on) null else r) }.onSuccess { mine -> page = p.copy(shelf = mine); changed(); if (!on) say("${Books.ratingLabel(r)} · ${b.title}") } }
+                        /* Fills at once; goes back only if it didn't save. */
+                        val before = p.shelf
+                        page = p.copy(shelf = app.kimono.data.Mine(before?.state ?: "read", before?.fraction ?: 1.0, if (on) null else r))
+                        scope.launch { runCatching { books.rate(key, if (on) null else r) }.onSuccess { mine -> page = page?.copy(shelf = mine); changed() }.onFailure { page = page?.copy(shelf = before); say("That didn't save.") } }
                     }, shape = RoundedCornerShape(corner), color = when { !on -> MaterialTheme.colorScheme.surfaceContainerHighest; r == "love" -> Color(0xFFA8475F); else -> MaterialTheme.colorScheme.primary },
                         contentColor = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(52.dp).semantics { contentDescription = Books.ratingLabel(r) }) {
                         Box(contentAlignment = Alignment.Center) { RatingGlyph(r, on, if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, 24.dp) }
