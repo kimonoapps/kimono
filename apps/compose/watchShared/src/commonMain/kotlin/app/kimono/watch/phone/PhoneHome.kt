@@ -173,7 +173,7 @@ private fun HomePage(profile: Profile, vm: HomeViewModel, go: Go, scroll: androi
     LazyColumn(Modifier.fillMaxSize(), state = scroll, contentPadding = PaddingValues(bottom = navBottom + 96.dp)) {
         item("hero", contentType = "hero") { Hero(home?.featured, home?.rows.orEmpty(), go, previewing && top) }
         item("party") { PartyInvites(go, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 22.dp)) }
-        item("friends") { HomeFriends(go, onFriends, Modifier.padding(bottom = 22.dp)) }
+        item("friends") { FriendsRow(go, onFriends, Modifier.padding(bottom = 22.dp)) }
         if (home == null) {
             if (state.problem != null) item { Text(state.problem!!, style = ui(15, color = Night.fg3), modifier = Modifier.padding(16.dp)) }
             else items(4) { SkeletonRow() }

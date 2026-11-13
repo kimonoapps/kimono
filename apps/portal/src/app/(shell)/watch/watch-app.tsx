@@ -7,7 +7,7 @@ import { Crossing, useCrossTo } from "@/components/crossing";
 import { LineIcon } from "@/components/line-icon";
 import { circleSettled, placeReady } from "@/components/immersive";
 import { cx, faceOf, initial, Spinner, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
-import { FriendsPage, HomeFriends, JoinAsks } from "./friends";
+import { FriendsPage, FriendsRow, JoinAsks } from "./friends";
 import { HomePage } from "./home";
 import { Icon } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
@@ -293,7 +293,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
           <AccountMenu profile={profile} people={people} parties={parties} onJoin={joinParty} onSwitch={switchProfile} phoneApp={phoneApp} />
           <Crossing kind="shoji" href="/" className="kw-tokimono" aria-label="Back to Kimono" title="Back to Kimono"><KimonoBranch /></Crossing>
         </header>
-        {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} more={moreLoading} onMore={loadMore} friends={<HomeFriends onJoin={joinParty} onAll={() => go("friends")} />} />
+        {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} more={moreLoading} onMore={loadMore} friends={<FriendsRow onJoin={joinParty} onAll={() => go("friends")} />} />
           : page === "settings" ? <SettingsPage me={me} onSwitch={switchProfile} signOut={signOut} />
           : page === "hot" ? <HotPage ids={hotIds} />
           : page === "friends" ? <FriendsPage onJoin={joinParty} />

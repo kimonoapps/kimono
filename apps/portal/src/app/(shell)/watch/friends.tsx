@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { friendsApi, type Friend, type FriendHere, type FriendsPage as Page, type JoinAsk, type Person } from "./api";
 import { cx, faceOf, Img, initial, Rail, useWatch } from "./bits";
 import { PosterCard } from "./home";
@@ -197,29 +198,61 @@ export function JoinAsks({ open, partyOf, where, onJoin }: { open: boolean; part
   </div>;
 }
 
-/** Friends on Home: who's watching now (Ask to join), then who watched lately. Nothing until a friend has watched something. */
-export function HomeFriends({ onJoin, onAll }: { onJoin: (partyId: string) => void; onAll: () => void }) {
+/**
+ * Friends on Home, the way a game launcher shows them: a row of round faces
+ * with names, a ring and the title under whoever's watching now (they come
+ * first), and a + to add friends. A face opens a card: what they're on, Ask
+ * to join, Open.
+ */
+export function FriendsRow({ onJoin, onAll }: { onJoin: (partyId: string) => void; onAll: () => void }) {
   const watch = useWatch();
   const { page, asking, ask, cancel } = useFriends(onJoin);
-  const shown = (page?.friends ?? []).filter((f) => f.sharing && (f.now || f.recent.length)).slice(0, 10);
-  if (!shown.length) return null;
-  return <section className="kw-row kw-home-fr">
-    <h2>{shown.some((f) => f.now) ? "Friends watching now" : "Friends"}<button className="kw-fr-all" onClick={onAll}>See all</button></h2>
-    <Rail label="Friends">{shown.map((f) => {
-      const now = f.now, last = f.recent[0];
-      const title = now?.title ?? last?.title;
-      const progress = now ? now.progress : last && !last.finished ? last.progress : null;
-      const mine = asking?.to === f.username ? asking : null;
-      return <div key={f.username} className="kw-hf">
-        <button className="kw-hf-body" onClick={() => title && watch.openTitle(title.id)}>
-          <span className="kw-hf-top"><span className={cx("kw-fr-face", now && "kw-live")}><Face person={f} /></span>
-            <span><b>{f.name || f.username}</b><small className={cx(now && "kw-on")}>{now ? "Watching now" : `Watched ${ago(last?.at ?? 0)}`}</small></span></span>
-          {title ? <span className="kw-hf-what">{[title.name, now?.label ?? last?.label].filter(Boolean).join(" · ")}</span> : null}
-          {progress !== null ? <span className="kw-bar"><i style={{ width: `${progress * 100}%` }} /></span> : null}
-        </button>
+  const [picked, setPicked] = useState<{ f: Friend; x: number; y: number } | null>(null);
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!picked) return;
+    const away = (event: PointerEvent) => { if (!card.current?.contains(event.target as Node) && !(event.target as Element).closest?.(".kw-frt")) setPicked(null); };
+    const key = (event: KeyboardEvent) => { if (event.key === "Escape") setPicked(null); };
+    const gone = () => setPicked(null);
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", key);
+    window.addEventListener("resize", gone);
+    document.addEventListener("scroll", gone, true);
+    return () => { document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key); window.removeEventListener("resize", gone); document.removeEventListener("scroll", gone, true); };
+  }, [picked]);
+  if (!page) return null;
+  const friends = page.friends.filter((f) => f.sharing);
+  const live = friends.filter((f) => f.now).length;
+  const f = picked ? friends.find((x) => x.username === picked.f.username) ?? picked.f : null;
+  const now = f?.now, last = f?.recent[0];
+  const mine = f && asking?.to === f.username ? asking : null;
+  return <section className="kw-row kw-frrow">
+    <h2>Friends{friends.length ? <span className="kw-fr-count"> ({live ? `${live} watching` : friends.length})</span> : null}<button className="kw-fr-all" onClick={onAll}>See all</button></h2>
+    <Rail label="Friends">
+      <button className="kw-frt kw-frt-add" onClick={onAll}><span className="kw-frt-ring"><Icon name="add" /></span><b>{friends.length ? "Add" : "Add friends"}</b></button>
+      {friends.map((x) => <button key={x.username} className={cx("kw-frt", x.now && "kw-live")} aria-expanded={picked?.f.username === x.username}
+        onClick={(event) => {
+          if (picked?.f.username === x.username) { setPicked(null); return; }
+          const r = event.currentTarget.getBoundingClientRect();
+          setPicked({ f: x, x: Math.min(Math.max(16, r.left + r.width / 2 - 150), window.innerWidth - 316), y: r.bottom + 8 });
+        }}>
+        <span className="kw-frt-ring"><Face person={x} /></span>
+        <b>{(x.name || x.username).split(" ")[0]}</b>
+        <small>{x.now ? x.now.title.name : x.recent[0] ? ago(x.recent[0].at) : ""}</small>
+      </button>)}
+    </Rail>
+    {f && picked ? createPortal(<div ref={card} className="kw-frpop" style={{ left: picked.x, top: picked.y }} role="dialog" aria-label={f.name || f.username}>
+      <div className="kw-frpop-who"><span className={cx("kw-frt-ring", now && "kw-live")}><Face person={f} /></span>
+        <span><b>{f.name || f.username}</b><small className={cx(now && "kw-on")}>{now ? "Watching now" : last ? `Watched ${ago(last.at)}` : "Hasn't watched anything yet"}</small></span></div>
+      {now || last ? <button className="kw-frpop-what" onClick={() => { setPicked(null); watch.openTitle((now ?? last)!.title.id); }}>
+        <span className="kw-th"><Img src={(now ?? last)!.title.backdrop ?? (now ?? last)!.title.poster} /><span className="kw-bar"><i style={{ width: `${((now ?? last)!.progress) * 100}%` }} /></span></span>
+        <span><b>{(now ?? last)!.title.name}</b><small>{(now ?? last)!.label ?? ((now ?? last)!.finished ? "Finished" : `${Math.round((now ?? last)!.progress * 100)}% in`)}</small></span>
+      </button> : null}
+      <div className="kw-frpop-acts">
         {now ? (mine ? <button className="kw-btn kw-tonal" onClick={() => cancel(mine)}>Asking…</button>
           : <button className="kw-btn kw-primary" onClick={() => void ask(f)}><Icon name="group" />Ask to join</button>) : null}
-      </div>;
-    })}</Rail>
+        {now || last ? <button className="kw-btn kw-tonal" onClick={() => { setPicked(null); watch.openTitle((now ?? last)!.title.id); }}><Icon name="info" />Open</button> : null}
+      </div>
+    </div>, document.querySelector(".kw") ?? document.body) : null}
   </section>;
 }

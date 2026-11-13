@@ -116,7 +116,7 @@ fun TvShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: List
     Box(Modifier.fillMaxSize().background(Night.bg)) {
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (top == null) 1f else 0f }) {
             when (page) {
-                "home" -> TvHome(profile, home, go, active = top == null) { Nav(page, { page = it; if (it == "list") list.refresh() }, profile, onSearch, onProfiles, onSettings) }
+                "home" -> TvHome(profile, home, go, active = top == null, onFriends = { page = "friends" }) { Nav(page, { page = it; if (it == "list") list.refresh() }, profile, onSearch, onProfiles, onSettings) }
                 "hot" -> TvHot(hot, go) { Nav(page, { page = it }, profile, onSearch, onProfiles, onSettings) }
                 "friends" -> TvFriends(go) { Nav(page, { page = it; if (it == "list") list.refresh() }, profile, onSearch, onProfiles, onSettings) }
                 else -> TvList(list, go) { Nav(page, { page = it; list.refresh() }, profile, onSearch, onProfiles, onSettings) }
@@ -164,7 +164,7 @@ fun Pill(onClick: () -> Unit, modifier: Modifier = Modifier, shape: androidx.com
 /* ───── Home ───── */
 
 @Composable
-private fun TvHome(profile: Profile, vm: HomeViewModel, go: Go, active: Boolean, nav: @Composable () -> Unit) {
+private fun TvHome(profile: Profile, vm: HomeViewModel, go: Go, active: Boolean, onFriends: () -> Unit, nav: @Composable () -> Unit) {
     val state by vm.state.collectAsState()
     val home = state.home
     val list = rememberLazyListState()
@@ -173,7 +173,7 @@ private fun TvHome(profile: Profile, vm: HomeViewModel, go: Go, active: Boolean,
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(bottom = 64.dp)) {
         item("hero", contentType = "hero") { TvHero(home?.featured, home?.rows.orEmpty(), go, active && top, playFocus, nav, state.shelf) { vm.shelf(it) } }
         item("party") { app.kimono.watch.phone.PartyInvites(go, Modifier.padding(start = gutter, end = gutter, bottom = 24.dp).widthIn(max = 760.dp)) }
-        item("friends") { TvHomeFriends(go) }
+        item("friends") { TvHomeFriends(go, onFriends) }
         if (home == null) items(3) { TvSkeletonRow() }
         else {
             items(home.rows, key = { it.id + state.shelf }, contentType = { it.kind }) { row -> TvRail(row, profile, go) }

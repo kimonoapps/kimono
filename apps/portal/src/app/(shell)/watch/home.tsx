@@ -8,7 +8,7 @@ import { Icon } from "./icons";
 const chips: [Shelf, string][] = [["Series", "Series"], ["Film", "Films"], ["Anime", "Anime"]];
 
 export function HomePage({ home, filter, setFilter, chipsAway, more, onMore, friends }: {
-  /** Friends' row, under the hero. */
+  /** The friends row, first under the hero. */
   friends?: ReactNode;
   home: Home | null; filter: Shelf | null; setFilter: (shelf: Shelf | null) => void; chipsAway: boolean;
   /** The next page of rows is on its way; `onMore` asks for it. */

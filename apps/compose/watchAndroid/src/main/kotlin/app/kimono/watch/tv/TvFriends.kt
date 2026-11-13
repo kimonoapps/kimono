@@ -1,6 +1,11 @@
 package app.kimono.watch.tv
 
 import androidx.compose.foundation.background
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -137,40 +142,36 @@ private fun FriendBlock(f: Friend, m: FriendsModel, go: Go) {
     }
 }
 
-/** Friends on the TV's Home: who's watching now (Ask to join), then who watched lately, as a row. */
+/** Friends on the TV's Home: a + (the Friends page), then round faces, whoever's watching now first with a ring; a face opens their card. */
 @Composable
-fun TvHomeFriends(go: Go, modifier: Modifier = Modifier) {
+fun TvHomeFriends(go: Go, onFriends: () -> Unit, modifier: Modifier = Modifier) {
     val m = rememberFriends(go)
-    val shown = m.page?.friends.orEmpty().filter { it.sharing && (it.now != null || it.recent.isNotEmpty()) }.take(10)
-    if (shown.isEmpty()) return
+    val page = m.page ?: return
+    val friends = page.friends.filter { it.sharing }
+    val live = friends.count { it.now != null }
+    var picked by remember { mutableStateOf<String?>(null) }
     Column(modifier.padding(bottom = 28.dp)) {
-        Text(if (shown.any { it.now != null }) "Friends watching now" else "Friends", style = ui(19, FontWeight.Bold), modifier = Modifier.padding(start = gutter, bottom = 10.dp))
-        LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            items(shown, key = { it.username }) { f ->
-                val now = f.now
-                val last = f.recent.firstOrNull()
-                val title = now?.title ?: last?.title
-                Column(Modifier.width(260.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Pill(onClick = { title?.let(go.open) }, shape = RoundedCornerShape(12.dp), scale = 1.04f) {
-                        Row(Modifier.fillMaxWidth().background(Night.surface, RoundedCornerShape(12.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Box {
-                                PersonFace(f.person, f.username, 44.dp)
-                                if (now != null) Box(Modifier.align(Alignment.BottomEnd).offset(1.dp, 1.dp).size(14.dp).clip(CircleShape).background(Night.surface).padding(2.dp).clip(CircleShape).background(Night.suo))
-                            }
-                            Column(Modifier.weight(1f)) {
-                                Text(f.shown, style = ui(16, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(listOfNotNull(title?.name, now?.label ?: last?.label).joinToString(" · ").ifEmpty { "Watched ${ago(last?.at ?: 0)}" },
-                                    style = ui(13, color = if (now != null) Night.fg else Night.fg3), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
+        Text(if (live > 0) "Friends ($live watching)" else "Friends", style = ui(19, FontWeight.Bold), modifier = Modifier.padding(start = gutter, bottom = 6.dp))
+        LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            item("add") {
+                Pill(onClick = onFriends, shape = RoundedCornerShape(14.dp)) {
+                    Column(Modifier.width(112.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(Modifier.size(88.dp).padding(5.dp).border(2.dp, Night.line, CircleShape), contentAlignment = Alignment.Center) { app.kimono.watch.ui.I(Ic.add, 34.dp, Night.fg2) }
+                        Text(if (friends.isEmpty()) "Add friends" else "Add", style = ui(15, FontWeight.Bold), modifier = Modifier.padding(top = 8.dp))
                     }
-                    if (now != null) {
-                        val asking = m.askingOf(f)
-                        if (asking != null) TvButton("Asking…", null, { m.cancelAsk(asking) }, tonal = true)
-                        else TvButton("Ask to join", Ic.people, { m.askToJoin(f) })
+                }
+            }
+            items(friends, key = { it.username }) { f ->
+                Pill(onClick = { picked = f.username }, shape = RoundedCornerShape(14.dp)) {
+                    Column(Modifier.width(112.dp).padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        app.kimono.watch.phone.RingFace(f.person, 88.dp, f.now != null)
+                        Text(f.shown.substringBefore(' '), style = ui(15, FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                        Text(f.now?.title?.name ?: f.recent.firstOrNull()?.let { ago(it.at) } ?: "", style = ui(12, if (f.now != null) FontWeight.Bold else FontWeight.Normal, if (f.now != null) Night.blush else Night.fg3),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 6.dp))
                     }
                 }
             }
         }
     }
+    friends.firstOrNull { it.username == picked }?.let { f -> app.kimono.watch.phone.FriendCardDialog(f, m, go) { picked = null } }
 }
