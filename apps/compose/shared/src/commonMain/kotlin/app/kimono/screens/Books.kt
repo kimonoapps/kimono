@@ -537,10 +537,12 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
     var fetching by remember(key) { mutableStateOf<Float?>(null) }
     var expanded by remember(key) { mutableStateOf(false) }
     var readingFile by remember(key) { mutableStateOf<BookFile?>(null) }
+    var prefers by remember(key) { mutableStateOf<String?>(null) }
+    var asking by remember(key) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(key) {
         runCatching { books.book(key) }.onSuccess { page = it }.onFailure { if (page == null) say(it.message ?: "This book didn't open.") }
-        files = runCatching { books.files(key) }.getOrElse { emptyList() }
+        runCatching { books.filesAndPreference(key) }.onSuccess { files = it.files; prefers = it.prefers }.onFailure { files = emptyList() }
     }
     readingFile?.let { f ->
         val current = page
@@ -555,6 +557,25 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
         val p = page
         if (p == null) { Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) { InkLoader(size = 48.dp) }; return@InkSheet }
         val b = p.book
+        val copies = Copies.of(files, prefers)
+        /* An EPUB opens in Kimono's own reader, a part at a time; a PDF in the phone's viewer. */
+        fun readFile(f: BookFile) {
+            if (f.format == "epub") { readingFile = f; return }
+            scope.launch {
+                fetching = 0f
+                runCatching {
+                    val path = books.download(f, platform.cacheDir()) { got -> fetching = f.size?.let { (got.toFloat() / it).coerceIn(0f, 1f) } ?: 0f }
+                    platform.openFile(path, if (f.format == "pdf") "application/pdf" else "application/epub+zip")
+                    if (p.shelf?.state != "reading" && p.shelf?.state != "read") { books.place(key, "reading"); page = p.copy(shelf = (p.shelf ?: app.kimono.data.Mine("reading")).copy(state = "reading")); changed() }
+                }.onFailure { say(it.message ?: "That book didn't open.") }
+                fetching = null
+            }
+        }
+        if (asking && copies.epub != null && copies.pdf != null) FormatDialog(copies.epub, onDismiss = { asking = false }) { format, remember ->
+            asking = false
+            if (remember) { prefers = format; scope.launch { runCatching { books.setFormat(format) } } }
+            readFile(if (format == "epub") copies.epub else copies.pdf)
+        }
         Column(Modifier.fillMaxHeight(.86f).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Row(Modifier.padding(start = 24.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.Top) {
                 Book3D(b, 112.dp, still = true, spin = true, progress = p.shelf?.takeIf { it.state == "reading" }?.fraction)
@@ -574,20 +595,12 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
             /* Read it here: the ink loader while Books looks for a copy, a plain word when there isn't one. */
             /* Read, then your shelf as three small icons beside it: the chosen one opens out to say what it is. */
             Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                val best = files?.firstOrNull { it.readable }
-                PillButton(if (best?.sample == true) "Preview" else "Read", filled = true, modifier = Modifier.weight(1f).height(48.dp), busy = files == null || fetching != null, loaderColor = Color.Black) {
+                PillButton(if (copies.best?.sample == true) "Preview" else "Read", filled = true, modifier = Modifier.weight(1f).height(48.dp), busy = files == null || fetching != null, loaderColor = Color.Black) {
+                    val best = copies.best
                     if (best == null) { missing = true; return@PillButton }
-                    /* An EPUB opens in Kimono's own reader, a part at a time; a PDF in the phone's viewer. */
-                    if (best.format == "epub") { readingFile = best; return@PillButton }
-                    scope.launch {
-                        fetching = 0f
-                        runCatching {
-                            val path = books.download(best, platform.cacheDir()) { got -> fetching = best.size?.let { (got.toFloat() / it).coerceIn(0f, 1f) } ?: 0f }
-                            platform.openFile(path, if (best.format == "pdf") "application/pdf" else "application/epub+zip")
-                            if (p.shelf?.state != "reading" && p.shelf?.state != "read") { books.place(key, "reading"); page = p.copy(shelf = (p.shelf ?: app.kimono.data.Mine("reading")).copy(state = "reading")); changed() }
-                        }.onFailure { say(it.message ?: "That book didn't open.") }
-                        fetching = null
-                    }
+                    /* Both ways and never asked: ask first. */
+                    if (copies.both && prefers == null) { asking = true; return@PillButton }
+                    readFile(best)
                 }
                 ShelfIcons(p.shelf?.state) { s ->
                     val on = p.shelf?.state == s
@@ -603,6 +616,16 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
             fetching?.let { f -> if (f > 0f) Box(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
                 Box(Modifier.fillMaxHeight().fillMaxWidth(f).background(MaterialTheme.colorScheme.primary))
             } }
+            /* Which copy Read opens, and the other a tap away. */
+            copies.best?.takeIf { !asking && (prefers != null || !copies.both) }?.let { best ->
+                Row(Modifier.padding(start = 24.dp, end = 20.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(Copies.describe(best), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f, fill = false))
+                    copies.other?.let { other ->
+                        Text("Read the ${other.format.uppercase()}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(8.dp)).clickable { readFile(other) }.padding(horizontal = 6.dp, vertical = 6.dp))
+                    }
+                }
+            }
             AnimatedVisibility(missing) {
                 Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp).fillMaxWidth()) {
                     Column(Modifier.padding(16.dp)) {
@@ -685,6 +708,60 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
             }
             if (p.byAuthor.isNotEmpty()) ShelfStrip("More by ${b.author}", p.byAuthor, onOpen)
             if (p.similar.isNotEmpty()) ShelfStrip("If you like this", p.similar, onOpen)
+        }
+    }
+}
+
+/** The readable copies of a book: its EPUB and PDF, which Read opens, and the other. */
+private class Copies(val epub: BookFile?, val pdf: BookFile?, val best: BookFile?, val other: BookFile?) {
+    val both get() = epub != null && pdf != null
+    companion object {
+        fun of(files: List<BookFile>?, prefers: String?): Copies {
+            val usable = files.orEmpty().filter { it.readable && !it.preparing }
+            val epub = usable.firstOrNull { it.format == "epub" }
+            val pdf = usable.firstOrNull { it.format == "pdf" }
+            val best = if (epub != null && pdf != null) (if (prefers == "pdf") pdf else epub) else epub ?: pdf ?: usable.firstOrNull()
+            val other = if (epub != null && pdf != null) (if (best === epub) pdf else epub) else null
+            return Copies(epub, pdf, best, other)
+        }
+        fun describe(f: BookFile) = when {
+            f.format == "pdf" -> "PDF, the original pages"
+            f.madeFromPdf -> "EPUB, made from the PDF: tables and pictures may sit differently"
+            else -> "EPUB"
+        }
+    }
+}
+
+/** The first time a book comes both ways: which would you rather? */
+@Composable
+private fun FormatDialog(epub: BookFile, onDismiss: () -> Unit, choose: (String, Boolean) -> Unit) {
+    var remember by remember { mutableStateOf(true) }
+    app.kimono.ui.InkDialog(
+        title = "How would you like to read it?",
+        icon = "book",
+        tint = MaterialTheme.colorScheme.primary,
+        onDismiss = onDismiss,
+        actions = { app.kimono.ui.Seal("Not now", compact = true, tone = app.kimono.ui.SealTone.Quiet, onClick = onDismiss) },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("This book comes two ways.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FormatOption("EPUB", "Text that fits your screen and your size, your place kept on every device and a Kimono Read." +
+                if (epub.madeFromPdf) " Made from the PDF by Kimono, so tables and pictures may sit differently." else "") { choose("epub", remember) }
+            FormatOption("PDF", "The original pages, exactly as printed. Opens in your phone's viewer.") { choose("pdf", remember) }
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { remember = !remember }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.Checkbox(remember, { remember = it })
+                Text("Remember for every book", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FormatOption(name: String, about: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

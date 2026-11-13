@@ -64,11 +64,15 @@ data class Mine(val state: String, val fraction: Double = 0.0, val rating: Strin
 data class BookPage(val book: Book, val byAuthor: List<Book> = emptyList(), val similar: List<Book> = emptyList(), val shelf: Mine? = null, val friends: List<FriendOnBook> = emptyList())
 
 @Serializable
-data class BookFile(val address: String, val source: String, val format: String, val size: Long? = null, val label: String? = null, val sample: Boolean = false, val readable: Boolean = false)
+data class BookFile(val address: String, val source: String, val format: String, val size: Long? = null, val label: String? = null, val sample: Boolean = false, val readable: Boolean = false, val preparing: Boolean = false) {
+    /** An EPUB Kimono made from the book's PDF. */
+    val madeFromPdf get() = source == "converted"
+}
 
 @Serializable private data class Found(val books: List<Book> = emptyList())
 @Serializable private data class ShelfList(val books: List<ShelfItem> = emptyList())
-@Serializable private data class Files(val files: List<BookFile> = emptyList())
+@Serializable data class Files(val files: List<BookFile> = emptyList(), val prefers: String? = null)
+@Serializable private data class Prefs(val format: String? = null)
 @Serializable private data class Rated(val shelf: Mine? = null)
 @Serializable data class Progressed(val key: String, val state: String, val fraction: Double)
 
@@ -87,7 +91,13 @@ class Books(private val session: Session) {
     suspend fun book(key: String): BookPage = json.decodeFromString(session.fetch("$BASE/book?key=${key.encodeURLQueryComponent()}"))
     fun knownBook(key: String): BookPage? = session.answers.peek("$BASE/book?key=${key.encodeURLQueryComponent()}")?.let { runCatching { json.decodeFromString<BookPage>(it) }.getOrNull() }
     suspend fun shelf(): List<ShelfItem> = json.decodeFromString<ShelfList>(session.fetch("$BASE/shelf")).books
-    suspend fun files(key: String): List<BookFile> = json.decodeFromString<Files>(session.call("$BASE/files?key=${key.encodeURLQueryComponent()}")).files
+    suspend fun files(key: String): List<BookFile> = filesAndPreference(key).files
+    /** The files, and how you like to read a book that comes both ways ("epub", "pdf", or null: not asked yet). */
+    suspend fun filesAndPreference(key: String): Files = json.decodeFromString(session.call("$BASE/files?key=${key.encodeURLQueryComponent()}"))
+    suspend fun setFormat(format: String?): String? = json.decodeFromString<Prefs>(session.call("$BASE/prefs", HttpMethod.Put) {
+        contentType(ContentType.Application.Json)
+        setBody(buildJsonObject { if (format == null) put("format", JsonNull) else put("format", format) }.toString())
+    }).format
 
     /** "want", "reading", "read", or null to take it off. */
     suspend fun place(key: String, state: String?): List<ShelfItem> = json.decodeFromString<ShelfList>(session.call("$BASE/shelf", HttpMethod.Put) {
