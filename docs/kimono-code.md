@@ -191,8 +191,8 @@ its state directory. A sandbox with a live preview sleeps like any other (see
 
 A node is shared with the Portal and the rest of the house, so each sandbox
 gets a share and only so many are awake at once. The node's flags set the
-defaults (`--cpus 1 --memory 2g --pids 1024 --awake-per-person 2
---awake-per-node 6 --disk-gb 10`); Code's settings in Applications override
+defaults (`--cpus 1 --memory 2g --pids 1024 --awake-per-person 6
+--awake-per-node 16 --disk-gb 10`); Code's settings in Applications override
 them, sent with every ensure.
 
 - **Each sandbox:** CPUs, memory with no swap on top (`--memory-swap` equals
@@ -295,7 +295,7 @@ An idle sandbox costs next to nothing. Activity is a running turn, any API call
 for the workspace (except asking its state or its preview's state), the agent
 using the model or Kimono Git, or a request through its preview. After
 `--pause-after` of no activity (default 1 minute) the container is paused —
-frozen in memory, resumed instantly. After `--stop-after` (15 minutes) it is
+frozen in memory, resumed instantly. After `--stop-after` (5 minutes) it is
 stopped, freeing its memory. After `--remove-after` (7 days; `0` never) the
 container is removed; its files stay on its volume. After `--forget-after` (90
 days; `0` never) the volume goes too and the node forgets the sandbox: the chat

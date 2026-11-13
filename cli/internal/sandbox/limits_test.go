@@ -76,9 +76,9 @@ func TestLimits(t *testing.T) {
 	if _, ok := parseMemory("lots"); ok {
 		t.Error("nonsense memory accepted")
 	}
-	base := Limits{CPUs: 1, MemoryMB: 2048, AwakePerPerson: 2, AwakePerNode: 6, DiskGB: 10}
+	base := Limits{CPUs: 1, MemoryMB: 2048, AwakePerPerson: 6, AwakePerNode: 16, DiskGB: 10}
 	merged := base.merge(&Limits{CPUs: 2, MemoryMB: 64, AwakePerPerson: 3, DiskGB: 0})
-	if merged != (Limits{CPUs: 2, MemoryMB: 2048, AwakePerPerson: 3, AwakePerNode: 6, DiskGB: 10}) {
+	if merged != (Limits{CPUs: 2, MemoryMB: 2048, AwakePerPerson: 3, AwakePerNode: 16, DiskGB: 10}) {
 		t.Errorf("merge kept the wrong fields: %+v", merged)
 	}
 	if args := base.dockerArgs(); !reflect.DeepEqual(args, []string{"--cpus", "1", "--memory", "2048m", "--memory-swap", "2048m"}) {

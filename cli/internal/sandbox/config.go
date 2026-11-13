@@ -303,10 +303,10 @@ func (c *Config) defaults() error {
 		c.Pids = 1024
 	}
 	if c.AwakePerPerson <= 0 {
-		c.AwakePerPerson = 2
+		c.AwakePerPerson = 6
 	}
 	if c.AwakePerNode <= 0 {
-		c.AwakePerNode = 6
+		c.AwakePerNode = 16
 	}
 	if c.DiskGB <= 0 {
 		c.DiskGB = 10
@@ -315,7 +315,7 @@ func (c *Config) defaults() error {
 		c.PauseAfter = time.Minute
 	}
 	if c.StopAfter <= 0 {
-		c.StopAfter = 15 * time.Minute
+		c.StopAfter = 5 * time.Minute
 	}
 	if c.StopAfter < c.PauseAfter {
 		c.StopAfter = c.PauseAfter

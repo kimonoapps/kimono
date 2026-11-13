@@ -17,7 +17,7 @@ import (
  * agent using the model or Kimono Git, or a request through its preview.
  *
  *   quiet for PauseAfter  (1 min)  → paused:  frozen in memory, resumes instantly
- *   quiet for StopAfter   (15 min) → stopped: memory freed, files kept
+ *   quiet for StopAfter   (5 min)  → stopped: memory freed, files kept
  *   quiet for RemoveAfter (7 days) → removed: container gone, files kept on its volume
  *   quiet for ForgetAfter (90 days) → forgotten: its volume goes too; the chat stays,
  *                                     Drive keeps what it made, and the next message

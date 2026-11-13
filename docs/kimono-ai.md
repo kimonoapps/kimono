@@ -20,7 +20,7 @@ stays underneath. What changes is what people see and what the sandbox may reach
 ## What runs where
 
 - Every chat has one sandbox on the node, made on its first message and put to
-  sleep as Code's are (pause after 1 min, stop after 15, remove after 7 days;
+  sleep as Code's are (pause after 1 min, stop after 5, remove after 7 days;
   files kept). Nobody ever sees it. If the node is down, the chat says
   "Kimono AI is resting. Try again in a moment." and nothing more.
 - The agent is Claude Code in the sandbox, with its shell: it reaches for

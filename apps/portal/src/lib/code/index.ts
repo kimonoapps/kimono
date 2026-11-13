@@ -597,9 +597,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
        end of the turn. Only a node with that container (namesApart): an older one names in the chat's own
        sandbox, which would slow the turn starting there. */
     if (!second) void namesApart(config).then((apart) => { if (apart) void nameChat(config, workspace, { early: true, turn }); });
-    /* A sandbox made ready in the last few minutes is still there (the node stops one after 15 quiet minutes):
+    /* A sandbox made ready in the last few minutes is still there (the node stops one after 5 quiet minutes):
        what's in it is read while it's made ready, instead of after, a round trip to the node less before the agent starts. */
-    const warm = Date.now() - (awake.at.get(workspace.id) ?? 0) < 14 * 60_000 && !second;
+    const warm = Date.now() - (awake.at.get(workspace.id) ?? 0) < 4 * 60_000 && !second;
     const ahead = warm ? { tree: treeAhead(config, workspace), granted: grantedAhead(db(), config, workspace) } : null;
     /* Woken as they wrote (warm): that waking finishes first, and this one finds it awake. */
     await awake.going.get(workspace.id)?.catch(() => {});
