@@ -270,16 +270,19 @@ export async function watchSections(viewer: string, username: string, origin: st
   const db = watchDb();
   const hidden = hiddenOf(db, u);
   const item = (t: Title) => ({ app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: cardOf(t, origin).poster, href: `/watch?t=${encodeURIComponent(t.id)}` });
-  const row = (kind: string, title: string, ids: string[]): Section => ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map(item) });
+  /* `at`: when each was rated or listed, so a title taken off the profile comes back once that changes. */
+  const row = (kind: string, title: string, ids: string[], at: Map<string, number | null> = new Map()): Section =>
+    ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map((t) => ({ ...item(t), at: at.get(t.id) ?? null })) });
   const rows: Section[] = [];
   /* Going invisible on Kimono is the profile's to apply (lib/friends profileFor), so their own profile still shows it all. */
   if (sharingSet(u)) rows.push(row("watched", "Watched", lastRows(u, 24).map((p) => p.titleId)));
   if (sharesTasteSet(u)) {
     const rated = ratingsOf(u);
-    rows.push(row("loved", "Loved", rated.filter((r) => r.rating === "love").map((r) => r.title_id)));
-    rows.push(row("liked", "Liked", rated.filter((r) => r.rating === "up").map((r) => r.title_id)));
-    const list = (db.prepare("SELECT title_id FROM list WHERE lower(username) = ? ORDER BY added_at DESC").all(u) as { title_id: string }[]).map((r) => r.title_id);
-    rows.push(row("listed", "Watchlist", list));
+    const ratedAt = new Map(rated.map((r) => [r.title_id, r.rated_at ?? null]));
+    rows.push(row("loved", "Loved", rated.filter((r) => r.rating === "love").map((r) => r.title_id), ratedAt));
+    rows.push(row("liked", "Liked", rated.filter((r) => r.rating === "up").map((r) => r.title_id), ratedAt));
+    const list = db.prepare("SELECT title_id, added_at FROM list WHERE lower(username) = ? ORDER BY added_at DESC").all(u) as { title_id: string; added_at: number | null }[];
+    rows.push(row("listed", "Watchlist", list.map((r) => r.title_id), new Map(list.map((r) => [r.title_id, r.added_at]))));
   }
   return rows.filter((r) => r.items.length > 0);
 }

@@ -28,7 +28,8 @@ export function migrateSocial(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS recommendations (id TEXT PRIMARY KEY, from_user TEXT NOT NULL, to_user TEXT, app TEXT NOT NULL, item_id TEXT NOT NULL, title TEXT NOT NULL, subtitle TEXT, cover TEXT, note TEXT, at INTEGER NOT NULL, seen_at INTEGER, dismissed_at INTEGER);
     CREATE INDEX IF NOT EXISTS recommendations_to ON recommendations (to_user);
     CREATE INDEX IF NOT EXISTS recommendations_from ON recommendations (from_user);
-    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS profile_off (username TEXT NOT NULL, row TEXT NOT NULL, item_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (username, row, item_id));`);
   const columns = (db.prepare("PRAGMA table_info(profiles)").all() as { name: string }[]).map((c) => c.name);
   /* Apps whose activity someone keeps off their profile, comma-separated. */
   if (!columns.includes("hidden")) db.exec("ALTER TABLE profiles ADD COLUMN hidden TEXT NOT NULL DEFAULT ''");
@@ -36,6 +37,29 @@ export function migrateSocial(db: DatabaseSync) {
   if (!columns.includes("kept")) db.exec("ALTER TABLE profiles ADD COLUMN kept TEXT NOT NULL DEFAULT ''");
   if (!columns.includes("invisible")) db.exec("ALTER TABLE profiles ADD COLUMN invisible INTEGER NOT NULL DEFAULT 0");
 }
+
+/* ───── Off your profile ───── */
+
+/**
+ * A title someone took off one row of their profile ("books:reading"). Only the profile forgets it: the app keeps
+ * their progress, rating or list as it was, and it comes back once it changes after (they read on, rate it again).
+ */
+export function takeOffProfile(db: DatabaseSync, username: string, row: string, itemId: string, at = Date.now()) {
+  db.prepare("INSERT INTO profile_off (username, row, item_id, at) VALUES (?, ?, ?, ?) ON CONFLICT (username, row, item_id) DO UPDATE SET at = excluded.at")
+    .run(username.toLowerCase(), row, itemId, at);
+}
+
+/** What someone has taken off their profile: `row|itemId` to when. */
+export function offProfileOf(db: DatabaseSync, username: string): Map<string, number> {
+  const rows = db.prepare("SELECT row, item_id, at FROM profile_off WHERE username = ?").all(username.toLowerCase()) as { row: string; item_id: string; at: number }[];
+  return new Map(rows.map((r) => [`${r.row}|${r.item_id}`, r.at]));
+}
+
+/** Whether a title stays off a row: taken off, and not changed since. */
+export const isOffProfile = (off: Map<string, number>, row: string, itemId: string, changedAt?: number | null) => {
+  const at = off.get(`${row}|${itemId}`);
+  return at !== undefined && (changedAt ?? 0) <= at;
+};
 
 export class FriendsProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -142,7 +166,7 @@ export const apps: Record<string, { name: string }> = {
 };
 
 /** One row of a profile: what someone did in one app (watched, loved, reading…), latest first. */
-export type Section = { app: string; appName: string; kind: string; title: string; items: (Item & { href?: string | null; progress?: number | null })[] };
+export type Section = { app: string; appName: string; kind: string; title: string; items: (Item & { href?: string | null; progress?: number | null; at?: number | null })[] };
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 /** A cover is an address on the web or on this Portal; anything else is left out. */

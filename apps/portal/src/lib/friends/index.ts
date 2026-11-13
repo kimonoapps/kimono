@@ -11,7 +11,7 @@ import { picturePaths } from "../pictures";
 import { stateDir } from "../state";
 import {
   answerFriend, apps, askFriend, hiddenAppsOf, bioOf, dropRecommendation, FriendsProblem, friendsOf, importFriends, linkOf, linksOf, markSeen, migrateSocial, onProfile,
-  isInvisible, privacyOf, profileFor, receivedBy, recommend, recommendedTo, removeFriend, seesProfile, sentBy, setAppHidden, setBio, setInvisible, setKept, unseenCount,
+  isInvisible, isOffProfile, offProfileOf, privacyOf, profileFor, takeOffProfile, receivedBy, recommend, recommendedTo, removeFriend, seesProfile, sentBy, setAppHidden, setBio, setInvisible, setKept, unseenCount,
   type LinkState, type Recommendation, type Section,
 } from "./model";
 import { friendsActivity, type Activity } from "./activity";
@@ -180,9 +180,12 @@ export async function profileOf(viewer: string, username: string, origin: string
   const person = await findPerson(username);
   if (!person) throw new FriendsProblem("They aren't on this Kimono.", 404);
   const db = friendsDb();
-  const sections = seesProfile(db, viewer, person.username)
+  const loaded = seesProfile(db, viewer, person.username)
     ? (await Promise.all(sourceLoaders.map((load) => load().then((source) => source(viewer.toLowerCase(), person.username, origin)).catch(() => [] as Section[])))).flat()
     : [];
+  /* What they took off their profile stays off until it changes. */
+  const off = offProfileOf(db, person.username);
+  const sections = loaded.map((s) => ({ ...s, items: s.items.filter((i) => !isOffProfile(off, `${s.app}:${s.kind}`, i.itemId, i.at)) })).filter((s) => s.items.length > 0);
   const profile = profileFor(db, viewer, person, () => sections);
   if (!profile.open) return profile;
   const everyone = await people();
@@ -216,23 +219,17 @@ export function changePrivacy(username: string, body: Record<string, unknown>) {
 export async function removeFromRow(username: string, raw: Record<string, unknown>) {
   const app = String(raw.app ?? ""), kind = String(raw.kind ?? ""), id = String(raw.itemId ?? "");
   if (!id) throw new FriendsProblem("Pick something to take off.");
-  if (app === "watch") {
-    const [{ watchDb, setListed, setRating }, { noteWatched }] = await Promise.all([import("../watch"), import("../watch/friends")]);
-    const db = watchDb();
-    if (kind === "listed") setListed(db, username, id, false);
-    else if (kind === "loved" || kind === "liked") setRating(db, username, id, null);
-    else if (kind === "watched") noteWatched(db, username, id, true);
-    else throw new FriendsProblem("That isn't on profiles.");
+  /* Only the profile forgets it: progress, ratings and lists stay as they are in the app. Watched is Watch's own (it comes back when you watch it again). */
+  if (app === "watch" && kind === "watched") {
+    const [{ watchDb }, { noteWatched }] = await Promise.all([import("../watch"), import("../watch/friends")]);
+    noteWatched(watchDb(), username, id, true);
     return { ok: true };
   }
-  if (app === "books") {
-    const { setRating, setShelf } = await import("../books");
-    if (kind === "loved" || kind === "liked") setRating(username, id, null);
-    else if (kind === "reading" || kind === "want" || kind === "read") setShelf(username, id, null);
-    else throw new FriendsProblem("That isn't on profiles.");
-    return { ok: true };
-  }
-  throw new FriendsProblem("That app isn't on profiles.");
+  const rows: Record<string, string[]> = { watch: ["loved", "liked", "listed"], books: ["reading", "want", "read", "loved", "liked"] };
+  if (!rows[app]) throw new FriendsProblem("That app isn't on profiles.");
+  if (!rows[app].includes(kind)) throw new FriendsProblem("That isn't on profiles.");
+  takeOffProfile(friendsDb(), username, `${app}:${kind}`, id);
+  return { ok: true };
 }
 
 /** Whether someone has gone invisible to friends (Kimono's switch, on their profile): apps keep what they do from friends while it's on. */

@@ -20,6 +20,8 @@ export function booksSectionsFrom(shelf: ShelfItem[]): Section[] {
       subtitle: [b.authors[0], b.year].filter(Boolean).join(" · ") || null,
       cover: b.cover, href: `/books?b=${encodeURIComponent(b.key)}`,
       progress: state === "reading" ? Math.min(1, Math.max(0, b.fraction)) : null,
+      /* When it last changed, so a title taken off the profile comes back once you read on or rate it again. */
+      at: Date.parse(b.updatedAt) || null,
     })),
   })).filter((s) => s.items.length > 0);
 }

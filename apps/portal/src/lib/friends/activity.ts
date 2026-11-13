@@ -14,7 +14,7 @@
  * Pure logic over SQLite, tested in scripts/test-friends.mjs; ./index.ts serves it.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { areFriends, hiddenAppsOf, isInvisible, keptOf } from "./model";
+import { areFriends, hiddenAppsOf, isInvisible, isOffProfile, keptOf, offProfileOf } from "./model";
 
 export type ActivityKind = "watching" | "watched" | "reading" | "read" | "recommended";
 
@@ -42,14 +42,14 @@ export function friendsActivity(
   { limit = 8, perFriend = 3, since = 0 }: { limit?: number; perFriend?: number; since?: number } = {},
 ): Activity[] {
   const u = me.toLowerCase();
-  const known = new Map<string, { ok: boolean; apps: string[]; kept: string[]; sharing: boolean; hidden: Set<string> }>();
+  const known = new Map<string, { ok: boolean; apps: string[]; kept: string[]; sharing: boolean; hidden: Set<string>; off: Map<string, number> }>();
   const of = (f: string) => {
     let p = known.get(f);
     if (!p) {
       const ok = f !== u && areFriends(db, u, f) && !isInvisible(db, f);
       p = ok
-        ? { ok, apps: hiddenAppsOf(db, f), kept: keptOf(db, f), sharing: watch?.sharing(f) ?? false, hidden: watch?.hidden(f) ?? new Set() }
-        : { ok, apps: [], kept: [], sharing: false, hidden: new Set() };
+        ? { ok, apps: hiddenAppsOf(db, f), kept: keptOf(db, f), sharing: watch?.sharing(f) ?? false, hidden: watch?.hidden(f) ?? new Set(), off: offProfileOf(db, f) }
+        : { ok, apps: [], kept: [], sharing: false, hidden: new Set(), off: new Map() };
       known.set(f, p);
     }
     return p;
@@ -61,6 +61,8 @@ export function friendsActivity(
     if (p.apps.includes(a.app)) return false;
     const row = rowOfKind[a.kind];
     if (row && p.kept.includes(row)) return false;
+    /* Taken off their profile, and not changed since. */
+    if (row && isOffProfile(p.off, row, a.itemId, a.at)) return false;
     if (a.app === "watch" && (!p.sharing || p.hidden.has(a.itemId))) return false;
     return true;
   };

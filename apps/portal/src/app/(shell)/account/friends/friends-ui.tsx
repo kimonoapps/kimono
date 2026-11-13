@@ -327,13 +327,12 @@ export function ProfileView({ username, home = false }: { username: string; home
   </div>;
 }
 
-/** What taking a title off a row loses, said before it's done (lib/friends removeFromRow). */
+/** What taking a title off a row means, said before it's done (lib/friends removeFromRow): only the profile forgets it. */
 const dropLoses = (s: Section) =>
-  s.app === "books" && s.kind === "reading" ? "You'll lose your progress in it."
-    : s.app === "books" && s.kind === "read" ? "You'll lose that you've read it."
-      : s.kind === "loved" || s.kind === "liked" ? "Your rating goes with it."
-        : s.app === "watch" && s.kind === "watched" ? "Friends stop seeing it until you watch it again. What you've watched stays."
-          : `It comes off your ${s.title}.`;
+  s.app === "watch" && s.kind === "watched" ? "Friends stop seeing it until you watch it again. What you've watched stays."
+    : s.app === "books" && s.kind === "reading" ? "Friends stop seeing it until you read on. Your progress stays."
+      : s.kind === "loved" || s.kind === "liked" ? "Friends stop seeing it until you rate it again. Your rating stays."
+        : `Friends stop seeing it here. It stays in ${s.appName}.`;
 
 const keptFrom = (privacy: Privacy) => [
   ...(privacy.friends ? [] : ["friends"]),

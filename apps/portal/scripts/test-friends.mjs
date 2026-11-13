@@ -271,3 +271,13 @@ test('home activity: a few per friend, a short list, only lately', () => {
   assert.deepEqual(homeOf(db, items, share(), { perFriend: 2, since: 10 }), ['sami:watched:m5', 'sami:watched:m4', 'lee:read:b1']);
   assert.equal(homeOf(db, items, share(), { limit: 3 }).length, 3);
 });
+
+test('profiles: a title taken off a row stays off until it changes, and only that row forgets it', () => {
+  const db = fresh();
+  friends.takeOffProfile(db, 'Sami', 'books:reading', 'b1', 100);
+  const off = friends.offProfileOf(db, 'sami');
+  assert.equal(friends.isOffProfile(off, 'books:reading', 'b1', 90), true);
+  assert.equal(friends.isOffProfile(off, 'books:reading', 'b1', 150), false, 'reading on brings it back');
+  assert.equal(friends.isOffProfile(off, 'books:read', 'b1', 90), false, 'other rows keep it');
+  assert.equal(friends.isOffProfile(off, 'books:reading', 'b2', null), false);
+});

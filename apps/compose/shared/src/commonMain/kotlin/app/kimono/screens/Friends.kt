@@ -353,7 +353,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     )
     dropping?.let { (s, item) ->
         InkConfirm(
-            title = "Take ${item.title} off ${s.title}?", text = dropLoses(s.app, s.kind, s.title), action = "Take off", danger = true, icon = "trash",
+            title = "Take ${item.title} off ${s.title}?", text = dropLoses(s.app, s.kind, s.appName), action = "Take off", danger = true, icon = "trash",
             onDismiss = { dropping = null },
             onConfirm = {
                 dropping = null
@@ -373,13 +373,12 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     recommending?.let { item -> RecommendDialog(friends, item, onDismiss = { recommending = null }) }
 }
 
-/** What taking a title off a row loses, said before it's done (apps/portal lib/friends removeFromRow). */
-private fun dropLoses(app: String, kind: String, title: String) = when {
-    app == "books" && kind == "reading" -> "You'll lose your progress in it."
-    app == "books" && kind == "read" -> "You'll lose that you've read it."
-    kind == "loved" || kind == "liked" -> "Your rating goes with it."
+/** What taking a title off a row means, said before it's done (apps/portal lib/friends removeFromRow): only the profile forgets it. */
+private fun dropLoses(app: String, kind: String, appName: String) = when {
     app == "watch" && kind == "watched" -> "Friends stop seeing it until you watch it again. What you've watched stays."
-    else -> "It comes off your $title."
+    app == "books" && kind == "reading" -> "Friends stop seeing it until you read on. Your progress stays."
+    kind == "loved" || kind == "liked" -> "Friends stop seeing it until you rate it again. Your rating stays."
+    else -> "Friends stop seeing it here. It stays in $appName."
 }
 
 /** A row's label, with "Only you" beside it when friends don't see it. */
