@@ -2,7 +2,7 @@
 
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MorphLoader } from "@kimono/ui";
-import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Genre, type GenrePage as GenrePageData, type Home, type Page, type Rating, type ShelfItem, type ShelfState } from "./api";
+import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Genre, type GenrePage as GenrePageData, type Home, type Page, type Rating, type ReadingFormat, type ShelfItem, type ShelfState } from "./api";
 import { Book3D } from "./book3d";
 import { Reader } from "./reader";
 
@@ -483,13 +483,14 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
   const [saving, setSaving] = useState<ShelfState | "off" | null>(null);
   const [more, setMore] = useState(false);
   const [files, setFiles] = useState<BookFileInfo[] | null>(null);
+  const [prefers, setPrefers] = useState<ReadingFormat | null>(null);
   const [reading, setReading] = useState<BookFileInfo | null>(null);
   const sheet = useRef<HTMLDivElement>(null);
   const tilt = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     booksApi.book(bookKey).then(setPage).catch((e: unknown) => setProblem(e instanceof BooksError ? e.message : "This book didn't open."));
-    booksApi.files(bookKey).then((r) => setFiles(r.files)).catch(() => setFiles([]));
+    booksApi.files(bookKey).then((r) => { setFiles(r.files); setPrefers(r.prefers); }).catch(() => setFiles([]));
   }, [bookKey]);
 
   const close = useCallback(() => { setLeaving(true); setTimeout(onClose, 220); }, [onClose]);
@@ -584,7 +585,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
               {b.pages ? <div><dt>Pages</dt><dd>{b.pages}</dd></div> : null}
               {b.publisher ? <div><dt>Publisher</dt><dd>{b.publisher}</dd></div> : null}
             </dl>
-            <FileActions files={files} onRead={setReading} />
+            <FileActions files={files} prefers={prefers} onPrefers={setPrefers} onRead={setReading} />
             <ShelfChoice current={page.shelf?.state ?? null} saving={saving} onChoose={place} />
             {page.shelf?.state === "reading" ? <PlaceControl key={page.shelf.fraction} fraction={page.shelf.fraction} pages={b.pages} onSave={setFraction} /> : null}
             <RateBook rating={page.shelf?.rating ?? null} onRate={rate} />
@@ -611,16 +612,47 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
  * ink loader; with one, it reads (and a copy can be saved beside it); without
  * one, it stays, and says so when pressed, instead of quietly missing.
  */
-function FileActions({ files, onRead }: { files: BookFileInfo[] | null; onRead: (f: BookFileInfo) => void }) {
+/** A converted EPUB: made by Kimono from the book's PDF. */
+const madeFromPdf = (f: BookFileInfo) => f.source === "converted";
+
+/**
+ * Read, and the copy to save. When a book comes both as an EPUB and a PDF,
+ * the first Read asks which you'd rather (and remembers, everywhere you
+ * read); after that a line under the buttons says which this is, with the
+ * other a tap away.
+ */
+function FileActions({ files, prefers, onPrefers, onRead }: {
+  files: BookFileInfo[] | null; prefers: ReadingFormat | null; onPrefers: (f: ReadingFormat | null) => void; onRead: (f: BookFileInfo) => void;
+}) {
   const [missing, setMissing] = useState(false);
-  const best = files?.find((f) => f.readable) ?? null;
-  const copy = files?.find((f) => f !== best) ?? best;
+  const [asking, setAsking] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const usable = (files ?? []).filter((f) => f.readable && !f.preparing);
+  const epub = usable.find((f) => f.format === "epub") ?? null;
+  const pdf = usable.find((f) => f.format === "pdf") ?? null;
+  const making = (files ?? []).find((f) => f.format === "epub" && f.preparing) ?? null;
+  const both = Boolean(epub && pdf);
+  const best = both ? (prefers === "pdf" ? pdf : epub) : epub ?? pdf ?? null;
+  const other = both ? (best === epub ? pdf : epub) : null;
+  const copy = pdf ?? files?.find((f) => f !== best && !madeFromPdf(f)) ?? best;
   const sizeOf = (f: BookFileInfo) => f.size ? ` · ${f.size > 1_048_576 ? `${(f.size / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(f.size / 1024))} KB`}` : "";
   const looking = files === null;
+  const read = () => {
+    if (!best) { if (!looking) setMissing(true); return; }
+    if (both && !prefers) { setAsking(true); return; }
+    onRead(best);
+  };
+  const choose = (format: ReadingFormat) => {
+    const file = format === "epub" ? epub : pdf;
+    setAsking(false);
+    if (remember) { onPrefers(format); void booksApi.setFormat(format).catch(() => {}); }
+    if (file) onRead(file);
+  };
+  const what = (f: BookFileInfo) => f.format === "pdf" ? "PDF, the original pages" : madeFromPdf(f) ? "EPUB, made from the PDF" : "EPUB";
   return <>
     <div className="kb-btns kb-files">
       <button className={cx("kb-btn kb-filled", looking && "kb-looking", !looking && !best && "kb-absent")}
-        aria-busy={looking} onClick={() => { if (best) onRead(best); else if (!looking) setMissing(true); }}>
+        aria-busy={looking} aria-expanded={both && !prefers ? asking : undefined} onClick={read}>
         {looking ? <MorphLoader tone="plain" ink="#000000" label="Looking for a copy" className="kb-ink" /> : <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Zm0 0V19.5" /></svg>}
         {best?.sample ? "Preview" : "Read"}
       </button>
@@ -628,6 +660,25 @@ function FileActions({ files, onRead }: { files: BookFileInfo[] | null; onRead: 
         <svg viewBox="0 0 24 24" aria-hidden><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M5 19h14" /></svg>
         {copy.format.toUpperCase()}{sizeOf(copy)}</button> : null}
     </div>
+    {best && !asking && (prefers || !both) ? <p className="kb-format-line">
+      {what(best)}{madeFromPdf(best) ? <span className="kb-format-note"> · the text reflows to your screen; tables and pictures may sit differently</span> : null}
+      {other ? <> · <button className="kb-link" onClick={() => onRead(other)}>Read the {other.format.toUpperCase()} instead</button></> : null}
+      {!both && making ? <> · an EPUB is being made from it</> : null}
+    </p> : null}
+    {asking && epub && pdf ? <div className="kb-format" role="group" aria-label="How would you like to read it?">
+      <p className="kb-format-q">This book comes two ways. How would you like to read it?</p>
+      <div className="kb-format-options">
+        <button className="kb-format-option" onClick={() => choose("epub")}>
+          <span className="kb-format-name">EPUB</span>
+          <span>Text that fits your screen and your size, your place kept on every device and a Kimono Read.{madeFromPdf(epub) ? " Made from the PDF by Kimono, so tables and pictures may sit differently." : ""}</span>
+        </button>
+        <button className="kb-format-option" onClick={() => choose("pdf")}>
+          <span className="kb-format-name">PDF</span>
+          <span>The original pages, exactly as printed. Best on a big screen.</span>
+        </button>
+      </div>
+      <label className="kb-format-remember"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember for every book</label>
+    </div> : null}
     {missing ? <div className="kb-missing" role="status">
       <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Z" /><path d="m9 10 6 6m0-6-6 6" /></svg>
       <span><b>Not here to read yet.</b> Kimono has no copy of this book. Put it on your shelf and it&apos;ll be ready to open when one turns up.</span>

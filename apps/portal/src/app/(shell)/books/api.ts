@@ -22,7 +22,8 @@ export type Mine = { state: ShelfState; fraction: number; rating: Rating | null;
 export type Page = { book: Book; byAuthor: Book[]; similar: Book[]; shelf: Mine | null; friends: FriendOnBook[] };
 
 /** A file a source has for a book: read it in Kimono when `readable`, or download it. */
-export type BookFileInfo = { address: string; source: string; format: string; size: number | null; label: string | null; language: string | null; sample: boolean; readable: boolean };
+export type BookFileInfo = { address: string; source: string; format: string; size: number | null; label: string | null; language: string | null; sample: boolean; readable: boolean; preparing?: boolean };
+export type ReadingFormat = "epub" | "pdf";
 
 export class BooksError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -42,7 +43,8 @@ export const booksApi = {
   book: (key: string) => call<Page>(`/book?key=${encodeURIComponent(key)}`),
   shelf: () => call<{ books: ShelfItem[] }>("/shelf"),
   setShelf: (key: string, state: ShelfState | null) => call<{ books: ShelfItem[] }>("/shelf", { method: "PUT", body: JSON.stringify({ key, state }) }),
-  files: (key: string) => call<{ files: BookFileInfo[] }>(`/files?key=${encodeURIComponent(key)}`),
+  files: (key: string) => call<{ files: BookFileInfo[]; prefers: ReadingFormat | null }>(`/files?key=${encodeURIComponent(key)}`),
+  setFormat: (format: ReadingFormat | null) => call<{ format: ReadingFormat | null }>("/prefs", { method: "PUT", body: JSON.stringify({ format }) }),
   rate: (key: string, rating: Rating | null) => call<{ shelf: Mine | null }>("/rating", { method: "PUT", body: JSON.stringify({ key, rating }) }),
   review: (key: string, review: string | null) => call<{ shelf: Mine | null }>("/review", { method: "PUT", body: JSON.stringify({ key, review }) }),
   progress: (key: string, fraction: number) => call<{ key: string; state: ShelfState; fraction: number }>("/progress", { method: "POST", body: JSON.stringify({ key, fraction }) }),

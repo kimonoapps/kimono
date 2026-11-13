@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS shelf (
   added_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (username, key)
 );
 CREATE INDEX IF NOT EXISTS shelf_recent ON shelf (username, updated_at DESC);
+CREATE TABLE IF NOT EXISTS prefs (username TEXT PRIMARY KEY, format TEXT);
 CREATE TABLE IF NOT EXISTS devices (
   username TEXT NOT NULL, device TEXT NOT NULL, model TEXT NOT NULL,
   first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL, PRIMARY KEY (username, device)
@@ -407,6 +408,17 @@ export function shelfStateOf(username: string, key: string): Mine | null {
 }
 
 export const REVIEW_MAX = 5000;
+
+export type ReadingFormat = "epub" | "pdf";
+
+/** How you like to read when a book comes both ways: asked the first time, kept for the web, the phone and the e-reader alike. */
+export function readingFormat(username: string): ReadingFormat | null {
+  const row = booksDb().prepare("SELECT format FROM prefs WHERE username = ?").get(who(username)) as { format: string | null } | undefined;
+  return row?.format === "epub" || row?.format === "pdf" ? row.format : null;
+}
+export function setReadingFormat(username: string, format: ReadingFormat | null) {
+  booksDb().prepare("INSERT INTO prefs (username, format) VALUES (?, ?) ON CONFLICT (username) DO UPDATE SET format = excluded.format").run(who(username), format);
+}
 
 /** What you thought, in your own words (null takes it back). Reviewing a book you hadn't shelved puts it on Read. */
 export function setReview(username: string, key: string, review: string | null) {
