@@ -707,12 +707,43 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
             }
             if (p.friends.isNotEmpty()) FriendsOn(p.friends)
             if (b.description.isNotBlank()) {
-                Text(b.description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis,
+                Text(blurb(b.description), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = if (expanded) Int.MAX_VALUE else 6, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp).clickable { expanded = !expanded })
             }
             if (p.byAuthor.isNotEmpty()) ShelfStrip("More by ${b.author}", p.byAuthor, onOpen)
             if (p.similar.isNotEmpty()) ShelfStrip("If you like this", p.similar, onOpen)
         }
+    }
+}
+
+/**
+ * A description's Markdown as styled text: paragraphs, **bold**, *italics*,
+ * list lines as bullets, headings as bold lines. Nothing else is read.
+ */
+private fun blurb(md: String): androidx.compose.ui.text.AnnotatedString = androidx.compose.ui.text.buildAnnotatedString {
+    val lines = md.lines()
+    lines.forEachIndexed { i, raw ->
+        var line = raw.trim()
+        val heading = line.startsWith("#")
+        if (heading) line = line.trimStart('#').trim()
+        val bullet = Regex("^[-*+]\\s+").find(line)
+        if (bullet != null) { append("•  "); line = line.substring(bullet.range.last + 1) }
+        if (line.startsWith("> ")) line = line.removePrefix("> ")
+        val start = length
+        /* **bold** and *italic* / _italic_, read left to right. */
+        var at = 0
+        val mark = Regex("\\*\\*(.+?)\\*\\*|(?<![\\w*])[*_](?!\\s)(.+?)(?<!\\s)[*_](?![\\w*])")
+        for (m in mark.findAll(line)) {
+            append(line.substring(at, m.range.first))
+            val bold = m.groupValues[1].isNotEmpty()
+            pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = if (bold) FontWeight.SemiBold else null, fontStyle = if (bold) null else androidx.compose.ui.text.font.FontStyle.Italic))
+            append(if (bold) m.groupValues[1] else m.groupValues[2])
+            pop()
+            at = m.range.last + 1
+        }
+        append(line.substring(at))
+        if (heading) addStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.SemiBold), start, length)
+        if (i < lines.lastIndex) append("\n")
     }
 }
 

@@ -94,13 +94,27 @@ export const yearOf = (s: unknown): number | null => {
   return m ? Number(m[1]) : null;
 };
 /** Descriptions arrive with markdown links, HTML and "([source][1])" tails; keep the prose. */
+/**
+ * A description as Markdown, whatever it came as: Google's HTML becomes
+ * paragraphs, bold and italics; Open Library's Markdown keeps its own. Links
+ * keep their words only, and the reference lists some sources trail off with
+ * are cut. Paragraphs and list lines survive (they used to be flattened).
+ */
 export function cleanDescription(s: unknown): string {
-  return clean(String(s ?? "")
-    .replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\[[^\]]*\]\[\d+\]/g, "")
-    .replace(/^\s*\[\d+\]:.*$/gm, "").replace(/-{3,}[\s\S]*$/, "")
-    .replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&")).slice(0, 6000);
+  const text = String(s ?? "").replace(/\r\n?/g, "\n").replace(/\u0000/g, "")
+    .replace(/<br\s*\/?>/gi, "\n").replace(/<\/p>\s*/gi, "\n\n").replace(/<p[^>]*>/gi, "")
+    .replace(/<li[^>]*>/gi, "\n- ").replace(/<\/(li|ul|ol)>/gi, "\n")
+    .replace(/<\/?(b|strong)>/gi, "**").replace(/<\/?(i|em)>/gi, "*").replace(/<[^>]+>/g, "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\[([^\]]+)\]\[\d+\]/g, "$1").replace(/\[[^\]]*\]\[\d+\]/g, "")
+    .replace(/^\s*\[\d+\]:.*$/gm, "").replace(/\n\s*-{3,}[\s\S]*$/, "")
+    .replace(/&quot;/g, "\"").replace(/&#39;|&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+  return text.split("\n").map((line) => line.replace(/[ \t]+/g, " ").trim()).join("\n")
+    .replace(/\*\*\s*\*\*/g, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 6000);
 }
+
+/** A description as plain words, for a line of it (the hero, a preview). */
+export const plainDescription = (md: string) => md.replace(/^#+\s*/gm, "").replace(/^\s*[-*+]\s+/gm, "").replace(/[*_`]+/g, "").replace(/\s+/g, " ").trim();
 
 /* Genres people browse by. Open Library's subjects are a long, unordered
    list (places, characters, awards…); these are the ones worth showing. */

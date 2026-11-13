@@ -192,3 +192,9 @@ test('the file cache: first from the source, then from disk; one copy at a time;
   assert.ok(!readdirSync(dir).some((f) => f.endsWith('.part')), 'no half copies left');
   files.unregisterFileSource('fake');
 });
+
+test('descriptions keep their paragraphs and emphasis, as Markdown', () => {
+  assert.equal(model.cleanDescription('<p>A <b>bold</b> start.</p><p>Then <i>more</i>.<br>Next line.</p>'), 'A **bold** start.\n\nThen *more*.\nNext line.');
+  assert.equal(model.cleanDescription('First.\r\n\r\n\r\n- one\n- two\n\nSee [the site](https://example.com).\n\n----------\n[1]: https://example.com'), 'First.\n\n- one\n- two\n\nSee the site.');
+  assert.equal(model.cleanDescription('Lots   of\t space'), 'Lots of space');
+});

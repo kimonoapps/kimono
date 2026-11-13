@@ -328,6 +328,10 @@
 .kb .kb-progress-control-old output{font-weight:700;color:var(--fg);min-width:40px;text-align:right}
 
 .kb .kb-about{margin-top:28px;max-width:64ch;font-size:17px;line-height:1.65;color:var(--fg-2);display:grid;gap:14px}
+.kb .kb-about p,.kb .kb-about ul,.kb .kb-about ol,.kb .kb-about blockquote{margin:0}
+.kb .kb-about ul,.kb .kb-about ol{padding-left:1.3em;display:grid;gap:4px}
+.kb .kb-about strong{color:var(--fg);font-weight:650}
+.kb .kb-about blockquote{padding-left:14px;border-left:3px solid color-mix(in srgb,var(--fg-2) 30%,transparent);font-style:italic}
 .kb .kb-folded{max-height:11.5em;overflow:hidden;mask-image:linear-gradient(#000 60%,transparent);-webkit-mask-image:linear-gradient(#000 60%,transparent)}
 .kb .kb-isbn{margin-top:24px;font-size:13px;color:var(--fg-3);font-variant-numeric:tabular-nums}
 @media (max-width:759px){

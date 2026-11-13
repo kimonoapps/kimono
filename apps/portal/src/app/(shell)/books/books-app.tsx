@@ -2,6 +2,7 @@
 
 import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MorphLoader } from "@kimono/ui";
+import Markdown, { type Components } from "react-markdown";
 import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Genre, type GenrePage as GenrePageData, type Home, type Page, type Rating, type ReadingFormat, type ShelfItem, type ShelfState } from "./api";
 import { Book3D } from "./book3d";
 import { Reader } from "./reader";
@@ -221,7 +222,7 @@ function Featured({ book, onOpen, onPlaced }: { book: Book; onOpen: (key: string
         {book.year ? <span>{book.year}</span> : null}
         {book.pages ? <span>{book.pages} pages</span> : null}
       </p>
-      {book.description ? <p className="kb-featured-about">{book.description.split(/\n{2,}/)[0]}</p> : null}
+      {book.description ? <p className="kb-featured-about">{plain(book.description.split(/\n{2,}/)[0])}</p> : null}
       <div className="kb-btns">
         <button className="kb-btn kb-filled" onClick={() => onOpen(book.key)}>Open</button>
         {mine ? <span className="kb-featured-mine">{stateLabel[mine.state]}</span>
@@ -306,6 +307,15 @@ function FriendsShelf({ friends, onOpen }: { friends: FriendReading[]; onOpen: (
     </div>)}
   </Shelf>;
 }
+
+/* A description's Markdown, kept to what a blurb needs: paragraphs, emphasis, lists and quotes. Headings read as bold lines; links, pictures and raw HTML never render. */
+const blurbParts: Components = Object.fromEntries(["h1", "h2", "h3", "h4", "h5", "h6"].map((h) => [h, ({ children }: { children?: ReactNode }) => <p><strong>{children}</strong></p>])) as Components;
+const blurbAllowed = ["p", "strong", "em", "ul", "ol", "li", "blockquote", "br", "h1", "h2", "h3", "h4", "h5", "h6"];
+function Blurb({ text }: { text: string }) {
+  return <Markdown components={blurbParts} allowedElements={blurbAllowed} unwrapDisallowed skipHtml>{text}</Markdown>;
+}
+/** A description as plain words, for a line of it. */
+const plain = (md: string) => md.replace(/^#+\s*/gm, "").replace(/^\s*[-*+]\s+/gm, "").replace(/[*_`]+/g, "").replace(/\s+/g, " ").trim();
 
 /** Discover and My shelf: one pill slides to the chosen tab, rather than each tab filling and unfilling on its own. */
 function Tabs({ at, children }: { at: number | null; children: ReactNode }) {
@@ -594,7 +604,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
             <YourReview key={page.book.key} review={page.shelf?.review ?? null} onSave={review} />
             {page.friends.length ? <FriendsOnBook friends={page.friends} /> : null}
             {description ? <div className={cx("kb-about", long && !more && "kb-folded")}>
-              {description.split(/\n{2,}/).map((p, i) => <p key={i}>{p}</p>)}
+              <Blurb text={description} />
             </div> : null}
             {long ? <button className="kb-link" onClick={() => setMore(!more)}>{more ? "Less" : "More"}</button> : null}
             {b.isbns[0] ? <p className="kb-isbn">ISBN {b.isbns[0]}</p> : null}
