@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import * as friends from '../src/lib/friends/model.ts';
 import * as watchFriends from '../src/lib/watch/friends.ts';
+import * as booksSection from '../src/lib/friends/books-section.ts';
 
 function fresh() {
   const db = new DatabaseSync(':memory:');
@@ -65,21 +66,64 @@ test('profiles: a short bio, kept tidy', () => {
   assert.throws(() => friends.setBio(db, 'ana', 42));
 });
 
-test('profiles: Books shelves keep the latest first, and only shelves Books has', () => {
+test('profiles: private until friends — a stranger sees a name and portrait, nothing more', () => {
   const db = fresh();
-  const book = (i) => ({ app: 'books', itemId: `ol:OL${i}W`, title: `Book ${i}`, cover: 'javascript:alert(1)' });
-  friends.shelve(db, 'ana', 'reading', book(1), 1);
-  friends.shelve(db, 'ana', 'reading', book(2), 2);
-  friends.shelve(db, 'ana', 'reading', book(1), 3);
-  const shelves = friends.shelvesOf(db, 'ana');
-  assert.deepEqual(shelves.books.reading.map((b) => b.itemId), ['ol:OL1W', 'ol:OL2W']);
-  assert.equal(shelves.books.reading[0].cover, null);
-  assert.throws(() => friends.shelve(db, 'ana', 'loved', book(3)), /shelf/);
-  assert.throws(() => friends.shelve(db, 'ana', 'reading', { ...book(3), app: 'music' }), /app/);
-  for (let i = 10; i < 10 + friends.shelfSize + 3; i++) friends.shelve(db, 'ana', 'favourites', book(i), i);
-  assert.equal(friends.shelvesOf(db, 'ana').books.favourites.length, friends.shelfSize);
-  friends.unshelve(db, 'ana', 'books', 'reading', 'ol:OL2W');
-  assert.deepEqual(friends.shelvesOf(db, 'ana').books.reading.map((b) => b.itemId), ['ol:OL1W']);
+  friends.setBio(db, 'ana', 'Reads on trains.');
+  friends.recommend(db, 'ana', [], film, id, 1);
+  const ana = { username: 'ana', name: 'Ana', picture: null };
+  const rows = [{ app: 'watch', appName: 'Watch', kind: 'watched', title: 'Watched', items: [film] }];
+  let asked = 0;
+  const sections = () => { asked++; return rows; };
+  const stranger = friends.profileFor(db, 'sami', ana, sections);
+  assert.deepEqual(Object.keys(stranger).sort(), ['link', 'name', 'open', 'picture', 'username', 'you']);
+  assert.equal(stranger.open, false);
+  assert.equal(asked, 0);
+  /* Asked but not yet friends: still private. */
+  friends.askFriend(db, 'sami', 'ana', 2);
+  assert.equal(friends.profileFor(db, 'sami', ana, sections).open, false);
+  assert.equal(friends.profileFor(db, 'sami', ana, sections).link, 'asking');
+  friends.askFriend(db, 'ana', 'sami', 3);
+  const friend = friends.profileFor(db, 'sami', ana, sections);
+  assert.equal(friend.open, true);
+  assert.equal(friend.bio, 'Reads on trains.');
+  assert.equal(friend.sections.length, 1);
+  assert.equal(friend.recommendations.length, 1);
+  assert.equal('hidden' in friend, false);
+  /* Unfriended: private again. */
+  friends.removeFriend(db, 'ana', 'sami');
+  assert.equal(friends.profileFor(db, 'sami', ana, sections).open, false);
+});
+
+test('profiles: an app kept off your profile is hidden from friends, still shown to you', () => {
+  const db = fresh();
+  friends.askFriend(db, 'ana', 'sami', 1);
+  friends.askFriend(db, 'sami', 'ana', 2);
+  const ana = { username: 'ana', name: 'Ana', picture: null };
+  const rows = [
+    { app: 'watch', appName: 'Watch', kind: 'watched', title: 'Watched', items: [film] },
+    { app: 'books', appName: 'Books', kind: 'read', title: 'Read', items: [{ ...film, app: 'books' }] },
+  ];
+  assert.deepEqual(friends.setAppHidden(db, 'ana', 'watch', true), ['watch']);
+  assert.deepEqual(friends.profileFor(db, 'sami', ana, () => rows).sections.map((s) => s.app), ['books']);
+  const own = friends.profileFor(db, 'ana', ana, () => rows);
+  assert.deepEqual(own.sections.map((s) => s.app), ['watch', 'books']);
+  assert.deepEqual(own.hidden, ['watch']);
+  /* The bio survives the setting, and the setting survives the bio. */
+  friends.setBio(db, 'ana', 'Hi');
+  assert.deepEqual(friends.hiddenAppsOf(db, 'ana'), ['watch']);
+  assert.deepEqual(friends.setAppHidden(db, 'ana', 'watch', false), []);
+  assert.throws(() => friends.setAppHidden(db, 'ana', 'music', true), /app/);
+});
+
+test('profiles: Books rows from the shelf — reading with how far, read, want to read', () => {
+  const book = (key, state, updatedAt, fraction = 0) => ({ key, title: key, authors: ['Sōseki'], cover: null, year: 1914, isbn: null, state, fraction, updatedAt });
+  const rows = booksSection.booksSectionsFrom([
+    book('ol:1', 'read', '2026-01-01'), book('ol:2', 'reading', '2026-02-01', .4), book('ol:3', 'read', '2026-03-01'),
+  ]);
+  assert.deepEqual(rows.map((r) => r.kind), ['reading', 'read']);
+  assert.equal(rows[0].items[0].progress, .4);
+  assert.equal(rows[0].items[0].subtitle, 'Sōseki · 1914');
+  assert.deepEqual(rows[1].items.map((i) => i.itemId), ['ol:3', 'ol:1']);
 });
 
 test('recommendations: to friends only, again brings it back, put away or taken back', () => {

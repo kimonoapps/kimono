@@ -11,8 +11,8 @@ import { picturePaths } from "../pictures";
 import { stateDir } from "../state";
 import {
   answerFriend, apps, askFriend, bioOf, dropRecommendation, FriendsProblem, friendsOf, importFriends, linkOf, linksOf, markSeen, migrateSocial, onProfile,
-  receivedBy, recommend, recommendedTo, removeFriend, sentBy, setBio, shelve, shelvesOf, unseenCount, unshelve,
-  type Item, type LinkState, type Recommendation,
+  profileFor, receivedBy, recommend, recommendedTo, removeFriend, seesProfile, sentBy, setAppHidden, setBio, unseenCount,
+  type LinkState, type Recommendation, type Section,
 } from "./model";
 
 /*
@@ -24,8 +24,12 @@ import {
 
 const cache = globalThis as unknown as { kimonoFriends?: DatabaseSync; kimonoPeople?: { at: number; people: Person[] } };
 
+let migrated = false;
 export function friendsDb(): DatabaseSync {
+  /* A hot reload keeps the connection but brings new code: bring the schema along. */
+  if (cache.kimonoFriends && !migrated) { migrateSocial(cache.kimonoFriends); migrated = true; }
   if (!cache.kimonoFriends) {
+    migrated = true;
     mkdirSync(stateDir, { recursive: true, mode: 0o700 });
     const opened = new DatabaseSync(join(stateDir, "friends.db"));
     opened.exec("PRAGMA busy_timeout = 3000");
@@ -150,55 +154,39 @@ export const linksOfUser = (username: string) => linksOf(friendsDb(), username);
 
 /* ───── Profiles ───── */
 
-/** A section an app adds to someone's profile: titles under a heading. */
-export type ProfileItem = Item & { href?: string | null };
-export type Section = { app: string; appName: string; shelf: string; title: string; items: ProfileItem[]; editable: boolean };
+export type { Section };
 
-/** Sections an app works out itself (Watch from what's watched), for `viewer` looking at `username`. */
+/** An app's rows on someone's profile, worked out from its own data, for `viewer` looking at `username`. */
 type SectionSource = (viewer: string, username: string, origin: string) => Promise<Section[]>;
-const sources: SectionSource[] = [];
-let sourcesLoaded: Promise<void> | null = null;
-/* Loaded on first use, so a profile never waits on an app that isn't there. */
-function loadSources() {
-  return (sourcesLoaded ??= import("../watch/friends-live").then((m) => { sources.push(m.watchSections); }, () => {}));
-}
+/* Loaded on first use, so a profile never waits on an app that isn't there; an app that fails shows nothing. */
+const sourceLoaders: (() => Promise<SectionSource>)[] = [
+  () => import("../watch/friends-live").then((m) => m.watchSections),
+  () => import("./books-section").then((m) => m.booksSections),
+];
 
 export type RecommendationView = Omit<Recommendation, "from" | "to"> & { from: Person; to: Person | null; appName: string };
 const viewOf = (r: Recommendation, everyone: Person[]): RecommendationView =>
   ({ ...r, from: personIn(everyone, r.from), to: r.to ? personIn(everyone, r.to) : null, appName: apps[r.app]?.name ?? r.app });
 
 /**
- * Someone's profile as `viewer` sees it. Their name and portrait, and whether you're friends, for anyone;
- * the bio, the apps' sections and what they recommend only for friends (and themselves).
+ * Someone's profile as `viewer` sees it (model.ts profileFor): private until you're friends, so anyone else
+ * gets only their name, portrait and how you're linked. Apps' activity is only worked out when it will be shown.
  */
 export async function profileOf(viewer: string, username: string, origin: string) {
-  const v = viewer.toLowerCase(), u = username.toLowerCase();
-  const person = await findPerson(u);
+  const person = await findPerson(username);
   if (!person) throw new FriendsProblem("They aren't on this Kimono.", 404);
-  const everyone = await people();
   const db = friendsDb();
-  const you = v === u;
-  const link = you ? null : linkOf(db, v, u);
-  const open = you || link === "friends";
-  if (!open) return { ...person, you, link, open, bio: "", sections: [] as Section[], recommendations: [] as RecommendationView[], friends: 0 };
-  await loadSources();
-  const appSections = (await Promise.all(sources.map((s) => s(v, u, origin).catch(() => [] as Section[])))).flat();
-  const kept = shelvesOf(db, u);
-  const shelfSections: Section[] = Object.entries(apps).flatMap(([app, a]) => Object.entries(a.shelves).map(([shelf, title]) =>
-    ({ app, appName: a.name, shelf, title, items: kept[app]?.[shelf] ?? [], editable: you })))
-    .filter((s) => s.items.length);
-  return {
-    ...person, you, link, open,
-    bio: bioOf(db, u),
-    sections: [...appSections, ...shelfSections],
-    recommendations: onProfile(db, u).map((r) => viewOf(r, everyone)),
-    friends: friendsOf(db, u).length,
-  };
+  const sections = seesProfile(db, viewer, person.username)
+    ? (await Promise.all(sourceLoaders.map((load) => load().then((source) => source(viewer.toLowerCase(), person.username, origin)).catch(() => [] as Section[])))).flat()
+    : [];
+  const profile = profileFor(db, viewer, person, () => sections);
+  if (!profile.open) return profile;
+  const everyone = await people();
+  return { ...profile, recommendations: profile.recommendations.map((r) => viewOf(r, everyone)) };
 }
 
 export const saveBio = (username: string, bio: unknown) => setBio(friendsDb(), username, bio);
-export const addToShelf = (username: string, shelf: string, raw: Record<string, unknown>) => shelve(friendsDb(), username, shelf, raw);
-export const removeFromShelf = (username: string, app: string, shelf: string, itemId: string) => unshelve(friendsDb(), username, app, shelf, itemId);
+export const showApp = (username: string, app: string, shown: boolean) => setAppHidden(friendsDb(), username, app, !shown);
 
 /* ───── Recommendations ───── */
 

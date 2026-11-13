@@ -251,28 +251,27 @@ export async function friendsWatchingRow(username: string, origin: string, shelf
 /* ───── On a Kimono profile ───── */
 
 /**
- * Watch's sections on someone's profile (lib/friends): their favourites (what they loved) while they share
- * their taste, and what they've watched lately while they share that. Their own profile shows both always.
- * Nothing when Watch is off.
+ * Watch's rows on someone's Kimono profile (lib/friends, which shows them only to friends): what they've watched,
+ * loved and liked, and My list. Watch's own settings still hold: what's watched only while they share it
+ * (Settings › Friends), ratings and the list only while they share their taste, never what they watched invisibly.
+ * Their own profile shows the same, so they see what friends see. Nothing when Watch is off.
  */
 export async function watchSections(viewer: string, username: string, origin: string): Promise<Section[]> {
+  void viewer;
   if (!watchConfig(await getPlatformSettings()).enabled) return [];
-  const v = viewer.toLowerCase(), u = username.toLowerCase();
-  const you = v === u;
+  const u = username.toLowerCase();
   const db = watchDb();
-  const hidden = you ? new Set<string>() : hiddenOf(db, u);
-  const item = (t: Title) => {
-    const card = cardOf(t, origin);
-    return { app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: card.poster, href: `/watch?t=${encodeURIComponent(t.id)}` };
-  };
-  const sections: Section[] = [];
-  if (you || sharesTaste(u)) {
-    const loved = getTitles(db, ratingsOf(u).filter((r) => r.rating === "love" && !hidden.has(r.title_id)).map((r) => r.title_id).slice(0, 24));
-    if (loved.length) sections.push({ app: "watch", appName: "Watch", shelf: "favourites", title: "Favourites", items: loved.map(item), editable: false });
+  const hidden = hiddenOf(db, u);
+  const item = (t: Title) => ({ app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: cardOf(t, origin).poster, href: `/watch?t=${encodeURIComponent(t.id)}` });
+  const row = (kind: string, title: string, ids: string[]): Section => ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map(item) });
+  const rows: Section[] = [];
+  if (sharing(u)) rows.push(row("watched", "Watched", lastRows(u, 24).map((p) => p.titleId)));
+  if (sharesTaste(u)) {
+    const rated = ratingsOf(u);
+    rows.push(row("loved", "Loved", rated.filter((r) => r.rating === "love").map((r) => r.title_id)));
+    rows.push(row("liked", "Liked", rated.filter((r) => r.rating === "up").map((r) => r.title_id)));
+    const list = (db.prepare("SELECT title_id FROM list WHERE lower(username) = ? ORDER BY added_at DESC").all(u) as { title_id: string }[]).map((r) => r.title_id);
+    rows.push(row("listed", "Watchlist", list));
   }
-  if (you || (sharing(u) && !invisible(u))) {
-    const recent = lastRows(u, 12).map((p) => getTitle(db, p.titleId)).filter((t): t is Title => t !== null);
-    if (recent.length) sections.push({ app: "watch", appName: "Watch", shelf: "recent", title: "Watched lately", items: recent.map(item), editable: false });
-  }
-  return sections;
+  return rows.filter((r) => r.items.length > 0);
 }

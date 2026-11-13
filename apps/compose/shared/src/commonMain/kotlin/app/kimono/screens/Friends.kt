@@ -44,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontStyle
@@ -60,6 +61,7 @@ import app.kimono.data.ShareItem
 import app.kimono.theme.Kata
 import app.kimono.ui.GroupLabel
 import app.kimono.ui.HoldMenu
+import app.kimono.ui.InkBlot
 import app.kimono.ui.InkConfirm
 import app.kimono.ui.InkDialog
 import app.kimono.ui.InkLoader
@@ -228,7 +230,7 @@ fun ProfileScreen(friends: Friends, username: String, open: (String) -> Unit, ba
                     Portrait(p.picture, p.name, p.username, 128.dp)
                     Text(p.name.ifBlank { p.username }, style = MaterialTheme.typography.headlineMedium, color = Kata.plum, textAlign = TextAlign.Center)
                     Text("@${p.username}" + if (p.open) " · ${if (p.friends == 1) "1 friend" else "${p.friends} friends"}" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                    if (p.open && p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                         when {
                             p.you -> Seal("Edit", compact = true, tone = SealTone.Quiet, onClick = { editing = true })
@@ -247,9 +249,28 @@ fun ProfileScreen(friends: Friends, username: String, open: (String) -> Unit, ba
                         else listOf(MenuChoice("Recommend to others") { recommending = r.item })
                     }) { r -> r.note?.let { Text("“$it”", style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic), maxLines = 4, overflow = TextOverflow.Ellipsis) } }
                 }
-                if (p.open) p.sections.filter { it.items.isNotEmpty() }.forEach { s ->
-                    GroupLabel("${s.title} · ${s.appName}")
-                    Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) })
+                /* Each app's rows together under its name; on your own profile, whether friends see them. */
+                if (p.open) p.sections.groupBy { it.app }.forEach { (app, rows) ->
+                    val kept = app in p.hidden
+                    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 28.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        InkBlot("app:$app", size = 40.dp) { Icon(kimonoIcon(if (app == "books") "book" else "film"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) }
+                        Text(rows.first().appName, style = MaterialTheme.typography.headlineSmall, color = Kata.plum, modifier = Modifier.weight(1f))
+                        if (p.you) {
+                            Text(if (kept) "Only you" else "Friends see this", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Switch(!kept, { on ->
+                                profile = p.copy(hidden = if (on) p.hidden - app else p.hidden + app)
+                                scope.launch { try { val now = friends.showApp(app, on); profile = profile?.copy(hidden = now) } catch (e: KimonoProblem) { problem = e.message; load() } }
+                            })
+                        }
+                    }
+                    rows.forEach { s ->
+                        GroupLabel(s.title)
+                        Box(Modifier.alpha(if (kept) .5f else 1f)) {
+                            Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }) { item ->
+                                item.progress?.let { f -> androidx.compose.material3.LinearProgressIndicator(progress = { f.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) }
+                            }
+                        }
+                    }
                 }
                 Spacer(Modifier.height(32.dp))
             }

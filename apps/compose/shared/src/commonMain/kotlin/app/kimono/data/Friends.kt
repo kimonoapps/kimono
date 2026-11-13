@@ -26,10 +26,10 @@ data class FoundPeople(val people: List<FriendPerson> = emptyList())
 
 /** A title from one app, as a profile or a recommendation shows it. */
 @Serializable
-data class ShareItem(val app: String, val itemId: String, val title: String, val subtitle: String? = null, val cover: String? = null, val href: String? = null)
+data class ShareItem(val app: String, val itemId: String, val title: String, val subtitle: String? = null, val cover: String? = null, val href: String? = null, val progress: Double? = null)
 
 @Serializable
-data class ProfileSection(val app: String, val appName: String, val shelf: String, val title: String, val items: List<ShareItem> = emptyList(), val editable: Boolean = false)
+data class ProfileSection(val app: String, val appName: String, val kind: String, val title: String, val items: List<ShareItem> = emptyList())
 
 @Serializable
 data class Recommendation(
@@ -42,7 +42,12 @@ data class KimonoProfile(
     val username: String, val name: String = "", val picture: String? = null,
     val you: Boolean = false, val link: String? = null, val open: Boolean = false, val bio: String = "",
     val sections: List<ProfileSection> = emptyList(), val recommendations: List<Recommendation> = emptyList(), val friends: Int = 0,
+    /** On your own profile: the apps you keep from friends. */
+    val hidden: List<String> = emptyList(),
 )
+
+@Serializable
+private data class Hidden(val hidden: List<String> = emptyList())
 
 @Serializable
 data class Recommendations(val received: List<Recommendation> = emptyList(), val sent: List<Recommendation> = emptyList(), val profile: List<Recommendation> = emptyList())
@@ -53,8 +58,9 @@ private data class Bio(val bio: String = "")
 private val json = Json { ignoreUnknownKeys = true }
 
 /**
- * 友 Kimono's friends: who you're friends with, profiles, and the titles you
- * recommend each other from any app. Watch's live side stays Watch's own.
+ * 友 Kimono's friends: who you're friends with, profiles (private until you're
+ * friends), and the titles you recommend each other from any app. Watch's live
+ * side stays Watch's own.
  */
 class Friends(private val session: Session) {
     suspend fun list(): FriendsList = json.decodeFromString(session.fetch(FRIENDS))
@@ -73,6 +79,11 @@ class Friends(private val session: Session) {
     suspend fun saveBio(bio: String): String = json.decodeFromString<Bio>(session.call("/api/v1/profile", HttpMethod.Patch) {
         contentType(ContentType.Application.Json); setBody(buildJsonObject { put("bio", bio) }.toString())
     }).bio
+
+    /** Shows or keeps one app's activity off your profile; answers the apps now kept off. */
+    suspend fun showApp(app: String, shown: Boolean): List<String> = json.decodeFromString<Hidden>(session.call("/api/v1/profile", HttpMethod.Patch) {
+        contentType(ContentType.Application.Json); setBody(buildJsonObject { put("app", app); put("shown", shown) }.toString())
+    }).hidden
 
     suspend fun recommendations(): Recommendations = json.decodeFromString(session.fetch(RECOMMENDATIONS))
 

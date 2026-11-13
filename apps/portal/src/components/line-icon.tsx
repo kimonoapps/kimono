@@ -36,6 +36,7 @@ const PATHS = {
   unpin: "M9 3.5h6l-1 5.5 3.5 3.5h-11L10 9zM12 12.5V21M4 4l16 16",
   book: "M4 5.5c2.5-1 5.5-1 8 .5v13c-2.5-1.5-5.5-1.5-8-.5zM20 5.5c-2.5-1-5.5-1-8 .5v13c2.5-1.5 5.5-1.5 8-.5z",
   send: "M20.5 3.5 3.5 10.5l7 3 3 7zM10.5 13.5l10-10",
+  film: "M4 5h16v14H4zM4 9.5h16M4 14.5h16M8.5 5v4.5M15.5 5v4.5M8.5 14.5V19M15.5 14.5V19",
 } as const;
 export type LineIconName = keyof typeof PATHS;
 

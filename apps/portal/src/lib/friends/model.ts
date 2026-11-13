@@ -5,9 +5,11 @@
  * Asking someone who already asked you makes you friends. No (or taking an
  * ask back, or unfriending) forgets the link.
  *
- * A profile is a short bio plus shelves apps fill in (Books: favourites and
- * currently reading). Watch's shelves are worked out from what's watched and
- * rated, so they aren't kept here.
+ * A profile is private until you're friends: anyone else sees a name and a
+ * portrait, enough to ask. Friends see the bio, what someone recommends, and
+ * each app's activity (Watch: watched, loved, liked, My list; Books: reading,
+ * read, want to read), worked out from that app's own data. Anyone can keep an
+ * app's activity off their profile.
  *
  * A recommendation is one title from one app (`app` + `itemId`, with a small
  * snapshot of its name and cover so it shows without that app), sent to a
@@ -21,11 +23,13 @@ export function migrateSocial(db: DatabaseSync) {
   db.exec(`CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, asked_by TEXT NOT NULL, state TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
     CREATE INDEX IF NOT EXISTS friends_b ON friends (b);
     CREATE TABLE IF NOT EXISTS profiles (username TEXT PRIMARY KEY, bio TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS shelves (username TEXT NOT NULL, app TEXT NOT NULL, shelf TEXT NOT NULL, item_id TEXT NOT NULL, title TEXT NOT NULL, subtitle TEXT, cover TEXT, at INTEGER NOT NULL, PRIMARY KEY (username, app, shelf, item_id));
     CREATE TABLE IF NOT EXISTS recommendations (id TEXT PRIMARY KEY, from_user TEXT NOT NULL, to_user TEXT, app TEXT NOT NULL, item_id TEXT NOT NULL, title TEXT NOT NULL, subtitle TEXT, cover TEXT, note TEXT, at INTEGER NOT NULL, seen_at INTEGER, dismissed_at INTEGER);
     CREATE INDEX IF NOT EXISTS recommendations_to ON recommendations (to_user);
     CREATE INDEX IF NOT EXISTS recommendations_from ON recommendations (from_user);
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+  const columns = (db.prepare("PRAGMA table_info(profiles)").all() as { name: string }[]).map((c) => c.name);
+  /* Apps whose activity someone keeps off their profile, comma-separated. */
+  if (!columns.includes("hidden")) db.exec("ALTER TABLE profiles ADD COLUMN hidden TEXT NOT NULL DEFAULT ''");
 }
 
 export class FriendsProblem extends Error {
@@ -126,12 +130,14 @@ export function setBio(db: DatabaseSync, username: string, bio: unknown, now = D
 /** A title from one app, as a profile or a recommendation shows it. */
 export type Item = { app: string; itemId: string; title: string; subtitle: string | null; cover: string | null };
 
-/** The apps whose titles can be shared, and the shelves each keeps on a profile here. */
-export const apps: Record<string, { name: string; shelves: Record<string, string> }> = {
-  watch: { name: "Watch", shelves: {} },
-  books: { name: "Books", shelves: { reading: "Reading now", favourites: "Favourite books" } },
+/** The apps whose titles can be shared and whose activity shows on a profile. */
+export const apps: Record<string, { name: string }> = {
+  watch: { name: "Watch" },
+  books: { name: "Books" },
 };
-export const shelfSize = 24;
+
+/** One row of a profile: what someone did in one app (watched, loved, reading…), latest first. */
+export type Section = { app: string; appName: string; kind: string; title: string; items: (Item & { href?: string | null; progress?: number | null })[] };
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 /** A cover is an address on the web or on this Portal; anything else is left out. */
@@ -150,35 +156,48 @@ export function itemOf(raw: Record<string, unknown>): Item {
   return { app, itemId, title, subtitle: text(raw.subtitle, 200) || null, cover: coverOf(raw.cover) };
 }
 
-type ShelfRow = { app: string; shelf: string; item_id: string; title: string; subtitle: string | null; cover: string | null; at: number };
 const itemFrom = (r: { app: string; item_id: string; title: string; subtitle: string | null; cover: string | null }): Item =>
   ({ app: r.app, itemId: r.item_id, title: r.title, subtitle: r.subtitle ?? null, cover: r.cover ?? null });
 
-/** Someone's kept shelves, by app then shelf, the latest first. */
-export function shelvesOf(db: DatabaseSync, username: string): Record<string, Record<string, (Item & { at: number })[]>> {
-  const rows = db.prepare("SELECT * FROM shelves WHERE username = ? ORDER BY at DESC").all(username.toLowerCase()) as ShelfRow[];
-  const out: Record<string, Record<string, (Item & { at: number })[]>> = {};
-  for (const r of rows) {
-    if (!apps[r.app]?.shelves[r.shelf]) continue;
-    ((out[r.app] ??= {})[r.shelf] ??= []).push({ ...itemFrom(r), at: Number(r.at) });
-  }
-  return out;
+/** The apps someone keeps off their profile. */
+export function hiddenAppsOf(db: DatabaseSync, username: string): string[] {
+  const row = db.prepare("SELECT hidden FROM profiles WHERE username = ?").get(username.toLowerCase()) as { hidden?: string } | undefined;
+  return (row?.hidden ?? "").split(",").filter((a) => apps[a]);
 }
 
-/** Puts a title on a shelf (moving it to the front if it's there); the oldest falls off past [shelfSize]. */
-export function shelve(db: DatabaseSync, username: string, shelf: string, raw: Record<string, unknown>, now = Date.now()): Item {
-  const item = itemOf(raw);
-  if (!apps[item.app].shelves[shelf]) throw new FriendsProblem("That shelf isn't one this app keeps.");
+/** Shows or keeps one app's activity off your profile. */
+export function setAppHidden(db: DatabaseSync, username: string, app: string, hidden: boolean, now = Date.now()): string[] {
+  if (!apps[app]) throw new FriendsProblem("That app isn't on profiles.");
   const u = username.toLowerCase();
-  db.prepare("INSERT INTO shelves (username, app, shelf, item_id, title, subtitle, cover, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (username, app, shelf, item_id) DO UPDATE SET title = excluded.title, subtitle = excluded.subtitle, cover = excluded.cover, at = excluded.at")
-    .run(u, item.app, shelf, item.itemId, item.title, item.subtitle, item.cover, now);
-  db.prepare("DELETE FROM shelves WHERE username = ? AND app = ? AND shelf = ? AND item_id NOT IN (SELECT item_id FROM shelves WHERE username = ? AND app = ? AND shelf = ? ORDER BY at DESC LIMIT ?)")
-    .run(u, item.app, shelf, u, item.app, shelf, shelfSize);
-  return item;
+  const next = [...new Set([...hiddenAppsOf(db, u).filter((a) => a !== app), ...(hidden ? [app] : [])])].sort();
+  db.prepare("INSERT INTO profiles (username, bio, updated_at, hidden) VALUES (?, '', ?, ?) ON CONFLICT (username) DO UPDATE SET hidden = excluded.hidden, updated_at = excluded.updated_at").run(u, now, next.join(","));
+  return next;
 }
 
-export function unshelve(db: DatabaseSync, username: string, app: string, shelf: string, itemId: string) {
-  db.prepare("DELETE FROM shelves WHERE username = ? AND app = ? AND shelf = ? AND item_id = ?").run(username.toLowerCase(), app, shelf, itemId);
+/** Whether [viewer] sees [username]'s whole profile: their own, or a friend's. */
+export const seesProfile = (db: DatabaseSync, viewer: string, username: string) =>
+  viewer.toLowerCase() === username.toLowerCase() || areFriends(db, viewer, username);
+
+/**
+ * Someone's profile as [viewer] sees it. Not friends: their name and portrait and how you're linked, nothing more.
+ * Friends: the bio, what they recommend, and each app's activity, less the apps they keep to themselves.
+ * Their own: everything, with the kept-back apps' activity still there and `hidden` saying which they are.
+ * [sections] is only asked for when it will be shown.
+ */
+export function profileFor<P extends { username: string }>(db: DatabaseSync, viewer: string, person: P, sections: () => Section[]) {
+  const v = viewer.toLowerCase(), u = person.username.toLowerCase();
+  const you = v === u;
+  const link = you ? null : linkOf(db, v, u);
+  if (!seesProfile(db, v, u)) return { ...person, you, link, open: false as const };
+  const hidden = hiddenAppsOf(db, u);
+  return {
+    ...person, you, link, open: true as const,
+    bio: bioOf(db, u),
+    sections: sections().filter((s) => you || !hidden.includes(s.app)),
+    recommendations: onProfile(db, u),
+    friends: friendsOf(db, u).length,
+    ...(you ? { hidden } : {}),
+  };
 }
 
 /* ───── Recommendations ───── */

@@ -15,10 +15,14 @@ import { Portrait } from "@/components/portrait";
  */
 
 export type Person = { username: string; name: string; picture: string | null };
-export type Item = { app: string; itemId: string; title: string; subtitle: string | null; cover: string | null; href?: string | null };
+export type Item = { app: string; itemId: string; title: string; subtitle: string | null; cover: string | null; href?: string | null; progress?: number | null };
 export type Recommendation = Item & { id: string; from: Person; to: Person | null; note: string | null; at: number; seen: boolean; appName: string };
-export type Section = { app: string; appName: string; shelf: string; title: string; items: Item[]; editable: boolean };
-export type Profile = Person & { you: boolean; link: "friends" | "asked" | "asking" | null; open: boolean; bio: string; sections: Section[]; recommendations: Recommendation[]; friends: number };
+export type Section = { app: string; appName: string; kind: string; title: string; items: Item[] };
+/** Private until you're friends: then only `open: false` and who they are comes back (lib/friends/model.ts profileFor). */
+export type Profile = Person & { you: boolean; link: "friends" | "asked" | "asking" | null } & (
+  | { open: false }
+  | { open: true; bio: string; sections: Section[]; recommendations: Recommendation[]; friends: number; hidden?: string[] }
+);
 type FriendsList = { friends: (Person & { bio: string })[]; asked: Person[]; asking: Person[]; unseen: number };
 type Inbox = { received: Recommendation[]; sent: Recommendation[]; profile: Recommendation[] };
 
@@ -46,7 +50,9 @@ function Cover({ item }: { item: Item }) {
 
 function Tile({ item, children }: { item: Item; children?: React.ReactNode }) {
   const href = hrefOf(item);
-  const face = <><Cover item={item} /><b>{item.title}</b>{item.subtitle ? <small>{item.subtitle}</small> : null}</>;
+  const face = <><Cover item={item} />
+    {item.progress ? <span className="fr-progress" role="progressbar" aria-valuenow={Math.round(item.progress * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${item.progress * 100}%` }} /></span> : null}
+    <b>{item.title}</b>{item.subtitle ? <small>{item.subtitle}</small> : null}</>;
   return <div className="fr-tile">
     {href ? <Crossing kind="kakejiku" href={href}>{face}</Crossing> : <span>{face}</span>}
     {children}
@@ -90,7 +96,7 @@ export function RecommendSheet({ item, onClose, onSent }: { item: Item; onClose:
         </button>)}</div>
       : <p className="fr-quiet">No friends yet. <Crossing kind="kakejiku" href="/account/friends">Find friends</Crossing></p>}
     <label className="fr-toggle"><span>On my profile</span><JointSwitch name="profile" label="On my profile" defaultChecked={false} onChange={setProfile} /></label>
-    <label className="k-field fr-note"><span>Note</span><textarea rows={3} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} /></label>
+    <label className="field fr-note"><small>Note</small><textarea rows={3} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} /></label>
     {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
   </InkSheet>;
 }
@@ -188,34 +194,51 @@ export function ProfileView({ username }: { username: string }) {
         : p.link === "asking" ? <Seal tone="quiet" compact onClick={() => void change("remove")}>Asked</Seal>
           : <Seal compact onClick={() => void change("ask")}>Ask to be friends</Seal>;
 
+  /* An app's rows together, under its name; on your own profile, a switch for whether friends see them. */
+  const groups = p.open ? Object.values(p.sections.reduce<Record<string, Section[]>>((by, s) => { (by[s.app] ??= []).push(s); return by; }, {})) : [];
+  const show = (app: string, shown: boolean) => p.open && call<{ hidden: string[] }>("/api/v1/profile", "PATCH", { app, shown })
+    .then((r) => setProfile({ ...p, hidden: r.hidden }), (e) => setProblem(message(e)));
+
   return <div className="you fr">
     <div className="fr-top"><Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing></div>
     <div className="stack you-head">
       <span className="you-picture"><Face person={p} size={112} /></span>
       <h1>{p.name}</h1>
       <p>@{p.username}{p.open ? ` · ${p.friends === 1 ? "1 friend" : `${p.friends} friends`}` : ""}</p>
-      {p.bio ? <p className="fr-bio">{p.bio}</p> : null}
+      {p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
       <div className="fr-actions">{action}</div>
     </div>
     {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
 
-    {p.open && p.recommendations.length ? <>
+    {p.open && p.recommendations.length ? <section className="fr-group">
       <div className="label">Recommends</div>
       <div className="fr-shelf">{p.recommendations.map((r) => <Tile key={r.id} item={r}>
         {r.note ? <q className="fr-tile-note">{r.note}</q> : null}
         {p.you ? <button type="button" className="fr-away" aria-label={`Take ${r.title} off your profile`} onClick={() => void takeBack(r)}><LineIcon name="trash" /></button>
           : <button type="button" className="fr-away" aria-label={`Recommend ${r.title}`} onClick={() => setRecommending(r)}><LineIcon name="send" /></button>}
       </Tile>)}</div>
-    </> : null}
+    </section> : null}
 
-    {p.open ? p.sections.filter((s) => s.items.length).map((s) => <div key={`${s.app}:${s.shelf}`}>
-      <div className="label">{s.title}<span className="fr-app"> · {s.appName}</span></div>
-      <div className="fr-shelf">{s.items.map((i) => <Tile key={i.itemId} item={i}>
-        {!p.you ? null : <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>}
-      </Tile>)}</div>
-    </div>) : null}
+    {p.open ? groups.map((rows) => {
+      const app = rows[0].app;
+      const kept = p.hidden?.includes(app) ?? false;
+      return <section key={app} className={`fr-group${kept ? " is-kept" : ""}`}>
+        <div className="fr-app-head">
+          <InkBlot tint={app === "books" ? "#5c7150" : "#a84d63"} seed={`app:${app}`}><LineIcon name={app === "books" ? "book" : "film"} /></InkBlot>
+          <h2>{rows[0].appName}</h2>
+          {p.you ? <label className="fr-see"><span>{kept ? "Only you" : "Friends see this"}</span>
+            <JointSwitch name={`show-${app}`} label={`Friends see your ${rows[0].appName}`} defaultChecked={!kept} onChange={(on) => void show(app, on)} /></label> : null}
+        </div>
+        {rows.map((s) => <div key={`${s.app}:${s.kind}`}>
+          <div className="label">{s.title}</div>
+          <div className="fr-shelf">{s.items.map((i) => <Tile key={i.itemId} item={i}>
+            <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>
+          </Tile>)}</div>
+        </div>)}
+      </section>;
+    }) : null}
 
-    {editing ? <BioSheet bio={p.bio} onClose={() => setEditing(false)} onSaved={(bio) => setProfile({ ...p, bio })} /> : null}
+    {editing && p.open ? <BioSheet bio={p.bio} onClose={() => setEditing(false)} onSaved={(bio) => setProfile({ ...p, bio })} /> : null}
     {removing ? <InkSheet title={`Remove ${first(p)}?`} icon="people" onClose={() => setRemoving(false)} actions={<>
       <Seal tone="quiet" compact onClick={() => setRemoving(false)}>Keep</Seal>
       <Seal tone="danger" compact onClick={() => { setRemoving(false); void change("remove"); }}>Remove</Seal>
@@ -238,7 +261,7 @@ function BioSheet({ bio, onClose, onSaved }: { bio: string; onClose: () => void;
     <Seal tone="quiet" compact onClick={onClose}>Cancel</Seal>
     <Seal compact busy={busy} disabled={text.trim() === bio} onClick={() => void save()}>Save</Seal>
   </>}>
-    <label className="k-field fr-note"><span>Bio <em>{280 - [...text].length}</em></span><textarea rows={4} maxLength={280} value={text} autoFocus onChange={(e) => setText(e.target.value)} /></label>
+    <label className="field fr-note"><small>Bio · {280 - [...text].length}</small><textarea rows={4} maxLength={280} value={text} autoFocus onChange={(e) => setText(e.target.value)} /></label>
     {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
   </InkSheet>;
 }

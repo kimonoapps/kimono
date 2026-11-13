@@ -82,3 +82,15 @@
 
 /* over Watch's title page too */
 .ink-scrim { z-index: 75; }
+
+/* a profile's apps: each one's rows together under its name */
+.fr-group { margin-top: 12px; transition: opacity .3s; }
+.fr-group.is-kept .fr-shelf { opacity: .5; }
+.fr-app-head { display: flex; align-items: center; gap: 12px; margin: 28px 8px 0; }
+.fr-app-head .k-ink-blot { width: 40px; height: 40px; }
+.fr-app-head h2 { flex: 1; font-size: 24px; }
+.fr-see { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--on-surface-variant); }
+.fr-group .label { margin-top: 14px; }
+.fr-progress { display: block; height: 4px; margin-top: 2px; border-radius: 2px; background: var(--sc-highest); overflow: hidden; }
+.fr-progress i { display: block; height: 100%; border-radius: 2px; background: var(--primary); }
+.fr-note textarea { min-height: 64px; }
