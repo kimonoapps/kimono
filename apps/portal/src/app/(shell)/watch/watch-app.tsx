@@ -284,9 +284,8 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
           <button className="kw-brand" onClick={() => go("home")} aria-label="Kimono Watch home"><AppLockup identity={{ id: watchId, name: "Watch", accent, glyph: "play" }} /></button>
           <nav className="kw-topnav" aria-label="Sections">
             <button aria-current={page === "home" ? "page" : undefined} onClick={() => go("home")}>Home</button>
-            <button aria-current={page === "hot" ? "page" : undefined} onClick={() => go("hot")}>New &amp; hot</button>
-            <button aria-current={page === "list" ? "page" : undefined} onClick={() => go("list")}>My list</button>
             <button aria-current={page === "friends" ? "page" : undefined} onClick={() => go("friends")}>Friends</button>
+            <button aria-current={page === "list" ? "page" : undefined} onClick={() => go("list")}>My list</button>
           </nav>
           <div className="kw-spacer" />
           <button className="kw-iconbtn" aria-label="Search" onClick={() => setSearching(true)}><Icon name="search" /></button>
@@ -300,7 +299,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
           : page === "friends" ? <FriendsPage onJoin={joinParty} />
             : <ListPage cards={listCards} />}
         <nav className="kw-bnav" aria-label="Sections">
-          {([["home", "home", "Home"], ["hot", "hot", "New & hot"], ["list", "bookmark", "My list"], ["friends", "group", "Friends"]] as const).map(([to, icon, label]) => <button key={to} aria-current={page === to ? "page" : undefined} onClick={() => go(to)}>
+          {([["home", "home", "Home"], ["friends", "group", "Friends"], ["list", "bookmark", "My list"]] as const).map(([to, icon, label]) => <button key={to} aria-current={page === to ? "page" : undefined} onClick={() => go(to)}>
             <span className="kw-pill"><Icon name={icon} /></span>{label}
           </button>)}
         </nav>

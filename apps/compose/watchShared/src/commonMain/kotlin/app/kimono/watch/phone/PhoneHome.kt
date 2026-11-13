@@ -150,11 +150,11 @@ fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
 @Composable
 private fun BottomBar(page: String, modifier: Modifier, onPage: (String) -> Unit) {
     Row(modifier.fillMaxWidth().background(Night.bg).border(BorderStroke(1.dp, Color(0x0DFFFFFF)), RoundedCornerShape(0.dp))
-        .padding(top = 8.dp, bottom = navBottom.coerceAtLeast(8.dp), start = 8.dp, end = 8.dp)) {
-        listOf(Triple("home", "Home", Ic.home), Triple("hot", "New & hot", Ic.hot), Triple("list", "My list", Ic.bookmark), Triple("friends", "Friends", Ic.people), Triple("downloads", "Downloads", Ic.dl)).forEach { (id, label, icon) ->
+        .padding(top = 8.dp, bottom = navBottom.coerceAtLeast(8.dp), start = 16.dp, end = 16.dp), horizontalArrangement = Arrangement.SpaceAround) {
+        listOf(Triple("home", "Home", Ic.home), Triple("friends", "Friends", Ic.people), Triple("list", "My list", Ic.bookmark), Triple("downloads", "Downloads", Ic.dl)).forEach { (id, label, icon) ->
             val on = page == id
             val pill by animateColorAsState(if (on) Color(0x38D06A82) else Color.Transparent, label = "pill")
-            Column(Modifier.weight(1f).clickableScale({ onPage(id) }, outline = false), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(Modifier.width(72.dp).clickableScale({ onPage(id) }, outline = false), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Box(Modifier.size(56.dp, 30.dp).clip(RoundedCornerShape(999.dp)).background(pill), contentAlignment = Alignment.Center) { I(icon, tint = if (on) Night.fg else Night.fg3) }
                 Text(label, style = ui(11, color = if (on) Night.fg else Night.fg3), maxLines = 1)
             }
