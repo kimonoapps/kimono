@@ -487,7 +487,7 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
             /* Read it here: the ink loader while Books looks for a copy, a plain word when there isn't one. */
             Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 val best = files?.firstOrNull { it.readable }
-                PillButton(if (best?.sample == true) "Preview" else "Read", filled = best != null, modifier = Modifier.weight(1f), busy = files == null || fetching != null) {
+                PillButton(if (best?.sample == true) "Preview" else "Read", filled = true, modifier = Modifier.weight(1f), busy = files == null || fetching != null, loaderColor = Color.Black) {
                     if (best == null) { missing = true; return@PillButton }
                     scope.launch {
                         fetching = 0f
@@ -600,7 +600,7 @@ private fun ShelfStrip(title: String, list: List<Book>, onOpen: (String) -> Unit
 }
 
 @Composable
-private fun PillButton(label: String, filled: Boolean, modifier: Modifier = Modifier, busy: Boolean = false, onClick: () -> Unit) {
+private fun PillButton(label: String, filled: Boolean, modifier: Modifier = Modifier, busy: Boolean = false, loaderColor: Color? = null, onClick: () -> Unit) {
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
     val corner by animateDpAsState(if (pressed) 14.dp else 26.dp, spring(dampingRatio = .55f))
@@ -608,7 +608,7 @@ private fun PillButton(label: String, filled: Boolean, modifier: Modifier = Modi
         color = if (filled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
         contentColor = if (filled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer, modifier = modifier.height(52.dp)) {
         Row(Modifier.padding(horizontal = 22.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            if (busy) { InkLoader(size = 24.dp); Spacer(Modifier.width(10.dp)) }
+            if (busy) { InkLoader(size = 24.dp, color = loaderColor); Spacer(Modifier.width(10.dp)) }
             Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
         }
     }

@@ -432,9 +432,9 @@ function FileActions({ files, onRead }: { files: BookFileInfo[] | null; onRead: 
   const looking = files === null;
   return <>
     <div className="kb-btns kb-files">
-      <button className={cx("kb-btn", best ? "kb-filled" : "kb-tonal", looking && "kb-looking", !looking && !best && "kb-absent")}
+      <button className={cx("kb-btn kb-filled", looking && "kb-looking", !looking && !best && "kb-absent")}
         aria-busy={looking} onClick={() => { if (best) onRead(best); else if (!looking) setMissing(true); }}>
-        {looking ? <MorphLoader ink="#7d8f58" label="Looking for a copy" className="kb-ink" /> : <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Zm0 0V19.5" /></svg>}
+        {looking ? <MorphLoader tone="plain" ink="#000000" label="Looking for a copy" className="kb-ink" /> : <svg viewBox="0 0 24 24" aria-hidden><path d="M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Zm0 0V19.5" /></svg>}
         {best?.sample ? "Preview" : "Read"}
       </button>
       {copy ? <button className="kb-btn kb-tonal" title="Save a copy" onClick={() => { location.href = `/api/v1/books/file?f=${encodeURIComponent(copy.address)}&format=${copy.format}&download=1`; }}>

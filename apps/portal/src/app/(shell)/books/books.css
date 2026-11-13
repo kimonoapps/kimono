@@ -403,7 +403,7 @@
 }
 .kb .kb-files .kb-ink{width:22px;height:22px}
 .kb .kb-looking{pointer-events:none;opacity:.9}
-.kb .kb-absent{color:var(--fg-2)}
+.kb .kb-files .kb-ink{color:#000}
 .kb .kb-missing{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;margin-top:14px;max-width:520px;padding:14px 12px 14px 16px;border-radius:18px;
   background:var(--k-tertiary-container,var(--surface));color:var(--k-on-tertiary-container,var(--fg));font-size:14px;line-height:1.5;animation:kb-rise .35s var(--spring-soft) both}
 .kb .kb-missing > svg{width:22px;height:22px;margin-top:1px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
