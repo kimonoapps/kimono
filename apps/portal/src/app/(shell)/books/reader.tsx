@@ -48,6 +48,11 @@ const prefs = {
   write: (v: { paper: Paper; size: number }) => { try { localStorage.setItem("kb.reader", JSON.stringify(v)); } catch { /* a private window */ } },
 };
 
+/* The book as a folder of parts (api/v1/books/epub): epub.js asks for the container, the package and each chapter as it needs them. */
+const partsUrl = (f: BookFileInfo) => {
+  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(f.address))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return `/api/v1/books/epub/${b64}/`;
+};
 const fileUrl = (f: BookFileInfo) => `/api/v1/books/file?f=${encodeURIComponent(f.address)}&format=${f.format}`;
 const flatten = (items: NavItem[]): NavItem[] => items.flatMap((i) => [i, ...flatten(i.subitems ?? [])]);
 
@@ -112,7 +117,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
     (async () => {
       try {
         const ePub = (await import("epubjs")).default as unknown as (url: string, options?: Record<string, unknown>) => EpubBook;
-        book = ePub(fileUrl(file), { openAs: "epub" });
+        book = ePub(partsUrl(file), { openAs: "directory" });
         await book.ready;
         if (cancelled || !stage.current) return;
         const toc = flatten((await book.loaded.navigation).toc ?? []);

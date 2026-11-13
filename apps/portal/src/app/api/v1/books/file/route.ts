@@ -1,6 +1,8 @@
 import { apiError, apiUser, unauthorized } from "@/lib/api-v1";
 import { booksSettings } from "@/lib/books";
-import { contentType, FilePreparing, FileProblem, openFile, parseRange, type FileFormat } from "@/lib/books/files";
+import { openCached } from "@/lib/books/cache";
+import { bookFileCache } from "@/lib/books/file-cache";
+import { contentType, FilePreparing, FileProblem, parseRange, type FileFormat } from "@/lib/books/files";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,8 @@ export async function GET(request: Request) {
   if (!address) return apiError(400, "Which file?");
   try {
     const range = parseRange(request.headers.get("range"));
-    const opened = await openFile(address, range);
+    /* From the server's copy when it has one; the first time, from the source while a copy is kept. */
+    const opened = await openCached(bookFileCache(), address, range);
     const headers = new Headers({
       "content-type": contentType[format] ?? "application/octet-stream",
       "accept-ranges": opened.size !== null ? "bytes" : "none",
@@ -38,6 +41,7 @@ export async function GET(request: Request) {
     /* A PDF's EPUB being made: say how far along, and when to ask again, rather than hold the request for minutes. */
     if (error instanceof FilePreparing) return Response.json({ preparing: true, progress: Math.round(error.progress * 100) / 100 }, { status: 202, headers: { "retry-after": "5", "cache-control": "no-store" } });
     if (error instanceof FileProblem) return apiError(error.status, error.message);
+    if ((error as { status?: number }).status === 416) return apiError(416, "That range isn't in the file.");
     console.error("books file:", error);
     return apiError(502, "That file didn't open.");
   }
