@@ -257,11 +257,14 @@ fun TvButton(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector
 
 @Composable
 private fun TvRail(row: WatchRow, profile: Profile, go: Go) {
+    /* Removed from history meanwhile: off Continue watching before Home loads again. */
+    val forgotten by app.kimono.watch.LocalWatch.current.api.forgotten.collectAsState()
+    if (row.kind == "continue" && row.items.all { it.id in forgotten }) return
     Column(Modifier.padding(bottom = 28.dp)) {
         Text(if (row.id == "continue") "Continue watching" else row.title, style = ui(19, FontWeight.Bold), modifier = Modifier.padding(start = gutter, bottom = 10.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = gutter, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             when (row.kind) {
-                "continue" -> items(row.items, key = { it.id }, contentType = { "continue" }) { TvContinue(it, go) }
+                "continue" -> items(row.items.filter { it.id !in forgotten }, key = { it.id }, contentType = { "continue" }) { TvContinue(it, go) }
                 "top" -> itemsIndexed(row.items, key = { _, c -> c.id }, contentType = { _, _ -> "top" }) { i, c -> TvTopTen(i + 1, c, go) }
                 else -> items(row.items, key = { it.id }, contentType = { "card" }) { TvCard(it, go) }
             }

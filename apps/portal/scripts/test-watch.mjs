@@ -1618,3 +1618,15 @@ test('friends watching: the most friends first, then the latest; old and hidden 
   db.prepare('INSERT INTO friends_hidden (username, title_id) VALUES (?, ?)').run('sami', 'tv:5');
   assert.deepEqual(friends.watchedByFriends(db, ['sami', 'noor'], 100), ['tv:1', 'tv:3', 'tv:2']);
 });
+
+test('remove from history forgets every episode of that title, and only that one', () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  model.saveProgress(db, 'Sami', { titleId: 'tv:1', season: 1, episode: 1, position: 600, duration: 1200 }, 100);
+  model.saveProgress(db, 'Sami', { titleId: 'tv:1', season: 1, episode: 2, position: 60, duration: 1200 }, 200);
+  model.saveProgress(db, 'Sami', { titleId: 'tv:2', season: 0, episode: 0, position: 60, duration: 6000 }, 300);
+  model.saveProgress(db, 'noor', { titleId: 'tv:1', season: 1, episode: 1, position: 60, duration: 1200 }, 400);
+  model.forgetProgress(db, 'sami', 'tv:1');
+  assert.deepEqual(model.recentTitles(db, 'Sami').map((p) => p.titleId), ['tv:2']);
+  assert.equal(model.recentTitles(db, 'noor').length, 1);
+});

@@ -34,6 +34,15 @@ class WatchApi(
     val deviceId: () -> String,
 ) {
     val json = Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }
+
+    /** Titles removed from history since Home last loaded: Continue watching leaves them out at once (playing one again brings it back). */
+    val forgotten = kotlinx.coroutines.flow.MutableStateFlow<Set<String>>(emptySet())
+
+    /** Remove from history: forgets where this person got to in [titleId], every episode; it leaves Continue watching and what friends see. */
+    suspend fun forget(titleId: String) {
+        accounts.call("$base/progress?titleId=${titleId.encodeURLParameter()}", HttpMethod.Delete)
+        forgotten.value = forgotten.value + titleId
+    }
     private val base = "/api/v1/watch"
 
     private suspend fun get(path: String): String = accounts.call("$base$path")
@@ -93,6 +102,7 @@ class WatchApi(
 
     /** Where playback is; [stream] and [aspect] once per copy: the address it plays from and its picture's shape. [stopped] on the last, as the player closes. */
     suspend fun progress(titleId: String, season: Int, episode: Int, position: Double, duration: Double, stream: String? = null, aspect: Float? = null, stopped: Boolean = false) {
+        if (titleId in forgotten.value) forgotten.value = forgotten.value - titleId
         send(HttpMethod.Put, "/progress", buildJsonObject {
             put("titleId", titleId); put("season", season); put("episode", episode); put("position", position); put("duration", duration)
             if (stream != null && aspect != null) { put("stream", stream); put("aspect", aspect) }

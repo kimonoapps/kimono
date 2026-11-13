@@ -303,6 +303,7 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
             }
         }
         if (page.language != null) Act(Ic.cc, "Language", language || page.tracks != null) { language = !language }
+        if (page.resume != null) Act(Ic.close, "Remove from history", false) { vm.forget() }
         if (t.isFilm) {
             val d = dl[dlKey(t.id, 0, 0)]
             DlAct(d, if (d?.done == true) "Downloaded" else if (d != null) "Downloading" else "Download") { if (d == null) downloads.start(t.id, 0, 0, t.name, t.backdrop ?: t.poster) }

@@ -45,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,6 +84,7 @@ import app.kimono.watch.ui.ListViewModel
 import app.kimono.watch.ui.Logo
 import app.kimono.watch.ui.PaperButton
 import app.kimono.watch.LocalWatch
+import kotlinx.coroutines.launch
 import app.kimono.watch.ui.ProgressLine
 import app.kimono.watch.ui.Ribbon
 import app.kimono.watch.ui.RingButton
@@ -245,12 +247,15 @@ fun RankLine(rank: Int, shelf: String, size: Int = 15) {
 
 @Composable
 private fun RailRow(row: WatchRow, profile: Profile, go: Go) {
+    /* Removed from history meanwhile: off Continue watching before Home loads again. */
+    val forgotten by LocalWatch.current.api.forgotten.collectAsState()
+    if (row.kind == "continue" && row.items.all { it.id in forgotten }) return
     Column(Modifier.padding(bottom = 22.dp)) {
         val title = if (row.id == "continue") "Continue watching" else row.title
         Text(title, style = ui(17, FontWeight.Bold), modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             when (row.kind) {
-                "continue" -> items(row.items, key = { it.id }, contentType = { "continue" }) { ContinueCard(it, go) }
+                "continue" -> items(row.items.filter { it.id !in forgotten }, key = { it.id }, contentType = { "continue" }) { ContinueCard(it, go) }
                 "top" -> itemsIndexed(row.items, key = { _, c -> c.id }, contentType = { _, _ -> "top" }) { i, c -> TopTen(i + 1, c, go) }
                 else -> items(row.items, key = { it.id }, contentType = { "poster" }) { PosterCard(it, go) }
             }
@@ -275,6 +280,8 @@ fun PosterCard(card: Card, go: Go, width: Dp = 112.dp, plain: Boolean = false, m
 
 @Composable
 private fun ContinueCard(card: Card, go: Go) {
+    val watch = LocalWatch.current
+    val scope = rememberCoroutineScope()
     Column(Modifier.width(168.dp).clip(RoundedCornerShape(8.dp)).background(Night.surface)) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clickableScale({ go.open(card) })) {
             Img(card.backdrop ?: card.poster, Modifier.fillMaxSize())
@@ -287,6 +294,7 @@ private fun ContinueCard(card: Card, go: Go) {
                 Text("$label · ${card.left ?: 0}m left", style = ui(13, color = Night.fg2), maxLines = 1)
             }
             Box(Modifier.size(40.dp).clip(CircleShape).clickableScale({ go.play(card.id, card.season?.takeIf { it > 0 }, card.episode?.takeIf { it > 0 }) }), contentAlignment = Alignment.Center) { I(Ic.play) }
+            Box(Modifier.size(32.dp).clip(CircleShape).clickableScale({ scope.launch { runCatching { watch.api.forget(card.id) }.onSuccess { watch.toasts.show("Removed from history") }.onFailure { watch.toasts.show("That didn't work. Try again.") } } }), contentAlignment = Alignment.Center) { I(Ic.close, 18.dp, Night.fg3) }
         }
     }
 }

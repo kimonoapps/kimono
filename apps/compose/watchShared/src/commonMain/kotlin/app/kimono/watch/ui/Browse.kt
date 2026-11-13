@@ -221,6 +221,15 @@ class TitleViewModel(private val api: WatchApi, private val toasts: Toasts, val 
 
     init { refresh() }
 
+    /** Remove from history: where they got to is forgotten, and the page shows it from the beginning. */
+    fun forget() {
+        viewModelScope.launch {
+            runCatching { api.forget(id) }
+                .onSuccess { toasts.show("Removed from history"); refresh() }
+                .onFailure { toasts.show("That didn't work. Try again.") }
+        }
+    }
+
     fun refresh() {
         viewModelScope.launch {
             try {
