@@ -301,6 +301,8 @@ function SeekBar({ fraction, ready, peek, onSeek }: {
   const [hover, setHover] = useState<{ f: number; x: number; w: number } | null>(null);
   const [shown, setShown] = useState<{ f: number; chapter: string; text: string } | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
+  /* Where a seek is going, held until the book gets there, so the bar doesn't fall back meanwhile. */
+  const [held, setHeld] = useState<{ to: number; from: number } | null>(null);
   const asked = useRef(0);
   const at = (clientX: number) => {
     const box = bar.current?.getBoundingClientRect();
@@ -317,14 +319,15 @@ function SeekBar({ fraction, ready, peek, onSeek }: {
   }, [hover, ready, peek]);
   const shownHere = shown && hover && Math.abs(shown.f - hover.f) < 0.03 ? shown : null;
   const left = hover ? Math.min(Math.max(hover.x, 150), Math.max(150, hover.w - 150)) : 0;
-  const filled = drag ?? fraction;
-  return <div ref={bar} className={`kb-seek${hover ? " kb-seeking" : ""}`} role="slider" tabIndex={0} aria-label="Place in the book"
+  const filled = drag ?? (held && held.from === fraction ? held.to : fraction);
+  const go = (f: number) => { setHeld({ to: Math.min(1, Math.max(0, f)), from: fraction }); onSeek(f); };
+  return <div ref={bar} className={`kb-seek${hover ? " kb-seeking" : ""}${drag !== null ? " kb-dragging" : ""}`} role="slider" tabIndex={0} aria-label="Place in the book"
     aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fraction * 100)} aria-valuetext={`${Math.round(fraction * 100)}%`}
     onPointerMove={(e) => { const p = at(e.clientX); if (!p) return; setHover(p); if (drag !== null) setDrag(p.f); }}
     onPointerLeave={() => { if (drag === null) { setHover(null); setShown(null); } }}
     onPointerDown={(e) => { const p = at(e.clientX); if (!p) return; try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* dragging just ends at the bar's edge */ } setDrag(p.f); setHover(p); }}
-    onPointerUp={(e) => { const p = at(e.clientX); if (p && drag !== null) onSeek(p.f); setDrag(null); if (e.pointerType !== "mouse") { setHover(null); setShown(null); } }}
-    onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); onSeek(fraction + (e.key === "ArrowRight" ? 0.02 : -0.02)); } }}>
+    onPointerUp={(e) => { const p = at(e.clientX); if (p && drag !== null) go(p.f); setDrag(null); if (e.pointerType !== "mouse") { setHover(null); setShown(null); } }}
+    onKeyDown={(e) => { if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); go(filled + (e.key === "ArrowRight" ? 0.02 : -0.02)); } }}>
     <span className="kb-seek-track"><span className="kb-seek-fill" style={{ width: `${filled * 100}%` }} />
       {hover ? <span className="kb-seek-ghost" style={{ width: `${hover.f * 100}%` }} /> : null}
     </span>

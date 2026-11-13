@@ -44,7 +44,9 @@
 .kb .kb-tabs button.kb-on{color:var(--on-secondary-container)}
 /* The one pill behind the chosen tab, sliding between them. */
 .kb .kb-tab-ink{position:absolute;z-index:-1;left:0;top:4px;bottom:4px;border-radius:999px;background:var(--secondary-container);pointer-events:none}
-.kb .kb-tab-ink{opacity:0}
+.kb .kb-tab-ink{opacity:0;transition:opacity .2s}
+.kb .kb-tabs button{transition:color .25s,background .3s var(--ease),scale .3s var(--spring)}
+.kb .kb-tabs button:active{scale:.95}
 .kb .kb-count{min-width:22px;height:22px;padding:0 6px;border-radius:11px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);font-size:12px;font-weight:700}
 .kb .kb-tokimono{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;color:var(--fg-2);flex:none;transition:background .2s,transform .25s var(--spring)}
 .kb .kb-tokimono svg{width:24px;height:24px}
@@ -74,7 +76,14 @@
   .kb .kb-tab-ink{display:none}
 }
 
-.kb .kb-main{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 72px)}
+.kb .kb-main{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 72px);overflow-x:clip}
+/* Between Discover and your shelf the page moves sideways, the way the pill went; what's on it arrives with it, not one shelf at a time. */
+.kb .kb-view.kb-from-next{animation:kb-axis-next .46s var(--ease-out) both}
+.kb .kb-view.kb-from-back{animation:kb-axis-back .46s var(--ease-out) both}
+.kb .kb-view:is(.kb-from-next,.kb-from-back) :is(.kb-hero,.kb-shelf,.kb-cell,.kb-fan-book){animation:none}
+@keyframes kb-axis-next{from{opacity:0;translate:48px 0}40%{opacity:1}}
+@keyframes kb-axis-back{from{opacity:0;translate:-48px 0}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){ .kb .kb-view:is(.kb-from-next,.kb-from-back){animation:kb-fade .2s var(--ease) both} }
 
 /* ───── Type ───── */
 .kb .kb-display{font-family:var(--display);font-weight:700;font-size:clamp(32px,4.4vw,56px);line-height:1.06;letter-spacing:-.01em;text-wrap:balance}
@@ -135,26 +144,26 @@
 /* The shadow it casts on the shelf. */
 .kb .kb-book::after{content:"";position:absolute;left:8%;right:-4%;bottom:-6px;height:14px;border-radius:50%;background:rgb(var(--shadow) / .34);filter:blur(7px);
   transform:translateX(calc(var(--d) * -.3)) scaleX(.92);transition:transform .6s var(--spring-soft),opacity .6s;z-index:-1}
-/* Reading progress: a ribbon marker down the page edge. */
-.kb .kb-ribbon{position:absolute;top:-4px;right:18%;width:9px;height:calc(var(--h) * var(--kb-p) * .55 + 14px);transform:translateZ(calc(var(--d) / 2 + 1px));
+/* Reading progress: a ribbon bookmark hanging out of the bottom of the pages, longer the further in you are. */
+.kb .kb-ribbon{position:absolute;top:calc(100% - 4px);right:22%;width:8px;height:calc(10px + var(--kb-p) * 16px);transform:translateZ(calc(var(--d) / 2 - 2px));
   background:var(--tertiary);clip-path:polygon(0 0,100% 0,100% 100%,50% calc(100% - 6px),0 100%);box-shadow:0 1px 2px rgb(0 0 0 / .2)}
 /* A corner mark: rank or shelf state. */
 .kb .kb-badge{position:absolute;left:-8px;top:-8px;z-index:2}
 .kb .kb-rank{display:grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:15px 15px 15px 6px;background:var(--primary);color:var(--on-primary);font-family:var(--display);font-weight:800;font-size:15px;box-shadow:0 2px 6px rgb(var(--shadow) / .25)}
 
-/* Hover or focus: it turns to you, lifts, and its cover opens a little. */
+/* Hover or focus: it turns to you and lifts. (The cover stays shut: swung open, the page showed past it like a misprint.) */
 @media (hover:hover){
-  .kb button.kb-book:hover{--turn:0deg;--lift:-10px;--open:-28deg}
+  .kb button.kb-book:hover{--turn:0deg;--lift:-10px}
   .kb button.kb-book:hover::after{transform:translateX(0) scaleX(1.05);opacity:.75}
 }
-.kb button.kb-book:focus-visible{--turn:0deg;--lift:-10px;--open:-22deg;outline-offset:8px}
+.kb button.kb-book:focus-visible{--turn:0deg;--lift:-10px;outline-offset:8px}
 .kb button.kb-book:active{--lift:-4px}
 .kb .kb-still{--turn:14deg}
 .kb .kb-stage .kb-still{--turn:20deg}
 .kb .kb-hero-book button.kb-book{--turn:22deg}
 @media (prefers-reduced-motion:reduce){
   .kb .kb-book-body,.kb .kb-cover,.kb .kb-book::after{transition:none}
-  .kb button.kb-book:hover,.kb button.kb-book:focus-visible{--open:0deg;--lift:0px}
+  .kb button.kb-book:hover,.kb button.kb-book:focus-visible{--lift:0px}
 }
 
 /* ───── Shelves ───── */
@@ -504,6 +513,9 @@
 .kb .kb-seek-wait{min-height:1.5em}
 @keyframes kb-peek{from{opacity:0;translate:0 4px}}
 .kb .kb-reader-foot:has(.kb-seeking){opacity:1}
+/* The figure keeps one width, so the bar beside it never shifts as it counts. */
+.kb .kb-reader-foot > span{min-width:4ch;text-align:right;font-variant-numeric:tabular-nums}
+.kb .kb-dragging .kb-seek-fill,.kb .kb-dragging .kb-seek-thumb{transition:none}
 @media (max-width:699px){
   .kb .kb-reader-page{grid-template-columns:18px 1fr 18px}
   .kb .kb-turn svg{display:none}
