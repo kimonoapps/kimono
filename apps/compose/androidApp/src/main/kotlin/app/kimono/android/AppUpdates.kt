@@ -73,6 +73,8 @@ object AppUpdates {
 class AppUpdatesWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val app = applicationContext as KimonoApplication
+        /* Turned off in Settings: nothing to tell. */
+        if (app.platform.readKept(app.platform.notificationsKey) == "off") return Result.success()
         if (!app.ensureSession()) return Result.success()
         app.session.checkUpdate()?.let { update ->
             AppUpdates.tell(applicationContext, "kimono:${update.build}", "Kimono ${update.version ?: ""} is ready".replace("  ", " "), "Tap to update.", null)

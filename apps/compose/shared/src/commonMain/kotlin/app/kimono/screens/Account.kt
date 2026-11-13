@@ -164,6 +164,16 @@ fun SettingsScreen(session: Session, platform: Platform, me: AccountProfile?, op
             ))
             GroupLabel("Privacy")
             InvisibleRow(session)
+            /* Only Android tells of anything (a new version ready) itself. */
+            if (platform.os == "android") {
+                GroupLabel("Notifications")
+                NotificationsRow(platform)
+            }
+            /* An iPhone's come from TestFlight instead, and they only repeat what Kimono says. */
+            if (platform.os == "ios") {
+                GroupLabel("TestFlight notifications")
+                TestflightQuiet(session.server, platform)
+            }
             GroupLabel("Devices")
             KimonoGroup(listOf(GroupItem("Set up Kimono Read", icon = "book") { open("kimono-read") }))
             /* Administrators look after the household's apps from here, as under Admin on the website. */
@@ -295,6 +305,26 @@ private val lookPages = linkedMapOf(
 )
 
 /** Settings' Invisible: friends see your name and portrait, and no app shows them what you do. */
+@Composable
+private fun NotificationsRow(platform: Platform) {
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { on = platform.readKept(platform.notificationsKey) != "off" }
+    fun set(next: Boolean) {
+        on = next
+        scope.launch { platform.keep(platform.notificationsKey, if (next) null else "off") }
+    }
+    SegmentedListItem(
+        onClick = { on?.let { set(!it) } },
+        shapes = ListItemDefaults.segmentedShapes(0, 1),
+        colors = segmentColors(),
+        modifier = Modifier.padding(horizontal = 16.dp),
+        leadingContent = { InkBlot("notifications") { Icon(kimonoIcon("bolt"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) } },
+        supportingContent = { Text("When an update is ready") },
+        trailingContent = { on?.let { now -> androidx.compose.material3.Switch(now, { set(it) }) } },
+    ) { Text("Notifications", style = MaterialTheme.typography.bodyLarge) }
+}
+
 @Composable
 private fun InvisibleRow(session: Session) {
     val scope = rememberCoroutineScope()

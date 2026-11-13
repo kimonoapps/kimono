@@ -68,6 +68,8 @@ interface Platform {
     fun recordingLevel(): Float = 0f
     /** Stops recording: what was heard as AAC in MP4 (audio/mp4) when [keep], else null and it's thrown away. */
     suspend fun stopRecording(keep: Boolean): ByteArray? = null
+    /** Kept as "off" when the person turned Kimono's notifications off in Settings. */
+    val notificationsKey: String get() = "kimono.notifications"
     /** Whether the person asked the phone for less motion. */
     val reduceMotion: Boolean get() = false
     /** Drive was switched on or off on the server: the Files app entry follows. */
@@ -84,6 +86,9 @@ interface Platform {
      */
     @androidx.compose.runtime.Composable
     fun WebFrame(url: String, modifier: androidx.compose.ui.Modifier, control: WebFrameControl?, keepLinks: Boolean, onMessage: (String) -> Unit, onLoaded: () -> Unit) {}
+    /** A short silent clip at [url], looping with no controls (a how-to); nothing where the phone has no player for it. */
+    @androidx.compose.runtime.Composable
+    fun LoopingVideo(url: String, modifier: androidx.compose.ui.Modifier) {}
 }
 
 /** A video's poster: one frame as an encoded picture, and its length in seconds when known. */
