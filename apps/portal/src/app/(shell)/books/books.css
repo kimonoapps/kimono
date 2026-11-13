@@ -190,6 +190,9 @@
 .kb .kb-hero-book{padding:12px 24px 18px 8px}
 .kb .kb-hero .kb-tonal{background:var(--surface-3);color:var(--fg)}
 .kb .kb-hello{grid-template-columns:1fr auto}
+.kb .kb-hero-ghost{grid-template-columns:1fr;min-height:clamp(280px,32vw,380px);align-content:center;animation:none}
+.kb .kb-hero-ghost .kb-ghost-line{max-width:520px}
+.kb .kb-hero-ghost .kb-ghost-line.kb-title{height:44px;width:min(420px,70%);margin:14px 0 10px}
 .kb .kb-fan{position:relative;width:min(420px,40vw);height:260px}
 .kb .kb-fan-book{position:absolute;bottom:10px;left:calc(var(--i) * 17%);transform:rotate(calc((var(--i) - 2) * 5deg)) translateY(calc(var(--i) * var(--i) * 1px));transform-origin:50% 120%;
   animation:kb-fan .9s var(--spring-soft) both;animation-delay:calc(var(--i) * 70ms + 200ms)}
@@ -450,10 +453,31 @@
 .kb .kb-swatch{width:30px;height:30px;margin:0 3px;border-radius:50%;background:var(--sw);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--paper-ink) 25%,transparent);transition:transform .3s var(--spring),box-shadow .2s}
 .kb .kb-swatch[aria-checked="true"]{box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--paper-ink) 25%,transparent),0 0 0 2px var(--paper),0 0 0 4px var(--primary)}
 .kb .kb-swatch:hover{transform:scale(1.1)}
-.kb .kb-reader-page{position:relative;min-height:0;display:grid;grid-template-columns:clamp(44px,8vw,110px) minmax(0,760px) clamp(44px,8vw,110px);justify-content:center}
+.kb .kb-reader-page{position:relative;min-height:0;display:grid;grid-template-columns:clamp(44px,8vw,110px) minmax(0,var(--kb-col,760px)) clamp(44px,8vw,110px);justify-content:center}
+/* The reading settings: a panel under the bar, on the page's own paper. */
+.kb .kb-aa{display:flex;align-items:baseline;gap:1px}
+.kb .kb-aa.kb-on{background:color-mix(in srgb,var(--paper-ink) 12%,transparent);opacity:1}
+.kb .kb-reader-settings{position:absolute;z-index:5;top:68px;right:clamp(12px,3vw,32px);width:min(400px,calc(100vw - 24px));display:grid;gap:14px;padding:18px;border-radius:24px;
+  background:var(--paper);color:var(--paper-ink);box-shadow:0 18px 50px rgb(0 0 0 / .32),0 0 0 1px color-mix(in srgb,var(--paper-ink) 12%,transparent);animation:kb-rise .22s var(--ease-out) both}
+.kb .kb-set-row{display:grid;grid-template-columns:64px 1fr;align-items:center;gap:10px}
+.kb .kb-set-label{font-size:13px;font-weight:600;opacity:.65}
+.kb .kb-set-choices{display:flex;gap:3px;padding:3px;border-radius:14px;background:color-mix(in srgb,var(--paper-ink) 7%,transparent)}
+.kb .kb-set-choices button{flex:1;height:34px;border-radius:11px;font-size:13px;font-weight:600;color:inherit;opacity:.75;transition:background .2s,opacity .2s}
+.kb .kb-set-choices button:hover{opacity:1}
+.kb .kb-set-choices button[aria-checked="true"]{background:var(--paper);opacity:1;box-shadow:0 1px 3px rgb(0 0 0 / .18)}
+.kb .kb-set-papers{display:flex;gap:10px}
+.kb .kb-set-papers .kb-swatch{width:42px;height:42px;margin:0;display:grid;place-items:center;color:var(--sw-ink);font:600 13px/1 var(--display)}
+.kb .kb-set-size{display:flex;align-items:center;gap:8px}
+.kb .kb-set-size button{width:30px;height:30px;border-radius:50%;font:700 13px/1 var(--display);color:inherit;opacity:.75}
+.kb .kb-set-size button.kb-big{font-size:19px}
+.kb .kb-set-size button:hover{opacity:1;background:color-mix(in srgb,var(--paper-ink) 9%,transparent)}
+.kb .kb-set-size input{flex:1;accent-color:var(--primary)}
+.kb .kb-set-value{min-width:42px;text-align:right;font-size:12px;opacity:.6;font-variant-numeric:tabular-nums}
 .kb .kb-leafwrap{min-height:0;height:100%;padding:12px 0 4px}
 .kb .kb-reader-stage{height:100%;transition:opacity .18s var(--ease)}
 .kb .kb-reader-stage iframe{background:transparent!important;color-scheme:normal}
+/* Scrolling, the book's column scrolls down only, with Kimono's ink bar. */
+.kb .kb-reader-stage .epub-container{overflow-x:hidden!important;scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--paper-ink) 30%,transparent) transparent}
 .kb .kb-reader-stage.kb-turning{opacity:.35}
 /* Always there, quietly: fuller on hover, and they fade with the bars when you've been still a while. */
 .kb .kb-turn{height:100%;width:100%;display:grid;place-items:center;color:inherit;opacity:.45;transition:opacity .25s var(--ease)}

@@ -37,13 +37,13 @@ function writePlace(tab: Tab, book: string | null, q: string, push: boolean, gen
   if (push) history.pushState(null, "", url); else history.replaceState(null, "", url);
 }
 
-export function BooksApp({ accent, firstName }: { accent: string; firstName: string }) {
+export function BooksApp({ accent, firstName, home: arrived }: { accent: string; firstName: string; home: Home | null }) {
   const [tab, setTab] = useState<Tab>(() => readPlace().tab);
   const [open, setOpen] = useState<string | null>(() => readPlace().book);
   const [query, setQuery] = useState(() => readPlace().q);
   const [genre, setGenre] = useState<string | null>(() => readPlace().genre);
-  const [home, setHome] = useState<Home | null>(null);
-  const [shelf, setShelf] = useState<ShelfItem[] | null>(null);
+  const [home, setHome] = useState<Home | null>(arrived);
+  const [shelf, setShelf] = useState<ShelfItem[] | null>(arrived?.shelf ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; at: number } | null>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -56,7 +56,9 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
     booksApi.home().then((h) => { setHome(h); setShelf(h.shelf); setProblem(null); })
       .catch((e: unknown) => setProblem(e instanceof BooksError ? e.message : "Books couldn't load."));
   }, []);
-  useEffect(loadHome, [loadHome]);
+  /* Home usually came with the page; only ask when it didn't. */
+  const asked = useRef(!!arrived);
+  useEffect(() => { if (!asked.current) { asked.current = true; loadHome(); } }, [loadHome]);
 
   useEffect(() => {
     const back = () => { const p = readPlace(); setTab(p.tab); setOpen(p.book); setQuery(p.q); setGenre(p.genre); };
@@ -171,7 +173,7 @@ function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf,
   if (problem && !home) return <div className="kb-empty"><p>{problem}</p><button className="kb-btn kb-tonal" onClick={onRetry}>Try again</button></div>;
   const featured = home?.featured ?? null;
   return <>
-    {featured ? <Featured book={featured} onOpen={onOpen} onPlaced={onPlaced} />
+    {!home ? <HeroGhost /> : featured ? <Featured book={featured} onOpen={onOpen} onPlaced={onPlaced} />
       : <section className="kb-hero kb-hello">
         <div className="kb-hero-body">
           <p className="kb-eyebrow">Kimono Books</p>
@@ -179,7 +181,7 @@ function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf,
           <p className="kb-lede">Find a book, put it on your shelf, and keep your place.</p>
         </div>
         <div className="kb-fan" aria-hidden>
-          {(home?.rows[0]?.books ?? []).slice(0, 5).map((b, i) => <span key={b.key} className="kb-fan-book" style={{ "--i": i } as React.CSSProperties}><Book3D book={b} size="md" still eager /></span>)}
+          {(home.rows[0]?.books ?? []).slice(0, 5).map((b, i) => <span key={b.key} className="kb-fan-book" style={{ "--i": i } as React.CSSProperties}><Book3D book={b} size="md" still eager /></span>)}
         </div>
       </section>}
     {home?.genres.length ? <nav className="kb-genres" aria-label="Genres">{home.genres.map((g) => <button key={g.id} className="kb-genre" onClick={() => onBrowse(g.id)}>{g.title}</button>)}</nav> : null}
@@ -652,7 +654,7 @@ function FileActions({ files, prefers, onPrefers, onRead }: {
   const cancelled = useRef(false);
   const [failed, setFailed] = useState<string | null>(null);
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const open = async (file: BookFileInfo) => {
     if (getting) return;
     setFailed(null);
@@ -823,6 +825,11 @@ function Stars({ value }: { value: number }) {
 
 function Ghosts({ n }: { n: number }) {
   return <>{Array.from({ length: n }, (_, i) => <div key={i} className="kb-cell"><span className="kb-ghost" style={{ animationDelay: `${i * 60}ms` }} /><span className="kb-ghost-line" /><span className="kb-ghost-line kb-short" /></div>)}</>;
+}
+
+/** Where the hero will be, quiet until there's something to show (so it arrives once, not twice). */
+function HeroGhost() {
+  return <section className="kb-hero kb-hero-ghost" aria-hidden><div className="kb-hero-body"><span className="kb-ghost-line kb-short" /><span className="kb-ghost-line kb-title" /><span className="kb-ghost-line" /></div></section>;
 }
 
 function ShelfGhosts() {

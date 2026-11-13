@@ -19,7 +19,9 @@ type Rendition = {
   next(): Promise<void>;
   prev(): Promise<void>;
   on(event: string, cb: (...args: unknown[]) => void): void;
-  themes: { register(name: string, styles: Record<string, Record<string, string>>): void; select(name: string): void; fontSize(size: string): void };
+  themes: { register(name: string, styles: Record<string, Record<string, string>>): void; select(name: string): void; fontSize(size: string): void; override(name: string, value: string, priority?: boolean): void };
+  flow(flow: "paginated" | "scrolled-doc"): void;
+  spread(spread: "none" | "auto"): void;
   destroy(): void;
 };
 type NavItem = { href: string; label: string; subitems?: NavItem[] };
@@ -33,22 +35,49 @@ type EpubBook = {
   destroy(): void;
 };
 
-type Paper = "paper" | "sepia" | "night";
+type Paper = "paper" | "sepia" | "dusk" | "night";
 const papers: Record<Paper, { label: string; bg: string; ink: string }> = {
   paper: { label: "Paper", bg: "#FBF8F2", ink: "#2A2622" },
   sepia: { label: "Sepia", bg: "#F1E6D0", ink: "#3D3125" },
+  dusk: { label: "Dusk", bg: "#34312D", ink: "#DDD5C9" },
   night: { label: "Night", bg: "#1C1A18", ink: "#E2DCD2" },
 };
-const prefs = {
-  read: (): { paper: Paper; size: number } => {
-    try {
-      const v = JSON.parse(localStorage.getItem("kb.reader") ?? "{}") as { paper?: string; size?: number };
-      const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-      return { paper: v.paper && v.paper in papers ? v.paper as Paper : dark ? "night" : "paper", size: Number(v.size) || 100 };
-    } catch { return { paper: "paper", size: 100 }; }
-  },
-  write: (v: { paper: Paper; size: number }) => { try { localStorage.setItem("kb.reader", JSON.stringify(v)); } catch { /* a private window */ } },
+/* The reader's choices: how the page looks and reads. Kept on this device. */
+const faces = {
+  serif: { label: "Mincho", css: "\"Shippori Mincho\", \"Iowan Old Style\", Georgia, serif" },
+  book: { label: "Book", css: "\"Iowan Old Style\", \"Palatino Linotype\", Palatino, Georgia, serif" },
+  sans: { label: "Sans", css: "var(--font-sans, system-ui), -apple-system, \"Segoe UI\", sans-serif" },
+} as const;
+const leadings = { tight: { label: "Tight", value: "1.45" }, normal: { label: "Normal", value: "1.7" }, loose: { label: "Loose", value: "2" } } as const;
+const widths = { narrow: { label: "Narrow", px: 600 }, medium: { label: "Medium", px: 760 }, wide: { label: "Wide", px: 1100 } } as const;
+const layouts = { page: { label: "One page" }, spread: { label: "Two pages" }, scroll: { label: "Scroll" } } as const;
+type Look = {
+  paper: Paper; size: number; face: keyof typeof faces; leading: keyof typeof leadings;
+  width: keyof typeof widths; align: "left" | "justify"; layout: keyof typeof layouts;
 };
+const pick = <T extends string>(v: unknown, all: Record<T, unknown>, fallback: T): T => typeof v === "string" && v in all ? v as T : fallback;
+const prefs = {
+  read: (): Look => {
+    let v: Partial<Record<keyof Look, unknown>> = {};
+    try { v = JSON.parse(localStorage.getItem("kb.reader") ?? "{}"); } catch { /* a private window */ }
+    let dark = false;
+    try { dark = matchMedia("(prefers-color-scheme: dark)").matches; } catch { /* no window */ }
+    return {
+      paper: pick(v.paper, papers, dark ? "night" : "paper"), size: Number(v.size) || 100,
+      face: pick(v.face, faces, "serif"), leading: pick(v.leading, leadings, "normal"), width: pick(v.width, widths, "medium"),
+      align: v.align === "left" ? "left" : "justify", layout: pick(v.layout, layouts, "page"),
+    };
+  },
+  write: (v: Look) => { try { localStorage.setItem("kb.reader", JSON.stringify(v)); } catch { /* a private window */ } },
+};
+/* Puts a look on the book: the face, spacing and alignment inside its pages, and how they're laid out. */
+function dress(r: Rendition, look: Look) {
+  r.themes.select(look.paper);
+  r.themes.fontSize(`${look.size}%`);
+  r.themes.override("font-family", faces[look.face].css, true);
+  r.themes.override("line-height", leadings[look.leading].value, true);
+  r.themes.override("text-align", look.align, true);
+}
 
 /* The book as a folder of parts (api/v1/books/epub): epub.js asks for the container, the package and each chapter as it needs them. */
 const partsUrl = (f: BookFileInfo) => {
@@ -135,7 +164,8 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
         await Promise.race([book.ready, new Promise((_, reject) => setTimeout(() => reject(new Error("took too long")), 45_000))]);
         if (cancelled || !stage.current) return;
         const toc = flatten((await book.loaded.navigation).toc ?? []);
-        const r = book.renderTo(stage.current, { width: "100%", height: "100%", flow: "paginated", spread: "auto", allowScriptedContent: false });
+        const first = prefs.read();
+        const r = book.renderTo(stage.current, { width: "100%", height: "100%", flow: first.layout === "scroll" ? "scrolled-doc" : "paginated", spread: first.layout === "spread" ? "auto" : "none", allowScriptedContent: false });
         rendition.current = r;
         opened.current = { book, toc };
         for (const [name, p] of Object.entries(papers)) {
@@ -148,9 +178,7 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
             "::selection": { background: name === "night" ? "#5b6b3f" : "#d6e2b8" },
           });
         }
-        const now = prefs.read();
-        r.themes.select(now.paper);
-        r.themes.fontSize(`${now.size}%`);
+        dress(r, prefs.read());
         await book.locations.generate(1200);
         if (cancelled) return;
         await r.display(opening > 0 && opening < 1 ? book.locations.cfiFromPercentage(opening) : undefined);
@@ -172,10 +200,20 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
   }, [file, opening, keys]);
 
   useEffect(() => {
-    rendition.current?.themes.select(look.paper);
-    rendition.current?.themes.fontSize(`${look.size}%`);
+    const r = rendition.current;
+    if (r) dress(r, look);
     prefs.write(look);
   }, [look]);
+  /* Layout changes re-lay the book (scrolling or pages, one or two). */
+  const laidOut = useRef(look.layout);
+  useEffect(() => {
+    const r = rendition.current;
+    if (!r || laidOut.current === look.layout) return;
+    laidOut.current = look.layout;
+    r.spread(look.layout === "spread" ? "auto" : "none");
+    r.flow(look.layout === "scroll" ? "scrolled-doc" : "paginated");
+  }, [look.layout]);
+  const [settings, setSettings] = useState(false);
 
   useEffect(() => {
     addEventListener("keyup", keys);
@@ -224,22 +262,18 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
         <span>{chapter || author}{file.sample ? " · Preview" : ""}</span>
       </span>
       {file.format === "epub" ? <>
-        <span className="kb-reader-group" role="radiogroup" aria-label="Page">
-          {(Object.keys(papers) as Paper[]).map((p) => <button key={p} role="radio" aria-checked={look.paper === p} aria-label={papers[p].label} title={papers[p].label}
-            className="kb-swatch" style={{ "--sw": papers[p].bg } as React.CSSProperties} onClick={() => setLook((l) => ({ ...l, paper: p }))} />)}
-        </span>
-        <span className="kb-reader-group" role="group" aria-label="Text size">
-          <button className="kb-reader-icon kb-small-a" onClick={() => setLook((l) => ({ ...l, size: Math.max(80, l.size - 10) }))} aria-label="Smaller text">A</button>
-          <button className="kb-reader-icon kb-big-a" onClick={() => setLook((l) => ({ ...l, size: Math.min(170, l.size + 10) }))} aria-label="Larger text">A</button>
-        </span>
+        <button className={`kb-reader-icon kb-aa${settings ? " kb-on" : ""}`} aria-expanded={settings} aria-label="Reading settings" title="Reading settings" onClick={() => setSettings((v) => !v)}>
+          <span className="kb-small-a">A</span><span className="kb-big-a">a</span>
+        </button>
       </> : null}
       <button className="kb-reader-icon" onClick={() => { location.href = `${fileUrl(file)}&download=1`; }} aria-label="Save a copy" title="Save a copy">
         <svg viewBox="0 0 24 24" aria-hidden><path d="M12 4v11m0 0 4.5-4.5M12 15l-4.5-4.5M5 19h14" /></svg>
       </button>
     </header>
+    {settings && file.format === "epub" ? <ReaderSettings look={look} onChange={(next) => setLook((l) => ({ ...l, ...next }))} onClose={() => setSettings(false)} /> : null}
     {file.format === "pdf"
       ? <iframe className="kb-reader-pdf" src={fileUrl(file)} title={title} />
-      : <div className="kb-reader-page"
+      : <div className="kb-reader-page" style={{ "--kb-col": `${look.layout === "spread" ? Math.max(1100, widths[look.width].px) : widths[look.width].px}px` } as React.CSSProperties}
         onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
         onTouchEnd={(e) => { const s = touch.current; touch.current = null; if (s === null) return; const dx = e.changedTouches[0].clientX - s; if (Math.abs(dx) > 40) turn(dx < 0 ? 1 : -1); }}>
         <button className="kb-turn kb-turn-prev" aria-label="Previous page" onClick={() => turn(-1)}><svg viewBox="0 0 24 24" aria-hidden><path d="m14 6-6 6 6 6" /></svg></button>
@@ -299,5 +333,41 @@ function SeekBar({ fraction, ready, peek, onSeek }: {
       <b>{shownHere?.chapter || "\u00a0"}<span>{Math.round(hover.f * 100)}%</span></b>
       {shownHere?.text ? <p>{shownHere.text}</p> : <p className="kb-seek-wait">{ready ? "\u2026" : ""}</p>}
     </div> : null}
+  </div>;
+}
+
+/** The reading settings: one panel for the page, the type and the layout. */
+function ReaderSettings({ look, onChange, onClose }: { look: Look; onChange: (next: Partial<Look>) => void; onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: PointerEvent) => { if (!panel.current?.contains(e.target as Node) && !(e.target as Element).closest?.(".kb-aa")) onClose(); };
+    addEventListener("pointerdown", away);
+    return () => removeEventListener("pointerdown", away);
+  }, [onClose]);
+  const row = <K extends keyof Look>(label: string, key: K, options: Record<string, { label: string }>) => <div className="kb-set-row" role="radiogroup" aria-label={label}>
+    <span className="kb-set-label">{label}</span>
+    <span className="kb-set-choices">{Object.entries(options).map(([v, o]) => <button key={v} role="radio" aria-checked={look[key] === v}
+      onClick={() => onChange({ [key]: v } as Partial<Look>)}>{o.label}</button>)}</span>
+  </div>;
+  return <div ref={panel} className="kb-reader-settings" role="dialog" aria-label="Reading settings">
+    <div className="kb-set-row" role="radiogroup" aria-label="Page">
+      <span className="kb-set-label">Page</span>
+      <span className="kb-set-papers">{(Object.keys(papers) as Paper[]).map((p) => <button key={p} role="radio" aria-checked={look.paper === p} aria-label={papers[p].label} title={papers[p].label}
+        className="kb-swatch" style={{ "--sw": papers[p].bg, "--sw-ink": papers[p].ink } as React.CSSProperties} onClick={() => onChange({ paper: p })}><span>Aa</span></button>)}</span>
+    </div>
+    <div className="kb-set-row" aria-label="Text size">
+      <span className="kb-set-label">Size</span>
+      <span className="kb-set-size">
+        <button aria-label="Smaller text" onClick={() => onChange({ size: Math.max(70, look.size - 10) })}>A</button>
+        <input type="range" min={70} max={200} step={5} value={look.size} aria-label="Text size" onChange={(e) => onChange({ size: Number(e.target.value) })} />
+        <button aria-label="Larger text" className="kb-big" onClick={() => onChange({ size: Math.min(200, look.size + 10) })}>A</button>
+        <span className="kb-set-value">{look.size}%</span>
+      </span>
+    </div>
+    {row("Font", "face", faces)}
+    {row("Spacing", "leading", leadings)}
+    {row("Width", "width", widths)}
+    {row("Align", "align", { left: { label: "Left" }, justify: { label: "Justified" } })}
+    {row("Layout", "layout", layouts)}
   </div>;
 }
