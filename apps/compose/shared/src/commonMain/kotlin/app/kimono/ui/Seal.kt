@@ -35,12 +35,15 @@ fun Seal(
     enabled: Boolean = true,
     busy: Boolean = false,
     compact: Boolean = false,
+    /** A mark before the word, from kimonoIcon. */
+    icon: String? = null,
 ) {
     val padding = PaddingValues(horizontal = if (compact) 16.dp else 24.dp)
     val sized = modifier.heightIn(min = if (compact) 40.dp else 52.dp)
     val content: @Composable RowScope.() -> Unit = {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (busy) InkLoader(size = 24.dp, color = androidx.compose.material3.LocalContentColor.current)
+            else if (icon != null) androidx.compose.material3.Icon(kimonoIcon(icon), null, modifier = Modifier.size(18.dp))
             Text(label, style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall, maxLines = 1)
         }
     }
