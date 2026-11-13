@@ -105,7 +105,41 @@ export function recordIdsIn(html: string, max = 12): string[] {
   return ids;
 }
 
-export function annas(base: string, secret: string): LiveSource {
+const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'", nbsp: " " };
+const text = (html: string) => clean(html.replace(/<[^>]+>/g, "").replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, e: string) =>
+  e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : entities[e.toLowerCase()] ?? m));
+
+/**
+ * The books on a metadata search page, read from the page itself: title,
+ * authors, publisher, year and language are all in each result, so a search
+ * is one request. The rest (cover, ISBNs, description) comes from the
+ * record when the book is opened.
+ */
+export function resultsIn(html: string, max = 12): Book[] {
+  const out: Book[] = [];
+  for (const block of html.split(/<div class="flex\s+pt-3\s+pb-3\s+border-b\b/).slice(1)) {
+    const link = new RegExp(`href="/(${metadataKinds.join("|")})/([^"?#/]+)"`).exec(block);
+    if (!link) continue;
+    const id = `${link[1]}:${decodeURIComponent(link[2])}`;
+    if (fileish.test(id) || out.some((b) => b.key === `aa:${id}`)) continue;
+    const title = text(/<a href="\/[^"]+"[^>]*\btext-lg\b[^>]*>([\s\S]*?)<\/a>/.exec(block)?.[1] ?? "");
+    if (!title) continue;
+    const by = /mdi--user-edit[^>]*><\/span>([\s\S]*?)<\/a>/.exec(block)?.[1];
+    const house = text(/mdi--company[^>]*><\/span>([\s\S]*?)<\/a>/.exec(block)?.[1] ?? "");
+    const line = text(/<div class="[^"]*\bfont-semibold\s+text-sm\b[^"]*">([\s\S]*?)<\/div>/.exec(block)?.[1] ?? "");
+    const book = emptyBook(`aa:${id}`, title);
+    book.authors = by ? authorNames(text(by)) : [];
+    book.publisher = house.replace(/,?\s*\b(1[4-9]\d\d|20\d\d)\b.*$/, "").split(",")[0].trim();
+    book.year = yearOf(line) ?? yearOf(house);
+    book.language = /\[([a-z]{2,3}(?:-[A-Za-z]+)?)\]/.exec(line)?.[1] ?? "";
+    if (link[1] === "isbndb") book.isbns = isbnsOf([link[2]]);
+    out.push(book);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+export function annas(base: string, secret: string): LiveSource & { record(id: string): Promise<Book | null> } {
   const { get } = annasClient(base, secret);
 
   /* A record as JSON. */
@@ -124,6 +158,7 @@ export function annas(base: string, secret: string): LiveSource {
 
   return {
     name: "Anna's Archive",
+    record,
     async byIsbn(isbn) {
       const direct = await record(`isbndb:${isbn}`);
       if (direct) return [{ ...direct, isbns: [...new Set([isbn, ...direct.isbns])] }];
@@ -132,9 +167,12 @@ export function annas(base: string, secret: string): LiveSource {
     async search(q, limit) {
       const html = await get(`/search?index=meta&q=${encodeURIComponent(q)}`, false) as string | null;
       if (!html) return [];
-      const ids = recordIdsIn(html, Math.min(limit, 8));
-      const books = await Promise.all(ids.map((id) => record(id).catch(() => null)));
       const isbn = normalizeIsbn(q);
+      /* A search reads the page; an ISBN wants the full record, to be sure of the match. */
+      const listed = resultsIn(html, Math.min(limit, 12));
+      const books = isbn || !listed.length
+        ? await Promise.all(recordIdsIn(html, Math.min(limit, 8)).map((id) => record(id).catch(() => null)))
+        : listed;
       return books.filter((b): b is Book => Boolean(b)).map((b) => isbn ? { ...b, isbns: [...new Set([isbn, ...b.isbns])] } : b);
     },
   };

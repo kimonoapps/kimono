@@ -191,6 +191,18 @@ WHERE records_fts MATCH ? ORDER BY (bm25(records_fts, 0, 10, 4, 1) - log(r.reade
   return rows.map((r) => readBook(r.data));
 }
 
+const words = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+
+/** Whether any of these books is the one asked for: every word typed is in its title, subtitle or authors. */
+function matches(query: string, books: Book[]): boolean {
+  const asked = words(query);
+  if (!asked.length) return true;
+  return books.some((b) => {
+    const has = new Set(words(`${b.title} ${b.subtitle} ${b.authors.join(" ")}`));
+    return asked.every((w) => has.has(w));
+  });
+}
+
 /** Search: what's kept, plus the sources when that's thin or a week old. */
 export async function search(config: BooksConfig, q: string, limit = 30): Promise<Book[]> {
   const query = q.trim().slice(0, 200);
@@ -199,19 +211,22 @@ export async function search(config: BooksConfig, q: string, limit = 30): Promis
   const kept = dedupe(searchKept(query, limit));
   const key = query.toLowerCase();
   if (kept.length < limit / 2 || due("search", key)) {
-    /* Anna's search is for the books nothing else knows: only when the rest found few. */
+    /* Anna's knows the books nothing else does. It's asked alongside the
+       others every time; the answer waits for it only when they found
+       nothing that matches what was typed (they always find something), and
+       otherwise it lands in the kept records for the next search. */
     const sources = sourcesFor(config);
-    const first = sources.filter((s) => s.name !== "Anna's Archive");
-    let { books, failed } = await ask(first, (s) => s.search(query, limit));
     const annasSource = sources.find((s) => s.name === "Anna's Archive");
-    if (annasSource && books.length < 3) {
-      const more = await ask([annasSource], (s) => s.search(query, 8));
+    const fromAnnas = annasSource ? ask([annasSource], (s) => s.search(query, 8)) : null;
+    let { books, failed } = await ask(sources.filter((s) => s !== annasSource), (s) => s.search(query, limit));
+    if (fromAnnas && !matches(query, books)) {
+      const more = await fromAnnas;
       books = [...books, ...more.books];
       failed = failed && more.failed;
     }
     if (!failed) note("search", key, books.length > 0);
   }
-  return dedupe(searchKept(query, limit)).filter((b) => b.cover || b.isbns.length || b.authors.length).slice(0, limit);
+  return dedupe(searchKept(query, limit)).filter((b) => b.cover || b.isbns.length || b.authors.length || b.key.startsWith("aa:")).slice(0, limit);
 }
 
 /** A book's page: the record, filled in from its source when it's thin, and more like it. */
@@ -236,6 +251,12 @@ export async function bookPage(config: BooksConfig, key: string): Promise<{ book
       book = { ...book, description: book.description || work.description, genres: book.genres.length ? book.genres : work.genres, cover: book.cover ?? work.cover };
       save([book]);
     }
+  }
+  /* Found on Anna's search page: the record has the cover, ISBNs and description. Once a month at most. */
+  if (key.startsWith("aa:") && !book.description && !book.cover && config.annas && due("record", key)) {
+    const full = await annas(config.annas.url, config.annas.key).record(key.slice(3)).catch(() => null);
+    if (full) { book = merge(book, full); save([book]); }
+    note("record", key, Boolean(full));
   }
   /* The same book from the other sources fills in what this one lacks. */
   const twins = (booksDb().prepare("SELECT data FROM records WHERE identity = ? AND key != ?").all(identity(book), key) as { data: string }[]).map((r) => readBook(r.data));
