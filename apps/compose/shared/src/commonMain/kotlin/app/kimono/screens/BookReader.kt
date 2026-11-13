@@ -232,6 +232,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
     val opening = remember { startAt }
     /* Your place is only saved once you've turned a page or scrolled: opening a book never moves it. */
     var moved by remember { mutableStateOf(false) }
+    var finished by remember { mutableStateOf(false) }
     /* Set once the book has opened at your place; the jump there isn't you scrolling. */
     var settled by remember { mutableStateOf(false) }
     LaunchedEffect(list) { snapshotFlow { list.isScrollInProgress }.collect { if (it && settled) moved = true } }
@@ -264,11 +265,11 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
     /* Your place, a moment after the page settles: chapter, then how far through it. */
     LaunchedEffect(book, at, moved) {
         val epub = book ?: return@LaunchedEffect
-        snapshotFlow { list.firstVisibleItemIndex to list.layoutInfo.totalItemsCount }
+        snapshotFlow { Triple(list.firstVisibleItemIndex, list.layoutInfo.totalItemsCount, list.canScrollForward) }
             .debounce(1500)
-            .collect { (first, total) ->
+            .collect { (first, total, more) ->
                 if (!moved || total == 0) return@collect
-                val within = if (total > 1) first.toDouble() / (total - 1) else 0.0
+                val within = if (!more) 1.0 else if (total > 1) first.toDouble() / (total - 1) else 0.0
                 val fraction = ((at + within) / epub.chapters.size).coerceIn(0.0, 1.0)
                 runCatching { books.progress(bookKey, fraction) }.onSuccess { onProgress(it.fraction) }
             }
@@ -295,6 +296,10 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
             val atEnd = !list.canScrollForward
             val atStart = !list.canScrollBackward
             when {
+                forward && atEnd && book != null && at + 1 >= book!!.chapters.size -> {
+                    /* Past the last page: the book is read. */
+                    runCatching { books.progress(bookKey, 1.0) }.onSuccess { onProgress(it.fraction); finished = true }
+                }
                 forward && atEnd -> go(at + 1)
                 !forward && atStart -> go(at - 1)
                 else -> list.animateScrollBy(if (forward) page else -page)
@@ -340,7 +345,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                         }
                     }
                 },
-                    contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 112.dp, bottom = 96.dp)) {
+                    contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 112.dp, bottom = 200.dp)) {
                     itemsIndexed(blocks) { _, block ->
                         when (block) {
                             is Block.Heading -> Text(block.text, color = paper.ink, fontWeight = FontWeight.Bold, fontSize = (size + (7 - block.level.coerceIn(1, 6)) * 2.5f).sp,
@@ -384,7 +389,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                 }
             }
             if (epub != null) {
-                val within = if (list.layoutInfo.totalItemsCount > 1) list.firstVisibleItemIndex.toFloat() / (list.layoutInfo.totalItemsCount - 1) else 0f
+                val within = if (!list.canScrollForward) 1f else if (list.layoutInfo.totalItemsCount > 1) list.firstVisibleItemIndex.toFloat() / (list.layoutInfo.totalItemsCount - 1) else 0f
                 val fraction = ((at + within) / epub.chapters.size).coerceIn(0f, 1f)
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(if (chrome) paper.bg else Color.Transparent).navigationBarsPadding()) {
                     AnimatedVisibility(chrome, enter = fadeIn(), exit = fadeOut()) {
@@ -393,7 +398,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                             var seeking by remember { mutableStateOf<Float?>(null) }
                             val showing = seeking ?: fraction
                             val chapterAt = ((showing * epub.chapters.size).toInt().coerceIn(0, epub.chapters.size - 1))
-                            Text(if (seeking != null) epub.chapters[chapterAt].title else "Chapter ${chapterAt + 1} of ${epub.chapters.size} · ${(showing * 100).toInt()}%",
+                            Text(if (seeking != null) epub.chapters[chapterAt].title else if (finished) "Finished · on your shelf as Read" else "Chapter ${chapterAt + 1} of ${epub.chapters.size} · ${(showing * 100).toInt()}%",
                                 color = paper.ink.copy(alpha = .7f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                             Row(verticalAlignment = Alignment.CenterVertically) {
