@@ -25,6 +25,8 @@ export type BookFile = {
   language: string | null;
   /** A preview or sample, not the whole book. */
   sample: boolean;
+  /** Being made from another of the book's files right now (a PDF's EPUB, lib/books/convert); opening it answers 202 until it's ready. */
+  preparing?: boolean;
 };
 
 export type Range = { start: number; end?: number };
@@ -51,6 +53,11 @@ export class FileProblem extends Error {
   constructor(message: string, readonly status = 404) { super(message); }
 }
 
+/** The file is still being made (a PDF's EPUB): ask again shortly. `progress` is 0–1. */
+export class FilePreparing extends FileProblem {
+  constructor(readonly progress: number) { super("This book is still being prepared.", 202); }
+}
+
 const g = globalThis as unknown as { kimonoBookSources?: Map<string, FileSource> };
 const registry = () => (g.kimonoBookSources ??= new Map());
 
@@ -60,6 +67,11 @@ export function registerFileSource(source: FileSource) {
 }
 
 export function unregisterFileSource(name: string) { registry().delete(name); }
+
+/** Files made from the ones the sources found (an EPUB from a PDF): lib/books/convert sets this. */
+export type FileDeriver = (book: Pick<Book, "key" | "title" | "authors" | "isbns" | "language">, found: BookFile[]) => BookFile[];
+const deriving = globalThis as unknown as { kimonoBookDeriver?: FileDeriver | null };
+export function setFileDeriver(derive: FileDeriver | null) { deriving.kimonoBookDeriver = derive; }
 export const fileSources = (): FileSource[] => [...registry().values()];
 
 /* The order to offer formats in: what reads best in the browser and on a phone first. */
@@ -86,9 +98,16 @@ export async function filesFor(book: Pick<Book, "key" | "title" | "authors" | "i
       return [];
     }
   }));
-  return found.flat()
+  const files = found.flat()
     .sort((a, b) => Number(a.sample) - Number(b.sample) || formatRank[a.format] - formatRank[b.format] || a.order - b.order)
-    .map(({ order: _order, ...f }) => f); // eslint-disable-line @typescript-eslint/no-unused-vars
+    .map(({ order: _order, ...f }) => f as BookFile); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const derived = deriving.kimonoBookDeriver?.(book, files) ?? [];
+  /* A made file goes just before the one it was made from, so a whole book's EPUB still comes before a sample's. */
+  for (const d of derived) {
+    const at = files.findIndex((f) => f.sample === d.sample && formatRank[f.format] > formatRank[d.format]);
+    files.splice(at < 0 ? files.length : at, 0, d);
+  }
+  return files;
 }
 
 /** A file's address in Books: `${source}:${id}`. */

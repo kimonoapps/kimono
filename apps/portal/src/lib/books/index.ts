@@ -11,8 +11,12 @@ import { booksConfig, type BooksConfig } from "./config";
 import { BooksProblem, dedupe, emptyBook, identity, merge, normalizeIsbn, sourceOf, type Book, type Rating, type Row, type ShelfItem, type ShelfState } from "./model";
 import { googleBooks, hardcover, openLibrary, type LiveSource } from "./sources";
 import { registerTestFiles } from "./test-files";
+import { registerConversions } from "./convert";
+import { codeConfig } from "../code/config";
 
 registerTestFiles();
+/* A PDF is also offered as an EPUB, made with Kimono AI's Claude token when there is one (lib/books/convert). */
+registerConversions({ bookFor: (key) => getBook(key), token: async () => codeConfig(await getPlatformSettings()).modelToken });
 
 export * from "./model";
 

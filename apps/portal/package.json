@@ -15,6 +15,7 @@
     "test:drive": "node --test scripts/test-drive.mjs",
     "test:watch": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-watch.mjs scripts/test-watch-sources.mjs",
     "test:books": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-books.mjs",
+    "test:books-convert": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-books-convert.mjs",
     "test:friends": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-friends.mjs",
     "test:notes": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-notes.mjs",
     "test:outline-import": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --test scripts/test-outline-import.mjs",
@@ -34,6 +35,7 @@
     "test:git-owners": "node --experimental-transform-types --import ./scripts/ts-resolve.mjs --conditions=react-server --test scripts/test-git-owners.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.8.0",
     "@codemirror/collab": "6.1.1",
     "@codemirror/commands": "6.11.1",
     "@codemirror/lang-markdown": "6.5.2",
