@@ -168,14 +168,19 @@ export function Reader({ bookKey, title, author, file, startAt, onClose, onProgr
         const r = book.renderTo(stage.current, { width: "100%", height: "100%", flow: first.layout === "scroll" ? "scrolled-doc" : "paginated", spread: first.layout === "spread" ? "auto" : "none", allowScriptedContent: false });
         rendition.current = r;
         opened.current = { book, toc };
+        /*
+         * epub.js puts a theme's sheet in the first time it's picked and never takes it out, so the colours
+         * hang on the class it gives the chosen one: otherwise night after paper kept paper's dark ink.
+         */
         for (const [name, p] of Object.entries(papers)) {
           r.themes.register(name, {
             html: { background: "transparent" },
-            body: { "font-family": "\"Shippori Mincho\", \"Iowan Old Style\", Georgia, serif", "line-height": "1.7", color: p.ink, background: "transparent", hyphens: "auto", "text-align": "justify" },
+            body: { "font-family": "\"Shippori Mincho\", \"Iowan Old Style\", Georgia, serif", "line-height": "1.7", background: "transparent", hyphens: "auto", "text-align": "justify" },
+            [`html.${name} body`]: { color: `${p.ink} !important` },
             "h1, h2, h3": { "font-family": "\"Shippori Mincho\", Georgia, serif", "font-weight": "700", "line-height": "1.25", "text-align": "left" },
             p: { margin: "0 0 .9em" },
             a: { color: "inherit" },
-            "::selection": { background: name === "night" ? "#5b6b3f" : "#d6e2b8" },
+            [`html.${name} ::selection`]: { background: name === "night" || name === "dusk" ? "#5b6b3f" : "#d6e2b8" },
           });
         }
         dress(r, prefs.read());

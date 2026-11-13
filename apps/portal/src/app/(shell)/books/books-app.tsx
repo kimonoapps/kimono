@@ -47,6 +47,8 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
   const [problem, setProblem] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; at: number } | null>(null);
   const [scrolled, setScrolled] = useState(false);
+  /* Which way the page last moved between Discover and your shelf, until it has arrived. */
+  const [moved, setMoved] = useState<"next" | "back" | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
   const say = useCallback((text: string) => setToast({ text, at: Date.now() }), []);
@@ -67,7 +69,11 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
   }, []);
 
   /* The new page renders as a transition, so the tab's pill moves first instead of waiting on it. */
-  const go = (next: Tab) => { startTransition(() => { setTab(next); setGenre(null); }); setQuery(""); writePlace(next, null, "", true); root.current?.scrollTo({ top: 0, behavior: "smooth" }); };
+  const go = (next: Tab) => {
+    const from = query ? -1 : tab === "shelf" ? 1 : 0, to = next === "shelf" ? 1 : 0;
+    startTransition(() => { setTab(next); setGenre(null); setMoved(from === to && !genre ? null : to >= from ? "next" : "back"); });
+    setQuery(""); writePlace(next, null, "", true); root.current?.scrollTo({ top: 0 });
+  };
   const browse = (id: string) => { startTransition(() => { setTab("home"); setGenre(id); }); setQuery(""); writePlace("home", null, "", true, id); root.current?.scrollTo({ top: 0 }); };
   const openBook = useCallback((key: string) => { setOpen(key); writePlace(tab, key, query, true, genre); }, [tab, query, genre]);
   const closeBook = useCallback(() => { setOpen(null); writePlace(tab, null, query, false, genre); }, [tab, query, genre]);
@@ -99,6 +105,8 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
 
     <MyShelf.Provider value={mineOf}>
     <main className="kb-main">
+      <div key={query.trim() ? "search" : tab === "shelf" ? "shelf" : genre ? `genre:${genre}` : "home"} className={cx("kb-view", moved && `kb-from-${moved}`)}
+        onAnimationEnd={(e) => { if (e.target === e.currentTarget) setMoved(null); }}>
       {query.trim()
         ? <SearchResults q={query.trim()} genres={home?.genres ?? []} onOpen={openBook} onBrowse={browse} />
         : tab === "shelf"
@@ -106,6 +114,7 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
           : genre
             ? <GenrePage key={genre} id={genre} genres={home?.genres ?? []} onOpen={openBook} onBrowse={browse} onBack={() => go("home")} />
             : <HomePage home={home} reading={reading} firstName={firstName} problem={problem} onRetry={loadHome} onOpen={openBook} onShelf={() => go("shelf")} onBrowse={browse} onPlaced={placed} />}
+      </div>
     </main>
 
     {open ? <BookSheet key={open} bookKey={open} onClose={closeBook} onOpen={openBook} onPlaced={placed} /> : null}
@@ -323,28 +332,47 @@ const plain = (md: string) => md.replace(/^#+\s*/gm, "").replace(/^\s*[-*+]\s+/g
 function Tabs({ at, children }: { at: number | null; children: ReactNode }) {
   const nav = useRef<HTMLElement>(null);
   const ink = useRef<HTMLSpanElement>(null);
-  /* Moves the pill under a tab: at once when it's clicked, not when the page catches up. */
-  const place = useCallback((index: number | null) => {
+  const was = useRef<{ x: number; w: number } | null>(null);
+  /*
+   * Moves the pill under a tab: at once when it's clicked, not when the page catches up.
+   * It goes like ink drawn with a brush: the leading edge reaches the tab first, the
+   * trailing edge follows and settles with a little give.
+   */
+  const place = useCallback((index: number | null, move: boolean) => {
     const pill = ink.current;
     const buttons = [...(nav.current?.querySelectorAll("button") ?? [])];
     const button = index === null ? null : buttons[index];
     buttons.forEach((b) => b.classList.toggle("kb-on", b === button));
     if (!pill) return;
-    if (!button) { pill.style.opacity = "0"; return; }
-    pill.style.transform = `translateX(${button.offsetLeft}px)`;
-    pill.style.width = `${button.offsetWidth}px`;
+    if (!button) { pill.style.opacity = "0"; was.current = null; return; }
+    const x = button.offsetLeft, w = button.offsetWidth;
+    /* From wherever it is now, mid-move included. */
+    const moving = pill.getAnimations();
+    const now = moving.length ? { x: new DOMMatrix(getComputedStyle(pill).transform).m41, w: parseFloat(getComputedStyle(pill).width) } : was.current;
+    moving.forEach((a) => a.cancel());
+    was.current = { x, w };
+    pill.style.transform = `translateX(${x}px)`;
+    pill.style.width = `${w}px`;
     pill.style.opacity = "1";
-    /* No slide on the first paint: it starts where it belongs, and slides from then on. */
-    if (!pill.style.transition) requestAnimationFrame(() => { pill.style.transition = "transform .38s var(--ease-out), width .38s var(--ease-out), opacity .2s"; });
+    if (!move || !now || (Math.abs(now.x - x) < 1 && Math.abs(now.w - w) < 1) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const [l0, r0, l1, r1] = [now.x, now.x + now.w, x, x + w];
+    const ahead = l1 > l0 ? { l: l0 + (l1 - l0) * 0.18, r: r1 } : { l: l1, r: r0 - (r0 - r1) * 0.18 };
+    const at = (l: number, r: number) => ({ transform: `translateX(${l}px)`, width: `${r - l}px` });
+    pill.animate([
+      { ...at(l0, r0), easing: "cubic-bezier(.3,0,.1,1)" },
+      { ...at(ahead.l, ahead.r), offset: 0.42, easing: "cubic-bezier(.3,1.3,.5,1)" },
+      at(l1, r1),
+    ], { duration: 520 });
   }, []);
   useEffect(() => {
-    place(at);
-    const watch = new ResizeObserver(() => place(at));
+    place(at, true);
+    /* A resize puts it back in place, but never cuts a move short. */
+    const watch = new ResizeObserver(() => { if (!ink.current?.getAnimations().length) place(at, false); });
     if (nav.current) watch.observe(nav.current);
     return () => watch.disconnect();
   }, [at, children, place]);
   return <nav ref={nav} className="kb-tabs" aria-label="Books"
-    onClickCapture={(e) => { const i = [...(nav.current?.querySelectorAll("button") ?? [])].findIndex((b) => b.contains(e.target as Node)); if (i >= 0) place(i); }}>
+    onClickCapture={(e) => { const i = [...(nav.current?.querySelectorAll("button") ?? [])].findIndex((b) => b.contains(e.target as Node)); if (i >= 0) place(i, true); }}>
     <span ref={ink} className="kb-tab-ink" aria-hidden />
     {children}
   </nav>;
