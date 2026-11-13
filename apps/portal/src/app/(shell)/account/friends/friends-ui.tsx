@@ -141,7 +141,7 @@ export function FriendsView() {
 
     {inbox?.received.length ? <>
       <div className="label">For you</div>
-      <div className="fr-shelf">{inbox.received.map((r) => <Tile key={r.id} item={r}>
+      <div className="fr-shelf k-inkbar">{inbox.received.map((r) => <Tile key={r.id} item={r}>
         <span className="fr-from"><Portrait name={r.from.name} username={r.from.username} picture={r.from.picture} size={20} />{first(r.from)}{r.seen ? null : <i className="fr-new" aria-label="New" />}</span>
         {r.note ? <q className="fr-tile-note">{r.note}</q> : null}
         <button type="button" className="fr-away" aria-label={`Put away ${r.title}`} onClick={() => putAway(r)}><LineIcon name="check" /></button>
@@ -206,7 +206,7 @@ export function ProfileView({ username }: { username: string }) {
       <span className="you-picture"><Face person={p} size={112} /></span>
       <h1>{p.name}</h1>
       <p>@{p.username}{p.open ? ` · ${p.friends === 1 ? "1 friend" : `${p.friends} friends`}` : ""}</p>
-      {p.open && p.kimonoRead ? <SilkscreenBadge since={p.kimonoRead.since} you={p.you} /> : null}
+      {p.open && p.kimonoRead ? <SilkscreenBadge since={p.kimonoRead.since} you={p.you} name={p.name || p.username} /> : null}
       {p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
       <div className="fr-actions">{action}</div>
     </div>
@@ -214,7 +214,7 @@ export function ProfileView({ username }: { username: string }) {
 
     {p.open && p.recommendations.length ? <section className="fr-group">
       <div className="label">Recommends</div>
-      <div className="fr-shelf">{p.recommendations.map((r) => <Tile key={r.id} item={r}>
+      <div className="fr-shelf k-inkbar">{p.recommendations.map((r) => <Tile key={r.id} item={r}>
         {r.note ? <q className="fr-tile-note">{r.note}</q> : null}
         {p.you ? <button type="button" className="fr-away" aria-label={`Take ${r.title} off your profile`} onClick={() => void takeBack(r)}><LineIcon name="trash" /></button>
           : <button type="button" className="fr-away" aria-label={`Recommend ${r.title}`} onClick={() => setRecommending(r)}><LineIcon name="send" /></button>}
@@ -233,7 +233,7 @@ export function ProfileView({ username }: { username: string }) {
         </div>
         {rows.map((s) => <div key={`${s.app}:${s.kind}`}>
           <div className="label">{s.title}</div>
-          <div className="fr-shelf">{s.items.map((i) => <Tile key={i.itemId} item={i}>
+          <div className="fr-shelf k-inkbar">{s.items.map((i) => <Tile key={i.itemId} item={i}>
             <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>
           </Tile>)}</div>
         </div>)}

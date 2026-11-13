@@ -1,4 +1,4 @@
-Silkscreen Kimono: the Silkscreen e-reader's 4.26" case, with Kimono's mark on its back
+Silkscreen Kimono: the Silkscreen e-reader's 4.26" case, with Kimono's branch on its back
 
 Silkscreen enclosure by iandchasse, CERN-OHL-S-2.0.
 https://github.com/iandchasse/silkscreen-enclosures (commit 658f955f6665dc816de83914dbf117388d349828)
@@ -24,9 +24,10 @@ What is here, all under the licence above:
 
 - build_case.py: modified from the enclosure's enclosures/case-426/src/build.py. It
   builds the published 4.26" standard case (tub, lid with its side keys, bottom keys,
-  the display as held) with one change: the back carries Kimono's mark (the white
-  branch on a rose square), cut 0.4 mm deep and inlaid in two colours, in place of
-  the Silkscreen book icon, and the Silkscreen wordmark is left off. Run it against a checkout of the enclosure at the commit above.
+  the display as held) with one change: the back carries Kimono's branch and
+  wordmark, cut 0.4 mm deep and inlaid in white on the crimson case, in place of the
+  Silkscreen book icon and wordmark. Run it against a checkout of the enclosure at
+  the commit above.
 - make_model.py: makes silkscreen-kimono.glb from build_case.py's parts (colours,
   decimation for the web, a page on the screen).
 - make_turntable.py: renders the GLB as the sprite sheet the Kimono phone app turns
@@ -35,9 +36,11 @@ What is here, all under the licence above:
 
 Not covered by the licence above:
 
-- The Kimono name and the mark's artwork (kimono-mark.svg) are Kimono's marks, used
+- The Kimono name and the branch and wordmark artwork (kimono-branch.svg, kimono-wordmark.svg) are
+  Kimono's marks, used
   to emboss the case. The licence covers the case design; it does not grant rights to
   the Kimono name or mark. Likewise the Silkscreen name and logo, which this case
   does not carry.
 - The page on the screen is the opening of Jane Austen's Pride and Prejudice (1813),
-  in the public domain, set in Shippori Mincho (SIL Open Font License 1.1).
+  in the public domain, set in Shippori Mincho (SIL Open Font License 1.1), which the wordmark is drawn
+  from too.

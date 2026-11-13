@@ -232,7 +232,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                     Portrait(p.picture, p.name, p.username, 128.dp)
                     Text(p.name.ifBlank { p.username }, style = MaterialTheme.typography.headlineMedium, color = Kata.plum, textAlign = TextAlign.Center)
                     Text("@${p.username}" + if (p.open) " · ${if (p.friends == 1) "1 friend" else "${p.friends} friends"}" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    p.kimonoRead?.let { SilkscreenBadge(it.since, p.you, still) }
+                    p.kimonoRead?.let { SilkscreenBadge(it.since, p.you, p.name.ifBlank { p.username }, still, friends.server) }
                     if (p.open && p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                         when {

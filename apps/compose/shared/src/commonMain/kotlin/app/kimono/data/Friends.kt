@@ -68,6 +68,9 @@ private val json = Json { ignoreUnknownKeys = true }
  * side stays Watch's own.
  */
 class Friends(private val session: Session) {
+    /** The Kimono this is, for links into it (the Silkscreen Kimono's NOTICE). */
+    val server: String? get() = (session.state.value as? SessionState.SignedIn)?.server
+
     suspend fun list(): FriendsList = json.decodeFromString(session.fetch(FRIENDS))
     fun known(): FriendsList? = session.answers.peek(FRIENDS)?.let { runCatching { json.decodeFromString<FriendsList>(it) }.getOrNull() }
 

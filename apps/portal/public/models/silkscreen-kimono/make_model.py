@@ -3,7 +3,7 @@
 SPDX-License-Identifier: CERN-OHL-S-2.0
 Part of the Silkscreen Kimono model, from iandchasse's Silkscreen enclosure (idc LLC, CERN-OHL-S v2): see NOTICE.txt.
 
-The case in e-paper grey, the back a shade deeper, Kimono's mark inlaid: the white branch on a rose square, the keys, and on the screen a
+The case in a deep crimson rose, the back and keys a shade deeper, the branch and the wordmark inlaid in white on the back, the keys, and on the screen a
 faint page of text (Jane Austen, public domain). Each part is decimated for the web and shaded smooth only across soft
 edges. CAD millimetres (X right, Y up, Z toward the screen) become glTF metres, which share the axes.
 
@@ -24,13 +24,13 @@ FONT = sys.argv[2] if len(sys.argv) > 2 else None
 ACTIVE_W, ACTIVE_H, ACTIVE_CX, ACTIVE_CY = 55.68, 92.8, 30.0, 61.5
 
 LOOK = {  # part: (colour, roughness, faces kept)
-    'tub': ('#d4d1c9', .72, 16000),
-    'lid': ('#c3bfb6', .78, 14000),
-    'mark': ('#a84d63', .6, 3000),
-    'mark_white': ('#fff4f1', .6, 3000),
+    'tub': ('#b0263c', .58, 16000),
+    'lid': ('#a12236', .62, 14000),
+    'mark': ('#fff4f1', .55, 3000),
+    'mark_word': ('#fff4f1', .55, 3000),
     'display': ('#2f2e2c', .4, 400),
 }
-KEY = ('#a9a59c', .7, 400)
+KEY = ('#8a1d2f', .58, 400)
 
 
 def material(colour, rough, texture=None):

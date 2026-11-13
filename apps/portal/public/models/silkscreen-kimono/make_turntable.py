@@ -36,6 +36,13 @@ window.AddRenderer(renderer)
 importer.SetRenderWindow(window)
 importer.Update()
 
+# glTF colours are sRGB, as three.js reads them; VTK takes them as they are, which washes them out, so they are
+# made linear here (the page's texture is left alone)
+actors = renderer.GetActors()
+actors.InitTraversal()
+for _ in range(actors.GetNumberOfItems()):
+    prop = actors.GetNextActor().GetProperty()
+    prop.SetColor(*[c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in prop.GetColor()])
 renderer.RemoveAllLights()
 for pos, colour, power in (((2.5, 3, 4), (1, 1, 1), 1.5), ((-3, 1.5, -4), (1, .95, .9), .6), ((-1, -2, 3), (1, .98, .95), .6)):
     light = vtk.vtkLight()
@@ -45,7 +52,7 @@ for pos, colour, power in (((2.5, 3, 4), (1, 1, 1), 1.5), ((-3, 1.5, -4), (1, .9
     light.SetColor(*colour)
     light.SetIntensity(power)
     renderer.AddLight(light)
-renderer.SetAmbient(.6, .6, .6)
+renderer.SetAmbient(.25, .25, .25)
 
 bounds = [0.0] * 6
 renderer.ComputeVisiblePropBounds(bounds)

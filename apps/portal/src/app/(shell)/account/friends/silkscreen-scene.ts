@@ -55,15 +55,18 @@ export async function mountTurntable(host: HTMLElement, options: { still: boolea
   let angle = MathUtils.degToRad(-24), speed = 0, target: number | null = null, dragging = false, lastX = 0, lastT = 0;
   const drift = options.still ? 0 : 0.35;
   let wasBack = false;
-  const down = (e: PointerEvent) => { dragging = true; target = null; lastX = e.clientX; lastT = e.timeStamp; speed = 0; host.setPointerCapture(e.pointerId); };
+  /* A press that hardly moves is a tap: it turns the case over. */
+  let travel = 0;
+  const down = (e: PointerEvent) => { dragging = true; target = null; travel = 0; lastX = e.clientX; lastT = e.timeStamp; speed = 0; host.setPointerCapture(e.pointerId); };
   const move = (e: PointerEvent) => {
     if (!dragging) return;
     const dx = e.clientX - lastX, dt = Math.max(1, e.timeStamp - lastT);
-    angle += dx * 0.012;
-    speed = (dx * 0.012) / (dt / 1000);
+    travel += Math.abs(dx);
+    angle += dx * 0.03;
+    speed = (dx * 0.03) / (dt / 1000);
     lastX = e.clientX; lastT = e.timeStamp;
   };
-  const up = () => { dragging = false; };
+  const up = (e: PointerEvent) => { const tap = dragging && e.type === "pointerup" && travel < 4; dragging = false; if (tap) turnOver(); };
   host.addEventListener("pointerdown", down);
   host.addEventListener("pointermove", move);
   host.addEventListener("pointerup", up);
@@ -94,13 +97,15 @@ export async function mountTurntable(host: HTMLElement, options: { still: boolea
   };
   frame = requestAnimationFrame(tick);
 
+  /* Half a turn, to whichever face isn't showing, square on. */
+  function turnOver() {
+    const face = Math.round(angle / Math.PI) * Math.PI;
+    target = face + Math.PI;
+    speed = 0;
+  }
+
   return {
-    /* Half a turn, to whichever face isn't showing, square on. */
-    turnOver: () => {
-      const face = Math.round(angle / Math.PI) * Math.PI;
-      target = face + Math.PI;
-      speed = 0;
-    },
+    turnOver,
     dispose: () => {
       cancelAnimationFrame(frame);
       resized.disconnect();
