@@ -47,7 +47,10 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
   const [problem, setProblem] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; at: number } | null>(null);
   const [scrolled, setScrolled] = useState(false);
-  /* Which way the page last moved between Discover and your shelf, until it has arrived. */
+  /*
+   * Which way the page last moved between Discover and your shelf. It stays until the next move: taking it off
+   * when the slide ended let the shelves start their own rise, so the page arrived twice.
+   */
   const [moved, setMoved] = useState<"next" | "back" | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
@@ -63,7 +66,7 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
   useEffect(() => { if (!asked.current) { asked.current = true; loadHome(); } }, [loadHome]);
 
   useEffect(() => {
-    const back = () => { const p = readPlace(); setTab(p.tab); setOpen(p.book); setQuery(p.q); setGenre(p.genre); };
+    const back = () => { const p = readPlace(); setMoved(null); setTab(p.tab); setOpen(p.book); setQuery(p.q); setGenre(p.genre); };
     addEventListener("popstate", back);
     return () => removeEventListener("popstate", back);
   }, []);
@@ -74,10 +77,10 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
     startTransition(() => { setTab(next); setGenre(null); setMoved(from === to && !genre ? null : to >= from ? "next" : "back"); });
     setQuery(""); writePlace(next, null, "", true); root.current?.scrollTo({ top: 0 });
   };
-  const browse = (id: string) => { startTransition(() => { setTab("home"); setGenre(id); }); setQuery(""); writePlace("home", null, "", true, id); root.current?.scrollTo({ top: 0 }); };
+  const browse = (id: string) => { startTransition(() => { setMoved(null); setTab("home"); setGenre(id); }); setQuery(""); writePlace("home", null, "", true, id); root.current?.scrollTo({ top: 0 }); };
   const openBook = useCallback((key: string) => { setOpen(key); writePlace(tab, key, query, true, genre); }, [tab, query, genre]);
   const closeBook = useCallback(() => { setOpen(null); writePlace(tab, null, query, false, genre); }, [tab, query, genre]);
-  const search = (q: string) => { setQuery(q); writePlace(tab, open, q, false, genre); };
+  const search = (q: string) => { setMoved(null); setQuery(q); writePlace(tab, open, q, false, genre); };
 
   /* Shelf changes from anywhere (a book's page, a tile) land here. */
   const placed = useCallback((items: ShelfItem[] | null, note?: string) => {
@@ -105,8 +108,7 @@ export function BooksApp({ accent, firstName, home: arrived }: { accent: string;
 
     <MyShelf.Provider value={mineOf}>
     <main className="kb-main">
-      <div key={query.trim() ? "search" : tab === "shelf" ? "shelf" : genre ? `genre:${genre}` : "home"} className={cx("kb-view", moved && `kb-from-${moved}`)}
-        onAnimationEnd={(e) => { if (e.target === e.currentTarget) setMoved(null); }}>
+      <div key={query.trim() ? "search" : tab === "shelf" ? "shelf" : genre ? `genre:${genre}` : "home"} className={cx("kb-view", moved && `kb-from-${moved}`)}>
       {query.trim()
         ? <SearchResults q={query.trim()} genres={home?.genres ?? []} onOpen={openBook} onBrowse={browse} />
         : tab === "shelf"
