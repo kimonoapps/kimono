@@ -249,6 +249,8 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     var refreshing by remember { mutableStateOf(false) }
     /* Which app's rows are open to choose what friends see of them. */
     var privacyOpen by remember { mutableStateOf<String?>(null) }
+    /* What you took off your profile, open to put back. */
+    var offOpen by remember { mutableStateOf(false) }
     suspend fun load() { try { profile = friends.profile(username); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(username) { load() }
     val mine = profile?.you == true
@@ -337,6 +339,9 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                         }
                     }
                 }
+                if (p.open && p.you && p.off.isNotEmpty()) Row(Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
+                    Seal("Taken off · ${p.off.size}", onClick = { offOpen = true }, compact = true, tone = SealTone.Quiet, icon = "eye")
+                }
                 Spacer(Modifier.height(32.dp))
             }
         }
@@ -359,7 +364,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                 dropping = null
                 /* Off the row at once (as its app would take it off); back if that fails. */
                 profile = profile?.let { now -> now.copy(sections = now.sections.map { x -> if (x.app == s.app && x.kind == s.kind) x.copy(items = x.items.filter { it.itemId != item.itemId }) else x }.filter { it.items.isNotEmpty() }) }
-                scope.launch { try { friends.removeFromRow(s.app, s.kind, item.itemId) } catch (e: KimonoProblem) { problem = e.message; load() } }
+                scope.launch { try { val off = friends.removeFromRow(s.kind, item); profile = profile?.copy(off = off) } catch (e: KimonoProblem) { problem = e.message; load() } }
             },
         )
     }
@@ -371,14 +376,40 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
         )
     }
     recommending?.let { item -> RecommendDialog(friends, item, onDismiss = { recommending = null }) }
+    if (offOpen && p != null) OffDialog(friends, p.off, onDismiss = { offOpen = false }) { left ->
+        profile = profile?.copy(off = left)
+        if (left.isEmpty()) offOpen = false
+        scope.launch { load() }
+    }
+}
+
+/** What you took off your profile, each with the row it came off; Put back returns it there. */
+@Composable
+private fun OffDialog(friends: Friends, off: List<app.kimono.data.OffProfile>, onDismiss: () -> Unit, onBack: (List<app.kimono.data.OffProfile>) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var problem by remember { mutableStateOf<String?>(null) }
+    InkDialog(title = "Taken off", icon = "eye", onDismiss = onDismiss, actions = { Seal("Done", compact = true, onClick = onDismiss) }) {
+        off.forEach { o ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Cover(o.item, Modifier.width(40.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(o.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("${o.appName} · ${o.rowTitle}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Seal("Put back", compact = true, tone = SealTone.Quiet, onClick = {
+                    scope.launch { try { onBack(friends.putBack(o)); problem = null } catch (e: KimonoProblem) { problem = e.message } }
+                })
+            }
+        }
+        Problem(problem)
+    }
 }
 
 /** What taking a title off a row means, said before it's done (apps/portal lib/friends removeFromRow): only the profile forgets it. */
 private fun dropLoses(app: String, kind: String, appName: String) = when {
-    app == "watch" && kind == "watched" -> "Friends stop seeing it until you watch it again. What you've watched stays."
-    app == "books" && kind == "reading" -> "Friends stop seeing it until you read on. Your progress stays."
-    kind == "loved" || kind == "liked" -> "Friends stop seeing it until you rate it again. Your rating stays."
-    else -> "Friends stop seeing it here. It stays in $appName."
+    app == "books" && kind == "reading" -> "Your progress stays. Put it back from Taken off."
+    kind == "loved" || kind == "liked" -> "Your rating stays. Put it back from Taken off."
+    else -> "It stays in $appName. Put it back from Taken off."
 }
 
 /** A row's label, with "Only you" beside it when friends don't see it. */

@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { changePrivacy, friendly, profileOf, removeFromRow, saveBio } from "@/lib/friends";
+import { changePrivacy, friendly, profileOf, putBackOnRow, removeFromRow, saveBio } from "@/lib/friends";
 import { portalOrigin } from "@/lib/watch";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +26,7 @@ export async function PATCH(request: Request) {
   return friendly(async () => {
     /* `{ remove: { app, kind, itemId } }`: one title off one row of your profile. */
     if (body.remove && typeof body.remove === "object") return apiJson(await removeFromRow(user.username, body.remove as Record<string, unknown>));
+    if (body.restore && typeof body.restore === "object") return apiJson(await putBackOnRow(user.username, body.restore as Record<string, unknown>));
     if ("invisible" in body || "keep" in body || typeof body.app === "string") return apiJson(changePrivacy(user.username, body));
     return apiJson({ bio: saveBio(user.username, body.bio) });
   });

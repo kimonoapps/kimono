@@ -272,12 +272,17 @@ test('home activity: a few per friend, a short list, only lately', () => {
   assert.equal(homeOf(db, items, share(), { limit: 3 }).length, 3);
 });
 
-test('profiles: a title taken off a row stays off until it changes, and only that row forgets it', () => {
+test('profiles: a title taken off a row stays off until put back, and only that row forgets it', () => {
   const db = fresh();
-  friends.takeOffProfile(db, 'Sami', 'books:reading', 'b1', 100);
+  friends.takeOffProfile(db, 'Sami', 'books:reading', 'b1', { title: 'Emma', cover: 'javascript:x' }, 100);
+  friends.takeOffProfile(db, 'sami', 'watch:listed', 'tv:1', { title: 'Severance' }, 200);
   const off = friends.offProfileOf(db, 'sami');
-  assert.equal(friends.isOffProfile(off, 'books:reading', 'b1', 90), true);
-  assert.equal(friends.isOffProfile(off, 'books:reading', 'b1', 150), false, 'reading on brings it back');
-  assert.equal(friends.isOffProfile(off, 'books:read', 'b1', 90), false, 'other rows keep it');
-  assert.equal(friends.isOffProfile(off, 'books:reading', 'b2', null), false);
+  assert.equal(friends.isOffProfile(off, 'books:reading', 'b1'), true);
+  assert.equal(friends.isOffProfile(off, 'books:read', 'b1'), false, 'other rows keep it');
+  assert.equal(friends.isOffProfile(off, 'books:reading', 'b2'), false);
+  const list = friends.offProfileList(db, 'sami');
+  assert.deepEqual(list.map((o) => [o.rowTitle, o.title]), [['Watchlist', 'Severance'], ['Reading now', 'Emma']]);
+  assert.equal(list[1].cover, null, 'only real covers');
+  friends.putBackOnProfile(db, 'sami', 'books:reading', 'b1');
+  assert.equal(friends.isOffProfile(friends.offProfileOf(db, 'sami'), 'books:reading', 'b1'), false);
 });

@@ -36,30 +36,50 @@ export function migrateSocial(db: DatabaseSync) {
   /* Rows of a profile someone keeps to themselves ("watch:listed", "friends"), comma-separated; and whether they've gone invisible. */
   if (!columns.includes("kept")) db.exec("ALTER TABLE profiles ADD COLUMN kept TEXT NOT NULL DEFAULT ''");
   if (!columns.includes("invisible")) db.exec("ALTER TABLE profiles ADD COLUMN invisible INTEGER NOT NULL DEFAULT 0");
+  /* What a title taken off a profile is called, so it can be put back from a list. */
+  const off = (db.prepare("PRAGMA table_info(profile_off)").all() as { name: string }[]).map((c) => c.name);
+  for (const c of ["title", "subtitle", "cover"]) if (!off.includes(c)) db.exec(`ALTER TABLE profile_off ADD COLUMN ${c} TEXT`);
 }
 
 /* ───── Off your profile ───── */
 
 /**
  * A title someone took off one row of their profile ("books:reading"). Only the profile forgets it: the app keeps
- * their progress, rating or list as it was, and it comes back once it changes after (they read on, rate it again).
+ * their progress, rating or list as it was. It stays off until they put it back (offProfileList, putBackOnProfile).
+ * [item]'s name and cover are kept so that list can show it.
  */
-export function takeOffProfile(db: DatabaseSync, username: string, row: string, itemId: string, at = Date.now()) {
-  db.prepare("INSERT INTO profile_off (username, row, item_id, at) VALUES (?, ?, ?, ?) ON CONFLICT (username, row, item_id) DO UPDATE SET at = excluded.at")
-    .run(username.toLowerCase(), row, itemId, at);
+export function takeOffProfile(db: DatabaseSync, username: string, row: string, itemId: string, item: { title?: unknown; subtitle?: unknown; cover?: unknown } = {}, at = Date.now()) {
+  db.prepare(`INSERT INTO profile_off (username, row, item_id, at, title, subtitle, cover) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (username, row, item_id) DO UPDATE SET at = excluded.at, title = excluded.title, subtitle = excluded.subtitle, cover = excluded.cover`)
+    .run(username.toLowerCase(), row, itemId, at, text(item.title, 200) || null, text(item.subtitle, 200) || null, coverOf(item.cover));
 }
 
-/** What someone has taken off their profile: `row|itemId` to when. */
-export function offProfileOf(db: DatabaseSync, username: string): Map<string, number> {
-  const rows = db.prepare("SELECT row, item_id, at FROM profile_off WHERE username = ?").all(username.toLowerCase()) as { row: string; item_id: string; at: number }[];
-  return new Map(rows.map((r) => [`${r.row}|${r.item_id}`, r.at]));
+/** Puts a title back on one row of someone's profile. */
+export function putBackOnProfile(db: DatabaseSync, username: string, row: string, itemId: string) {
+  db.prepare("DELETE FROM profile_off WHERE username = ? AND row = ? AND item_id = ?").run(username.toLowerCase(), row, itemId);
 }
 
-/** Whether a title stays off a row: taken off, and not changed since. */
-export const isOffProfile = (off: Map<string, number>, row: string, itemId: string, changedAt?: number | null) => {
-  const at = off.get(`${row}|${itemId}`);
-  return at !== undefined && (changedAt ?? 0) <= at;
-};
+/** What someone has taken off their profile, as `row|itemId`. */
+export function offProfileOf(db: DatabaseSync, username: string): Set<string> {
+  const rows = db.prepare("SELECT row, item_id FROM profile_off WHERE username = ?").all(username.toLowerCase()) as { row: string; item_id: string }[];
+  return new Set(rows.map((r) => `${r.row}|${r.item_id}`));
+}
+
+/** Whether a title is kept off a row of a profile. */
+export const isOffProfile = (off: Set<string>, row: string, itemId: string) => off.has(`${row}|${itemId}`);
+
+/** What someone took off their profile, latest first, each with the row it came off, to put back. */
+export function offProfileList(db: DatabaseSync, username: string) {
+  const rows = db.prepare("SELECT row, item_id, at, title, subtitle, cover FROM profile_off WHERE username = ? ORDER BY at DESC")
+    .all(username.toLowerCase()) as { row: string; item_id: string; at: number; title: string | null; subtitle: string | null; cover: string | null }[];
+  return rows.flatMap((r) => {
+    const [app, kind] = r.row.split(":");
+    const rowTitle = rowsOf[app]?.find(([k]) => k === kind)?.[1];
+    if (!rowTitle) return [];
+    return [{ app, appName: apps[app]?.name ?? app, kind, rowTitle, itemId: r.item_id, title: r.title ?? "Untitled", named: r.title !== null, subtitle: r.subtitle ?? null, cover: r.cover ?? null, at: Number(r.at) }];
+  });
+}
+export type OffProfile = ReturnType<typeof offProfileList>[number];
 
 export class FriendsProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -283,7 +303,7 @@ export function profileFor<P extends { username: string }>(db: DatabaseSync, vie
     friends: friends.length,
     /* Who they're friends with, unless they keep it to themselves; never those who've gone invisible, but to themselves. */
     friendList: you || !kept.includes("friends") ? friends.filter((f) => you || f === v || !isInvisible(db, f)) : null,
-    ...(you ? { hidden, kept, privacy: privacyOf(db, u) } : {}),
+    ...(you ? { hidden, kept, privacy: privacyOf(db, u), off: offProfileList(db, u) } : {}),
   };
 }
 

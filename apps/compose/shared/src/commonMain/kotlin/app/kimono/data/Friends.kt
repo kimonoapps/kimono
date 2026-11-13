@@ -50,7 +50,19 @@ data class KimonoProfile(
     val friendList: List<FriendPerson>? = null,
     /** They read on a Kimono Read, since this ISO date. */
     val kimonoRead: KimonoRead? = null,
+    /** On your own profile: the titles you took off its rows, to put back. */
+    val off: List<OffProfile> = emptyList(),
 )
+
+/** A title you took off one row of your profile (lib/friends/model.ts offProfileList). */
+@Serializable
+data class OffProfile(
+    val app: String, val appName: String = "", val kind: String, val rowTitle: String = "", val itemId: String,
+    val title: String = "", val subtitle: String? = null, val cover: String? = null, val at: Long = 0,
+) { val item get() = ShareItem(app, itemId, title, subtitle, cover) }
+
+@Serializable
+private data class OffNow(val off: List<OffProfile> = emptyList())
 
 @Serializable
 data class KimonoRead(val since: String)
@@ -130,13 +142,17 @@ class Friends(private val session: Session) {
     suspend fun showAppOf(app: String, shown: Boolean): PrivacyNow = privacy(buildJsonObject { put("app", app); put("shown", shown) }.toString())
     /** Shows or keeps one row ("watch:listed") or your friends list ("friends") from friends. */
     suspend fun showPart(key: String, shown: Boolean): PrivacyNow = privacy(buildJsonObject { put("keep", key); put("shown", shown) }.toString())
-    /** Takes one title off one row of your own profile ("watch" + "listed", "books" + "read"…), as its app would. */
-    suspend fun removeFromRow(app: String, kind: String, itemId: String) {
-        session.call("/api/v1/profile", HttpMethod.Patch) {
-            contentType(ContentType.Application.Json)
-            setBody(buildJsonObject { put("remove", buildJsonObject { put("app", app); put("kind", kind); put("itemId", itemId) }) }.toString())
-        }
-    }
+    /** Takes one title off one row of your own profile ("listed", "read"…) until you put it back; answers all you've taken off. */
+    suspend fun removeFromRow(kind: String, item: ShareItem): List<OffProfile> = offCall("remove", buildJsonObject {
+        put("app", item.app); put("kind", kind); put("itemId", item.itemId); put("title", item.title)
+        item.subtitle?.let { put("subtitle", it) }; item.cover?.let { put("cover", it) }
+    })
+    /** Puts a title you took off back on its row; answers what's still off. */
+    suspend fun putBack(off: OffProfile): List<OffProfile> = offCall("restore", buildJsonObject { put("app", off.app); put("kind", off.kind); put("itemId", off.itemId) })
+    private suspend fun offCall(key: String, body: kotlinx.serialization.json.JsonObject): List<OffProfile> =
+        json.decodeFromString<OffNow>(session.call("/api/v1/profile", HttpMethod.Patch) {
+            contentType(ContentType.Application.Json); setBody(buildJsonObject { put(key, body) }.toString())
+        }).off
     private suspend fun privacy(body: String): PrivacyNow = json.decodeFromString(session.call("/api/v1/profile", HttpMethod.Patch) {
         contentType(ContentType.Application.Json); setBody(body)
     })

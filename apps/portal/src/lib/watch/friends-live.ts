@@ -270,7 +270,7 @@ export async function watchSections(viewer: string, username: string, origin: st
   const db = watchDb();
   const hidden = hiddenOf(db, u);
   const item = (t: Title) => ({ app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: cardOf(t, origin).poster, href: `/watch?t=${encodeURIComponent(t.id)}` });
-  /* `at`: when each was rated or listed, so a title taken off the profile comes back once that changes. */
+  /* `at`: when each was rated or listed. */
   const row = (kind: string, title: string, ids: string[], at: Map<string, number | null> = new Map()): Section =>
     ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map((t) => ({ ...item(t), at: at.get(t.id) ?? null })) });
   const rows: Section[] = [];

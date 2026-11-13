@@ -23,10 +23,12 @@ export type Section = { app: string; appName: string; kind: string; title: strin
 /** Private until you're friends: then only `open: false` and who they are comes back (lib/friends/model.ts profileFor). */
 export type Profile = Person & { you: boolean; link: "friends" | "asked" | "asking" | null } & (
   | { open: false }
-  | { open: true; bio: string; sections: Section[]; recommendations: Recommendation[]; friends: number; friendList?: Person[] | null; hidden?: string[]; kept?: string[]; privacy?: Privacy; kimonoRead?: { since: string } | null }
+  | { open: true; bio: string; sections: Section[]; recommendations: Recommendation[]; friends: number; friendList?: Person[] | null; hidden?: string[]; kept?: string[]; privacy?: Privacy; off?: Off[]; kimonoRead?: { since: string } | null }
 );
 /** What you let friends see (your own profile only): lib/friends/model.ts privacyOf. */
 export type Privacy = { invisible: boolean; friends: boolean; apps: { app: string; name: string; shown: boolean; rows: { kind: string; title: string; shown: boolean }[] }[] };
+/** A title you took off a row of your profile, to put back (lib/friends/model.ts offProfileList). */
+export type Off = Item & { appName: string; kind: string; rowTitle: string; at: number };
 type FriendsList = { friends: (Person & { bio: string })[]; asked: Person[]; asking: Person[]; unseen: number };
 type Inbox = { received: Recommendation[]; sent: Recommendation[]; profile: Recommendation[] };
 
@@ -194,6 +196,8 @@ export function ProfileView({ username, home = false }: { username: string; home
   const [toast, setToast] = useState<string | null>(null);
   /* Which app's rows are open to choose what friends see of them. */
   const [privacyOpen, setPrivacyOpen] = useState<string | null>(null);
+  /* What you took off your profile, open to put back. */
+  const [offOpen, setOffOpen] = useState(false);
   const crossTo = useCrossTo();
   const load = useCallback(() => call<Profile>(`/api/v1/profiles/${encodeURIComponent(username)}`).then(setProfile, (e) => setProblem(message(e))), [username]);
   useEffect(() => { void load(); }, [load]);
@@ -217,13 +221,15 @@ export function ProfileView({ username, home = false }: { username: string; home
   /* Kept from friends: the whole app, or one row of it. */
   const appKept = (app: string) => p.open && (p.hidden?.includes(app) ?? false);
   const rowKept = (app: string, kind: string) => appKept(app) || (p.open && (p.kept?.includes(`${app}:${kind}`) ?? false));
-  /* Your own: one title off one row, as its app would (lib/friends removeFromRow); it leaves at once and comes back if that fails. */
+  /* Your own: one title off one row, for good until you put it back (lib/friends removeFromRow); it leaves at once and comes back if that fails. */
   const drop = (s: Section, i: Item) => {
     if (!p.open) return;
-    setProfile({ ...p, sections: p.sections.map((x) => (x === s ? { ...x, items: x.items.filter((y) => y.itemId !== i.itemId) } : x)).filter((x) => x.items.length > 0) });
-    return call("/api/v1/profile", "PATCH", { remove: { app: s.app, kind: s.kind, itemId: i.itemId } })
-      .then(() => setToast(`Off ${s.title}`), (e) => { setProblem(message(e)); void load(); });
+    const left = { ...p, sections: p.sections.map((x) => (x === s ? { ...x, items: x.items.filter((y) => y.itemId !== i.itemId) } : x)).filter((x) => x.items.length > 0) };
+    setProfile(left);
+    return call<{ off: Off[] }>("/api/v1/profile", "PATCH", { remove: { app: s.app, kind: s.kind, itemId: i.itemId, title: i.title, subtitle: i.subtitle, cover: i.cover } })
+      .then((r) => { setProfile({ ...left, off: r.off }); setToast(`Off ${s.title}`); }, (e) => { setProblem(message(e)); void load(); });
   };
+  const off = p.open ? p.off ?? [] : [];
   const friendsKept = p.open && p.you && (invisible || privacy?.friends === false);
   /* What friends see of one part of you, one tag everywhere; tapping it changes that part. Invisible is Settings'. */
   const tag = (kept: boolean, some: boolean, onClick: () => void) => <button type="button" className={`fr-tag${kept ? " is-only" : ""}`}
@@ -306,6 +312,7 @@ export function ProfileView({ username, home = false }: { username: string; home
           })}
         </section>;
       }) : null}
+      {p.you && off.length ? <div className="fr-more fr-off-open"><Seal tone="quiet" compact onClick={() => setOffOpen(true)}><LineIcon name="eye" />Taken off · {off.length}</Seal></div> : null}
     </div>
 
     {privacyOpen && privacy ? <AppPrivacySheet app={privacyOpen} privacy={privacy} onClose={() => setPrivacyOpen(null)}
@@ -322,6 +329,8 @@ export function ProfileView({ username, home = false }: { username: string; home
       <Seal tone="quiet" compact onClick={() => setUnrecommending(null)}>Keep</Seal>
       <Seal tone="danger" compact onClick={() => { const r = unrecommending; setUnrecommending(null); void takeBack(r); }}>Take off</Seal>
     </>}><p className="fr-quiet">{unrecommending.note ? "Your note goes with it." : "Friends stop seeing you recommend it."}</p></InkSheet> : null}
+    {offOpen ? <OffSheet off={off} onClose={() => setOffOpen(false)}
+      onBack={(r, i) => { setToast(`Back on ${i.rowTitle}`); if (!r.length) setOffOpen(false); void load(); }} onProblem={setProblem} /> : null}
     {recommending ? <RecommendSheet item={recommending} onClose={() => setRecommending(null)} onSent={setToast} /> : null}
     {toast ? <div className="fr-toast" role="status">{toast}</div> : null}
   </div>;
@@ -329,10 +338,23 @@ export function ProfileView({ username, home = false }: { username: string; home
 
 /** What taking a title off a row means, said before it's done (lib/friends removeFromRow): only the profile forgets it. */
 const dropLoses = (s: Section) =>
-  s.app === "watch" && s.kind === "watched" ? "Friends stop seeing it until you watch it again. What you've watched stays."
-    : s.app === "books" && s.kind === "reading" ? "Friends stop seeing it until you read on. Your progress stays."
-      : s.kind === "loved" || s.kind === "liked" ? "Friends stop seeing it until you rate it again. Your rating stays."
-        : `Friends stop seeing it here. It stays in ${s.appName}.`;
+  s.app === "books" && s.kind === "reading" ? "Your progress stays. Put it back from Taken off."
+    : s.kind === "loved" || s.kind === "liked" ? "Your rating stays. Put it back from Taken off."
+      : `It stays in ${s.appName}. Put it back from Taken off.`;
+
+/** What you took off your profile, each with the row it came off; Put back returns it there. */
+function OffSheet({ off, onClose, onBack, onProblem }: { off: Off[]; onClose: () => void; onBack: (left: Off[], back: Off) => void; onProblem: (problem: string) => void }) {
+  const [left, setLeft] = useState(off);
+  const back = (o: Off) => call<{ off: Off[] }>("/api/v1/profile", "PATCH", { restore: { app: o.app, kind: o.kind, itemId: o.itemId } })
+    .then((r) => { setLeft(r.off); onBack(r.off, o); }, (e) => onProblem(message(e)));
+  return <InkSheet title="Taken off" icon="eye" onClose={onClose} actions={<Seal compact onClick={onClose}>Done</Seal>}>
+    <ul className="fr-off">{left.map((o) => <li key={`${o.app}:${o.kind}:${o.itemId}`}>
+      <Cover item={o} />
+      <span className="fr-off-words"><b>{o.title}</b><small>{o.appName} · {o.rowTitle}</small></span>
+      <Seal tone="quiet" compact onClick={() => void back(o)}>Put back</Seal>
+    </li>)}</ul>
+  </InkSheet>;
+}
 
 const keptFrom = (privacy: Privacy) => [
   ...(privacy.friends ? [] : ["friends"]),
