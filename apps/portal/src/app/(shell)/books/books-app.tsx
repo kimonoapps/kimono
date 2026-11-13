@@ -84,7 +84,7 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
     return (b: Pick<Book, "key" | "title" | "authors">) => byKey.get(b.key) ?? byBook.get(sameBook(b.title, b.authors[0] ?? ""));
   }, [shelf]);
 
-  return <div ref={root} className="kb" style={{ "--kb-accent": accent } as React.CSSProperties} onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 8)}>
+  return <div ref={root} className="kb k-inkbar" style={{ "--kb-accent": accent } as React.CSSProperties} onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 8)}>
     <header className={cx("kb-top", scrolled && "kb-solid")}>
       <SearchField value={query} onChange={search} />
       <Tabs at={query ? null : tab === "home" ? 0 : tab === "shelf" ? 1 : null}>
@@ -578,7 +578,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
   const description = b?.description ?? "";
   const long = description.length > 520;
   return <div className={cx("kb-scrim", leaving && "kb-leaving")} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-    <div ref={sheet} className="kb-sheet" role="dialog" aria-modal="true" aria-label={b?.title ?? "Book"} tabIndex={-1}>
+    <div ref={sheet} className="kb-sheet k-inkbar" role="dialog" aria-modal="true" aria-label={b?.title ?? "Book"} tabIndex={-1}>
       <button className="kb-close" onClick={close} aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden><path d="m7 7 10 10M17 7 7 17" /></svg></button>
       {problem ? <div className="kb-empty"><p>{problem}</p></div> : !b ? <SheetGhost /> : <>
         <div className="kb-detail">

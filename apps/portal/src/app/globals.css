@@ -982,8 +982,8 @@ code, pre, kbd { font-family: var(--k-mono); font-variant-numeric: tabular-nums;
 :is(.k-scroller-view, .k-inkbar, html):focus-visible::-webkit-scrollbar-thumb { border-width: 2.5px; background-color: var(--k-scroll-thumb-wet); }
 /* Firefox has no thumb to shape: the same ink, at its full width. */
 @supports not selector(::-webkit-scrollbar) {
-  html, .k-scroller-view, .k-choice-list { scrollbar-width: auto; scrollbar-color: var(--k-scroll-thumb) transparent; }
-  html:hover, .k-scroller-view:hover { scrollbar-color: var(--k-scroll-thumb-hot) transparent; }
+  html, .k-scroller-view, .k-inkbar, .k-choice-list { scrollbar-width: auto; scrollbar-color: var(--k-scroll-thumb) transparent; }
+  html:hover, .k-scroller-view:hover, .k-inkbar:hover { scrollbar-color: var(--k-scroll-thumb-hot) transparent; }
   .k-scroller-view:focus-visible { scrollbar-color: var(--k-scroll-thumb-wet) transparent; }
 }
 
