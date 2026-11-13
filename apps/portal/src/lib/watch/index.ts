@@ -376,43 +376,49 @@ export function namer(db: DatabaseSync, title: Title, prefs: ReturnType<typeof p
   return { layout, label, named };
 }
 
-/** An episode out in the last day or so, for Home's New episodes row. */
-type Fresh = { titleId: string; season: number; episode: number; airDate: string; still: string | null; name: string };
+/** An episode out in the last day or so, for Home's Just out row; `genres` from the show's details, which list stubs lack. */
+type Fresh = { titleId: string; season: number; episode: number; airDate: string; still: string | null; name: string; genres: string[] };
+
+const freshDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+/** A show's latest aired episode, if it came out today or yesterday (TMDB's days). Each show's answer is kept two hours. */
+async function lastAired(cfg: WatchConfig, t: Pick<Title, "id" | "tmdbId">): Promise<Fresh | null> {
+  const db = watchDb();
+  const key = `last-aired:${t.id}`;
+  const known = cached<{ fresh: Fresh | null }>(db, key) ?? await shared(airLooks, key, async () => {
+    const details = await tmdb(cfg.tmdbToken, `/tv/${t.tmdbId}`).catch(() => null);
+    if (!details) return { fresh: null };
+    const last = details.last_episode_to_air;
+    const fresh: Fresh | null = last?.air_date && last.season_number ? {
+      titleId: t.id, season: Number(last.season_number), episode: Number(last.episode_number), airDate: String(last.air_date), still: last.still_path ?? null, name: String(last.name ?? ""),
+      genres: ((details.genres ?? []) as { name: string }[]).map((g) => String(g.name)),
+    } : null;
+    keep(db, key, { fresh }, hours(2));
+    return { fresh };
+  });
+  return known.fresh && known.fresh.airDate >= freshDay(-1) ? known.fresh : null;
+}
+const airLooks = new Map<string, Promise<{ fresh: Fresh | null }>>();
 
 /**
- * The most popular anime and series with an episode out today or yesterday
- * (TMDB's days), most popular first: discover by air date, then each show's
- * last aired episode. Kept a couple of hours.
+ * The most popular anime and series with an episode out today or yesterday,
+ * most popular first: discover by air date, then each show's last aired episode.
  */
 async function freshEpisodes(cfg: WatchConfig): Promise<{ titles: Title[]; episodes: Fresh[] }> {
-  const db = watchDb();
-  const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
-  const [today, yesterday] = [day(0), day(-1)];
-  const key = `fresh:${today}`;
-  const known = cached<Fresh[]>(db, key);
-  if (known) return { titles: getTitles(db, known.map((f) => f.titleId)), episodes: known };
-  return shared(freshLooks, key, async () => {
-    const window = { "air_date.gte": yesterday, "air_date.lte": today, sort_by: "popularity.desc" };
-    const [anime, series] = await Promise.all([
-      tmdbList(cfg, `discover:fresh-anime:${today}`, "/discover/tv", { ...window, with_genres: "16", with_origin_country: "JP", "vote_count.gte": "20" }, hours(3)),
-      tmdbList(cfg, `discover:fresh-series:${today}`, "/discover/tv", { ...window, "vote_count.gte": "300", without_genres: "10763,10764,10766,10767,16" }, hours(3)),
-    ]);
-    const shows = [...anime.slice(0, 12), ...series.slice(0, 12)].sort((a, b) => b.popularity - a.popularity);
-    const found = await Promise.all(shows.map(async (t) => {
-      const details = await tmdb(cfg.tmdbToken, `/tv/${t.tmdbId}`).catch(() => null);
-      const last = details?.last_episode_to_air;
-      if (!last?.air_date || last.air_date < yesterday || !last.season_number) return null;
-      return { titleId: t.id, season: Number(last.season_number), episode: Number(last.episode_number), airDate: String(last.air_date), still: last.still_path ?? null, name: String(last.name ?? "") } satisfies Fresh;
-    }));
-    const episodes = found.filter((f): f is Fresh => Boolean(f));
-    keep(db, key, episodes, hours(2));
-    return { titles: shows.filter((t) => episodes.some((f) => f.titleId === t.id)), episodes };
-  });
+  const [today, yesterday] = [freshDay(0), freshDay(-1)];
+  const window = { "air_date.gte": yesterday, "air_date.lte": today, sort_by: "popularity.desc" };
+  const [anime, series] = await Promise.all([
+    tmdbList(cfg, `discover:fresh-anime:${today}`, "/discover/tv", { ...window, with_genres: "16", with_origin_country: "JP", "vote_count.gte": "20" }, hours(3)),
+    tmdbList(cfg, `discover:fresh-series:${today}`, "/discover/tv", { ...window, "vote_count.gte": "300", without_genres: "10763,10764,10766,10767,16" }, hours(3)),
+  ]);
+  const shows = [...anime.slice(0, 12), ...series.slice(0, 12)].sort((a, b) => b.popularity - a.popularity);
+  const episodes = (await Promise.all(shows.map((t) => lastAired(cfg, t)))).filter((f): f is Fresh => Boolean(f));
+  return { titles: shows.filter((t) => episodes.some((f) => f.titleId === t.id)), episodes };
 }
+
 /* A show whose seasons aren't stored yet reads as one season ("E5"); a later season says so. */
 const freshLabel = (names: ReturnType<typeof namer>, f: Fresh) =>
   names.layout === "single" && f.season > 1 ? `S${f.season}:E${f.episode}` : names.label(f.season, f.episode);
-const freshLooks = new Map<string, Promise<{ titles: Title[]; episodes: Fresh[] }>>();
 
 /** Rows Home serves per page while scrolling; a page stops early rather than wait on too many lists. */
 const pageRows = 8;
@@ -480,13 +486,33 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
     tmdbList(cfg, "discover:popular-series", "/discover/tv", { sort_by: "popularity.desc", "vote_count.gte": "200", without_genres: "10763,10764,10766,10767,16" }, hours(12)),
     freshEpisodes(cfg).catch(() => ({ titles: [] as Title[], episodes: [] as Fresh[] })),
   ]);
-  /* New episodes: each card says which episode, in this person's numbering, and when. */
-  const freshCards = fresh.episodes.flatMap((f) => {
-    const t = fresh.titles.find((x) => x.id === f.titleId);
-    if (!t || !ok(t)) return [];
-    const when = f.airDate >= new Date().toISOString().slice(0, 10) ? "Today" : "Yesterday";
-    return [{ ...cardOf(t, origin, { badge: "New episode" }), season: f.season, episode: f.episode, label: freshLabel(namer(db, t, prefs, username), f), when, still: imageUrl(origin, f.still, "w780") }];
-  }).slice(0, 16);
+  /*
+   * Just out, as a guess at what this person wants: shows they're watching
+   * (looked up even when they aren't popular), then My list, then how well the
+   * show fits what they watch (anime, series or films, and genres), with
+   * popularity breaking ties. Shows they rated down are left out.
+   */
+  const followed = [...recentShows, ...mine].filter((t, i, all) => t.kind === "series" && t.id.startsWith("tv-") && all.findIndex((x) => x.id === t.id) === i && !fresh.titles.some((x) => x.id === t.id)).slice(0, 15);
+  const followedFresh = (await Promise.all(followed.map((t) => lastAired(cfg, t).catch(() => null)))).filter((f): f is Fresh => Boolean(f));
+  const freshTitles = [...fresh.titles, ...followed];
+  const taste = tasteOf([...recentTitlesList, ...mine]);
+  const kindsTotal = [...taste.kinds.values()].reduce((a, b) => a + b, 0) || 1;
+  const genreTop = Math.max(0, ...taste.genres.values()) || 1;
+  const watching = new Set(recent.map((p) => p.titleId));
+  const listed = new Set(mine.map((t) => t.id));
+  const candidates = [...fresh.episodes, ...followedFresh];
+  const fit = (t: Title, f: Fresh, i: number) => {
+    const kind = t.shelf === "Anime" ? "anime" : "series";
+    const genres = f.genres.filter((g) => g !== "Animation").reduce((sum, g) => sum + (taste.genres.get(g) ?? 0), 0) / genreTop;
+    return (watching.has(t.id) ? 100 : 0) + (listed.has(t.id) ? 40 : 0) + 6 * ((taste.kinds.get(kind) ?? 0) / kindsTotal) + 4 * Math.min(1, genres / 2) + 3 * (1 - i / candidates.length);
+  };
+  const freshCards = candidates.flatMap((f, i) => {
+    const t = freshTitles.find((x) => x.id === f.titleId);
+    if (!t || !ok(t) || ratingOf(db, username, t.id) === "down") return [];
+    const when = f.airDate >= freshDay(0) ? "Today" : "Yesterday";
+    const card = { ...cardOf(t, origin, { badge: "New episode" }), season: f.season, episode: f.episode, label: freshLabel(namer(db, t, prefs, username), f), when, still: imageUrl(origin, f.still, "w780") };
+    return [{ card, score: fit(t, f, i) }];
+  }).sort((a, b) => b.score - a.score).map((c) => c.card).slice(0, 16);
   /* Rows from TMDB leave out what is known not to play; someone's own rows show everything they chose. */
   checkPlayable(cfg, [...trending, ...series, ...anime, ...films, ...fetched].filter(ok).map((t) => t.id));
   const top = plays(trending).slice(0, 10);
@@ -503,9 +529,9 @@ export async function home(cfg: WatchConfig, username: string, origin: string, s
     ...rows.slice(5),
   ].filter((row): row is Row => Boolean(row) && row!.items.length > 0);
 
-  /* The hero: the day's most popular new episode, else the top of the Top 10. */
-  const dropped = freshCards.find((c) => fresh.titles.find((t) => t.id === c.id)?.backdrop);
-  const featured = (dropped && fresh.titles.find((t) => t.id === dropped.id)) || top.find((t) => t.backdrop) || null;
+  /* The hero: the new episode Just out guesses they want most, else the top of the Top 10. */
+  const dropped = freshCards.find((c) => freshTitles.find((t) => t.id === c.id)?.backdrop);
+  const featured = (dropped && freshTitles.find((t) => t.id === dropped.id)) || top.find((t) => t.backdrop) || null;
   const episode = dropped && featured?.id === dropped.id ? { season: dropped.season, episode: dropped.episode, label: dropped.label, when: dropped.when } : null;
   return { featured: featured ? { ...cardOf(featured, origin), backdropLarge: imageUrl(origin, featured.backdrop, "w1280"), overview: featured.overview, fresh: episode } : null, rows: lead, next };
 }
