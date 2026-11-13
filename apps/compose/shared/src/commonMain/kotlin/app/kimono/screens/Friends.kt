@@ -32,6 +32,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import app.kimono.ui.AppAccentTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
@@ -112,22 +113,36 @@ private fun PeopleGroup(people: List<FriendPerson>, detail: (FriendPerson) -> St
 
 /** A title's cover, or its first letter in Mincho when it has none. */
 @Composable
-private fun Cover(item: ShareItem, modifier: Modifier = Modifier) {
-    Box(modifier.aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+private fun Cover(item: ShareItem, modifier: Modifier = Modifier, tinted: Boolean = false) {
+    val wash = if (tinted) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
+    Box(modifier.aspectRatio(2f / 3f).clip(RoundedCornerShape(16.dp)).background(wash), contentAlignment = Alignment.Center) {
         if (item.cover != null) AsyncImage(model = item.cover, contentDescription = item.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        else Text(item.title.take(1), style = MaterialTheme.typography.headlineMedium, color = Kata.plum)
+        else Text(item.title.take(1), style = MaterialTheme.typography.headlineMedium, color = if (tinted) MaterialTheme.colorScheme.onSecondaryContainer else Kata.plum)
     }
+}
+
+/** How they rated it, as a mark on the cover's lower corner: loved, liked or didn't like. */
+@Composable
+private fun RatingMark(rating: String, modifier: Modifier = Modifier) {
+    val (icon, said) = when (rating) { "love" -> "heart" to "Loved"; "up" -> "thumb-up" to "Liked"; "down" -> "thumb-down" to "Didn't like"; else -> return }
+    val scheme = MaterialTheme.colorScheme
+    val (bg, ink) = if (rating == "down") scheme.surfaceContainerHighest to scheme.onSurfaceVariant else scheme.primary to scheme.onPrimary
+    Box(
+        modifier.size(30.dp).clip(CircleShape).background(scheme.surface).padding(2.dp).clip(CircleShape).background(bg).semantics { contentDescription = said },
+        contentAlignment = Alignment.Center,
+    ) { Icon(kimonoIcon(icon), null, tint = ink, modifier = Modifier.size(16.dp)) }
 }
 
 /** A shelf of covers that scrolls sideways; each can say more under it. */
 @Composable
-private fun <T> Shelf(items: List<T>, key: (T) -> String, item: (T) -> ShareItem, menu: (T) -> List<MenuChoice>, drop: ((T) -> Unit)? = null, under: @Composable (T) -> Unit = {}) {
+private fun <T> Shelf(items: List<T>, key: (T) -> String, item: (T) -> ShareItem, menu: (T) -> List<MenuChoice>, drop: ((T) -> Unit)? = null, tinted: Boolean = false, under: @Composable (T) -> Unit = {}) {
     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         items(items, key = key) { entry ->
             val shown = item(entry)
             Column(Modifier.width(120.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box {
-                    HoldMenu(menu(entry), onClick = { menu(entry).firstOrNull()?.onClick?.invoke() }) { Cover(shown, Modifier.fillMaxWidth()) }
+                    HoldMenu(menu(entry), onClick = { menu(entry).firstOrNull()?.onClick?.invoke() }) { Cover(shown, Modifier.fillMaxWidth(), tinted) }
+                    shown.rating?.let { RatingMark(it, Modifier.align(Alignment.BottomEnd).padding(6.dp)) }
                     /* On your own profile: one tap takes it off the row. */
                     if (drop != null) Box(
                         Modifier.align(Alignment.TopEnd).padding(6.dp).size(34.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = .92f))
@@ -325,7 +340,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                     else Seal("All friends", onClick = { open("friends") }, compact = true, tone = SealTone.Quiet)
                 }
                 /* Each app's rows together under its name; on your own profile, what friends see of them, which opens Who sees what. */
-                if (p.open) p.sections.groupBy { it.app }.forEach { (app, rows) ->
+                if (p.open) p.sections.groupBy { it.app }.forEach { (app, rows) -> AppAccentTheme(if (app == "books") "#5c7150" else "#a84d63") {
                     val kept = app in p.hidden
                     val some = p.privacy?.apps?.firstOrNull { it.app == app }?.rows?.any { !it.shown } == true
                     SectionHead("app:$app", if (app == "books") "book" else "film", rows.first().appName) { if (p.you) SeenTag(kept, some) { if (p.privacy?.invisible == true) toSettings() else privacyOpen = app } }
@@ -333,12 +348,12 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                         val rowKept = !kept && p.you && "${s.app}:${s.kind}" in p.kept
                         KeptLabel(s.title, rowKept) { privacyOpen = app }
                         Box(Modifier.alpha(if (kept || rowKept) .5f else 1f)) {
-                            Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }, drop = if (p.you) { item -> dropping = s to item } else null) { item ->
+                            Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }, drop = if (p.you) { item -> dropping = s to item } else null, tinted = true) { item ->
                                 item.progress?.let { f -> androidx.compose.material3.LinearProgressIndicator(progress = { f.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) }
                             }
                         }
                     }
-                }
+                } }
                 if (p.open && p.you && p.off.isNotEmpty()) Row(Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
                     Seal("Taken off · ${p.off.size}", onClick = { offOpen = true }, compact = true, tone = SealTone.Quiet, icon = "eye")
                 }
@@ -408,7 +423,6 @@ private fun OffDialog(friends: Friends, off: List<app.kimono.data.OffProfile>, o
 /** What taking a title off a row means, said before it's done (apps/portal lib/friends removeFromRow): only the profile forgets it. */
 private fun dropLoses(app: String, kind: String, appName: String) = when {
     app == "books" && kind == "reading" -> "Your progress stays. Put it back from Taken off."
-    kind == "loved" || kind == "liked" -> "Your rating stays. Put it back from Taken off."
     else -> "It stays in $appName. Put it back from Taken off."
 }
 

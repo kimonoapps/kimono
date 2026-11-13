@@ -26,7 +26,7 @@ data class FoundPeople(val people: List<FriendPerson> = emptyList())
 
 /** A title from one app, as a profile or a recommendation shows it. */
 @Serializable
-data class ShareItem(val app: String, val itemId: String, val title: String, val subtitle: String? = null, val cover: String? = null, val href: String? = null, val progress: Double? = null)
+data class ShareItem(val app: String, val itemId: String, val title: String, val subtitle: String? = null, val cover: String? = null, val href: String? = null, val progress: Double? = null, val rating: String? = null)
 
 @Serializable
 data class ProfileSection(val app: String, val appName: String, val kind: String, val title: String, val items: List<ShareItem> = emptyList())

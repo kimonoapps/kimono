@@ -30,6 +30,10 @@ export function migrateSocial(db: DatabaseSync) {
     CREATE INDEX IF NOT EXISTS recommendations_from ON recommendations (from_user);
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS profile_off (username TEXT NOT NULL, row TEXT NOT NULL, item_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (username, row, item_id));`);
+  /* Loved and Liked were rows of their own; a rating is now a mark on the title where it already is. What was taken off them stays off. */
+  db.exec(`UPDATE OR IGNORE profile_off SET row = 'books:read' WHERE row IN ('books:loved', 'books:liked');
+    UPDATE OR IGNORE profile_off SET row = 'watch:watched' WHERE row IN ('watch:loved', 'watch:liked');
+    DELETE FROM profile_off WHERE row IN ('books:loved', 'books:liked', 'watch:loved', 'watch:liked');`);
   const columns = (db.prepare("PRAGMA table_info(profiles)").all() as { name: string }[]).map((c) => c.name);
   /* Apps whose activity someone keeps off their profile, comma-separated. */
   if (!columns.includes("hidden")) db.exec("ALTER TABLE profiles ADD COLUMN hidden TEXT NOT NULL DEFAULT ''");
@@ -186,7 +190,9 @@ export const apps: Record<string, { name: string }> = {
 };
 
 /** One row of a profile: what someone did in one app (watched, loved, reading…), latest first. */
-export type Section = { app: string; appName: string; kind: string; title: string; items: (Item & { href?: string | null; progress?: number | null; at?: number | null })[] };
+export type Section = { app: string; appName: string; kind: string; title: string; items: (Item & { href?: string | null; progress?: number | null; at?: number | null; rating?: Rating | null })[] };
+/** How someone rated a title, shown as a mark on its cover rather than a row of its own. */
+export type Rating = "love" | "up" | "down";
 
 const text = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) : "");
 /** A cover is an address on the web or on this Portal; anything else is left out. */
@@ -210,8 +216,8 @@ const itemFrom = (r: { app: string; item_id: string; title: string; subtitle: st
 
 /** The rows each app puts on a profile, by kind, so any of them can be kept back before it has anything in it. */
 export const rowsOf: Record<string, [kind: string, title: string][]> = {
-  watch: [["watched", "Watched"], ["loved", "Loved"], ["liked", "Liked"], ["listed", "Watchlist"]],
-  books: [["reading", "Reading now"], ["want", "Want to read"], ["read", "Read"], ["loved", "Loved"], ["liked", "Liked"]],
+  watch: [["watched", "Watched"], ["listed", "Watchlist"]],
+  books: [["reading", "Reading now"], ["want", "Want to read"], ["read", "Read"]],
 };
 
 type PrivacyRow = { hidden?: string; kept?: string; invisible?: number };

@@ -8,10 +8,9 @@ import type { Section } from "./model";
  */
 export function booksSectionsFrom(shelf: ShelfItem[]): Section[] {
   const latest = [...shelf].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  /* What they're on, then what they want, have read, and loved or liked (as Watch's rows are). */
+  /* What they're on, then what they want and have read; how they rated each is a mark on its cover. */
   const rows: [string, string, (b: ShelfItem) => boolean][] = [
     ["reading", "Reading now", (b) => b.state === "reading"], ["want", "Want to read", (b) => b.state === "want"], ["read", "Read", (b) => b.state === "read"],
-    ["loved", "Loved", (b) => b.rating === "love"], ["liked", "Liked", (b) => b.rating === "up"],
   ];
   return rows.map(([state, title, has]) => ({
     app: "books", appName: "Books", kind: state, title,
@@ -20,6 +19,7 @@ export function booksSectionsFrom(shelf: ShelfItem[]): Section[] {
       subtitle: [b.authors[0], b.year].filter(Boolean).join(" · ") || null,
       cover: b.cover, href: `/books?b=${encodeURIComponent(b.key)}`,
       progress: state === "reading" ? Math.min(1, Math.max(0, b.fraction)) : null,
+      rating: b.rating ?? null,
       /* When it last changed. */
       at: Date.parse(b.updatedAt) || null,
     })),

@@ -217,7 +217,7 @@ export function changePrivacy(username: string, body: Record<string, unknown>) {
   return { privacy: privacyOf(db, username), hidden: hiddenAppsOf(db, username) };
 }
 
-const profileRows: Record<string, string[]> = { watch: ["watched", "loved", "liked", "listed"], books: ["reading", "want", "read", "loved", "liked"] };
+const profileRows: Record<string, string[]> = { watch: ["watched", "listed"], books: ["reading", "want", "read"] };
 const rowOf = (raw: Record<string, unknown>) => {
   const app = String(raw.app ?? ""), kind = String(raw.kind ?? ""), id = String(raw.itemId ?? "");
   if (!id) throw new FriendsProblem("Pick a title.");

@@ -17,7 +17,7 @@ import { SilkscreenBadge } from "./silkscreen";
  */
 
 export type Person = { username: string; name: string; picture: string | null };
-export type Item = { app: string; itemId: string; title: string; subtitle: string | null; cover: string | null; href?: string | null; progress?: number | null };
+export type Item = { app: string; itemId: string; title: string; subtitle: string | null; cover: string | null; href?: string | null; progress?: number | null; rating?: "love" | "up" | "down" | null };
 export type Recommendation = Item & { id: string; from: Person; to: Person | null; note: string | null; at: number; seen: boolean; appName: string };
 export type Section = { app: string; appName: string; kind: string; title: string; items: Item[] };
 /** Private until you're friends: then only `open: false` and who they are comes back (lib/friends/model.ts profileFor). */
@@ -54,9 +54,19 @@ function Cover({ item }: { item: Item }) {
   </span>;
 }
 
+/** How they rated it, as a mark on the cover's corner. */
+const rated = { love: "Loved", up: "Liked", down: "Didn't like" } as const;
+function RatingMark({ rating }: { rating: "love" | "up" | "down" }) {
+  return <span className={`fr-rated fr-rated-${rating}`} title={rated[rating]} aria-label={rated[rating]}>
+    {rating === "love"
+      ? <svg viewBox="0 0 24 24" aria-hidden><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" /></svg>
+      : <svg viewBox="0 0 24 24" aria-hidden style={rating === "down" ? { transform: "rotate(180deg)" } : undefined}><path d="M7 11v9H4v-9h3Zm0 0 4-7c1.7 0 2.6 1.2 2.2 2.8L12.6 10H18a2 2 0 0 1 2 2.3l-1.1 6A2 2 0 0 1 17 20H7" /></svg>}
+  </span>;
+}
+
 function Tile({ item, children }: { item: Item; children?: React.ReactNode }) {
   const href = hrefOf(item);
-  const face = <><Cover item={item} />
+  const face = <><span className="fr-cover-wrap"><Cover item={item} />{item.rating ? <RatingMark rating={item.rating} /> : null}</span>
     {item.progress ? <span className="fr-progress" role="progressbar" aria-valuenow={Math.round(item.progress * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${item.progress * 100}%` }} /></span> : null}
     <b>{item.title}</b>{item.subtitle ? <small>{item.subtitle}</small> : null}</>;
   return <div className="fr-tile">
@@ -294,7 +304,7 @@ export function ProfileView({ username, home = false }: { username: string; home
         const app = rows[0].app;
         const kept = appKept(app);
         const some = (privacy?.apps.find((a) => a.app === app)?.rows ?? []).some((r) => !r.shown);
-        return <section key={app} className={`fr-group${kept ? " is-kept" : ""}`}>
+        return <section key={app} className={`fr-group fr-app-${app}${kept ? " is-kept" : ""}`}>
           <div className="fr-app-head">
             <InkBlot tint={app === "books" ? "#5c7150" : "#a84d63"} seed={`app:${app}`}><LineIcon name={app === "books" ? "book" : "film"} /></InkBlot>
             <h2>{rows[0].appName}</h2>
@@ -339,7 +349,6 @@ export function ProfileView({ username, home = false }: { username: string; home
 /** What taking a title off a row means, said before it's done (lib/friends removeFromRow): only the profile forgets it. */
 const dropLoses = (s: Section) =>
   s.app === "books" && s.kind === "reading" ? "Your progress stays. Put it back from Taken off."
-    : s.kind === "loved" || s.kind === "liked" ? "Your rating stays. Put it back from Taken off."
       : `It stays in ${s.appName}. Put it back from Taken off.`;
 
 /** What you took off your profile, each with the row it came off; Put back returns it there. */

@@ -6,6 +6,7 @@ import { cardOf, ensureTitle, finished, fraction, getTitle, getTitles, prefsOf, 
 import { playingNow, watchKey } from "./flow";
 import { answerAsk, cancelAsk, hiddenOf, likedByFriends, watchedByFriends, liveAsks, newAsk, noteWatched, type JoinAsk } from "./friends";
 import { changeFriend as changeKimonoFriend, findPeople as findKimonoPeople, friendsOfUser, invisibleToFriends, linkBetween, linksOfUser, type Section } from "../friends";
+import type { Rating } from "../friends/model";
 import { FriendsProblem, type LinkState } from "../friends/model";
 import { inviteTo, labelsFor, partyWith, people, type Person } from "./together-live";
 import { watchConfig } from "./config";
@@ -271,16 +272,19 @@ export async function watchSections(viewer: string, username: string, origin: st
   const hidden = hiddenOf(db, u);
   const item = (t: Title) => ({ app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: cardOf(t, origin).poster, href: `/watch?t=${encodeURIComponent(t.id)}` });
   /* `at`: when each was rated or listed. */
-  const row = (kind: string, title: string, ids: string[], at: Map<string, number | null> = new Map()): Section =>
-    ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map((t) => ({ ...item(t), at: at.get(t.id) ?? null })) });
+  const row = (kind: string, title: string, ids: string[], at: Map<string, number | null> = new Map(), rating: Map<string, Rating> = new Map()): Section =>
+    ({ app: "watch", appName: "Watch", kind, title, items: getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 24)).map((t) => ({ ...item(t), at: at.get(t.id) ?? null, rating: rating.get(t.id) ?? null })) });
   const rows: Section[] = [];
-  /* Going invisible on Kimono is the profile's to apply (lib/friends profileFor), so their own profile still shows it all. */
-  if (sharingSet(u)) rows.push(row("watched", "Watched", lastRows(u, 24).map((p) => p.titleId)));
-  if (sharesTasteSet(u)) {
-    const rated = ratingsOf(u);
-    const ratedAt = new Map(rated.map((r) => [r.title_id, r.rated_at ?? null]));
-    rows.push(row("loved", "Loved", rated.filter((r) => r.rating === "love").map((r) => r.title_id), ratedAt));
-    rows.push(row("liked", "Liked", rated.filter((r) => r.rating === "up").map((r) => r.title_id), ratedAt));
+  /* Going invisible on Kimono is the profile's to apply (lib/friends profileFor), so their own profile still shows it all.
+     Watched holds what they watched (while they share it) and what they rated (while they share their taste), each rated one marked. */
+  const taste = sharesTasteSet(u);
+  const rated = taste ? ratingsOf(u).filter((r) => r.rating === "love" || r.rating === "up" || r.rating === "down") : [];
+  const rating = new Map(rated.map((r) => [r.title_id, r.rating as Rating]));
+  const seen = sharingSet(u) ? lastRows(u, 24).map((p) => ({ id: p.titleId, at: p.updatedAt ?? 0 })) : [];
+  /* Latest first, whichever happened last: watching it or rating it. */
+  const order = [...new Set([...seen, ...rated.map((r) => ({ id: r.title_id, at: r.rated_at ?? 0 }))].sort((a, b) => b.at - a.at).map((w) => w.id))];
+  rows.push(row("watched", "Watched", order, new Map(rated.map((r) => [r.title_id, r.rated_at ?? null])), rating));
+  if (taste) {
     const list = db.prepare("SELECT title_id, added_at FROM list WHERE lower(username) = ? ORDER BY added_at DESC").all(u) as { title_id: string; added_at: number | null }[];
     rows.push(row("listed", "Watchlist", list.map((r) => r.title_id), new Map(list.map((r) => [r.title_id, r.added_at]))));
   }
