@@ -156,15 +156,18 @@ fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Doubl
     ) {
         Box(
             Modifier.width(width + spine).height(width * 1.5f)
-                .graphicsLayer { rotationY = angle; cameraDistance = 10f * density; transformOrigin = TransformOrigin(1f, .5f) }
+                /* Turned toward its spine it hinges on the far edge; turned the other way, on the spine, so its pages' edge shows instead. */
+                .graphicsLayer { rotationY = angle; cameraDistance = 10f * density; transformOrigin = TransformOrigin(if (angle >= 0f) 1f else 0f, .5f) }
                 .then(if (onOpen != null) Modifier.clickable(interactionSource = press, indication = null, role = Role.Button, onClick = onOpen).semantics { contentDescription = "${book.title}${if (book.author.isNotBlank()) ", ${book.author}" else ""}" } else Modifier),
         ) {
             /* Its shadow on the shelf, wider as it lifts. */
             Box(Modifier.align(Alignment.BottomCenter).offset(y = 8.dp).width(width * (.75f + open * .15f)).height(12.dp)
                 .blur(10.dp, BlurredEdgeTreatment.Unbounded).graphicsLayer { alpha = .55f - open * .25f }.clip(CircleShape).background(Color.Black.copy(alpha = .6f)))
-            Row(Modifier.fillMaxSize()) {
+            /* Its thickness shows on whichever side faces you, growing from nothing as it turns, so it never looks like a card from either side. */
+            val depth = spine * (kotlin.math.abs(angle) / 16f).coerceIn(0f, 1f)
+            Row(Modifier.fillMaxHeight().align(Alignment.Center)) {
                 /* The spine: darker cloth, the title down it, a lighter edge where it turns the corner. */
-                Box(Modifier.width(spine).fillMaxHeight().clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp)).background(lerpColor(cloth, Color.Black, .28f)), contentAlignment = Alignment.Center) {
+                if (angle >= 0f) Box(Modifier.width(depth).fillMaxHeight().clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp)).background(lerpColor(cloth, Color.Black, .28f)), contentAlignment = Alignment.Center) {
                     Text(book.title, color = ink.copy(alpha = .85f), fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.graphicsLayer { rotationZ = 90f }.widthIn(max = width * 1.3f))
                     Box(Modifier.align(Alignment.CenterEnd).width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = .14f)))
@@ -197,6 +200,14 @@ fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Doubl
                         )))
                     }
                 }
+                /* The fore-edge: the pages' cut edges, when it turns the other way. */
+                if (angle < 0f) Box(Modifier.width(depth).fillMaxHeight().padding(vertical = 3.dp).clip(RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp))
+                    .background(Color(0xFFE9DFCB)).drawBehind {
+                        val step = 1.8f * density
+                        var y = step
+                        while (y < size.height) { drawLine(Color(0x14000000), androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y), 1f); y += step }
+                        drawLine(Color(0x33000000), androidx.compose.ui.geometry.Offset(0f, 0f), androidx.compose.ui.geometry.Offset(0f, size.height), 1.5f * density)
+                    })
             }
             if (progress != null && progress > 0) Box(
                 Modifier.align(Alignment.TopEnd).padding(end = width * .07f).width(7.dp).height((width.value * 1.5f * progress.toFloat() * .5f + 12f).dp)
@@ -216,24 +227,27 @@ private val shelfPaths = mapOf(
 
 @Composable
 private fun ShelfIcons(current: String?, onChoose: (String) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        listOf("want", "reading", "read").forEach { s ->
-            val on = current == s
-            val path = remember(s) { androidx.compose.ui.graphics.vector.PathParser().parsePathString(shelfPaths.getValue(s)).toPath() }
-            val color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-            Surface(onClick = { onChoose(s) }, shape = RoundedCornerShape(24.dp),
-                color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                modifier = Modifier.height(48.dp).semantics { contentDescription = Books.stateLabel(s) }) {
-                Row(Modifier.animateContentSize(spring(dampingRatio = .7f, stiffness = 500f)).padding(horizontal = if (on) 16.dp else 12.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
-                        val k = size.width / 24f
-                        scale(k, k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-                            if (on && s == "want") drawPath(path, color)
-                            drawPath(path, color, style = Stroke(width = 1.9f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    /* One control, not three buttons: a track holding the three places, the chosen one a tonal chip inside it, so it never reads as a second Read. */
+    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.height(48.dp)) {
+        Row(Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf("want", "reading", "read").forEach { s ->
+                val on = current == s
+                val path = remember(s) { androidx.compose.ui.graphics.vector.PathParser().parsePathString(shelfPaths.getValue(s)).toPath() }
+                val color = if (on) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                Surface(onClick = { onChoose(s) }, shape = RoundedCornerShape(20.dp),
+                    color = if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                    modifier = Modifier.fillMaxHeight().semantics { contentDescription = Books.stateLabel(s) }) {
+                    Row(Modifier.animateContentSize(spring(dampingRatio = .7f, stiffness = 500f)).padding(horizontal = if (on) 14.dp else 10.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.foundation.Canvas(Modifier.size(20.dp)) {
+                            val k = size.width / 24f
+                            scale(k, k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+                                if (on && s == "want") drawPath(path, color)
+                                drawPath(path, color, style = Stroke(width = 1.9f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                            }
                         }
+                        if (on) Text(Books.stateLabel(s), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1, modifier = Modifier.padding(start = 6.dp))
                     }
-                    if (on) Text(Books.stateLabel(s), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
                 }
             }
         }
