@@ -1,9 +1,9 @@
-turntable.webp: the Silkscreen Kimono, a full turn in 36 views, for the profile badge.
+The Silkscreen Kimono on the phone's profile badge is drawn from the measurements of
+silkscreen-kimono.glb (Silkscreen.kt), with no copy of the model in the app.
 
 Silkscreen enclosure by iandchasse, CERN-OHL-S-2.0 (Copyright © 2026 idc LLC),
 https://github.com/iandchasse/silkscreen-enclosures, with Kimono's branch on its back.
-Rendered by apps/portal/public/models/silkscreen-kimono/make_turntable.py from
-silkscreen-kimono.glb there; that folder has the modified source, LICENSE.txt and the
-full NOTICE.txt. SPDX-License-Identifier: CERN-OHL-S-2.0
+apps/portal/public/models/silkscreen-kimono/ has the modified source, LICENSE.txt and
+the full NOTICE.txt. SPDX-License-Identifier: CERN-OHL-S-2.0
 
 The Kimono name and branch are Kimono's marks, not covered by that licence.
