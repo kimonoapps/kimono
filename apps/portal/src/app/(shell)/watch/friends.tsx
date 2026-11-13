@@ -220,14 +220,14 @@ export function FriendsRow({ onJoin, onAll }: { onJoin: (partyId: string) => voi
     document.addEventListener("scroll", gone, true);
     return () => { document.removeEventListener("pointerdown", away, true); document.removeEventListener("keydown", key); window.removeEventListener("resize", gone); document.removeEventListener("scroll", gone, true); };
   }, [picked]);
-  if (!page) return null;
+  if (!page || watch.prefs?.friendsOnHome === false) return null;
   const friends = page.friends.filter((f) => f.sharing);
   const live = friends.filter((f) => f.now).length;
   const f = picked ? friends.find((x) => x.username === picked.f.username) ?? picked.f : null;
   const now = f?.now, last = f?.recent[0];
   const mine = f && asking?.to === f.username ? asking : null;
   return <section className="kw-row kw-frrow">
-    <h2>Friends{friends.length ? <span className="kw-fr-count"> ({live ? `${live} watching` : friends.length})</span> : null}<button className="kw-fr-all" onClick={onAll}>See all</button></h2>
+    <h2>Friends{friends.length ? <span className="kw-fr-count"> ({live ? `${live} watching` : friends.length})</span> : null}<button className="kw-fr-hide" onClick={() => void watch.updatePrefs({ friendsOnHome: false }).then((ok) => ok && watch.toast("Friends hidden from Home. Settings › Friends brings them back"))}>Hide</button><button className="kw-fr-all" onClick={onAll}>See all</button></h2>
     <Rail label="Friends">
       <button className="kw-frt kw-frt-add" onClick={onAll}><span className="kw-frt-ring"><Icon name="add" /></span><b>{friends.length ? "Add" : "Add friends"}</b></button>
       {friends.map((x) => <button key={x.username} className={cx("kw-frt", x.now && "kw-live")} aria-expanded={picked?.f.username === x.username}

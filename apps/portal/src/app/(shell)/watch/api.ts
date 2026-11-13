@@ -95,6 +95,8 @@ export type Prefs = {
   previews?: boolean; downloadQuality?: "standard" | "higher";
   /** Friends see what's watched; invisible hides it for now. */
   shareWatching?: boolean; invisible?: boolean;
+  /** The friends row on Home. */
+  friendsOnHome?: boolean;
 };
 export type Device = { client: "web"; maxHeight: number; codecs: string[]; hdr: string[] };
 

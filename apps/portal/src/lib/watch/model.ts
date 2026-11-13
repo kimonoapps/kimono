@@ -107,8 +107,10 @@ export type Prefs = {
   shareWatching: boolean;
   /** Invisible: friends don't see that they're watching, can't ask to join, and don't see what's watched meanwhile. */
   invisible: boolean;
+  /** The friends row on Home; off hides it (the Friends tab stays). */
+  friendsOnHome: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false, shareWatching: true, invisible: false };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false, shareWatching: true, invisible: false, friendsOnHome: true };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -380,6 +382,7 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
     skipIntros: typeof input.skipIntros === "boolean" ? input.skipIntros : base.skipIntros,
     shareWatching: typeof input.shareWatching === "boolean" ? input.shareWatching : base.shareWatching,
     invisible: typeof input.invisible === "boolean" ? input.invisible : base.invisible,
+    friendsOnHome: typeof input.friendsOnHome === "boolean" ? input.friendsOnHome : base.friendsOnHome,
   };
 }
 

@@ -275,6 +275,8 @@ data class Prefs(
     val shareWatching: Boolean = true,
     /** Invisible to friends for now (see FriendsPage). */
     val invisible: Boolean = false,
+    /** The friends row on Home. */
+    val friendsOnHome: Boolean = true,
     /** With `?device=`: this device's own quality, null when it follows the person's. */
     val device: DevicePref? = null,
 )

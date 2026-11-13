@@ -336,6 +336,8 @@ fun RingFace(person: Person, size: Dp, live: Boolean, behind: androidx.compose.u
 @Composable
 fun FriendsRow(go: Go, onAll: () -> Unit, modifier: Modifier = Modifier, tile: Dp = 76.dp) {
     val m = rememberFriends(go)
+    val watch = LocalWatch.current
+    if (watch.prefs.state.collectAsState().value?.friendsOnHome == false) return
     val page = m.page ?: return
     val friends = page.friends.filter { it.sharing }
     val live = friends.count { it.now != null }
@@ -345,6 +347,7 @@ fun FriendsRow(go: Go, onAll: () -> Unit, modifier: Modifier = Modifier, tile: D
             Text("Friends", style = ui(18, FontWeight.Bold))
             if (friends.isNotEmpty()) Text(if (live > 0) "  ($live watching)" else "  (${friends.size})", style = ui(16, color = Night.fg3))
             Spacer(Modifier.weight(1f))
+            Text("Hide", style = ui(14, color = Night.fg3), modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickableScaleClipped(RoundedCornerShape(8.dp), { hideFriendsRow(watch) }).padding(horizontal = 8.dp, vertical = 4.dp))
             Text("See all", style = ui(14, color = Night.fg2), modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickableScaleClipped(RoundedCornerShape(8.dp), onAll).padding(horizontal = 8.dp, vertical = 4.dp))
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -365,6 +368,12 @@ fun FriendsRow(go: Go, onAll: () -> Unit, modifier: Modifier = Modifier, tile: D
         }
     }
     friends.firstOrNull { it.username == picked }?.let { f -> FriendCardDialog(f, m, go) { picked = null } }
+}
+
+/** Takes the friends row off Home, everywhere; Settings › Friends brings it back. */
+fun hideFriendsRow(watch: app.kimono.watch.WatchServices) {
+    watch.prefs.set("friendsOnHome", false) { it.copy(friendsOnHome = false) }
+    watch.toasts.show("Friends hidden from Home. Settings › Friends brings them back")
 }
 
 /** A friend up close: what they're on (or last watched), Ask to join while they watch, and Open. */
