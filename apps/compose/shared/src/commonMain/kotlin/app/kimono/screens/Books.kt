@@ -357,11 +357,14 @@ private fun BookTile(book: Book, caption: String, progress: Double? = null, badg
     val mine = LocalMyShelf.current.of(book)?.takeIf { it.state == "reading" }
     Column(Modifier.width(112.dp)) {
         Book3D(book, 104.dp, progress = progress ?: mine?.fraction, badge = badge, onOpen = onOpen)
-        if (mine != null) Box(Modifier.padding(top = 12.dp, end = 8.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
-            Box(Modifier.fillMaxHeight().fillMaxWidth(mine.fraction.toFloat().coerceIn(.03f, 1f)).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+        if (mine != null) Row(Modifier.padding(top = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f).height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(mine.fraction.toFloat().coerceIn(.03f, 1f)).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+            }
+            Text("${(mine.fraction * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 6.dp))
         }
         Text(book.title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = if (mine != null) 8.dp else 12.dp))
-        if (mine != null) Text("Continue reading · ${(mine.fraction * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (mine != null) Text("Continue reading", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         else Text(caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
