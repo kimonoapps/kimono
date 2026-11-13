@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -298,7 +299,8 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
         }
     }
 
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = true)) {
+    /* Edge to edge: the page runs under the status bar and home indicator, its bars keep clear of them. */
+    Dialog(onDismissRequest = onClose, properties = app.kimono.ui.edgeToEdgeDialog()) {
         Box(Modifier.fillMaxSize().background(paper.bg)) {
             val epub = book
             val blocks = chapters[at]
@@ -317,7 +319,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                             is Block.Para -> Row(Modifier.padding(bottom = 12.dp, start = if (block.quote) 18.dp else 0.dp)) {
                                 if (block.bullet) Text("•  ", color = paper.ink, fontSize = size.sp)
                                 Text(block.text, color = paper.ink.copy(alpha = if (block.quote) .85f else 1f), fontSize = size.sp, lineHeight = (size * 1.6f).sp,
-                                    fontStyle = if (block.quote) FontStyle.Italic else FontStyle.Normal, textAlign = TextAlign.Justify)
+                                    fontStyle = if (block.quote) FontStyle.Italic else FontStyle.Normal, textAlign = TextAlign.Start)
                             }
                             is Block.Image -> PartImage(books, file, block.path, cache, Modifier.padding(vertical = 14.dp).fillMaxWidth().heightIn(max = 420.dp))
                             Block.Rule -> Box(Modifier.padding(vertical = 22.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -361,7 +363,7 @@ fun BookReader(books: Books, platform: app.kimono.data.Platform, bookKey: String
                 val shown by animateFloatAsState(if (chrome) 1f else .35f)
                 val within = if (list.layoutInfo.totalItemsCount > 1) list.firstVisibleItemIndex.toFloat() / (list.layoutInfo.totalItemsCount - 1) else 0f
                 val fraction = ((at + within) / epub.chapters.size).coerceIn(0f, 1f)
-                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 28.dp, vertical = 28.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(paper.bg.copy(alpha = .94f)).navigationBarsPadding().padding(horizontal = 28.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f).height(3.dp).clip(CircleShape).background(paper.ink.copy(alpha = .12f * shown))) {
                         Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceAtLeast(.01f)).background(paper.ink.copy(alpha = .7f * shown)))
                     }
