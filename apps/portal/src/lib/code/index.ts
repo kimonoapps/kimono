@@ -590,8 +590,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
   const asking = new Set<string>();
   /* kimono-skill calls, by id, until they answer with the skill they wrote. */
   const making = new Set<string>();
+  /* Where the wait went, for the logs: readying, the first word they saw, and the end of the reply. */
+  const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
   try {
-    const timing = { start: Date.now(), ensured: 0, synced: 0, agent: 0, firstWord: 0 };
     /* A new chat is named from its first message as it's sent, in the node's naming container, alongside
        its sandbox being made: a message too short to name by itself ("hey") waits for the answer, at the
        end of the turn. Only a node with that container (namesApart): an older one names in the chat's own
@@ -780,6 +781,7 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
       return;
     }
     const outcome = { ...finish(result, done, failure, context), model };
+    console.info(`Kimono AI turn ${turn}: ended ${outcome.ok ? "ok" : outcome.cancelled ? "stopped" : "failed"} ${Date.now() - timing.start}ms after it started${timing.firstWord ? `, ${Date.now() - timing.firstWord}ms after the first word` : ""}`);
     /* What it read while it worked is answered already; what it didn't is taken back. */
     await checkSteered(config, workspace, turn).catch(() => {});
     await unsteer(config, workspace).catch(() => {});
