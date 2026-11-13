@@ -108,49 +108,7 @@
 .kb .kb-link:hover{text-decoration:underline;text-underline-offset:3px}
 
 /* ═══════════════ The book ═══════════════ */
-.kb .kb-book{--w:132px;--h:calc(var(--w) * 1.5);--d:20px;--turn:28deg;--lift:0px;--open:0deg;
-  position:relative;display:block;width:var(--w);height:var(--h);perspective:1100px;perspective-origin:50% 40%;flex:none;border-radius:4px}
-.kb .kb-sm{--w:104px}
-.kb .kb-lg{--w:168px}
-.kb .kb-xl{--w:min(240px,58vw)}
-.kb .kb-book-body{position:absolute;inset:0;transform-style:preserve-3d;
-  transform:translateY(var(--lift)) rotateX(var(--rx,0deg)) rotateY(calc(var(--turn) + var(--ry,0deg)));
-  transition:transform .6s var(--spring-soft)}
-/* Each face. The cover sits in front, the back behind, spine and page edges at the sides. */
-.kb .kb-cover,.kb .kb-back,.kb .kb-leaf{position:absolute;inset:0;border-radius:2px 5px 5px 2px}
-.kb .kb-cover{transform:translateZ(calc(var(--d) / 2)) rotateY(var(--open));transform-origin:0 50%;overflow:hidden;background:var(--kb-cloth);
-  box-shadow:inset 0 0 0 1px rgb(0 0 0 / .08);transition:transform .7s var(--spring-soft);backface-visibility:hidden}
-.kb .kb-cover img{width:100%;height:100%;object-fit:cover}
-/* The groove where a hardback's cover bends: a pressed line, not a gradient. */
-.kb .kb-hinge{position:absolute;inset:0 auto 0 6px;width:2px;background:rgb(0 0 0 / .16);box-shadow:1px 0 0 rgb(255 255 255 / .22)}
-.kb .kb-back{transform:translateZ(calc(var(--d) / -2)) rotateY(180deg);background:var(--kb-cloth)}
-.kb .kb-spine{position:absolute;top:0;left:0;width:var(--d);height:100%;
-  transform:translateX(calc(var(--d) / -2)) rotateY(-90deg);
-  background:var(--kb-cloth);color:var(--kb-cloth-ink);display:grid;place-items:center;overflow:hidden;filter:brightness(.82)}
-.kb .kb-spine span{writing-mode:vertical-rl;font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:.06em;white-space:nowrap;max-height:86%;overflow:hidden;text-overflow:ellipsis;opacity:.9}
-.kb .kb-pages{position:absolute;top:3px;bottom:3px;right:0;width:var(--d);
-  transform:translateX(calc(var(--d) / 2 - 3px)) rotateY(90deg);
-  background:var(--page);background-image:repeating-linear-gradient(90deg,transparent 0 2px,rgb(0 0 0 / .07) 2px 3px)}
-/* The first page, found when the cover swings open. */
-.kb .kb-leaf{transform:translateZ(calc(var(--d) / 2 - 1px));inset:3px 3px 3px 0;background:var(--page);color:var(--page-ink);
-  display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;padding:14% 12%;text-align:center}
-.kb .kb-leaf-title{font-family:var(--display);font-weight:700;font-size:calc(var(--w) * .095);line-height:1.15;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
-.kb .kb-leaf-author{font-size:calc(var(--w) * .07);opacity:.7}
-.kb .kb-leaf::after{content:"";width:22%;height:1px;background:currentColor;opacity:.35;order:1}
-/* A binding with the title stamped on, when there's no cover. */
-.kb .kb-cloth-cover{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:16% 12% 12% 16%;color:var(--kb-cloth-ink)}
-.kb .kb-cloth-title{font-family:var(--display);font-weight:700;font-size:calc(var(--w) * .11);line-height:1.12;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;text-wrap:balance}
-.kb .kb-cloth-author{font-size:calc(var(--w) * .075);opacity:.8;border-top:1px solid currentColor;padding-top:8px}
-/* The shadow it casts on the shelf. */
-.kb .kb-book::after{content:"";position:absolute;left:8%;right:-4%;bottom:-6px;height:14px;border-radius:50%;background:rgb(var(--shadow) / .34);filter:blur(7px);
-  transform:translateX(calc(var(--d) * -.3)) scaleX(.92);transition:transform .6s var(--spring-soft),opacity .6s;z-index:-1}
-/* Reading progress: a ribbon bookmark hanging out of the bottom of the pages, longer the further in you are. */
-.kb .kb-ribbon{position:absolute;top:calc(100% - 4px);right:22%;width:8px;height:calc(10px + var(--kb-p) * 16px);transform:translateZ(calc(var(--d) / 2 - 2px));
-  background:var(--tertiary);clip-path:polygon(0 0,100% 0,100% 100%,50% calc(100% - 6px),0 100%);box-shadow:0 1px 2px rgb(0 0 0 / .2)}
-/* A corner mark: rank or shelf state. */
-.kb .kb-badge{position:absolute;left:-8px;top:-8px;z-index:2}
-.kb .kb-rank{display:grid;place-items:center;min-width:30px;height:30px;padding:0 8px;border-radius:15px 15px 15px 6px;background:var(--primary);color:var(--on-primary);font-family:var(--display);font-weight:800;font-size:15px;box-shadow:0 2px 6px rgb(var(--shadow) / .25)}
-
+/* Drawn in book3d.css, beside book3d.tsx, so a book looks the same wherever Kimono shows one. What follows is how it moves here. */
 /* Hover or focus: it turns to you and lifts. (The cover stays shut: swung open, the page showed past it like a misprint.) */
 @media (hover:hover){
   .kb button.kb-book:hover{--turn:0deg;--lift:-10px}

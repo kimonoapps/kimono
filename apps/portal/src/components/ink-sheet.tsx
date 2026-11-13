@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { blotPath, inkFilters, inkRandom, InkBlot } from "@kimono/ui";
 import { LineIcon, type LineIconName } from "./line-icon";
 
@@ -34,7 +35,8 @@ export function InkSheet({ title, icon, tint = "#a84d63", onClose, actions, chil
   const bleed = `<defs>${inkFilters(unique, 13)}</defs>`
     + `<path d="${blotPath(random, 22, 20, 30)}" style="fill: color-mix(in srgb, ${tint} 10%, var(--sc-low))" filter="url(#ink-wash-${unique})"></path>`
     + `<path d="${blotPath(random, 14, 12, 19)}" style="fill: color-mix(in srgb, ${tint} 16%, var(--sc-low))" filter="url(#ink-wash-${unique})" opacity=".8"></path>`;
-  return <div className="scrim open ink-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+  /* On the page's own top layer: opened from inside a row, it was drawn under the rows after it. */
+  const sheet = <div className="scrim open ink-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="sheet ink-sheet" role="dialog" aria-modal="true" aria-label={title}>
       <svg className="ink-sheet-bleed" viewBox="0 0 100 100" aria-hidden="true" dangerouslySetInnerHTML={{ __html: bleed }} />
       <span className="handle" />
@@ -46,4 +48,5 @@ export function InkSheet({ title, icon, tint = "#a84d63", onClose, actions, chil
       {actions ? <div className="ink-sheet-actions">{actions}</div> : null}
     </div>
   </div>;
+  return typeof document === "undefined" ? sheet : createPortal(sheet, document.body);
 }

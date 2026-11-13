@@ -2,6 +2,7 @@
 
 import { useState, type CSSProperties, type ReactNode } from "react";
 import type { Book } from "./api";
+import "./book3d.css";
 
 /*
  * A book you can almost pick up: cover, spine and page edges in 3D (books.css,

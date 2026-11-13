@@ -9,6 +9,7 @@ import { JointSwitch } from "@/components/joint-switch";
 import { LineIcon } from "@/components/line-icon";
 import { Portrait } from "@/components/portrait";
 import { SilkscreenBadge } from "./silkscreen";
+import { Book3D } from "../../books/book3d";
 
 /*
  * 友 Friends, profiles and recommendations on the web (lib/friends has the
@@ -47,6 +48,12 @@ function Face({ person, size = 44 }: { person: Person; size?: number }) {
   return <InkPortraitFrame seed={person.username} weight={size > 60 ? 3 : 5}><Portrait name={person.name} username={person.username} picture={person.picture} size={Math.round(size * .84)} /></InkPortraitFrame>;
 }
 
+/* A book is drawn as Books draws it, in 3D, with a cloth binding when there's no cover; anything else by its cover. */
+function Face3D({ item }: { item: Item }) {
+  const author = item.subtitle?.split(" · ")[0]?.trim();
+  return <Book3D book={{ key: item.itemId, title: item.title, authors: author ? [author] : [], cover: item.cover, pages: null }} />;
+}
+
 function Cover({ item }: { item: Item }) {
   return <span className="fr-cover">
     {/* eslint-disable-next-line @next/next/no-img-element -- covers come from each app */}
@@ -66,7 +73,7 @@ function RatingMark({ rating }: { rating: "love" | "up" | "down" }) {
 
 function Tile({ item, children }: { item: Item; children?: React.ReactNode }) {
   const href = hrefOf(item);
-  const face = <><span className="fr-cover-wrap"><Cover item={item} />{item.rating ? <RatingMark rating={item.rating} /> : null}</span>
+  const face = <><span className="fr-cover-wrap">{item.app === "books" ? <Face3D item={item} /> : <Cover item={item} />}{item.rating ? <RatingMark rating={item.rating} /> : null}</span>
     {item.progress ? <span className="fr-progress" role="progressbar" aria-valuenow={Math.round(item.progress * 100)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${item.progress * 100}%` }} /></span> : null}
     <b>{item.title}</b>{item.subtitle ? <small>{item.subtitle}</small> : null}</>;
   return <div className="fr-tile">
