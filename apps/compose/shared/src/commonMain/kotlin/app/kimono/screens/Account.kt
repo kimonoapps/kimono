@@ -93,8 +93,10 @@ suspend fun Session.usePicture(png: ByteArray) {
 }
 
 @Composable
-fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (String) -> Unit) {
+fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, friends: app.kimono.data.Friends, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
+    var circle by remember { mutableStateOf(friends.known()) }
+    LaunchedEffect(Unit) { runCatching { circle = friends.list() } }
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -145,6 +147,14 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, open: (
                 Text(me?.email ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Problem(problem)
             }
+            GroupLabel("Friends")
+            val c = circle
+            KimonoGroup(listOf(
+                GroupItem("Your profile", icon = "person") { me?.username?.let { open("people/$it") } },
+                GroupItem("Friends", detail = c?.let {
+                    listOfNotNull(if (it.friends.size == 1) "1 friend" else "${it.friends.size} friends", if (it.asked.isNotEmpty()) "${it.asked.size} asking" else null, if (it.unseen > 0) "${it.unseen} new for you" else null).joinToString(" · ")
+                }, icon = "people") { open("friends") },
+            ))
             GroupLabel("Account")
             KimonoGroup(listOf(
                 GroupItem("Name and email", detail = me?.email, icon = "person") { open("details") },

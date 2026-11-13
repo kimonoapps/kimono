@@ -3,6 +3,8 @@ import { InkBlot, InkPortraitFrame } from "@kimono/ui";
 import { listSessions } from "@/lib/account";
 import { signOutCompletely } from "@/lib/sign-out";
 import { runningVersion } from "@/lib/kimono-release";
+import { friendsDb, friendsList } from "@/lib/friends";
+import { bioOf } from "@/lib/friends/model";
 import { Crossing } from "@/components/crossing";
 import { LineIcon } from "@/components/line-icon";
 import { Portrait } from "@/components/portrait";
@@ -17,6 +19,13 @@ export default async function YouPage({ searchParams }: { searchParams: Promise<
   const { session, account } = await accountContext();
   const query = await searchParams;
   const signIns = await listSessions(session.user).then((list) => list.length, () => null);
+  const friends = await friendsList(account.username).catch(() => null);
+  const bio = (() => { try { return bioOf(friendsDb(), account.username); } catch { return ""; } })();
+  const friendsLine = !friends ? "Friends" : [
+    friends.friends.length === 1 ? "1 friend" : `${friends.friends.length} friends`,
+    friends.asked.length ? `${friends.asked.length} asking` : null,
+    friends.unseen ? `${friends.unseen} new for you` : null,
+  ].filter(Boolean).join(" · ");
 
   const row = (href: string, icon: Parameters<typeof LineIcon>[0]["name"], tint: string, title: string, detail: string) =>
     <Crossing kind="kakejiku" className="row" href={href}>
@@ -40,6 +49,11 @@ export default async function YouPage({ searchParams }: { searchParams: Promise<
       {row("/account/details", "user", "#a84d63", "Name and email", account.email || "Add an email")}
       {row("/account/password", "lock", "#74565c", "Password", "Change your password")}
       {row("/account/devices", "laptop", "#5c7150", "Signed-in devices", signIns === null ? "See where you're signed in" : `${signIns} right now`)}
+    </div>
+    <div className="label">Friends</div>
+    <div className="seg">
+      {row(`/account/people/${encodeURIComponent(account.username)}`, "user", "#a84d63", "Your profile", bio || "Add a few words about you")}
+      {row("/account/friends", "people", "#5c7150", "Friends", friendsLine)}
     </div>
     <div className="label">Your phone</div>
     <div className="seg">{row("/get-app", "phone", "#8a7c77", "Get the Kimono app", "Android and iPhone")}</div>

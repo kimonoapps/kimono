@@ -155,6 +155,18 @@ class WatchApi(
 
     suspend fun friends(): app.kimono.watch.model.FriendsPage = json.decodeFromString(get("/friends"))
 
+    /** Recommends a title to friends (Kimono's recommendations, /api/v1/recommendations); with no one, puts it on your profile. */
+    suspend fun recommend(titleId: String, name: String, year: Int?, poster: String?, to: List<String>, note: String) {
+        accounts.call("/api/v1/recommendations", HttpMethod.Post) {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                put("app", "watch"); put("itemId", titleId); put("title", name)
+                year?.let { put("subtitle", it.toString()) }; poster?.let { put("cover", it) }
+                put("note", note); put("to", kotlinx.serialization.json.JsonArray(to.map { JsonPrimitive(it) }))
+            }.toString())
+        }
+    }
+
     /** A friend's list and ratings, unless they keep them to themselves. */
     suspend fun friendTaste(username: String): app.kimono.watch.model.FriendTaste =
         json.decodeFromString(get("/friends/${username.encodeURLParameter()}"))

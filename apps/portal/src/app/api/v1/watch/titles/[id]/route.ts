@@ -1,5 +1,6 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
 import { friendsOn, friendsRated } from "@/lib/watch/friends-live";
+import { recommendedToUser } from "@/lib/friends";
 import { ensureTitle, portalOrigin, setListed, setRating, setReminder, setShowLayout, setTracks, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
 
 type Context = { params: Promise<{ id: string }> };
@@ -17,7 +18,9 @@ export async function GET(request: Request, { params }: Context) {
     const friends = await friendsOn(user.username, page.title.id, origin).catch(() => []);
     /* What friends thought of it: loved, liked, didn't like, or on their list. */
     const friendRatings = await friendsRated(user.username, page.title.id).catch(() => []);
-    return apiJson({ ...page, friends, friendRatings });
+    /* Friends who recommended it to this person, with their notes. */
+    const recommendedBy = await recommendedToUser(user.username, "watch", page.title.id).catch(() => []);
+    return apiJson({ ...page, friends, friendRatings, recommendedBy });
   });
 }
 

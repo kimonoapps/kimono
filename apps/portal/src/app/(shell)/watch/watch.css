@@ -971,3 +971,4 @@
 /* The player's controls cast a soft shadow in their own shape, as on the phone, so they read on bright frames. */
 .kw .kw-p-top .kw-ic,.kw .kw-p-mid .kw-ic,.kw .kw-p-bot .kw-ic{filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
 .kw .kw-p-top,.kw .kw-p-mid,.kw .kw-p-bot{text-shadow:0 1px 6px rgba(0,0,0,.7)}
+.kw .kw-fr-recs q{display:block;margin-top:2px;color:var(--fg-1, inherit);font-style:italic}

@@ -50,6 +50,8 @@ export type TitleView = {
   friends?: FriendHere[];
   /** What friends thought of it: loved, liked, didn't like, or on their list. */
   friendRatings?: FriendRated[];
+  /** Friends who recommended it, with their notes (lib/friends). */
+  recommendedBy?: (Person & { id: string; note: string | null; at: number })[];
 };
 
 /* ───── Friends (lib/watch/friends.ts) ───── */

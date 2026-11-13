@@ -302,6 +302,9 @@ private fun Actions(page: TitlePage, vm: TitleViewModel, go: Go, dl: Map<String,
                 }
             }
         }
+        var recommending by remember { mutableStateOf(false) }
+        Act(Ic.send, "Recommend", false) { recommending = true }
+        if (recommending) RecommendSheet(t.id, t.name, t.year, t.poster, onDismiss = { recommending = false })
         if (page.language != null) Act(Ic.cc, "Language", language || page.tracks != null) { language = !language }
         if (page.resume != null) Act(Ic.close, "Remove from history", false) { vm.forget() }
         if (t.isFilm) {

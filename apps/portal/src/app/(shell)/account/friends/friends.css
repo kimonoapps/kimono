@@ -1,0 +1,84 @@
+/* ─────────────────────────────────────────────────────────────
+   友 Friends, profiles and recommendations — on the You column.
+   Rows, labels and sheets are the You page's; this is what's new:
+   shelves of covers, the friend picker and the ink sheet's wash.
+   ───────────────────────────────────────────────────────────── */
+
+.fr-top { display: flex; align-items: center; gap: 12px; padding: 20px 0 4px; }
+.fr-top h1 { font-size: 34px; }
+.fr-back { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--plum); }
+.fr-back:hover { background: var(--sc-high); }
+.fr .you-head .k-ink-portrait { width: 112px; height: 112px; }
+.fr .row .k-ink-portrait .portrait { width: 37px; height: 37px; font-size: 18px; }
+/* An initial is written straight onto the frame's wash, as on You. */
+.fr .k-ink-portrait .portrait, .ink-sheet .k-ink-portrait .portrait { background: transparent; box-shadow: none; }
+.fr-bio { max-width: 460px; white-space: pre-line; color: var(--on-surface) !important; font-size: 16px; line-height: 1.5; }
+.fr-actions { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }
+.fr-app { font-weight: 500; color: var(--on-surface-variant); }
+.fr-quiet { color: var(--on-surface-variant); }
+.fr-pad { padding: 0 28px; }
+.fr-problem { color: color-mix(in srgb, var(--primary-deep) var(--k-tint), var(--k-night-ink)); padding: 0 8px; }
+.fr .row .k-seal { flex: none; }
+
+/* shelves: covers in a row that scrolls sideways */
+.fr-shelf { display: grid; grid-auto-flow: column; grid-auto-columns: 132px; gap: 14px; overflow-x: auto; padding: 4px 4px 12px; scroll-snap-type: x proximity; }
+.fr-tile { position: relative; display: grid; align-content: start; gap: 6px; scroll-snap-align: start; }
+.fr-tile > a, .fr-tile > span { display: grid; gap: 4px; color: inherit; text-decoration: none; }
+.fr-tile b { font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fr-tile small { font-size: 12.5px; color: var(--on-surface-variant); }
+.fr-cover { display: block; aspect-ratio: 2 / 3; border-radius: 16px; overflow: hidden; background: var(--sc-high); transition: border-radius .35s var(--spring); }
+.fr-tile > a:hover .fr-cover { border-radius: 22px; }
+.fr-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fr-cover-none { width: 100%; height: 100%; display: grid; place-items: center; font: 600 40px/1 var(--display); color: var(--plum); }
+.fr-from { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--on-surface-variant); }
+.fr-from .portrait { width: 20px; height: 20px; font-size: 11px; }
+.fr-new { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); }
+.fr-tile-note { font: 13px/1.4 var(--sans); color: var(--on-surface); quotes: "“" "”"; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.fr-away { position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--plum); cursor: pointer; }
+.fr-away .line-icon { width: 18px; height: 18px; }
+.fr-away:hover { background: var(--surface); }
+
+/* finding people */
+.fr-find { cursor: text !important; }
+.fr-find input { flex: 1; min-width: 0; border: 0; background: transparent; font: 16px var(--sans); color: var(--on-surface); outline: none; }
+
+/* loading */
+.fr-sk { min-height: 72px; animation: fr-pulse 1.4s ease-in-out infinite; }
+.fr-sk-face { width: 112px; height: 112px; border-radius: 50%; background: var(--sc-high); animation: fr-pulse 1.4s ease-in-out infinite; }
+@keyframes fr-pulse { 50% { opacity: .55; } }
+
+.fr-toast { position: fixed; left: 50%; bottom: 32px; translate: -50% 0; z-index: 70; padding: 12px 20px; border-radius: 16px; background: var(--on-surface); color: var(--surface); font-size: 15px; box-shadow: var(--raised); animation: rise .45s var(--spring); }
+
+/* ── 墨 the ink sheet: paper with a wash bled in from its top corner ── */
+.ink-sheet { position: relative; overflow: hidden; isolation: isolate; width: min(460px, 100%); }
+.ink-sheet-bleed { position: absolute; left: -70px; top: -70px; width: 380px; height: 380px; z-index: -1; pointer-events: none; overflow: visible; }
+.ink-sheet-head { display: flex; align-items: center; gap: 14px; }
+.ink-sheet-head .k-ink-blot { width: 44px; height: 44px; }
+.ink-sheet-head h3 { font-size: 24px; }
+.ink-sheet-body { display: grid; gap: 16px; }
+.ink-sheet-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.fr-note textarea { resize: vertical; min-height: 72px; }
+.fr-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 16px; }
+
+.fr-rec-item { display: flex; align-items: center; gap: 14px; }
+.fr-rec-item .fr-cover { width: 56px; border-radius: 10px; flex: none; }
+.fr-rec-item span { display: grid; gap: 2px; }
+.fr-rec-item small { color: var(--on-surface-variant); }
+
+/* picking friends: their portraits; a picked one wears a suō seal mark */
+.fr-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 10px; min-height: 84px; }
+.fr-pick-one { position: relative; display: grid; justify-items: center; gap: 4px; padding: 6px 2px; border: 0; border-radius: 18px; background: transparent; font: 13px var(--sans); color: var(--on-surface); cursor: pointer; transition: background-color .2s, border-radius .35s var(--spring); }
+.fr-pick-one:hover { background: var(--sc-high); }
+.fr-pick-one[aria-pressed="true"] { background: var(--secondary-container, var(--sc-high)); border-radius: 22px; font-weight: 700; }
+.fr-pick-one .k-ink-portrait { width: 56px; height: 56px; }
+.fr-pick-one .k-ink-portrait .portrait { width: 47px; height: 47px; font-size: 22px; }
+.fr-pick-mark { position: absolute; top: 4px; right: calc(50% - 32px); width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--primary); color: #fff; box-shadow: 0 0 0 3px var(--sc-low); }
+.fr-pick-mark .line-icon { width: 14px; height: 14px; color: #fff; stroke-width: 2.6; }
+
+@media (max-width: 720px) {
+  .fr-pad { padding: 0 20px; }
+  .fr-shelf { grid-auto-columns: 116px; padding-left: 4px; }
+}
+
+/* over Watch's title page too */
+.ink-scrim { z-index: 75; }

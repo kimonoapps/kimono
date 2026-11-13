@@ -1,11 +1,8 @@
 import "server-only";
 
 import { randomBytes } from "node:crypto";
-import { portalOrigin } from "../account";
-import { listAccounts } from "../directory";
-import { picturePaths } from "../pictures";
+import { friendsOfUser, people, type Person } from "../friends";
 import type { WatchConfig } from "./config";
-import { friendsOf } from "./friends";
 import { cardOf, ensureTitle, getTitle, namer, nextUp, prefsOf, watchDb, WatchProblem } from "./index";
 import {
   addChat, cleanClient, command, decline, endForgotten, invite, labelView, leave, loadParty, newParty, parseCommand, partiesFor, reactions, recentWith, report, saveParty, seen, tick, viewOf,
@@ -30,23 +27,11 @@ type Listener = { client: string; username: string; send: (event: LiveEvent) => 
 type Room = { party: Party; listeners: Set<Listener>; savedAt: number; reacted: Map<string, number[]> };
 
 /* Kept across hot reloads in development, as the database connection is. */
-const cache = globalThis as unknown as { kimonoWatchParties?: Map<string, Room>; kimonoWatchPartyClock?: ReturnType<typeof setInterval>; kimonoWatchPeople?: { at: number; people: Person[] } };
+const cache = globalThis as unknown as { kimonoWatchParties?: Map<string, Room>; kimonoWatchPartyClock?: ReturnType<typeof setInterval>; };
 const rooms: Map<string, Room> = (cache.kimonoWatchParties ??= new Map());
 
-export type Person = { username: string; name: string; picture: string | null };
-
-/** Everyone in the household, by name and portrait, for inviting and for showing who's here. */
-export async function people(): Promise<Person[]> {
-  if (cache.kimonoWatchPeople && Date.now() - cache.kimonoWatchPeople.at < 5 * 60_000) return cache.kimonoWatchPeople.people;
-  const [accounts, pictures] = await Promise.all([listAccounts(), picturePaths()]);
-  const origin = portalOrigin();
-  const list = accounts.map((a) => {
-    const picture = pictures[a.username.toLowerCase()];
-    return { username: a.username.toLowerCase(), name: a.name || a.username, picture: picture ? `${origin}${picture}` : null };
-  });
-  cache.kimonoWatchPeople = { at: Date.now(), people: list };
-  return list;
-}
+/* Everyone in the household is Kimono's (lib/friends). */
+export { people, type Person };
 
 function roomOf(id: string): Room | null {
   const known = rooms.get(id);
@@ -173,7 +158,7 @@ export async function partiesOf(username: string, origin: string) {
      friends: theirs, who watching together suggests before anything is typed, the ones they've watched with lately first. */
   const recent = recentWith(db, u);
   const at = (x: string) => { const i = recent.indexOf(x); return i < 0 ? Infinity : i; };
-  const friends = friendsOf(db, u).sort((a, b) => at(a) - at(b) || nameOf(a).localeCompare(nameOf(b)));
+  const friends = friendsOfUser(u).sort((a, b) => at(a) - at(b) || nameOf(a).localeCompare(nameOf(b)));
   return { parties, people: everyone, recent, friends };
 }
 

@@ -156,6 +156,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
     code.appLink = model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID } ?: code.appLink
     val appAdmin = remember(session) { app.kimono.data.AppAdmin(session) }
     val vpn = remember(session) { app.kimono.data.Vpn(session) }
+    val friends = remember(session) { app.kimono.data.Friends(session) }
     val testflight = remember(session) { app.kimono.data.Testflight(session) }
     /* On an iPhone, TestFlight's newest builds: an app older than its build shows Update, as on Android. Asked again on coming back. */
     var flights by remember(session) { mutableStateOf<app.kimono.data.TestflightStanding?>(null) }
@@ -217,7 +218,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "notes/{notebook}", "note/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "friends", "people/{username}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "notes/{notebook}", "note/{id}")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -354,7 +355,12 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             }
             composable("drive/shared") { app.kimono.screens.SharedWithYouScreen(model, platform, me?.username, open = { nav.navigate(it) }) { nav.popBackStack() } }
             composable("trash") { TrashScreen(model) { nav.popBackStack() } }
-            composable("you") { YouScreen(session, platform, me) { nav.navigate(it) } }
+            composable("you") { YouScreen(session, platform, me, friends) { nav.navigate(it) } }
+            composable("friends") { app.kimono.screens.FriendsScreen(friends, open = { nav.navigate(it) }) { nav.popBackStack() } }
+            composable("people/{username}") { backStack ->
+                val username = backStack.arguments?.read { getStringOrNull("username") } ?: ""
+                app.kimono.screens.ProfileScreen(friends, username, open = { nav.navigate(it) }) { nav.popBackStack() }
+            }
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
             composable("password") { PasswordScreen(session, me) { nav.popBackStack() } }

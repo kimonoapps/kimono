@@ -1,9 +1,9 @@
 /**
  * 友 Friends on Watch: who sees what you watch.
  *
- * Anyone in the household can ask anyone else; once the other says yes,
- * each sees what the other is watching right now and how far they are in
- * every show. Asking someone who already asked you makes you friends.
+ * Who's friends is Kimono's (lib/friends); here is what Watch does with it:
+ * each friend sees what the other is watching right now and how far they are
+ * in every show.
  * Nobody sees anything of someone who turned off "Show friends what I watch".
  * Invisible is for now: friends don't see you watching or can ask to join,
  * and what you watch meanwhile stays hidden until you watch it visibly again.
@@ -19,6 +19,7 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 
+/** Watch's own tables. Its old `friends` table is only read once, to bring friendships into lib/friends. */
 export function migrateFriends(db: DatabaseSync) {
   db.exec(`CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, asked_by TEXT NOT NULL, state TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
     CREATE INDEX IF NOT EXISTS friends_b ON friends (b);
@@ -38,56 +39,8 @@ export function hiddenOf(db: DatabaseSync, username: string): Set<string> {
   return new Set((db.prepare("SELECT title_id FROM friends_hidden WHERE username = ?").all(username.toLowerCase()) as { title_id: string }[]).map((r) => r.title_id));
 }
 
-const pair = (x: string, y: string): [string, string] => { const a = x.toLowerCase(), b = y.toLowerCase(); return a < b ? [a, b] : [b, a]; };
-
-/** "friends"; "asked": they asked you; "asking": you asked them. */
-export type LinkState = "friends" | "asked" | "asking";
-export type Link = { username: string; state: LinkState; at: number };
-
-type Row = { a: string; b: string; asked_by: string; state: string; at: number };
-
-export function linksOf(db: DatabaseSync, me: string): Link[] {
-  const u = me.toLowerCase();
-  const rows = db.prepare("SELECT * FROM friends WHERE a = ? OR b = ? ORDER BY at DESC").all(u, u) as Row[];
-  return rows.map((r) => {
-    const other = r.a === u ? r.b : r.a;
-    const state: LinkState = r.state === "friends" ? "friends" : r.asked_by === u ? "asking" : "asked";
-    return { username: other, state, at: Number(r.at) };
-  });
-}
-
-export function linkOf(db: DatabaseSync, me: string, them: string): LinkState | null {
-  return linksOf(db, me).find((l) => l.username === them.toLowerCase())?.state ?? null;
-}
-
-export const areFriends = (db: DatabaseSync, x: string, y: string) => linkOf(db, x, y) === "friends";
-export const friendsOf = (db: DatabaseSync, me: string) => linksOf(db, me).filter((l) => l.state === "friends").map((l) => l.username);
-
-/** Asks to be friends; when they already asked, it's a yes. Answers what it is now. */
-export function askFriend(db: DatabaseSync, me: string, them: string, now = Date.now()): LinkState {
-  const u = me.toLowerCase(), t = them.toLowerCase();
-  if (!t || u === t) throw new Error("self");
-  const state = linkOf(db, u, t);
-  if (state === "friends" || state === "asking") return state;
-  const [a, b] = pair(u, t);
-  if (state === "asked") { db.prepare("UPDATE friends SET state = 'friends', at = ? WHERE a = ? AND b = ?").run(now, a, b); return "friends"; }
-  db.prepare("INSERT INTO friends (a, b, asked_by, state, at) VALUES (?, ?, ?, 'asked', ?)").run(a, b, u, now);
-  return "asking";
-}
-
-/** Says yes or no to someone who asked. No (or taking an ask back, or unfriending) forgets the link. */
-export function answerFriend(db: DatabaseSync, me: string, them: string, yes: boolean, now = Date.now()): LinkState | null {
-  const state = linkOf(db, me, them);
-  if (state !== "asked") return state;
-  if (yes) return askFriend(db, me, them, now);
-  removeFriend(db, me, them);
-  return null;
-}
-
-export function removeFriend(db: DatabaseSync, me: string, them: string) {
-  const [a, b] = pair(me, them);
-  db.prepare("DELETE FROM friends WHERE a = ? AND b = ?").run(a, b);
-}
+/* Friendship itself is Kimono's (lib/friends/model.ts): Watch builds on its friend list. */
+export { answerFriend, areFriends, askFriend, friendsOf, linkOf, linksOf, removeFriend, type Link, type LinkState } from "../friends/model";
 
 /* ───── Asking to join ───── */
 

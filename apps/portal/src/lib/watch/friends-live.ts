@@ -4,15 +4,17 @@ import { randomBytes } from "node:crypto";
 import type { WatchConfig } from "./config";
 import { cardOf, ensureTitle, finished, fraction, getTitle, getTitles, prefsOf, watchDb, WatchProblem, type Card, type Progress, type Title } from "./index";
 import { playingNow, watchKey } from "./flow";
-import {
-  answerAsk, answerFriend, askFriend, cancelAsk, friendsOf, hiddenOf, likedByFriends, watchedByFriends, linkOf, linksOf, liveAsks, newAsk, noteWatched, removeFriend,
-  type JoinAsk, type LinkState,
-} from "./friends";
+import { answerAsk, cancelAsk, hiddenOf, likedByFriends, watchedByFriends, liveAsks, newAsk, noteWatched, type JoinAsk } from "./friends";
+import { changeFriend as changeKimonoFriend, findPeople as findKimonoPeople, friendsOfUser, linkBetween, linksOfUser, type Section } from "../friends";
+import { FriendsProblem, type LinkState } from "../friends/model";
 import { inviteTo, labelsFor, partyWith, people, type Person } from "./together-live";
+import { watchConfig } from "./config";
+import { getPlatformSettings } from "../settings";
 
 /*
- * 友 Friends on the server (./friends.ts has the rules): who's friends, what
- * each is watching now and where they are in things, and asks to join.
+ * 友 Friends on Watch's server (./friends.ts has the rules): what each friend
+ * is watching now and where they are in things, and asks to join. Who's
+ * friends is Kimono's (lib/friends); Watch only reads that list.
  */
 
 const cache = globalThis as unknown as { kimonoWatchJoinAsks?: JoinAsk[] };
@@ -93,9 +95,8 @@ export async function asksOf(username: string) {
 /** The Friends page: friends with what they're on now and lately, who asked and who's been asked. Others to ask are found by name (findPeople), never listed. */
 export async function friendsPage(username: string, origin: string) {
   const u = username.toLowerCase();
-  const db = watchDb();
   const everyone = await people();
-  const links = linksOf(db, u);
+  const links = linksOfUser(u);
   const person = (x: string): Person => everyone.find((p) => p.username === x) ?? { username: x, name: x, picture: null };
   const now = Date.now();
   const friends: FriendView[] = links.filter((l) => l.state === "friends").map((l) => {
@@ -106,7 +107,6 @@ export async function friendsPage(username: string, origin: string) {
   });
   /* Watching now first, then whoever watched most lately. */
   friends.sort((a, b) => Number(!!b.now) - Number(!!a.now) || (b.recent[0]?.at ?? 0) - (a.recent[0]?.at ?? 0));
-  const linked = new Set(links.map((l) => l.username));
   return {
     sharing: sharing(u),
     invisible: invisible(u),
@@ -119,30 +119,14 @@ export async function friendsPage(username: string, origin: string) {
   };
 }
 
-/**
- * People to ask to be friends, found by what was typed: at least two letters of their name or username,
- * the closest first, at most 8. Friends and those already asked (either way) aren't among them.
- */
-export async function findPeople(username: string, typed: string) {
-  const u = username.toLowerCase();
-  const q = typed.trim().toLowerCase();
-  if (q.length < 2) return [] as Person[];
-  const linked = new Set(linksOf(watchDb(), u).map((l) => l.username));
-  const rank = (p: Person) => {
-    const words = [p.username.toLowerCase(), ...(p.name ?? "").toLowerCase().split(/\s+/)];
-    return words.some((w) => w === q) ? 0 : words.some((w) => w.startsWith(q)) ? 1 : 2;
-  };
-  return (await people())
-    .filter((p) => p.username !== u && !linked.has(p.username) && (p.username.toLowerCase().includes(q) || (p.name ?? "").toLowerCase().includes(q)))
-    .sort((a, b) => rank(a) - rank(b) || (a.name || a.username).localeCompare(b.name || b.username))
-    .slice(0, 8);
-}
+/** People to ask to be friends, found by name (lib/friends). */
+export const findPeople = (username: string, typed: string) => findKimonoPeople(username, typed);
 
 /** Friends' places in one title, for its page: where each is, and who's on it now. */
 export async function friendsOn(username: string, titleId: string, origin: string) {
   const u = username.toLowerCase();
   const db = watchDb();
-  const list = friendsOf(db, u).filter(sharing);
+  const list = friendsOfUser(u).filter(sharing);
   if (!list.length) return [];
   const everyone = await people();
   const now = Date.now();
@@ -159,19 +143,11 @@ export async function friendsOn(username: string, titleId: string, origin: strin
   }).sort((a, b) => Number(b.now) - Number(a.now) || b.at - a.at);
 }
 
-/** `{ type: "ask" | "yes" | "no" | "remove", username }`: friendship changes. Answers the link now. */
+/** `{ type: "ask" | "yes" | "no" | "remove", username }`: friendship changes, Kimono's (lib/friends). Answers the link now. */
 export async function changeFriend(username: string, raw: Record<string, unknown>): Promise<{ state: LinkState | null }> {
-  const u = username.toLowerCase();
-  const them = String(raw.username ?? "").toLowerCase();
-  if (!them || them === u) throw new WatchProblem("Pick someone else.", 400);
-  if (!(await people()).some((p) => p.username === them)) throw new WatchProblem("They aren't on this Kimono.", 404);
-  const db = watchDb();
-  switch (raw.type) {
-    case "ask": return { state: askFriend(db, u, them) };
-    case "yes": return { state: answerFriend(db, u, them, true) };
-    case "no": return { state: answerFriend(db, u, them, false) };
-    case "remove": removeFriend(db, u, them); return { state: null };
-    default: throw new WatchProblem("That isn't something friends do.", 400);
+  try { return await changeKimonoFriend(username, raw); } catch (error) {
+    if (error instanceof FriendsProblem) throw new WatchProblem(error.message, error.status);
+    throw error;
   }
 }
 
@@ -179,8 +155,7 @@ export async function changeFriend(username: string, raw: Record<string, unknown
 export async function askToJoin(cfg: WatchConfig, username: string, raw: Record<string, unknown>) {
   const u = username.toLowerCase();
   const to = String(raw.to ?? "").toLowerCase();
-  const db = watchDb();
-  if (linkOf(db, u, to) !== "friends" || !sharing(to)) throw new WatchProblem("You can only ask friends.", 403);
+  if (linkBetween(u, to) !== "friends" || !sharing(to)) throw new WatchProblem("You can only ask friends.", 403);
   const live = nowOf(u, to, "", Date.now());
   if (!live) throw new WatchProblem("They've stopped watching.", 409);
   await ensureTitle(cfg, live.title.id);
@@ -215,7 +190,7 @@ export async function answerJoin(username: string, id: string, raw: Record<strin
 export async function friendTaste(username: string, them: string, origin: string) {
   const u = username.toLowerCase(), f = them.toLowerCase();
   const db = watchDb();
-  if (!friendsOf(db, u).includes(f)) throw new WatchProblem("You aren't friends.", 404);
+  if (!friendsOfUser(u).includes(f)) throw new WatchProblem("You aren't friends.", 404);
   const who = (await people()).find((p) => p.username === f) ?? { username: f, name: f, picture: null };
   if (!sharesTaste(f)) return { ...who, sharing: false, loved: [] as Card[], liked: [] as Card[], disliked: [] as Card[], list: [] as Card[] };
   const hidden = hiddenOf(db, f);
@@ -230,7 +205,7 @@ export async function friendTaste(username: string, them: string, origin: string
 export async function friendsRated(username: string, titleId: string) {
   const u = username.toLowerCase();
   const db = watchDb();
-  const list = friendsOf(db, u).filter(sharesTaste).filter((f) => !hiddenOf(db, f).has(titleId));
+  const list = friendsOfUser(u).filter(sharesTaste).filter((f) => !hiddenOf(db, f).has(titleId));
   if (!list.length) return [];
   const everyone = await people();
   const order = { love: 0, up: 1, down: 2 } as const;
@@ -251,7 +226,7 @@ export async function friendsLikedRow(username: string, origin: string, shelf?: 
   const u = username.toLowerCase();
   const db = watchDb();
   if (prefsOf(db, u).friendsOnHome === false) return null;
-  const friends = friendsOf(db, u).filter(sharesTaste);
+  const friends = friendsOfUser(u).filter(sharesTaste);
   if (!friends.length) return null;
   const ids = likedByFriends(db, u, friends).slice(0, 40);
   const items = getTitles(db, ids).filter((t) => !shelf || t.shelf === shelf).slice(0, 20).map((t) => cardOf(t, origin));
@@ -266,9 +241,38 @@ export async function friendsWatchingRow(username: string, origin: string, shelf
   const u = username.toLowerCase();
   const db = watchDb();
   if (prefsOf(db, u).friendsOnHome === false) return null;
-  const friends = friendsOf(db, u).filter(sharing);
+  const friends = friendsOfUser(u).filter(sharing);
   if (!friends.length) return null;
   const ids = watchedByFriends(db, friends, now - 14 * 24 * 3600_000).slice(0, 40);
   const items = getTitles(db, ids).filter((t) => !shelf || t.shelf === shelf).slice(0, 20).map((t) => cardOf(t, origin));
   return items.length ? { id: "friends-watching", title: "Your friends are watching", kind: "cards", items } : null;
+}
+
+/* ───── On a Kimono profile ───── */
+
+/**
+ * Watch's sections on someone's profile (lib/friends): their favourites (what they loved) while they share
+ * their taste, and what they've watched lately while they share that. Their own profile shows both always.
+ * Nothing when Watch is off.
+ */
+export async function watchSections(viewer: string, username: string, origin: string): Promise<Section[]> {
+  if (!watchConfig(await getPlatformSettings()).enabled) return [];
+  const v = viewer.toLowerCase(), u = username.toLowerCase();
+  const you = v === u;
+  const db = watchDb();
+  const hidden = you ? new Set<string>() : hiddenOf(db, u);
+  const item = (t: Title) => {
+    const card = cardOf(t, origin);
+    return { app: "watch", itemId: t.id, title: t.name, subtitle: t.year ? String(t.year) : null, cover: card.poster, href: `/watch?t=${encodeURIComponent(t.id)}` };
+  };
+  const sections: Section[] = [];
+  if (you || sharesTaste(u)) {
+    const loved = getTitles(db, ratingsOf(u).filter((r) => r.rating === "love" && !hidden.has(r.title_id)).map((r) => r.title_id).slice(0, 24));
+    if (loved.length) sections.push({ app: "watch", appName: "Watch", shelf: "favourites", title: "Favourites", items: loved.map(item), editable: false });
+  }
+  if (you || (sharing(u) && !invisible(u))) {
+    const recent = lastRows(u, 12).map((p) => getTitle(db, p.titleId)).filter((t): t is Title => t !== null);
+    if (recent.length) sections.push({ app: "watch", appName: "Watch", shelf: "recent", title: "Watched lately", items: recent.map(item), editable: false });
+  }
+  return sections;
 }

@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { airText, labelOf, languageName, languages, minutesText, watchApi, type Episode, type TitleView } from "./api";
 import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
-import { FriendsAt, FriendsHere, FriendsThought } from "./friends";
+import { createPortal } from "react-dom";
+import { FriendsAt, FriendsHere, FriendsThought, Face } from "./friends";
+import { RecommendSheet } from "../account/friends/friends-ui";
+import "../account/friends/friends.css";
 
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
 
@@ -16,6 +19,7 @@ export function TitleSheet({ id, onClose, refreshKey, leaving = false }: { id: s
   const [on, setOn] = useState(false);
   const [tab, setTab] = useState<"eps" | "more">("eps");
   const [seasonLoading, setSeasonLoading] = useState(false);
+  const [recommending, setRecommending] = useState(false);
   const sheet = useRef<HTMLDivElement>(null);
   const shown = useRef<number | undefined>(undefined);
 
@@ -98,10 +102,12 @@ export function TitleSheet({ id, onClose, refreshKey, leaving = false }: { id: s
                   {view.tracker ? <Tracker view={view} /> : null}
                   <FriendsHere friends={view.friends ?? []} film={t.kind === "movie"} />
                   <FriendsThought friends={view.friendRatings ?? []} />
+                  <RecommendedBy view={view} />
                   {t.overview ? <p className="kw-desc">{t.overview}</p> : null}
                   <div className="kw-acts" style={{ position: "relative" }}>
                     <ListButton id={t.id} variant="act" />
                     <RateButton id={t.id} variant="act" />
+                    <button className="kw-act" onClick={() => setRecommending(true)}><Icon name="send" /><span>Recommend</span></button>
                     {view.resume ? <button className="kw-act" onClick={() => void watch.forget(t.id).then((ok) => { if (ok) void load(view.season); })}><Icon name="close" /><span>Remove from history</span></button> : null}
                     {view.language ? <button className={cx("kw-act", (langOpen || view.tracks) && "kw-on")} aria-expanded={langOpen} onClick={() => setLangOpen(!langOpen)}><Icon name="cc" /><span>Language</span></button> : null}
                     {series && view.hasFillers ? <label className={cx("kw-act kw-switch-act", view.fillers === "skip" && "kw-on")}>
@@ -124,6 +130,21 @@ export function TitleSheet({ id, onClose, refreshKey, leaving = false }: { id: s
             </>}
       </div>
     </div>
+    {recommending && view ? createPortal(<RecommendSheet onClose={() => setRecommending(false)} onSent={watch.toast}
+      item={{ app: "watch", itemId: view.title.id, title: view.title.name, subtitle: view.title.year ? String(view.title.year) : null, cover: view.title.poster }} />, document.body) : null}
+  </div>;
+}
+
+/** Friends who recommended this title to you, and what they said. */
+function RecommendedBy({ view }: { view: TitleView }) {
+  const by = view.recommendedBy ?? [];
+  if (!by.length) return null;
+  const first = (p: { name: string; username: string }) => (p.name || p.username).split(" ")[0];
+  const noted = by.find((r) => r.note);
+  return <div className="kw-fr-thought kw-fr-recs">
+    <span className="kw-fr-faces">{by.slice(0, 3).map((p) => <Face key={p.username} person={p} />)}</span>
+    <span>{by.length === 1 ? `${first(by[0])} recommends it` : `${by.slice(0, 2).map(first).join(" and ")}${by.length > 2 ? ` and ${by.length - 2} more` : ""} recommend it`}
+      {noted ? <q>{noted.note}</q> : null}</span>
   </div>;
 }
 
