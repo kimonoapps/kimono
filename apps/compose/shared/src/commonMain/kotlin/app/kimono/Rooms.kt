@@ -62,6 +62,9 @@ private val vpn = RoomApp("kimono-vpn", "VPN", "#2f6b7a", "mesh", listOf(Room("v
 /* Notes, as its mockup has it: Home (all notes), the bloom, Search. */
 private val notes = RoomApp(app.kimono.data.Notes.APP_ID, "Notes", "#b56d78", "notes", listOf(Room("notes", "Home", "home")), listOf(Room("notes/search", "Search", "search", action = true)))
 
+/* Books, phone-first: Home and your shelf left of the bloom, Search right. */
+private val books = RoomApp(app.kimono.data.Books.APP_ID, "Books", "#5b6b3f", "book", listOf(Room("books", "Home", "home"), Room("books/shelf", "Shelf", "book")), listOf(Room("books/search", "Search", "search")))
+
 /** Which app's bar a screen shows, or null for a screen opened from a room (it has its own back). */
 fun appOfRoom(route: String?): RoomApp? = when (route) {
     "home", "you" -> kimono
@@ -69,6 +72,7 @@ fun appOfRoom(route: String?): RoomApp? = when (route) {
     "code", "ai/new", "ai/new/{in}", "code/{id}", "ai/connections", "ai/memory" -> code
     "vpn", "vpn/people", "vpn/connect" -> vpn
     "notes", "notes/{notebook}" -> notes
+    "books", "books/shelf", "books/search" -> books
     else -> null
 }
 

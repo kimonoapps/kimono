@@ -167,6 +167,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
     fun here(target: app.kimono.data.LauncherApp) =
         app.kimono.screens.phoneAppHere(target, platform, target.phoneApp?.let { phone -> flights?.let { it.appFor(phone, target.fullName)?.latest } })
     val notes = remember(session) { app.kimono.screens.NotesModel(app.kimono.data.Notes(session, platform), model.drive, platform) }
+    val books = remember(session) { app.kimono.data.Books(session) }
     /*
      * Where you were: every screen on the way there is kept as you move, and the app
      * opens on them again, so Back still leads where it did. A notification's screen wins.
@@ -205,6 +206,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             target.id == app.kimono.data.Code.APP_ID -> goTab("code")
             target.id == "kimono-vpn" -> goTab("vpn")
             target.id == app.kimono.data.Notes.APP_ID -> goTab("notes")
+            target.id == app.kimono.data.Books.APP_ID -> goTab("books")
             /* An app with a phone app of its own: open it when it's here, and when it isn't, its page here to get it. Never its website. */
             /* With a newer version waiting (its tile says Update), its page, which has the update. */
             target.phoneApp != null -> {
@@ -219,7 +221,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
     LaunchedEffect(driveOn) {
         val on = driveOn ?: return@LaunchedEffect
         platform.driveAvailable(on)
-        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "friends", "people/{username}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "notes/{notebook}", "note/{id}")) goTab("home")
+        if (!on && route != null && route !in setOf("home", "you", "details", "devices", "password", "code", "code/{id}", "code/{id}/app", "ai/new", "ai/new/{in}", "ai/connections", "ai/connections/{app}", "ai/memory", "ai/archived", "ai/a/{token}", "manage", "manage/{id}", "friends", "people/{username}", "vpn", "vpn/people", "vpn/connect", "app/{id}", "notes", "notes/{notebook}", "note/{id}", "books", "books/shelf", "books/search")) goTab("home")
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -323,6 +325,19 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
                 AppAccentTheme(model.drive.knownApps()?.firstOrNull { it.id == app.kimono.data.Code.APP_ID }?.accent) {
                     WorkspaceScreen(code, model.drive, platform, id, showApp = true, open = { nav.navigate(it) }) { nav.popBackStack() }
                 }
+            }
+            /* Books: Home, your shelf and search, each with a book's sheet over it. */
+            fun booksAccent() = model.drive.launcher.value?.firstOrNull { it.id == app.kimono.data.Books.APP_ID }?.accent ?: "#5b6b3f"
+            composable("books") {
+                AppAccentTheme(booksAccent()) {
+                    app.kimono.screens.BooksHomeScreen(books, platform, me?.name?.substringBefore(' ')?.takeIf { it.isNotBlank() }, openSearch = { goTab("books/search") }, openShelf = { goTab("books/shelf") })
+                }
+            }
+            composable("books/shelf") {
+                AppAccentTheme(booksAccent()) { app.kimono.screens.BooksShelfScreen(books, platform, openSearch = { goTab("books/search") }) }
+            }
+            composable("books/search") {
+                AppAccentTheme(booksAccent()) { app.kimono.screens.BooksSearchScreen(books, platform, back = { goTab("books") }) }
             }
             /* Notes: the list with its drawer of notebooks, and a note full screen over it. */
             fun notesAccent() = model.drive.launcher.value?.firstOrNull { it.id == app.kimono.data.Notes.APP_ID }?.accent ?: "#b56d78"
