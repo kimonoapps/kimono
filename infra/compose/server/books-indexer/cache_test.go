@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type fakeSource struct {
@@ -33,7 +35,7 @@ func TestLiveLookupsAreKeptAndMissesWait(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	pool.Exec(ctx, "DROP SCHEMA IF EXISTS books_live CASCADE")
+	resetDatabase(t, pool)
 	lv, err := newLive(ctx, pool, config{})
 	if err != nil {
 		t.Fatal(err)
@@ -70,5 +72,18 @@ func TestLiveLookupsAreKeptAndMissesWait(t *testing.T) {
 	searchAll(ctx, pool, lv, "copper atlas", 10)
 	if calls != 3 {
 		t.Fatalf("a search found a week ago went out again (%d calls)", calls)
+	}
+}
+
+// resetDatabase empties the scratch database, so tests don't see each other's rows.
+func resetDatabase(t *testing.T, pool interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), `
+DROP SCHEMA IF EXISTS books CASCADE; DROP SCHEMA IF EXISTS books_next CASCADE;
+DROP SCHEMA IF EXISTS books_extra CASCADE; DROP SCHEMA IF EXISTS books_live CASCADE;
+DROP TABLE IF EXISTS public.book_imports`); err != nil {
+		t.Fatal(err)
 	}
 }

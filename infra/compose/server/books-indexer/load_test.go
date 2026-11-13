@@ -22,6 +22,7 @@ func TestImportAndSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
+	resetDatabase(t, pool)
 	dir := t.TempDir()
 	write := func(name, body string) string {
 		path := filepath.Join(dir, name)
