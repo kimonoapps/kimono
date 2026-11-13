@@ -3,6 +3,7 @@
 package app.kimono.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -217,6 +218,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     var removing by remember { mutableStateOf(false) }
     var recommending by remember { mutableStateOf<ShareItem?>(null) }
     var refreshing by remember { mutableStateOf(false) }
+    var privacyOpen by remember { mutableStateOf(false) }
     suspend fun load() { try { profile = friends.profile(username); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(username) { load() }
     fun change(type: String) = scope.launch { try { friends.change(type, username); load() } catch (p: KimonoProblem) { problem = p.message } }
@@ -232,11 +234,18 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                     Portrait(p.picture, p.name, p.username, 128.dp)
                     Text(p.name.ifBlank { p.username }, style = MaterialTheme.typography.headlineMedium, color = Kata.plum, textAlign = TextAlign.Center)
                     Text("@${p.username}" + if (p.open) " · ${if (p.friends == 1) "1 friend" else "${p.friends} friends"}" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (p.privacy?.invisible == true) Row(
+                        Modifier.clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable { privacyOpen = true }.padding(horizontal = 12.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Icon(kimonoIcon("lock"), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                        Text("Invisible to friends", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     p.kimonoRead?.let { SilkscreenBadge(it.since, p.you, p.name.ifBlank { p.username }, still, friends.server) }
                     if (p.open && p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                         when {
-                            p.you -> Seal("Edit", compact = true, tone = SealTone.Quiet, onClick = { editing = true })
+                            p.you -> { Seal("Edit", compact = true, tone = SealTone.Quiet, onClick = { editing = true }); Seal("Who sees what", compact = true, tone = SealTone.Quiet, onClick = { privacyOpen = true }) }
                             p.link == "friends" -> Seal("Friends", compact = true, tone = SealTone.Quiet, onClick = { removing = true })
                             p.link == "asked" -> { Seal("Not now", compact = true, tone = SealTone.Quiet, onClick = { change("no") }); Seal("Accept", compact = true, onClick = { change("yes") }) }
                             p.link == "asking" -> Seal("Asked", compact = true, tone = SealTone.Quiet, onClick = { change("remove") })
@@ -252,23 +261,46 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                         else listOf(MenuChoice("Recommend to others") { recommending = r.item })
                     }) { r -> r.note?.let { Text("“$it”", style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic), maxLines = 4, overflow = TextOverflow.Ellipsis) } }
                 }
-                /* Each app's rows together under its name; on your own profile, whether friends see them. */
+                /* Their friends, by portrait; on your own profile, whether friends see the list. */
+                val list = p.friendList
+                if (p.open && (!list.isNullOrEmpty() || p.you)) {
+                    val listKept = p.you && (p.privacy?.invisible == true || p.privacy?.friends == false)
+                    KeptLabel("Friends", listKept)
+                    if (list.isNullOrEmpty()) Text("No friends yet.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 28.dp))
+                    else LazyRow(Modifier.alpha(if (listKept) .5f else 1f), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(list, key = { it.username }) { f ->
+                            Column(
+                                Modifier.width(84.dp).clip(RoundedCornerShape(18.dp)).clickable { open("people/${f.username}") }.padding(vertical = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Portrait(f.picture, f.name, f.username, 60.dp)
+                                Text(f.first(), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+                /* Each app's rows together under its name; on your own profile, what friends see of them, which opens Who sees what. */
                 if (p.open) p.sections.groupBy { it.app }.forEach { (app, rows) ->
                     val kept = app in p.hidden
                     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 28.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         InkBlot("app:$app", size = 40.dp) { Icon(kimonoIcon(if (app == "books") "book" else "film"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) }
                         Text(rows.first().appName, style = MaterialTheme.typography.headlineSmall, color = Kata.plum, modifier = Modifier.weight(1f))
                         if (p.you) {
-                            Text(if (kept) "Only you" else "Friends see this", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Switch(!kept, { on ->
-                                profile = p.copy(hidden = if (on) p.hidden - app else p.hidden + app)
-                                scope.launch { try { val now = friends.showApp(app, on); profile = profile?.copy(hidden = now) } catch (e: KimonoProblem) { problem = e.message; load() } }
-                            })
+                            val some = p.privacy?.apps?.firstOrNull { it.app == app }?.rows?.any { !it.shown } == true
+                            Row(
+                                Modifier.clip(RoundedCornerShape(12.dp, 8.dp, 12.dp, 8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable { privacyOpen = true }
+                                    .heightIn(min = 40.dp).padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Icon(kimonoIcon(if (kept) "lock" else "people"), null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Text(if (kept) "Only you" else if (some) "Friends see some" else "Friends see this", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                     rows.forEach { s ->
-                        GroupLabel(s.title)
-                        Box(Modifier.alpha(if (kept) .5f else 1f)) {
+                        val rowKept = !kept && p.you && "${s.app}:${s.kind}" in p.kept
+                        KeptLabel(s.title, rowKept)
+                        Box(Modifier.alpha(if (kept || rowKept) .5f else 1f)) {
                             Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }) { item ->
                                 item.progress?.let { f -> androidx.compose.material3.LinearProgressIndicator(progress = { f.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) }
                             }
@@ -280,12 +312,74 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
         }
     }
     val p = profile
+    val privacy = p?.privacy
+    if (privacyOpen && p != null && privacy != null) PrivacyDialog(friends, privacy, onDismiss = { privacyOpen = false }) { now ->
+        profile = profile?.copy(privacy = now.privacy, hidden = now.hidden, kept = now.privacy.kept)
+    }
     if (editing && p != null) BioDialog(friends, p.bio, onDismiss = { editing = false }) { bio -> profile = p.copy(bio = bio) }
     if (removing && p != null) InkConfirm(
         title = "Remove ${p.name.substringBefore(' ')}?", text = "You'll stop seeing each other's profiles and what you watch.",
         action = "Remove", danger = true, icon = "people", onDismiss = { removing = false }, onConfirm = { removing = false; change("remove") },
     )
     recommending?.let { item -> RecommendDialog(friends, item, onDismiss = { recommending = null }) }
+}
+
+/** A row's label, with "Only you" beside it when friends don't see it. */
+@Composable
+private fun KeptLabel(text: String, kept: Boolean) {
+    Row(Modifier.padding(start = 28.dp, top = 24.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        GroupLabel(text, Modifier)
+        if (kept) Text("Only you", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 8.dp, vertical = 2.dp))
+    }
+}
+
+/**
+ * Who sees what: going invisible (friends see your name and portrait, and no app shows them what you do),
+ * then your friends list, each app and each of its rows. Every switch saves as it's flipped.
+ */
+@Composable
+private fun PrivacyDialog(friends: Friends, privacy: app.kimono.data.Privacy, onDismiss: () -> Unit, onChanged: (app.kimono.data.PrivacyNow) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var now by remember { mutableStateOf(privacy) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    fun save(optimistic: app.kimono.data.Privacy, call: suspend () -> app.kimono.data.PrivacyNow) {
+        val was = now
+        now = optimistic
+        scope.launch { try { val r = call(); now = r.privacy; onChanged(r); problem = null } catch (e: KimonoProblem) { now = was; problem = e.message } }
+    }
+    val off = now.invisible
+    InkDialog(title = "Who sees what", icon = "lock", onDismiss = onDismiss, actions = { Seal("Done", compact = true, onClick = onDismiss) }) {
+        PrivacySwitch("Invisible", now.invisible, bold = true, note = "Friends see only your name and portrait.") { on -> save(now.copy(invisible = on)) { friends.setInvisible(on) } }
+        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        Column(Modifier.alpha(if (off) .45f else 1f)) {
+            PrivacySwitch("Friends list", now.friends, bold = true, enabled = !off) { on -> save(now.copy(friends = on)) { friends.showPart("friends", on) } }
+            now.apps.forEach { a ->
+                PrivacySwitch(a.name, a.shown, bold = true, enabled = !off) { on ->
+                    save(now.copy(apps = now.apps.map { if (it.app == a.app) it.copy(shown = on) else it })) { friends.showAppOf(a.app, on) }
+                }
+                Column(Modifier.padding(start = 18.dp).alpha(if (a.shown) 1f else .45f)) {
+                    a.rows.forEach { r ->
+                        PrivacySwitch(r.title, r.shown, enabled = !off && a.shown) { on ->
+                            save(now.copy(apps = now.apps.map { if (it.app == a.app) it.copy(rows = it.rows.map { x -> if (x.kind == r.kind) x.copy(shown = on) else x }) else it })) { friends.showPart("${a.app}:${r.kind}", on) }
+                        }
+                    }
+                }
+            }
+        }
+        Problem(problem)
+    }
+}
+
+@Composable
+private fun PrivacySwitch(label: String, on: Boolean, bold: Boolean = false, enabled: Boolean = true, note: String? = null, change: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = if (bold) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge)
+            note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Switch(on, change, enabled = enabled)
+    }
 }
 
 @Composable

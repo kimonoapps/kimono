@@ -42,14 +42,33 @@ data class KimonoProfile(
     val username: String, val name: String = "", val picture: String? = null,
     val you: Boolean = false, val link: String? = null, val open: Boolean = false, val bio: String = "",
     val sections: List<ProfileSection> = emptyList(), val recommendations: List<Recommendation> = emptyList(), val friends: Int = 0,
-    /** On your own profile: the apps you keep from friends. */
+    /** On your own profile: the apps you keep from friends (all of them while you're invisible), the rows ("watch:listed") and parts ("friends") you keep, and all of what friends see. */
     val hidden: List<String> = emptyList(),
+    val kept: List<String> = emptyList(),
+    val privacy: Privacy? = null,
+    /** Who they're friends with; null when they keep it to themselves. */
+    val friendList: List<FriendPerson>? = null,
     /** They read on a Kimono Read, since this ISO date. */
     val kimonoRead: KimonoRead? = null,
 )
 
 @Serializable
 data class KimonoRead(val since: String)
+
+/** What you let friends see (lib/friends/model.ts privacyOf): going invisible, your friends list, and each app and its rows. */
+@Serializable
+data class Privacy(val invisible: Boolean = false, val friends: Boolean = true, val apps: List<PrivacyApp> = emptyList()) {
+    val kept: List<String> get() = (if (friends) emptyList() else listOf("friends")) + apps.flatMap { a -> a.rows.filter { !it.shown }.map { "${a.app}:${it.kind}" } }
+}
+
+@Serializable
+data class PrivacyApp(val app: String, val name: String, val shown: Boolean = true, val rows: List<PrivacyRow> = emptyList())
+
+@Serializable
+data class PrivacyRow(val kind: String, val title: String, val shown: Boolean = true)
+
+@Serializable
+data class PrivacyNow(val privacy: Privacy, val hidden: List<String> = emptyList())
 
 @Serializable
 private data class Hidden(val hidden: List<String> = emptyList())
@@ -92,6 +111,16 @@ class Friends(private val session: Session) {
     suspend fun showApp(app: String, shown: Boolean): List<String> = json.decodeFromString<Hidden>(session.call("/api/v1/profile", HttpMethod.Patch) {
         contentType(ContentType.Application.Json); setBody(buildJsonObject { put("app", app); put("shown", shown) }.toString())
     }).hidden
+
+    /** Goes invisible to friends, or comes back. */
+    suspend fun setInvisible(on: Boolean): PrivacyNow = privacy(buildJsonObject { put("invisible", on) }.toString())
+    /** Shows or keeps one app from friends. */
+    suspend fun showAppOf(app: String, shown: Boolean): PrivacyNow = privacy(buildJsonObject { put("app", app); put("shown", shown) }.toString())
+    /** Shows or keeps one row ("watch:listed") or your friends list ("friends") from friends. */
+    suspend fun showPart(key: String, shown: Boolean): PrivacyNow = privacy(buildJsonObject { put("keep", key); put("shown", shown) }.toString())
+    private suspend fun privacy(body: String): PrivacyNow = json.decodeFromString(session.call("/api/v1/profile", HttpMethod.Patch) {
+        contentType(ContentType.Application.Json); setBody(body)
+    })
 
     suspend fun recommendations(): Recommendations = json.decodeFromString(session.fetch(RECOMMENDATIONS))
 
