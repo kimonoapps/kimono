@@ -1,0 +1,9 @@
+turntable.webp: the Silkscreen Kimono, a full turn in 36 views, for the profile badge.
+
+Silkscreen enclosure by iandchasse, CERN-OHL-S-2.0 (Copyright © 2026 idc LLC),
+https://github.com/iandchasse/silkscreen-enclosures, with Kimono's branch on its back.
+Rendered by apps/portal/public/models/silkscreen-kimono/make_turntable.py from
+silkscreen-kimono.glb there; that folder has the modified source, LICENSE.txt and the
+full NOTICE.txt. SPDX-License-Identifier: CERN-OHL-S-2.0
+
+The Kimono name and branch are Kimono's marks, not covered by that licence.

@@ -375,7 +375,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             composable("friends") { app.kimono.screens.FriendsScreen(friends, open = { nav.navigate(it) }) { nav.popBackStack() } }
             composable("people/{username}") { backStack ->
                 val username = backStack.arguments?.read { getStringOrNull("username") } ?: ""
-                app.kimono.screens.ProfileScreen(friends, username, open = { nav.navigate(it) }) { nav.popBackStack() }
+                app.kimono.screens.ProfileScreen(friends, username, still = platform.reduceMotion, open = { nav.navigate(it) }) { nav.popBackStack() }
             }
             composable("details") { DetailsScreen(session, me) { nav.popBackStack() } }
             composable("devices") { DevicesScreen(session) { nav.popBackStack() } }
