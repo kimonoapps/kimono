@@ -145,6 +145,10 @@ class WatchApi(
 
     suspend fun friends(): app.kimono.watch.model.FriendsPage = json.decodeFromString(get("/friends"))
 
+    /** People to ask to be friends, by what was typed (two letters at least); never everyone. */
+    suspend fun findPeople(q: String): List<app.kimono.watch.model.Person> =
+        json.decodeFromString<app.kimono.watch.model.PeopleFound>(get("/friends?q=${q.encodeURLParameter()}")).people
+
     /** [type] "ask", "yes", "no" or "remove". */
     suspend fun friend(type: String, username: String) { send(HttpMethod.Post, "/friends", buildJsonObject { put("type", type); put("username", username) }) }
 

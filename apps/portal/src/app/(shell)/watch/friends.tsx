@@ -98,14 +98,33 @@ export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
             onRemove={() => { if (confirm(`Remove ${f.name || f.username}? You'll stop seeing what each other watches.`)) void change("remove", f.username); }} />)
             : <p className="kw-empty">Add friends to see what they&rsquo;re watching.</p>}
         </div>
-        {page.people.length || page.asking.length ? <section><h2>Add friends</h2>
+        <section><h2>Add friends</h2>
+          <FindPeople onAdd={(username) => change("ask", username)} />
           {page.asking.map((p) => <div key={p.username} className="kw-fr-person"><Face person={p} /><b>{p.name || p.username}</b>
             <button className="kw-btn kw-tonal" onClick={() => void change("remove", p.username)}><Icon name="check" />Asked</button></div>)}
-          {page.people.map((p) => <div key={p.username} className="kw-fr-person"><Face person={p} /><b>{p.name || p.username}</b>
-            <button className="kw-btn kw-tonal" onClick={() => void change("ask", p.username)}><Icon name="add" />Add</button></div>)}
-        </section> : null}
+        </section>
       </>}
   </main>;
+}
+
+/** Finding someone to ask by name: no one is listed until two letters are typed. */
+function FindPeople({ onAdd }: { onAdd: (username: string) => Promise<unknown> }) {
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState<Person[] | null>(null);
+  const asked = useRef(0);
+  useEffect(() => {
+    const typed = q.trim();
+    if (typed.length < 2) { setFound(null); return; }
+    const n = ++asked.current;
+    const timer = setTimeout(() => { friendsApi.find(typed).then((people) => { if (n === asked.current) setFound(people); }, () => {}); }, 200);
+    return () => clearTimeout(timer);
+  }, [q]);
+  return <>
+    <div className="kw-sbar kw-fr-find"><Icon name="search" /><input type="search" placeholder="Search by name" aria-label="Search by name" autoComplete="off" value={q} onChange={(event) => setQ(event.target.value)} /></div>
+    {found?.map((p) => <div key={p.username} className="kw-fr-person"><Face person={p} /><b>{p.name || p.username}</b>
+      <button className="kw-btn kw-tonal" onClick={() => void onAdd(p.username).then(() => setFound((now) => now?.filter((x) => x.username !== p.username) ?? null))}><Icon name="add" />Add</button></div>)}
+    {found && !found.length ? <p className="kw-fr-none">No one called that</p> : null}
+  </>;
 }
 
 function FriendCard({ f, asking, onAsk, onCancel, onRemove }: { f: Friend; asking: JoinAsk | null; onAsk: () => void; onCancel: (a: JoinAsk) => void; onRemove: () => void }) {

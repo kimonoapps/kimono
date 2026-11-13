@@ -121,6 +121,8 @@ const savingTracks = new Map<string, Promise<unknown>>();
 export const friendsApi = {
   page: () => call<FriendsPage>("friends"),
   change: (type: "ask" | "yes" | "no" | "remove", username: string) => call<{ state: string | null }>("friends", post({ type, username })),
+  /** People to ask to be friends, by what was typed (two letters at least). */
+  find: (q: string) => call<{ people: Person[] }>(`friends?q=${encodeURIComponent(q)}`).then((r) => r.people),
   asks: () => call<{ incoming: JoinAsk[]; outgoing: JoinAsk[] }>("friends/join"),
   askToJoin: (to: string) => call<{ ask: JoinAsk }>("friends/join", post({ to })).then((a) => a.ask),
   answer: (id: string, yes: boolean, partyId?: string) => call<{ ok: boolean }>(`friends/join/${encodeURIComponent(id)}`, post({ yes, partyId })),

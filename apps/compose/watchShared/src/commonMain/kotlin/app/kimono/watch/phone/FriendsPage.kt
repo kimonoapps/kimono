@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -65,10 +70,13 @@ class FriendsModel internal constructor() {
     var problem by mutableStateOf<String?>(null)
     var asking by mutableStateOf<JoinAsk?>(null)
     var removing by mutableStateOf<Friend?>(null)
+    /** What's typed to find someone to ask, and who matches (null until two letters are typed). */
+    var query by mutableStateOf("")
+    var found by mutableStateOf<List<Person>?>(null)
     internal var change: (type: String, username: String) -> Unit = { _, _ -> }
     internal var ask: (Friend) -> Unit = {}
     internal var cancel: (JoinAsk) -> Unit = {}
-    fun add(username: String) = change("ask", username)
+    fun add(username: String) { found = found?.filterNot { it.username == username }; change("ask", username) }
     fun accept(username: String) = change("yes", username)
     fun decline(username: String) = change("no", username)
     fun remove(username: String) = change("remove", username)
@@ -81,6 +89,20 @@ class FriendsModel internal constructor() {
     fun setInvisible(on: Boolean) {
         page = page?.copy(invisible = on)
         prefs?.set("invisible", on) { it.copy(invisible = on) }
+    }
+}
+
+/** The field someone to ask is found by: a name, two letters at least (phone and TV). */
+@Composable
+fun FindPeopleField(m: FriendsModel, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(12.dp)).background(Night.surface2)
+        .border(1.dp, Night.line, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        I(Ic.search, 18.dp, Night.fg3)
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+            if (m.query.isEmpty()) Text("Search by name", style = ui(15, color = Night.fg3))
+            BasicTextField(m.query, { m.query = it.take(60) }, Modifier.fillMaxWidth(), singleLine = true, textStyle = ui(15), cursorBrush = SolidColor(Night.suo),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search))
+        }
     }
 }
 
@@ -112,6 +134,13 @@ fun rememberFriends(go: Go): FriendsModel {
     }
     m.cancel = { a -> m.asking = null; scope.launch { runCatching { watch.api.cancelAsk(a.id) } } }
     LaunchedEffect(Unit) { while (true) { load(); delay(15_000) } }
+    /* Someone to ask, found by name as it's typed: no one is listed before two letters. */
+    LaunchedEffect(m.query) {
+        val q = m.query.trim()
+        if (q.length < 2) { m.found = null; return@LaunchedEffect }
+        delay(200)
+        runCatching { watch.api.findPeople(q) }.onSuccess { m.found = it }
+    }
 
     /* Waiting on an answer: a yes goes straight into their party. */
     LaunchedEffect(m.asking?.id) {
@@ -163,14 +192,14 @@ fun FriendsPage(go: Go) {
                 items(p.friends, key = { "f" + it.username }) { f ->
                     FriendCard(f, go, m.askingOf(f), onAsk = { m.askToJoin(f) }, onCancel = m::cancelAsk, onRemove = { m.removing = f })
                 }
-                if (p.people.isNotEmpty() || p.asking.isNotEmpty()) {
-                    item { Heading("Add friends") }
-                    items(p.asking, key = { "asking" + it.username }) { who ->
-                        PersonRow(who) { PaperButton("Asked", Ic.check, { m.remove(who.username) }, tonal = true, height = 38.dp) }
-                    }
-                    items(p.people, key = { "p" + it.username }) { who ->
-                        PersonRow(who) { PaperButton("Add", Ic.people, { m.add(who.username) }, tonal = true, height = 38.dp) }
-                    }
+                item { Heading("Add friends") }
+                item { FindPeopleField(m, Modifier.padding(top = 4.dp, bottom = 4.dp)) }
+                items(m.found.orEmpty(), key = { "p" + it.username }) { who ->
+                    PersonRow(who) { PaperButton("Add", Ic.people, { m.add(who.username) }, tonal = true, height = 38.dp) }
+                }
+                if (m.found?.isEmpty() == true) item { Text("No one called that", style = ui(14, color = Night.fg3), modifier = Modifier.padding(vertical = 8.dp)) }
+                items(p.asking, key = { "asking" + it.username }) { who ->
+                    PersonRow(who) { PaperButton("Asked", Ic.check, { m.remove(who.username) }, tonal = true, height = 38.dp) }
                 }
             }
         }

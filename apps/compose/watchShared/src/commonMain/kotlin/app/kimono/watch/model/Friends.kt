@@ -80,11 +80,15 @@ data class FriendsPage(
     val asked: List<Person> = emptyList(),
     /** You asked them. */
     val asking: List<Person> = emptyList(),
-    /** Everyone else on this Kimono. */
+    /** Always empty now: people to ask are found by name (WatchApi.findPeople). */
     val people: List<Person> = emptyList(),
     val incoming: List<JoinAsk> = emptyList(),
     val outgoing: List<JoinAsk> = emptyList(),
 )
+
+/** People found by name to ask to be friends (/watch/friends?q=). */
+@Serializable
+data class PeopleFound(val people: List<Person> = emptyList())
 
 /** A friend's place in one title, for its page. */
 @Serializable

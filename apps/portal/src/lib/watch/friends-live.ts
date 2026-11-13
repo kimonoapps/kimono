@@ -86,7 +86,7 @@ export async function asksOf(username: string) {
   };
 }
 
-/** The Friends page: friends with what they're on now and lately, who asked, who's been asked, and everyone else to ask. */
+/** The Friends page: friends with what they're on now and lately, who asked and who's been asked. Others to ask are found by name (findPeople), never listed. */
 export async function friendsPage(username: string, origin: string) {
   const u = username.toLowerCase();
   const db = watchDb();
@@ -109,9 +109,29 @@ export async function friendsPage(username: string, origin: string) {
     friends,
     asked: links.filter((l) => l.state === "asked").map((l) => person(l.username)),
     asking: links.filter((l) => l.state === "asking").map((l) => person(l.username)),
-    people: everyone.filter((p) => p.username !== u && !linked.has(p.username)),
+    /* No one is listed to ask: they're searched for by name (findPeople). Kept empty for apps from before. */
+    people: [] as Person[],
     ...(await asksOf(u)),
   };
+}
+
+/**
+ * People to ask to be friends, found by what was typed: at least two letters of their name or username,
+ * the closest first, at most 8. Friends and those already asked (either way) aren't among them.
+ */
+export async function findPeople(username: string, typed: string) {
+  const u = username.toLowerCase();
+  const q = typed.trim().toLowerCase();
+  if (q.length < 2) return [] as Person[];
+  const linked = new Set(linksOf(watchDb(), u).map((l) => l.username));
+  const rank = (p: Person) => {
+    const words = [p.username.toLowerCase(), ...(p.name ?? "").toLowerCase().split(/\s+/)];
+    return words.some((w) => w === q) ? 0 : words.some((w) => w.startsWith(q)) ? 1 : 2;
+  };
+  return (await people())
+    .filter((p) => p.username !== u && !linked.has(p.username) && (p.username.toLowerCase().includes(q) || (p.name ?? "").toLowerCase().includes(q)))
+    .sort((a, b) => rank(a) - rank(b) || (a.name || a.username).localeCompare(b.name || b.username))
+    .slice(0, 8);
 }
 
 /** Friends' places in one title, for its page: where each is, and who's on it now. */

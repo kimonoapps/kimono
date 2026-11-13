@@ -37,6 +37,7 @@ import app.kimono.watch.model.Person
 import app.kimono.watch.phone.FriendsModel
 import app.kimono.watch.phone.Go
 import app.kimono.watch.phone.ago
+import app.kimono.watch.phone.FindPeopleField
 import app.kimono.watch.phone.rememberFriends
 import app.kimono.watch.player.PersonFace
 import app.kimono.watch.theme.Night
@@ -75,11 +76,11 @@ fun TvFriends(go: Go, nav: @Composable () -> Unit) {
                 }
                 if (p.friends.isEmpty()) item { Text("Add friends to see what they're watching.", style = ui(15, color = Night.fg3), modifier = Modifier.padding(horizontal = gutter)) }
                 items(p.friends, key = { "f" + it.username }) { f -> FriendBlock(f, m, go) }
-                if (p.people.isNotEmpty() || p.asking.isNotEmpty()) {
-                    item { Heading("Add friends") }
-                    items(p.asking, key = { "asking" + it.username }) { who -> PersonLine(who) { TvButton("Asked", Ic.check, { m.remove(who.username) }, tonal = true) } }
-                    items(p.people, key = { "p" + it.username }) { who -> PersonLine(who) { TvButton("Add", Ic.people, { m.add(who.username) }, tonal = true) } }
-                }
+                item { Heading("Add friends") }
+                item { FindPeopleField(m, Modifier.padding(horizontal = gutter).widthIn(max = 520.dp)) }
+                items(m.found.orEmpty(), key = { "p" + it.username }) { who -> PersonLine(who) { TvButton("Add", Ic.people, { m.add(who.username) }, tonal = true) } }
+                if (m.found?.isEmpty() == true) item { Text("No one called that", style = ui(15, color = Night.fg3), modifier = Modifier.padding(horizontal = gutter)) }
+                items(p.asking, key = { "asking" + it.username }) { who -> PersonLine(who) { TvButton("Asked", Ic.check, { m.remove(who.username) }, tonal = true) } }
             }
         }
     }
