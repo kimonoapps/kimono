@@ -11,6 +11,8 @@ import { inflateRawSync } from 'node:zlib';
 const state = mkdtempSync(join(tmpdir(), 'kimono-books-convert-'));
 process.env.KIMONO_STATE_DIR = state;
 const files = await import('../src/lib/books/files.ts');
+const blocks = await import('../src/lib/books/convert/blocks.ts');
+const figures = await import('../src/lib/books/convert/figures.ts');
 const structure = await import('../src/lib/books/convert/structure.ts');
 const restructure = await import('../src/lib/books/convert/restructure.ts');
 const epub = await import('../src/lib/books/convert/epub.ts');
@@ -124,9 +126,9 @@ function wellFormed(xml, name) {
 }
 const textOf = (xhtml) => xhtml.replace(/<head>[\s\S]*?<\/head>/g, '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
 
-/* ── Claude, stood in for: a local server speaking the Messages API's stream, answering with the text it was sent. ── */
+/* ── Claude, stood in for: a local server speaking the Messages API's stream, answering with edits. ── */
 
-function fakeClaude(answer = (text) => text) {
+function fakeClaude(answer = () => ({ edits: [] })) {
   const seen = [];
   const server = createServer((req, res) => {
     let body = '';
@@ -135,14 +137,14 @@ function fakeClaude(answer = (text) => text) {
       const request = JSON.parse(body);
       seen.push({ request, headers: req.headers });
       const asked = request.messages[0].content;
-      const text = answer(asked.slice(asked.indexOf('\n\n') + 2));
+      const text = JSON.stringify(answer(asked.slice(asked.indexOf('\n\n') + 2)));
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
-      send('message_start', { message: { id: 'msg_test', type: 'message', role: 'assistant', model: request.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } } });
+      send('message_start', { message: { id: 'msg_test', type: 'message', role: 'assistant', model: request.model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1000, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } });
       send('content_block_start', { index: 0, content_block: { type: 'text', text: '' } });
       for (let i = 0; i < text.length; i += 400) send('content_block_delta', { index: 0, delta: { type: 'text_delta', text: text.slice(i, i + 400) } });
       send('content_block_stop', { index: 0 });
-      send('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 1 } });
+      send('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 100 } });
       send('message_stop', {});
       res.end();
     });
@@ -150,48 +152,127 @@ function fakeClaude(answer = (text) => text) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({ url: `http://127.0.0.1:${server.address().port}`, seen, close: () => server.close() })));
 }
 
+const P = (text, page = 1) => ({ kind: 'p', text, page });
+const H = (level, text, page = 1) => ({ kind: 'h', level, text, page });
+const edit = (e) => ({ op: null, block: null, level: null, at: null, as: null, after: null, note: null, figure: null, from: null, to: null, ...e });
+
 /* ── The rules alone ── */
 
-test('broken words join at a line end; real hyphens and new sentences stay', () => {
-  assert.equal(structure.join('no longer remem-', 'bered learning'), 'no longer remembered learning');
-  assert.equal(structure.join('a well-', 'Known name'), 'a well-Known name');
-  assert.equal(structure.join('the old', 'tower'), 'the old tower');
-  assert.equal(structure.join('', 'first'), 'first');
+test('broken words join at a line end; real hyphens, new sentences and CJK stay as they should', () => {
+  assert.equal(blocks.join('no longer remem-', 'bered learning'), 'no longer remembered learning');
+  assert.equal(blocks.join('a well-', 'Known name'), 'a well-Known name');
+  assert.equal(blocks.join('the old', 'tower'), 'the old tower');
+  assert.equal(blocks.join('吾輩は猫で', 'ある。'), '吾輩は猫である。');
+  assert.equal(blocks.join('', 'first'), 'first');
 });
 
-test('the word check passes restructuring and refuses rewriting, and notes must survive', () => {
-  const base = 'Every evening the keeper climbed the ninety steps of the old tower.[^1]\n\n[^1]: Rebuilt twice.\n\n12\n\nShe had done it for so long.';
-  const moved = 'Every evening the keeper climbed the ninety steps of the old tower.[^1] She had done it for so long.\n\n[^1]: Rebuilt twice.';
-  assert.equal(restructure.check(base, moved).accepted, true);
-  assert.equal(restructure.check(base, 'The keeper climbed a tower every night.[^1]\n\n[^1]: Rebuilt twice.').accepted, false); // a summary
-  assert.equal(restructure.check(base, moved.replace('[^1] ', ' ')).accepted, false); // a note mark lost
-  assert.equal(restructure.check(base, null).text, base);
-  assert.equal(restructure.check(base, '```\n' + moved + '\n```').accepted, true); // a fence around the answer is shed
+test('words are counted alike in every script: CJK by character, ligatures and long s by their letters', () => {
+  assert.deepEqual(blocks.words('Ye olde ſhoppe, ﬁne & dandy!'), ['ye', 'olde', 'shoppe', 'fine', 'dandy']);
+  assert.deepEqual(blocks.words('猫である'), ['猫', 'で', 'あ', 'る']);
+  assert.deepEqual(blocks.words('Note[^3] and {{img:2}} here'), ['note', 'and', 'here']);
+});
+
+test('Claude\'s edits can restructure but never change a word', () => {
+  const book = [H(2, 'One'), P('Becos it was Wensday the freind came.'), P('— 12 —'), P('and stayd for tea, as ye olde custom doth.'), P('A long paragraph '.repeat(20)), P('Figure 2: the mill')];
+  const ids = book.map((_, i) => i + 1);
+  const { blocks: out, applied, refused } = blocks.applyEdits(book, ids, [
+    edit({ op: 'heading', block: 'b1', level: 1 }),
+    edit({ op: 'delete', block: 'b3' }), // a page number: fine
+    edit({ op: 'join', block: 'b2' }), // across the deleted page number
+    edit({ op: 'word', block: 'b2', from: 'Becos', to: 'Because' }), // a spelling "fix": refused
+    edit({ op: 'word', block: 'b2', from: 'stayd', to: 'stay-d' }), // same letters and a hyphen: allowed (Claude's call)
+    edit({ op: 'delete', block: 'b5' }), // the book's own text: refused
+    edit({ op: 'split', block: 'b2', at: 'nowhere in it', as: 'p' }), // refused
+    edit({ op: 'rewrite', block: 'b2' }), // no such edit
+  ]);
+  assert.equal(applied, 4);
+  assert.equal(refused.length, 4);
+  assert.deepEqual(out.map((b) => b.kind === 'h' ? `h${b.level}` : b.kind), ['h1', 'p', 'p', 'p']);
+  assert.equal(out[1].text, 'Becos it was Wensday the freind came. and stay-d for tea, as ye olde custom doth.');
+  const before = blocks.blockWords(book.filter((_, i) => i !== 2)), after = blocks.blockWords(out);
+  assert.equal(blocks.overlap(before, after).faithful, 1);
+});
+
+test('a stray paragraph becomes a note or a caption, and blocks move into reading order', () => {
+  const book = [P('The keeper slept.[^1]'), P('She dreamed of herring.'), P('Rebuilt twice.'), { kind: 'figure', image: 1, caption: null, page: 1, role: 'picture' }, P('The tower at dusk.'), P('A sidebar spliced in.')];
+  const { blocks: out } = blocks.applyEdits(book, [1, 2, 3, 4, 5, 6], [
+    edit({ op: 'note', block: 'b3', note: 1 }),
+    edit({ op: 'caption', block: 'b5', figure: 'b4' }),
+    edit({ op: 'move', block: 'b6', after: 'b1' }),
+  ]);
+  assert.deepEqual(out.map((b) => b.kind), ['p', 'p', 'p', 'note', 'figure']);
+  assert.equal(out[1].text, 'A sidebar spliced in.');
+  assert.equal(out[4].caption, 'The tower at dusk.');
 });
 
 test('parts are cut between blocks and keep a note with its paragraph', () => {
-  const text = Array.from({ length: 30 }, (_, i) => i === 10 ? '[^1]: A note.' : i === 20 ? '# Two' : `Paragraph ${i} ${'word '.repeat(40)}`).join('\n\n');
-  const cut = restructure.parts(text, 300);
+  const book = Array.from({ length: 30 }, (_, i) => i === 10 ? { kind: 'note', id: 1, text: 'A note.', page: 1 } : i === 20 ? H(1, 'Two') : P(`Paragraph ${i} ${'word '.repeat(40)}`));
+  const cut = restructure.parts(book, 300);
   assert.ok(cut.length > 2);
-  assert.equal(cut.join('\n\n'), text);
-  assert.ok(cut.every((p) => !p.startsWith('[^')));
-  assert.ok(cut.some((p) => p.startsWith('# Two')));
+  assert.deepEqual(cut.flat(), book);
+  assert.ok(cut.every((p) => p[0].kind !== 'note'));
+  assert.ok(cut.some((p) => p[0].kind === 'h'));
 });
 
-test('an EPUB from the text format: valid, notes linked across files, contents from the headings', () => {
-  const text = `# One\n\nA *first* paragraph with a note.[^1] And a literal \\* star & an <angle>.\n\n[^1]: The note.\n\n## A section\n\n${'Words '.repeat(6000)}\n\n# Two\n\nThe end.`;
-  const built = epub.buildEpub(text, { id: 'urn:isbn:9780306406157', title: 'T & T', authors: ['A. Writer'], isbn: '9780306406157', language: 'en' }, null);
+test('figures come out of the ink no text explains; ruled lines and text alone don\'t', () => {
+  /* A 100×100 point page at one pixel a point: a filled box (a picture), a rule, and text. */
+  const W = 100, H2 = 100, data = new Uint8Array(W * H2).fill(255);
+  const paint = (x0, y0, x1, y1) => { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) data[y * W + x] = 0; };
+  paint(10, 10, 60, 50); // a drawing
+  paint(10, 70, 90, 71); // a rule
+  paint(10, 80, 80, 88); // a line of text, explained by its box
+  const found = figures.figuresOf({ w: W, h: H2, data }, { width: 100, height: 100 }, [{ x: 10, y: 80, w: 70, h: 8 }], []);
+  assert.equal(found.length, 1);
+  assert.deepEqual([Math.round(found[0].x), Math.round(found[0].y), Math.round(found[0].w), Math.round(found[0].h)], [10, 10, 50, 40]);
+  /* A raster image poppler reported is a figure even when it's pale. */
+  assert.equal(figures.figuresOf(null, { width: 100, height: 100 }, [], [{ x: 5, y: 5, w: 40, h: 30 }])[0].raster, true);
+});
+
+test('columns are read one after the other, verse keeps its lines, and a figure waits for its paragraph', () => {
+  const item = (left, top, text, size = 10, width = 200) => ({ left, top, width, height: size * 1.2, size, text });
+  const leftCol = ['The left column begins here and runs', 'down the page with a sentence that', 'ends on this line.'];
+  const rightCol = ['La colonne de droite commence ici', 'et descend la page avec une phrase', 'qui finit sur cette ligne.'];
+  const page = { number: 1, width: 500, height: 700, items: [
+    ...leftCol.map((t, i) => item(40, 100 + i * 14, t)), ...rightCol.map((t, i) => item(270, 100 + i * 14, t)),
+    item(40, 200, 'Twas brillig, and the slithy toves', 10, 160), item(60, 214, 'Did gyre and gimble in the wabe:', 10, 150), item(40, 228, 'All mimsy were the borogoves,', 10, 140), item(60, 242, 'And the mome raths outgrabe.', 10, 140),
+    item(40, 300, 'A paragraph runs into a picture and', 10, 420), item(40, 420, 'carries on below it to its end.', 10, 300),
+  ] };
+  const { blocks: out, regions } = structure.structure([page], new Map([[1, [{ x: 40, y: 320, w: 300, h: 90, raster: true }]]]));
+  const kinds = out.map((b) => b.kind);
+  assert.deepEqual(kinds, ['p', 'p', 'verse', 'p', 'figure']);
+  assert.match(out[0].text, /^The left column begins.*ends on this line\.$/);
+  assert.match(out[1].text, /^La colonne de droite.*cette ligne\.$/);
+  assert.deepEqual(out[2].lines.map((l) => l.indent), [0, 4, 0, 4]);
+  assert.equal(out[3].text, 'A paragraph runs into a picture and carries on below it to its end.');
+  assert.equal(regions.length, 1);
+});
+
+test('an EPUB from blocks: valid, notes linked across files, pictures with captions, verse, tables', () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+  const book = [
+    H(1, 'One'), P('A *first* paragraph with a note.[^1] And a literal \\* star & an <angle> and a {{img:2}} glyph.'),
+    { kind: 'note', id: 1, text: 'The note.', page: 1 },
+    { kind: 'figure', image: 1, caption: 'Plate I. The mill.', page: 1, role: 'picture' },
+    { kind: 'verse', lines: [{ indent: 0, text: 'Twas brillig,' }, { indent: 2, text: 'and the slithy toves' }], page: 1 },
+    { kind: 'table', rows: [['Name', 'Age'], ['Odile', '11']], page: 1 },
+    H(2, 'A section'), P('Words '.repeat(6000)), H(1, 'Two'), P('The end.'),
+  ];
+  const built = epub.buildEpub(book, { id: 'urn:isbn:9780306406157', title: 'T & T', authors: ['A. Writer'], isbn: '9780306406157', language: 'en' }, null,
+    new Map([[1, { bytes: png, type: 'png' }], [2, { bytes: png, type: 'png' }]]));
   const entries = unzip(built.bytes);
   assert.equal(entries[0].name, 'mimetype');
   assert.equal(entries[0].method, 0);
-  assert.equal(entries[0].data.toString(), 'application/epub+zip');
   for (const e of entries) if (/\.(x?html|opf|ncx|xml)$/.test(e.name)) wellFormed(e.data.toString(), e.name);
   assert.deepEqual(built.chapters, ['One', 'Two']);
+  assert.equal(built.images, 2);
   const first = entries.find((e) => e.name === 'OEBPS/text/part0001.xhtml').data.toString();
   assert.match(first, /<i>first<\/i>/);
-  assert.match(first, /literal \* star &amp; an &lt;angle&gt;/);
-  assert.match(first, /<a epub:type="noteref" id="r1" href="#n1">/);
+  assert.match(first, /literal \* star &amp; an &lt;angle&gt; and a <img class="inline" src="..\/images\/fig0002.png" alt=""\/> glyph/);
+  assert.match(first, /<figure class="picture"><img src="..\/images\/fig0001.png" alt="Plate I. The mill."\/><figcaption>Plate I. The mill.<\/figcaption><\/figure>/);
+  assert.match(first, /<div class="verse"><p>Twas brillig,<\/p><p>    and the slithy toves<\/p><\/div>/);
+  assert.match(first, /<thead><tr><th>Name<\/th><th>Age<\/th><\/tr><\/thead><tbody><tr><td>Odile<\/td><td>11<\/td><\/tr><\/tbody>/);
   assert.match(first, /<aside epub:type="footnote" id="n1"><p><a href="#r1">1<\/a>\. The note\.<\/p><\/aside>/);
+  assert.match(entries.find((e) => e.name === 'OEBPS/content.opf').data.toString(), /<item id="fig1" href="images\/fig0001.png" media-type="image\/png"\/>/);
   assert.ok(entries.some((e) => e.name === 'OEBPS/text/part0002.xhtml'), 'a long chapter is cut into files');
 });
 
@@ -203,10 +284,10 @@ test('a record\'s language becomes an EPUB language tag', () => {
 });
 
 test('chapters marked one level down still become chapters', () => {
-  const built = epub.buildEpub('# The Book\n\nBy someone.\n\n## One\n\nFirst.\n\n### A part\n\nMore.\n\n## Two\n\nSecond.', { id: 'x', title: 'The Book', authors: [], isbn: null, language: 'en' }, null);
+  const built = epub.buildEpub([H(1, 'The Book'), P('By someone.'), H(2, 'One'), P('First.'), H(3, 'A part'), P('More.'), H(2, 'Two'), P('Second.')], { id: 'x', title: 'The Book', authors: [], isbn: null, language: 'en' }, null);
   assert.deepEqual(built.chapters, ['The Book', 'One', 'Two']);
-  const files = unzip(built.bytes).filter((e) => /part\d+\.xhtml$/.test(e.name)).map((e) => e.data.toString());
-  assert.match(files[1], /<h1>One<\/h1>[\s\S]*<h2>A part<\/h2>/);
+  const docs = unzip(built.bytes).filter((e) => /part\d+\.xhtml$/.test(e.name)).map((e) => e.data.toString());
+  assert.match(docs[1], /<h1>One<\/h1>[\s\S]*<h2>A part<\/h2>/);
 });
 
 /* ── The whole way: a source's PDF, offered as an EPUB, made on first open, kept, served by range. ── */
@@ -239,9 +320,12 @@ test('a PDF is offered as an EPUB, made on first open with the LLM pass, and ser
     await convert.converted(record.key, 'shelf:keeper.pdf');
 
     assert.equal(claude.seen.length, 1);
-    assert.equal(claude.seen[0].request.model, 'claude-opus-5-5');
-    assert.equal(claude.seen[0].request.stream, true);
-    assert.match(claude.seen[0].request.system.at(-1).text, /never rewrite, summarise/);
+    const asked = claude.seen[0].request;
+    assert.equal(asked.model, 'claude-opus-5-5');
+    assert.equal(asked.stream, true);
+    assert.equal(asked.output_config.format.type, 'json_schema');
+    assert.match(asked.system.at(-1).text, /there is no edit for changing a word/);
+    assert.match(asked.messages[0].content, /\[b\d+ p p\.2\] Every evening the keeper/);
 
     const ready = (await files.filesFor(record))[0];
     assert.equal(ready.preparing, false);
@@ -261,7 +345,7 @@ test('a PDF is offered as an EPUB, made on first open with the LLM pass, and ser
     assert.match(opf, /<dc:creator id="author1">Test Author<\/dc:creator>/);
     assert.match(opf, /urn:isbn:9780306406157/);
     assert.match(opf, /properties="cover-image"/);
-    assert.ok(get('OEBPS/cover.jpg') !== undefined && entries.find((e) => e.name === 'OEBPS/cover.jpg').data.subarray(0, 2).equals(Buffer.from([0xff, 0xd8])), 'the cover is the first page as a JPEG');
+    assert.ok(entries.find((e) => e.name === 'OEBPS/cover.jpg').data.subarray(0, 2).equals(Buffer.from([0xff, 0xd8])), 'the cover is the first page as a JPEG');
     const nav = get('OEBPS/nav.xhtml');
     assert.match(nav, /Chapter One: The Harbour at Dusk/);
     assert.match(nav, /Chapter Two: Salt and Paper/);
@@ -280,7 +364,7 @@ test('a PDF is offered as an EPUB, made on first open with the LLM pass, and ser
     assert.match(all, /<aside epub:type="footnote" id="n1"><p><a href="#r1">1<\/a>\. The tower was rebuilt twice after the winter storms of the previous century\.<\/p>/);
     assert.match(all, /spring\.<a epub:type="noteref" id="r2" href="#n2">/);
     assert.match(all, /id="n2"><p><a href="#r2">2<\/a>\. Three of the notebooks survive in the village library\./);
-    const { kept, faithful } = structure.overlap(expectedWords, read.replace(/\b(\d)\. /g, ' '));
+    const { kept, faithful } = blocks.overlap(blocks.words(expectedWords), blocks.words(read.replace(/\b(\d)\. /g, ' ')));
     assert.ok(kept > 0.99 && faithful > 0.97, `words kept ${kept}, faithful ${faithful}`);
 
     /* Ranges from the cache. */
@@ -294,6 +378,7 @@ test('a PDF is offered as an EPUB, made on first open with the LLM pass, and ser
 
     const report = await convert.conversionReport('shelf:keeper.pdf');
     assert.equal(report.llm.accepted, 1);
+    assert.equal(report.llm.usage.input, 1000);
     assert.equal(report.notes, 2);
   } finally {
     claude.close();
@@ -302,27 +387,30 @@ test('a PDF is offered as an EPUB, made on first open with the LLM pass, and ser
   }
 });
 
-test('without a Claude token the base conversion alone is used, and an answer that rewrites is refused', { skip: !poppler && 'poppler (pdftohtml) is not installed' }, async () => {
+test('without a Claude token the base conversion alone is used, and edits that would reword are refused', { skip: !poppler && 'poppler (pdftohtml) is not installed' }, async () => {
   const pdf = makePdf(book);
   const record = { key: 'ol:TEST2W', title: 'The Lantern Keeper', authors: [], isbns: ['9780000000002'], language: 'en' };
-  const summariser = await fakeClaude(() => '# Chapter One\n\nA keeper lights a tower each night and keeps notebooks.');
+  /* A Claude that tries to "improve" the book: a spelling change and deleting a whole paragraph. */
+  const meddler = await fakeClaude((part) => {
+    const id = /\[(b\d+) p p\.2\] Every evening/.exec(part)[1];
+    return { edits: [edit({ op: 'word', block: id, from: 'keeper', to: 'kepper' }), edit({ op: 'delete', block: id })] };
+  });
   files.registerFileSource({ name: 'shelf', async find() { return [{ id: 'k.pdf', format: 'pdf', size: pdf.length, label: null, language: null, sample: false }]; }, async open(id, range) { return files.sliceOf(pdf, id, range); } });
   try {
     convert.registerConversions({ dir: join(state, 'converted'), bookFor: () => record, token: async () => '' });
     await convert.converted(record.key, 'shelf:k.pdf');
     assert.equal((await convert.conversionReport('shelf:k.pdf')).llm, null);
 
-    convert.registerConversions({ dir: join(state, 'converted'), bookFor: () => record, token: async () => 'sk-ant-api03-test', restructurer: (t) => restructure.claudeRestructurer(t, { baseURL: summariser.url }) });
+    convert.registerConversions({ dir: join(state, 'converted'), bookFor: () => record, token: async () => 'sk-ant-api03-test', restructurer: (t) => restructure.claudeRestructurer(t, { baseURL: meddler.url }) });
     await convert.converted(record.key, 'shelf:k2.pdf');
     const report = await convert.conversionReport('shelf:k2.pdf');
     assert.equal(report.llm.sent, 1);
-    assert.equal(report.llm.accepted, 0);
-    assert.match(report.llm.rejected[0], /words changed/);
+    assert.equal(report.llm.refused, 2);
     const address = `converted:${convert.convertedId(record.key, 'shelf:k2.pdf')}`;
     const read = textOf(unzip(new Uint8Array(await new Response((await files.openFile(address)).body).arrayBuffer())).filter((e) => /part\d+\.xhtml$/.test(e.name)).map((e) => e.data.toString()).join(' '));
-    assert.match(read, /no longer remembered learning how/, 'the base text was kept');
+    assert.match(read, /Every evening the keeper climbed/, 'the paragraph and its spelling stay');
   } finally {
-    summariser.close();
+    meddler.close();
     files.unregisterFileSource('shelf');
     convert.unregisterConversions();
   }

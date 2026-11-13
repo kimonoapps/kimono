@@ -8,10 +8,9 @@ import { Readable } from "node:stream";
 import { stateDir } from "../../state";
 import { FilePreparing, FileProblem, openFile, registerFileSource, setFileDeriver, unregisterFileSource, type BookFile, type Opened, type Range } from "../files";
 import type { Book } from "../model";
-import { buildEpub } from "./epub";
-import { firstPage, hasPoppler, pdfInfo, readPages } from "./pdf";
-import { claudeRestructurer, restructure, type PassReport, type Restructurer } from "./restructure";
-import { structure } from "./structure";
+import { hasPoppler } from "./pdf";
+import { convertPdf, type PipelineReport } from "./pipeline";
+import type { Restructurer } from "./restructure";
 
 /*
  * 本 Every PDF a book-file source offers is also offered as an EPUB: Kimono
@@ -23,7 +22,7 @@ import { structure } from "./structure";
  */
 
 /** Bump when the conversion changes enough that books should be made again. */
-const VERSION = "1";
+const VERSION = "2";
 const SOURCE = "converted";
 
 type BookMeta = Pick<Book, "key" | "title" | "authors" | "isbns" | "language"> & Partial<Pick<Book, "publisher" | "year">>;
@@ -142,11 +141,10 @@ export async function converted(bookKey: string, pdfAddress: string): Promise<vo
   await start(bookKey, pdfAddress, hash).done;
 }
 
-export type ConversionReport = { words: number; headings: number; notes: number; chapters: string[]; llm: PassReport | null; seconds: number };
+export type ConversionReport = PipelineReport;
 
 async function convert(key: string, pdf: string, hash: string, job: Job): Promise<void> {
   const state = g.kimonoBookConvert!;
-  const began = Date.now();
   if (!(await hasPoppler())) throw new Error("poppler-utils isn't installed");
   await mkdir(dir(), { recursive: true, mode: 0o700 });
   const work = await mkdtemp(join(dir(), `.work-${hash}-`));
@@ -155,41 +153,20 @@ async function convert(key: string, pdf: string, hash: string, job: Job): Promis
     const source = join(work, "book.pdf");
     const opened = await openFile(pdf);
     await writeFile(source, Readable.fromWeb(opened.body as import("node:stream/web").ReadableStream));
-    job.progress = 0.05;
-
-    const pages = await readPages(source, work);
-    const base = structure(pages);
-    if (base.words < 50) throw new Error("no text layer (a scan?)");
-    job.stage = "structuring";
-    job.progress = 0.1;
+    job.progress = 0.02;
 
     const book = state.options.bookFor?.(key) ?? state.seen.get(key) ?? null;
-    const info = await pdfInfo(source);
-    const meta = { title: book?.title || info.title || "Untitled", authors: book?.authors.length ? book.authors : info.author ? [info.author] : [] };
-
-    let text = base.text;
-    let llm: PassReport | null = null;
     const token = (await state.options.token?.().catch(() => "")) ?? "";
-    if (token) {
-      const model = (state.options.restructurer ?? claudeRestructurer)(token);
-      const done = await restructure(base.text, model, meta, (n, total) => { job.progress = 0.1 + 0.85 * (n / total); });
-      text = done.text;
-      llm = done.report;
-    }
-
-    job.stage = "packing";
-    job.progress = 0.96;
-    const cover = await firstPage(source, work);
     const isbn = book?.isbns.find((i) => i.length === 13) ?? book?.isbns[0] ?? null;
-    const epub = buildEpub(text, {
-      id: isbn ? `urn:isbn:${isbn}` : `urn:kimono:${hash}`, title: meta.title, authors: meta.authors, isbn,
-      language: book?.language || "en", publisher: book?.publisher, year: book?.year,
-    }, cover);
-    const report: ConversionReport = { words: base.words, headings: base.headings, notes: base.notes, chapters: epub.chapters, llm, seconds: Math.round((Date.now() - began) / 1000) };
+    const { epub, report } = await convertPdf(source, work, {
+      meta: { id: isbn ? `urn:isbn:${isbn}` : `urn:kimono:${hash}`, title: book?.title, authors: book?.authors, isbn, language: book?.language, publisher: book?.publisher, year: book?.year },
+      token, restructurer: state.options.restructurer,
+      progress: (f) => { job.progress = f; job.stage = f < 0.1 ? "reading" : f < 0.95 ? "structuring" : "packing"; },
+    });
     await writeFile(join(dir(), `${hash}.json`), JSON.stringify({ pdf, key, version: VERSION, made: new Date().toISOString(), ...report }, null, 2));
     await writeFile(join(work, "book.epub"), epub.bytes);
     await rename(join(work, "book.epub"), epubPath(hash));
-    console.info(`books convert: ${meta.title}: ${base.words} words, ${epub.chapters.length} chapters${llm ? `, Claude ${llm.accepted}/${llm.sent} parts kept` : ", base only"} (${report.seconds}s)`);
+    console.info(`books convert: ${book?.title ?? pdf}: ${report.words} words, ${report.chapters.length} chapters, ${report.images} pictures${report.llm ? `, Claude ${report.llm.accepted}/${report.llm.sent} parts, $${report.llm.dollars}` : ", base only"} (${report.seconds}s)`);
   } finally {
     await rm(work, { recursive: true, force: true });
   }
