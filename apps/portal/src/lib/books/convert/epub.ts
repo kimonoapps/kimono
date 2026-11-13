@@ -14,7 +14,8 @@ export type Picture = { bytes: Uint8Array; type: "jpg" | "png"; width?: number; 
 
 const FILE_WORDS = 5000;
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/* XML forbids control characters; none belongs in a book's text. */
+const esc = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\ufffe\uffff]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const imageName = (id: number, p: Picture) => `images/fig${String(id).padStart(4, "0")}.${p.type}`;
 
 /** Inline text to XHTML: *italic*, **bold**, \* and \\, note marks, small pictures. */

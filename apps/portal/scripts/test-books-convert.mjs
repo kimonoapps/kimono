@@ -276,6 +276,11 @@ test('an EPUB from blocks: valid, notes linked across files, pictures with capti
   assert.ok(entries.some((e) => e.name === 'OEBPS/text/part0002.xhtml'), 'a long chapter is cut into files');
 });
 
+test('control characters never reach the XHTML', () => {
+  const built = epub.buildEpub([P('A \u0001stray\u0002 mark\u0007.'), { kind: 'figure', image: 1, caption: null, page: 1, role: 'math', alt: 'r(t) = \u00011\u0002 N' }], { id: 'x', title: 'T', authors: [], isbn: null, language: 'en' }, null, new Map([[1, { bytes: new Uint8Array([1]), type: 'png' }]]));
+  for (const e of unzip(built.bytes)) if (/\.xhtml$/.test(e.name)) { wellFormed(e.data.toString(), e.name); assert.doesNotMatch(e.data.toString(), /[\u0000-\u0008]/); }
+});
+
 test('a record\'s language becomes an EPUB language tag', () => {
   assert.equal(epub.languageTag('spa'), 'es');
   assert.equal(epub.languageTag('en'), 'en');

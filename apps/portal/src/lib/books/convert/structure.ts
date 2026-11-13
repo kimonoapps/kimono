@@ -559,7 +559,7 @@ export function structure(pages: Page[], figures: Map<number, Figure[]> = new Ma
     if (m !== undefined) {
       if (m !== lastMath) {
         flushHeading(); flushVerse(); flushTable();
-        const fig: Block = { kind: "figure", image: m, caption: null, page: l.page, role: "math", alt: plain(lines.filter((x) => mathRegion.get(x) === m).map((x) => x.text).join(" ")) };
+        const fig: Block = { kind: "figure", image: m, caption: null, page: l.page, role: "math", alt: plain(lines.filter((x) => mathRegion.get(x) === m).map((x) => x.text.replace(/\u0001(.*?)\u0002/g, "$1")).join(" ")) };
         if (para) pendingFigures.push(fig); else blocks.push(fig);
         lastMath = m;
       }
