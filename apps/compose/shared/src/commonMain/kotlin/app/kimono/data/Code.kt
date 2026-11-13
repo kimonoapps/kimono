@@ -624,6 +624,16 @@ class Code(private val session: Session, private val platform: Platform? = null)
 
     suspend fun stop(id: String) { session.call("${ws(id)}/stop", HttpMethod.Post) }
 
+    private val warmedAt = mutableMapOf<String, Long>()
+
+    /** The person started writing: the chat's sandbox wakes now, before the message needs it. At most every 45 seconds a chat. */
+    suspend fun warm(id: String) {
+        val now = kotlin.time.Clock.System.now().toEpochMilliseconds()
+        if (now - (warmedAt[id] ?: 0L) < 45_000) return
+        warmedAt[id] = now
+        runCatching { session.call("${ws(id)}/warm", HttpMethod.Post) }
+    }
+
     private fun ratingsOf(text: String): Map<Long, Int> =
         (json.parseToJsonElement(text).jsonObject["ratings"] as? JsonObject).orEmpty().mapNotNull { (seq, v) -> seq.toLongOrNull()?.let { s -> (v as? JsonPrimitive)?.intOrNull?.let { s to it } } }.toMap()
 

@@ -1708,7 +1708,7 @@ private fun Composer(code: Code, drive: Drive, platform: Platform, marks: AiMark
                     MessageField(
                         code,
                         /* the longest message it takes (the server refuses more) */
-                        value = text, onValueChange = { val kept = it.take(MAX_MESSAGE); text = kept; code.keep("draft:${w.id}", kept) },
+                        value = text, onValueChange = { val kept = it.take(MAX_MESSAGE); text = kept; code.keep("draft:${w.id}", kept); if (kept.isNotBlank()) scope.launch { code.warm(w.id) } },
                         maxLines = 8,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                         onLongPaste = { said -> attach { listOf(PastedText(said, pending.map { it.name })) } },

@@ -396,6 +396,18 @@ export async function readFromSandbox<T>(config: CodeConfig, workspace: Workspac
   }
 }
 
+/**
+ * The person started writing: their chat's sandbox is woken now, so the message doesn't wait
+ * for it (a stopped one takes seconds to start). One awake in the last minute, or waking, is left be.
+ */
+export function warm(config: CodeConfig, workspace: Workspace, user: ApiUser) {
+  if (Date.now() - (awake.at.get(workspace.id) ?? 0) < awakeFor || awake.going.has(workspace.id) || runningTurn(db(), workspace.id)) return;
+  const going = ensure(config, workspace, who(user), { owner: user.username.toLowerCase() === workspace.owner })
+    .catch((error) => console.warn("Kimono AI couldn't wake a sandbox ahead:", error instanceof Error ? error.message : error))
+    .finally(() => awake.going.delete(workspace.id));
+  awake.going.set(workspace.id, going);
+}
+
 const who = (user: ApiUser) => ({ name: user.name || user.username, email: user.email || `${user.username}@users.kimono` });
 
 /** Who it's talking with and what day it is: the model knows neither by itself. */
@@ -546,6 +558,8 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
        what's in it is read while it's made ready, instead of after, a round trip to the node less before the agent starts. */
     const warm = Date.now() - (awake.at.get(workspace.id) ?? 0) < 14 * 60_000 && !second;
     const ahead = warm ? { tree: treeAhead(config, workspace), granted: grantedAhead(db(), config, workspace) } : null;
+    /* Woken as they wrote (warm): that waking finishes first, and this one finds it awake. */
+    await awake.going.get(workspace.id)?.catch(() => {});
     const ready = await ensure(config, workspace, who(user), { owner: byOwner });
     /* A new, empty sandbox after all: what was read ahead isn't it. */
     if (ready.fresh && ahead) { ahead.tree = null; ahead.granted = null; }

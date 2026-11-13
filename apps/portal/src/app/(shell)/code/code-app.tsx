@@ -3668,7 +3668,13 @@ function Composer({ workspace, running, blocked, context }: { workspace: Workspa
   /* In a chat others are in, typing says so to them: once every few seconds while the words change. */
   const shared = (workspace.people?.length ?? 0) > 0 || (workspace.access !== undefined && workspace.access !== "owner");
   const lastSaid = useRef(0);
+  /* Writing wakes the chat's sandbox ahead of the message, at most every 45 seconds. */
+  const lastWarmed = useRef(0);
   const sayTyping = (value: string) => {
+    if (value.trim() && Date.now() - lastWarmed.current > 45_000) {
+      lastWarmed.current = Date.now();
+      void code.warm(workspace.id).catch(() => {});
+    }
     if (!shared || !value.trim() || Date.now() - lastSaid.current < 2500) return;
     lastSaid.current = Date.now();
     void code.typing(workspace.id).catch(() => {});

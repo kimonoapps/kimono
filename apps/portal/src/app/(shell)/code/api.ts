@@ -187,6 +187,8 @@ export const code = {
   /** Your chats, and the chats and artifacts others shared with you. */
   /** Says the person is typing in a shared chat; who's typing in the chats they're in. */
   typing: (id: string) => call<void>(`${ws(id)}/typing`, { method: "POST" }),
+  /** The person started writing: the chat's sandbox wakes now, before the message needs it. */
+  warm: (id: string) => call<void>(`${ws(id)}/warm`, { method: "POST" }),
   /** Whether speaking a message is set up; a finished recording turned into words. */
   dictationOn: () => call<{ on: boolean }>("/dictation").then((r) => Boolean(r.on)),
   transcribe: (audio: Blob) => call<{ text: string }>("/dictation", {
