@@ -15,7 +15,7 @@
  * none set, conversions are the base conversion alone.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { applyEdits, blockText, blockWords, EDITS_SCHEMA, overlap, serialise, words, type Block } from "./blocks";
+import { applyEdits, blockText, blockWords, EDITS_SCHEMA, letterFaithful, overlap, serialise, words, type Block } from "./blocks";
 
 export const MODEL = "claude-opus-5-5";
 /** Opus 5.5's prices, dollars per million tokens: input, output, cache write, cache read. */
@@ -113,7 +113,7 @@ export function parts(blocks: Block[], size = PART_WORDS): Block[][] {
   return out;
 }
 
-export type PassReport = { parts: number; sent: number; accepted: number; edits: number; refused: number; words: number; usage: Usage; dollars: number; rejected: string[] };
+export type PassReport = { parts: number; sent: number; accepted: number; edits: number; refused: number; words: number; usage: Usage; dollars: number; rejected: string[]; editsByKind: Record<string, number>; refusals: Record<string, number>; refusedSamples: unknown[] };
 
 /**
  * Runs the book through the model, four parts at a time, up to the book's
@@ -121,7 +121,7 @@ export type PassReport = { parts: number; sent: number; accepted: number; edits:
  */
 export async function restructure(blocks: Block[], model: Restructurer, meta: { title: string; authors: string[] }, progress?: (done: number, total: number) => void): Promise<{ blocks: Block[]; report: PassReport }> {
   const all = parts(blocks);
-  const report: PassReport = { parts: all.length, sent: 0, accepted: 0, edits: 0, refused: 0, words: 0, usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }, dollars: 0, rejected: [] };
+  const report: PassReport = { parts: all.length, sent: 0, accepted: 0, edits: 0, refused: 0, words: 0, usage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }, dollars: 0, rejected: [], editsByKind: {}, refusals: {}, refusedSamples: [] };
   let budget = BOOK_WORDS;
   let first = 1;
   const plan = all.map((p) => {
@@ -155,7 +155,14 @@ export async function restructure(blocks: Block[], model: Restructurer, meta: { 
         const applied = applyEdits(p.blocks, p.ids, edits);
         report.edits += applied.applied;
         report.refused += applied.refused.length;
-        const { kept, faithful } = overlap(blockWords(p.blocks), blockWords(applied.blocks));
+        for (const e of edits) { const op = String((e as { op?: unknown }).op); report.editsByKind[op] = (report.editsByKind[op] ?? 0) + 1; }
+        for (const r of applied.refused) {
+          report.refusals[r.why] = (report.refusals[r.why] ?? 0) + 1;
+          if (report.refusedSamples.length < 12) report.refusedSamples.push({ ...(r.edit as object), why: r.why });
+        }
+        const before = blockWords(p.blocks), after = blockWords(applied.blocks);
+        const { kept } = overlap(before, after);
+        const faithful = letterFaithful(before, after);
         if (kept >= KEPT && faithful >= FAITHFUL) { out[i] = applied.blocks; report.accepted++; }
         else report.rejected.push(`part ${i + 1}: words changed (kept ${kept.toFixed(3)}, faithful ${faithful.toFixed(3)})`);
       }

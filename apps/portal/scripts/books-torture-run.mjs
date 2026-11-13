@@ -109,7 +109,7 @@ for (const name of cases) {
       captions: `${captioned.length}/${captions.length}`, notes: r.report.notes, expectNotes: meta.expect?.notes ?? null,
       verse: r.report.verse, expectVerse: meta.expect?.verse_blocks ?? null, tables: r.report.tables, expectTables: meta.expect?.tables ?? null,
       mustKeepMissing: missing,
-      llm: llm && { parts: llm.parts, sent: llm.sent, accepted: llm.accepted, edits: llm.edits, refused: llm.refused, tokens: llm.usage, dollars: llm.dollars, rejected: llm.rejected },
+      llm: llm && { parts: llm.parts, sent: llm.sent, accepted: llm.accepted, edits: llm.edits, refused: llm.refused, tokens: llm.usage, dollars: llm.dollars, rejected: llm.rejected, editsByKind: llm.editsByKind, refusals: llm.refusals, refusedSamples: llm.refusedSamples },
     });
   } catch (error) {
     Object.assign(row, { ok: false, seconds: Math.round((Date.now() - began) / 100) / 10, error: error instanceof Error ? error.message : String(error) });

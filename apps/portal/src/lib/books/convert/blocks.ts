@@ -53,6 +53,23 @@ export function words(text: string): string[] {
 export const blockWords = (blocks: Block[]) => words(blocks.map(blockText).join("\n"));
 
 /**
+ * How much of `out`'s letters were in `base`'s, counting each as often as it
+ * occurs. Unlike words, joining or splitting a word doesn't change it; any
+ * rewording does.
+ */
+export function letterFaithful(base: string[], out: string[]): number {
+  const count = new Map<string, number>();
+  for (const ch of base.join("")) count.set(ch, (count.get(ch) ?? 0) + 1);
+  let total = 0, shared = 0;
+  for (const ch of out.join("")) {
+    total++;
+    const n = count.get(ch) ?? 0;
+    if (n > 0) { shared++; count.set(ch, n - 1); }
+  }
+  return total ? shared / total : 1;
+}
+
+/**
  * How much of `base` survives in `out` (kept) and how much of `out` was in
  * `base` (faithful), counting each word as often as it occurs.
  */
