@@ -273,6 +273,8 @@ data class Prefs(
     val skipIntros: Boolean = false,
     /** Friends see what this person watches and how far they are. */
     val shareWatching: Boolean = true,
+    /** Invisible to friends for now (see FriendsPage). */
+    val invisible: Boolean = false,
     /** With `?device=`: this device's own quality, null when it follows the person's. */
     val device: DevicePref? = null,
 )

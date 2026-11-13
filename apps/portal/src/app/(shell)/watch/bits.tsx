@@ -184,3 +184,10 @@ export function useTabTitle(name: string | null | undefined) {
 export function Spinner({ color, label = "Loading", className }: { color?: string; label?: string; className?: string }) {
   return <LoadingIndicator color={color} label={label} className={cx("kw-spinner", className)} />;
 }
+
+/* ───── Faces ───── */
+
+const faces = ["#7E3448", "#3E5236", "#5B3F45", "#8A5A2B", "#3F4A5B", "#5A4A2B"];
+/** Each person's own colour behind their initial. */
+export const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % faces.length];
+export const initial = (p: { name: string; username: string }) => (p.name.trim() || p.username).charAt(0).toUpperCase();

@@ -5,7 +5,7 @@ import type { WatchConfig } from "./config";
 import { cardOf, ensureTitle, finished, fraction, getTitle, prefsOf, watchDb, WatchProblem, type Card, type Progress } from "./index";
 import { playingNow, watchKey } from "./flow";
 import {
-  answerAsk, answerFriend, askFriend, cancelAsk, friendsOf, linkOf, linksOf, liveAsks, newAsk, removeFriend,
+  answerAsk, answerFriend, askFriend, cancelAsk, friendsOf, hiddenOf, linkOf, linksOf, liveAsks, newAsk, noteWatched, removeFriend,
   type JoinAsk, type LinkState,
 } from "./friends";
 import { inviteTo, labelsFor, partyWith, people, type Person } from "./together-live";
@@ -33,9 +33,11 @@ export type AskView = Pick<JoinAsk, "id" | "from" | "to" | "answer" | "partyId" 
 
 /** Someone's latest place in each title, most recent first (their name in any spelling). */
 function lastRows(username: string, limit: number): Progress[] {
+  /* What they watched while invisible isn't shown. */
+  const hidden = hiddenOf(watchDb(), username);
   const rows = watchDb().prepare(`SELECT * FROM progress p WHERE lower(username) = ? AND updated_at = (SELECT MAX(updated_at) FROM progress q WHERE q.username = p.username AND q.title_id = p.title_id)
-    ORDER BY updated_at DESC LIMIT ?`).all(username.toLowerCase(), limit) as Record<string, unknown>[];
-  return rows.map((r) => ({ titleId: String(r.title_id), season: Number(r.season), episode: Number(r.episode), position: Number(r.position), duration: Number(r.duration), updatedAt: Number(r.updated_at) }));
+    ORDER BY updated_at DESC LIMIT ?`).all(username.toLowerCase(), limit + hidden.size) as Record<string, unknown>[];
+  return rows.filter((r) => !hidden.has(String(r.title_id))).slice(0, limit).map((r) => ({ titleId: String(r.title_id), season: Number(r.season), episode: Number(r.episode), position: Number(r.position), duration: Number(r.duration), updatedAt: Number(r.updated_at) }));
 }
 
 function spotOf(viewer: string, p: Progress, origin: string): Spot | null {
@@ -47,6 +49,7 @@ function spotOf(viewer: string, p: Progress, origin: string): Spot | null {
 
 /** What `username` is playing right now, as `viewer` names it; null when nothing (or they don't share). */
 function nowOf(viewer: string, username: string, origin: string, now = Date.now()): Now | null {
+  if (invisible(username)) return null;
   const playing = new Set(playingNow(username, now));
   const party = partyWith(username, now);
   const latest = lastRows(username, 3).find((p) => now - p.updatedAt < nowWindow && (playing.has(watchKey(p.titleId, p.season, p.episode)) || party?.timeline.titleId === p.titleId));
@@ -56,6 +59,12 @@ function nowOf(viewer: string, username: string, origin: string, now = Date.now(
 }
 
 const sharing = (username: string) => prefsOf(watchDb(), username.toLowerCase()).shareWatching !== false;
+const invisible = (username: string) => prefsOf(watchDb(), username.toLowerCase()).invisible === true;
+
+/** A progress report: a title played while invisible is kept from friends (and shown again once played visibly). */
+export function noteFriendsWatch(username: string, titleId: string) {
+  try { noteWatched(watchDb(), username, titleId, invisible(username)); } catch { /* only what friends see */ }
+}
 
 function askView(a: JoinAsk, everyone: Person[], viewer: string): AskView {
   const other = everyone.find((p) => p.username === (a.from === viewer ? a.to : a.from));
@@ -96,6 +105,7 @@ export async function friendsPage(username: string, origin: string) {
   const linked = new Set(links.map((l) => l.username));
   return {
     sharing: sharing(u),
+    invisible: invisible(u),
     friends,
     asked: links.filter((l) => l.state === "asked").map((l) => person(l.username)),
     asking: links.filter((l) => l.state === "asking").map((l) => person(l.username)),
@@ -113,6 +123,7 @@ export async function friendsOn(username: string, titleId: string, origin: strin
   const everyone = await people();
   const now = Date.now();
   return list.flatMap((f) => {
+    if (hiddenOf(db, f).has(titleId)) return [];
     const row = (db.prepare("SELECT * FROM progress WHERE lower(username) = ? AND title_id = ? ORDER BY updated_at DESC LIMIT 1").get(f, titleId)) as Record<string, unknown> | undefined;
     if (!row) return [];
     const p: Progress = { titleId, season: Number(row.season), episode: Number(row.episode), position: Number(row.position), duration: Number(row.duration), updatedAt: Number(row.updated_at) };
@@ -120,7 +131,7 @@ export async function friendsOn(username: string, titleId: string, origin: strin
     if (!spot) return [];
     const who = everyone.find((x) => x.username === f) ?? { username: f, name: f, picture: null };
     const live = nowOf(u, f, origin, now);
-    return [{ ...who, label: spot.label, progress: spot.progress, finished: spot.finished, at: spot.at, now: live?.title.id === titleId }];
+    return [{ ...who, season: p.season, episode: p.episode, label: spot.label, progress: spot.progress, finished: spot.finished, at: spot.at, now: live?.title.id === titleId }];
   }).sort((a, b) => Number(b.now) - Number(a.now) || b.at - a.at);
 }
 

@@ -6,7 +6,8 @@ import { AppLockup, KimonoBranch } from "@kimono/ui";
 import { Crossing, useCrossTo } from "@/components/crossing";
 import { LineIcon } from "@/components/line-icon";
 import { circleSettled, placeReady } from "@/components/immersive";
-import { cx, Spinner, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
+import { cx, faceOf, initial, Spinner, Toast, watchId, WatchBloom, WatchContext, type Marks, type Watch } from "./bits";
+import { FriendsPage, JoinAsks } from "./friends";
 import { HomePage } from "./home";
 import { Icon } from "./icons";
 import { HotPage, ListPage, SearchPage } from "./pages";
@@ -23,11 +24,8 @@ import { screenId, together, type Invite } from "./party";
  */
 
 export type Person = { username: string; name: string; picture: string | null };
-type Page = "home" | "hot" | "list" | "settings";
+type Page = "home" | "hot" | "list" | "friends" | "settings";
 
-const faces = ["#7E3448", "#3E5236", "#5B3F45", "#8A5A2B", "#3F4A5B", "#5A4A2B"];
-const faceOf = (username: string) => faces[[...username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % faces.length];
-const initial = (p: Person) => (p.name.trim() || p.username).charAt(0).toUpperCase();
 const chosenKey = "kw.profile";
 /** The "who's watching" picker. Off for now: Watch opens on whoever is signed in. The picker stays for when it comes back. */
 export const PROFILE_PICKER = false;
@@ -39,7 +37,7 @@ const readParty = () => { try { return new URLSearchParams(window.location.searc
 function readPlace(): { page: Page; title: string | null } {
   const q = new URLSearchParams(window.location.search);
   const page = q.get("p");
-  return { page: page === "hot" || page === "list" || page === "settings" ? page : "home", title: q.get("t") };
+  return { page: page === "hot" || page === "list" || page === "friends" || page === "settings" ? page : "home", title: q.get("t") };
 }
 function writePlace(page: Page, title: string | null, push: boolean) {
   const q = new URLSearchParams();
@@ -288,6 +286,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
             <button aria-current={page === "home" ? "page" : undefined} onClick={() => go("home")}>Home</button>
             <button aria-current={page === "hot" ? "page" : undefined} onClick={() => go("hot")}>New &amp; hot</button>
             <button aria-current={page === "list" ? "page" : undefined} onClick={() => go("list")}>My list</button>
+            <button aria-current={page === "friends" ? "page" : undefined} onClick={() => go("friends")}>Friends</button>
           </nav>
           <div className="kw-spacer" />
           <button className="kw-iconbtn" aria-label="Search" onClick={() => setSearching(true)}><Icon name="search" /></button>
@@ -298,9 +297,10 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
         {page === "home" ? <HomePage home={home} filter={filter} setFilter={chooseShelf} chipsAway={scrolled} more={moreLoading} onMore={loadMore} />
           : page === "settings" ? <SettingsPage me={me} onSwitch={switchProfile} signOut={signOut} />
           : page === "hot" ? <HotPage ids={hotIds} />
+          : page === "friends" ? <FriendsPage onJoin={joinParty} />
             : <ListPage cards={listCards} />}
         <nav className="kw-bnav" aria-label="Sections">
-          {([["home", "home", "Home"], ["hot", "hot", "New & hot"], ["list", "bookmark", "My list"]] as const).map(([to, icon, label]) => <button key={to} aria-current={page === to ? "page" : undefined} onClick={() => go(to)}>
+          {([["home", "home", "Home"], ["hot", "hot", "New & hot"], ["list", "bookmark", "My list"], ["friends", "group", "Friends"]] as const).map(([to, icon, label]) => <button key={to} aria-current={page === to ? "page" : undefined} onClick={() => go(to)}>
             <span className="kw-pill"><Icon name={icon} /></span>{label}
           </button>)}
         </nav>
@@ -308,6 +308,7 @@ export function WatchApp({ me, household, accent, signOut, phoneApp = false }: {
       {searching ? <SearchPage onClose={() => setSearching(false)} /> : null}
       {sheetId && profile ? <TitleSheet key={sheetId} id={sheetId} onClose={closeSheet} refreshKey={refreshKey} /> : null}
       <Player ref={player} onExit={exitPlayer} me={me.username} people={people} onTogether={fromPlayer} onParty={onParty} />
+      <JoinAsks open={playing} partyOf={() => player.current?.party() ?? null} where={() => player.current?.where() ?? null} onJoin={joinParty} />
       {asking ? <TogetherDialog people={people.filter((p) => p.username.toLowerCase() !== me.username.toLowerCase())} onStart={(list, copy) => void startParty(list, copy)} onClose={() => setAsking(null)} /> : null}
       {arriving && profile && !playing ? <Arriving id={arriving} people={people} onJoin={() => joinParty(arriving)} onClose={() => { setArriving(null); partyInUrl = null; writePlace(readPlace().page, readPlace().title, false); }} /> : null}
       {invite && profile && !playing && !arriving ? <div className="kw-invite" role="status">

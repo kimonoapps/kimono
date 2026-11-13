@@ -49,6 +49,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
     { id: "playing", title: "Playing", icon: "play", summary: on([[prefs.autoplayNext, "Next episode"], [prefs.skipIntros, "Skip intros"], [prefs.previews !== false, "Previews"]]) },
     { id: "quality", title: "Quality", icon: "film", summary: qualities.find((q) => q.value === quality)?.label ?? "Auto" },
     { id: "anime", title: "Anime", icon: "mood", summary: `${prefs.animeEpisodes === "continuous" ? "One list" : "By season"} · Fillers ${prefs.fillers === "ask" ? "ask" : prefs.fillers === "skip" ? "skipped" : "watched"}` },
+    { id: "friends", title: "Friends", icon: "group", summary: prefs.shareWatching === false ? "Not sharing" : prefs.invisible ? "Invisible" : "Sharing what you watch" },
     { id: "account", title: "Account", icon: "group", summary: me.name || me.username },
   ] : [];
   const [open, setOpen] = useGroup();
@@ -113,6 +114,9 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
           <Row label="Filler episodes" done={ticked === "fillers"}>
             <Seg value={prefs.fillers} onChange={(v) => save("fillers", { fillers: v as Prefs["fillers"] })} options={[["ask", "Ask"], ["skip", "Skip"], ["watch", "Watch"]]} />
           </Row>
+        </> : shown === "friends" ? <>
+          <Row label="Show friends what I watch" done={ticked === "shareWatching"} inline><Toggle checked={prefs.shareWatching !== false} onChange={(v) => save("shareWatching", { shareWatching: v })} /></Row>
+          {prefs.shareWatching !== false ? <Row label="Invisible for now" note="Friends don't see you watching, and what you watch meanwhile stays hidden." done={ticked === "invisible"} inline><Toggle checked={prefs.invisible === true} onChange={(v) => save("invisible", { invisible: v })} /></Row> : null}
         </> : <>
           <div className="kw-set-me kw-set-me-pane">
             <span className="kw-avatar kw-avatar-lg" aria-hidden="true">{me.picture
@@ -132,7 +136,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
   </main>;
 }
 
-type Group = "languages" | "look" | "playing" | "quality" | "anime" | "account";
+type Group = "languages" | "look" | "playing" | "quality" | "anime" | "friends" | "account";
 const groupIds: Group[] = ["languages", "look", "playing", "quality", "anime", "account"];
 const readGroup = (): Group | null => {
   try { const s = new URLSearchParams(window.location.search).get("s"); return groupIds.includes(s as Group) ? s as Group : null; } catch { return null; }

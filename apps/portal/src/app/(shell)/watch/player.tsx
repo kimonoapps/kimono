@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref as ReactRef } from "react";
-import { airText, clock, deviceOf, labelOf, languageName, longLabel, twoLetter, shownNumber, watchApi, type Episode, type Play, type Ref, type TitleView } from "./api";
+import { airText, clock, deviceOf, labelOf, languageName, longLabel, twoLetter, shownNumber, watchApi, type Episode, type FriendHere, type Play, type Ref, type TitleView } from "./api";
 import { alike, cx, Img, Spinner, TitleMark, useTabTitle, useWatch } from "./bits";
 import { subtitleClass } from "./settings";
+import { FriendsAt } from "./friends";
 import { InkRing } from "@kimono/ui";
 import { Icon, SeekIcon } from "./icons";
 import { attach, attachThumb, type Attached } from "./source";
@@ -21,6 +22,8 @@ export type PlayerHandle = {
   join: (partyId: string) => void;
   /** Where this screen is, to start a party from here. */
   where: () => { titleId: string; season: number; episode: number; position: number } | null;
+  /** The party this screen is in, if any. */
+  party: () => string | null;
 };
 type Post = "next" | "ask" | "end" | null;
 type Sheet = "cc" | "speed" | "quality" | "eps" | "party" | "react" | null;
@@ -349,7 +352,8 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
       if (!l.titleId || !v) return null;
       return { titleId: l.titleId, season: l.ep?.season ?? 0, episode: l.ep?.episode ?? 0, position: v.currentTime || 0 };
     },
-  }), [begin, join, leaveParty]);
+    party: () => party?.id ?? null,
+  }), [begin, join, leaveParty, party]);
 
   const exit = useCallback(() => {
     save(true);
@@ -958,7 +962,7 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
         }}><Icon name="check" />{q.label}</button>)}</div>
         <button className="kw-opt kw-more" onClick={() => { exit(); watch.openSettings(); }}>Your defaults<Icon name="right" /></button>
       </> : null}
-      {sheet === "eps" && ep ? <EpisodeList episodes={episodes} ep={ep} bySeason={!view?.layout || view.layout === "seasons"} season={view?.season ?? ep.season} continuous={view?.layout === "continuous"} progress={time / d} onPick={(to) => { setSheet(null); pickEpisode(to); }} /> : null}
+      {sheet === "eps" && ep ? <EpisodeList friends={view?.friends ?? []} episodes={episodes} ep={ep} bySeason={!view?.layout || view.layout === "seasons"} season={view?.season ?? ep.season} continuous={view?.layout === "continuous"} progress={time / d} onPick={(to) => { setSheet(null); pickEpisode(to); }} /> : null}
       {sheet === "react" && party ? <div className="kw-reacts">{reactionSet.map((e) => <button key={e} aria-label={`React ${e}`} onClick={() => void live.current.link?.react(e)}>{e}</button>)}</div> : null}
       {sheet === "party" && party ? <PartySheet party={party} me={me} client={myClient} people={people} personOf={personOf}
         onInvite={(u) => { void live.current.link?.invite([u]); say(`Invited ${firstOf(u)}`); }}
@@ -1010,8 +1014,8 @@ export function Player({ ref, onExit, me, people, onTogether, onParty }: PlayerP
   </div>;
 }
 
-function EpisodeList({ episodes, ep, bySeason, season, continuous, progress, onPick }: {
-  episodes: Episode[]; ep: Ref; bySeason: boolean; season: number; continuous: boolean; progress: number; onPick: (to: Ref) => void;
+function EpisodeList({ friends, episodes, ep, bySeason, season, continuous, progress, onPick }: {
+  friends: FriendHere[]; episodes: Episode[]; ep: Ref; bySeason: boolean; season: number; continuous: boolean; progress: number; onPick: (to: Ref) => void;
 }) {
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => { list.current?.querySelector(".kw-now")?.scrollIntoView({ block: "center" }); }, []);
@@ -1022,7 +1026,8 @@ function EpisodeList({ episodes, ep, bySeason, season, continuous, progress, onP
       const f = now ? progress : e.fraction;
       return <button key={`${at}:${e.number}`} className={cx("kw-pep", now && "kw-now")} onClick={() => { if (!now) onPick({ season: at, episode: e.number }); }}>
         <div className="kw-th"><Img src={e.still} />{f > 0 ? <div className="kw-bar"><i style={{ width: `${f * 100}%` }} /></div> : null}</div>
-        <div><b>{continuous ? e.absolute ?? e.number : e.number}. {e.name}</b><span>{e.runtime ? `${e.runtime}m` : ""}{e.filler ? " · Filler" : e.recap ? " · Recap" : ""}</span></div>
+        <div><b>{continuous ? e.absolute ?? e.number : e.number}. {e.name}</b><span>{e.runtime ? `${e.runtime}m` : ""}{e.filler ? " · Filler" : e.recap ? " · Recap" : ""}</span>
+          <FriendsAt friends={friends.filter((x) => x.season === at && x.episode === e.number)} /></div>
       </button>;
     })}
   </div>;

@@ -46,7 +46,18 @@ export type TitleView = {
   fillers?: FillerChoice;
   season?: number;
   episodes?: Episode[];
+  /** Friends' places in it, watching it now first. */
+  friends?: FriendHere[];
 };
+
+/* ───── Friends (lib/watch/friends.ts) ───── */
+
+export type Person = { username: string; name: string; picture: string | null };
+export type Spot = { title: Card; season: number; episode: number; label: string | null; progress: number; finished: boolean; at: number };
+export type Friend = Person & { now: (Spot & { position: number; duration: number; partyId: string | null }) | null; recent: Spot[]; sharing: boolean };
+export type JoinAsk = { id: string; from: string; to: string; answer: "waiting" | "yes" | "no"; partyId: string | null; at: number; name: string; picture: string | null; title: string | null; label: string | null };
+export type FriendsPage = { sharing: boolean; invisible: boolean; friends: Friend[]; asked: Person[]; asking: Person[]; people: Person[]; incoming: JoinAsk[]; outgoing: JoinAsk[] };
+export type FriendHere = Person & { season: number; episode: number; label: string | null; progress: number; finished: boolean; at: number; now: boolean };
 
 export type Ref = { season: number; episode: number };
 export type Markers = { intro?: [number, number]; recap?: [number, number]; credits?: number };
@@ -82,6 +93,8 @@ export type Prefs = {
   autoplayNext: boolean; skipIntros: boolean; animeEpisodes?: "seasons" | "continuous";
   subtitleSize?: "small" | "medium" | "large"; subtitleBackground?: "none" | "shadow" | "box";
   previews?: boolean; downloadQuality?: "standard" | "higher";
+  /** Friends see what's watched; invisible hides it for now. */
+  shareWatching?: boolean; invisible?: boolean;
 };
 export type Device = { client: "web"; maxHeight: number; codecs: string[]; hdr: string[] };
 
@@ -102,6 +115,15 @@ const put = (body: unknown): RequestInit => ({ method: "PUT", body: JSON.stringi
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 /* A language change still on its way, per title: a play waits for it, or it gets the old languages. */
 const savingTracks = new Map<string, Promise<unknown>>();
+
+export const friendsApi = {
+  page: () => call<FriendsPage>("friends"),
+  change: (type: "ask" | "yes" | "no" | "remove", username: string) => call<{ state: string | null }>("friends", post({ type, username })),
+  asks: () => call<{ incoming: JoinAsk[]; outgoing: JoinAsk[] }>("friends/join"),
+  askToJoin: (to: string) => call<{ ask: JoinAsk }>("friends/join", post({ to })).then((a) => a.ask),
+  answer: (id: string, yes: boolean, partyId?: string) => call<{ ok: boolean }>(`friends/join/${encodeURIComponent(id)}`, post({ yes, partyId })),
+  cancel: (id: string) => call<{ ok: boolean }>(`friends/join/${encodeURIComponent(id)}`, post({ cancel: true })),
+};
 
 export const watchApi = {
   home: (shelf?: Shelf | null, cursor?: string | null) => {

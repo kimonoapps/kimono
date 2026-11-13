@@ -1554,3 +1554,13 @@ test('friends: asking to join waits, is answered once, and a no holds off asking
   assert.equal(friends.cancelAsk(waiting, 'e', 'ana').length, 0);
   assert.equal(friends.cancelAsk(waiting, 'e', 'sami').length, 1);
 });
+
+test('friends: what is watched while invisible stays hidden until watched visibly', () => {
+  const db = new DatabaseSync(':memory:');
+  friends.migrateFriends(db);
+  friends.noteWatched(db, 'Ana', 'tv:1', true);
+  friends.noteWatched(db, 'ana', 'tv:2', false);
+  assert.deepEqual([...friends.hiddenOf(db, 'ana')], ['tv:1']);
+  friends.noteWatched(db, 'ana', 'tv:1', false);
+  assert.equal(friends.hiddenOf(db, 'ana').size, 0);
+});

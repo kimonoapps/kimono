@@ -73,6 +73,8 @@ data class AskAnswer(val ask: JoinAsk? = null)
 data class FriendsPage(
     /** Whether this person shows friends what they watch. */
     val sharing: Boolean = true,
+    /** Invisible: friends don't see them watching, can't ask to join, and don't see what's watched meanwhile. */
+    val invisible: Boolean = false,
     val friends: List<Friend> = emptyList(),
     /** Asked to be your friend. */
     val asked: List<Person> = emptyList(),
@@ -90,6 +92,8 @@ data class FriendHere(
     val username: String,
     val name: String = "",
     val picture: String? = null,
+    val season: Int = 0,
+    val episode: Int = 0,
     val label: String? = null,
     val progress: Double = 0.0,
     val finished: Boolean = false,

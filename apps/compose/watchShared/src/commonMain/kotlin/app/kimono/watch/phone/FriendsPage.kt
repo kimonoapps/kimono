@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,61 +55,104 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Friends: what each is watching now (with "Ask to join") and where they are
- * in things, who asked to be friends, and everyone else to add. Asked again
- * every 15 s while open; an ask to join is followed every 2.5 s until it's
- * answered, and a yes opens the player in their party.
+ * Friends' state, for the phone's page and the TV's: the page (asked again
+ * every 15 s while shown), the ask to join waiting on an answer (followed
+ * every 2.5 s; a yes opens the player in their party), and the changes.
  */
+class FriendsModel internal constructor() {
+    var page by mutableStateOf<Page?>(null)
+    var problem by mutableStateOf<String?>(null)
+    var asking by mutableStateOf<JoinAsk?>(null)
+    var removing by mutableStateOf<Friend?>(null)
+    internal var change: (type: String, username: String) -> Unit = { _, _ -> }
+    internal var ask: (Friend) -> Unit = {}
+    internal var cancel: (JoinAsk) -> Unit = {}
+    fun add(username: String) = change("ask", username)
+    fun accept(username: String) = change("yes", username)
+    fun decline(username: String) = change("no", username)
+    fun remove(username: String) = change("remove", username)
+    fun askToJoin(f: Friend) = ask(f)
+    fun cancelAsk(a: JoinAsk) = cancel(a)
+    fun askingOf(f: Friend) = asking?.takeIf { it.to.equals(f.username, true) }
+    internal var prefs: app.kimono.watch.ui.PrefsStore? = null
+    /** From the person's settings (kept as they change), else what the page said. */
+    val invisible: Boolean get() = prefs?.state?.value?.invisible ?: page?.invisible ?: false
+    fun setInvisible(on: Boolean) {
+        page = page?.copy(invisible = on)
+        prefs?.set("invisible", on) { it.copy(invisible = on) }
+    }
+}
+
 @Composable
-fun FriendsPage(go: Go) {
+fun rememberFriends(go: Go): FriendsModel {
     val watch = LocalWatch.current
     val scope = rememberCoroutineScope()
-    var page by remember { mutableStateOf<Page?>(null) }
-    var problem by remember { mutableStateOf<String?>(null) }
-    var asking by remember { mutableStateOf<JoinAsk?>(null) }
-    var removing by remember { mutableStateOf<Friend?>(null) }
-
+    val m = remember { FriendsModel() }
+    m.prefs = watch.prefs
+    val prefs by watch.prefs.state.collectAsState()
+    LaunchedEffect(Unit) { if (prefs == null) watch.prefs.load() }
     suspend fun load() {
         runCatching { watch.api.friends() }
-            .onSuccess { p -> page = p; problem = null; if (asking == null) asking = p.outgoing.firstOrNull { it.answer == "waiting" } }
-            .onFailure { if (page == null) problem = it.message ?: "Friends didn't load." }
+            .onSuccess { p -> m.page = p; m.problem = null; if (m.asking == null) m.asking = p.outgoing.firstOrNull { it.answer == "waiting" } }
+            .onFailure { if (m.page == null) m.problem = it.message ?: "Friends didn't load." }
     }
-    fun change(type: String, username: String) = scope.launch {
-        runCatching { watch.api.friend(type, username) }.onFailure { watch.toasts.show(it.message ?: "That didn't go through. Try again.") }
-        load()
+    m.change = { type, username ->
+        scope.launch {
+            runCatching { watch.api.friend(type, username) }.onFailure { watch.toasts.show(it.message ?: "That didn't go through. Try again.") }
+            load()
+        }
     }
+    m.ask = { f ->
+        scope.launch {
+            runCatching { watch.api.askToJoin(f.username) }
+                .onSuccess { m.asking = it }
+                .onFailure { watch.toasts.show(it.message ?: "That didn't send. Try again.") }
+        }
+    }
+    m.cancel = { a -> m.asking = null; scope.launch { runCatching { watch.api.cancelAsk(a.id) } } }
     LaunchedEffect(Unit) { while (true) { load(); delay(15_000) } }
 
     /* Waiting on an answer: a yes goes straight into their party. */
-    LaunchedEffect(asking?.id) {
-        val ask = asking ?: return@LaunchedEffect
+    LaunchedEffect(m.asking?.id) {
+        val ask = m.asking ?: return@LaunchedEffect
         while (true) {
             delay(2500)
             val answers = runCatching { watch.api.asks() }.getOrNull() ?: continue
             val now = answers.outgoing.firstOrNull { it.id == ask.id }
             when {
-                now == null -> { watch.toasts.show("${ask.name.ifBlank { ask.to }} didn't answer"); asking = null }
-                now.answer == "yes" && now.partyId != null -> { asking = null; go.join(now.partyId) }
-                now.answer == "no" -> { watch.toasts.show("${ask.name.ifBlank { ask.to }} said not now"); asking = null }
+                now == null -> { watch.toasts.show("${ask.name.ifBlank { ask.to }} didn't answer"); m.asking = null }
+                now.answer == "yes" && now.partyId != null -> { m.asking = null; go.join(now.partyId) }
+                now.answer == "no" -> { watch.toasts.show("${ask.name.ifBlank { ask.to }} said not now"); m.asking = null }
                 else -> continue
             }
             break
         }
     }
+    return m
+}
 
+/** Friends on a phone: what each is watching now (with "Ask to join") and where they are in things, who asked to be friends, and everyone else to add. */
+@Composable
+fun FriendsPage(go: Go) {
+    val m = rememberFriends(go)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = statusTop + 76.dp, bottom = navBottom + 100.dp, start = 16.dp, end = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Text("Friends", style = display(28), modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)) }
-        val p = page
+        item {
+            Row(Modifier.padding(top = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Friends", style = display(28), modifier = Modifier.weight(1f))
+                InvisibleChip(m)
+            }
+        }
+        val p = m.page
         when {
-            p == null && problem != null -> item { Text(problem!!, style = ui(15, color = Night.fg3), modifier = Modifier.padding(vertical = 24.dp)) }
+            p == null && m.problem != null -> item { Text(m.problem!!, style = ui(15, color = Night.fg3), modifier = Modifier.padding(vertical = 24.dp)) }
             p == null -> items(3) { Skeleton(Modifier.fillMaxWidth().size(Dp.Unspecified, 96.dp), RoundedCornerShape(14.dp)) }
             else -> {
                 if (p.asked.isNotEmpty()) {
                     item { Heading("Asked to be friends") }
                     items(p.asked, key = { "asked" + it.username }) { who ->
                         PersonRow(who) {
-                            PaperButton("Accept", Ic.check, { change("yes", who.username) }, height = 38.dp)
-                            Box(Modifier.size(36.dp).clickableScaleClipped(CircleShape, { change("no", who.username) }), contentAlignment = Alignment.Center) { I(Ic.close, 18.dp, Night.fg2) }
+                            PaperButton("Accept", Ic.check, { m.accept(who.username) }, height = 38.dp)
+                            Box(Modifier.size(36.dp).clickableScaleClipped(CircleShape, { m.decline(who.username) }), contentAlignment = Alignment.Center) { I(Ic.close, 18.dp, Night.fg2) }
                         }
                     }
                 }
@@ -116,39 +160,42 @@ fun FriendsPage(go: Go) {
                     Text("Add friends to see what they're watching.", style = ui(15, color = Night.fg3), modifier = Modifier.padding(vertical = 16.dp))
                 }
                 items(p.friends, key = { "f" + it.username }) { f ->
-                    FriendCard(f, go, asking?.takeIf { it.to.equals(f.username, true) },
-                        onAsk = {
-                            scope.launch {
-                                runCatching { watch.api.askToJoin(f.username) }
-                                    .onSuccess { asking = it }
-                                    .onFailure { watch.toasts.show(it.message ?: "That didn't send. Try again.") }
-                            }
-                        },
-                        onCancel = { a -> asking = null; scope.launch { runCatching { watch.api.cancelAsk(a.id) } } },
-                        onRemove = { removing = f })
+                    FriendCard(f, go, m.askingOf(f), onAsk = { m.askToJoin(f) }, onCancel = m::cancelAsk, onRemove = { m.removing = f })
                 }
                 if (p.people.isNotEmpty() || p.asking.isNotEmpty()) {
                     item { Heading("Add friends") }
                     items(p.asking, key = { "asking" + it.username }) { who ->
-                        PersonRow(who) { PaperButton("Asked", Ic.check, { change("remove", who.username) }, tonal = true, height = 38.dp) }
+                        PersonRow(who) { PaperButton("Asked", Ic.check, { m.remove(who.username) }, tonal = true, height = 38.dp) }
                     }
                     items(p.people, key = { "p" + it.username }) { who ->
-                        PersonRow(who) { PaperButton("Add", Ic.people, { change("ask", who.username) }, tonal = true, height = 38.dp) }
+                        PersonRow(who) { PaperButton("Add", Ic.people, { m.add(who.username) }, tonal = true, height = 38.dp) }
                     }
                 }
             }
         }
     }
 
-    removing?.let { f ->
-        app.kimono.watch.ui.Dialog(onDismiss = { removing = null }) {
+    m.removing?.let { f ->
+        app.kimono.watch.ui.Dialog(onDismiss = { m.removing = null }) {
             Text("Remove ${f.shown}?", style = ui(18, FontWeight.Bold))
             Text("You'll stop seeing what each other watches.", style = ui(14, color = Night.fg2), modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PaperButton("Cancel", null, { removing = null }, tonal = true)
-                PaperButton("Remove", null, { removing = null; change("remove", f.username) })
+                PaperButton("Cancel", null, { m.removing = null }, tonal = true)
+                PaperButton("Remove", null, { m.removing = null; m.remove(f.username) })
             }
         }
+    }
+}
+
+/** Invisible: on, friends don't see you watching and what you watch meanwhile stays yours. */
+@Composable
+fun InvisibleChip(m: FriendsModel) {
+    val on = m.invisible
+    Row(Modifier.clip(RoundedCornerShape(999.dp)).background(if (on) Night.paper else Night.surface2).border(1.dp, if (on) Night.paper else Night.line, RoundedCornerShape(999.dp))
+        .clickableScaleClipped(RoundedCornerShape(999.dp), { m.setInvisible(!on) }).padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        I(if (on) Ic.check else Ic.people, 16.dp, if (on) Night.ink else Night.fg2)
+        Text(if (on) "Invisible" else "Go invisible", style = ui(14, FontWeight.Bold, if (on) Night.ink else Night.fg))
     }
 }
 
@@ -219,7 +266,7 @@ private fun FriendCard(f: Friend, go: Go, asking: JoinAsk?, onAsk: () -> Unit, o
 }
 
 /** "just now", "12 min ago", "3 h ago", "2 days ago". */
-internal fun ago(at: Long): String {
+fun ago(at: Long): String {
     val min = ((nowMs() - at) / 60_000).coerceAtLeast(0)
     return when {
         min < 2 -> "just now"
@@ -227,5 +274,30 @@ internal fun ago(at: Long): String {
         min < 24 * 60 -> "${min / 60} h ago"
         min < 2 * 24 * 60 -> "yesterday"
         else -> "${min / (24 * 60)} days ago"
+    }
+}
+
+/** Friends whose place is this episode (or film): their faces, a little stacked, and "Sami is here". */
+@Composable
+fun FriendsAt(friends: List<app.kimono.watch.model.FriendHere>, modifier: Modifier = Modifier) {
+    if (friends.isEmpty()) return
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        val shown = friends.take(3)
+        Box(Modifier.width(18.dp + 12.dp * (shown.size - 1)).size(Dp.Unspecified, 18.dp)) {
+            shown.forEachIndexed { i, f ->
+                PersonFace(f.person, f.username, 18.dp, Modifier.offset(x = 12.dp * i).border(1.5.dp, Night.bg, RoundedCornerShape(5.dp)))
+            }
+        }
+        Text(hereText(friends), style = ui(12, FontWeight.Bold, Night.blush), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+internal fun hereText(friends: List<app.kimono.watch.model.FriendHere>): String {
+    val first = friends.first().shown
+    return when {
+        friends.size == 1 && friends[0].now -> "$first is watching it now"
+        friends.size == 1 -> "$first is here"
+        friends.size == 2 -> "$first and ${friends[1].shown} are here"
+        else -> "$first and ${friends.size - 1} others are here"
     }
 }

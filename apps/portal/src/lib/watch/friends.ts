@@ -5,6 +5,8 @@
  * each sees what the other is watching right now and how far they are in
  * every show. Asking someone who already asked you makes you friends.
  * Nobody sees anything of someone who turned off "Show friends what I watch".
+ * Invisible is for now: friends don't see you watching or can ask to join,
+ * and what you watch meanwhile stays hidden until you watch it visibly again.
  *
  * Asking to join: a friend watching something on their own (or in a party)
  * can be asked "can I join?". Their player shows it; a yes moves them into a
@@ -19,7 +21,21 @@ import type { DatabaseSync } from "node:sqlite";
 
 export function migrateFriends(db: DatabaseSync) {
   db.exec(`CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, asked_by TEXT NOT NULL, state TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
-    CREATE INDEX IF NOT EXISTS friends_b ON friends (b);`);
+    CREATE INDEX IF NOT EXISTS friends_b ON friends (b);
+    CREATE TABLE IF NOT EXISTS friends_hidden (username TEXT NOT NULL, title_id TEXT NOT NULL, PRIMARY KEY (username, title_id));`);
+}
+
+/* ───── Invisible ───── */
+
+/** A title played while invisible stays hidden from friends; played again while visible, it shows again. */
+export function noteWatched(db: DatabaseSync, username: string, titleId: string, invisible: boolean) {
+  const u = username.toLowerCase();
+  if (invisible) db.prepare("INSERT OR IGNORE INTO friends_hidden (username, title_id) VALUES (?, ?)").run(u, titleId);
+  else db.prepare("DELETE FROM friends_hidden WHERE username = ? AND title_id = ?").run(u, titleId);
+}
+
+export function hiddenOf(db: DatabaseSync, username: string): Set<string> {
+  return new Set((db.prepare("SELECT title_id FROM friends_hidden WHERE username = ?").all(username.toLowerCase()) as { title_id: string }[]).map((r) => r.title_id));
 }
 
 const pair = (x: string, y: string): [string, string] => { const a = x.toLowerCase(), b = y.toLowerCase(); return a < b ? [a, b] : [b, a]; };

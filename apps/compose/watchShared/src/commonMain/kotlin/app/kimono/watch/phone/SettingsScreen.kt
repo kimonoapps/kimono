@@ -109,7 +109,7 @@ private fun Part.summary(p: Prefs, state: SettingsState, watch: WatchServices): 
     Part.Look -> p.subtitleSize.replaceFirstChar { it.uppercase() } + " · " + when (p.subtitleBackground) { "none" -> "Outline"; "box" -> "Box"; else -> "Shadow" }
     Part.Playing -> listOfNotNull("Next episode".takeIf { p.autoplayNext }, "Skip intros".takeIf { p.skipIntros }).joinToString(" · ").ifEmpty { "All off" }
     Part.Home -> if (p.previews) "Previews on" else "Previews off"
-    Part.Friends -> if (p.shareWatching) "Sharing what you watch" else "Not sharing"
+    Part.Friends -> if (!p.shareWatching) "Not sharing" else if (p.invisible) "Invisible" else "Sharing what you watch"
     Part.Downloads -> {
         val wifi by watch.downloads.wifiOnly.collectAsState()
         (if (p.downloadQuality == "higher") "Higher" else "Standard") + if (wifi) " · Wi‑Fi only" else ""
@@ -261,6 +261,7 @@ private fun PartBody(part: Part, watch: WatchServices, state: SettingsState, vm:
         }
         Part.Friends -> {
             Toggle("Show friends what I watch", p.shareWatching, key = "shareWatching") { on -> store.set("shareWatching", on) { it.copy(shareWatching = on) } }
+            if (p.shareWatching) Toggle("Invisible for now", p.invisible, key = "invisible") { on -> store.set("invisible", on) { it.copy(invisible = on) } }
         }
         Part.Languages -> {
             Picker("Preferred language", if (p.preferredLanguage == "original") "Original language" else languageName(p.preferredLanguage), listOf("original" to "Original language") + languages, p.preferredLanguage, key = "preferredLanguage") { v ->

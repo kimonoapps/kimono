@@ -492,7 +492,7 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
         items(page.episodes, key = { "ep${page.seasonOf(it)}:${it.number}" }) { e ->
             /* In one run the list crosses seasons: each episode plays by its own season. */
             val s = page.seasonOf(e)
-            EpisodeRow(page, e, now = r?.started == true && r.season == s && r.episode == e.number,
+            EpisodeRow(page, e, page.friends.filter { it.season == s && it.episode == e.number }, now = r?.started == true && r.season == s && r.episode == e.number,
                 finale = if (e === last) (if (finalSeason && page.title.status.contains("Ended", true)) "FINALE" else "SEASON FINALE") else null,
                 dl = dl[dlKey(page.title.id, s, e.number)], wide = wide, gutter = gutter,
                 onPlay = { go.play(page.title.id, s, e.number) },
@@ -502,7 +502,7 @@ private fun LazyListScope.episodes(page: TitlePage, season: Int, loading: Boolea
 }
 
 @Composable
-private fun EpisodeRow(page: TitlePage, e: EpisodeInfo, now: Boolean, finale: String?, dl: DlState?, wide: Boolean, gutter: Dp, onPlay: () -> Unit, onDownload: () -> Unit) {
+private fun EpisodeRow(page: TitlePage, e: EpisodeInfo, here: List<app.kimono.watch.model.FriendHere>, now: Boolean, finale: String?, dl: DlState?, wide: Boolean, gutter: Dp, onPlay: () -> Unit, onDownload: () -> Unit) {
     val skipped = page.fillers == "skip" && e.filler
     Row(Modifier.fillMaxWidth().padding(horizontal = if (wide) gutter - 12.dp else gutter).alpha(if (skipped) 0.5f else 1f)
         .clip(RoundedCornerShape(if (wide) 8.dp else 0.dp)).background(if (now) Night.surface2 else Color.Transparent)
@@ -523,6 +523,7 @@ private fun EpisodeRow(page: TitlePage, e: EpisodeInfo, now: Boolean, finale: St
             }
             if (!wide) Text(if (skipped) "Skipped" else e.runtime?.let { "${it}m" } ?: "", style = ui(14, color = Night.fg2))
             finale?.let { Text(it, style = ui(11, FontWeight.Bold, Night.blush).copy(letterSpacing = 0.5.sp)) }
+            FriendsAt(here)
             if (wide) Text(e.overview, style = ui(13, color = Night.fg2).copy(lineHeight = 20.sp), maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
         Box(Modifier.size(40.dp).clip(CircleShape).clickableScale(onDownload).align(Alignment.CenterVertically), contentAlignment = Alignment.Center) {

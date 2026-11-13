@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { airText, labelOf, languageName, languages, minutesText, watchApi, type Episode, type TitleView } from "./api";
 import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
+import { FriendsAt, FriendsHere } from "./friends";
 
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
 
@@ -88,6 +89,7 @@ export function TitleSheet({ id, onClose, refreshKey }: { id: string; onClose: (
                   <TopRank id={t.id} shelf={t.shelf} />
                   <Resume view={view} />
                   {view.tracker ? <Tracker view={view} /> : null}
+                  <FriendsHere friends={view.friends ?? []} film={t.kind === "movie"} />
                   {t.overview ? <p className="kw-desc">{t.overview}</p> : null}
                   <div className="kw-acts" style={{ position: "relative" }}>
                     <ListButton id={t.id} variant="act" />
@@ -249,6 +251,7 @@ function Episodes({ view, loading, pickSeason, setLayout }: { view: TitleView; l
           <b><em className="kw-et">{wide ? "" : `${numberOf(e)}. `}{e.name}{e.filler ? <span className="kw-ftag">Filler</span> : e.recap ? <span className="kw-ftag kw-mixed">Recap</span> : null}</em>
             <span>{skipped ? "Skipped" : !out && e.airDate ? airText(e.airDate) : e.runtime ? `${e.runtime}m` : ""}</span></b>
           {finale ? <span className="kw-flag">{finale}</span> : null}
+          <FriendsAt friends={(view.friends ?? []).filter((f) => f.season === at && f.episode === e.number)} />
           {e.overview ? <p>{e.overview}</p> : null}
         </div>
         <span />

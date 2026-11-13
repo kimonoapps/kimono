@@ -1043,6 +1043,7 @@ private fun PlayerSheet(sheet: Sheet?, vm: PlayerViewModel, engine: PlaybackEngi
                             Column {
                                 Text("${pg?.shownNumber(es, e.number) ?: e.number}. ${e.name}", style = ui(14, FontWeight.Bold), maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(listOfNotNull(e.runtime?.let { "${it}m" }, "Filler".takeIf { e.filler }, "Recap".takeIf { e.recap }).joinToString(" · "), style = ui(12, color = Night.fg3))
+                                app.kimono.watch.phone.FriendsAt(pg?.friends.orEmpty().filter { it.season == es && it.episode == e.number }, Modifier.padding(top = 4.dp))
                             }
                         }
                     }

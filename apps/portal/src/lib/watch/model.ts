@@ -105,8 +105,10 @@ export type Prefs = {
   skipIntros: boolean;
   /** Friends see what this person is watching and how far they are (./friends.ts). */
   shareWatching: boolean;
+  /** Invisible: friends don't see that they're watching, can't ask to join, and don't see what's watched meanwhile. */
+  invisible: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false, shareWatching: true };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false, shareWatching: true, invisible: false };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -377,6 +379,7 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
     autoplayNext: typeof input.autoplayNext === "boolean" ? input.autoplayNext : base.autoplayNext,
     skipIntros: typeof input.skipIntros === "boolean" ? input.skipIntros : base.skipIntros,
     shareWatching: typeof input.shareWatching === "boolean" ? input.shareWatching : base.shareWatching,
+    invisible: typeof input.invisible === "boolean" ? input.invisible : base.invisible,
   };
 }
 

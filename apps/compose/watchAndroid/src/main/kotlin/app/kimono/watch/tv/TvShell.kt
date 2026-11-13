@@ -118,6 +118,7 @@ fun TvShell(profile: Profile, home: HomeViewModel, hot: HotViewModel, list: List
             when (page) {
                 "home" -> TvHome(profile, home, go, active = top == null) { Nav(page, { page = it; if (it == "list") list.refresh() }, profile, onSearch, onProfiles, onSettings) }
                 "hot" -> TvHot(hot, go) { Nav(page, { page = it }, profile, onSearch, onProfiles, onSettings) }
+                "friends" -> TvFriends(go) { Nav(page, { page = it; if (it == "list") list.refresh() }, profile, onSearch, onProfiles, onSettings) }
                 else -> TvList(list, go) { Nav(page, { page = it; list.refresh() }, profile, onSearch, onProfiles, onSettings) }
             }
         }
@@ -140,7 +141,7 @@ private fun Nav(page: String, onPage: (String) -> Unit, profile: Profile, onSear
     Row(Modifier.fillMaxWidth().padding(start = gutter, end = gutter, top = 20.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         Brand()
         Spacer(Modifier.width(8.dp))
-        listOf("home" to "Home", "hot" to "New & hot", "list" to "My list").forEach { (id, label) ->
+        listOf("home" to "Home", "hot" to "New & hot", "list" to "My list", "friends" to "Friends").forEach { (id, label) ->
             Pill(onClick = { onPage(id) }) { Text(label, style = ui(15, if (page == id) FontWeight.Bold else FontWeight.Normal, if (page == id) Night.fg else Night.fg2), modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) }
         }
         Spacer(Modifier.weight(1f))
