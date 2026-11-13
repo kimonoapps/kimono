@@ -147,3 +147,19 @@
 .fr-ss-check { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--crimson); color: #fff4f1; }
 .fr-ss-check .line-icon { width: 14px; height: 14px; stroke-width: 2.6; }
 @media (prefers-reduced-motion: reduce) { .fr-ss-stage, .fr-ss-big { transition: none; } }
+
+/* 己 your own profile is edited where it stands: the name and bio are their own fields, with no box until you're in them */
+.fr-gear { margin-left: auto; border: 0; background: none; cursor: pointer; }
+.fr-gear .line-icon { width: 24px; height: 24px; }
+.fr-edit-name input, .fr-edit-bio { border: 0; border-radius: 12px 8px 12px 8px; background: transparent; color: inherit; font: inherit; text-align: center; outline: none; transition: background-color .2s; }
+.fr-edit-name input { max-width: min(100%, 520px); padding: 0 10px; letter-spacing: inherit; }
+.fr-edit-bio { width: min(100%, 460px); padding: 6px 12px; resize: none; field-sizing: content; min-height: 0; }
+.fr-edit-name input:hover, .fr-edit-bio:hover { background: color-mix(in srgb, var(--on-surface) 5%, transparent); }
+.fr-edit-name input:focus, .fr-edit-bio:focus { background: var(--sc-high); box-shadow: inset 0 -2px 0 var(--primary); }
+.fr-edit-bio::placeholder { color: var(--on-surface-variant); }
+.fr-all .fr-new { display: inline-block; margin-right: 6px; vertical-align: middle; }
+
+/* the account's own things, in the gear's sheet: short rows */
+.you-settings > .row, .you-settings > form > button.row { min-height: 56px; padding: 8px 16px; }
+.you-settings .row .k-ink-blot { width: 36px; height: 36px; }
+.ink-sheet .you-version { margin: 0; text-align: center; font: 11.5px var(--mono); color: color-mix(in srgb, var(--on-surface-variant) 60%, transparent); }

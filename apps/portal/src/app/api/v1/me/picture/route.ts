@@ -1,4 +1,5 @@
 import { changePicture, clearPicture } from "@/lib/account";
+import { forgetPeople } from "@/lib/friends";
 import { apiError, apiJson, apiUser, crossSite, failure, readLimited, unauthorized } from "@/lib/api-v1";
 import { pictureMaxBytes } from "@/lib/picture-png";
 
@@ -12,7 +13,9 @@ export async function PUT(request: Request) {
   const upload = await readLimited(request, pictureMaxBytes);
   if (!upload) return apiError(413, "That picture is larger than 2 MB.");
   try {
-    return apiJson({ picture: await changePicture(user, upload) });
+    const picture = await changePicture(user, upload);
+    forgetPeople();
+    return apiJson({ picture });
   } catch (error) {
     return failure(error, "Your picture could not be saved.");
   }
@@ -25,6 +28,7 @@ export async function DELETE(request: Request) {
   if (!user) return unauthorized();
   try {
     await clearPicture(user);
+    forgetPeople();
     return apiJson({ picture: null });
   } catch (error) {
     return failure(error, "Your picture could not be removed.");

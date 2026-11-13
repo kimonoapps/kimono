@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { InkBlot, InkPortraitFrame, Seal } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
 import { InkSheet } from "@/components/ink-sheet";
@@ -176,23 +177,31 @@ export function FriendsView() {
 
 /* ───── A profile ───── */
 
-export function ProfileView({ username }: { username: string }) {
+/**
+ * A profile as friends see it. Your own is also where you change it, in place: the portrait's camera,
+ * the name and the bio are edited where they stand. `account` makes it the You page: no way back,
+ * and a gear opening the account's own things (email, password, devices, appearance, signing out).
+ */
+export function ProfileView({ username, account }: { username: string; account?: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [asked, setAsked] = useState(0);
   const [removing, setRemoving] = useState(false);
   const [recommending, setRecommending] = useState<Item | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const load = useCallback(() => call<Profile>(`/api/v1/profiles/${encodeURIComponent(username)}`).then(setProfile, (e) => setProblem(message(e))), [username]);
   useEffect(() => { void load(); }, [load]);
+  const own = profile?.you ?? false;
+  useEffect(() => { if (own) call<FriendsList>("/api/v1/friends").then((l) => setAsked(l.asked.length), () => {}); }, [own]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2600); return () => clearTimeout(t); }, [toast]);
   const change = (type: "ask" | "yes" | "no" | "remove") => call("/api/v1/friends", "POST", { type, username }).then(load, (e) => setProblem(message(e)));
   const takeBack = (r: Recommendation) => call(`/api/v1/recommendations/${r.id}`, "DELETE").then(load, (e) => setProblem(message(e)));
 
   if (!profile) return <div className="you fr">{problem ? <p className="fr-problem" role="alert">{problem}</p> : <div className="stack you-head"><span className="fr-sk-face" /></div>}</div>;
   const p = profile;
-  const action = p.you ? <><Seal tone="quiet" compact onClick={() => setEditing(true)}>Edit</Seal><Seal tone="quiet" compact onClick={() => setPrivacyOpen(true)}>Who sees what</Seal></>
+  const action = p.you ? <Seal tone="quiet" compact onClick={() => setPrivacyOpen(true)}>Who sees what</Seal>
     : p.link === "friends" ? <Seal tone="quiet" compact onClick={() => setRemoving(true)}>Friends</Seal>
       : p.link === "asked" ? <><Seal tone="quiet" compact onClick={() => void change("no")}>Not now</Seal><Seal compact onClick={() => void change("yes")}>Accept</Seal></>
         : p.link === "asking" ? <Seal tone="quiet" compact onClick={() => void change("remove")}>Asked</Seal>
@@ -220,14 +229,19 @@ export function ProfileView({ username }: { username: string }) {
   const friendsKept = p.open && p.you && (invisible || privacy?.friends === false);
 
   return <div className="you fr">
-    <div className="fr-top"><Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing></div>
+    <div className="fr-top">
+      {account ? null : <Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing>}
+      {account ? <button type="button" className="fr-back fr-gear" aria-label="Account" onClick={() => setSettingsOpen(true)}><LineIcon name="gear" /></button> : null}
+    </div>
     <div className="stack you-head">
-      <span className="you-picture"><Face person={p} size={112} /></span>
-      <h1>{p.name}</h1>
+      <span className="you-picture"><Face person={p} size={112} />
+        {p.you ? <Crossing kind="kakejiku" className="you-camera" href="/account?sheet=picture" aria-label="Change your picture"><LineIcon name="camera" /></Crossing> : null}</span>
+      {p.you ? <NameField name={p.name} onSaved={(name) => setProfile({ ...p, name })} onProblem={setProblem} /> : <h1>{p.name}</h1>}
       <p>@{p.username}{p.open ? ` · ${p.friends === 1 ? "1 friend" : `${p.friends} friends`}` : ""}</p>
       {invisible ? <button type="button" className="fr-invisible" onClick={() => setPrivacyOpen(true)}><LineIcon name="lock" />Invisible to friends</button> : null}
       {p.open && p.kimonoRead ? <SilkscreenBadge since={p.kimonoRead.since} you={p.you} name={p.name || p.username} /> : null}
-      {p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
+      {p.open && p.you ? <BioField bio={p.bio} onSaved={(bio) => setProfile({ ...p, bio })} onProblem={setProblem} />
+        : p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
       <div className="fr-actions">{action}</div>
     </div>
     {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
@@ -243,7 +257,7 @@ export function ProfileView({ username }: { username: string }) {
 
     {p.open && (p.friendList?.length || p.you) ? <section className={`fr-group${friendsKept ? " is-kept" : ""}`}>
       <div className="label fr-label">Friends{friendsKept ? <span className="fr-only">Only you</span> : null}
-        {p.you && p.friendList?.length ? <Crossing kind="kakejiku" className="fr-all" href="/account/friends">All friends</Crossing> : null}</div>
+        {p.you && (p.friendList?.length || asked) ? <Crossing kind="kakejiku" className="fr-all" href="/account/friends">{asked ? <><i className="fr-new" />{asked} asking</> : "All friends"}</Crossing> : null}</div>
       {p.friendList?.length ? <div className="fr-shelf fr-people k-inkbar">{p.friendList.map((f) =>
         <Crossing key={f.username} kind="kakejiku" className="fr-person" href={`/account/people/${encodeURIComponent(f.username)}`}>
           <Face person={f} size={64} /><span>{first(f)}</span>
@@ -272,7 +286,7 @@ export function ProfileView({ username }: { username: string }) {
 
     {privacyOpen && privacy ? <PrivacySheet privacy={privacy} onClose={() => setPrivacyOpen(false)}
       onChanged={(r) => { if (p.open) setProfile({ ...p, privacy: r.privacy, hidden: r.hidden, kept: keptFrom(r.privacy) }); }} /> : null}
-    {editing && p.open ? <BioSheet bio={p.bio} onClose={() => setEditing(false)} onSaved={(bio) => setProfile({ ...p, bio })} /> : null}
+    {settingsOpen && account ? <InkSheet title="Account" icon="gear" tint="#8a7c77" onClose={() => setSettingsOpen(false)} actions={<Seal compact onClick={() => setSettingsOpen(false)}>Done</Seal>}>{account}</InkSheet> : null}
     {removing ? <InkSheet title={`Remove ${first(p)}?`} icon="people" onClose={() => setRemoving(false)} actions={<>
       <Seal tone="quiet" compact onClick={() => setRemoving(false)}>Keep</Seal>
       <Seal tone="danger" compact onClick={() => { setRemoving(false); void change("remove"); }}>Remove</Seal>
@@ -318,20 +332,32 @@ function PrivacySheet({ privacy, onClose, onChanged }: { privacy: Privacy; onClo
   </InkSheet>;
 }
 
-function BioSheet({ bio, onClose, onSaved }: { bio: string; onClose: () => void; onSaved: (bio: string) => void }) {
-  const [text, setText] = useState(bio);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  const save = async () => {
-    setBusy(true); setProblem(null);
-    try { const r = await call<{ bio: string }>("/api/v1/profile", "PATCH", { bio: text }); onSaved(r.bio); onClose(); } catch (error) { setProblem(message(error)); }
-    setBusy(false);
+/** Your name, written where it shows: it saves when you leave it or press Enter, and Escape puts it back. */
+function NameField({ name, onSaved, onProblem }: { name: string; onSaved: (name: string) => void; onProblem: (problem: string | null) => void }) {
+  const router = useRouter();
+  const [text, setText] = useState(name);
+  const field = useRef<HTMLInputElement>(null);
+  const save = () => {
+    const next = text.trim();
+    if (!next) { setText(name); return; }
+    if (next === name) return;
+    call<{ name: string }>("/api/v1/me", "PATCH", { name: next })
+      .then((r) => { onSaved(r.name); onProblem(null); router.refresh(); }, (e) => { setText(name); onProblem(message(e)); });
   };
-  return <InkSheet title="About you" icon="user" onClose={onClose} actions={<>
-    <Seal tone="quiet" compact onClick={onClose}>Cancel</Seal>
-    <Seal compact busy={busy} disabled={text.trim() === bio} onClick={() => void save()}>Save</Seal>
-  </>}>
-    <label className="field fr-note"><small>Bio · {280 - [...text].length}</small><textarea rows={4} maxLength={280} value={text} autoFocus onChange={(e) => setText(e.target.value)} /></label>
-    {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
-  </InkSheet>;
+  return <h1 className="fr-edit-name"><input ref={field} aria-label="Your name" value={text} maxLength={80} autoComplete="name" spellCheck={false}
+    size={Math.max(4, [...text].length)} onChange={(e) => setText(e.target.value)} onBlur={save}
+    onKeyDown={(e) => { if (e.key === "Enter") field.current?.blur(); if (e.key === "Escape") { setText(name); requestAnimationFrame(() => field.current?.blur()); } }} /></h1>;
+}
+
+/** Your bio, written where friends read it; it saves when you leave it. */
+function BioField({ bio, onSaved, onProblem }: { bio: string; onSaved: (bio: string) => void; onProblem: (problem: string | null) => void }) {
+  const [text, setText] = useState(bio);
+  const save = () => {
+    if (text.trim() === bio.trim()) return;
+    call<{ bio: string }>("/api/v1/profile", "PATCH", { bio: text })
+      .then((r) => { onSaved(r.bio); onProblem(null); }, (e) => { setText(bio); onProblem(message(e)); });
+  };
+  return <textarea className="fr-bio fr-edit-bio" aria-label="About you" placeholder="A few words about you" rows={1} maxLength={280}
+    value={text} onChange={(e) => setText(e.target.value)} onBlur={save}
+    onKeyDown={(e) => { if (e.key === "Escape") { const field = e.currentTarget; setText(bio); requestAnimationFrame(() => field.blur()); } }} />;
 }

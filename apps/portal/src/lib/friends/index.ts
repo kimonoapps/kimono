@@ -73,6 +73,9 @@ export async function people(fresh = false): Promise<Person[]> {
   return list;
 }
 
+/** Forgets the household's names and portraits, so a rename or a new picture shows at once. */
+export function forgetPeople() { cache.kimonoPeople = undefined; }
+
 /** Someone on this Kimono, looked for again when they're new since the list was last read. */
 async function findPerson(username: string): Promise<Person | undefined> {
   const u = username.toLowerCase();

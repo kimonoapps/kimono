@@ -1,5 +1,6 @@
 import { updateSession } from "@/auth";
 import { changeProfile, readAccount } from "@/lib/account";
+import { forgetPeople } from "@/lib/friends";
 import { apiJson, apiUser, crossSite, failure, readJson, unauthorized } from "@/lib/api-v1";
 
 export async function GET() {
@@ -18,6 +19,7 @@ export async function PATCH(request: Request) {
   if ("response" in read) return read.response;
   try {
     const change = await changeProfile(user, read.body);
+    if (change.name !== undefined) forgetPeople();
     if (user.via === "browser") await updateSession({ user: change });
     return apiJson(await readAccount({ ...user, ...change }));
   } catch (error) {
