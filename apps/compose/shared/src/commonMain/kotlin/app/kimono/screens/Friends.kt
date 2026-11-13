@@ -242,6 +242,9 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     var problem by remember { mutableStateOf<String?>(null) }
     var asked by remember { mutableStateOf(friends.known()?.asked?.size ?: 0) }
     var removing by remember { mutableStateOf(false) }
+    /* What the × is about to take off, waiting on a yes. */
+    var dropping by remember { mutableStateOf<Pair<app.kimono.data.ProfileSection, ShareItem>?>(null) }
+    var unrecommending by remember { mutableStateOf<Recommendation?>(null) }
     var recommending by remember { mutableStateOf<ShareItem?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     /* Which app's rows are open to choose what friends see of them. */
@@ -288,7 +291,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                 if (p.open && p.recommendations.isNotEmpty()) {
                     SectionHead("recommends", "send", "Recommends")
                     Shelf(p.recommendations, { it.id }, { it.item }, { r ->
-                        if (p.you) listOf(MenuChoice("Take off your profile", danger = true) { scope.launch { runCatching { friends.drop(r.id) }; load() } })
+                        if (p.you) listOf(MenuChoice("Take off your profile", danger = true) { unrecommending = r })
                         else listOf(MenuChoice("Recommend to others") { recommending = r.item })
                     }) { r -> r.note?.let { Text("“$it”", style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic), maxLines = 4, overflow = TextOverflow.Ellipsis) } }
                 }
@@ -328,11 +331,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                         val rowKept = !kept && p.you && "${s.app}:${s.kind}" in p.kept
                         KeptLabel(s.title, rowKept) { privacyOpen = app }
                         Box(Modifier.alpha(if (kept || rowKept) .5f else 1f)) {
-                            Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }, drop = if (p.you) { item ->
-                                /* Off the row at once (as its app would take it off); back if that fails. */
-                                profile = p.copy(sections = p.sections.map { x -> if (x === s) x.copy(items = x.items.filter { it.itemId != item.itemId }) else x }.filter { it.items.isNotEmpty() })
-                                scope.launch { try { friends.removeFromRow(s.app, s.kind, item.itemId) } catch (e: KimonoProblem) { problem = e.message; load() } }
-                            } else null) { item ->
+                            Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }, drop = if (p.you) { item -> dropping = s to item } else null) { item ->
                                 item.progress?.let { f -> androidx.compose.material3.LinearProgressIndicator(progress = { f.toFloat() }, modifier = Modifier.fillMaxWidth().padding(top = 2.dp)) }
                             }
                         }
@@ -352,7 +351,35 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
         title = "Remove ${p.name.substringBefore(' ')}?", text = "You'll stop seeing each other's profiles and what you watch.",
         action = "Remove", danger = true, icon = "people", onDismiss = { removing = false }, onConfirm = { removing = false; change("remove") },
     )
+    dropping?.let { (s, item) ->
+        InkConfirm(
+            title = "Take ${item.title} off ${s.title}?", text = dropLoses(s.app, s.kind, s.title), action = "Take off", danger = true, icon = "trash",
+            onDismiss = { dropping = null },
+            onConfirm = {
+                dropping = null
+                /* Off the row at once (as its app would take it off); back if that fails. */
+                profile = profile?.let { now -> now.copy(sections = now.sections.map { x -> if (x.app == s.app && x.kind == s.kind) x.copy(items = x.items.filter { it.itemId != item.itemId }) else x }.filter { it.items.isNotEmpty() }) }
+                scope.launch { try { friends.removeFromRow(s.app, s.kind, item.itemId) } catch (e: KimonoProblem) { problem = e.message; load() } }
+            },
+        )
+    }
+    unrecommending?.let { r ->
+        InkConfirm(
+            title = "Take ${r.title} off your profile?", text = if (r.note != null) "Your note goes with it." else "Friends stop seeing you recommend it.",
+            action = "Take off", danger = true, icon = "trash", onDismiss = { unrecommending = null },
+            onConfirm = { unrecommending = null; scope.launch { runCatching { friends.drop(r.id) }; load() } },
+        )
+    }
     recommending?.let { item -> RecommendDialog(friends, item, onDismiss = { recommending = null }) }
+}
+
+/** What taking a title off a row loses, said before it's done (apps/portal lib/friends removeFromRow). */
+private fun dropLoses(app: String, kind: String, title: String) = when {
+    app == "books" && kind == "reading" -> "You'll lose your progress in it."
+    app == "books" && kind == "read" -> "You'll lose that you've read it."
+    kind == "loved" || kind == "liked" -> "Your rating goes with it."
+    app == "watch" && kind == "watched" -> "Friends stop seeing it until you watch it again. What you've watched stays."
+    else -> "It comes off your $title."
 }
 
 /** A row's label, with "Only you" beside it when friends don't see it. */
