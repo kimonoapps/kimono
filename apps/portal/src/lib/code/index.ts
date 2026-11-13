@@ -613,7 +613,9 @@ async function run(config: CodeConfig, workspace: Workspace, user: ApiUser, turn
         let line: Record<string, unknown>;
         try { line = JSON.parse(raw); } catch { continue; }
         if (line.type === "stream_event") {
-          if (!timing.firstWord) {
+          /* The first word they see: a tool call or thinking before it is part of the wait. */
+          const delta = (line.event as { type?: string; delta?: { type?: string } } | undefined)?.delta;
+          if (!timing.firstWord && delta?.type === "text_delta") {
             timing.firstWord = Date.now();
             /* Where the wait before its first word went, for the logs. */
             console.info(`Kimono AI turn ${turn}: ready ${timing.ensured - timing.start}ms, synced ${timing.synced - timing.ensured}ms, node ${timing.agent - timing.synced}ms, first word ${timing.firstWord - timing.agent}ms (${timing.firstWord - timing.start}ms in all)`);
