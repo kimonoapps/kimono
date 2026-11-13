@@ -5,7 +5,7 @@ import type { WatchConfig } from "./config";
 import { cardOf, ensureTitle, finished, fraction, getTitle, getTitles, prefsOf, watchDb, WatchProblem, type Card, type Progress, type Title } from "./index";
 import { playingNow, watchKey } from "./flow";
 import {
-  answerAsk, answerFriend, askFriend, cancelAsk, friendsOf, hiddenOf, likedByFriends, linkOf, linksOf, liveAsks, newAsk, noteWatched, removeFriend,
+  answerAsk, answerFriend, askFriend, cancelAsk, friendsOf, hiddenOf, likedByFriends, watchedByFriends, linkOf, linksOf, liveAsks, newAsk, noteWatched, removeFriend,
   type JoinAsk, type LinkState,
 } from "./friends";
 import { inviteTo, labelsFor, partyWith, people, type Person } from "./together-live";
@@ -256,4 +256,19 @@ export async function friendsLikedRow(username: string, origin: string, shelf?: 
   const ids = likedByFriends(db, u, friends).slice(0, 40);
   const items = getTitles(db, ids).filter((t) => !shelf || t.shelf === shelf).slice(0, 20).map((t) => cardOf(t, origin));
   return items.length ? { id: "friends-liked", title: "Your friends liked", kind: "cards", items } : null;
+}
+
+/**
+ * Home's "Your friends are watching" row: what friends sharing what they watch have been on in the
+ * last two weeks, the titles the most of them are on first, then the latest. Null with nothing to show.
+ */
+export async function friendsWatchingRow(username: string, origin: string, shelf?: Title["shelf"], now = Date.now()) {
+  const u = username.toLowerCase();
+  const db = watchDb();
+  if (prefsOf(db, u).friendsOnHome === false) return null;
+  const friends = friendsOf(db, u).filter(sharing);
+  if (!friends.length) return null;
+  const ids = watchedByFriends(db, friends, now - 14 * 24 * 3600_000).slice(0, 40);
+  const items = getTitles(db, ids).filter((t) => !shelf || t.shelf === shelf).slice(0, 20).map((t) => cardOf(t, origin));
+  return items.length ? { id: "friends-watching", title: "Your friends are watching", kind: "cards", items } : null;
 }

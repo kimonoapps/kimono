@@ -158,3 +158,21 @@ export function likedByFriends(db: DatabaseSync, me: string, friends: string[]):
   }
   return [...score.entries()].sort((a, b) => b[1].points - a[1].points || b[1].at - a[1].at).map(([id]) => id);
 }
+
+/**
+ * What [friends] have been watching since [since], for Home's "Your friends are watching": the titles
+ * the most of them are on first, then the latest; a friend's hidden titles stay out.
+ */
+export function watchedByFriends(db: DatabaseSync, friends: string[], since: number): string[] {
+  const score = new Map<string, { people: number; at: number }>();
+  for (const f of friends) {
+    const hidden = hiddenOf(db, f);
+    const rows = db.prepare("SELECT title_id, max(updated_at) AS at FROM progress WHERE lower(username) = ? AND updated_at >= ? GROUP BY title_id").all(f.toLowerCase(), since) as { title_id: string; at: number }[];
+    for (const r of rows) {
+      if (hidden.has(r.title_id)) continue;
+      const was = score.get(r.title_id) ?? { people: 0, at: 0 };
+      score.set(r.title_id, { people: was.people + 1, at: Math.max(was.at, r.at) });
+    }
+  }
+  return [...score.entries()].sort((a, b) => b[1].people - a[1].people || b[1].at - a[1].at).map(([id]) => id);
+}

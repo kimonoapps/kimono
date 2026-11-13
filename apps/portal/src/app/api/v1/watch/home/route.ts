@@ -1,6 +1,6 @@
 import { apiJson, apiUser, unauthorized } from "@/lib/api-v1";
 import { home, portalOrigin, watch } from "@/lib/watch";
-import { friendsLikedRow } from "@/lib/watch/friends-live";
+import { friendsLikedRow, friendsWatchingRow } from "@/lib/watch/friends-live";
 
 /**
  * Home's rows for this person, a page at a time: `?shelf=Series|Film|Anime`
@@ -17,13 +17,12 @@ export async function GET(request: Request) {
   return watch(async (cfg) => {
     const origin = portalOrigin(request);
     const page = await home(cfg, user.username, origin, narrowed, cursor);
-    /* The first page: what friends liked, after Continue watching and the Top 10. */
+    /* The first page: what friends are watching and what they liked, after Continue watching and the Top 10. */
     if (cursor === 0) {
-      const liked = await friendsLikedRow(user.username, origin, narrowed).catch(() => null);
-      if (liked) {
-        const after = page.rows.findIndex((r) => r.id !== "continue" && r.id !== "top");
-        page.rows.splice(after < 0 ? page.rows.length : after, 0, liked);
-      }
+      const ours = (await Promise.all([friendsWatchingRow(user.username, origin, narrowed), friendsLikedRow(user.username, origin, narrowed)].map((row) => row.catch(() => null))))
+        .filter((row): row is NonNullable<typeof row> => row !== null);
+      const after = page.rows.findIndex((r) => r.id !== "continue" && r.id !== "top");
+      page.rows.splice(after < 0 ? page.rows.length : after, 0, ...ours);
     }
     return apiJson(page);
   });

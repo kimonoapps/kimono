@@ -1604,3 +1604,17 @@ test('friends liked: loves count twice, the latest first; mine, dislikes and hid
   assert.deepEqual(friends.likedByFriends(db, 'me', ['sami', 'noor']), ['tv:2', 'tv:1', 'tv:3']);
   assert.equal(db.prepare('SELECT rated_at FROM ratings WHERE username = ? AND title_id = ?').get('sami', 'tv:2').rated_at, 300);
 });
+
+test('friends watching: the most friends first, then the latest; old and hidden ones stay out', () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  friends.migrateFriends(db);
+  const at = (u, title, when) => db.prepare('INSERT INTO progress (username, title_id, season, episode, position, duration, updated_at) VALUES (?, ?, 1, 1, 60, 1200, ?)').run(u, title, when);
+  at('sami', 'tv:1', 1000); at('noor', 'tv:1', 900);
+  at('sami', 'tv:2', 2000);
+  at('noor', 'tv:3', 3000);
+  at('noor', 'tv:4', 10);
+  at('sami', 'tv:5', 4000);
+  db.prepare('INSERT INTO friends_hidden (username, title_id) VALUES (?, ?)').run('sami', 'tv:5');
+  assert.deepEqual(friends.watchedByFriends(db, ['sami', 'noor'], 100), ['tv:1', 'tv:3', 'tv:2']);
+});
