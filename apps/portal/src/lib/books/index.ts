@@ -393,6 +393,13 @@ export async function homeRows(): Promise<Row[]> {
   return rows.length ? rows : cached?.rows ?? [];
 }
 
+/** Everything Home shows someone, in one go: the web page draws it on arrival, and /home answers with it. */
+export async function homeFor(username: string) {
+  const [rows, friends] = await Promise.all([homeRows(), friendsReading(username)]);
+  const featured = await featuredBook(username, rows).catch(() => null);
+  return { shelf: listShelf(username), friends, rows, featured, genres: genreList };
+}
+
 /* ── Shelves ───────────────────────────────────────────────────────────── */
 
 type ShelfRow = { key: string; state: ShelfState; fraction: number; updated_at: number; rating: Rating | null };
