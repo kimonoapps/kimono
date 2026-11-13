@@ -155,7 +155,6 @@ services:
       KIMONO_WATCH_NZBDAV_KEY: ${NZBDAV_API_KEY:?nzbdav API key required}
       KIMONO_WATCH_NZBDAV_WEBDAV_PASSWORD: ${NZBDAV_WEBDAV_PASSWORD:?nzbdav WebDAV password required}
       KIMONO_WATCH_PACKAGER_KEY: ${WATCH_PACKAGER_KEY:?Watch packager key required}
-      KIMONO_BOOKS_KEY: ${BOOKS_KEY:?Books key required}
     depends_on:
       authentik-server:
         condition: service_healthy
@@ -292,70 +291,6 @@ services:
           create_host_path: true
       - watch_packager_cache:/var/cache/kimono-packager
 
-  # Kimono Books' catalog: the public book metadata dumps, kept compressed and
-  # loaded into a Postgres of its own. Off unless the server's environment
-  # names the profile (COMPOSE_PROFILES=books): it takes about 150 GB with
-  # Open Library alone, and Anna's Archive collections add more.
-  books-db:
-    image: docker.io/library/postgres:17-alpine
-    profiles: [books]
-    restart: unless-stopped
-    command:
-      - postgres
-      - -c
-      - shared_buffers=1GB
-      - -c
-      - max_wal_size=16GB
-      - -c
-      - checkpoint_timeout=30min
-    environment:
-      POSTGRES_DB: books
-      POSTGRES_USER: books
-      POSTGRES_PASSWORD: ${BOOKS_DB_PASS:?Books database password required}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d books -U books"]
-      start_period: 20s
-      interval: 30s
-      timeout: 5s
-      retries: 5
-    shm_size: 1g
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - books_database:/var/lib/postgresql/data
-
-  # Fetches the dumps (Anna's Archive's torrents through Watch's Real-Debrid
-  # account, read from the Portal), loads them, and answers search and ISBN
-  # lookups on :8080 for the Portal.
-  books-indexer:
-    image: ghcr.io/kimonoapps/kimono-books-indexer:${KIMONO_BOOKS_INDEXER_TAG:-latest}
-    profiles: [books]
-    restart: unless-stopped
-    environment:
-      KIMONO_BOOKS_DATABASE_URL: postgres://books:${BOOKS_DB_PASS}@books-db:5432/books
-      KIMONO_BOOKS_KEY: ${BOOKS_KEY:?Books key required}
-      KIMONO_PORTAL_URL: http://portal:3000
-      KIMONO_BOOKS_AA_TORRENTS_URL: ${BOOKS_AA_TORRENTS_URL:-}
-      KIMONO_BOOKS_AA_GROUPS: ${BOOKS_AA_GROUPS:-}
-      # Live lookups when the catalog has nothing (or nothing fresh) for a
-      # book. Open Library always; the rest only when set. The Anna's Archive
-      # cookie is a member's session, for metadata pages without bot checks.
-      KIMONO_BOOKS_GOOGLE_KEY: ${BOOKS_GOOGLE_KEY:-}
-      KIMONO_BOOKS_HARDCOVER_TOKEN: ${BOOKS_HARDCOVER_TOKEN:-}
-      KIMONO_BOOKS_AA_BASE: ${BOOKS_AA_BASE:-}
-      KIMONO_BOOKS_AA_COOKIE: ${BOOKS_AA_COOKIE:-}
-      KIMONO_BOOKS_AA_RECORD_PATH: ${BOOKS_AA_RECORD_PATH:-}
-      # "off" skips the monthly Open Library dump (~150 GB): the catalog then
-      # grows only from what people look up.
-      KIMONO_BOOKS_OPENLIBRARY_DUMP: ${BOOKS_OPENLIBRARY_DUMP:-on}
-    depends_on:
-      books-db:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - books_dumps:/var/lib/kimono-books
-
 # Both subnets are fixed so the proxies' trust can name them. Containers draw
 # from the upper half (ip_range) only, which keeps the gateway (.1) and Caddy's
 # fixed address out of the ranges the trust is given. `kimono server update`
@@ -392,8 +327,6 @@ networks:
 
 volumes:
   aiostreams_data:
-  books_database:
-  books_dumps:
   nzbdav_config:
   watch_packager_cache:
   authentik_database:
