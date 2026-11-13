@@ -92,50 +92,43 @@ suspend fun Session.usePicture(png: ByteArray) {
     refreshMe()
 }
 
+/**
+ * You: your profile as friends see it (ProfileScreen), changed in place: the portrait's camera,
+ * your name and bio where they stand. The gear opens Settings.
+ */
 @Composable
 fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, friends: app.kimono.data.Friends, open: (String) -> Unit) {
     val scope = rememberCoroutineScope()
-    var circle by remember { mutableStateOf(friends.known()) }
-    LaunchedEffect(Unit) { runCatching { circle = friends.list() } }
     var busy by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
-    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    Scaffold(
-        modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            /* Expressive's flexible bar: your name large, shrinking to the bar as you scroll. */
-            LargeFlexibleTopAppBar(
-                title = { Text(me?.name ?: "You", style = MaterialTheme.typography.headlineMedium) },
-                subtitle = { Text("@${me?.username ?: ""}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface, scrolledContainerColor = MaterialTheme.colorScheme.surface),
-                scrollBehavior = scroll,
-            )
-        },
-    ) { padding ->
-        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
-            Column(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val choose: () -> Unit = {
-                    problem = null
-                    scope.launch {
-                        try {
-                            val png = platform.pickPicture() ?: return@launch
-                            busy = true
-                            session.usePicture(png)
-                        } catch (p: KimonoProblem) { problem = p.message } catch (_: Exception) { problem = "Your picture could not be saved." }
-                        busy = false
-                    }
-                }
-                val remove: () -> Unit = {
-                    problem = null
-                    scope.launch {
-                        try { busy = true; session.call("/api/v1/me/picture", HttpMethod.Delete); session.refreshMe() } catch (p: KimonoProblem) { problem = p.message }
-                        busy = false
-                    }
-                }
+    if (me == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { InkLoader() }
+        return
+    }
+    val choose: () -> Unit = {
+        problem = null
+        scope.launch {
+            try {
+                val png = platform.pickPicture() ?: return@launch
+                busy = true
+                session.usePicture(png)
+            } catch (p: KimonoProblem) { problem = p.message } catch (_: Exception) { problem = "Your picture could not be saved." }
+            busy = false
+        }
+    }
+    val remove: () -> Unit = {
+        problem = null
+        scope.launch {
+            try { busy = true; session.call("/api/v1/me/picture", HttpMethod.Delete); session.refreshMe() } catch (p: KimonoProblem) { problem = p.message }
+            busy = false
+        }
+    }
+    ProfileScreen(friends, me.username, still = platform.reduceMotion, open = open, own = OwnProfile(
+        portrait = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 /* Long-press your picture for everything you can do with it. */
-                HoldMenu(listOfNotNull(MenuChoice("Choose a photo", onClick = choose), if (me?.picture != null) MenuChoice("Remove picture", danger = true, onClick = remove) else null), onClick = choose) {
-                    Portrait(me?.picture, me?.name, me?.username, 128.dp)
+                HoldMenu(listOfNotNull(MenuChoice("Choose a photo", onClick = choose), if (me.picture != null) MenuChoice("Remove picture", danger = true, onClick = remove) else null), onClick = choose) {
+                    Portrait(me.picture, me.name, me.username, 128.dp)
                     if (busy) Box(Modifier.size(128.dp), contentAlignment = Alignment.Center) { InkLoader() }
                     FilledIconButton(
                         onClick = choose,
@@ -144,51 +137,49 @@ fun YouScreen(session: Session, platform: Platform, me: AccountProfile?, friends
                         modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 2.dp).size(44.dp),
                     ) { Icon(kimonoIcon("camera"), "Change picture", modifier = Modifier.size(18.dp)) }
                 }
-                Text(me?.email ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Problem(problem)
             }
-            GroupLabel("Friends")
-            val c = circle
+        },
+        rename = { name ->
+            val body = buildJsonObject { put("name", name) }
+            session.call("/api/v1/me", HttpMethod.Patch) { contentType(ContentType.Application.Json); setBody(Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), body)) }
+            session.refreshMe()
+        },
+        settings = { open("settings") },
+    ))
+}
+
+/** Settings, off You's gear: signing in, Kimono Read, the household's apps (for administrators), how it looks, signing out. */
+@Composable
+fun SettingsScreen(session: Session, platform: Platform, me: AccountProfile?, open: (String) -> Unit, back: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val look by app.kimono.theme.Appearance.choice.collectAsState()
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("Settings", onBack = back) }) { padding ->
+        Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState())) {
+            GroupLabel("Sign-in")
             KimonoGroup(listOf(
-                GroupItem("Your profile", icon = "person") { me?.username?.let { open("people/$it") } },
-                GroupItem("Friends", detail = c?.let {
-                    listOfNotNull(if (it.friends.size == 1) "1 friend" else "${it.friends.size} friends", if (it.asked.isNotEmpty()) "${it.asked.size} asking" else null, if (it.unseen > 0) "${it.unseen} new for you" else null).joinToString(" · ")
-                }, icon = "people") { open("friends") },
-            ))
-            GroupLabel("Account")
-            KimonoGroup(listOf(
-                GroupItem("Name and email", detail = me?.email, icon = "person") { open("details") },
+                GroupItem("Email", detail = me?.email?.ifBlank { null }, icon = "person") { open("details") },
                 GroupItem("Password", icon = "lock") { open("password") },
                 GroupItem("Signed-in devices", icon = "phone") { open("devices") },
-                GroupItem("Set up Kimono Read", icon = "book") { open("kimono-read") },
             ))
+            GroupLabel("Devices")
+            KimonoGroup(listOf(GroupItem("Set up Kimono Read", icon = "book") { open("kimono-read") }))
             /* Administrators look after the household's apps from here, as under Admin on the website. */
             if (me?.role == "owner" || me?.role == "admin") {
                 GroupLabel("Kimono")
                 KimonoGroup(listOf(GroupItem("Manage apps", icon = "apps") { open("manage") }))
             }
-            GroupLabel("This phone")
-            val look by app.kimono.theme.Appearance.choice.collectAsState()
-            var choosingLook by remember { mutableStateOf(false) }
-            KimonoGroup(listOf(
-                GroupItem("Appearance", detail = lookWords.getValue(look), icon = "moon") { choosingLook = true },
-                GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } },
-            ))
-            if (choosingLook) app.kimono.ui.InkDialog(
-                title = "Appearance",
-                icon = "moon",
-                onDismiss = { choosingLook = false },
-                actions = { Seal("Done", compact = true, onClick = { choosingLook = false }) },
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    lookPages.forEach { (key, page) ->
-                        app.kimono.ui.InkPageChoice(page.first, page.second, chosen = look == key, modifier = Modifier.weight(1f), onChoose = {
-                            app.kimono.theme.Appearance.choice.value = key
-                            scope.launch { platform.keep(app.kimono.theme.Appearance.KEY, key) }
-                        })
-                    }
+            GroupLabel("Appearance")
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                lookPages.forEach { (key, page) ->
+                    app.kimono.ui.InkPageChoice(page.first, page.second, chosen = look == key, modifier = Modifier.weight(1f), onChoose = {
+                        app.kimono.theme.Appearance.choice.value = key
+                        scope.launch { platform.keep(app.kimono.theme.Appearance.KEY, key) }
+                    })
                 }
             }
+            Spacer(Modifier.height(32.dp))
+            KimonoGroup(listOf(GroupItem("Sign out", icon = "door", danger = true) { scope.launch { session.signOut() } }))
             Spacer(Modifier.height(32.dp))
         }
     }
@@ -295,7 +286,6 @@ fun DevicesScreen(session: Session, back: () -> Unit) {
     }
 }
 
-private val lookWords = linkedMapOf("system" to "As the phone is", "light" to "Light", "dark" to "Dark")
 private val lookPages = linkedMapOf(
     "system" to ("As the phone" to listOf(app.kimono.ui.DayLook, app.kimono.ui.NightLook)),
     "light" to ("Light" to listOf(app.kimono.ui.DayLook)),

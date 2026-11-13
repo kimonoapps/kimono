@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,6 +63,7 @@ import app.kimono.data.KimonoProfile
 import app.kimono.data.Recommendation
 import app.kimono.data.ShareItem
 import app.kimono.theme.Kata
+import app.kimono.theme.plumInk
 import app.kimono.ui.GroupLabel
 import app.kimono.ui.HoldMenu
 import app.kimono.ui.InkBlot
@@ -217,20 +219,40 @@ fun FriendsScreen(friends: Friends, open: (String) -> Unit, back: () -> Unit) {
     recommending?.let { item -> RecommendDialog(friends, item, onDismiss = { recommending = null }) }
 }
 
+/**
+ * What makes a profile the You screen: your portrait with its camera, renaming in place,
+ * and a gear to Settings.
+ */
+class OwnProfile(
+    val portrait: @Composable () -> Unit,
+    val rename: suspend (String) -> Unit,
+    val settings: () -> Unit,
+)
+
+/**
+ * A profile as friends see it. Your own is also where you change it, in place: the bio (and with [own],
+ * the portrait and name) are edited where they stand. With [own] and no [back], it's the You screen.
+ */
 @Composable
-fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, open: (String) -> Unit, back: () -> Unit) {
+fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, open: (String) -> Unit, own: OwnProfile? = null, back: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
     var profile by remember(username) { mutableStateOf(friends.knownProfile(username)) }
     var problem by remember { mutableStateOf<String?>(null) }
-    var editing by remember { mutableStateOf(false) }
+    var asked by remember { mutableStateOf(friends.known()?.asked?.size ?: 0) }
     var removing by remember { mutableStateOf(false) }
     var recommending by remember { mutableStateOf<ShareItem?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var privacyOpen by remember { mutableStateOf(false) }
     suspend fun load() { try { profile = friends.profile(username); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(username) { load() }
+    val mine = profile?.you == true
+    LaunchedEffect(mine) { if (mine) runCatching { asked = friends.list().asked.size } }
     fun change(type: String) = scope.launch { try { friends.change(type, username); load() } catch (p: KimonoProblem) { problem = p.message } }
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("", onBack = back) }) { padding ->
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = {
+        KimonoTopBar("", onBack = back) {
+            if (own != null) app.kimono.ui.IconButton(onClick = own.settings) { Icon(kimonoIcon("gear"), "Settings") }
+        }
+    }) { padding ->
         KimonoRefresh(refreshing, onRefresh = { scope.launch { refreshing = true; load(); refreshing = false } }, modifier = Modifier.padding(padding).fillMaxSize()) {
             val p: KimonoProfile? = profile
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -239,8 +261,11 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                     return@Column
                 }
                 Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Portrait(p.picture, p.name, p.username, 128.dp)
-                    Text(p.name.ifBlank { p.username }, style = MaterialTheme.typography.headlineMedium, color = Kata.plum, textAlign = TextAlign.Center)
+                    if (own != null && p.you) own.portrait() else Portrait(p.picture, p.name, p.username, 128.dp)
+                    if (own != null && p.you) InPlaceField(p.name, "Your name", MaterialTheme.typography.headlineMedium.copy(color = plumInk), single = true, limit = 80) { name ->
+                        if (name.isBlank()) return@InPlaceField false
+                        try { own.rename(name.trim()); profile = profile?.copy(name = name.trim()); problem = null; true } catch (e: KimonoProblem) { problem = e.message; false }
+                    } else Text(p.name.ifBlank { p.username }, style = MaterialTheme.typography.headlineMedium, color = plumInk, textAlign = TextAlign.Center)
                     Text("@${p.username}" + if (p.open) " · ${if (p.friends == 1) "1 friend" else "${p.friends} friends"}" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (p.privacy?.invisible == true) Row(
                         Modifier.clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable { privacyOpen = true }.padding(horizontal = 12.dp, vertical = 5.dp),
@@ -250,10 +275,12 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                         Text("Invisible to friends", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     p.kimonoRead?.let { SilkscreenBadge(it.since, p.you, p.name.ifBlank { p.username }, still, friends.server) }
-                    if (p.open && p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
+                    if (p.open && p.you) InPlaceField(p.bio, "A few words about you", MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface), limit = 280) { bio ->
+                        try { val saved = friends.saveBio(bio); profile = profile?.copy(bio = saved); problem = null; true } catch (e: KimonoProblem) { problem = e.message; false }
+                    } else if (p.open && p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                         when {
-                            p.you -> { Seal("Edit", compact = true, tone = SealTone.Quiet, onClick = { editing = true }); Seal("Who sees what", compact = true, tone = SealTone.Quiet, onClick = { privacyOpen = true }) }
+                            p.you -> Seal("Who sees what", compact = true, tone = SealTone.Quiet, onClick = { privacyOpen = true })
                             p.link == "friends" -> Seal("Friends", compact = true, tone = SealTone.Quiet, onClick = { removing = true })
                             p.link == "asked" -> { Seal("Not now", compact = true, tone = SealTone.Quiet, onClick = { change("no") }); Seal("Accept", compact = true, onClick = { change("yes") }) }
                             p.link == "asking" -> Seal("Asked", compact = true, tone = SealTone.Quiet, onClick = { change("remove") })
@@ -273,7 +300,17 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                 val list = p.friendList
                 if (p.open && (!list.isNullOrEmpty() || p.you)) {
                     val listKept = p.you && (p.privacy?.invisible == true || p.privacy?.friends == false)
-                    KeptLabel("Friends", listKept)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { KeptLabel("Friends", listKept) }
+                        /* Asks and finding people are on Friends. */
+                        if (p.you) Row(
+                            Modifier.padding(end = 16.dp, top = 16.dp).clip(RoundedCornerShape(12.dp)).clickable { open("friends") }.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            if (asked > 0) Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                            Text(if (asked > 0) "$asked asking" else if (list.isNullOrEmpty()) "Find friends" else "All friends", style = MaterialTheme.typography.labelLarge, color = plumInk)
+                        }
+                    }
                     if (list.isNullOrEmpty()) Text("No friends yet.", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 28.dp))
                     else LazyRow(Modifier.alpha(if (listKept) .5f else 1f), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(list, key = { it.username }) { f ->
@@ -292,7 +329,7 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                     val kept = app in p.hidden
                     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 28.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         InkBlot("app:$app", size = 40.dp) { Icon(kimonoIcon(if (app == "books") "book" else "film"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) }
-                        Text(rows.first().appName, style = MaterialTheme.typography.headlineSmall, color = Kata.plum, modifier = Modifier.weight(1f))
+                        Text(rows.first().appName, style = MaterialTheme.typography.headlineSmall, color = plumInk, modifier = Modifier.weight(1f))
                         if (p.you) {
                             val some = p.privacy?.apps?.firstOrNull { it.app == app }?.rows?.any { !it.shown } == true
                             Row(
@@ -328,7 +365,6 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     if (privacyOpen && p != null && privacy != null) PrivacyDialog(friends, privacy, onDismiss = { privacyOpen = false }) { now ->
         profile = profile?.copy(privacy = now.privacy, hidden = now.hidden, kept = now.privacy.kept)
     }
-    if (editing && p != null) BioDialog(friends, p.bio, onDismiss = { editing = false }) { bio -> profile = p.copy(bio = bio) }
     if (removing && p != null) InkConfirm(
         title = "Remove ${p.name.substringBefore(' ')}?", text = "You'll stop seeing each other's profiles and what you watch.",
         action = "Remove", danger = true, icon = "people", onDismiss = { removing = false }, onConfirm = { removing = false; change("remove") },
@@ -394,23 +430,48 @@ private fun PrivacySwitch(label: String, on: Boolean, bold: Boolean = false, ena
     }
 }
 
+/**
+ * Text you change where it stands: no box until you're in it, saved when you leave it (or press Done
+ * on a single line). [save] says whether it took; if not, the text goes back.
+ */
 @Composable
-private fun BioDialog(friends: Friends, bio: String, onDismiss: () -> Unit, onSaved: (String) -> Unit) {
+private fun InPlaceField(value: String, placeholder: String, style: androidx.compose.ui.text.TextStyle, single: Boolean = false, limit: Int, save: suspend (String) -> Boolean) {
     val scope = rememberCoroutineScope()
-    var text by remember { mutableStateOf(bio) }
-    var busy by remember { mutableStateOf(false) }
-    var problem by remember { mutableStateOf<String?>(null) }
-    InkDialog(title = "About you", icon = "person", onDismiss = onDismiss, actions = {
-        Seal("Cancel", compact = true, tone = SealTone.Quiet, onClick = onDismiss)
-        Seal("Save", compact = true, busy = busy, enabled = text.trim() != bio, onClick = {
-            busy = true; problem = null
-            scope.launch { try { onSaved(friends.saveBio(text)); onDismiss() } catch (p: KimonoProblem) { problem = p.message }; busy = false }
-        })
-    }) {
-        OutlinedTextField(text, { if (it.length <= 280) text = it }, label = { Text("Bio") }, minLines = 3, maxLines = 6, colors = kataFieldColors(),
-            supportingText = { Text("${280 - text.length}") }, modifier = Modifier.fillMaxWidth())
-        Problem(problem)
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    var text by remember(value) { mutableStateOf(value) }
+    var focused by remember { mutableStateOf(false) }
+    fun commit() {
+        if (text.trim() == value.trim()) return
+        val was = value
+        scope.launch { if (!save(text)) text = was }
     }
+    val centred = style.copy(textAlign = TextAlign.Center)
+    androidx.compose.foundation.text.BasicTextField(
+        value = text,
+        onValueChange = { if (it.length <= limit) text = it },
+        textStyle = centred,
+        singleLine = single,
+        maxLines = if (single) 1 else 8,
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+            capitalization = if (single) androidx.compose.ui.text.input.KeyboardCapitalization.Words else androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+            imeAction = if (single) androidx.compose.ui.text.input.ImeAction.Done else androidx.compose.ui.text.input.ImeAction.Default,
+        ),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { focus.clearFocus() }),
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = placeholder }
+            .onFocusChanged { state -> if (focused && !state.isFocused) commit(); focused = state.isFocused },
+        decorationBox = { inner ->
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp, 8.dp, 12.dp, 8.dp))
+                    .background(if (focused) MaterialTheme.colorScheme.surfaceContainerHigh else androidx.compose.ui.graphics.Color.Transparent)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (text.isEmpty()) Text(placeholder, style = centred.copy(color = MaterialTheme.colorScheme.onSurfaceVariant), modifier = Modifier.fillMaxWidth())
+                inner()
+            }
+        },
+    )
 }
 
 /** Recommend a title: to friends (picked by their portraits), or onto your profile, with a note if you like. */
