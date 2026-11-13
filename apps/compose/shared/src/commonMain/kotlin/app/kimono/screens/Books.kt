@@ -62,7 +62,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -239,6 +238,19 @@ private fun ClothCover(book: Book, ink: Color, width: Dp) {
 
 private fun lerpColor(a: Color, b: Color, t: Float) = Color(a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t, 1f)
 
+/* ── Your shelf, wherever a book shows up ─────────────────────────────── */
+
+/** The same book may come from another source than the one you shelved: matched by key, or by title and first author. */
+private fun sameBook(title: String, author: String) = "${title.lowercase().filter { it.isLetterOrDigit() }.take(40)}|${author.lowercase().substringAfterLast(' ')}"
+
+private class MyShelf(items: List<ShelfItem>) {
+    private val byKey = items.associateBy { it.key }
+    private val byBook = items.associateBy { sameBook(it.title, it.authors.firstOrNull().orEmpty()) }
+    fun of(book: Book): ShelfItem? = byKey[book.key] ?: byBook[sameBook(book.title, book.author)]
+}
+
+private val LocalMyShelf = androidx.compose.runtime.staticCompositionLocalOf { MyShelf(emptyList()) }
+
 /* ── Home ───────────────────────────────────────────────────────────────── */
 
 @Composable
@@ -252,7 +264,9 @@ fun BooksHomeScreen(books: Books, platform: app.kimono.data.Platform, firstName:
     LaunchedEffect(Unit) { load() }
     WhileShown(Unit) { load() }
 
+    val shelfLookup = remember(home?.shelf) { MyShelf(home?.shelf.orEmpty()) }
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }, containerColor = MaterialTheme.colorScheme.surface) { pad ->
+        androidx.compose.runtime.CompositionLocalProvider(LocalMyShelf provides shelfLookup) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = pad.calculateTopPadding() + 8.dp, bottom = 120.dp)) {
             item {
                 Column(Modifier.padding(horizontal = 20.dp)) {
@@ -286,6 +300,7 @@ fun BooksHomeScreen(books: Books, platform: app.kimono.data.Platform, firstName:
                 }
             } }
         }
+        }
     }
     open?.let { key -> BookSheet(books, platform, key, onDismiss = { open = null }, onOpen = { open = it }, say = { msg -> scope.launch { snackbar.showSnackbar(msg) } }, changed = { scope.launch { load() } }) }
 }
@@ -318,8 +333,11 @@ private fun ReadingNow(item: ShelfItem, more: Int, open: () -> Unit, openShelf: 
                     }
                     Text("${(item.fraction * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(start = 10.dp))
                 }
-                if (more > 0) Text("$more more on the go", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 10.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = openShelf).padding(vertical = 4.dp))
+                Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PillButton("Continue reading", filled = true, modifier = Modifier.height(44.dp), onClick = open)
+                    if (more > 0) Text("+$more", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = openShelf).padding(8.dp))
+                }
             }
         }
     }
@@ -335,10 +353,16 @@ private fun ShelfRow(title: String, content: androidx.compose.foundation.lazy.La
 
 @Composable
 private fun BookTile(book: Book, caption: String, progress: Double? = null, badge: (@Composable () -> Unit)? = null, onOpen: () -> Unit) {
+    /* A book you're reading says so wherever it shows up: how far in, and to carry on. */
+    val mine = LocalMyShelf.current.of(book)?.takeIf { it.state == "reading" }
     Column(Modifier.width(112.dp)) {
-        Book3D(book, 104.dp, progress = progress, badge = badge, onOpen = onOpen)
-        Text(book.title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 12.dp))
-        Text(caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Book3D(book, 104.dp, progress = progress ?: mine?.fraction, badge = badge, onOpen = onOpen)
+        if (mine != null) Box(Modifier.padding(top = 12.dp, end = 8.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth(mine.fraction.toFloat().coerceIn(.03f, 1f)).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+        }
+        Text(book.title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = if (mine != null) 8.dp else 12.dp))
+        if (mine != null) Text("Continue reading · ${(mine.fraction * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        else Text(caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -369,7 +393,9 @@ fun BooksSearchScreen(books: Books, platform: app.kimono.data.Platform, back: ()
         found = runCatching { books.search(q) }.getOrElse { found }
         looking = false
     }
+    val shelfLookup = remember { MyShelf(books.knownHome()?.shelf.orEmpty()) }
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { pad ->
+        androidx.compose.runtime.CompositionLocalProvider(LocalMyShelf provides shelfLookup) {
         Column(Modifier.fillMaxSize().padding(top = pad.calculateTopPadding())) {
             Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp)) {
                 Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -392,6 +418,7 @@ fun BooksSearchScreen(books: Books, platform: app.kimono.data.Platform, back: ()
                     items(list, key = { it.key }) { b -> BookTile(b, caption = b.author) { open = b.key } }
                 }
             }
+        }
         }
     }
     open?.let { key -> BookSheet(books, platform, key, onDismiss = { open = null }, onOpen = { open = it }, say = { msg -> scope.launch { snackbar.showSnackbar(msg) } }, changed = {}) }
@@ -531,13 +558,26 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                     }
                 }
             }
+            /* Your place: shown, and changed only on purpose (Update), never by brushing it while scrolling. */
             if (p.shelf?.state == "reading") {
-                var at by remember(key, p.shelf.fraction) { mutableStateOf(p.shelf.fraction.toFloat()) }
-                Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Where you are", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Slider(at, { at = it }, onValueChangeFinished = { scope.launch { runCatching { books.progress(key, at.toDouble()) }.onSuccess { r -> page = p.copy(shelf = app.kimono.data.Mine(r.state, r.fraction, p.shelf.rating)); changed() } } },
-                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-                    Text("${(at * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
+                var updating by remember(key) { mutableStateOf(false) }
+                val f = p.shelf.fraction
+                Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(placeLabel(f, b.pages), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Box(Modifier.padding(top = 8.dp, end = 16.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+                            Box(Modifier.fillMaxHeight().fillMaxWidth(f.toFloat().coerceIn(.02f, 1f)).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                        }
+                    }
+                    Surface(onClick = { updating = true }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.height(40.dp)) {
+                        Box(Modifier.padding(horizontal = 16.dp), contentAlignment = Alignment.Center) { Text("Update", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold) }
+                    }
+                }
+                if (updating) PlaceDialog(b.title, f, b.pages, onDismiss = { updating = false }) { next ->
+                    runCatching { books.progress(key, next) }.onSuccess { r ->
+                        page = p.copy(shelf = app.kimono.data.Mine(r.state, r.fraction, p.shelf.rating)); changed()
+                        if (r.state == "read") say("Finished · ${b.title}")
+                    }.isSuccess
                 }
             }
             /* How was it? The same three as Watch. */
@@ -564,6 +604,54 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
             }
             if (p.byAuthor.isNotEmpty()) ShelfStrip("More by ${b.author}", p.byAuthor, onOpen)
             if (p.similar.isNotEmpty()) ShelfStrip("If you like this", p.similar, onOpen)
+        }
+    }
+}
+
+/** "On page 219 of 288", or "76% in" when the book's length isn't known. */
+private fun placeLabel(fraction: Double, pages: Int?): String =
+    if (pages != null && pages > 0) "On page ${(fraction * pages).toInt().coerceIn(1, pages)} of $pages" else "${(fraction * 100).toInt()}% in"
+
+/** Where you are, typed: a page when the book's length is known, else a percent. */
+@Composable
+private fun PlaceDialog(title: String, fraction: Double, pages: Int?, onDismiss: () -> Unit, save: suspend (Double) -> Boolean) {
+    val byPage = pages != null && pages > 0
+    var typed by remember { mutableStateOf(if (byPage) "${(fraction * pages!!).toInt().coerceIn(1, pages)}" else "${(fraction * 100).toInt()}") }
+    var saving by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val value = typed.toIntOrNull()
+    val next = when {
+        value == null -> null
+        byPage -> if (value in 0..pages!!) value.toDouble() / pages else null
+        else -> if (value in 0..100) value / 100.0 else null
+    }
+    app.kimono.ui.InkDialog(
+        title = "Where are you?",
+        icon = "book",
+        tint = MaterialTheme.colorScheme.primary,
+        onDismiss = onDismiss,
+        actions = {
+            app.kimono.ui.Seal("Cancel", compact = true, tone = app.kimono.ui.SealTone.Quiet, onClick = onDismiss)
+            app.kimono.ui.Seal("Save", compact = true, busy = saving, onClick = {
+                val f = next ?: return@Seal
+                saving = true; problem = null
+                scope.launch { if (save(f)) onDismiss() else problem = "That didn't save."; saving = false }
+            })
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            androidx.compose.material3.OutlinedTextField(
+                typed, { typed = it.filter(Char::isDigit).take(5) },
+                label = { Text(if (byPage) "Page" else "Percent") },
+                suffix = { Text(if (byPage) "of $pages" else "%") },
+                singleLine = true, isError = typed.isNotEmpty() && next == null,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (byPage && pages != null && value != null && value >= pages) Text("That's the end: it'll move to Read.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }

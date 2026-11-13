@@ -283,14 +283,14 @@
 .kb .kb-choice .kb-saving{opacity:.7}
 @media (max-width:480px){ .kb .kb-choice button{font-size:14px;padding:0 8px;height:48px} }
 
-.kb .kb-progress-control{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;margin-top:18px;max-width:520px;font-size:14px;color:var(--fg-2)}
-.kb .kb-progress-control input{appearance:none;-webkit-appearance:none;height:16px;background:none;margin:0;cursor:pointer}
-.kb .kb-progress-control input::-webkit-slider-runnable-track{height:16px;border-radius:8px;background:linear-gradient(90deg,var(--primary) 0 var(--v),var(--secondary-container) var(--v) 100%)}
-.kb .kb-progress-control input::-moz-range-track{height:16px;border-radius:8px;background:var(--secondary-container)}
-.kb .kb-progress-control input::-moz-range-progress{height:16px;border-radius:8px;background:var(--primary)}
-.kb .kb-progress-control input::-webkit-slider-thumb{-webkit-appearance:none;width:4px;height:36px;margin-top:-10px;border-radius:2px;background:var(--primary);box-shadow:0 0 0 4px var(--bg)}
-.kb .kb-progress-control input::-moz-range-thumb{width:4px;height:36px;border:0;border-radius:2px;background:var(--primary)}
-.kb .kb-progress-control output{font-weight:700;color:var(--fg);min-width:40px;text-align:right}
+.kb .kb-progress-control-old{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;margin-top:18px;max-width:520px;font-size:14px;color:var(--fg-2)}
+.kb .kb-progress-control-old input{appearance:none;-webkit-appearance:none;height:16px;background:none;margin:0;cursor:pointer}
+.kb .kb-progress-control-old input::-webkit-slider-runnable-track{height:16px;border-radius:8px;background:linear-gradient(90deg,var(--primary) 0 var(--v),var(--secondary-container) var(--v) 100%)}
+.kb .kb-progress-control-old input::-moz-range-track{height:16px;border-radius:8px;background:var(--secondary-container)}
+.kb .kb-progress-control-old input::-moz-range-progress{height:16px;border-radius:8px;background:var(--primary)}
+.kb .kb-progress-control-old input::-webkit-slider-thumb{-webkit-appearance:none;width:4px;height:36px;margin-top:-10px;border-radius:2px;background:var(--primary);box-shadow:0 0 0 4px var(--bg)}
+.kb .kb-progress-control-old input::-moz-range-thumb{width:4px;height:36px;border:0;border-radius:2px;background:var(--primary)}
+.kb .kb-progress-control-old output{font-weight:700;color:var(--fg);min-width:40px;text-align:right}
 
 .kb .kb-about{margin-top:28px;max-width:64ch;font-size:17px;line-height:1.65;color:var(--fg-2);display:grid;gap:14px}
 .kb .kb-folded{max-height:11.5em;overflow:hidden;mask-image:linear-gradient(#000 60%,transparent);-webkit-mask-image:linear-gradient(#000 60%,transparent)}
@@ -411,3 +411,19 @@
 .kb .kb-missing-x{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;margin:-6px -2px 0 0}
 .kb .kb-missing-x:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
 .kb .kb-missing-x svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+
+/* ───── Reading progress on tiles, and your place on a book's page ───── */
+.kb .kb-cap-progress{display:block;height:4px;border-radius:2px;background:var(--surface-3);overflow:hidden;margin-bottom:6px}
+.kb .kb-cap-progress > span{display:block;height:100%;border-radius:2px;background:var(--primary)}
+.kb .kb-cap-continue{color:var(--primary);font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb .kb-place{display:flex;align-items:center;gap:16px;margin-top:18px;max-width:520px}
+.kb .kb-place-now{flex:1;display:grid;gap:8px}
+.kb .kb-place-now b{font-weight:700}
+.kb .kb-place-now .kb-cap-progress{margin:0}
+.kb .kb-place .kb-btn{height:40px;padding:0 18px;font-size:14px}
+.kb .kb-place-edit{flex:1;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.kb .kb-place-edit label{flex:1;min-width:180px;display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:12px;background:var(--surface-3);box-shadow:inset 0 0 0 2px var(--primary)}
+.kb .kb-place-edit label span{font-size:13px;font-weight:600;color:var(--fg-2)}
+.kb .kb-place-edit input{width:72px;border:0;outline:0;background:none;color:var(--fg);font:700 17px var(--ui)}
+.kb .kb-place-edit input[aria-invalid="true"]{color:#d4556c}
+.kb .kb-place-edit em{font-style:normal;color:var(--fg-2);font-size:14px}

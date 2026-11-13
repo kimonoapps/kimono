@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MorphLoader } from "@kimono/ui";
 import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Home, type Page, type Rating, type ShelfItem, type ShelfState } from "./api";
 import { Book3D } from "./book3d";
@@ -13,6 +13,12 @@ import { Reader } from "./reader";
  */
 
 type Tab = "home" | "shelf";
+
+/* Your shelf, so a book you're reading says so wherever it shows up. The same
+   book may come from another source than the one shelved: matched by key, or
+   by title and the author's surname. */
+const sameBook = (title: string, author: string) => `${title.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "").slice(0, 40)}|${(author.toLowerCase().split(/\s+/).pop() ?? "")}`;
+const MyShelf = createContext<(b: Pick<Book, "key" | "title" | "authors">) => ShelfItem | undefined>(() => undefined);
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
 function readPlace(): { tab: Tab; book: string | null; q: string } {
@@ -67,6 +73,11 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
   }, [say]);
 
   const reading = useMemo(() => (shelf ?? []).filter((s) => s.state === "reading"), [shelf]);
+  const mineOf = useMemo(() => {
+    const byKey = new Map((shelf ?? []).map((s) => [s.key, s]));
+    const byBook = new Map((shelf ?? []).map((s) => [sameBook(s.title, s.authors[0] ?? ""), s]));
+    return (b: Pick<Book, "key" | "title" | "authors">) => byKey.get(b.key) ?? byBook.get(sameBook(b.title, b.authors[0] ?? ""));
+  }, [shelf]);
 
   return <div ref={root} className="kb" style={{ "--kb-accent": accent } as React.CSSProperties} onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 8)}>
     <header className={cx("kb-top", scrolled && "kb-solid")}>
@@ -79,6 +90,7 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
       </nav>
     </header>
 
+    <MyShelf.Provider value={mineOf}>
     <main className="kb-main">
       {query.trim()
         ? <SearchResults q={query.trim()} onOpen={openBook} />
@@ -88,6 +100,7 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
     </main>
 
     {open ? <BookSheet key={open} bookKey={open} onClose={closeBook} onOpen={openBook} onPlaced={placed} /> : null}
+    </MyShelf.Provider>
     <div className={cx("kb-toast", toast && "kb-on")} role="status" aria-live="polite">{toast?.text}</div>
   </div>;
 }
@@ -156,7 +169,7 @@ function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf 
           {lead.authors[0] ? <p className="kb-byline">{lead.authors.join(", ")}</p> : null}
           <Progress fraction={lead.fraction} />
           <div className="kb-btns">
-            <button className="kb-btn kb-filled" onClick={() => onOpen(lead.key)}>Open</button>
+            <button className="kb-btn kb-filled" onClick={() => onOpen(lead.key)}>Continue reading</button>
             {reading.length > 1 ? <button className="kb-btn kb-tonal" onClick={onShelf}>{reading.length - 1} more on the go</button> : null}
           </div>
         </div>
@@ -197,7 +210,13 @@ function Shelf({ title, children, delay = 0, action }: { title: ReactNode; child
   </section>;
 }
 
-function BookCaption({ book }: { book: Pick<Book, "title" | "authors" | "rating" | "readers"> }) {
+function BookCaption({ book }: { book: Pick<Book, "key" | "title" | "authors" | "rating" | "readers"> }) {
+  const mine = useContext(MyShelf)(book);
+  if (mine?.state === "reading") return <span className="kb-caption">
+    <span className="kb-cap-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(mine.fraction * 100)}><span style={{ width: `${Math.max(mine.fraction * 100, 3)}%` }} /></span>
+    <span className="kb-cap-title">{book.title}</span>
+    <span className="kb-cap-continue">Continue reading · {Math.round(mine.fraction * 100)}%</span>
+  </span>;
   return <span className="kb-caption">
     <span className="kb-cap-title">{book.title}</span>
     <span className="kb-cap-author">{book.authors[0] ?? " "}</span>
@@ -400,7 +419,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
             </dl>
             <FileActions files={files} onRead={setReading} />
             <ShelfChoice current={page.shelf?.state ?? null} saving={saving} onChoose={place} />
-            {page.shelf?.state === "reading" ? <ProgressControl key={page.shelf.fraction} fraction={page.shelf.fraction} onChange={setFraction} /> : null}
+            {page.shelf?.state === "reading" ? <PlaceControl key={page.shelf.fraction} fraction={page.shelf.fraction} pages={b.pages} onSave={setFraction} /> : null}
             <RateBook rating={page.shelf?.rating ?? null} onRate={rate} />
             {page.friends.length ? <FriendsOnBook friends={page.friends} /> : null}
             {description ? <div className={cx("kb-about", long && !more && "kb-folded")}>
@@ -460,15 +479,47 @@ function ShelfChoice({ current, saving, onChoose }: { current: ShelfState | null
   </div>;
 }
 
-function ProgressControl({ fraction, onChange }: { fraction: number; onChange: (f: number) => void }) {
-  /* Reset from outside by its key (the saved fraction), not an effect. */
-  const [value, setValue] = useState(Math.round(fraction * 100));
-  return <label className="kb-progress-control">
-    <span>Where you are</span>
-    <input type="range" min={0} max={100} value={value} style={{ "--v": `${value}%` } as React.CSSProperties}
-      onChange={(e) => setValue(Number(e.target.value))} onPointerUp={() => onChange(value / 100)} onKeyUp={() => onChange(value / 100)} />
-    <output>{value}%</output>
-  </label>;
+/** "On page 219 of 288", or "76% in" when the book's length isn't known. */
+const placeLabel = (f: number, pages: number | null) => pages ? `On page ${Math.min(pages, Math.max(1, Math.floor(f * pages)))} of ${pages}` : `${Math.round(f * 100)}% in`;
+
+/**
+ * Your place: shown, and changed only on purpose. Update opens a small
+ * field (a page when the book's length is known, else a percent) with
+ * Save and Cancel, so nothing moves by brushing past it.
+ */
+function PlaceControl({ fraction, pages, onSave }: { fraction: number; pages: number | null; onSave: (f: number) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [typed, setTyped] = useState(() => String(pages ? Math.min(pages, Math.max(1, Math.floor(fraction * pages))) : Math.round(fraction * 100)));
+  const [saving, setSaving] = useState(false);
+  const value = Number(typed);
+  const valid = typed !== "" && Number.isInteger(value) && value >= 0 && value <= (pages ?? 100);
+  const save = async () => {
+    if (!valid) return;
+    setSaving(true);
+    await onSave(pages ? value / pages : value / 100);
+    setSaving(false);
+    setEditing(false);
+  };
+  return <div className="kb-place">
+    {editing
+      ? <form className="kb-place-edit" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <label>
+          <span>{pages ? "Page" : "Percent"}</span>
+          <input autoFocus inputMode="numeric" value={typed} aria-invalid={!valid} onChange={(e) => setTyped(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setEditing(false); } }} />
+          <em>{pages ? `of ${pages}` : "%"}</em>
+        </label>
+        <button type="button" className="kb-btn kb-tonal" onClick={() => setEditing(false)}>Cancel</button>
+        <button type="submit" className="kb-btn kb-filled" disabled={!valid || saving}>Save</button>
+      </form>
+      : <>
+        <div className="kb-place-now">
+          <b>{placeLabel(fraction, pages)}</b>
+          <span className="kb-cap-progress"><span style={{ width: `${Math.max(fraction * 100, 2)}%` }} /></span>
+        </div>
+        <button className="kb-btn kb-tonal" onClick={() => setEditing(true)}>Update</button>
+      </>}
+  </div>;
 }
 
 /* ── Small parts ───────────────────────────────────────────────────────── */
