@@ -18,6 +18,7 @@ kotlin {
         target.binaries.framework {
             baseName = "Shared"
             isStatic = true
+            binaryOption("smallBinary", "true")
         }
     }
 
