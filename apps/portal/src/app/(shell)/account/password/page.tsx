@@ -8,7 +8,7 @@ export const metadata = { title: "Password · You" };
 export default async function PasswordPage() {
   const { account } = await accountContext();
   return <div className="you" style={{ maxWidth: 560 }}>
-    <div className="topbar"><Crossing kind="kakejiku" className="back" href="/account" aria-label="Back to You"><LineIcon name="back" /></Crossing><h1>Password</h1></div>
+    <div className="topbar"><Crossing kind="kakejiku" className="back" href="/account/settings" aria-label="Back to Settings"><LineIcon name="back" /></Crossing><h1>Password</h1></div>
     <PasswordForm username={account.username} name={account.name} />
   </div>;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InkBlot, InkPortraitFrame, Seal } from "@kimono/ui";
 import { Crossing } from "@/components/crossing";
@@ -179,13 +179,12 @@ export function FriendsView() {
 
 /**
  * A profile as friends see it. Your own is also where you change it, in place: the portrait's camera,
- * the name and the bio are edited where they stand. `account` makes it the You page: no way back,
- * and a gear opening the account's own things (email, password, devices, appearance, signing out).
+ * the name and the bio are edited where they stand. `home` makes it the You page: no way back,
+ * and a gear to Settings (email, password, devices, appearance, signing out).
  */
-export function ProfileView({ username, account }: { username: string; account?: ReactNode }) {
+export function ProfileView({ username, home = false }: { username: string; home?: boolean }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [asked, setAsked] = useState(0);
   const [removing, setRemoving] = useState(false);
   const [recommending, setRecommending] = useState<Item | null>(null);
@@ -230,8 +229,8 @@ export function ProfileView({ username, account }: { username: string; account?:
 
   return <div className="you fr">
     <div className="fr-top">
-      {account ? null : <Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing>}
-      {account ? <button type="button" className="fr-back fr-gear" aria-label="Account" onClick={() => setSettingsOpen(true)}><LineIcon name="gear" /></button> : null}
+      {home ? null : <Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing>}
+      {home ? <Crossing kind="kakejiku" className="fr-back fr-gear" href="/account/settings" aria-label="Settings"><LineIcon name="gear" /></Crossing> : null}
     </div>
     <div className="stack you-head">
       <span className="you-picture"><Face person={p} size={112} />
@@ -286,7 +285,6 @@ export function ProfileView({ username, account }: { username: string; account?:
 
     {privacyOpen && privacy ? <PrivacySheet privacy={privacy} onClose={() => setPrivacyOpen(false)}
       onChanged={(r) => { if (p.open) setProfile({ ...p, privacy: r.privacy, hidden: r.hidden, kept: keptFrom(r.privacy) }); }} /> : null}
-    {settingsOpen && account ? <InkSheet title="Account" icon="gear" tint="#8a7c77" onClose={() => setSettingsOpen(false)} actions={<Seal compact onClick={() => setSettingsOpen(false)}>Done</Seal>}>{account}</InkSheet> : null}
     {removing ? <InkSheet title={`Remove ${first(p)}?`} icon="people" onClose={() => setRemoving(false)} actions={<>
       <Seal tone="quiet" compact onClick={() => setRemoving(false)}>Keep</Seal>
       <Seal tone="danger" compact onClick={() => { setRemoving(false); void change("remove"); }}>Remove</Seal>

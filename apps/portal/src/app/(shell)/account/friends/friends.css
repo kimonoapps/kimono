@@ -159,7 +159,5 @@
 .fr-edit-bio::placeholder { color: var(--on-surface-variant); }
 .fr-all .fr-new { display: inline-block; margin-right: 6px; vertical-align: middle; }
 
-/* the account's own things, in the gear's sheet: short rows */
-.you-settings > .row, .you-settings > form > button.row { min-height: 56px; padding: 8px 16px; }
-.you-settings .row .k-ink-blot { width: 36px; height: 36px; }
-.ink-sheet .you-version { margin: 0; text-align: center; font: 11.5px var(--mono); color: color-mix(in srgb, var(--on-surface-variant) 60%, transparent); }
+/* Settings: the sign-out row stands apart */
+.you-signout { margin-top: 32px; }

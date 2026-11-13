@@ -23,11 +23,11 @@ export default async function DetailsPage({ searchParams }: { searchParams: Prom
     } catch (failure) {
       redirect(`/account/details?error=${encodeURIComponent(failure instanceof Error ? failure.message : "Your details could not be saved")}`);
     }
-    redirect("/account?saved=1");
+    redirect("/account/settings?saved=1");
   }
 
   return <div className="you" style={{ maxWidth: 560 }}>
-    <div className="topbar"><Crossing kind="kakejiku" className="back" href="/account" aria-label="Back to You"><LineIcon name="back" /></Crossing><h1>Name and email</h1></div>
+    <div className="topbar"><Crossing kind="kakejiku" className="back" href="/account/settings" aria-label="Back to Settings"><LineIcon name="back" /></Crossing><h1>Name and email</h1></div>
     <form className="stack" style={{ gap: 12 }} action={saveDetails}>
       {error ? <p className="admin-notice error" role="alert">{error}</p> : null}
       <DetailsFields name={account.name} email={account.email} username={account.username} />

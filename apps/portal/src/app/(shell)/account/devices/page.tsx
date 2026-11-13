@@ -40,7 +40,7 @@ export default async function DevicesPage({ searchParams }: { searchParams: Prom
   }
 
   return <div className="you">
-    <div className="topbar"><Crossing kind="kakejiku" className="back" href="/account" aria-label="Back to You"><LineIcon name="back" /></Crossing><h1>Signed-in devices</h1></div>
+    <div className="topbar"><Crossing kind="kakejiku" className="back" href="/account/settings" aria-label="Back to Settings"><LineIcon name="back" /></Crossing><h1>Signed-in devices</h1></div>
     {query.ended ? <p className="admin-notice success" role="status">{query.ended === "1" ? "That device was signed out." : `${query.ended} sign-ins were ended.`}</p> : null}
     {query.error ? <p className="admin-notice error" role="alert">{query.error}</p> : null}
     <p style={{ color: "var(--on-surface-variant)", padding: "0 0 14px 12px" }}>{unavailable ?? (sessions.length ? "Sign out a device you don't use any more." : "No browser is signed in right now.")}</p>
