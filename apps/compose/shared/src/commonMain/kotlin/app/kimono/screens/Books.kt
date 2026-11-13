@@ -3,6 +3,26 @@
 package app.kimono.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -99,32 +119,81 @@ private val cloths = listOf(
 )
 private fun clothOf(key: String): Pair<Color, Color> { var h = 7; for (c in key) h = h * 31 + c.code; return cloths[(h and 0x7fffffff) % cloths.size] }
 
-/** A book with its spine showing: it turns to face you, and lifts, while pressed. */
+/**
+ * A book you can almost pick up. On a shelf it stands turned, spine showing,
+ * and turns with where it sits on the screen, so a row swivels as you swipe
+ * it. Pressed, it lifts, turns to you and its cover swings open on the first
+ * page. On its own page ([spin]) it floats, and turns under your finger.
+ */
 @Composable
-fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Double? = null, still: Boolean = false, badge: (@Composable () -> Unit)? = null, onOpen: (() -> Unit)? = null) {
+fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Double? = null, still: Boolean = false, spin: Boolean = false, badge: (@Composable () -> Unit)? = null, onOpen: (() -> Unit)? = null) {
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
-    val turn by animateFloatAsState(if (pressed || still) 0f else 16f, spring(dampingRatio = .55f, stiffness = 380f))
-    val lift by animateDpAsState(if (pressed) (-6).dp else 0.dp, spring(dampingRatio = .55f, stiffness = 380f))
+    val screen = LocalWindowInfo.current.containerSize.width.toFloat().coerceAtLeast(1f)
+    /* Where it sits across the screen, -1 (left) to 1 (right): books to the right show more spine. */
+    var across by remember { mutableStateOf(0f) }
+    val float = if (still) rememberInfiniteTransition(label = "float").animateFloat(-6f, 6f, infiniteRepeatable(tween(3400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "sway") else null
+    val bob = if (still) rememberInfiniteTransition(label = "bob").animateFloat(0f, -4f, infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bob") else null
+    val drag = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val resting = if (still) 14f else (16f + across * 14f).coerceIn(2f, 34f)
+    val turn by animateFloatAsState(if (pressed) 0f else resting, spring(dampingRatio = .5f, stiffness = 260f), label = "turn")
+    val open by animateFloatAsState(if (pressed) 1f else 0f, spring(dampingRatio = .62f, stiffness = 320f), label = "open")
+    val lift by animateDpAsState(if (pressed) (-10).dp else 0.dp, spring(dampingRatio = .5f, stiffness = 380f), label = "lift")
     val (cloth, ink) = clothOf(book.key)
-    val spine = (width.value * .085f).coerceIn(8f, 18f).dp
-    Box(modifier.width(width + spine).offset(y = lift)) {
+    val spine = (width.value * .09f).coerceIn(9f, 20f).dp
+    val angle = turn + (float?.value ?: 0f) + drag.value
+    Box(
+        modifier.width(width + spine).offset(y = lift + (bob?.value ?: 0f).dp)
+            .onGloballyPositioned { c -> if (!still) across = ((c.positionInWindow().x + c.size.width / 2f) / screen - .5f) * 2f }
+            .then(if (spin) Modifier.pointerInput(Unit) {
+                detectHorizontalDragGestures(onDragEnd = { scope.launch { drag.animateTo(0f, spring(dampingRatio = .35f, stiffness = 120f)) } }) { _, dx ->
+                    scope.launch { drag.snapTo((drag.value + dx * .45f).coerceIn(-70f, 70f)) }
+                }
+            } else Modifier),
+    ) {
         Box(
             Modifier.width(width + spine).height(width * 1.5f)
-                .graphicsLayer { rotationY = turn; cameraDistance = 14f * density; transformOrigin = androidx.compose.ui.graphics.TransformOrigin(1f, .5f) }
+                .graphicsLayer { rotationY = angle; cameraDistance = 10f * density; transformOrigin = TransformOrigin(1f, .5f) }
                 .then(if (onOpen != null) Modifier.clickable(interactionSource = press, indication = null, role = Role.Button, onClick = onOpen).semantics { contentDescription = "${book.title}${if (book.author.isNotBlank()) ", ${book.author}" else ""}" } else Modifier),
         ) {
-            Row(Modifier.fillMaxSize().shadow(if (pressed) 14.dp else 6.dp, RoundedCornerShape(2.dp, 5.dp, 5.dp, 2.dp))) {
-                /* The spine, darker, with the title down it. */
-                Box(Modifier.width(spine).fillMaxHeight().background(lerpColor(cloth, Color.Black, .25f)), contentAlignment = Alignment.Center) {
+            /* Its shadow on the shelf, wider as it lifts. */
+            Box(Modifier.align(Alignment.BottomCenter).offset(y = 10.dp).width(width * (.8f + open * .15f)).height(10.dp)
+                .graphicsLayer { alpha = .5f - open * .2f }.clip(CircleShape).background(Color.Black.copy(alpha = .45f)))
+            Row(Modifier.fillMaxSize()) {
+                /* The spine: darker cloth, the title down it, a lighter edge where it turns the corner. */
+                Box(Modifier.width(spine).fillMaxHeight().clip(RoundedCornerShape(topStart = 3.dp, bottomStart = 3.dp)).background(lerpColor(cloth, Color.Black, .28f)), contentAlignment = Alignment.Center) {
                     Text(book.title, color = ink.copy(alpha = .85f), fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.graphicsLayer { rotationZ = 90f }.widthIn(max = width * 1.3f))
+                    Box(Modifier.align(Alignment.CenterEnd).width(1.dp).fillMaxHeight().background(Color.White.copy(alpha = .14f)))
                 }
-                Box(Modifier.width(width).fillMaxHeight().clip(RoundedCornerShape(0.dp, 5.dp, 5.dp, 0.dp)).background(cloth)) {
-                    ClothCover(book, ink, width)
-                    if (book.cover != null) AsyncImage(model = book.cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    /* The hinge's pressed line. */
-                    Box(Modifier.padding(start = 5.dp).width(1.5.dp).fillMaxHeight().background(Color.Black.copy(alpha = .16f)))
+                Box(Modifier.width(width).fillMaxHeight()) {
+                    /* The pages: a cream block peeking out from under the cover. */
+                    Box(Modifier.fillMaxSize().padding(top = 3.dp, bottom = 3.dp).offset(x = 2.dp).clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+                        .background(Color(0xFFF3EBDC)).drawBehind {
+                            val step = 2.4f * density
+                            var x = size.width - 1f
+                            while (x > size.width - 7f * density) { drawLine(Color(0x22000000), androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height), 1f); x -= step }
+                        })
+                    /* The first page, found when the cover opens. */
+                    Column(Modifier.fillMaxSize().padding(top = 3.dp, bottom = 3.dp).background(Color(0xFFFBF6EA)).padding(width * .12f), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(book.title, color = Color(0xFF3A3A30), fontWeight = FontWeight.Bold, fontSize = (width.value * .09f).sp, lineHeight = (width.value * .105f).sp, maxLines = 4, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                        if (book.author.isNotBlank()) Text(book.author, color = Color(0xFF3A3A30).copy(alpha = .7f), fontSize = (width.value * .065f).sp, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
+                    }
+                    /* The cover, hinged at the spine. */
+                    Box(Modifier.fillMaxSize()
+                        .graphicsLayer { rotationY = -38f * open; transformOrigin = TransformOrigin(0f, .5f); cameraDistance = 8f * density }
+                        .shadow((4 + 10 * open).dp, RoundedCornerShape(topEnd = 5.dp, bottomEnd = 5.dp))
+                        .clip(RoundedCornerShape(topEnd = 5.dp, bottomEnd = 5.dp)).background(cloth)) {
+                        ClothCover(book, ink, width)
+                        if (book.cover != null) AsyncImage(model = book.cover, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        /* The hinge's pressed line, and a sheen that slides across as it turns. */
+                        Box(Modifier.padding(start = 5.dp).width(1.5.dp).fillMaxHeight().background(Color.Black.copy(alpha = .18f)))
+                        val glint = ((angle + 10f) / 60f).coerceIn(0f, 1f)
+                        Box(Modifier.fillMaxSize().background(Brush.linearGradient(
+                            0f to Color.Transparent, (glint * .8f) to Color.Transparent, (glint * .8f + .1f) to Color.White.copy(alpha = .16f), (glint * .8f + .22f).coerceAtMost(1f) to Color.Transparent,
+                        )))
+                    }
                 }
             }
             if (progress != null && progress > 0) Box(
@@ -133,6 +202,28 @@ fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Doubl
             )
         }
         if (badge != null) Box(Modifier.offset((-6).dp, (-6).dp)) { badge() }
+    }
+}
+
+/* ── Rating icons: outlined until chosen, then filled ── */
+private val ratingPaths = mapOf(
+    "love" to "M12 20.5c-.4 0-7.5-4.6-7.5-10.4A4.3 4.3 0 0 1 12 7.4a4.3 4.3 0 0 1 7.5 2.7c0 5.8-7.1 10.4-7.5 10.4Z",
+    "up" to "M7.5 10.5v9.5H4.5v-9.5h3Zm0 0 3.8-6.6c1.8 0 2.8 1.3 2.4 3L13 10h5a2 2 0 0 1 2 2.4l-1.2 6A2.2 2.2 0 0 1 16.6 20H7.5",
+)
+
+@Composable
+private fun RatingGlyph(rating: String, filled: Boolean, color: Color, size: Dp) {
+    val pop by animateFloatAsState(if (filled) 1f else 0f, spring(dampingRatio = .4f, stiffness = 500f), label = "pop")
+    val path = remember(rating) { androidx.compose.ui.graphics.vector.PathParser().parsePathString(ratingPaths[if (rating == "love") "love" else "up"]!!).toPath() }
+    androidx.compose.foundation.Canvas(Modifier.size(size).graphicsLayer {
+        scaleX = 1f + pop * .12f * (1f - pop) * 4f; scaleY = scaleX
+        if (rating == "down") rotationZ = 180f
+    }) {
+        val k = this.size.width / 24f
+        scale(k, k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+            if (filled) drawPath(path, color)
+            drawPath(path, color, style = Stroke(width = 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
     }
 }
 
@@ -370,13 +461,14 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
         runCatching { books.book(key) }.onSuccess { page = it }.onFailure { if (page == null) say(it.message ?: "This book didn't open.") }
         files = runCatching { books.files(key) }.getOrElse { emptyList() }
     }
-    InkSheet(onDismissRequest = onDismiss, seed = key, wash = false) {
+    /* Opens half-way, with the book and its buttons in reach; drag up for the rest. Never under the status bar. */
+    InkSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = false), seed = key, wash = false) {
         val p = page
         if (p == null) { Box(Modifier.fillMaxWidth().height(320.dp), contentAlignment = Alignment.Center) { InkLoader(size = 48.dp) }; return@InkSheet }
         val b = p.book
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-            Row(Modifier.padding(start = 24.dp, end = 20.dp, top = 8.dp), verticalAlignment = Alignment.Top) {
-                Book3D(b, 112.dp, still = true, progress = p.shelf?.takeIf { it.state == "reading" }?.fraction)
+        Column(Modifier.fillMaxHeight(.86f).verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            Row(Modifier.padding(start = 24.dp, end = 20.dp, top = 12.dp), verticalAlignment = Alignment.Top) {
+                Book3D(b, 112.dp, still = true, spin = true, progress = p.shelf?.takeIf { it.state == "reading" }?.fraction)
                 Spacer(Modifier.width(20.dp))
                 Column(Modifier.weight(1f)) {
                     if (b.genres.isNotEmpty()) Text(b.genres.take(2).joinToString(" · ").uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
@@ -449,16 +541,14 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
             /* How was it? The same three as Watch. */
             Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(p.shelf?.rating?.let { Books.ratingLabel(it) } ?: "How was it?", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                listOf("down" to "thumb-down", "up" to "thumb-up", "love" to "heart").forEach { (r, icon) ->
+                listOf("down", "up", "love").forEach { r ->
                     val on = p.shelf?.rating == r
                     val corner by animateDpAsState(if (on) 16.dp else 26.dp, spring(dampingRatio = .55f))
                     Surface(onClick = {
                         scope.launch { runCatching { books.rate(key, if (on) null else r) }.onSuccess { mine -> page = p.copy(shelf = mine); changed(); if (!on) say("${Books.ratingLabel(r)} · ${b.title}") } }
                     }, shape = RoundedCornerShape(corner), color = when { !on -> MaterialTheme.colorScheme.surfaceContainerHighest; r == "love" -> Color(0xFFA8475F); else -> MaterialTheme.colorScheme.primary },
                         contentColor = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(52.dp).semantics { contentDescription = Books.ratingLabel(r) }) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (icon == "heart") Text("\u2665", fontSize = 22.sp) else androidx.compose.material3.Icon(app.kimono.ui.inkIcon(icon), null, Modifier.size(24.dp))
-                        }
+                        Box(contentAlignment = Alignment.Center) { RatingGlyph(r, on, if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, 24.dp) }
                     }
                 }
             }
