@@ -48,6 +48,8 @@ export type TitleView = {
   episodes?: Episode[];
   /** Friends' places in it, watching it now first. */
   friends?: FriendHere[];
+  /** What friends thought of it: loved, liked, didn't like, or on their list. */
+  friendRatings?: FriendRated[];
 };
 
 /* ───── Friends (lib/watch/friends.ts) ───── */
@@ -56,6 +58,10 @@ export type Person = { username: string; name: string; picture: string | null };
 export type Spot = { title: Card; season: number; episode: number; label: string | null; progress: number; finished: boolean; at: number };
 export type Friend = Person & { now: (Spot & { position: number; duration: number; partyId: string | null }) | null; recent: Spot[]; sharing: boolean };
 export type JoinAsk = { id: string; from: string; to: string; answer: "waiting" | "yes" | "no"; partyId: string | null; at: number; name: string; picture: string | null; title: string | null; label: string | null };
+/** A friend's taste (nothing in it when they keep it to themselves: sharing false). */
+export type FriendTaste = Person & { sharing: boolean; loved: Card[]; liked: Card[]; disliked: Card[]; list: Card[] };
+/** What a friend thought of one title, on its page. */
+export type FriendRated = Person & { rating: "love" | "up" | "down" | null; listed: boolean };
 export type FriendsPage = { sharing: boolean; invisible: boolean; friends: Friend[]; asked: Person[]; asking: Person[]; people: Person[]; incoming: JoinAsk[]; outgoing: JoinAsk[] };
 export type FriendHere = Person & { season: number; episode: number; label: string | null; progress: number; finished: boolean; at: number; now: boolean };
 
@@ -97,6 +103,8 @@ export type Prefs = {
   shareWatching?: boolean; invisible?: boolean;
   /** The friends row on Home. */
   friendsOnHome?: boolean;
+  /** Friends see their list and what they liked, loved and didn't like. */
+  shareTaste?: boolean;
 };
 export type Device = { client: "web"; maxHeight: number; codecs: string[]; hdr: string[] };
 
@@ -121,6 +129,8 @@ const savingTracks = new Map<string, Promise<unknown>>();
 export const friendsApi = {
   page: () => call<FriendsPage>("friends"),
   change: (type: "ask" | "yes" | "no" | "remove", username: string) => call<{ state: string | null }>("friends", post({ type, username })),
+  /** A friend's taste: what they loved, liked and didn't like, and their list. */
+  taste: (username: string) => call<FriendTaste>(`friends/${encodeURIComponent(username)}`),
   /** People to ask to be friends, by what was typed (two letters at least). */
   find: (q: string) => call<{ people: Person[] }>(`friends?q=${encodeURIComponent(q)}`).then((r) => r.people),
   asks: () => call<{ incoming: JoinAsk[]; outgoing: JoinAsk[] }>("friends/join"),

@@ -139,3 +139,22 @@ export function answerAsk(asks: JoinAsk[], id: string, by: string, yes: boolean,
 
 /** The asker takes it back. */
 export const cancelAsk = (asks: JoinAsk[], id: string, by: string) => asks.filter((a) => !(a.id === id && a.from === by.toLowerCase()));
+
+/**
+ * What [friends] loved or liked that [me] hasn't rated, for Home's "Your friends liked": the most liked first
+ * (a love counts twice), then the latest; a friend's hidden titles and what they didn't like stay out.
+ */
+export function likedByFriends(db: DatabaseSync, me: string, friends: string[]): string[] {
+  const rated = (u: string) => db.prepare("SELECT title_id, rating, rated_at FROM ratings WHERE lower(username) = ?").all(u.toLowerCase()) as { title_id: string; rating: string; rated_at: number | null }[];
+  const mine = new Set(rated(me).map((r) => r.title_id));
+  const score = new Map<string, { points: number; at: number }>();
+  for (const f of friends) {
+    const hidden = hiddenOf(db, f);
+    for (const r of rated(f)) {
+      if ((r.rating !== "up" && r.rating !== "love") || mine.has(r.title_id) || hidden.has(r.title_id)) continue;
+      const was = score.get(r.title_id) ?? { points: 0, at: 0 };
+      score.set(r.title_id, { points: was.points + (r.rating === "love" ? 2 : 1), at: Math.max(was.at, r.rated_at ?? 0) });
+    }
+  }
+  return [...score.entries()].sort((a, b) => b[1].points - a[1].points || b[1].at - a[1].at).map(([id]) => id);
+}

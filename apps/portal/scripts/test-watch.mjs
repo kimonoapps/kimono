@@ -1587,3 +1587,20 @@ test('start ring: shared out by how long each step takes, moving steadily, never
   assert.deepEqual(startRing.noteStep(h, 0, 10), h);
   assert.deepEqual(startRing.expectedOf(h).slice(1, 2), [6000]);
 });
+
+test('friends liked: loves count twice, the latest first; mine, dislikes and hidden ones stay out', () => {
+  const db = new DatabaseSync(':memory:');
+  model.migrate(db);
+  friends.migrateFriends(db);
+  model.setRating(db, 'sami', 'tv:1', 'up', 100);
+  model.setRating(db, 'noor', 'tv:1', 'up', 200);
+  model.setRating(db, 'sami', 'tv:2', 'love', 300);
+  model.setRating(db, 'noor', 'tv:3', 'up', 400);
+  model.setRating(db, 'noor', 'tv:4', 'down', 500);
+  model.setRating(db, 'sami', 'tv:5', 'love', 600);
+  model.setRating(db, 'me', 'tv:5', 'down', 700);
+  model.setRating(db, 'noor', 'tv:6', 'love', 800);
+  db.prepare('INSERT INTO friends_hidden (username, title_id) VALUES (?, ?)').run('noor', 'tv:6');
+  assert.deepEqual(friends.likedByFriends(db, 'me', ['sami', 'noor']), ['tv:2', 'tv:1', 'tv:3']);
+  assert.equal(db.prepare('SELECT rated_at FROM ratings WHERE username = ? AND title_id = ?').get('sami', 'tv:2').rated_at, 300);
+});

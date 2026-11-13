@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { airText, labelOf, languageName, languages, minutesText, watchApi, type Episode, type TitleView } from "./api";
 import { alike, cx, Img, ListButton, RateButton, TitleMark, Top10, useTabTitle, useWatch } from "./bits";
 import { Icon } from "./icons";
-import { FriendsAt, FriendsHere } from "./friends";
+import { FriendsAt, FriendsHere, FriendsThought } from "./friends";
 
 const aired = (e: Pick<Episode, "airDate">) => !e.airDate || Date.parse(e.airDate) <= Date.now();
 
@@ -97,6 +97,7 @@ export function TitleSheet({ id, onClose, refreshKey, leaving = false }: { id: s
                   <Resume view={view} />
                   {view.tracker ? <Tracker view={view} /> : null}
                   <FriendsHere friends={view.friends ?? []} film={t.kind === "movie"} />
+                  <FriendsThought friends={view.friendRatings ?? []} />
                   {t.overview ? <p className="kw-desc">{t.overview}</p> : null}
                   <div className="kw-acts" style={{ position: "relative" }}>
                     <ListButton id={t.id} variant="act" />

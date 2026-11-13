@@ -873,6 +873,13 @@
 .kw .kw-fr-list{display:grid;gap:12px}
 .kw .kw-fr-person{display:flex;align-items:center;gap:12px;padding:8px 0}
 .kw .kw-fr-find{position:static;margin:4px 0 8px;max-width:420px}
+.kw .kw-taste .kw-fr-head{justify-content:flex-start;gap:12px}
+.kw .kw-taste .kw-fr-head .kw-face-s{width:40px;height:40px;font-size:18px;border-radius:50%}
+.kw .kw-taste .kw-row{margin:0 calc(-1 * var(--gutter-l)) 18px calc(-1 * var(--gutter-l))}
+.kw .kw-fr-thought{display:flex;align-items:center;gap:10px;color:var(--fg-2);font-size:14px;margin:10px 0}
+.kw .kw-fr-faces{display:flex}
+.kw .kw-fr-faces .kw-face-s{width:24px;height:24px;font-size:11px;border-radius:50%;box-shadow:0 0 0 2px var(--bg)}
+.kw .kw-fr-faces .kw-face-s + .kw-face-s{margin-left:-6px}
 .kw .kw-fr-none{color:var(--fg-3);font-size:14px;padding:8px 0}
 .kw .kw-fr-person > b{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .kw .kw-fr-person .kw-face-s{width:40px;height:40px;font-size:18px;border-radius:50%}

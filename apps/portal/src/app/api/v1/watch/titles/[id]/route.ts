@@ -1,5 +1,5 @@
 import { apiJson, apiUser, crossSite, readJson, unauthorized } from "@/lib/api-v1";
-import { friendsOn } from "@/lib/watch/friends-live";
+import { friendsOn, friendsRated } from "@/lib/watch/friends-live";
 import { ensureTitle, portalOrigin, setListed, setRating, setReminder, setShowLayout, setTracks, titleView, watch, watchDb, WatchProblem, type Rating } from "@/lib/watch";
 
 type Context = { params: Promise<{ id: string }> };
@@ -15,7 +15,9 @@ export async function GET(request: Request, { params }: Context) {
     const page = await titleView(cfg, user.username, origin, id, season);
     /* Friends' places in it: a missing one is only less to show. */
     const friends = await friendsOn(user.username, page.title.id, origin).catch(() => []);
-    return apiJson({ ...page, friends });
+    /* What friends thought of it: loved, liked, didn't like, or on their list. */
+    const friendRatings = await friendsRated(user.username, page.title.id).catch(() => []);
+    return apiJson({ ...page, friends, friendRatings });
   });
 }
 

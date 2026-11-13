@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { friendsApi, type Friend, type FriendHere, type FriendsPage as Page, type JoinAsk, type Person } from "./api";
+import { friendsApi, type Card, type Friend, type FriendHere, type FriendRated, type FriendsPage as Page, type FriendTaste, type JoinAsk, type Person } from "./api";
 import { cx, faceOf, Img, initial, Rail, useWatch } from "./bits";
 import { PosterCard } from "./home";
 import { Icon } from "./icons";
@@ -83,6 +83,9 @@ function useFriends(onJoin: (partyId: string) => void) {
 
 export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
   const { page, problem, asking, change, ask, cancel } = useFriends(onJoin);
+  /* A friend whose list and ratings are open, in place of the page. */
+  const [taste, setTaste] = useState<Person | null>(null);
+  if (taste) return <TastePage person={taste} onBack={() => setTaste(null)} />;
 
   return <main className="kw-page kw-friends">
     <div className="kw-fr-head"><h1>Friends</h1><InvisibleButton /></div>
@@ -94,7 +97,7 @@ export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
           <button className="kw-btn kw-primary" onClick={() => void change("yes", p.username)}><Icon name="check" />Accept</button>
         </div>)}</section> : null}
         <div className="kw-fr-list">
-          {page.friends.length ? page.friends.map((f) => <FriendCard key={f.username} f={f} asking={asking?.to === f.username ? asking : null} onAsk={() => void ask(f)} onCancel={cancel}
+          {page.friends.length ? page.friends.map((f) => <FriendCard key={f.username} f={f} asking={asking?.to === f.username ? asking : null} onAsk={() => void ask(f)} onCancel={cancel} onTaste={() => setTaste(f)}
             onRemove={() => { if (confirm(`Remove ${f.name || f.username}? You'll stop seeing what each other watches.`)) void change("remove", f.username); }} />)
             : <p className="kw-empty">Add friends to see what they&rsquo;re watching.</p>}
         </div>
@@ -105,6 +108,37 @@ export function FriendsPage({ onJoin }: { onJoin: (partyId: string) => void }) {
         </section>
       </>}
   </main>;
+}
+
+/** A friend's list and ratings: rows of what they loved, liked, kept and didn't like. */
+function TastePage({ person, onBack }: { person: Person; onBack: () => void }) {
+  const [taste, setTaste] = useState<FriendTaste | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { friendsApi.taste(person.username).then(setTaste, (error: unknown) => setProblem(error instanceof Error ? error.message : "That didn't load.")); }, [person.username]);
+  useEffect(() => { window.scrollTo({ top: 0 }); }, []);
+  const rows: [string, Card[]][] = taste ? [["Loved", taste.loved], ["Liked", taste.liked], ["On their list", taste.list], ["Didn't like", taste.disliked]] : [];
+  const shown = rows.filter(([, cards]) => cards.length);
+  return <main className="kw-page kw-friends kw-taste">
+    <div className="kw-fr-head"><button className="kw-iconbtn" aria-label="Back to Friends" onClick={onBack}><Icon name="left" /></button>
+      <Face person={person} /><h1>{person.name || person.username}</h1></div>
+    {problem ? <p className="kw-empty">{problem}</p>
+      : !taste ? <div className="kw-sk" style={{ height: 220, borderRadius: 14 }} />
+      : !taste.sharing ? <p className="kw-empty">Keeps their list and ratings to themselves</p>
+      : !shown.length ? <p className="kw-empty">Nothing rated yet</p>
+      : shown.map(([title, cards]) => <section key={title} className="kw-row"><h2>{title}</h2><Rail label={title}>{cards.map((card) => <PosterCard key={card.id} card={card} />)}</Rail></section>)}
+  </main>;
+}
+
+/** What friends thought of a title, on its page: "Sami loved this · Noor liked it · On Maya's list". */
+export function FriendsThought({ friends }: { friends: FriendRated[] }) {
+  if (!friends.length) return null;
+  const first = (p: Person) => (p.name || p.username).split(" ")[0];
+  const said = (p: FriendRated) => p.rating === "love" ? `${first(p)} loved it` : p.rating === "up" ? `${first(p)} liked it` : p.rating === "down" ? `${first(p)} didn't like it` : `On ${first(p)}'s list`;
+  const shown = friends.slice(0, 3);
+  return <div className="kw-fr-thought">
+    <span className="kw-fr-faces">{shown.map((p) => <Face key={p.username} person={p} />)}</span>
+    <span>{shown.map(said).join(" · ")}{friends.length > 3 ? ` · and ${friends.length - 3} more` : ""}</span>
+  </div>;
 }
 
 /** Finding someone to ask by name: no one is listed until two letters are typed. */
@@ -127,7 +161,7 @@ function FindPeople({ onAdd }: { onAdd: (username: string) => Promise<unknown> }
   </>;
 }
 
-function FriendCard({ f, asking, onAsk, onCancel, onRemove }: { f: Friend; asking: JoinAsk | null; onAsk: () => void; onCancel: (a: JoinAsk) => void; onRemove: () => void }) {
+function FriendCard({ f, asking, onAsk, onCancel, onTaste, onRemove }: { f: Friend; asking: JoinAsk | null; onAsk: () => void; onCancel: (a: JoinAsk) => void; onTaste: () => void; onRemove: () => void }) {
   const watch = useWatch();
   const now = f.now;
   const recent = f.recent.filter((s) => s.title.id !== now?.title.id);
@@ -138,6 +172,7 @@ function FriendCard({ f, asking, onAsk, onCancel, onRemove }: { f: Friend; askin
         <span className={cx(now && "kw-on")}>{!f.sharing ? "Keeps what they watch to themselves" : now ? "Watching now" : f.recent.length ? `Watched ${ago(f.recent[0].at)}` : "Hasn't watched anything yet"}</span></div>
       {now ? (asking ? <button className="kw-btn kw-tonal" onClick={() => onCancel(asking)}>Asking…</button>
         : <button className="kw-btn kw-primary" onClick={onAsk}><Icon name="group" />Ask to join</button>) : null}
+      <button className="kw-btn kw-tonal" onClick={onTaste}><Icon name="bookmark" />Their list</button>
       <button className="kw-iconbtn" aria-label={`Remove ${f.name || f.username}`} title="Remove" onClick={onRemove}><Icon name="close" /></button>
     </div>
     {now ? <button className="kw-fr-now" onClick={() => watch.openTitle(now.title.id)}>

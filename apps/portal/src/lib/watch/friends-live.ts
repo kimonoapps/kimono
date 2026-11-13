@@ -2,10 +2,10 @@ import "server-only";
 
 import { randomBytes } from "node:crypto";
 import type { WatchConfig } from "./config";
-import { cardOf, ensureTitle, finished, fraction, getTitle, prefsOf, watchDb, WatchProblem, type Card, type Progress } from "./index";
+import { cardOf, ensureTitle, finished, fraction, getTitle, getTitles, prefsOf, watchDb, WatchProblem, type Card, type Progress, type Title } from "./index";
 import { playingNow, watchKey } from "./flow";
 import {
-  answerAsk, answerFriend, askFriend, cancelAsk, friendsOf, hiddenOf, linkOf, linksOf, liveAsks, newAsk, noteWatched, removeFriend,
+  answerAsk, answerFriend, askFriend, cancelAsk, friendsOf, hiddenOf, likedByFriends, linkOf, linksOf, liveAsks, newAsk, noteWatched, removeFriend,
   type JoinAsk, type LinkState,
 } from "./friends";
 import { inviteTo, labelsFor, partyWith, people, type Person } from "./together-live";
@@ -60,6 +60,10 @@ function nowOf(viewer: string, username: string, origin: string, now = Date.now(
 
 const sharing = (username: string) => prefsOf(watchDb(), username.toLowerCase()).shareWatching !== false;
 const invisible = (username: string) => prefsOf(watchDb(), username.toLowerCase()).invisible === true;
+/** Whether friends see their list and ratings (Settings › Friends). */
+const sharesTaste = (username: string) => prefsOf(watchDb(), username.toLowerCase()).shareTaste !== false;
+type RatingRow = { title_id: string; rating: "down" | "up" | "love"; rated_at: number | null };
+const ratingsOf = (username: string) => watchDb().prepare("SELECT title_id, rating, rated_at FROM ratings WHERE lower(username) = ? ORDER BY coalesce(rated_at, 0) DESC").all(username.toLowerCase()) as RatingRow[];
 
 /** A progress report: a title played while invisible is kept from friends (and shown again once played visibly). */
 export function noteFriendsWatch(username: string, titleId: string) {
@@ -200,4 +204,56 @@ export async function answerJoin(username: string, id: string, raw: Record<strin
   keep(out.asks);
   if (!out.ask) throw new WatchProblem("They stopped asking.", 404);
   return { ok: true, ask: askView(out.ask, await people(), u) };
+}
+
+/* ───── Taste: friends' lists and ratings ───── */
+
+/**
+ * A friend's taste, for their page: what they loved, liked and didn't like (latest first) and their list.
+ * Only a friend's, and only while they share it (Settings › Friends); titles they hid from friends stay out.
+ */
+export async function friendTaste(username: string, them: string, origin: string) {
+  const u = username.toLowerCase(), f = them.toLowerCase();
+  const db = watchDb();
+  if (!friendsOf(db, u).includes(f)) throw new WatchProblem("You aren't friends.", 404);
+  const who = (await people()).find((p) => p.username === f) ?? { username: f, name: f, picture: null };
+  if (!sharesTaste(f)) return { ...who, sharing: false, loved: [] as Card[], liked: [] as Card[], disliked: [] as Card[], list: [] as Card[] };
+  const hidden = hiddenOf(db, f);
+  const cards = (ids: string[]) => getTitles(db, ids.filter((id) => !hidden.has(id)).slice(0, 60)).map((t: Title) => cardOf(t, origin));
+  const rated = ratingsOf(f);
+  const of = (r: RatingRow["rating"]) => cards(rated.filter((x) => x.rating === r).map((x) => x.title_id));
+  const list = (db.prepare("SELECT title_id FROM list WHERE lower(username) = ? ORDER BY added_at DESC").all(f) as { title_id: string }[]).map((r) => r.title_id);
+  return { ...who, sharing: true, loved: of("love"), liked: of("up"), disliked: of("down"), list: cards(list) };
+}
+
+/** What friends thought of one title, for its page: each friend sharing their taste who rated it or has it on their list. */
+export async function friendsRated(username: string, titleId: string) {
+  const u = username.toLowerCase();
+  const db = watchDb();
+  const list = friendsOf(db, u).filter(sharesTaste).filter((f) => !hiddenOf(db, f).has(titleId));
+  if (!list.length) return [];
+  const everyone = await people();
+  const order = { love: 0, up: 1, down: 2 } as const;
+  return list.flatMap((f) => {
+    const rating = (db.prepare("SELECT rating FROM ratings WHERE lower(username) = ? AND title_id = ?").get(f, titleId) as { rating?: RatingRow["rating"] } | undefined)?.rating ?? null;
+    const listed = Boolean(db.prepare("SELECT 1 FROM list WHERE lower(username) = ? AND title_id = ?").get(f, titleId));
+    if (!rating && !listed) return [];
+    const who = everyone.find((x) => x.username === f) ?? { username: f, name: f, picture: null };
+    return [{ ...who, rating, listed }];
+  }).sort((a, b) => (a.rating ? order[a.rating] : 3) - (b.rating ? order[b.rating] : 3));
+}
+
+/**
+ * Home's "Your friends liked" row: what friends sharing their taste loved or liked, the most liked
+ * (a love counts twice) and the latest first; what this person rated already or hid stays out. Null with nothing to show.
+ */
+export async function friendsLikedRow(username: string, origin: string, shelf?: Title["shelf"]) {
+  const u = username.toLowerCase();
+  const db = watchDb();
+  if (prefsOf(db, u).friendsOnHome === false) return null;
+  const friends = friendsOf(db, u).filter(sharesTaste);
+  if (!friends.length) return null;
+  const ids = likedByFriends(db, u, friends).slice(0, 40);
+  const items = getTitles(db, ids).filter((t) => !shelf || t.shelf === shelf).slice(0, 20).map((t) => cardOf(t, origin));
+  return items.length ? { id: "friends-liked", title: "Your friends liked", kind: "cards", items } : null;
 }

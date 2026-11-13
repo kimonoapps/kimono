@@ -109,8 +109,10 @@ export type Prefs = {
   invisible: boolean;
   /** The friends row on Home; off hides it (the Friends tab stays). */
   friendsOnHome: boolean;
+  /** Friends see their list and what they liked, loved and didn't like (./friends-live.ts friendTaste). */
+  shareTaste: boolean;
 };
-export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false, shareWatching: true, invisible: false, friendsOnHome: true };
+export const defaultPrefs: Prefs = { fillers: "ask", quality: "auto", preferredLanguage: "original", fallbackLanguage: "en", audioLanguage: "en", subtitleLanguage: "", subtitles: "auto", animeEpisodes: "seasons", subtitleSize: "medium", subtitleBackground: "shadow", previews: true, downloadQuality: "standard", autoplayNext: true, skipIntros: false, shareWatching: true, invisible: false, friendsOnHome: true, shareTaste: true };
 
 export class WatchProblem extends Error {
   constructor(message: string, readonly status = 400) { super(message); }
@@ -156,6 +158,8 @@ export function migrate(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS tracks (username TEXT NOT NULL, title_id TEXT NOT NULL, audio TEXT NOT NULL, subtitles TEXT NOT NULL, PRIMARY KEY (username, title_id));
     CREATE TABLE IF NOT EXISTS device_prefs (username TEXT NOT NULL, device_id TEXT NOT NULL, quality TEXT NOT NULL, PRIMARY KEY (username, device_id));
   `);
+  /* When each rating was made, so friends see what was liked lately first (older ones have none). */
+  if (!(db.prepare("PRAGMA table_info(ratings)").all() as { name: string }[]).some((c) => c.name === "rated_at")) db.exec("ALTER TABLE ratings ADD COLUMN rated_at INTEGER");
   const columns = (db.prepare("PRAGMA table_info(titles)").all() as { name: string }[]).map((c) => c.name);
   if (!columns.includes("original_language")) db.exec("ALTER TABLE titles ADD COLUMN original_language TEXT NOT NULL DEFAULT ''");
   if (!columns.includes("keywords")) db.exec("ALTER TABLE titles ADD COLUMN keywords TEXT NOT NULL DEFAULT '[]'");
@@ -326,9 +330,9 @@ export function setListed(db: DatabaseSync, username: string, titleId: string, o
 }
 
 export type Rating = "down" | "up" | "love";
-export function setRating(db: DatabaseSync, username: string, titleId: string, rating: Rating | null) {
+export function setRating(db: DatabaseSync, username: string, titleId: string, rating: Rating | null, now = Date.now()) {
   if (rating === null) db.prepare("DELETE FROM ratings WHERE username = ? AND title_id = ?").run(username, titleId);
-  else if (rating === "down" || rating === "up" || rating === "love") db.prepare("INSERT INTO ratings (username, title_id, rating) VALUES (?,?,?) ON CONFLICT(username, title_id) DO UPDATE SET rating = excluded.rating").run(username, titleId, rating);
+  else if (rating === "down" || rating === "up" || rating === "love") db.prepare("INSERT INTO ratings (username, title_id, rating, rated_at) VALUES (?,?,?,?) ON CONFLICT(username, title_id) DO UPDATE SET rating = excluded.rating, rated_at = excluded.rated_at").run(username, titleId, rating, now);
   else throw new WatchProblem("Rate it down, up or love.");
 }
 export function ratingOf(db: DatabaseSync, username: string, titleId: string): Rating | null {
@@ -383,6 +387,7 @@ export function cleanPrefs(raw: unknown, base: Prefs): Prefs {
     shareWatching: typeof input.shareWatching === "boolean" ? input.shareWatching : base.shareWatching,
     invisible: typeof input.invisible === "boolean" ? input.invisible : base.invisible,
     friendsOnHome: typeof input.friendsOnHome === "boolean" ? input.friendsOnHome : base.friendsOnHome,
+    shareTaste: typeof input.shareTaste === "boolean" ? input.shareTaste : base.shareTaste,
   };
 }
 

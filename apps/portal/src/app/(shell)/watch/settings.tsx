@@ -117,6 +117,7 @@ export function SettingsPage({ me, onSwitch, signOut }: { me: Person; onSwitch: 
         </> : shown === "friends" ? <>
           <Row label="Show friends what I watch" done={ticked === "shareWatching"} inline><Toggle checked={prefs.shareWatching !== false} onChange={(v) => save("shareWatching", { shareWatching: v })} /></Row>
           {prefs.shareWatching !== false ? <Row label="Invisible for now" note="Friends don't see you watching, and what you watch meanwhile stays hidden." done={ticked === "invisible"} inline><Toggle checked={prefs.invisible === true} onChange={(v) => save("invisible", { invisible: v })} /></Row> : null}
+          <Row label="Share my list and ratings" done={ticked === "shareTaste"} inline><Toggle checked={prefs.shareTaste !== false} onChange={(v) => save("shareTaste", { shareTaste: v })} /></Row>
           <Row label="Friends on Home" done={ticked === "friendsOnHome"} inline><Toggle checked={prefs.friendsOnHome !== false} onChange={(v) => save("friendsOnHome", { friendsOnHome: v })} /></Row>
         </> : <>
           <div className="kw-set-me kw-set-me-pane">
