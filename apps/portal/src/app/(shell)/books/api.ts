@@ -13,10 +13,10 @@ export type ShelfState = "want" | "reading" | "read";
 export type Rating = "down" | "up" | "love";
 export type ShelfItem = { key: string; title: string; authors: string[]; cover: string | null; year: number | null; isbn: string | null; state: ShelfState; fraction: number; rating: Rating | null; updatedAt: string };
 export type Row = { id: string; title: string; books: Book[] };
-export type FriendOnBook = { username: string; name: string; picture: string | null; state: ShelfState; fraction: number; rating: Rating | null; updatedAt: string };
+export type FriendOnBook = { username: string; name: string; picture: string | null; state: ShelfState; fraction: number; rating: Rating | null; review: string | null; reviewedAt: string | null; updatedAt: string };
 export type FriendReading = FriendOnBook & { book: Book };
 export type Home = { shelf: ShelfItem[]; friends: FriendReading[]; rows: Row[] };
-export type Mine = { state: ShelfState; fraction: number; rating: Rating | null };
+export type Mine = { state: ShelfState; fraction: number; rating: Rating | null; review?: string | null; reviewedAt?: string | null };
 export type Page = { book: Book; byAuthor: Book[]; similar: Book[]; shelf: Mine | null; friends: FriendOnBook[] };
 
 /** A file a source has for a book: read it in Kimono when `readable`, or download it. */
@@ -41,6 +41,7 @@ export const booksApi = {
   setShelf: (key: string, state: ShelfState | null) => call<{ books: ShelfItem[] }>("/shelf", { method: "PUT", body: JSON.stringify({ key, state }) }),
   files: (key: string) => call<{ files: BookFileInfo[] }>(`/files?key=${encodeURIComponent(key)}`),
   rate: (key: string, rating: Rating | null) => call<{ shelf: Mine | null }>("/rating", { method: "PUT", body: JSON.stringify({ key, rating }) }),
+  review: (key: string, review: string | null) => call<{ shelf: Mine | null }>("/review", { method: "PUT", body: JSON.stringify({ key, review }) }),
   progress: (key: string, fraction: number) => call<{ key: string; state: ShelfState; fraction: number }>("/progress", { method: "POST", body: JSON.stringify({ key, fraction }) }),
 };
 

@@ -43,7 +43,7 @@ data class BookRow(val id: String, val title: String, val books: List<Book> = em
 @Serializable
 data class FriendOnBook(
     val username: String, val name: String = "", val picture: String? = null, val state: String, val fraction: Double = 0.0,
-    val rating: String? = null, val updatedAt: String = "", val book: Book? = null,
+    val rating: String? = null, val review: String? = null, val reviewedAt: String? = null, val updatedAt: String = "", val book: Book? = null,
 ) {
     /** "Loved it", "Reading · 40%", "Wants to read". */
     val verdict get() = when {
@@ -58,7 +58,7 @@ data class FriendOnBook(
 data class BooksHome(val shelf: List<ShelfItem> = emptyList(), val friends: List<FriendOnBook> = emptyList(), val rows: List<BookRow> = emptyList())
 
 @Serializable
-data class Mine(val state: String, val fraction: Double = 0.0, val rating: String? = null)
+data class Mine(val state: String, val fraction: Double = 0.0, val rating: String? = null, val review: String? = null, val reviewedAt: String? = null)
 
 @Serializable
 data class BookPage(val book: Book, val byAuthor: List<Book> = emptyList(), val similar: List<Book> = emptyList(), val shelf: Mine? = null, val friends: List<FriendOnBook> = emptyList())
@@ -99,6 +99,12 @@ class Books(private val session: Session) {
     suspend fun rate(key: String, rating: String?): Mine? = json.decodeFromString<Rated>(session.call("$BASE/rating", HttpMethod.Put) {
         contentType(ContentType.Application.Json)
         setBody(buildJsonObject { put("key", key); if (rating == null) put("rating", JsonNull) else put("rating", rating) }.toString())
+    }).shelf
+
+    /** What you thought, in your own words; null takes it down. Your friends see it. */
+    suspend fun review(key: String, review: String?): Mine? = json.decodeFromString<Rated>(session.call("$BASE/review", HttpMethod.Put) {
+        contentType(ContentType.Application.Json)
+        setBody(buildJsonObject { put("key", key); if (review == null) put("review", JsonNull) else put("review", review) }.toString())
     }).shelf
 
     suspend fun progress(key: String, fraction: Double): Progressed = json.decodeFromString(session.call("$BASE/progress", HttpMethod.Post) {
@@ -170,6 +176,7 @@ class Books(private val session: Session) {
 
     companion object {
         const val APP_ID = "kimono-books"
+        const val REVIEW_MAX = 5000
         private const val BASE = "/api/v1/books"
         private const val HOME = "$BASE/home"
         fun stateLabel(state: String) = when (state) { "want" -> "Want to read"; "reading" -> "Reading"; else -> "Read" }

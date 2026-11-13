@@ -260,13 +260,66 @@ function FriendsOnBook({ friends }: { friends: FriendOnBook[] }) {
       <span>{summary}</span>
     </div>
     <ul className="kb-friend-list">
-      {friends.map((f) => <li key={f.username}>
+      {[...friends].sort((a, b) => Number(!!b.review) - Number(!!a.review)).map((f) => <li key={f.username} className={cx(f.review && "kb-reviewed")}>
         <Face person={f} size={40} />
         <span className="kb-friend-name">{f.name}</span>
         <span className={cx("kb-verdict", f.rating && `kb-${f.rating}`)}>{f.rating ? <RatingIcon rating={f.rating} /> : null}{verdictOf(f)}</span>
+        {f.review ? <ReviewText text={f.review} /> : null}
       </li>)}
     </ul>
   </section>;
+}
+
+/** A review, folded to a few lines until you ask for the rest. */
+function ReviewText({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 280 || text.split("\n").length > 4;
+  return <div className="kb-review-text">
+    <div className={cx(long && !open && "kb-folded")}>{text.split(/\n{2,}/).map((p, i) => <p key={i}>{p}</p>)}</div>
+    {long ? <button className="kb-link" onClick={() => setOpen(!open)}>{open ? "Less" : "More"}</button> : null}
+  </div>;
+}
+
+const REVIEW_MAX = 5000;
+
+/** Your review: a quiet "Write a review" until you start; then yours, as friends see it, to edit or take down. */
+function YourReview({ review, onSave }: { review: string | null; onSave: (text: string | null) => Promise<boolean> }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(review ?? "");
+  const [saving, setSaving] = useState(false);
+  const area = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 420)}px`;
+  }, [draft, editing]);
+  const save = async (text: string | null) => {
+    setSaving(true);
+    const ok = await onSave(text);
+    setSaving(false);
+    if (ok) setEditing(false);
+  };
+  if (!editing) return review
+    ? <section className="kb-my-review" aria-label="Your review">
+      <div className="kb-my-review-head"><span>Your review</span><button className="kb-link" onClick={() => { setDraft(review); setEditing(true); }}>Edit</button></div>
+      <ReviewText text={review} />
+    </section>
+    : <button className="kb-write-review" onClick={() => { setDraft(""); setEditing(true); }}>
+      <svg viewBox="0 0 24 24" aria-hidden><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Zm10-12 3 3" /></svg>Write a review
+    </button>;
+  const text = draft.trim();
+  return <form className="kb-review-form" onSubmit={(e) => { e.preventDefault(); if (text) void save(text); }}>
+    <textarea ref={area} autoFocus value={draft} maxLength={REVIEW_MAX} placeholder="What did you think?" aria-label="Your review"
+      onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && text) void save(text); if (e.key === "Escape") { e.stopPropagation(); setEditing(false); } }} />
+    <div className="kb-review-actions">
+      {review ? <button type="button" className="kb-link kb-danger" disabled={saving} onClick={() => void save(null)}>Take down</button> : null}
+      {draft.length > REVIEW_MAX - 400 ? <span className="kb-count">{REVIEW_MAX - draft.length}</span> : null}
+      <span className="kb-grow" />
+      <button type="button" className="kb-btn" disabled={saving} onClick={() => setEditing(false)}>Cancel</button>
+      <button type="submit" className="kb-btn kb-filled" disabled={saving || !text || text === review}>{saving ? <MorphLoader tone="plain" ink="#000000" label="Saving" className="kb-ink" /> : review ? "Save" : "Post"}</button>
+    </div>
+  </form>;
 }
 
 /** How much you liked it: the same three round buttons as Watch. */
@@ -373,7 +426,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
   const rate = async (rating: Rating | null) => {
     if (!page) return;
     const before = page.shelf;
-    setPage({ ...page, shelf: { state: before?.state ?? "read", fraction: before?.fraction ?? 1, rating } });
+    setPage({ ...page, shelf: { ...before, state: before?.state ?? "read", fraction: before?.fraction ?? 1, rating } });
     try {
       const r = await booksApi.rate(page.book.key, rating);
       setPage((p) => p ? { ...p, shelf: r.shelf } : p);
@@ -385,11 +438,25 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
     }
   };
 
+  const review = async (text: string | null) => {
+    if (!page) return false;
+    try {
+      const r = await booksApi.review(page.book.key, text);
+      setPage((p) => p ? { ...p, shelf: r.shelf } : p);
+      const { books } = await booksApi.shelf();
+      onPlaced(books, r.shelf?.review ? "Review saved" : "Review taken down");
+      return true;
+    } catch (e) {
+      onPlaced(null, e instanceof BooksError ? e.message : "That didn't save.");
+      return false;
+    }
+  };
+
   const setFraction = async (fraction: number) => {
     if (!page) return;
     const r = await booksApi.progress(page.book.key, fraction).catch(() => null);
     if (!r) return;
-    setPage({ ...page, shelf: { state: r.state, fraction: r.fraction, rating: page.shelf?.rating ?? null } });
+    setPage({ ...page, shelf: { ...page.shelf, state: r.state, fraction: r.fraction, rating: page.shelf?.rating ?? null } });
     const { books } = await booksApi.shelf();
     onPlaced(books, r.state === "read" ? `Finished · ${page.book.title}` : undefined);
   };
@@ -421,6 +488,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
             <ShelfChoice current={page.shelf?.state ?? null} saving={saving} onChoose={place} />
             {page.shelf?.state === "reading" ? <PlaceControl key={page.shelf.fraction} fraction={page.shelf.fraction} pages={b.pages} onSave={setFraction} /> : null}
             <RateBook rating={page.shelf?.rating ?? null} onRate={rate} />
+            <YourReview key={page.book.key} review={page.shelf?.review ?? null} onSave={review} />
             {page.friends.length ? <FriendsOnBook friends={page.friends} /> : null}
             {description ? <div className={cx("kb-about", long && !more && "kb-folded")}>
               {description.split(/\n{2,}/).map((p, i) => <p key={i}>{p}</p>)}
@@ -431,7 +499,7 @@ function BookSheet({ bookKey, onClose, onOpen, onPlaced }: { bookKey: string; on
         </div>
         {page.byAuthor.length ? <Shelf title={`More by ${b.authors[0]}`}>{page.byAuthor.map((x) => <div key={x.key} className="kb-slot"><Book3D book={x} size="sm" onOpen={() => onOpen(x.key)} /><BookCaption book={x} /></div>)}</Shelf> : null}
         {reading ? <Reader bookKey={b.key} title={b.title} author={b.authors[0] ?? ""} file={reading} startAt={page.shelf?.state === "reading" ? page.shelf.fraction : 0}
-          onClose={() => setReading(null)} onProgress={(fraction) => { setPage((p) => p ? { ...p, shelf: { state: fraction >= 0.98 ? "read" : "reading", fraction, rating: p.shelf?.rating ?? null } } : p); booksApi.shelf().then((r) => onPlaced(r.books)).catch(() => {}); }} /> : null}
+          onClose={() => setReading(null)} onProgress={(fraction) => { setPage((p) => p ? { ...p, shelf: { ...p.shelf, state: fraction >= 0.98 ? "read" : "reading", fraction, rating: p.shelf?.rating ?? null } } : p); booksApi.shelf().then((r) => onPlaced(r.books)).catch(() => {}); }} /> : null}
         {page.similar.length ? <Shelf title="If you like this">{page.similar.map((x) => <div key={x.key} className="kb-slot"><Book3D book={x} size="sm" onOpen={() => onOpen(x.key)} /><BookCaption book={x} /></div>)}</Shelf> : null}
       </>}
     </div>

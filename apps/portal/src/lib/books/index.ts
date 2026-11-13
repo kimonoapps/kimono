@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS devices (
   /* Your own verdict, the same three as Watch: not for me, liked it, loved it. */
   const cols = (db.prepare("PRAGMA table_info(shelf)").all() as { name: string }[]).map((c) => c.name);
   if (!cols.includes("rating")) db.exec("ALTER TABLE shelf ADD COLUMN rating TEXT");
+  /* And in your own words: a review, which your friends see beside your verdict. */
+  if (!cols.includes("review")) db.exec("ALTER TABLE shelf ADD COLUMN review TEXT; ALTER TABLE shelf ADD COLUMN reviewed_at INTEGER;");
   db.exec("UPDATE OR IGNORE shelf SET username = lower(username) WHERE username != lower(username); UPDATE OR IGNORE devices SET username = lower(username) WHERE username != lower(username);");
 }
 
@@ -312,10 +314,26 @@ export function listShelf(username: string): ShelfItem[] {
   });
 }
 
-export function shelfStateOf(username: string, key: string): { state: ShelfState; fraction: number; rating: Rating | null } | null {
+export type Mine = { state: ShelfState; fraction: number; rating: Rating | null; review: string | null; reviewedAt: string | null };
+
+export function shelfStateOf(username: string, key: string): Mine | null {
   username = who(username);
-  const row = booksDb().prepare("SELECT state, fraction, rating FROM shelf WHERE username = ? AND key = ?").get(username, key) as { state: ShelfState; fraction: number; rating: Rating | null } | undefined;
-  return row ? { state: row.state, fraction: row.fraction, rating: row.rating ?? null } : null;
+  const row = booksDb().prepare("SELECT state, fraction, rating, review, reviewed_at FROM shelf WHERE username = ? AND key = ?").get(username, key) as
+    { state: ShelfState; fraction: number; rating: Rating | null; review: string | null; reviewed_at: number | null } | undefined;
+  return row ? { state: row.state, fraction: row.fraction, rating: row.rating ?? null, review: row.review ?? null, reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null } : null;
+}
+
+export const REVIEW_MAX = 5000;
+
+/** What you thought, in your own words (null takes it back). Reviewing a book you hadn't shelved puts it on Read. */
+export function setReview(username: string, key: string, review: string | null) {
+  username = who(username);
+  if (!getBook(key)) throw new BooksProblem("No such book.", 404);
+  const text = review?.replace(/\r\n?/g, "\n").replace(/\n{3,}/g, "\n\n").trim() || null;
+  if (text && text.length > REVIEW_MAX) throw new BooksProblem(`A review can be up to ${REVIEW_MAX} characters.`, 400);
+  const now = Date.now();
+  booksDb().prepare(`INSERT INTO shelf (username, key, state, fraction, added_at, updated_at, review, reviewed_at) VALUES (?, ?, 'read', 1, ?, ?, ?, ?)
+ON CONFLICT (username, key) DO UPDATE SET review = excluded.review, reviewed_at = excluded.reviewed_at, updated_at = excluded.updated_at`).run(username, key, now, now, text, text ? now : null);
 }
 
 /** How much you liked it. Rating a book you hadn't shelved puts it on Read. */
@@ -356,7 +374,7 @@ ON CONFLICT (username, key) DO UPDATE SET state = excluded.state, fraction = exc
 
 /* ── Friends ───────────────────────────────────────────────────────────── */
 
-export type FriendOnBook = { username: string; name: string; picture: string | null; state: ShelfState; fraction: number; rating: Rating | null; updatedAt: string };
+export type FriendOnBook = { username: string; name: string; picture: string | null; state: ShelfState; fraction: number; rating: Rating | null; review: string | null; reviewedAt: string | null; updatedAt: string };
 export type FriendReading = FriendOnBook & { book: Book };
 
 /** Your friends who keep Books on their profile: only they are shown. */
@@ -366,7 +384,8 @@ async function visibleFriends(viewer: string) {
   return friendsOfUser(who(viewer)).filter((u) => !hiddenAppsOf(friendsDb(), u).includes("books")).map((u) => personIn(everyone, u));
 }
 
-type FriendRow = { username: string; key: string; state: ShelfState; fraction: number; rating: Rating | null; updated_at: number };
+type FriendRow = { username: string; key: string; state: ShelfState; fraction: number; rating: Rating | null; review: string | null; reviewed_at: number | null; updated_at: number };
+const friendView = (r: FriendRow) => ({ state: r.state, fraction: r.fraction, rating: r.rating ?? null, review: r.review ?? null, reviewedAt: r.reviewed_at ? new Date(r.reviewed_at).toISOString() : null, updatedAt: new Date(r.updated_at).toISOString() });
 
 /** Which of your friends have this book (any edition of it) on their shelf, and what they made of it. */
 export async function friendsOnBook(viewer: string, key: string): Promise<FriendOnBook[]> {
@@ -376,14 +395,14 @@ export async function friendsOnBook(viewer: string, key: string): Promise<Friend
   const keys = (booksDb().prepare("SELECT key FROM records WHERE identity = ?").all(identity(book)) as { key: string }[]).map((r) => r.key);
   const marks = `(${keys.map(() => "?").join(",")})`;
   const names = `(${friends.map(() => "?").join(",")})`;
-  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, updated_at FROM shelf WHERE key IN ${marks} AND username IN ${names} ORDER BY updated_at DESC`)
+  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, review, reviewed_at, updated_at FROM shelf WHERE key IN ${marks} AND username IN ${names} ORDER BY updated_at DESC`)
     .all(...keys, ...friends.map((f) => f.username)) as FriendRow[];
   const seen = new Set<string>();
   return rows.flatMap((r) => {
     if (seen.has(r.username)) return [];
     seen.add(r.username);
     const p = friends.find((f) => f.username === r.username)!;
-    return [{ ...p, state: r.state, fraction: r.fraction, rating: r.rating ?? null, updatedAt: new Date(r.updated_at).toISOString() }];
+    return [{ ...p, ...friendView(r) }];
   });
 }
 
@@ -392,7 +411,7 @@ export async function friendsReading(viewer: string, limit = 24): Promise<Friend
   const friends = await visibleFriends(viewer);
   if (!friends.length) return [];
   const names = `(${friends.map(() => "?").join(",")})`;
-  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, updated_at FROM shelf WHERE username IN ${names} AND state != 'want' AND (rating IS NULL OR rating != 'down') ORDER BY updated_at DESC LIMIT 200`)
+  const rows = booksDb().prepare(`SELECT username, key, state, fraction, rating, review, reviewed_at, updated_at FROM shelf WHERE username IN ${names} AND state != 'want' AND (rating IS NULL OR rating != 'down') ORDER BY updated_at DESC LIMIT 200`)
     .all(...friends.map((f) => f.username)) as FriendRow[];
   const out: FriendReading[] = [];
   const seen = new Set<string>();
@@ -401,7 +420,7 @@ export async function friendsReading(viewer: string, limit = 24): Promise<Friend
     if (!book || seen.has(identity(book))) continue;
     seen.add(identity(book));
     const p = friends.find((f) => f.username === r.username)!;
-    out.push({ ...p, state: r.state, fraction: r.fraction, rating: r.rating ?? null, updatedAt: new Date(r.updated_at).toISOString(), book });
+    out.push({ ...p, ...friendView(r), book });
     if (out.length >= limit) break;
   }
   return out;

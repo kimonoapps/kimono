@@ -546,7 +546,7 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
         val current = page
         BookReader(books, platform, key, current?.book?.title ?: "", f, startAt = current?.shelf?.takeIf { it.state == "reading" }?.fraction ?: 0.0,
             onClose = { readingFile = null }) { fraction ->
-            page = page?.let { pg -> pg.copy(shelf = app.kimono.data.Mine(if (fraction >= .98) "read" else "reading", fraction, pg.shelf?.rating)) }
+            page = page?.let { pg -> pg.copy(shelf = (pg.shelf ?: app.kimono.data.Mine("reading")).copy(state = if (fraction >= .98) "read" else "reading", fraction = fraction)) }
             changed()
         }
     }
@@ -584,7 +584,7 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                         runCatching {
                             val path = books.download(best, platform.cacheDir()) { got -> fetching = best.size?.let { (got.toFloat() / it).coerceIn(0f, 1f) } ?: 0f }
                             platform.openFile(path, if (best.format == "pdf") "application/pdf" else "application/epub+zip")
-                            if (p.shelf?.state != "reading" && p.shelf?.state != "read") { books.place(key, "reading"); page = p.copy(shelf = app.kimono.data.Mine("reading")); changed() }
+                            if (p.shelf?.state != "reading" && p.shelf?.state != "read") { books.place(key, "reading"); page = p.copy(shelf = (p.shelf ?: app.kimono.data.Mine("reading")).copy(state = "reading")); changed() }
                         }.onFailure { say(it.message ?: "That book didn't open.") }
                         fetching = null
                     }
@@ -592,7 +592,7 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                 ShelfIcons(p.shelf?.state) { s ->
                     val on = p.shelf?.state == s
                     val before = p.shelf
-                    page = p.copy(shelf = if (on) null else app.kimono.data.Mine(s, if (s == "read") 1.0 else before?.fraction ?: 0.0, before?.rating))
+                    page = p.copy(shelf = if (on) null else (before ?: app.kimono.data.Mine(s)).copy(state = s, fraction = if (s == "read") 1.0 else before?.fraction ?: 0.0))
                     scope.launch {
                         runCatching { books.place(key, if (on) null else s) }
                             .onSuccess { changed(); say(if (on) "Taken off your shelf" else "${Books.stateLabel(s)} · ${b.title}") }
@@ -627,7 +627,7 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                 }
                 if (updating) PlaceDialog(b.title, f, b.pages, onDismiss = { updating = false }) { next ->
                     runCatching { books.progress(key, next) }.onSuccess { r ->
-                        page = p.copy(shelf = app.kimono.data.Mine(r.state, r.fraction, p.shelf.rating)); changed()
+                        page = p.copy(shelf = p.shelf.copy(state = r.state, fraction = r.fraction)); changed()
                         if (r.state == "read") say("Finished · ${b.title}")
                     }.isSuccess
                 }
@@ -641,13 +641,42 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                     Surface(onClick = {
                         /* Fills at once; goes back only if it didn't save. */
                         val before = p.shelf
-                        page = p.copy(shelf = app.kimono.data.Mine(before?.state ?: "read", before?.fraction ?: 1.0, if (on) null else r))
+                        page = p.copy(shelf = (before ?: app.kimono.data.Mine("read", 1.0)).copy(rating = if (on) null else r))
                         scope.launch { runCatching { books.rate(key, if (on) null else r) }.onSuccess { mine -> page = page?.copy(shelf = mine); changed() }.onFailure { page = page?.copy(shelf = before); say("That didn't save.") } }
                     }, shape = RoundedCornerShape(corner), color = when { !on -> MaterialTheme.colorScheme.surfaceContainerHighest; r == "love" -> Color(0xFFA8475F); else -> MaterialTheme.colorScheme.primary },
                         contentColor = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(52.dp).semantics { contentDescription = Books.ratingLabel(r) }) {
                         Box(contentAlignment = Alignment.Center) { RatingGlyph(r, on, if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, 24.dp) }
                     }
                 }
+            }
+            /* In your own words: a quiet invitation until there's a review, then yours as friends see it. */
+            var reviewing by remember(key) { mutableStateOf(false) }
+            val mine = p.shelf?.review
+            if (mine == null) {
+                Surface(onClick = { reviewing = true }, shape = RoundedCornerShape(24.dp), color = Color.Transparent,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 20.dp, top = 14.dp).height(44.dp)) {
+                    Row(Modifier.padding(start = 14.dp, end = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PenGlyph(MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Write a review", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            } else {
+                Surface(onClick = { reviewing = true }, shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp).fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Your review", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text("Edit", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Text(mine, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+            }
+            if (reviewing) ReviewDialog(b.title, mine, onDismiss = { reviewing = false }) { text ->
+                runCatching { books.review(key, text) }.onSuccess { shelf ->
+                    page = page?.copy(shelf = shelf); changed()
+                    say(if (text == null) "Review taken down" else "Review saved")
+                }.isSuccess
             }
             if (p.friends.isNotEmpty()) FriendsOn(p.friends)
             if (b.description.isNotBlank()) {
@@ -708,6 +737,55 @@ private fun PlaceDialog(title: String, fraction: Double, pages: Int?, onDismiss:
     }
 }
 
+/** Writing a review, or changing or taking down yours. */
+@Composable
+private fun ReviewDialog(title: String, review: String?, onDismiss: () -> Unit, save: suspend (String?) -> Boolean) {
+    var draft by remember { mutableStateOf(review.orEmpty()) }
+    var saving by remember { mutableStateOf(false) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val text = draft.trim()
+    fun send(value: String?) {
+        saving = true; problem = null
+        scope.launch { if (save(value)) onDismiss() else problem = "That didn't save."; saving = false }
+    }
+    app.kimono.ui.InkDialog(
+        title = if (review == null) "Your review" else "Edit your review",
+        icon = "book",
+        tint = MaterialTheme.colorScheme.primary,
+        onDismiss = onDismiss,
+        actions = {
+            if (review != null) app.kimono.ui.Seal("Take down", compact = true, tone = app.kimono.ui.SealTone.Quiet, onClick = { if (!saving) send(null) })
+            else app.kimono.ui.Seal("Cancel", compact = true, tone = app.kimono.ui.SealTone.Quiet, onClick = onDismiss)
+            app.kimono.ui.Seal(if (review == null) "Post" else "Save", compact = true, busy = saving, onClick = {
+                if (text.isNotEmpty() && text != review && !saving) send(text)
+            })
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            androidx.compose.material3.OutlinedTextField(
+                draft, { draft = it.take(Books.REVIEW_MAX) },
+                placeholder = { Text("What did you think?") },
+                minLines = 5, maxLines = 10, shape = RoundedCornerShape(18.dp),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (draft.length > Books.REVIEW_MAX - 400) Text("${Books.REVIEW_MAX - draft.length} left", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            problem?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+@Composable
+private fun PenGlyph(color: Color) {
+    val path = remember { androidx.compose.ui.graphics.vector.PathParser().parsePathString("M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Zm10-12 3 3").toPath() }
+    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+        val k = size.width / 24f
+        scale(k, k, pivot = androidx.compose.ui.geometry.Offset.Zero) { drawPath(path, color, style = Stroke(width = 1.8f, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
+    }
+}
+
 @Composable
 private fun Fact(value: String, label: String) {
     Column {
@@ -723,11 +801,16 @@ private fun FriendsOn(friends: List<FriendOnBook>) {
             val loved = friends.count { it.rating == "love" }
             Text(if (friends.size == 1) "A friend has this" else "${friends.size} friends${if (loved > 0) " · $loved loved it" else ""}",
                 style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            friends.forEach { f ->
+            friends.sortedByDescending { it.review != null }.forEach { f ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Portrait(f.picture, f.name, f.username, 40.dp)
                     Text(f.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
                     Text(f.verdict, style = MaterialTheme.typography.labelLarge, color = if (f.rating == "love") Color(0xFFA8475F) else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                f.review?.let { text ->
+                    var open by remember(f.username) { mutableStateOf(false) }
+                    Text(text, style = MaterialTheme.typography.bodyMedium, maxLines = if (open) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 68.dp, end = 16.dp, bottom = 8.dp).clip(RoundedCornerShape(8.dp)).clickable { open = !open })
                 }
             }
         }
