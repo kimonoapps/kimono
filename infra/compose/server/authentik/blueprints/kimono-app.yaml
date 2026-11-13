@@ -25,12 +25,18 @@ entries:
       invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
       client_type: public
       client_id: kimono-app
-      grant_types: [authorization_code, refresh_token]
+      # The device code grant is for Kimono on devices with no browser, such as
+      # the Silkscreen e-reader: it shows a short code, and the person approves
+      # it from their phone at /device, through the same consent page.
+      grant_types: [authorization_code, refresh_token, "urn:ietf:params:oauth:grant-type:device_code"]
       # The Portal checks the app's access tokens against this provider's keys.
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
       # Short access, long refresh: a lost phone stops working within minutes
       # of being signed out, and a kept one doesn't ask for a password monthly.
       access_token_validity: minutes=10
+      # Also how long a device's sign-in code lasts: long enough to find the
+      # phone and type it. Authentik's default of a minute is not.
+      access_code_validity: minutes=5
       refresh_token_validity: days=30
       # A new refresh token only in its last week. The app and its Files
       # extension renew from the same kept token, often at the same moment;
@@ -59,3 +65,25 @@ entries:
       provider: !KeyOf kimono-app-provider
       # Not something to open from a browser, so it stays off the app list.
       meta_launch_url: blank://blank
+
+  # Where a person types a device's code. Authentik serves it at /device, and
+  # only once the brand names a flow for it. The flow itself is empty: Authentik
+  # adds the code entry, then the provider's sign-in and consent above.
+  - id: kimono-device-code-flow
+    model: authentik_flows.flow
+    state: present
+    identifiers:
+      slug: kimono-device-code
+    attrs:
+      name: Kimono device sign-in
+      title: Sign in a device to Kimono
+      designation: stage_configuration
+      authentication: require_authenticated
+
+  # Only this one field of the brand; the rest of it is set in kimono-headscale.yaml.
+  - model: authentik_brands.brand
+    state: present
+    identifiers:
+      domain: !Env AUTHENTIK_DOMAIN
+    attrs:
+      flow_device_code: !KeyOf kimono-device-code-flow
