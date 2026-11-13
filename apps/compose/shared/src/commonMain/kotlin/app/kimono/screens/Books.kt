@@ -3,6 +3,7 @@
 package app.kimono.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -203,6 +204,39 @@ fun Book3D(book: Book, width: Dp, modifier: Modifier = Modifier, progress: Doubl
             )
         }
         if (badge != null) Box(Modifier.offset((-6).dp, (-6).dp)) { badge() }
+    }
+}
+
+/* ── Your shelf as three icons: the chosen one fills and opens out to say what it is ── */
+private val shelfPaths = mapOf(
+    "want" to "M7 4.5h10v15.5l-5-3.6-5 3.6V4.5Z",
+    "reading" to "M12 6.5C10 5 7.5 4.5 4 5v13c3.5-.5 6 0 8 1.5 2-1.5 4.5-2 8-1.5V5c-3.5-.5-6 0-8 1.5Zm0 0V19.5",
+    "read" to "m5 12.5 4.5 4.5L19 7.5",
+)
+
+@Composable
+private fun ShelfIcons(current: String?, onChoose: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        listOf("want", "reading", "read").forEach { s ->
+            val on = current == s
+            val path = remember(s) { androidx.compose.ui.graphics.vector.PathParser().parsePathString(shelfPaths.getValue(s)).toPath() }
+            val color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            Surface(onClick = { onChoose(s) }, shape = RoundedCornerShape(24.dp),
+                color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.height(48.dp).semantics { contentDescription = Books.stateLabel(s) }) {
+                Row(Modifier.animateContentSize(spring(dampingRatio = .7f, stiffness = 500f)).padding(horizontal = if (on) 16.dp else 12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.foundation.Canvas(Modifier.size(22.dp)) {
+                        val k = size.width / 24f
+                        scale(k, k, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+                            if (on && s == "want") drawPath(path, color)
+                            drawPath(path, color, style = Stroke(width = 1.9f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        }
+                    }
+                    if (on) Text(Books.stateLabel(s), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
     }
 }
 
@@ -488,10 +522,19 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
     var missing by remember(key) { mutableStateOf(false) }
     var fetching by remember(key) { mutableStateOf<Float?>(null) }
     var expanded by remember(key) { mutableStateOf(false) }
+    var readingFile by remember(key) { mutableStateOf<BookFile?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(key) {
         runCatching { books.book(key) }.onSuccess { page = it }.onFailure { if (page == null) say(it.message ?: "This book didn't open.") }
         files = runCatching { books.files(key) }.getOrElse { emptyList() }
+    }
+    readingFile?.let { f ->
+        val current = page
+        BookReader(books, platform, key, current?.book?.title ?: "", f, startAt = current?.shelf?.takeIf { it.state == "reading" }?.fraction ?: 0.0,
+            onClose = { readingFile = null }) { fraction ->
+            page = page?.let { pg -> pg.copy(shelf = app.kimono.data.Mine(if (fraction >= .98) "read" else "reading", fraction, pg.shelf?.rating)) }
+            changed()
+        }
     }
     /* Opens half-way, with the book and its buttons in reach; drag up for the rest. Never under the status bar. */
     InkSheet(onDismissRequest = onDismiss, sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = false), seed = key, wash = false) {
@@ -515,10 +558,13 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                 }
             }
             /* Read it here: the ink loader while Books looks for a copy, a plain word when there isn't one. */
-            Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            /* Read, then your shelf as three small icons beside it: the chosen one opens out to say what it is. */
+            Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 val best = files?.firstOrNull { it.readable }
-                PillButton(if (best?.sample == true) "Preview" else "Read", filled = true, modifier = Modifier.weight(1f), busy = files == null || fetching != null, loaderColor = Color.Black) {
+                PillButton(if (best?.sample == true) "Preview" else "Read", filled = true, modifier = Modifier.weight(1f).height(48.dp), busy = files == null || fetching != null, loaderColor = Color.Black) {
                     if (best == null) { missing = true; return@PillButton }
+                    /* An EPUB opens in Kimono's own reader, a part at a time; a PDF in the phone's viewer. */
+                    if (best.format == "epub") { readingFile = best; return@PillButton }
                     scope.launch {
                         fetching = 0f
                         runCatching {
@@ -527,6 +573,16 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                             if (p.shelf?.state != "reading" && p.shelf?.state != "read") { books.place(key, "reading"); page = p.copy(shelf = app.kimono.data.Mine("reading")); changed() }
                         }.onFailure { say(it.message ?: "That book didn't open.") }
                         fetching = null
+                    }
+                }
+                ShelfIcons(p.shelf?.state) { s ->
+                    val on = p.shelf?.state == s
+                    val before = p.shelf
+                    page = p.copy(shelf = if (on) null else app.kimono.data.Mine(s, if (s == "read") 1.0 else before?.fraction ?: 0.0, before?.rating))
+                    scope.launch {
+                        runCatching { books.place(key, if (on) null else s) }
+                            .onSuccess { changed(); say(if (on) "Taken off your shelf" else "${Books.stateLabel(s)} · ${b.title}") }
+                            .onFailure { page = page?.copy(shelf = before); say("That didn't save.") }
                     }
                 }
             }
@@ -541,26 +597,6 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                     }
                 }
             }
-            /* Want to read · Reading · Read: a connected group; the chosen one rounds out. */
-            Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf("want", "reading", "read").forEachIndexed { i, s ->
-                    val on = p.shelf?.state == s
-                    val outer = 24.dp
-                    val inner by animateDpAsState(if (on) 24.dp else 8.dp, spring(dampingRatio = .55f))
-                    Surface(onClick = {
-                        scope.launch {
-                            runCatching { books.place(key, if (on) null else s) }
-                                .onSuccess { page = p.copy(shelf = if (on) null else app.kimono.data.Mine(s, if (s == "read") 1.0 else p.shelf?.fraction ?: 0.0, p.shelf?.rating)); changed(); say(if (on) "Taken off your shelf" else "${Books.stateLabel(s)} · ${b.title}") }
-                                .onFailure { say("That didn't save.") }
-                        }
-                    }, shape = RoundedCornerShape(if (i == 0) outer else inner, if (i == 2) outer else inner, if (i == 2) outer else inner, if (i == 0) outer else inner),
-                        color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(if (on) 1.2f else 1f).height(52.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Text(Books.stateLabel(s), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1) }
-                    }
-                }
-            }
             /* Your place: shown, and changed only on purpose (Update), never by brushing it while scrolling. */
             if (p.shelf?.state == "reading") {
                 var updating by remember(key) { mutableStateOf(false) }
@@ -572,9 +608,8 @@ fun BookSheet(books: Books, platform: app.kimono.data.Platform, key: String, onD
                             Box(Modifier.fillMaxHeight().fillMaxWidth(f.toFloat().coerceIn(.02f, 1f)).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
                         }
                     }
-                    Surface(onClick = { updating = true }, shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, modifier = Modifier.height(40.dp)) {
-                        Box(Modifier.padding(horizontal = 16.dp), contentAlignment = Alignment.Center) { Text("Update", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold) }
-                    }
+                    Text("Update", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { updating = true }.padding(horizontal = 12.dp, vertical = 10.dp))
                 }
                 if (updating) PlaceDialog(b.title, f, b.pages, onDismiss = { updating = false }) { next ->
                     runCatching { books.progress(key, next) }.onSuccess { r ->

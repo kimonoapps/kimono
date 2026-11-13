@@ -2,16 +2,19 @@ package app.kimono.data
 
 import io.ktor.client.request.header
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.encodeURLQueryComponent
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.readAvailable
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.readByteArray
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -137,6 +140,28 @@ class Books(private val session: Session) {
         })
         SystemFileSystem.atomicMove(partial, target)
         return target.toString()
+    }
+
+    /**
+     * One part of an EPUB (its container, package, a chapter, an image), as
+     * the server serves them (api/v1/books/epub), so the reader opens on a few
+     * small requests. Parts are kept on the phone: a book read once opens at
+     * once, and works offline for what's been read.
+     */
+    suspend fun epubPart(address: String, path: String, cacheDir: String): ByteArray {
+        val id = kotlin.io.encoding.Base64.UrlSafe.encode(address.encodeToByteArray()).trimEnd('=')
+        val clean = path.trimStart('/').split('/').joinToString("/") { it.encodeURLPathPart() }
+        val keep = Path(cacheDir, "books", "parts", id.take(80), clean.replace('/', '_').take(180))
+        runCatching { if (SystemFileSystem.exists(keep)) return SystemFileSystem.source(keep).buffered().use { it.readByteArray() } }
+        val bytes = session.respond("$BASE/epub/$id/$clean") { response ->
+            if (!response.status.isSuccess()) throw session.problemOf(response, "That book didn't open.")
+            response.bodyAsBytes()
+        }
+        runCatching {
+            keep.parent?.let { SystemFileSystem.createDirectories(it) }
+            SystemFileSystem.sink(keep).buffered().use { it.write(bytes) }
+        }
+        return bytes
     }
 
     /** A file's address on this Kimono, for the reader or to save a copy. */
