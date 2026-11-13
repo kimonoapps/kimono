@@ -130,10 +130,10 @@ private fun <T> Shelf(items: List<T>, key: (T) -> String, item: (T) -> ShareItem
                     HoldMenu(menu(entry), onClick = { menu(entry).firstOrNull()?.onClick?.invoke() }) { Cover(shown, Modifier.fillMaxWidth()) }
                     /* On your own profile: one tap takes it off the row. */
                     if (drop != null) Box(
-                        Modifier.align(Alignment.TopEnd).padding(6.dp).size(34.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surface.copy(alpha = .88f))
+                        Modifier.align(Alignment.TopEnd).padding(6.dp).size(34.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = .92f))
                             .clickable { drop(entry) }.semantics { contentDescription = "Take ${shown.title} off" },
                         contentAlignment = Alignment.Center,
-                    ) { Icon(kimonoIcon("close"), null, tint = Kata.plum, modifier = Modifier.size(18.dp)) }
+                    ) { Icon(kimonoIcon("close"), null, tint = plumInk, modifier = Modifier.size(18.dp)) }
                 }
                 Text(shown.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 shown.subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
@@ -244,13 +244,17 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     var removing by remember { mutableStateOf(false) }
     var recommending by remember { mutableStateOf<ShareItem?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    var privacyOpen by remember { mutableStateOf(false) }
+    /* Which app's rows are open to choose what friends see of them. */
+    var privacyOpen by remember { mutableStateOf<String?>(null) }
     suspend fun load() { try { profile = friends.profile(username); problem = null } catch (p: KimonoProblem) { problem = p.message } }
     LaunchedEffect(username) { load() }
     val mine = profile?.you == true
     LaunchedEffect(mine) { if (mine) runCatching { asked = friends.list().asked.size } }
     fun change(type: String) = scope.launch { try { friends.change(type, username); load() } catch (p: KimonoProblem) { problem = p.message } }
-    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = { KimonoTopBar("", onBack = back) }) { padding ->
+    val toSettings: () -> Unit = { own?.settings?.invoke() ?: open("settings") }
+    Scaffold(containerColor = MaterialTheme.colorScheme.surface, topBar = {
+        KimonoTopBar("", onBack = back) { if (profile?.you == true) Seal("Settings", onClick = toSettings, tone = SealTone.Quiet, compact = true, icon = "cog") }
+    }) { padding ->
         KimonoRefresh(refreshing, onRefresh = { scope.launch { refreshing = true; load(); refreshing = false } }, modifier = Modifier.padding(padding).fillMaxSize()) {
             val p: KimonoProfile? = profile
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -269,13 +273,9 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                     if (p.open && p.you) InPlaceField(p.bio, "A few words about you", MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface), limit = 280) { bio ->
                         try { val saved = friends.saveBio(bio); profile = profile?.copy(bio = saved); problem = null; true } catch (e: KimonoProblem) { problem = e.message; false }
                     } else if (p.open && p.bio.isNotBlank()) Text(p.bio, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
-                    /* Your two doors: who sees what, and settings. Invisible inks the first. */
-                    if (p.you) Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val invisible = p.privacy?.invisible == true
-                        Seal(if (invisible) "Invisible" else "Who sees what", onClick = { privacyOpen = true }, modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                            tone = if (invisible) SealTone.Primary else SealTone.Quiet, compact = true, icon = "lock")
-                        Seal("Settings", onClick = { own?.settings?.invoke() ?: open("settings") }, modifier = Modifier.weight(1f).heightIn(min = 48.dp), tone = SealTone.Quiet, compact = true, icon = "cog")
-                    } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    /* Invisible is Settings'; while it's on, it says so here. */
+                    if (p.you) { if (p.privacy?.invisible == true) SeenTag(true, label = "Invisible", onClick = toSettings) }
+                    else Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
                         when {
                             p.link == "friends" -> Seal("Friends", compact = true, tone = SealTone.Quiet, onClick = { removing = true })
                             p.link == "asked" -> { Seal("Not now", compact = true, tone = SealTone.Quiet, onClick = { change("no") }); Seal("Accept", compact = true, onClick = { change("yes") }) }
@@ -296,7 +296,11 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                 val list = p.friendList
                 if (p.open && (!list.isNullOrEmpty() || p.you)) {
                     val listKept = p.you && (p.privacy?.invisible == true || p.privacy?.friends == false)
-                    SectionHead("friends", "people", "Friends") { if (p.you) SeenTag(listKept) { privacyOpen = true } }
+                    SectionHead("friends", "people", "Friends") { if (p.you) SeenTag(listKept) {
+                        if (p.privacy?.invisible == true) toSettings()
+                        /* The friends list flips at once. */
+                        else scope.launch { try { val now = friends.showPart("friends", listKept); profile = profile?.copy(privacy = now.privacy, hidden = now.hidden, kept = now.privacy.kept) } catch (e: KimonoProblem) { problem = e.message } }
+                    } }
                     if (!list.isNullOrEmpty()) LazyRow(Modifier.alpha(if (listKept) .5f else 1f), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(list, key = { it.username }) { f ->
                             Column(
@@ -319,10 +323,10 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
                 if (p.open) p.sections.groupBy { it.app }.forEach { (app, rows) ->
                     val kept = app in p.hidden
                     val some = p.privacy?.apps?.firstOrNull { it.app == app }?.rows?.any { !it.shown } == true
-                    SectionHead("app:$app", if (app == "books") "book" else "film", rows.first().appName) { if (p.you) SeenTag(kept, some) { privacyOpen = true } }
+                    SectionHead("app:$app", if (app == "books") "book" else "film", rows.first().appName) { if (p.you) SeenTag(kept, some) { if (p.privacy?.invisible == true) toSettings() else privacyOpen = app } }
                     rows.forEach { s ->
                         val rowKept = !kept && p.you && "${s.app}:${s.kind}" in p.kept
-                        KeptLabel(s.title, rowKept) { privacyOpen = true }
+                        KeptLabel(s.title, rowKept) { privacyOpen = app }
                         Box(Modifier.alpha(if (kept || rowKept) .5f else 1f)) {
                             Shelf(s.items, { "${s.app}:${it.itemId}" }, { it }, { listOf(MenuChoice("Recommend") { recommending = it }) }, drop = if (p.you) { item ->
                                 /* Off the row at once (as its app would take it off); back if that fails. */
@@ -340,7 +344,8 @@ fun ProfileScreen(friends: Friends, username: String, still: Boolean = false, op
     }
     val p = profile
     val privacy = p?.privacy
-    if (privacyOpen && p != null && privacy != null) PrivacyDialog(friends, privacy, onDismiss = { privacyOpen = false }) { now ->
+    val openApp = privacyOpen
+    if (openApp != null && p != null && privacy != null) AppPrivacyDialog(friends, openApp, privacy, onDismiss = { privacyOpen = null }) { now ->
         profile = profile?.copy(privacy = now.privacy, hidden = now.hidden, kept = now.privacy.kept)
     }
     if (removing && p != null) InkConfirm(
@@ -371,7 +376,7 @@ private fun SectionHead(seed: String, icon: String, title: String, trailing: @Co
 
 /** What friends see of a part of you, one tag everywhere; it opens Who sees what. */
 @Composable
-private fun SeenTag(kept: Boolean, some: Boolean = false, onClick: () -> Unit) {
+private fun SeenTag(kept: Boolean, some: Boolean = false, label: String? = null, onClick: () -> Unit) {
     val ink = if (kept) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         Modifier.clip(RoundedCornerShape(10.dp, 6.dp, 10.dp, 6.dp))
@@ -380,16 +385,13 @@ private fun SeenTag(kept: Boolean, some: Boolean = false, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(kimonoIcon(if (kept) "lock" else "eye"), null, tint = ink, modifier = Modifier.size(16.dp))
-        Text(if (kept) "Only you" else if (some) "Friends see some" else "Friends see this", style = MaterialTheme.typography.labelLarge, color = ink)
+        Text(label ?: if (kept) "Only you" else if (some) "Friends see some" else "Friends see this", style = MaterialTheme.typography.labelLarge, color = ink)
     }
 }
 
-/**
- * Who sees what: going invisible (friends see your name and portrait, and no app shows them what you do),
- * then your friends list, each app and each of its rows. Every switch saves as it's flipped.
- */
+/** What friends see of one app: the app itself, then each of its rows. Every switch saves as it's flipped. */
 @Composable
-private fun PrivacyDialog(friends: Friends, privacy: app.kimono.data.Privacy, onDismiss: () -> Unit, onChanged: (app.kimono.data.PrivacyNow) -> Unit) {
+private fun AppPrivacyDialog(friends: Friends, app: String, privacy: app.kimono.data.Privacy, onDismiss: () -> Unit, onChanged: (app.kimono.data.PrivacyNow) -> Unit) {
     val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(privacy) }
     var problem by remember { mutableStateOf<String?>(null) }
@@ -398,22 +400,15 @@ private fun PrivacyDialog(friends: Friends, privacy: app.kimono.data.Privacy, on
         now = optimistic
         scope.launch { try { val r = call(); now = r.privacy; onChanged(r); problem = null } catch (e: KimonoProblem) { now = was; problem = e.message } }
     }
-    val off = now.invisible
-    InkDialog(title = "Who sees what", icon = "lock", onDismiss = onDismiss, actions = { Seal("Done", compact = true, onClick = onDismiss) }) {
-        PrivacySwitch("Invisible", now.invisible, bold = true, note = "Friends see only your name and portrait.") { on -> save(now.copy(invisible = on)) { friends.setInvisible(on) } }
-        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-        Column(Modifier.alpha(if (off) .45f else 1f)) {
-            PrivacySwitch("Friends list", now.friends, bold = true, enabled = !off) { on -> save(now.copy(friends = on)) { friends.showPart("friends", on) } }
-            now.apps.forEach { a ->
-                PrivacySwitch(a.name, a.shown, bold = true, enabled = !off) { on ->
-                    save(now.copy(apps = now.apps.map { if (it.app == a.app) it.copy(shown = on) else it })) { friends.showAppOf(a.app, on) }
-                }
-                Column(Modifier.padding(start = 18.dp).alpha(if (a.shown) 1f else .45f)) {
-                    a.rows.forEach { r ->
-                        PrivacySwitch(r.title, r.shown, enabled = !off && a.shown) { on ->
-                            save(now.copy(apps = now.apps.map { if (it.app == a.app) it.copy(rows = it.rows.map { x -> if (x.kind == r.kind) x.copy(shown = on) else x }) else it })) { friends.showPart("${a.app}:${r.kind}", on) }
-                        }
-                    }
+    val a = now.apps.firstOrNull { it.app == app } ?: return
+    InkDialog(title = a.name, icon = if (app == "books") "book" else "film", onDismiss = onDismiss, actions = { Seal("Done", compact = true, onClick = onDismiss) }) {
+        PrivacySwitch("Friends see your ${a.name}", a.shown, bold = true) { on ->
+            save(now.copy(apps = now.apps.map { if (it.app == a.app) it.copy(shown = on) else it })) { friends.showAppOf(a.app, on) }
+        }
+        Column(Modifier.padding(start = 18.dp).alpha(if (a.shown) 1f else .45f)) {
+            a.rows.forEach { r ->
+                PrivacySwitch(r.title, r.shown, enabled = a.shown) { on ->
+                    save(now.copy(apps = now.apps.map { if (it.app == a.app) it.copy(rows = it.rows.map { x -> if (x.kind == r.kind) x.copy(shown = on) else x }) else it })) { friends.showPart("${a.app}:${r.kind}", on) }
                 }
             }
         }

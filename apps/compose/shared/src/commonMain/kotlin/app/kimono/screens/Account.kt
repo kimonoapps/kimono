@@ -162,6 +162,8 @@ fun SettingsScreen(session: Session, platform: Platform, me: AccountProfile?, op
                 GroupItem("Password", icon = "lock") { open("password") },
                 GroupItem("Signed-in devices", icon = "phone") { open("devices") },
             ))
+            GroupLabel("Privacy")
+            InvisibleRow(session)
             GroupLabel("Devices")
             KimonoGroup(listOf(GroupItem("Set up Kimono Read", icon = "book") { open("kimono-read") }))
             /* Administrators look after the household's apps from here, as under Admin on the website. */
@@ -291,3 +293,38 @@ private val lookPages = linkedMapOf(
     "light" to ("Light" to listOf(app.kimono.ui.DayLook)),
     "dark" to ("Dark" to listOf(app.kimono.ui.NightLook)),
 )
+
+/** Settings' Invisible: friends see your name and portrait, and no app shows them what you do. */
+@Composable
+private fun InvisibleRow(session: Session) {
+    val scope = rememberCoroutineScope()
+    var on by remember { mutableStateOf<Boolean?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        on = runCatching {
+            val profile = Json.parseToJsonElement(session.fetch("/api/v1/profile")) as kotlinx.serialization.json.JsonObject
+            ((profile["privacy"] as? kotlinx.serialization.json.JsonObject)?.get("invisible") as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
+        }.getOrDefault(false)
+    }
+    SegmentedListItem(
+        onClick = {},
+        shapes = ListItemDefaults.segmentedShapes(0, 1),
+        colors = segmentColors(),
+        modifier = Modifier.padding(horizontal = 16.dp),
+        leadingContent = { InkBlot("invisible") { Icon(kimonoIcon("lock"), null, tint = Kata.plum, modifier = Modifier.size(20.dp)) } },
+        supportingContent = { Text(problem ?: "Friends see your name and portrait") },
+        trailingContent = {
+            on?.let { now ->
+                androidx.compose.material3.Switch(now, { next ->
+                    on = next
+                    scope.launch {
+                        try {
+                            session.call("/api/v1/profile", HttpMethod.Patch) { contentType(ContentType.Application.Json); setBody(buildJsonObject { put("invisible", next) }.toString()) }
+                            problem = null
+                        } catch (p: KimonoProblem) { on = now; problem = p.message }
+                    }
+                })
+            }
+        },
+    ) { Text("Invisible", style = MaterialTheme.typography.bodyLarge) }
+}
