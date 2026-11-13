@@ -38,10 +38,13 @@
 .kb .kb-top.kb-solid{background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);box-shadow:0 1px 0 var(--line)}
 .kb .kb-brand{flex:none;border-radius:16px;padding:4px 6px 4px 2px;transition:background .2s}
 .kb .kb-brand:hover{background:var(--surface-2)}
-.kb .kb-tabs{display:none;gap:4px;flex:none;padding:4px;border-radius:999px;background:var(--surface-2)}
-.kb .kb-tabs button{display:flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;font-size:15px;font-weight:500;color:var(--fg-2);transition:background .3s var(--spring-soft),color .2s,border-radius .3s var(--spring)}
-.kb .kb-tabs button:hover{color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent)}
-.kb .kb-tabs button[aria-current]{background:var(--secondary-container);color:var(--on-secondary-container);border-radius:14px}
+.kb .kb-tabs{display:none;gap:4px;flex:none;padding:4px;border-radius:999px;background:var(--surface-2);position:relative;isolation:isolate}
+.kb .kb-tabs button{position:relative;display:flex;align-items:center;gap:8px;height:40px;padding:0 18px;border-radius:999px;font-size:15px;font-weight:500;color:var(--fg-2);background:none;transition:color .25s}
+.kb .kb-tabs button:hover{color:var(--fg)}
+.kb .kb-tabs button.kb-on{color:var(--on-secondary-container)}
+/* The one pill behind the chosen tab, sliding between them. */
+.kb .kb-tab-ink{position:absolute;z-index:-1;left:0;top:4px;bottom:4px;border-radius:999px;background:var(--secondary-container);pointer-events:none}
+.kb .kb-tab-ink{opacity:0}
 .kb .kb-count{min-width:22px;height:22px;padding:0 6px;border-radius:11px;display:grid;place-items:center;background:var(--primary);color:var(--on-primary);font-size:12px;font-weight:700}
 .kb .kb-tokimono{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;color:var(--fg-2);flex:none;transition:background .2s,transform .25s var(--spring)}
 .kb .kb-tokimono svg{width:24px;height:24px}
@@ -67,6 +70,8 @@
   .kb .kb-search{order:3;flex-basis:100%;max-width:none}
   .kb .kb-tabs{display:flex;order:4;width:100%;background:none;padding:0;gap:8px}
   .kb .kb-tabs button{height:36px;padding:0 14px;font-size:14px;background:var(--surface-2)}
+  .kb .kb-tabs button[aria-current]{background:var(--secondary-container)}
+  .kb .kb-tab-ink{display:none}
 }
 
 .kb .kb-main{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 72px)}
@@ -190,7 +195,37 @@
   animation:kb-fan .9s var(--spring-soft) both;animation-delay:calc(var(--i) * 70ms + 200ms)}
 .kb .kb-fan .kb-book{--w:132px}
 @keyframes kb-fan{from{opacity:0;translate:0 40px;rotate:-6deg}}
+/* Today's pick: the book on its own cover's colours, washed out behind the words. */
+.kb .kb-featured{position:relative;isolation:isolate;grid-template-columns:minmax(0,1fr) auto;min-height:360px;background:var(--surface)}
+.kb .kb-featured-wash{position:absolute;inset:-40px;z-index:-1;background-size:cover;background-position:center;filter:blur(48px) saturate(1.3);opacity:.55;transform:scale(1.1)}
+.kb .kb-featured::after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,var(--surface) 18%,color-mix(in srgb,var(--surface) 70%,transparent) 55%,color-mix(in srgb,var(--surface) 25%,transparent))}
+.kb .kb-featured .kb-display{font-size:clamp(34px,4.4vw,60px);line-height:1.04;max-width:16ch;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kb .kb-featured-facts{display:flex;flex-wrap:wrap;gap:6px 18px;margin:14px 0 0;color:var(--fg-2);font-size:14px;font-weight:500}
+.kb .kb-featured-facts span{display:inline-flex;align-items:center;gap:6px}
+.kb .kb-featured-about{max-width:58ch;margin:16px 0 0;font-size:16px;line-height:1.55;color:var(--fg);opacity:.86;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.kb .kb-featured .kb-btns{margin-top:24px}
+.kb .kb-featured-mine{display:inline-flex;align-items:center;height:48px;padding:0 6px;color:var(--fg-2);font-weight:600}
+.kb .kb-featured .kb-hero-book{padding:12px 12px 18px 0}
+.kb .kb-featured .kb-hero-book button.kb-book{--turn:-18deg}
+
+/* Genres: a row of chips to browse by, under the hero and on a genre's page. */
+.kb .kb-genres{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:18px var(--gutter) 4px;scroll-padding:0 var(--gutter)}
+.kb .kb-genres::-webkit-scrollbar{display:none}
+.kb .kb-genres-inline{padding-top:6px;padding-bottom:6px;flex-wrap:wrap;overflow:visible}
+.kb .kb-genre{flex:none;display:inline-flex;align-items:center;gap:4px;height:38px;padding:0 16px;border-radius:12px;background:var(--surface-2);color:var(--fg);font-size:14px;font-weight:600;
+  transition:background .2s,border-radius .3s var(--spring-soft),transform .2s}
+.kb .kb-genre:hover{background:var(--surface-3);border-radius:19px}
+.kb .kb-genre:active{transform:scale(.96)}
+.kb .kb-genre svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.kb .kb-crumb{display:inline-flex;align-items:center;gap:4px;margin:0 var(--gutter) 6px;color:var(--fg-2)}
+.kb .kb-crumb svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.kb .kb-results > .kb-display{padding:0 var(--gutter);margin:0 0 6px}
+.kb .kb-more{display:flex;justify-content:center;padding:32px var(--gutter) 48px}
+
 @media (max-width:699px){
+  .kb .kb-featured{grid-template-columns:1fr;min-height:0}
+  .kb .kb-featured .kb-hero-book{order:-1;justify-self:center}
+  .kb .kb-featured::after{background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 30%,transparent),var(--surface) 55%)}
   .kb .kb-hero{grid-template-columns:1fr;text-align:left;border-radius:28px}
   .kb .kb-hero-book{justify-self:center}
   .kb .kb-hello .kb-fan{width:100%;height:200px;order:-1}

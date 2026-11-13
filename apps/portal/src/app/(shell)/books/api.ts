@@ -15,7 +15,9 @@ export type ShelfItem = { key: string; title: string; authors: string[]; cover: 
 export type Row = { id: string; title: string; books: Book[] };
 export type FriendOnBook = { username: string; name: string; picture: string | null; state: ShelfState; fraction: number; rating: Rating | null; review: string | null; reviewedAt: string | null; updatedAt: string };
 export type FriendReading = FriendOnBook & { book: Book };
-export type Home = { shelf: ShelfItem[]; friends: FriendReading[]; rows: Row[] };
+export type Genre = { id: string; title: string };
+export type Home = { shelf: ShelfItem[]; friends: FriendReading[]; rows: Row[]; featured: Book | null; genres: Genre[] };
+export type GenrePage = { id: string; title: string; books: Book[]; more: boolean };
 export type Mine = { state: ShelfState; fraction: number; rating: Rating | null; review?: string | null; reviewedAt?: string | null };
 export type Page = { book: Book; byAuthor: Book[]; similar: Book[]; shelf: Mine | null; friends: FriendOnBook[] };
 
@@ -35,6 +37,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const booksApi = {
   home: () => call<Home>("/home"),
+  genre: (id: string, page = 0) => call<GenrePage>(`/genre?id=${encodeURIComponent(id)}&page=${page}`),
   search: (q: string, signal?: AbortSignal) => call<{ books: Book[] }>(`/search?q=${encodeURIComponent(q)}`, { signal }),
   book: (key: string) => call<Page>(`/book?key=${encodeURIComponent(key)}`),
   shelf: () => call<{ books: ShelfItem[] }>("/shelf"),

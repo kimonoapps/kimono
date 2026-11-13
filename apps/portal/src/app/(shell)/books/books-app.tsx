@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MorphLoader } from "@kimono/ui";
-import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Home, type Page, type Rating, type ShelfItem, type ShelfState } from "./api";
+import { asBook, booksApi, BooksError, count, ratingLabel, stateLabel, verdictOf, type Book, type BookFileInfo, type FriendOnBook, type FriendReading, type Genre, type GenrePage as GenrePageData, type Home, type Page, type Rating, type ShelfItem, type ShelfState } from "./api";
 import { Book3D } from "./book3d";
 import { Reader } from "./reader";
 
@@ -21,13 +21,14 @@ const sameBook = (title: string, author: string) => `${title.toLowerCase().repla
 const MyShelf = createContext<(b: Pick<Book, "key" | "title" | "authors">) => ShelfItem | undefined>(() => undefined);
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
-function readPlace(): { tab: Tab; book: string | null; q: string } {
+function readPlace(): { tab: Tab; book: string | null; q: string; genre: string | null } {
   const p = new URLSearchParams(window.location.search);
-  return { tab: p.get("tab") === "shelf" ? "shelf" : "home", book: p.get("b"), q: p.get("q") ?? "" };
+  return { tab: p.get("tab") === "shelf" ? "shelf" : "home", book: p.get("b"), q: p.get("q") ?? "", genre: p.get("g") };
 }
-function writePlace(tab: Tab, book: string | null, q: string, push: boolean) {
+function writePlace(tab: Tab, book: string | null, q: string, push: boolean, genre: string | null = null) {
   const p = new URLSearchParams();
   if (tab !== "home") p.set("tab", tab);
+  if (genre && tab === "home") p.set("g", genre);
   if (q) p.set("q", q);
   if (book) p.set("b", book);
   const url = `/books${p.size ? `?${p}` : ""}`;
@@ -39,6 +40,7 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
   const [tab, setTab] = useState<Tab>(() => readPlace().tab);
   const [open, setOpen] = useState<string | null>(() => readPlace().book);
   const [query, setQuery] = useState(() => readPlace().q);
+  const [genre, setGenre] = useState<string | null>(() => readPlace().genre);
   const [home, setHome] = useState<Home | null>(null);
   const [shelf, setShelf] = useState<ShelfItem[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -56,15 +58,17 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
   useEffect(loadHome, [loadHome]);
 
   useEffect(() => {
-    const back = () => { const p = readPlace(); setTab(p.tab); setOpen(p.book); setQuery(p.q); };
+    const back = () => { const p = readPlace(); setTab(p.tab); setOpen(p.book); setQuery(p.q); setGenre(p.genre); };
     addEventListener("popstate", back);
     return () => removeEventListener("popstate", back);
   }, []);
 
-  const go = (next: Tab) => { setTab(next); setQuery(""); writePlace(next, null, "", true); root.current?.scrollTo({ top: 0, behavior: "smooth" }); };
-  const openBook = useCallback((key: string) => { setOpen(key); writePlace(tab, key, query, true); }, [tab, query]);
-  const closeBook = useCallback(() => { setOpen(null); writePlace(tab, null, query, false); }, [tab, query]);
-  const search = (q: string) => { setQuery(q); writePlace(tab, open, q, false); };
+  /* The new page renders as a transition, so the tab's pill moves first instead of waiting on it. */
+  const go = (next: Tab) => { startTransition(() => { setTab(next); setGenre(null); }); setQuery(""); writePlace(next, null, "", true); root.current?.scrollTo({ top: 0, behavior: "smooth" }); };
+  const browse = (id: string) => { startTransition(() => { setTab("home"); setGenre(id); }); setQuery(""); writePlace("home", null, "", true, id); root.current?.scrollTo({ top: 0 }); };
+  const openBook = useCallback((key: string) => { setOpen(key); writePlace(tab, key, query, true, genre); }, [tab, query, genre]);
+  const closeBook = useCallback(() => { setOpen(null); writePlace(tab, null, query, false, genre); }, [tab, query, genre]);
+  const search = (q: string) => { setQuery(q); writePlace(tab, open, q, false, genre); };
 
   /* Shelf changes from anywhere (a book's page, a tile) land here. */
   const placed = useCallback((items: ShelfItem[] | null, note?: string) => {
@@ -82,21 +86,23 @@ export function BooksApp({ accent, firstName }: { accent: string; firstName: str
   return <div ref={root} className="kb" style={{ "--kb-accent": accent } as React.CSSProperties} onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 8)}>
     <header className={cx("kb-top", scrolled && "kb-solid")}>
       <SearchField value={query} onChange={search} />
-      <nav className="kb-tabs" aria-label="Books">
+      <Tabs at={query ? null : tab === "home" ? 0 : tab === "shelf" ? 1 : null}>
         <button aria-current={tab === "home" && !query ? "page" : undefined} onClick={() => go("home")}>Discover</button>
         <button aria-current={tab === "shelf" && !query ? "page" : undefined} onClick={() => go("shelf")}>
           My shelf{shelf?.length ? <span className="kb-count">{shelf.length}</span> : null}
         </button>
-      </nav>
+      </Tabs>
     </header>
 
     <MyShelf.Provider value={mineOf}>
     <main className="kb-main">
       {query.trim()
-        ? <SearchResults q={query.trim()} onOpen={openBook} />
+        ? <SearchResults q={query.trim()} genres={home?.genres ?? []} onOpen={openBook} onBrowse={browse} />
         : tab === "shelf"
           ? <ShelfPage shelf={shelf} onOpen={openBook} onDiscover={() => go("home")} />
-          : <HomePage home={home} reading={reading} firstName={firstName} problem={problem} onRetry={loadHome} onOpen={openBook} onShelf={() => go("shelf")} />}
+          : genre
+            ? <GenrePage key={genre} id={genre} genres={home?.genres ?? []} onOpen={openBook} onBrowse={browse} onBack={() => go("home")} />
+            : <HomePage home={home} reading={reading} firstName={firstName} problem={problem} onRetry={loadHome} onOpen={openBook} onShelf={() => go("shelf")} onBrowse={browse} onPlaced={placed} />}
     </main>
 
     {open ? <BookSheet key={open} bookKey={open} onClose={closeBook} onOpen={openBook} onPlaced={placed} /> : null}
@@ -126,7 +132,9 @@ function SearchField({ value, onChange }: { value: string; onChange: (q: string)
   </label>;
 }
 
-function SearchResults({ q, onOpen }: { q: string; onOpen: (key: string) => void }) {
+function SearchResults({ q, genres, onOpen, onBrowse }: { q: string; genres: Genre[]; onOpen: (key: string) => void; onBrowse: (id: string) => void }) {
+  const folded = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const matching = folded(q).length > 1 ? genres.filter((g) => folded(g.title).includes(folded(q)) || folded(q).split(" ").some((w) => w.length > 3 && folded(g.title).split(" ").includes(w))) : [];
   const [found, setFound] = useState<{ q: string; books: Book[] } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => {
@@ -141,6 +149,7 @@ function SearchResults({ q, onOpen }: { q: string; onOpen: (key: string) => void
   const settled = found?.q === q;
   return <section className="kb-results" aria-busy={!settled}>
     <h1 className="kb-h1">{settled ? books.length ? <>Books for <em>{q}</em></> : <>Nothing for <em>{q}</em> yet</> : <>Looking for <em>{q}</em></>}</h1>
+    {matching.length ? <div className="kb-genres kb-genres-inline">{matching.map((g) => <button key={g.id} className="kb-genre" onClick={() => onBrowse(g.id)}>Browse {g.title}<svg viewBox="0 0 24 24" aria-hidden><path d="m10 6 6 6-6 6" /></svg></button>)}</div> : null}
     {problem ? <p className="kb-note">{problem}</p> : null}
     {settled && !books.length && !problem ? <p className="kb-note">Try fewer words, the author&apos;s name, or the ISBN on the back. Books keeps looking and will have it if it turns up.</p> : null}
     <div className="kb-grid">
@@ -154,44 +163,104 @@ function SearchResults({ q, onOpen }: { q: string; onOpen: (key: string) => void
 
 /* ── Home ──────────────────────────────────────────────────────────────── */
 
-function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf }: {
+function HomePage({ home, reading, firstName, problem, onRetry, onOpen, onShelf, onBrowse, onPlaced }: {
   home: Home | null; reading: ShelfItem[]; firstName: string; problem: string | null; onRetry: () => void; onOpen: (key: string) => void; onShelf: () => void;
+  onBrowse: (id: string) => void; onPlaced: (items: ShelfItem[] | null, note?: string) => void;
 }) {
   if (problem && !home) return <div className="kb-empty"><p>{problem}</p><button className="kb-btn kb-tonal" onClick={onRetry}>Try again</button></div>;
-  const lead = reading[0];
+  const featured = home?.featured ?? null;
   return <>
-    {lead
-      ? <section className="kb-hero">
-        <div className="kb-hero-book"><Book3D book={asBook(lead)} size="xl" progress={lead.fraction} onOpen={() => onOpen(lead.key)} eager /></div>
-        <div className="kb-hero-body">
-          <p className="kb-eyebrow">Reading now</p>
-          <h1 className="kb-display">{lead.title}</h1>
-          {lead.authors[0] ? <p className="kb-byline">{lead.authors.join(", ")}</p> : null}
-          <Progress fraction={lead.fraction} />
-          <div className="kb-btns">
-            <button className="kb-btn kb-filled" onClick={() => onOpen(lead.key)}>Continue reading</button>
-            {reading.length > 1 ? <button className="kb-btn kb-tonal" onClick={onShelf}>{reading.length - 1} more on the go</button> : null}
-          </div>
-        </div>
-      </section>
+    {featured ? <Featured book={featured} onOpen={onOpen} onPlaced={onPlaced} />
       : <section className="kb-hero kb-hello">
         <div className="kb-hero-body">
           <p className="kb-eyebrow">Kimono Books</p>
           <h1 className="kb-display">What are you reading, {firstName}?</h1>
-          <p className="kb-lede">Find a book, put it on your shelf, and keep your place. What you read shows on your profile for friends.</p>
+          <p className="kb-lede">Find a book, put it on your shelf, and keep your place.</p>
         </div>
         <div className="kb-fan" aria-hidden>
           {(home?.rows[0]?.books ?? []).slice(0, 5).map((b, i) => <span key={b.key} className="kb-fan-book" style={{ "--i": i } as React.CSSProperties}><Book3D book={b} size="md" still eager /></span>)}
         </div>
       </section>}
+    {home?.genres.length ? <nav className="kb-genres" aria-label="Genres">{home.genres.map((g) => <button key={g.id} className="kb-genre" onClick={() => onBrowse(g.id)}>{g.title}</button>)}</nav> : null}
+    {reading.length ? <Shelf title="Continue reading" action={reading.length > 6 ? <button className="kb-link" onClick={onShelf}>Your shelf</button> : undefined}>
+      {reading.map((s) => <div key={s.key} className="kb-slot">
+        <Book3D book={asBook(s)} progress={s.fraction} onOpen={() => onOpen(s.key)} />
+        <BookCaption book={asBook(s)} />
+      </div>)}
+    </Shelf> : null}
     {home?.friends.length ? <FriendsShelf friends={home.friends} onOpen={onOpen} /> : null}
-    {!home ? <ShelfGhosts /> : home.rows.map((row, i) => <Shelf key={row.id} title={row.title} delay={i}>
+    {!home ? <ShelfGhosts /> : home.rows.map((row, i) => <Shelf key={row.id} title={row.title} delay={i}
+      action={home.genres.some((g) => g.id === row.id) ? <button className="kb-link" onClick={() => onBrowse(row.id)}>See all</button> : undefined}>
       {row.books.map((b, n) => <div key={b.key} className="kb-slot">
         <Book3D book={b} onOpen={() => onOpen(b.key)} badge={row.id === "trending" && n < 10 ? <span className="kb-rank">{n + 1}</span> : undefined} />
         <BookCaption book={b} />
       </div>)}
     </Shelf>)}
   </>;
+}
+
+/** Today's pick: one of the week's most read, on its own cover's colours, with enough said to want it. */
+function Featured({ book, onOpen, onPlaced }: { book: Book; onOpen: (key: string) => void; onPlaced: (items: ShelfItem[] | null, note?: string) => void }) {
+  const mine = useContext(MyShelf)(book);
+  const [saving, setSaving] = useState(false);
+  const want = async () => {
+    setSaving(true);
+    try { const { books } = await booksApi.setShelf(book.key, "want"); onPlaced(books, `Want to read · ${book.title}`); }
+    catch { onPlaced(null, "That didn't save."); }
+    setSaving(false);
+  };
+  return <section className="kb-hero kb-featured">
+    {book.cover ? <div className="kb-featured-wash" aria-hidden style={{ backgroundImage: `url(${JSON.stringify(book.cover.replace("-M.jpg", "-L.jpg"))})` }} /> : null}
+    <div className="kb-hero-body">
+      <p className="kb-eyebrow">Today&apos;s pick{book.genres[0] ? ` · ${book.genres[0]}` : ""}</p>
+      <h1 className="kb-display">{book.title}</h1>
+      {book.authors.length ? <p className="kb-byline">by {book.authors.slice(0, 2).join(", ")}</p> : null}
+      <p className="kb-featured-facts">
+        {book.rating ? <span><Stars value={book.rating} /> {book.rating.toFixed(1)}</span> : null}
+        {book.readers ? <span>{count(book.readers)} readers</span> : null}
+        {book.year ? <span>{book.year}</span> : null}
+        {book.pages ? <span>{book.pages} pages</span> : null}
+      </p>
+      {book.description ? <p className="kb-featured-about">{book.description.split(/\n{2,}/)[0]}</p> : null}
+      <div className="kb-btns">
+        <button className="kb-btn kb-filled" onClick={() => onOpen(book.key)}>Open</button>
+        {mine ? <span className="kb-featured-mine">{stateLabel[mine.state]}</span>
+          : <button className="kb-btn kb-tonal" disabled={saving} onClick={want}>Want to read</button>}
+      </div>
+    </div>
+    <div className="kb-hero-book"><Book3D book={book} size="xl" onOpen={() => onOpen(book.key)} eager /></div>
+  </section>;
+}
+
+/** A genre: its most read books, a page at a time, with the other genres a tap away. */
+function GenrePage({ id, genres, onOpen, onBrowse, onBack }: { id: string; genres: Genre[]; onOpen: (key: string) => void; onBrowse: (id: string) => void; onBack: () => void }) {
+  const [pages, setPages] = useState<GenrePageData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [problem, setProblem] = useState<string | null>(null);
+  const fetchPage = useCallback((page: number) => booksApi.genre(id, page)
+    .then((g) => { setPages((p) => [...p.slice(0, page), g]); setProblem(null); })
+    .catch((e: unknown) => setProblem(e instanceof BooksError ? e.message : "That genre didn't load."))
+    .finally(() => setLoading(false)), [id]);
+  /* The first page on arrival (the page is keyed by genre, so it starts loading); more on asking. */
+  useEffect(() => { void fetchPage(0); }, [fetchPage]);
+  const load = (page: number) => { setLoading(true); void fetchPage(page); };
+  const seen = new Set<string>();
+  const books = pages.flatMap((p) => p.books).filter((b) => !seen.has(b.key) && seen.add(b.key));
+  const title = pages[0]?.title ?? genres.find((g) => g.id === id)?.title ?? "";
+  const more = pages.at(-1)?.more ?? false;
+  return <section className="kb-results">
+    <button className="kb-link kb-crumb" onClick={onBack}><svg viewBox="0 0 24 24" aria-hidden><path d="m14 6-6 6 6 6" /></svg>Discover</button>
+    <h1 className="kb-display">{title}</h1>
+    <nav className="kb-genres" aria-label="Genres">{genres.filter((g) => g.id !== id).map((g) => <button key={g.id} className="kb-genre" onClick={() => onBrowse(g.id)}>{g.title}</button>)}</nav>
+    {problem ? <p className="kb-note">{problem}</p> : null}
+    <div className="kb-grid">
+      {!books.length && loading ? <Ghosts n={18} /> : books.map((b, i) => <div key={b.key} className="kb-cell" style={{ animationDelay: `${Math.min(i % 48, 16) * 30}ms` }}>
+        <Book3D book={b} onOpen={() => onOpen(b.key)} />
+        <BookCaption book={b} />
+      </div>)}
+    </div>
+    {more ? <div className="kb-more"><button className="kb-btn kb-tonal" disabled={loading} onClick={() => load(pages.length)}>{loading ? <MorphLoader tone="plain" label="Loading" className="kb-ink" /> : "More"}</button></div> : null}
+  </section>;
 }
 
 function Shelf({ title, children, delay = 0, action }: { title: ReactNode; children: ReactNode; delay?: number; action?: ReactNode }) {
@@ -236,6 +305,37 @@ function FriendsShelf({ friends, onOpen }: { friends: FriendReading[]; onOpen: (
       </span>
     </div>)}
   </Shelf>;
+}
+
+/** Discover and My shelf: one pill slides to the chosen tab, rather than each tab filling and unfilling on its own. */
+function Tabs({ at, children }: { at: number | null; children: ReactNode }) {
+  const nav = useRef<HTMLElement>(null);
+  const ink = useRef<HTMLSpanElement>(null);
+  /* Moves the pill under a tab: at once when it's clicked, not when the page catches up. */
+  const place = useCallback((index: number | null) => {
+    const pill = ink.current;
+    const buttons = [...(nav.current?.querySelectorAll("button") ?? [])];
+    const button = index === null ? null : buttons[index];
+    buttons.forEach((b) => b.classList.toggle("kb-on", b === button));
+    if (!pill) return;
+    if (!button) { pill.style.opacity = "0"; return; }
+    pill.style.transform = `translateX(${button.offsetLeft}px)`;
+    pill.style.width = `${button.offsetWidth}px`;
+    pill.style.opacity = "1";
+    /* No slide on the first paint: it starts where it belongs, and slides from then on. */
+    if (!pill.style.transition) requestAnimationFrame(() => { pill.style.transition = "transform .38s var(--ease-out), width .38s var(--ease-out), opacity .2s"; });
+  }, []);
+  useEffect(() => {
+    place(at);
+    const watch = new ResizeObserver(() => place(at));
+    if (nav.current) watch.observe(nav.current);
+    return () => watch.disconnect();
+  }, [at, children, place]);
+  return <nav ref={nav} className="kb-tabs" aria-label="Books"
+    onClickCapture={(e) => { const i = [...(nav.current?.querySelectorAll("button") ?? [])].findIndex((b) => b.contains(e.target as Node)); if (i >= 0) place(i); }}>
+    <span ref={ink} className="kb-tab-ink" aria-hidden />
+    {children}
+  </nav>;
 }
 
 /** A portrait, or their initial on a tone of their own when there's none. */

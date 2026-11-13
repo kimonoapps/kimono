@@ -298,6 +298,65 @@ const shelves: { id: string; title: string; subject: string }[] = [
   { id: "young-adult", title: "Young adult", subject: "young_adult_fiction" },
 ];
 
+/* Every genre to browse: home's shelves, and more that are worth a page but not a row. */
+const moreGenres: { id: string; title: string; subject: string }[] = [
+  { id: "horror", title: "Horror", subject: "horror" },
+  { id: "self-help", title: "Self-help", subject: "self-help" },
+  { id: "business", title: "Business", subject: "business" },
+  { id: "psychology", title: "Psychology", subject: "psychology" },
+  { id: "science", title: "Science", subject: "science" },
+  { id: "comics", title: "Comics", subject: "comics_&_graphic_novels" },
+  { id: "children", title: "Children's", subject: "juvenile_fiction" },
+  { id: "humor", title: "Humour", subject: "humor" },
+  { id: "travel", title: "Travel", subject: "travel" },
+  { id: "cooking", title: "Cooking", subject: "cooking" },
+  { id: "art", title: "Art", subject: "art" },
+  { id: "religion", title: "Religion & spirituality", subject: "religion" },
+];
+const allGenres = [...shelves, ...moreGenres];
+export const genreList = allGenres.map(({ id, title }) => ({ id, title }));
+
+const genreCache = globalThis as unknown as { kimonoBooksGenre?: Map<string, { books: Book[]; at: number }> };
+
+/** A genre's books, most read first, a page (48) at a time. */
+export async function genreBooks(id: string, page = 0): Promise<{ id: string; title: string; books: Book[]; more: boolean }> {
+  const genre = allGenres.find((g) => g.id === id);
+  if (!genre) throw new BooksProblem("No such genre.", 404);
+  const size = 48;
+  const cacheKey = `${id}:${page}`;
+  const cache = (genreCache.kimonoBooksGenre ??= new Map());
+  const known = cache.get(cacheKey);
+  let books = known && Date.now() - known.at < homeFresh ? known.books : null;
+  if (!books) {
+    books = await openLibrary.query({ q: `subject:${genre.subject}`, sort: "readinglog", limit: String(size), offset: String(page * size) }).catch(() => null);
+    if (books?.length) { save(books); cache.set(cacheKey, { books, at: Date.now() }); }
+    /* Offline or refused: what's kept under that genre. */
+    books ??= (booksDb().prepare("SELECT r.data FROM genres g JOIN records r ON r.key = g.key WHERE g.genre = ? ORDER BY r.readers DESC LIMIT ? OFFSET ?")
+      .all(genre.title, size, page * size) as { data: string }[]).map((r) => readBook(r.data));
+  }
+  return { id, title: genre.title, books: dedupe(books).filter((b) => b.cover), more: books.length >= size };
+}
+
+/**
+ * The book at the top of home: one of the week's most read, a different one
+ * each day, never one already on your shelf, with its summary filled in.
+ */
+export async function featuredBook(username: string, rows: Row[]): Promise<Book | null> {
+  const mine = new Set(listShelf(username).map((s) => s.key));
+  const pool = (rows.find((r) => r.id === "trending")?.books ?? rows[0]?.books ?? []).filter((b) => b.cover && !mine.has(b.key)).slice(0, 12);
+  if (!pool.length) return null;
+  const day = Math.floor(Date.now() / 86_400_000);
+  let book = getBook(pool[day % pool.length].key) ?? pool[day % pool.length];
+  if (!book.description && book.key.startsWith("ol:") && due("fill", book.key)) {
+    const work = await openLibrary.work(book.key.slice(3)).catch(() => null);
+    if (work) {
+      book = { ...book, description: work.description, genres: book.genres.length ? book.genres : work.genres, cover: book.cover ?? work.cover };
+      save([book]);
+    }
+  }
+  return book;
+}
+
 const homeCache = globalThis as unknown as { kimonoBooksHome?: { rows: Row[]; at: number } };
 const homeFresh = 6 * 60 * 60 * 1000;
 
