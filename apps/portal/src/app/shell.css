@@ -346,6 +346,12 @@ html, body, .app-frame { overflow-x: clip; }
 .home-plus { font: 500 20px/1 var(--k-sans); color: color-mix(in srgb, var(--k-suo) var(--k-tint), var(--k-night-ink)); }
 .home-dot { width: 10px; height: 10px; border-radius: 50%; background: #b9a8a2; }
 .home-dot.is-live { background: var(--k-moss); box-shadow: 0 0 0 4px color-mix(in srgb, var(--k-moss) 18%, transparent); }
+/* A friend's line: the portrait opens their profile, the rest the title. */
+.home-friend .home-line-mark { border-radius: 50%; }
+.home-friend .home-line-mark:focus-visible, .home-friend .home-line-text:focus-visible { outline: 3px solid var(--k-accent); outline-offset: 2px; }
+.home-friend .home-line-text { flex: 1; color: inherit; text-decoration: none; border-radius: 12px; }
+.home-friend small { display: flex; align-items: center; gap: 6px; }
+.home-friend small .home-dot { width: 7px; height: 7px; flex: none; box-shadow: none; }
 @media (max-width: 720px) {
   /* Now slides sideways on a phone, so it never pushes the apps down. */
   .home-glances { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }

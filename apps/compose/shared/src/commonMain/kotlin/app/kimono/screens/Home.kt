@@ -94,7 +94,7 @@ import kotlin.time.Clock
 @Composable
 fun HomeScreen(
     me: AccountProfile?, platform: Platform, update: AppUpdate?, onLater: () -> Unit, recheck: suspend () -> Unit,
-    drive: Drive, code: Code, vpn: Vpn, admin: Boolean,
+    drive: Drive, code: Code, vpn: Vpn, admin: Boolean, friends: app.kimono.data.Friends, books: app.kimono.data.Books,
     here: (LauncherApp) -> PhoneAppHere, open: (LauncherApp) -> Unit, go: (String) -> Unit,
 ) {
     val first = me?.name?.split(" ")?.firstOrNull()?.takeIf { it.isNotBlank() } ?: me?.username ?: "home"
@@ -107,6 +107,8 @@ fun HomeScreen(
     var recent by remember { mutableStateOf<List<DriveNode>?>(null) }
     var tasks by remember { mutableStateOf(code.knownWorkspaces()) }
     var devices by remember { mutableStateOf(vpn.known()) }
+    var activity by remember { mutableStateOf(friends.knownActivity()) }
+    var book by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val codeApp = apps?.firstOrNull { it.id == Code.APP_ID }
@@ -118,6 +120,7 @@ fun HomeScreen(
         if (driveOn != false) recent = runCatching { drive.recent() }.getOrNull() ?: recent
         if (codeApp != null) tasks = runCatching { code.workspaces() }.getOrNull() ?: tasks
         if (vpnApp != null) devices = runCatching { vpn.view() }.getOrNull() ?: devices
+        activity = runCatching { friends.activity() }.getOrNull() ?: activity
     }
     LaunchedEffect(codeApp != null, vpnApp != null) { load() }
 
@@ -144,6 +147,7 @@ fun HomeScreen(
     }
     val canPin = mine != null
 
+    book?.let { key -> BookSheet(books, platform, key, onDismiss = { book = null }, onOpen = { book = it }, say = {}, changed = {}) }
     KimonoRefresh(refreshing, { scope.launch { refreshing = true; coroutineScope { launch { recheck() }; load() }; refreshing = false } }, Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "head") {
@@ -209,6 +213,20 @@ fun HomeScreen(
                                 title = file.name,
                                 detail = listOfNotNull(space?.name, whenAgo(file.updatedAt.toLong())).joinToString(" · "),
                             ) { file.parentId?.let { go("folder/$it") } }
+                        }
+                    }
+                }
+                val latest = activity.orEmpty().take(4)
+                if (latest.isNotEmpty()) add {
+                    Glance(null, "Friends", null, onOpen = { go("friends") }) {
+                        latest.forEach { a ->
+                            FriendLine(a, onPerson = { go("people/${a.from.username}") }) {
+                                when {
+                                    a.app == "books" -> book = a.itemId
+                                    a.href != null -> friends.server?.let { platform.openUrl(it.trimEnd('/') + a.href) }
+                                    else -> go("people/${a.from.username}")
+                                }
+                            }
                         }
                     }
                 }
@@ -360,6 +378,30 @@ private fun Glance(app: LauncherApp?, title: String, note: String?, onOpen: (() 
             if (onOpen != null) Icon(kimonoIcon("go"), null, modifier = Modifier.size(16.dp))
         }
         Column(Modifier.padding(bottom = 8.dp)) { lines() }
+    }
+}
+
+/** A friend's latest: their portrait opens their profile, the rest the title. */
+@Composable
+private fun FriendLine(a: app.kimono.data.FriendActivity, onPerson: () -> Unit, onClick: () -> Unit) {
+    val who = a.from.name.substringBefore(' ').ifBlank { a.from.username }
+    val what = when (a.kind) { "watching" -> "is watching"; "watched" -> "watched"; "reading" -> "is reading"; "read" -> "finished"; else -> "recommends" }
+    val detail = listOfNotNull(
+        "$who $what",
+        when { a.kind == "watching" -> a.label; a.kind == "reading" && (a.progress ?: 0.0) > 0 -> "${((a.progress ?: 0.0) * 100).toInt()}%"; else -> whenAgo(a.at) },
+    ).joinToString(" · ")
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        app.kimono.ui.Portrait(a.from.picture, a.from.name, a.from.username, 30.dp, Modifier.clip(androidx.compose.foundation.shape.CircleShape).clickable(onClick = onPerson))
+        Column(Modifier.weight(1f)) {
+            Text(a.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (a.kind == "watching") InkDot(Kata.moss, size = 6.dp, seed = a.from.username)
+                Text(detail, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 

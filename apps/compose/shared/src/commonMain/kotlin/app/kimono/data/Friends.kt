@@ -73,6 +73,18 @@ data class PrivacyNow(val privacy: Privacy, val hidden: List<String> = emptyList
 @Serializable
 private data class Hidden(val hidden: List<String> = emptyList())
 
+/** One friend's latest, for Home (lib/friends activityOf): "watching", "watched", "reading", "read" or "recommended". Only what they let friends see. */
+@Serializable
+data class FriendActivity(
+    val kind: String, val app: String, val itemId: String, val title: String, val subtitle: String? = null, val cover: String? = null,
+    /** Its page on the Portal ("/watch?t=…"). */
+    val href: String? = null, val at: Long = 0, val progress: Double? = null, val label: String? = null, val note: String? = null,
+    val from: FriendPerson, val appName: String = "",
+)
+
+@Serializable
+private data class Activity(val items: List<FriendActivity> = emptyList())
+
 @Serializable
 data class Recommendations(val received: List<Recommendation> = emptyList(), val sent: List<Recommendation> = emptyList(), val profile: List<Recommendation> = emptyList())
 
@@ -129,6 +141,10 @@ class Friends(private val session: Session) {
         contentType(ContentType.Application.Json); setBody(body)
     })
 
+    /** What friends are up to, the latest first, for Home. */
+    suspend fun activity(): List<FriendActivity> = json.decodeFromString<Activity>(session.fetch(ACTIVITY)).items
+    fun knownActivity(): List<FriendActivity>? = session.answers.peek(ACTIVITY)?.let { runCatching { json.decodeFromString<Activity>(it).items }.getOrNull() }
+
     suspend fun recommendations(): Recommendations = json.decodeFromString(session.fetch(RECOMMENDATIONS))
 
     /** Recommends [item] to [to]; with no one, puts it on your profile. */
@@ -149,5 +165,6 @@ class Friends(private val session: Session) {
     companion object {
         const val FRIENDS = "/api/v1/friends"
         const val RECOMMENDATIONS = "/api/v1/recommendations"
+        const val ACTIVITY = "/api/v1/friends/activity"
     }
 }

@@ -11,6 +11,9 @@ import { homeGlance } from "@/lib/home-glance";
 import { categorize } from "@/lib/app-categories";
 import { myApps } from "@/lib/my-apps";
 import { AppBloom, InkBlot } from "@kimono/ui";
+import { Portrait } from "@/components/portrait";
+import { portalOrigin } from "@/lib/account";
+import { activityOf, type ActivityView } from "@/lib/friends";
 import type { RailApp } from "@/components/rail";
 import type { ReactNode } from "react";
 
@@ -18,7 +21,7 @@ import type { ReactNode } from "react";
  * 家 Home, in three parts that don't run into each other: Your apps (the same
  * list as the rail and the phone's flower), Now (a few lines each from Kimono
  * AI, Drive and your devices, only those with something to say), and More
- * apps, every other app by what it's for.
+ * apps, every other app by what it's for. Friends' latest (lib/friends activityOf) is one of Now's glances.
  */
 export default async function HomePage() {
   const session = await auth();
@@ -26,7 +29,7 @@ export default async function HomePage() {
   const user = session.user;
   const [settings, apps, offer, mine] = await Promise.all([getPlatformSettings(), railApps(user.username), appOffer(), myApps(user.username)]);
   const ids = apps.map((app) => app.id);
-  const [glance, lines] = [await homeGlance(user, ids), homeLines(user.username, ids)];
+  const [glance, lines, activity] = [await homeGlance(user, ids), homeLines(user.username, ids), await activityOf(user.username, portalOrigin(), 4).then((a) => a.items).catch(() => [] as ActivityView[])];
   const tiles = apps.map((app) => ({ ...app, line: lines[app.id] }));
   const groups = categorize(tiles).map((group) => ({ id: group.id, label: group.label, apps: group.apps.map((app) => app.id) }));
   const displayName = user.name?.split(" ")[0] || user.username || "home";
@@ -42,7 +45,7 @@ export default async function HomePage() {
           <h1>Welcome home, <strong>{displayName}.</strong></h1>
         </header>
         <HomeApps apps={tiles} mine={mine} groups={groups}>
-          {glance.chats || glance.files || glance.devices?.length ? <section className="home-section home-now">
+          {glance.chats || glance.files || glance.devices?.length || activity.length ? <section className="home-section home-now">
           <h2 className="home-section-title">Now</h2>
           <div className="home-glances">
             {glance.chats ? <Glance app={byId.get("kimono-code")} title="Kimono AI" href="/code" note={glance.chatTotals?.working ? `${glance.chatTotals.working} working` : undefined}>
@@ -52,6 +55,9 @@ export default async function HomePage() {
             {glance.files ? <Glance app={byId.get("kimono-drive")} title="Recent in Drive" href="/drive?view=recent" note={glance.fileTotals?.today ? `${glance.fileTotals.today} today` : undefined}>
               {glance.files.length ? glance.files.slice(0, 3).map((file) => <Line key={file.id} href={`/drive?space=${encodeURIComponent(file.spaceId)}&file=${encodeURIComponent(file.id)}`} mark={<InkBlot seed={file.id} tint="#8a7c77"><span className="home-ext">{extension(file.name)}</span></InkBlot>} title={file.name} detail={[file.space, ago(file.at)].filter(Boolean).join(" · ")} />)
                 : <Line href="/drive" mark={<InkBlot seed="drive-empty" tint="#a84d63"><span className="home-plus">+</span></InkBlot>} title="Add your first file" />}
+            </Glance> : null}
+            {activity.length ? <Glance title="Friends" href="/account/friends">
+              {activity.map((a) => <FriendLine key={`${a.from.username}:${a.app}:${a.itemId}`} activity={a} />)}
             </Glance> : null}
             {glance.devices?.length ? <Glance app={byId.get("kimono-vpn")} title="Your devices" href="/vpn">
               {glance.devices.slice(0, 3).map((device) => <Line key={device.id} href="/vpn" mark={<span className={device.online ? "home-dot is-live" : "home-dot"} />} title={device.name} detail={device.online ? "Connected" : device.seen} />)}
@@ -81,6 +87,21 @@ function Line({ href, mark, title, detail }: { href: string; mark: ReactNode; ti
     <span className="home-line-mark">{mark}</span>
     <span className="home-line-text"><b>{title}</b>{detail ? <small>{detail}</small> : null}</span>
   </Crossing>;
+}
+
+/** A friend's latest: their portrait opens their profile, the rest the title. */
+function FriendLine({ activity: a }: { activity: ActivityView }) {
+  const who = a.from.name.split(" ")[0] || a.from.username;
+  const what = { watching: "is watching", watched: "watched", reading: "is reading", read: "finished", recommended: "recommends" }[a.kind];
+  const detail = [`${who} ${what}`, a.kind === "watching" ? a.label : a.kind === "reading" && a.progress ? `${Math.round(a.progress * 100)}%` : ago(a.at)].filter(Boolean).join(" · ");
+  return <div className="home-line home-friend">
+    <Crossing kind="kakejiku" href={`/account/people/${encodeURIComponent(a.from.username)}`} className="home-line-mark" aria-label={a.from.name}>
+      <Portrait name={a.from.name} username={a.from.username} picture={a.from.picture} size={36} />
+    </Crossing>
+    <Crossing kind="kakejiku" href={a.href ?? `/account/people/${encodeURIComponent(a.from.username)}`} className="home-line-text">
+      <b>{a.title}</b><small>{a.kind === "watching" ? <span className="home-dot is-live" /> : null}{detail}</small>
+    </Crossing>
+  </div>;
 }
 
 const extension = (name: string) => (/\.([a-z0-9]{1,4})$/i.exec(name)?.[1] ?? "").toUpperCase() || "·";

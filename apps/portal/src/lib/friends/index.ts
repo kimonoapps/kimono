@@ -14,6 +14,7 @@ import {
   isInvisible, privacyOf, profileFor, receivedBy, recommend, recommendedTo, removeFriend, seesProfile, sentBy, setAppHidden, setBio, setInvisible, setKept, unseenCount,
   type LinkState, type Recommendation, type Section,
 } from "./model";
+import { friendsActivity, type Activity } from "./activity";
 
 /*
  * 友 Friends on the server (./model.ts has the rules): who's friends, profiles
@@ -269,4 +270,41 @@ export async function recommendedToUser(username: string, app: string, itemId: s
 export function dropRecommendationOf(username: string, id: string) {
   if (!dropRecommendation(friendsDb(), username, id)) throw new FriendsProblem("That recommendation is gone.", 404);
   return { ok: true };
+}
+
+/* ───── On Home ───── */
+
+export type ActivityView = Omit<Activity, "from"> & { from: Person; appName: string };
+
+const recommendationHref = (r: Recommendation) =>
+  r.app === "watch" ? `/watch?t=${encodeURIComponent(r.itemId)}` : r.app === "books" ? `/books?b=${encodeURIComponent(r.itemId)}` : null;
+
+/**
+ * What friends are up to, for Home (./activity.ts keeps it to what each lets friends see): watching now and
+ * lately, reading and read, and what they sent you, the latest first, a few each, from the last month.
+ * An app that's off or fails adds nothing.
+ */
+export async function activityOf(username: string, origin: string, limit = 8): Promise<{ items: ActivityView[] }> {
+  const u = username.toLowerCase();
+  const db = friendsDb();
+  if (!friendsOf(db, u).length) return { items: [] };
+  const [watch, books] = await Promise.all([
+    import("../watch/friends-live").then((m) => m.watchActivity(u, origin)).catch(() => null),
+    import("@/lib/books").then(async (m) => (await m.booksSettings()).enabled ? m.friendsReading(u, 24) : []).catch(() => []),
+  ]);
+  const items: Activity[] = [
+    ...(watch?.items ?? []),
+    ...books.map((b) => ({
+      kind: b.state === "read" ? "read" as const : "reading" as const, app: "books", from: b.username,
+      itemId: b.book.key, title: b.book.title, subtitle: b.book.authors[0] ?? null, cover: b.book.cover,
+      href: `/books?b=${encodeURIComponent(b.book.key)}`, at: Date.parse(b.updatedAt), progress: b.state === "reading" ? b.fraction : null,
+    })),
+    ...receivedBy(db, u).map((r) => ({
+      kind: "recommended" as const, app: r.app, from: r.from, itemId: r.itemId, title: r.title, subtitle: r.subtitle, cover: r.cover,
+      href: recommendationHref(r), at: r.at, note: r.note,
+    })),
+  ];
+  const shown = friendsActivity(db, u, items, watch?.share ?? null, { limit, since: Date.now() - 30 * 24 * 3600_000 });
+  const everyone = await people();
+  return { items: shown.map((a) => ({ ...a, from: personIn(everyone, a.from), appName: apps[a.app]?.name ?? a.app })) };
 }

@@ -257,7 +257,7 @@ private fun SignedIn(session: Session, platform: Platform, profile: AccountProfi
             popEnterTransition = { if (between(initialState.destination.route, targetState.destination.route)) throughIn else slideInHorizontally(axis) { -it / 8 } + arrive },
             popExitTransition = { if (between(initialState.destination.route, targetState.destination.route)) leave else slideOutHorizontally(axis) { it / 8 } + leave },
         ) {
-            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, recheck, model.drive, code, vpn, admin, here = ::here, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
+            composable("home") { app.kimono.screens.HomeScreen(me, platform, update, onLater, recheck, model.drive, code, vpn, admin, friends, books, here = ::here, open = ::openApp) { to -> if (to == "drive" || to == "code" || to == "vpn") goTab(to) else nav.navigate(to) } }
             /*
              * Kimono AI is one chat at a time with the rest in its drawer, as on the website. It opens
              * on a new chat; a chat chosen in the drawer takes the open one's place, so Back leaves it.

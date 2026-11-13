@@ -283,3 +283,24 @@ export async function watchSections(viewer: string, username: string, origin: st
   }
   return rows.filter((r) => r.items.length > 0);
 }
+
+/* ───── On Kimono's Home ───── */
+
+/**
+ * What friends are on in Watch, for Kimono Home's friends feed (lib/friends activityOf): what each is watching
+ * now and has watched lately, from the Friends page, with Watch's own switches for lib/friends to apply again.
+ * Null when Watch is off.
+ */
+export async function watchActivity(viewer: string, origin: string) {
+  if (!watchConfig(await getPlatformSettings()).enabled) return null;
+  const page = await friendsPage(viewer, origin);
+  const item = (username: string, kind: "watching" | "watched", s: Spot) => ({
+    kind, app: "watch", from: username, itemId: s.title.id, title: s.title.name, subtitle: s.title.year ? String(s.title.year) : null,
+    cover: s.title.poster, href: `/watch?t=${encodeURIComponent(s.title.id)}`, at: s.at, progress: s.progress, label: s.label,
+  });
+  const items = page.friends.flatMap((f) => [
+    ...(f.now ? [item(f.username, "watching", f.now)] : []),
+    ...f.recent.filter((s) => s.title.id !== f.now?.title.id).map((s) => item(f.username, "watched", s)),
+  ]);
+  return { items, share: { sharing, hidden: (username: string) => hiddenOf(watchDb(), username) } };
+}

@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import * as friends from '../src/lib/friends/model.ts';
 import * as watchFriends from '../src/lib/watch/friends.ts';
 import * as booksSection from '../src/lib/friends/books-section.ts';
+import * as activity from '../src/lib/friends/activity.ts';
 
 function fresh() {
   const db = new DatabaseSync(':memory:');
@@ -212,4 +213,61 @@ test('privacy: rows kept back, the friends list, and going invisible', () => {
   friends.setInvisible(db, 'ana', false);
   assert.equal(seen('sami').open, true);
   assert.deepEqual(friends.hiddenAppsOf(db, 'ana'), []);
+});
+
+/* ───── Home: what friends are up to ───── */
+
+const did = (from, kind, itemId, at, app = kind === 'reading' || kind === 'read' ? 'books' : 'watch') =>
+  ({ kind, app, from, itemId, title: itemId, subtitle: null, cover: null, href: null, at });
+const share = (off = [], hidden = {}) => ({ sharing: (u) => !off.includes(u), hidden: (u) => new Set(hidden[u] ?? []) });
+const homeOf = (db, items, watch = share(), opts) => activity.friendsActivity(db, 'ana', items, watch, opts).map((a) => `${a.from}:${a.kind}:${a.itemId}`);
+function circle() {
+  const db = fresh();
+  for (const f of ['sami', 'lee', 'kai']) { friends.askFriend(db, 'ana', f, 1); friends.answerFriend(db, f, 'ana', true, 2); }
+  return db;
+}
+
+test('home activity: friends only, the latest first, one line per title', () => {
+  const db = circle();
+  friends.askFriend(db, 'ana', 'mo', 3); // asked, not friends
+  const items = [did('sami', 'watched', 'm1', 10), did('lee', 'reading', 'b1', 30), did('mo', 'watched', 'm2', 40), did('ana', 'watched', 'm3', 50),
+    did('sami', 'watching', 'm1', 20)];
+  assert.deepEqual(homeOf(db, items), ['lee:reading:b1', 'sami:watching:m1']);
+});
+
+test('home activity: nothing of anyone invisible, not even what they sent', () => {
+  const db = circle();
+  friends.setInvisible(db, 'sami', true, 5);
+  const items = [did('sami', 'watching', 'm1', 10), did('sami', 'recommended', 'm2', 11), did('lee', 'read', 'b1', 9)];
+  assert.deepEqual(homeOf(db, items), ['lee:read:b1']);
+  friends.setInvisible(db, 'sami', false, 6);
+  assert.deepEqual(homeOf(db, items), ['sami:recommended:m2', 'sami:watching:m1', 'lee:read:b1']);
+});
+
+test('home activity: an app kept off a profile, or one row of it, stays off Home', () => {
+  const db = circle();
+  friends.setAppHidden(db, 'sami', 'books', true, 5);
+  friends.setKept(db, 'lee', 'watch:watched', true, 5);
+  friends.setKept(db, 'kai', 'books:read', true, 5);
+  const items = [did('sami', 'reading', 'b1', 10), did('sami', 'watched', 'm1', 9), did('lee', 'watching', 'm2', 8), did('lee', 'reading', 'b2', 7),
+    did('kai', 'read', 'b3', 6), did('kai', 'reading', 'b4', 5)];
+  assert.deepEqual(homeOf(db, items), ['sami:watched:m1', 'lee:reading:b2', 'kai:reading:b4']);
+  /* What they sent you was meant for you: their switches don't hide it. */
+  friends.setAppHidden(db, 'kai', 'watch', true, 6);
+  assert.deepEqual(homeOf(db, [did('kai', 'recommended', 'm9', 1)]), ['kai:recommended:m9']);
+});
+
+test("home activity: Watch's own switches hold, and titles watched invisibly stay hidden", () => {
+  const db = circle();
+  const items = [did('sami', 'watching', 'm1', 10), did('lee', 'watched', 'm2', 9), did('lee', 'watched', 'm3', 8), did('kai', 'reading', 'b1', 7)];
+  assert.deepEqual(homeOf(db, items, share(['sami'], { lee: ['m2'] })), ['lee:watched:m3', 'kai:reading:b1']);
+  /* Without Watch, nothing of it shows. */
+  assert.deepEqual(activity.friendsActivity(db, 'ana', items, null).map((a) => a.itemId), ['b1']);
+});
+
+test('home activity: a few per friend, a short list, only lately', () => {
+  const db = circle();
+  const items = [1, 2, 3, 4, 5].map((i) => did('sami', 'watched', `m${i}`, 100 + i)).concat([did('lee', 'read', 'b1', 50), did('kai', 'read', 'b2', 1)]);
+  assert.deepEqual(homeOf(db, items, share(), { perFriend: 2, since: 10 }), ['sami:watched:m5', 'sami:watched:m4', 'lee:read:b1']);
+  assert.equal(homeOf(db, items, share(), { limit: 3 }).length, 3);
 });
