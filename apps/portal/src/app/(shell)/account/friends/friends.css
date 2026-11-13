@@ -169,10 +169,11 @@ a.you-picture .you-camera { width: 44px; height: 44px; }
 .fr .you-head .k-ink-portrait { width: 120px; height: 120px; }
 .fr .you-head .k-ink-portrait .portrait { width: 101px; height: 101px; font-size: 48px; }
 
-/* the two doors: who sees what, and settings */
-.fr-doors { flex-wrap: wrap; margin-top: 10px; }
-.fr-actions .line-icon { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }
-.fr-doors .k-seal { min-width: 148px; }
+/* Settings, top right, with its word */
+.fr-top:has(.fr-settings) { justify-content: space-between; }
+.fr-settings { margin-left: auto; }
+.fr-settings .line-icon { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }
+a.fr-tag { text-decoration: none; margin-top: 4px; }
 
 /* one tag for what friends see, everywhere; it opens Who sees what */
 .fr-tag { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 10px; border: 0; border-radius: 10px 6px 10px 6px; background: var(--sc-high); font: 500 13px var(--sans); letter-spacing: 0; text-transform: none; color: var(--on-surface-variant); cursor: pointer; white-space: nowrap; }
@@ -201,7 +202,6 @@ a.you-picture .you-camera { width: 44px; height: 44px; }
   .fr-profile:not(.is-closed) .fr-side .fr-edit-bio-wrap { width: 100%; }
   .fr-profile:not(.is-closed) .fr-side .fr-bio { text-align: left; }
   .fr-profile:not(.is-closed) .fr-side .fr-actions { justify-content: flex-start; }
-  .fr-profile:not(.is-closed) .fr-side .fr-doors { flex-direction: column; align-items: stretch; width: 100%; }
   .fr-profile:not(.is-closed) .fr-side .fr-people { grid-auto-flow: row; grid-template-columns: repeat(4, 1fr); overflow: visible; }
   .fr-profile:not(.is-closed) .fr-side .fr-person .k-ink-portrait { width: 52px; height: 52px; }
   .fr-profile:not(.is-closed) .fr-side .fr-person .k-ink-portrait .portrait { width: 44px; height: 44px; font-size: 20px; }
@@ -211,3 +211,5 @@ a.you-picture .you-camera { width: 44px; height: 44px; }
 
 /* Settings: the sign-out row stands apart */
 .you-signout { margin-top: 32px; }
+.you-invisible { cursor: default; }
+.you-invisible .joint { flex: none; }

@@ -7,6 +7,8 @@ import { Crossing } from "@/components/crossing";
 import { LineIcon } from "@/components/line-icon";
 import { AppearanceRow } from "@/components/appearance";
 import { accountContext } from "../account-frame";
+import { InvisibleRow } from "../friends/friends-ui";
+import "../friends/friends.css";
 
 export const metadata = { title: "Settings · You" };
 
@@ -32,6 +34,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       {row("/account/password", "lock", "#74565c", "Password")}
       {row("/account/devices", "laptop", "#5c7150", "Signed-in devices", signIns === null ? undefined : signIns === 1 ? "1 right now" : `${signIns} right now`)}
     </div>
+
+    <div className="label">Privacy</div>
+    <div className="seg"><InvisibleRow /></div>
 
     <div className="label">This browser</div>
     <div className="seg"><AppearanceRow /></div>

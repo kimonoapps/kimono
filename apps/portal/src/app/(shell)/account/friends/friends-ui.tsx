@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { InkBlot, InkPortraitFrame, Seal } from "@kimono/ui";
-import { Crossing, CrossingSeal } from "@/components/crossing";
+import { Crossing, CrossingSeal, useCrossTo } from "@/components/crossing";
 import { InkSheet } from "@/components/ink-sheet";
 import { JointSwitch } from "@/components/joint-switch";
 import { LineIcon } from "@/components/line-icon";
@@ -189,7 +189,9 @@ export function ProfileView({ username, home = false }: { username: string; home
   const [removing, setRemoving] = useState(false);
   const [recommending, setRecommending] = useState<Item | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [privacyOpen, setPrivacyOpen] = useState(false);
+  /* Which app's rows are open to choose what friends see of them. */
+  const [privacyOpen, setPrivacyOpen] = useState<string | null>(null);
+  const crossTo = useCrossTo();
   const load = useCallback(() => call<Profile>(`/api/v1/profiles/${encodeURIComponent(username)}`).then(setProfile, (e) => setProblem(message(e))), [username]);
   useEffect(() => { void load(); }, [load]);
   const own = profile?.you ?? false;
@@ -200,8 +202,7 @@ export function ProfileView({ username, home = false }: { username: string; home
 
   if (!profile) return <div className="you fr">{problem ? <p className="fr-problem" role="alert">{problem}</p> : <div className="stack you-head"><span className="fr-sk-face" /></div>}</div>;
   const p = profile;
-  const action = p.you ? <Seal tone="quiet" compact onClick={() => setPrivacyOpen(true)}>Who sees what</Seal>
-    : p.link === "friends" ? <Seal tone="quiet" compact onClick={() => setRemoving(true)}>Friends</Seal>
+  const action = p.link === "friends" ? <Seal tone="quiet" compact onClick={() => setRemoving(true)}>Friends</Seal>
       : p.link === "asked" ? <><Seal tone="quiet" compact onClick={() => void change("no")}>Not now</Seal><Seal compact onClick={() => void change("yes")}>Accept</Seal></>
         : p.link === "asking" ? <Seal tone="quiet" compact onClick={() => void change("remove")}>Asked</Seal>
           : <Seal compact onClick={() => void change("ask")}>Ask to be friends</Seal>;
@@ -221,13 +222,19 @@ export function ProfileView({ username, home = false }: { username: string; home
       .then(() => setToast(`Off ${s.title}`), (e) => { setProblem(message(e)); void load(); });
   };
   const friendsKept = p.open && p.you && (invisible || privacy?.friends === false);
-  /* What friends see of a part of you, one tag everywhere; it opens Who sees what. */
-  const tag = (kept: boolean, some = false) => <button type="button" className={`fr-tag${kept ? " is-only" : ""}`} onClick={() => setPrivacyOpen(true)}>
+  /* What friends see of one part of you, one tag everywhere; tapping it changes that part. Invisible is Settings'. */
+  const tag = (kept: boolean, some: boolean, onClick: () => void) => <button type="button" className={`fr-tag${kept ? " is-only" : ""}`}
+    onClick={invisible ? () => crossTo("kakejiku", "/account/settings") : onClick}>
     <LineIcon name={kept ? "lock" : "eye"} />{kept ? "Only you" : some ? "Friends see some" : "Friends see this"}</button>;
+  const savePrivacy = (body: Record<string, unknown>, said: string) => call<{ privacy: Privacy; hidden: string[] }>("/api/v1/profile", "PATCH", body)
+    .then((r) => { if (p.open) setProfile({ ...p, privacy: r.privacy, hidden: r.hidden, kept: keptFrom(r.privacy) }); setToast(said); }, (e) => setProblem(message(e)));
   const friendList = p.open ? p.friendList ?? [] : [];
 
   return <div className={`you fr fr-profile${p.open ? "" : " is-closed"}`}>
-    {home ? null : <div className="fr-top"><Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing></div>}
+    {home && !p.you ? null : <div className="fr-top">
+      {home ? null : <Crossing kind="kakejiku" className="fr-back" href={p.you ? "/account" : "/account/friends"} aria-label="Back"><LineIcon name="back" /></Crossing>}
+      {p.you ? <CrossingSeal tone="quiet" compact className="fr-settings" href="/account/settings"><LineIcon name="cog" />Settings</CrossingSeal> : null}
+    </div>}
     <aside className="fr-side">
       <div className="stack you-head">
         {p.you ? <Crossing kind="kakejiku" className="you-picture" href="/account?sheet=picture" aria-label="Change your picture">
@@ -238,10 +245,8 @@ export function ProfileView({ username, home = false }: { username: string; home
         {p.open && p.kimonoRead ? <SilkscreenBadge since={p.kimonoRead.since} you={p.you} name={p.name || p.username} /> : null}
         {p.open && p.you ? <BioField bio={p.bio} onSaved={(bio) => setProfile({ ...p, bio })} onProblem={setProblem} />
           : p.open && p.bio ? <p className="fr-bio">{p.bio}</p> : null}
-        <div className={`fr-actions${p.you ? " fr-doors" : ""}`}>{p.you ? <>
-          <Seal tone={invisible ? "primary" : "quiet"} compact onClick={() => setPrivacyOpen(true)}><LineIcon name="lock" />{invisible ? "Invisible" : "Who sees what"}</Seal>
-          <CrossingSeal tone="quiet" compact href="/account/settings"><LineIcon name="cog" />Settings</CrossingSeal>
-        </> : action}</div>
+        {p.you ? invisible ? <Crossing kind="kakejiku" className="fr-tag is-only" href="/account/settings"><LineIcon name="lock" />Invisible</Crossing> : null
+          : <div className="fr-actions">{action}</div>}
       </div>
       {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
 
@@ -249,7 +254,7 @@ export function ProfileView({ username, home = false }: { username: string; home
         <div className="fr-app-head">
           <InkBlot tint="#74565c" seed="friends"><LineIcon name="people" /></InkBlot>
           <h2>Friends</h2>
-          {p.you ? tag(friendsKept) : null}
+          {p.you ? tag(friendsKept, false, () => void savePrivacy({ keep: "friends", shown: friendsKept }, friendsKept ? "Friends see your friends" : "Only you see your friends")) : null}
         </div>
         {friendList.length ? <div className="fr-shelf fr-people k-inkbar">{friendList.slice(0, 8).map((f) =>
           <Crossing key={f.username} kind="kakejiku" className="fr-person" href={`/account/people/${encodeURIComponent(f.username)}`}>
@@ -284,12 +289,12 @@ export function ProfileView({ username, home = false }: { username: string; home
           <div className="fr-app-head">
             <InkBlot tint={app === "books" ? "#5c7150" : "#a84d63"} seed={`app:${app}`}><LineIcon name={app === "books" ? "book" : "film"} /></InkBlot>
             <h2>{rows[0].appName}</h2>
-            {p.you ? tag(kept, some) : null}
+            {p.you ? tag(kept, some, () => setPrivacyOpen(app)) : null}
           </div>
           {rows.map((s) => {
             const only = !kept && p.you && rowKept(app, s.kind);
             return <div key={`${s.app}:${s.kind}`} className={only ? "is-kept" : undefined}>
-              <div className="label fr-label">{s.title}{only ? tag(true) : null}</div>
+              <div className="label fr-label">{s.title}{only ? tag(true, false, () => setPrivacyOpen(app)) : null}</div>
               <div className="fr-shelf k-inkbar">{s.items.map((i) => <Tile key={i.itemId} item={i}>
                 {p.you ? <button type="button" className="fr-away" aria-label={`Take ${i.title} off ${s.title}`} onClick={() => void drop(s, i)}><LineIcon name="close" /></button>
                   : <button type="button" className="fr-away" aria-label={`Recommend ${i.title}`} onClick={() => setRecommending(i)}><LineIcon name="send" /></button>}
@@ -300,7 +305,7 @@ export function ProfileView({ username, home = false }: { username: string; home
       }) : null}
     </div>
 
-    {privacyOpen && privacy ? <PrivacySheet privacy={privacy} onClose={() => setPrivacyOpen(false)}
+    {privacyOpen && privacy ? <AppPrivacySheet app={privacyOpen} privacy={privacy} onClose={() => setPrivacyOpen(null)}
       onChanged={(r) => { if (p.open) setProfile({ ...p, privacy: r.privacy, hidden: r.hidden, kept: keptFrom(r.privacy) }); }} /> : null}
     {removing ? <InkSheet title={`Remove ${first(p)}?`} icon="people" onClose={() => setRemoving(false)} actions={<>
       <Seal tone="quiet" compact onClick={() => setRemoving(false)}>Keep</Seal>
@@ -316,35 +321,38 @@ const keptFrom = (privacy: Privacy) => [
   ...privacy.apps.flatMap((a) => a.rows.filter((r) => !r.shown).map((r) => `${a.app}:${r.kind}`)),
 ];
 
-/**
- * Who sees what: going invisible (friends see your name and portrait, and no app shows them what you do),
- * then each app, each of its rows, and your friends list. Every switch saves as it's flipped.
- */
-function PrivacySheet({ privacy, onClose, onChanged }: { privacy: Privacy; onClose: () => void; onChanged: (r: { privacy: Privacy; hidden: string[] }) => void }) {
+/** What friends see of one app: the app itself, then each of its rows. Every switch saves as it's flipped. */
+function AppPrivacySheet({ app, privacy, onClose, onChanged }: { app: string; privacy: Privacy; onClose: () => void; onChanged: (r: { privacy: Privacy; hidden: string[] }) => void }) {
   const [now, setNow] = useState(privacy);
   const [problem, setProblem] = useState<string | null>(null);
   const change = (body: Record<string, unknown>) => call<{ privacy: Privacy; hidden: string[] }>("/api/v1/profile", "PATCH", body)
     .then((r) => { setNow(r.privacy); onChanged(r); setProblem(null); }, (e) => setProblem(message(e)));
-  const off = now.invisible;
-  return <InkSheet title="Who sees what" icon="lock" onClose={onClose} actions={<Seal compact onClick={onClose}>Done</Seal>}>
+  const a = now.apps.find((x) => x.app === app);
+  if (!a) return null;
+  return <InkSheet title={a.name} icon={app === "books" ? "book" : "film"} tint={app === "books" ? "#5c7150" : "#a84d63"} onClose={onClose} actions={<Seal compact onClick={onClose}>Done</Seal>}>
     <div className="fr-privacy">
-      <label className="fr-toggle fr-priv-main"><span><b>Invisible</b><small>Friends see only your name and portrait.</small></span>
-        <JointSwitch name="invisible" label="Invisible to friends" defaultChecked={now.invisible} onChange={(on) => void change({ invisible: on })} /></label>
-      <div className={`fr-priv-parts${off ? " is-off" : ""}`} aria-disabled={off}>
-        <label className="fr-toggle"><span><b>Friends list</b></span>
-          <JointSwitch name="see-friends" label="Friends see your friends" defaultChecked={now.friends} disabled={off} onChange={(on) => void change({ keep: "friends", shown: on })} /></label>
-        {now.apps.map((a) => <div key={a.app} className="fr-priv-app">
-          <label className="fr-toggle"><span><b>{a.name}</b></span>
-            <JointSwitch name={`see-${a.app}`} label={`Friends see your ${a.name}`} defaultChecked={a.shown} disabled={off} onChange={(on) => void change({ app: a.app, shown: on })} /></label>
-          <div className={`fr-priv-rows${a.shown ? "" : " is-off"}`}>{a.rows.map((r) =>
-            <label key={r.kind} className="fr-toggle"><span>{r.title}</span>
-              <JointSwitch name={`see-${a.app}-${r.kind}`} label={`Friends see your ${a.name} ${r.title}`} defaultChecked={r.shown} disabled={off || !a.shown}
-                onChange={(on) => void change({ keep: `${a.app}:${r.kind}`, shown: on })} /></label>)}</div>
-        </div>)}
-      </div>
+      <label className="fr-toggle fr-priv-main"><span><b>Friends see your {a.name}</b></span>
+        <JointSwitch name={`see-${a.app}`} label={`Friends see your ${a.name}`} defaultChecked={a.shown} onChange={(on) => void change({ app: a.app, shown: on })} /></label>
+      <div className={`fr-priv-rows${a.shown ? "" : " is-off"}`}>{a.rows.map((r) =>
+        <label key={r.kind} className="fr-toggle"><span>{r.title}</span>
+          <JointSwitch name={`see-${a.app}-${r.kind}`} label={`Friends see your ${a.name} ${r.title}`} defaultChecked={r.shown} disabled={!a.shown}
+            onChange={(on) => void change({ keep: `${a.app}:${r.kind}`, shown: on })} /></label>)}</div>
       {problem ? <p className="fr-problem" role="alert">{problem}</p> : null}
     </div>
   </InkSheet>;
+}
+
+/** Settings' Invisible: friends see only your name and portrait, and no app shows them what you do. */
+export function InvisibleRow() {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => { call<Profile>("/api/v1/profile").then((p) => setOn(p.open ? p.privacy?.invisible ?? false : false), () => setOn(false)); }, []);
+  return <label className="row you-invisible">
+    <InkBlot tint="#74565c" seed="invisible"><LineIcon name="lock" /></InkBlot>
+    <span className="text"><b>Invisible</b><small>{problem ?? "Friends see your name and portrait"}</small></span>
+    {on === null ? null : <JointSwitch name="invisible" label="Invisible to friends" defaultChecked={on}
+      onChange={(next) => void call("/api/v1/profile", "PATCH", { invisible: next }).then(() => setProblem(null), (e) => setProblem(message(e)))} />}
+  </label>;
 }
 
 /** Your name, written where it shows: it saves when you leave it or press Enter, and Escape puts it back. */
