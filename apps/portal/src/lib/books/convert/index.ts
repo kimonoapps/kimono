@@ -6,7 +6,8 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { stateDir } from "../../state";
-import { FilePreparing, FileProblem, openFile, registerFileSource, setFileDeriver, unregisterFileSource, type BookFile, type Opened, type Range } from "../files";
+import { openCached } from "../cache";
+import { FilePreparing, FileProblem, registerFileSource, setFileDeriver, unregisterFileSource, type BookFile, type Opened, type Range } from "../files";
 import type { Book } from "../model";
 import { hasPoppler } from "./pdf";
 import { convertPdf, type PipelineReport } from "./pipeline";
@@ -149,9 +150,10 @@ async function convert(key: string, pdf: string, hash: string, job: Job): Promis
   await mkdir(dir(), { recursive: true, mode: 0o700 });
   const work = await mkdtemp(join(dir(), `.work-${hash}-`));
   try {
-    /* The PDF, whole, from its source. */
+    /* The PDF, whole: the server's copy (made once, and shared with the reader), from its source only when none can be kept. */
     const source = join(work, "book.pdf");
-    const opened = await openFile(pdf);
+    const { bookFileCache } = await import("../file-cache");
+    const opened = await openCached(bookFileCache(), pdf);
     await writeFile(source, Readable.fromWeb(opened.body as import("node:stream/web").ReadableStream));
     job.progress = 0.02;
 

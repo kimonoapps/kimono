@@ -65,6 +65,9 @@ export class FileCache {
 
   /** Copies a file from its source into the cache, once, however many ask at the same time. */
   fill(address: string, open: (range?: Range) => Promise<Opened> = (range) => openFile(address, range)): Promise<Entry | null> {
+    /* Already kept: never downloaded again. */
+    const kept = this.get(address);
+    if (kept) return Promise.resolve(kept);
     const filling = (g.kimonoBookFilling ??= new Map());
     const known = filling.get(`${this.dir}|${address}`);
     if (known) return known;
@@ -117,13 +120,15 @@ export class FileCache {
 }
 
 /**
- * Opens a file through the cache: from disk when it's there; otherwise
- * straight from its source, while a copy fills the cache for next time.
+ * Opens a file through the cache. A source is downloaded from once: the
+ * first opening waits for the server's copy (one download, however many ask
+ * at once, ranges included) and everything is served from disk after that.
+ * Sources such as Anna's count every download, so nothing streams from them
+ * beside the copy. Only if no copy could be kept is the source asked directly.
  */
 export async function openCached(cache: FileCache, address: string, range?: Range): Promise<Opened> {
-  const entry = cache.get(address);
+  const entry = cache.get(address) ?? await cache.fill(address);
   if (entry) return cache.serve(entry, range);
-  void cache.fill(address);
   return openFile(address, range);
 }
 

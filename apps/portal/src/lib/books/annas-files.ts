@@ -105,7 +105,21 @@ function matchOf(file: ListedFile, book: BookRef, byIsbn: boolean): number {
 const languageNames = (() => { try { return new Intl.DisplayNames(["en"], { type: "language" }); } catch { return null; } })();
 const languageName = (code: string) => { try { return languageNames?.of(code) ?? code; } catch { return code; } };
 
+/* A fast-download address, kept a while: asking Anna's again for the same file would count against the member's daily downloads. */
+const resolved = new Map<string, { url: URL; at: number }>();
+const resolvedFor = 30 * 60 * 1000;
+
 async function resolve(settings: Settings, file: FileId): Promise<URL> {
+  const memo = `${file.md5}.${file.pathIndex}.${file.domainIndex}`;
+  const known = resolved.get(memo);
+  if (known && Date.now() - known.at < resolvedFor) return known.url;
+  const url = await resolveNow(settings, file);
+  resolved.set(memo, { url, at: Date.now() });
+  if (resolved.size > 200) resolved.delete(resolved.keys().next().value!);
+  return url;
+}
+
+async function resolveNow(settings: Settings, file: FileId): Promise<URL> {
   const origin = new URL(settings.url).origin;
   const query = new URLSearchParams({ md5: file.md5, key: settings.key, path_index: String(file.pathIndex), domain_index: String(file.domainIndex) });
   const res = await fetch(`${origin}/dyn/api/fast_download.json?${query}`, {

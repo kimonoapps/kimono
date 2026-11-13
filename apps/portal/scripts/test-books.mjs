@@ -171,12 +171,12 @@ test('the file cache: first from the source, then from disk; one copy at a time;
   const books = { 'fake:a': bytes(400, 1), 'fake:b': bytes(400, 2), 'fake:c': bytes(400, 3) };
   files.registerFileSource({ name: 'fake', async find() { return []; }, async open(id, range) { opened++; await new Promise((r) => setTimeout(r, 20)); return files.sliceOf(books[`fake:${id}`], `${id}.epub`, range); } });
   const c = new cache.FileCache(dir, 1000);
-  /* First opening: from the source, and the copy fills behind it, once even when asked three times. */
+  /* First opening: one download from the source into the copy, even when asked three times (sources like Anna's count each one). */
   const first = await cache.openCached(c, 'fake:a', { start: 0, end: 9 });
   assert.equal((await new Response(first.body).arrayBuffer()).byteLength, 10);
   await Promise.all([c.fill('fake:a'), c.fill('fake:a')]);
   const afterFill = opened;
-  assert.ok(afterFill <= 2, `the source was opened ${afterFill} times`);
+  assert.equal(afterFill, 1, `the source was opened ${afterFill} times`);
   /* Then from disk: the source isn't asked again, and ranges come from the copy. */
   const again = await cache.openCached(c, 'fake:a', { start: 390 });
   assert.equal(opened, afterFill);
