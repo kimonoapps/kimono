@@ -40,6 +40,9 @@ data class TestflightBuild(val version: String, val build: String, val appleId: 
 data class TestflightStanding(val email: String? = null, val apps: List<TestflightApp> = emptyList())
 
 class Testflight(private val session: Session) {
+    /** The Kimono it asks, for files it serves (the help clip). */
+    val server: String? get() = session.server
+
     /** Where you stand with each iPhone app; null when this Kimono has no TestFlight, or doesn't answer. */
     suspend fun mine(): TestflightStanding? = runCatching { json.decodeFromString<TestflightStanding>(session.call(PATH)) }.getOrNull()
 

@@ -185,6 +185,11 @@ fun PhoneAppScreen(app: LauncherApp, platform: Platform, testflight: Testflight?
                     Text("Get it", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
                     TestflightSteps(flight, betaEmail)
                 }
+                /* Installed through TestFlight: how to stop its alerts for each build. */
+                beta?.takeIf { here.installed == true && it.status == "tester" }?.let { installed ->
+                    Text("TestFlight notifications", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
+                    TestflightQuiet(testflight?.server, platform, installed.latest?.link ?: "itms-beta://")
+                }
                 val steps = if (flight != null) emptyList() else phone.steps
                 if (steps.isNotEmpty()) Text("Set it up", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, top = 22.dp, bottom = 6.dp))
                 steps.forEachIndexed { index, step ->

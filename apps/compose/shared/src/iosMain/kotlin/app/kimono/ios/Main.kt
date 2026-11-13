@@ -151,6 +151,8 @@ private class IosPlatform(private val host: IosHost) : Platform {
     @androidx.compose.runtime.Composable
     override fun WebFrame(url: String, modifier: androidx.compose.ui.Modifier, control: app.kimono.data.WebFrameControl?, keepLinks: Boolean, onMessage: (String) -> Unit, onLoaded: () -> Unit) =
         IosWebFrame(url, modifier, control, keepLinks, ::openUrl, onMessage, onLoaded)
+    @androidx.compose.runtime.Composable
+    override fun LoopingVideo(url: String, modifier: androidx.compose.ui.Modifier) = IosLoopingVideo(url, modifier)
     override suspend fun thumbnail(node: DriveNode, pixels: Int): String? = suspendCancellableCoroutine { waiting ->
         host.thumbnail(node.id, node.contentVersion.toLong(), node.name, node.mime, node.size, pixels.toLong()) { waiting.resume(it) }
     }
